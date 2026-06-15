@@ -1,0 +1,2805 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
+
+interface Brand {
+  id: string;
+  name: string;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  parent_category_id: string | null;
+}
+
+interface Product {
+  id: number;
+  name: string;
+  brand_id: string | null;
+  category_id: string | null;
+  unit_type: string | null;
+  default_selling_price?: number | null;
+  reorder_level?: number | null;
+  track_batch?: boolean | null;
+  track_expiry?: boolean | null;
+}
+
+interface Customer {
+  id: string;
+  customer_name: string;
+  shop_name: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  city: string | null;
+  area: string | null;
+  customer_type: string | null;
+  credit_limit: number | null;
+  credit_days: number | null;
+}
+
+interface Supplier {
+  id: string;
+  supplier_name: string;
+  contact_person: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  city: string | null;
+  notes: string | null;
+}
+
+interface PurchaseTransaction {
+  id: string;
+  supplier_id: string;
+  invoice_number: string;
+  created_at: string;
+}
+
+interface PurchaseLine {
+  id?: string;
+  product_id: string | null;
+  quantity: string;
+  purchase_price: string;
+  selling_price: string;
+  batch_number: string;
+  expiry_date: string;
+}
+
+export default function Home() {
+  const [name, setName] = useState("");
+  const [unitType, setUnitType] = useState("");
+  const [unitsPerPack, setUnitsPerPack] = useState("");
+  const [minimumStockLevel, setMinimumStockLevel] = useState("");
+  const [reorderLevel, setReorderLevel] = useState("");
+  const [trackBatch, setTrackBatch] = useState(false);
+  const [trackExpiry, setTrackExpiry] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const [brandName, setBrandName] = useState("");
+  const [brandMessage, setBrandMessage] = useState<string | null>(null);
+  const [brandError, setBrandError] = useState<string | null>(null);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [brandsLoading, setBrandsLoading] = useState(false);
+
+  const [categoryName, setCategoryName] = useState("");
+  const [parentCategoryId, setParentCategoryId] = useState<string | null>(null);
+  const [categoryMessage, setCategoryMessage] = useState<string | null>(null);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+
+  const [customerName, setCustomerName] = useState("");
+  const [shopName, setShopName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [city, setCity] = useState("");
+  const [area, setArea] = useState("");
+  const [customerType, setCustomerType] = useState("Retailer");
+  const [creditLimit, setCreditLimit] = useState("");
+  const [creditDays, setCreditDays] = useState("");
+  const [customerMessage, setCustomerMessage] = useState<string | null>(null);
+  const [customerError, setCustomerError] = useState<string | null>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+
+  const [supplierName, setSupplierName] = useState("");
+  const [contactPerson, setContactPerson] = useState("");
+  const [supplierPhone, setSupplierPhone] = useState("");
+  const [supplierWhatsapp, setSupplierWhatsapp] = useState("");
+  const [supplierCity, setSupplierCity] = useState("");
+  const [supplierNotes, setSupplierNotes] = useState("");
+  const [supplierMessage, setSupplierMessage] = useState<string | null>(null);
+  const [supplierError, setSupplierError] = useState<string | null>(null);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState("");
+
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [purchaseLines, setPurchaseLines] = useState<PurchaseLine[]>([]);
+  const [invoiceMessage, setInvoiceMessage] = useState<string | null>(null);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [purchaseTransactions, setPurchaseTransactions] = useState<PurchaseTransaction[]>([]);
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [organizationName, setOrganizationName] = useState("");
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<any | null>(null);
+  const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  useEffect(() => {
+    checkAuthUser();
+  }, []);
+
+  const loadProfile = async (userId: string | null) => {
+    if (!userId || typeof userId !== "string") {
+      console.error("Invalid userId passed to loadProfile:", userId);
+      setCurrentProfile(null);
+      setCurrentOrganizationId(null);
+      return;
+    }
+
+    console.log("Loading profile for userId:", userId);
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("Profile load error details:", JSON.stringify(profileError, null, 2));
+      setCurrentProfile(null);
+      setCurrentOrganizationId(null);
+      setAuthError("Failed to load profile. Please try again.");
+      return;
+    }
+
+    if (!profile) {
+      console.error("No profile found for user:", userId);
+      setCurrentProfile(null);
+      setCurrentOrganizationId(null);
+      setAuthError("No profile found for this account. Please complete signup again or contact support.");
+      return;
+    }
+
+    if (!profile.organization_id) {
+      console.error("Profile has no organization_id for user:", userId);
+      setCurrentProfile(null);
+      setCurrentOrganizationId(null);
+      setAuthError("Profile is incomplete. Missing organization. Please contact support.");
+      return;
+    }
+
+    console.log("Profile loaded successfully:", { userId, organizationId: profile.organization_id });
+    setAuthError(null);
+    setCurrentProfile(profile);
+    setCurrentOrganizationId(profile.organization_id);
+    fetchBrands(profile.organization_id);
+    fetchCategories(profile.organization_id);
+    fetchProducts(profile.organization_id);
+    fetchCustomers(profile.organization_id);
+    fetchSuppliers(profile.organization_id);
+    fetchPurchaseTransactions(profile.organization_id);
+    fetchSalesTransactions(profile.organization_id);
+    fetchCustomerPayments(profile.organization_id);
+    fetchSupplierPayments(profile.organization_id);
+    fetchPurchaseItems();
+    fetchSalesItems();
+  };
+
+  const checkAuthUser = async () => {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+      console.error("Error checking auth session:", sessionError);
+      setCurrentUser(null);
+      setCurrentProfile(null);
+      setCurrentOrganizationId(null);
+      return;
+    }
+
+    if (!sessionData?.session) {
+      setCurrentUser(null);
+      setCurrentProfile(null);
+      setCurrentOrganizationId(null);
+      return;
+    }
+
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      console.error("Error fetching auth user:", error);
+      setCurrentUser(null);
+      setCurrentProfile(null);
+      setCurrentOrganizationId(null);
+      return;
+    }
+
+    const user = data.user ?? null;
+    setCurrentUser(user);
+    if (user?.id) {
+      await loadProfile(user.id);
+    } else {
+      setCurrentProfile(null);
+      setCurrentOrganizationId(null);
+    }
+  };
+
+  const handleSignUp = async () => {
+    setAuthError(null);
+    setAuthMessage(null);
+    setAuthLoading(true);
+
+    if (!fullName.trim() || !organizationName.trim() || !email.trim() || !password.trim()) {
+      setAuthError("Please fill in all signup fields.");
+      setAuthLoading(false);
+      return;
+    }
+
+    try {
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (signUpError) {
+        throw signUpError;
+      }
+
+      const user = signUpData.user;
+      if (!user) {
+        throw new Error("Signup succeeded but no user was returned.");
+      }
+
+      const { data: orgData, error: orgError } = await supabase
+        .from("organizations")
+        .insert({ name: organizationName })
+        .select()
+        .single();
+
+      if (orgError) {
+        throw orgError;
+      }
+
+      const organizationId = orgData?.id;
+      if (!organizationId) {
+        throw new Error("Failed to create organization.");
+      }
+
+      const { error: profileError } = await supabase.from("profiles").insert({
+        id: user.id,
+        organization_id: organizationId,
+        full_name: fullName,
+        role_name: "owner",
+        is_active: true,
+      });
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      setAuthMessage("Account created successfully. Please verify your email if required.");
+      setEmail("");
+      setPassword("");
+      setFullName("");
+      setOrganizationName("");
+      setCurrentUser(user);
+      await loadProfile(user.id);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Failed to create account");
+      console.error("Signup error:", err);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    setAuthError(null);
+    setAuthMessage(null);
+    setAuthLoading(true);
+
+    if (!email.trim() || !password.trim()) {
+      setAuthError("Please enter email and password.");
+      setAuthLoading(false);
+      return;
+    }
+
+    try {
+      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (loginError) {
+        throw loginError;
+      }
+
+      const user = loginData.user;
+      setCurrentUser(user ?? null);
+      if (user?.id) {
+        await loadProfile(user.id);
+      } else {
+        setCurrentProfile(null);
+        setCurrentOrganizationId(null);
+      }
+      setAuthMessage("Logged in successfully.");
+      setPassword("");
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Failed to log in");
+      console.error("Login error:", err);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setAuthError(null);
+    setAuthMessage(null);
+    setAuthLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        throw error;
+      }
+      setCurrentUser(null);
+      setCurrentProfile(null);
+      setCurrentOrganizationId(null);
+      setAuthMessage("Logged out successfully.");
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Failed to log out");
+      console.error("Logout error:", err);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const fetchBrands = async (organizationId?: string) => {
+    setBrandsLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setBrands([]);
+      setBrandsLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("brands")
+      .select("id, name")
+      .eq("organization_id", orgId)
+      .order("name", { ascending: true });
+
+    setBrandsLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch brands error:", error);
+      return;
+    }
+
+    setBrands(data ?? []);
+  };
+
+  const handleAddSalesLine = () => {
+    setSalesLines([
+      ...salesLines,
+      { product_id: null, quantity: "", selling_price: "" },
+    ]);
+  };
+
+  const handleRemoveSalesLine = (index: number) => {
+    setSalesLines(salesLines.filter((_, i) => i !== index));
+  };
+
+  const handleSalesLineChange = (
+    index: number,
+    field: keyof SalesLine,
+    value: string | null
+  ) => {
+    const newLines = [...salesLines];
+    newLines[index] = { ...newLines[index], [field]: value } as SalesLine;
+    // if product selected, populate default selling price
+    if (field === "product_id" && value) {
+      const prod = products.find((p) => String(p.id) === value);
+      if (prod) {
+        newLines[index].selling_price = prod.default_selling_price != null ? String(prod.default_selling_price) : "";
+      }
+    }
+    setSalesLines(newLines);
+  };
+
+  const handleCreateSalesInvoice = async () => {
+    if (!selectedCustomerIdForSale) {
+      setSalesError("Please select a customer");
+      setSalesMessage(null);
+      return;
+    }
+
+    if (!salesInvoiceNumber.trim()) {
+      setSalesError("Invoice number is required");
+      setSalesMessage(null);
+      return;
+    }
+
+    if (salesLines.length === 0 || salesLines.some((line) => !line.product_id)) {
+      setSalesError("Please add at least one product line");
+      setSalesMessage(null);
+      return;
+    }
+
+    setSalesError(null);
+    setSalesMessage(null);
+    setSalesInvoiceLoading(true);
+
+    try {
+      if (!currentOrganizationId) {
+        setSalesError("Organization not loaded. Please login again.");
+        setSalesInvoiceLoading(false);
+        return;
+      }
+
+      const tx = await supabase
+        .from("sales_transactions")
+        .insert({
+          customer_id: selectedCustomerIdForSale,
+          invoice_number: salesInvoiceNumber,
+          notes: null,
+          organization_id: currentOrganizationId,
+        })
+        .select()
+        .single();
+
+      console.log("sales transaction result", tx);
+
+      if (tx.error) {
+        console.error("sales_transactions error", JSON.stringify(tx.error, null, 2));
+        throw tx.error;
+      }
+
+      const salesTransactionId = tx.data?.id;
+      if (!salesTransactionId) throw new Error("Failed to create sales transaction");
+
+      for (const line of salesLines) {
+        if (!line.product_id) continue;
+        const { error: itemError } = await supabase.from("sales_items").insert({
+          sales_transaction_id: salesTransactionId,
+          product_id: line.product_id,
+          quantity: Number(line.quantity),
+          selling_price: Number(line.selling_price),
+        });
+
+        if (itemError) throw itemError;
+      }
+
+      setSalesMessage("Sales invoice saved successfully");
+      setSelectedCustomerIdForSale(null);
+      setSalesInvoiceNumber("");
+      setSalesLines([]);
+
+      // Refresh dashboard and history
+      fetchSalesTransactions();
+      fetchSalesItems();
+      fetchPurchaseItems();
+      fetchProducts();
+    } catch (err) {
+      setSalesError(err instanceof Error ? err.message : "Failed to save sales invoice");
+      console.error("Error creating sales invoice:", err);
+    } finally {
+      setSalesInvoiceLoading(false);
+    }
+  };
+
+  const handleSaveCustomerPayment = async () => {
+    if (!selectedCustomerPaymentId) {
+      setCustomerPaymentError("Please select a customer");
+      setCustomerPaymentMessage(null);
+      return;
+    }
+    if (!customerPaymentAmount || Number(customerPaymentAmount) <= 0) {
+      setCustomerPaymentError("Please enter a valid amount");
+      setCustomerPaymentMessage(null);
+      return;
+    }
+
+    setCustomerPaymentError(null);
+    setCustomerPaymentMessage(null);
+    setCustomerPaymentLoading(true);
+
+    try {
+      if (!currentOrganizationId) {
+        setCustomerPaymentError("Organization not loaded. Please login again.");
+        setCustomerPaymentLoading(false);
+        return;
+      }
+
+      const { error } = await supabase.from("customer_payments").insert({
+        customer_id: selectedCustomerPaymentId,
+        amount: Number(customerPaymentAmount),
+        notes: customerPaymentNotes || null,
+        organization_id: currentOrganizationId,
+      });
+
+      if (error) throw error;
+
+      setCustomerPaymentMessage("Payment saved successfully");
+      setSelectedCustomerPaymentId(null);
+      setCustomerPaymentAmount("");
+      setCustomerPaymentNotes("");
+      // refresh
+      fetchCustomerPayments();
+    } catch (err) {
+      setCustomerPaymentError(err instanceof Error ? err.message : "Failed to save payment");
+      console.error("Error saving customer payment:", err);
+    } finally {
+      setCustomerPaymentLoading(false);
+    }
+  };
+
+  const handleSaveSupplierPayment = async () => {
+    if (!selectedSupplierPaymentId) {
+      setSupplierPaymentError("Please select a supplier");
+      setSupplierPaymentMessage(null);
+      return;
+    }
+    if (!supplierPaymentAmount || Number(supplierPaymentAmount) <= 0) {
+      setSupplierPaymentError("Please enter a valid amount");
+      setSupplierPaymentMessage(null);
+      return;
+    }
+
+    setSupplierPaymentError(null);
+    setSupplierPaymentMessage(null);
+    setSupplierPaymentLoading(true);
+
+    try {
+      if (!currentOrganizationId) {
+        setSupplierPaymentError("Organization not loaded. Please login again.");
+        setSupplierPaymentLoading(false);
+        return;
+      }
+
+      const { error } = await supabase.from("supplier_payments").insert({
+        supplier_id: selectedSupplierPaymentId,
+        amount: Number(supplierPaymentAmount),
+        notes: supplierPaymentNotes || null,
+        organization_id: currentOrganizationId,
+      });
+
+      if (error) throw error;
+
+      setSupplierPaymentMessage("Payment saved successfully");
+      setSelectedSupplierPaymentId(null);
+      setSupplierPaymentAmount("");
+      setSupplierPaymentNotes("");
+      // refresh
+      fetchSupplierPayments();
+    } catch (err) {
+      setSupplierPaymentError(err instanceof Error ? err.message : "Failed to save payment");
+      console.error("Error saving supplier payment:", err);
+    } finally {
+      setSupplierPaymentLoading(false);
+    }
+  };
+
+  const fetchCategories = async (organizationId?: string) => {
+    setCategoriesLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setCategories([]);
+      setCategoriesLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("categories")
+      .select("id, name, parent_category_id")
+      .eq("organization_id", orgId)
+      .order("name", { ascending: true });
+
+    setCategoriesLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch categories error:", error);
+      return;
+    }
+
+    setCategories(data ?? []);
+  };
+
+  const fetchProducts = async (organizationId?: string) => {
+    setProductsLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setProducts([]);
+      setProductsLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, brand_id, category_id, unit_type, default_selling_price, reorder_level, track_batch, track_expiry")
+      .eq("organization_id", orgId)
+      .order("name", { ascending: true });
+
+    setProductsLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch products error:", error);
+      return;
+    }
+
+    setProducts(data ?? []);
+  };
+
+  const fetchCustomers = async (organizationId?: string) => {
+    setCustomersLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setCustomers([]);
+      setCustomersLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("customers")
+      .select(
+        "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_limit, credit_days"
+      )
+      .eq("organization_id", orgId)
+      .order("customer_name", { ascending: true });
+
+    setCustomersLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch customers error:", error);
+      return;
+    }
+
+    setCustomers(data ?? []);
+  };
+
+  const fetchSuppliers = async (organizationId?: string) => {
+    setSuppliersLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setSuppliers([]);
+      setSuppliersLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("suppliers")
+      .select("id, supplier_name, contact_person, phone, whatsapp, city, notes")
+      .eq("organization_id", orgId)
+      .order("supplier_name", { ascending: true });
+
+    setSuppliersLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch suppliers error:", error);
+      return;
+    }
+
+    setSuppliers(data ?? []);
+  };
+
+  const fetchPurchaseTransactions = async (organizationId?: string) => {
+    setPurchaseLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setPurchaseTransactions([]);
+      setPurchaseLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("purchase_transactions")
+      .select("id, supplier_id, invoice_number, created_at")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false });
+
+    setPurchaseLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch purchase transactions error:", error);
+      return;
+    }
+
+    setPurchaseTransactions(data ?? []);
+  };
+
+  // Purchase & Sales items + Sales transactions (for dashboard & history)
+  const [purchaseItems, setPurchaseItems] = useState<any[]>([]);
+  const [salesItems, setSalesItems] = useState<any[]>([]);
+
+  const [salesTransactions, setSalesTransactions] = useState<any[]>([]);
+  const [salesLoading, setSalesLoading] = useState(false);
+
+  // Payments
+  const [customerPayments, setCustomerPayments] = useState<any[]>([]);
+  const [supplierPayments, setSupplierPayments] = useState<any[]>([]);
+
+  const [selectedCustomerPaymentId, setSelectedCustomerPaymentId] = useState<string | null>(null);
+  const [customerPaymentAmount, setCustomerPaymentAmount] = useState("");
+  const [customerPaymentNotes, setCustomerPaymentNotes] = useState("");
+  const [customerPaymentLoading, setCustomerPaymentLoading] = useState(false);
+  const [customerPaymentMessage, setCustomerPaymentMessage] = useState<string | null>(null);
+  const [customerPaymentError, setCustomerPaymentError] = useState<string | null>(null);
+
+  const [selectedSupplierPaymentId, setSelectedSupplierPaymentId] = useState<string | null>(null);
+  const [supplierPaymentAmount, setSupplierPaymentAmount] = useState("");
+  const [supplierPaymentNotes, setSupplierPaymentNotes] = useState("");
+  const [supplierPaymentLoading, setSupplierPaymentLoading] = useState(false);
+  const [supplierPaymentMessage, setSupplierPaymentMessage] = useState<string | null>(null);
+  const [supplierPaymentError, setSupplierPaymentError] = useState<string | null>(null);
+
+  const [selectedCustomerIdForSale, setSelectedCustomerIdForSale] = useState<string | null>(null);
+  const [salesInvoiceNumber, setSalesInvoiceNumber] = useState("");
+  interface SalesLine { product_id: string | null; quantity: string; selling_price: string; }
+  const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
+  const [salesMessage, setSalesMessage] = useState<string | null>(null);
+  const [salesError, setSalesError] = useState<string | null>(null);
+  const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
+
+  const fetchPurchaseItems = async () => {
+    const { data, error } = await supabase
+      .from("purchase_items")
+      .select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, batch_number, expiry_date")
+      .order("id", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch purchase items error:", error);
+      return;
+    }
+
+    setPurchaseItems(data ?? []);
+  };
+
+  const fetchCustomerPayments = async (organizationId?: string) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setCustomerPayments([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("customer_payments")
+      .select("id, customer_id, amount, notes")
+      .eq("organization_id", orgId)
+      .order("id", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch customer payments error:", error);
+      return;
+    }
+
+    setCustomerPayments(data ?? []);
+  };
+
+  const fetchSupplierPayments = async (organizationId?: string) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setSupplierPayments([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("supplier_payments")
+      .select("id, supplier_id, amount, notes")
+      .eq("organization_id", orgId)
+      .order("id", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch supplier payments error:", error);
+      return;
+    }
+
+    setSupplierPayments(data ?? []);
+  };
+
+  const fetchSalesItems = async () => {
+    const { data, error } = await supabase
+      .from("sales_items")
+      .select("id, sales_transaction_id, product_id, quantity, selling_price")
+      .order("id", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch sales items error:", error);
+      return;
+    }
+
+    setSalesItems(data ?? []);
+  };
+
+  const fetchSalesTransactions = async (organizationId?: string) => {
+    setSalesLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setSalesTransactions([]);
+      setSalesLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("sales_transactions")
+      .select("id, customer_id, invoice_number, created_at")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false });
+
+    setSalesLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch sales transactions error:", error);
+      return;
+    }
+
+    setSalesTransactions(data ?? []);
+  };
+
+  const handleAddBrand = async () => {
+    if (!brandName.trim()) {
+      setBrandError("Brand name is required");
+      setBrandMessage(null);
+      return;
+    }
+
+    if (!currentOrganizationId) {
+      setBrandError("Organization not loaded. Please login again.");
+      setBrandMessage(null);
+      return;
+    }
+
+    setBrandError(null);
+    setBrandMessage(null);
+    setBrandsLoading(true);
+
+    const { error } = await supabase.from("brands").insert({
+      name: brandName,
+      organization_id: currentOrganizationId,
+    });
+
+    setBrandsLoading(false);
+
+    if (error) {
+      setBrandError("Failed to add brand");
+      console.error("Supabase add brand error:", error);
+      return;
+    }
+
+    setBrandMessage("Brand added successfully");
+    setBrandName("");
+    fetchBrands();
+  };
+
+  const handleDeleteBrand = async (brandId: string) => {
+    setBrandError(null);
+    setBrandMessage(null);
+    setBrandsLoading(true);
+
+    const { error } = await supabase.from("brands").delete().eq("id", brandId);
+
+    setBrandsLoading(false);
+
+    if (error) {
+      setBrandError("Failed to delete brand");
+      console.error("Supabase delete brand error:", error);
+      return;
+    }
+
+    setBrandMessage("Brand deleted successfully");
+    fetchBrands();
+  };
+
+  const handleAddCategory = async () => {
+    if (!categoryName.trim()) {
+      setCategoryError("Category name is required");
+      setCategoryMessage(null);
+      return;
+    }
+
+    if (!currentOrganizationId) {
+      setCategoryError("Organization not loaded. Please login again.");
+      setCategoryMessage(null);
+      return;
+    }
+
+    setCategoryError(null);
+    setCategoryMessage(null);
+    setCategoriesLoading(true);
+
+    const { error } = await supabase.from("categories").insert({
+      name: categoryName,
+      parent_category_id: parentCategoryId,
+      organization_id: currentOrganizationId,
+    });
+
+    setCategoriesLoading(false);
+
+    if (error) {
+      setCategoryError("Failed to add category");
+      console.error("Supabase add category error:", error);
+      return;
+    }
+
+    setCategoryMessage("Category added successfully");
+    setCategoryName("");
+    setParentCategoryId(null);
+    fetchCategories();
+  };
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    setCategoryError(null);
+    setCategoryMessage(null);
+    setCategoriesLoading(true);
+
+    const { error } = await supabase.from("categories").delete().eq("id", categoryId);
+
+    setCategoriesLoading(false);
+
+    if (error) {
+      setCategoryError("Failed to delete category");
+      console.error("Supabase delete category error:", error);
+      return;
+    }
+
+    setCategoryMessage("Category deleted successfully");
+    fetchCategories();
+  };
+
+  const handleDeleteProduct = async (productId: number) => {
+    setMessage(null);
+    setError(null);
+    setProductsLoading(true);
+
+    const { error } = await supabase.from("products").delete().eq("id", productId);
+
+    setProductsLoading(false);
+
+    if (error) {
+      setError("Failed to delete product");
+      console.error("Supabase delete product error:", error);
+      return;
+    }
+
+    setMessage("Product deleted successfully");
+    fetchProducts();
+  };
+
+  const handleAddCustomer = async () => {
+    if (!customerName.trim()) {
+      setCustomerError("Customer name is required");
+      setCustomerMessage(null);
+      return;
+    }
+
+    if (!currentOrganizationId) {
+      setCustomerError("Organization not loaded. Please login again.");
+      setCustomerMessage(null);
+      return;
+    }
+
+    setCustomerError(null);
+    setCustomerMessage(null);
+    setCustomersLoading(true);
+
+    const { error } = await supabase.from("customers").insert({
+      customer_name: customerName,
+      shop_name: shopName || null,
+      phone: phone || null,
+      whatsapp: whatsapp || null,
+      city: city || null,
+      area: area || null,
+      customer_type: customerType,
+      credit_limit: creditLimit ? Number(creditLimit) : null,
+      credit_days: creditDays ? Number(creditDays) : null,
+      organization_id: currentOrganizationId,
+    });
+
+    setCustomersLoading(false);
+
+    if (error) {
+      setCustomerError("Failed to save customer");
+      console.error("Supabase add customer error:", error);
+      return;
+    }
+
+    setCustomerMessage("Customer saved successfully");
+    setCustomerName("");
+    setShopName("");
+    setPhone("");
+    setWhatsapp("");
+    setCity("");
+    setArea("");
+    setCustomerType("Retailer");
+    setCreditLimit("");
+    setCreditDays("");
+    fetchCustomers();
+  };
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    setCustomerError(null);
+    setCustomerMessage(null);
+    setCustomersLoading(true);
+
+    const { error } = await supabase.from("customers").delete().eq("id", customerId);
+
+    setCustomersLoading(false);
+
+    if (error) {
+      setCustomerError("Failed to delete customer");
+      console.error("Supabase delete customer error:", error);
+      return;
+    }
+
+    setCustomerMessage("Customer deleted successfully");
+    fetchCustomers();
+  };
+
+  const handleAddSupplier = async () => {
+    if (!supplierName.trim()) {
+      setSupplierError("Supplier name is required");
+      setSupplierMessage(null);
+      return;
+    }
+
+    if (!currentOrganizationId) {
+      setSupplierError("Organization not loaded. Please login again.");
+      setSupplierMessage(null);
+      return;
+    }
+
+    setSupplierError(null);
+    setSupplierMessage(null);
+    setSuppliersLoading(true);
+
+    const { error } = await supabase.from("suppliers").insert({
+      supplier_name: supplierName,
+      contact_person: contactPerson || null,
+      phone: supplierPhone || null,
+      whatsapp: supplierWhatsapp || null,
+      city: supplierCity || null,
+      notes: supplierNotes || null,
+      organization_id: currentOrganizationId,
+    });
+
+    setSuppliersLoading(false);
+
+    if (error) {
+      setSupplierError("Failed to save supplier");
+      console.error("Supabase add supplier error:", error);
+      return;
+    }
+
+    setSupplierMessage("Supplier saved successfully");
+    setSupplierName("");
+    setContactPerson("");
+    setSupplierPhone("");
+    setSupplierWhatsapp("");
+    setSupplierCity("");
+    setSupplierNotes("");
+    fetchSuppliers();
+  };
+
+  const handleDeleteSupplier = async (supplierId: string) => {
+    setSupplierError(null);
+    setSupplierMessage(null);
+    setSuppliersLoading(true);
+
+    const { error } = await supabase.from("suppliers").delete().eq("id", supplierId);
+
+    setSuppliersLoading(false);
+
+    if (error) {
+      setSupplierError("Failed to delete supplier");
+      console.error("Supabase delete supplier error:", error);
+      return;
+    }
+
+    setSupplierMessage("Supplier deleted successfully");
+    fetchSuppliers();
+  };
+
+  const filteredSuppliers = suppliers.filter((supplier) => {
+    const searchTerm = supplierSearch.trim().toLowerCase();
+    if (!searchTerm) return true;
+    return [supplier.supplier_name, supplier.contact_person, supplier.phone].some(
+      (value) => value?.toLowerCase().includes(searchTerm)
+    );
+  });
+
+  const handleAddPurchaseLine = () => {
+    setPurchaseLines([
+      ...purchaseLines,
+      {
+        product_id: null,
+        quantity: "",
+        purchase_price: "",
+        selling_price: "",
+        batch_number: "",
+        expiry_date: "",
+      },
+    ]);
+  };
+
+  const handleRemovePurchaseLine = (index: number) => {
+    setPurchaseLines(purchaseLines.filter((_, i) => i !== index));
+  };
+
+  const handlePurchaseLineChange = (
+    index: number,
+    field: keyof PurchaseLine,
+    value: string | null
+  ) => {
+    const newLines = [...purchaseLines];
+    newLines[index] = { ...newLines[index], [field]: value };
+    setPurchaseLines(newLines);
+  };
+
+  const handleCreatePurchaseInvoice = async () => {
+    if (!selectedSupplierId) {
+      setInvoiceError("Please select a supplier");
+      setInvoiceMessage(null);
+      return;
+    }
+
+    if (!invoiceNumber.trim()) {
+      setInvoiceError("Invoice number is required");
+      setInvoiceMessage(null);
+      return;
+    }
+
+    if (purchaseLines.length === 0 || purchaseLines.some((line) => !line.product_id)) {
+      setInvoiceError("Please add at least one product line");
+      setInvoiceMessage(null);
+      return;
+    }
+
+    setInvoiceError(null);
+    setInvoiceMessage(null);
+    setInvoiceLoading(true);
+
+    try {
+      console.log("Purchase Invoice Debug", {
+        selectedSupplierId,
+        invoiceNumber,
+        purchaseLines,
+      });
+
+      if (!currentOrganizationId) {
+        setInvoiceError("Organization not loaded. Please login again.");
+        setInvoiceLoading(false);
+        return;
+      }
+
+      const transactionResult = await supabase
+        .from("purchase_transactions")
+        .insert({
+          supplier_id: selectedSupplierId,
+          invoice_number: invoiceNumber,
+          notes: null,
+          organization_id: currentOrganizationId,
+        })
+        .select()
+        .single();
+
+      console.log("transactionResult", transactionResult);
+
+      if (transactionResult.error) {
+        console.error(
+          "purchase_transactions error",
+          JSON.stringify(transactionResult.error, null, 2)
+        );
+        throw transactionResult.error;
+      }
+
+      const transactionId = transactionResult.data?.id;
+      if (!transactionId) throw new Error("Failed to create purchase transaction");
+
+      // Create purchase items and update product selling prices
+      for (const line of purchaseLines) {
+        if (!line.product_id) continue;
+
+        // Insert purchase item
+        const { error: itemError } = await supabase.from("purchase_items").insert({
+          purchase_transaction_id: transactionId,
+          product_id: line.product_id,
+          quantity: Number(line.quantity),
+          purchase_price: Number(line.purchase_price),
+          selling_price: line.selling_price ? Number(line.selling_price) : null,
+          batch_number: line.batch_number || null,
+          expiry_date: line.expiry_date || null,
+        });
+
+        if (itemError) throw itemError;
+
+        // Update product default_selling_price
+        if (line.selling_price) {
+          console.log("Updating product selling price", {
+            productId: line.product_id,
+            sellingPrice: line.selling_price,
+          });
+
+          const { error: updateError } = await supabase
+            .from("products")
+            .update({ default_selling_price: Number(line.selling_price) })
+            .eq("id", line.product_id);
+
+          if (updateError) {
+            console.error("Product update error:", updateError);
+          }
+        }
+      }
+
+      setInvoiceMessage("Purchase invoice created successfully");
+      setSelectedSupplierId(null);
+      setInvoiceNumber("");
+      setPurchaseLines([]);
+      fetchPurchaseTransactions();
+      fetchPurchaseItems();
+      fetchProducts();
+    } catch (err) {
+      setInvoiceError(err instanceof Error ? err.message : "Failed to create purchase invoice");
+      console.error("Error creating purchase invoice:", err);
+    } finally {
+      setInvoiceLoading(false);
+    }
+  };
+
+  const filteredCustomers = customers.filter((customer) => {
+    const searchTerm = customerSearch.trim().toLowerCase();
+    if (!searchTerm) return true;
+    return [customer.customer_name, customer.shop_name, customer.phone].some(
+      (value) => value?.toLowerCase().includes(searchTerm)
+    );
+  });
+
+  // Inventory calculations per product
+  const purchaseTransactionIds = purchaseTransactions.map((tx) => tx.id);
+  const salesTransactionIds = salesTransactions.map((tx) => tx.id);
+  const filteredPurchaseItems = purchaseItems.filter((pi) => purchaseTransactionIds.includes(pi.purchase_transaction_id));
+  const filteredSalesItems = salesItems.filter((si) => salesTransactionIds.includes(si.sales_transaction_id));
+
+  const inventoryStats = products.map((product) => {
+    const purchasedQty = filteredPurchaseItems
+      .filter((pi) => String(pi.product_id) === String(product.id))
+      .reduce((sum, pi) => sum + Number(pi.quantity || 0), 0);
+
+    const soldQty = filteredSalesItems
+      .filter((si) => String(si.product_id) === String(product.id))
+      .reduce((sum, si) => sum + Number(si.quantity || 0), 0);
+
+    const currentStock = purchasedQty - soldQty;
+
+    return {
+      productId: product.id,
+      productName: product.name,
+      purchasedQty,
+      soldQty,
+      currentStock,
+      defaultSellingPrice: product.default_selling_price ?? null,
+      reorderLevel: product.reorder_level ?? 0,
+    };
+  });
+
+  // Receivables per customer
+  const receivablesStats = customers.map((customer) => {
+    const customerTxIds = salesTransactions.filter((tx) => tx.customer_id === customer.id).map((t) => t.id);
+    const totalSales = salesItems
+      .filter((si) => customerTxIds.includes(si.sales_transaction_id))
+      .reduce((sum, si) => sum + Number(si.quantity || 0) * Number(si.selling_price || 0), 0);
+
+    const paymentsReceived = customerPayments
+      .filter((p) => p.customer_id === customer.id)
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    return {
+      customerId: customer.id,
+      customerName: customer.customer_name,
+      shopName: customer.shop_name,
+      totalSales,
+      paymentsReceived,
+      outstanding: totalSales - paymentsReceived,
+    };
+  });
+
+  // Payables per supplier
+  const payablesStats = suppliers.map((supplier) => {
+    const supplierTxIds = purchaseTransactions
+      .filter((tx) => tx.supplier_id === supplier.id)
+      .map((t) => t.id);
+
+    const totalPurchases = filteredPurchaseItems
+      .filter((pi) => supplierTxIds.includes(pi.purchase_transaction_id))
+      .reduce((sum, pi) => sum + Number(pi.quantity || 0) * Number(pi.purchase_price || 0), 0);
+
+    const paymentsMade = supplierPayments
+      .filter((p) => p.supplier_id === supplier.id)
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    const remainingPayable = totalPurchases - paymentsMade;
+
+    console.log("Payables Debug", {
+      supplierName: supplier.supplier_name,
+      totalPurchases,
+      paymentsMade,
+      remainingPayable,
+    });
+
+    return {
+      supplierId: supplier.id,
+      supplierName: supplier.supplier_name,
+      totalPurchases,
+      paymentsMade,
+      remainingPayable,
+    };
+  });
+
+  const totalProducts = products.length;
+  const totalCustomers = customers.length;
+  const totalSuppliers = suppliers.length;
+  const totalReceivables = receivablesStats.reduce((sum, customer) => sum + customer.outstanding, 0);
+  const totalPayables = payablesStats.reduce((sum, supplier) => sum + supplier.remainingPayable, 0);
+  const inventoryValue = inventoryStats.reduce(
+    (sum, item) => sum + item.currentStock * (Number(item.defaultSellingPrice ?? 0) || 0),
+    0
+  );
+  const lowStockProducts = inventoryStats.filter(
+    (item) => typeof item.reorderLevel === "number" && item.currentStock <= item.reorderLevel
+  );
+  const topSellingProducts = products
+    .map((product) => {
+      const quantitySold = filteredSalesItems
+        .filter((si) => String(si.product_id) === String(product.id))
+        .reduce((sum, si) => sum + Number(si.quantity || 0), 0);
+      return {
+        productId: product.id,
+        productName: product.name,
+        quantitySold,
+      };
+    })
+    .sort((a, b) => b.quantitySold - a.quantitySold)
+    .slice(0, 10);
+  const recentSalesInvoices = salesTransactions
+    .slice()
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 10);
+  const recentPurchaseInvoices = purchaseTransactions
+    .slice()
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 10);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMessage(null);
+    setError(null);
+    setLoading(true);
+
+    console.log({
+      brand_id: selectedBrandId,
+      category_id: selectedCategoryId,
+    });
+
+    if (!currentOrganizationId) {
+      setError("Organization not loaded. Please login again.");
+      setLoading(false);
+      return;
+    }
+
+    const { error: insertError } = await supabase.from("products").insert({
+      name,
+      brand_id: selectedBrandId,
+      category_id: selectedCategoryId,
+      unit_type: unitType,
+      units_per_pack: unitsPerPack ? Number(unitsPerPack) : null,
+      minimum_stock_level: minimumStockLevel ? Number(minimumStockLevel) : null,
+      reorder_level: reorderLevel ? Number(reorderLevel) : 0,
+      track_batch: trackBatch,
+      track_expiry: trackExpiry,
+      organization_id: currentOrganizationId,
+    });
+
+    setLoading(false);
+
+    if (insertError) {
+      setError("Failed to save product");
+      console.error("Supabase insert error:", insertError);
+      return;
+    }
+
+    setMessage("Product saved successfully");
+    setName("");
+    setUnitType("");
+    setUnitsPerPack("");
+    setMinimumStockLevel("");
+    setTrackBatch(false);
+    setTrackExpiry(false);
+    setReorderLevel("");
+    setSelectedBrandId(null);
+    setSelectedCategoryId(null);
+    fetchProducts();
+  };
+
+  return (
+    <main className="min-h-screen bg-gray-50 p-6">
+      <div className="mx-auto max-w-xl rounded-xl bg-white p-6 shadow-sm">
+        <h1 className="mb-6 text-2xl font-semibold text-gray-900">
+          TradeOS Product Management
+        </h1>
+
+        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Authentication</h2>
+          {currentUser ? (
+            <div className="space-y-3 text-sm text-gray-700">
+              <div>Logged in as: <span className="font-medium text-gray-900">{currentUser.email}</span></div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={authLoading}
+                className="rounded bg-red-600 px-4 py-2 text-white transition hover:bg-red-700 disabled:bg-red-300"
+              >
+                {authLoading ? "Processing..." : "Logout"}
+              </button>
+              {authMessage && <p className="text-sm text-green-700">{authMessage}</p>}
+              {authError && <p className="text-sm text-red-700">{authError}</p>}
+              {currentUser && !currentProfile && (
+                <p className="text-sm text-red-700">Profile not found. Please contact support.</p>
+              )}
+            </div>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Create Account</h3>
+                <div className="space-y-3 text-sm text-gray-700">
+                  <label className="block">
+                    <span className="text-gray-700">Full Name</span>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-gray-700">Organization Name</span>
+                    <input
+                      type="text"
+                      value={organizationName}
+                      onChange={(e) => setOrganizationName(e.target.value)}
+                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-gray-700">Email</span>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-gray-700">Password</span>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSignUp}
+                    disabled={authLoading}
+                    className="mt-2 w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:bg-blue-300"
+                  >
+                    {authLoading ? "Processing..." : "Create Account"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Login</h3>
+                <div className="space-y-3 text-sm text-gray-700">
+                  <label className="block">
+                    <span className="text-gray-700">Email</span>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-gray-700">Password</span>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleLogin}
+                    disabled={authLoading}
+                    className="mt-2 w-full rounded bg-green-600 px-4 py-2 text-white transition hover:bg-green-700 disabled:bg-green-300"
+                  >
+                    {authLoading ? "Processing..." : "Login"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {!currentUser && (authMessage || authError) && (
+            <div className="mt-4">
+              {authMessage && <p className="text-sm text-green-700">{authMessage}</p>}
+              {authError && <p className="text-sm text-red-700">{authError}</p>}
+            </div>
+          )}
+        </section>
+
+        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Management Dashboard</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Total Products</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-900">{totalProducts}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Total Customers</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-900">{totalCustomers}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Total Suppliers</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-900">{totalSuppliers}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Total Receivables</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-900">{totalReceivables.toFixed(2)}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Total Payables</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-900">{totalPayables.toFixed(2)}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Inventory Value</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-900">{inventoryValue.toFixed(2)}</div>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Low Stock Products</h3>
+              {lowStockProducts.length === 0 ? (
+                <p className="text-sm text-gray-600">No low stock products.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {lowStockProducts.map((item) => (
+                    <li key={item.productId} className="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{item.productName}</div>
+                          <div className="text-xs text-gray-500">Reorder Level: {item.reorderLevel}</div>
+                        </div>
+                        <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">REORDER REQUIRED</span>
+                      </div>
+                      <div className="mt-1 text-xs text-gray-600">Current Stock: {item.currentStock}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Top Selling Products</h3>
+              {topSellingProducts.length === 0 ? (
+                <p className="text-sm text-gray-600">No sales yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {topSellingProducts.map((item) => (
+                    <li key={item.productId} className="flex items-center justify-between rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                      <span className="text-sm text-gray-900">{item.productName}</span>
+                      <span className="text-sm font-semibold text-gray-700">{item.quantitySold}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Recent Sales</h3>
+              {recentSalesInvoices.length === 0 ? (
+                <p className="text-sm text-gray-600">No recent sales.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {recentSalesInvoices.map((tx) => {
+                    const customer = customers.find((c) => c.id === tx.customer_id);
+                    return (
+                      <li key={tx.id} className="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="text-sm font-medium text-gray-900">{tx.invoice_number}</div>
+                        <div className="text-xs text-gray-500">{customer?.customer_name ?? "Unknown Customer"}</div>
+                        <div className="text-xs text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Recent Purchases</h3>
+              {recentPurchaseInvoices.length === 0 ? (
+                <p className="text-sm text-gray-600">No recent purchases.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {recentPurchaseInvoices.map((tx) => {
+                    const supplier = suppliers.find((s) => s.id === tx.supplier_id);
+                    return (
+                      <li key={tx.id} className="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="text-sm font-medium text-gray-900">{tx.invoice_number}</div>
+                        <div className="text-xs text-gray-500">{supplier?.supplier_name ?? "Unknown Supplier"}</div>
+                        <div className="text-xs text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Brand Management</h2>
+          <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Brand Name</span>
+              <input
+                type="text"
+                value={brandName}
+                onChange={(e) => setBrandName(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleAddBrand}
+              disabled={brandsLoading}
+              className="h-12 rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              Add Brand
+            </button>
+          </div>
+
+          {brandMessage && <p className="mt-4 text-sm text-green-700">{brandMessage}</p>}
+          {brandError && <p className="mt-4 text-sm text-red-700">{brandError}</p>}
+
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Existing Brands</h3>
+            {brandsLoading ? (
+              <p className="text-sm text-gray-600">Loading brands...</p>
+            ) : brands.length === 0 ? (
+              <p className="text-sm text-gray-600">No brands found.</p>
+            ) : (
+              <ul className="space-y-2">
+                {brands.map((brand) => (
+                  <li
+                    key={brand.id}
+                    className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2"
+                  >
+                    <span>{brand.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteBrand(brand.id)}
+                      className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Inventory Dashboard</h2>
+          {products.length === 0 ? (
+            <p className="text-sm text-gray-600">No products to show.</p>
+          ) : (
+            <ul className="space-y-2">
+              {inventoryStats.map((s) => (
+                <li
+                  key={s.productId}
+                  className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2"
+                >
+                  <div>
+                    <div className="font-medium text-gray-900">{s.productName}</div>
+                    <div className="text-xs text-gray-600">Default Price: {s.defaultSellingPrice ?? "-"}</div>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-gray-700">
+                    <div>Purchased: {s.purchasedQty}</div>
+                    <div>Sold: {s.soldQty}</div>
+                    <div>Stock: {s.currentStock}</div>
+                    {s.currentStock <= 10 && (
+                      <span className="rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">LOW STOCK</span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Sales Invoice</h2>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Customer</span>
+                <select
+                  value={selectedCustomerIdForSale ?? ""}
+                  onChange={(e) => setSelectedCustomerIdForSale(e.target.value === "" ? null : e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">Select Customer</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.customer_name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Invoice Number</span>
+                <input
+                  type="text"
+                  value={salesInvoiceNumber}
+                  onChange={(e) => setSalesInvoiceNumber(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Product Lines</h3>
+
+              {salesLines.length === 0 ? (
+                <p className="mb-4 text-sm text-gray-500">No product lines added yet.</p>
+              ) : (
+                <div className="mb-4 space-y-3">
+                  {salesLines.map((line, index) => (
+                    <div key={index} className="rounded border border-gray-300 bg-white p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Line {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSalesLine(index)}
+                          className="text-xs text-red-600 hover:text-red-800"
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Product</span>
+                          <select
+                            value={line.product_id ?? ""}
+                            onChange={(e) => handleSalesLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)}
+                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                          >
+                            <option value="">Select Product</option>
+                            {products.map((product) => (
+                              <option key={product.id} value={String(product.id)}>{product.name}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Quantity</span>
+                          <input
+                            type="number"
+                            value={line.quantity}
+                            onChange={(e) => handleSalesLineChange(index, "quantity", e.target.value)}
+                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Selling Price</span>
+                          <input
+                            type="number"
+                            value={line.selling_price}
+                            onChange={(e) => handleSalesLineChange(index, "selling_price", e.target.value)}
+                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleAddSalesLine}
+                className="mb-4 rounded border border-blue-600 px-4 py-2 text-sm text-blue-600 transition hover:bg-blue-50"
+              >
+                + Add Product Line
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCreateSalesInvoice}
+              disabled={salesInvoiceLoading}
+              className="w-full rounded bg-green-600 px-4 py-2 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
+            >
+              {salesInvoiceLoading ? "Saving..." : "Save Sales Invoice"}
+            </button>
+
+            {salesMessage && <p className="mt-4 text-sm text-green-700">{salesMessage}</p>}
+            {salesError && <p className="mt-4 text-sm text-red-700">{salesError}</p>}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Sales History</h2>
+          {salesLoading ? (
+            <p className="text-sm text-gray-600">Loading sales history...</p>
+          ) : salesTransactions.length === 0 ? (
+            <p className="text-sm text-gray-600">No sales invoices found.</p>
+          ) : (
+            <ul className="space-y-2">
+              {salesTransactions.map((tx) => {
+                const customer = customers.find((c) => c.id === tx.customer_id);
+                const date = new Date(tx.created_at).toLocaleDateString();
+                return (
+                  <li key={tx.id} className="flex flex-col gap-1 rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700">
+                    <div className="font-medium text-gray-900">Invoice: {tx.invoice_number}</div>
+                    <div>Customer: {customer?.customer_name ?? "Unknown"}</div>
+                    <div className="text-xs text-gray-500">Date: {date}</div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Customer Payments</h2>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <select
+              value={selectedCustomerPaymentId ?? ""}
+              onChange={(e) => setSelectedCustomerPaymentId(e.target.value === "" ? null : e.target.value)}
+              className="rounded border border-gray-300 px-2 py-2"
+            >
+              <option value="">Select Customer</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>{c.customer_name}</option>
+              ))}
+            </select>
+
+            <input
+              type="number"
+              value={customerPaymentAmount}
+              onChange={(e) => setCustomerPaymentAmount(e.target.value)}
+              placeholder="Amount"
+              className="rounded border border-gray-300 px-2 py-2"
+            />
+
+            <input
+              type="text"
+              value={customerPaymentNotes}
+              onChange={(e) => setCustomerPaymentNotes(e.target.value)}
+              placeholder="Notes (optional)"
+              className="rounded border border-gray-300 px-2 py-2"
+            />
+          </div>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={handleSaveCustomerPayment}
+              disabled={customerPaymentLoading}
+              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300"
+            >
+              {customerPaymentLoading ? "Saving..." : "Save Customer Payment"}
+            </button>
+            {customerPaymentMessage && <p className="mt-2 text-sm text-green-700">{customerPaymentMessage}</p>}
+            {customerPaymentError && <p className="mt-2 text-sm text-red-700">{customerPaymentError}</p>}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Supplier Payments</h2>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <select
+              value={selectedSupplierPaymentId ?? ""}
+              onChange={(e) => setSelectedSupplierPaymentId(e.target.value === "" ? null : e.target.value)}
+              className="rounded border border-gray-300 px-2 py-2"
+            >
+              <option value="">Select Supplier</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>{s.supplier_name}</option>
+              ))}
+            </select>
+
+            <input
+              type="number"
+              value={supplierPaymentAmount}
+              onChange={(e) => setSupplierPaymentAmount(e.target.value)}
+              placeholder="Amount"
+              className="rounded border border-gray-300 px-2 py-2"
+            />
+
+            <input
+              type="text"
+              value={supplierPaymentNotes}
+              onChange={(e) => setSupplierPaymentNotes(e.target.value)}
+              placeholder="Notes (optional)"
+              className="rounded border border-gray-300 px-2 py-2"
+            />
+          </div>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={handleSaveSupplierPayment}
+              disabled={supplierPaymentLoading}
+              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300"
+            >
+              {supplierPaymentLoading ? "Saving..." : "Save Supplier Payment"}
+            </button>
+            {supplierPaymentMessage && <p className="mt-2 text-sm text-green-700">{supplierPaymentMessage}</p>}
+            {supplierPaymentError && <p className="mt-2 text-sm text-red-700">{supplierPaymentError}</p>}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Receivables Dashboard</h2>
+          {customers.length === 0 ? (
+            <p className="text-sm text-gray-600">No customers.</p>
+          ) : (
+            <ul className="space-y-2">
+              {receivablesStats.map((r) => (
+                <li key={r.customerId} className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2">
+                  <div>
+                    <div className="font-medium text-gray-900">{r.customerName}</div>
+                    <div className="text-xs text-gray-600">{r.shopName ?? ""}</div>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-gray-700">
+                    <div>Total Sales: {r.totalSales}</div>
+                    <div>Payments: {r.paymentsReceived}</div>
+                    <div>Outstanding: {r.outstanding}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Payables Dashboard</h2>
+          {suppliers.length === 0 ? (
+            <p className="text-sm text-gray-600">No suppliers.</p>
+          ) : (
+            <ul className="space-y-2">
+              {payablesStats.map((p) => (
+                <li key={p.supplierId} className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2">
+                  <div>
+                    <div className="font-medium text-gray-900">{p.supplierName}</div>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-gray-700">
+                    <div>Total Purchases: {p.totalPurchases}</div>
+                    <div>Payments: {p.paymentsMade}</div>
+                    <div>Remaining Payable: {p.remainingPayable}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Category Management</h2>
+          <div className="space-y-4">
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Category Name</span>
+              <input
+                type="text"
+                value={categoryName}
+                onChange={(e) => setCategoryName(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Parent Category (Optional)</span>
+              <select
+                value={parentCategoryId ?? ""}
+                onChange={(e) => setParentCategoryId(e.target.value === "" ? null : e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="">None</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              onClick={handleAddCategory}
+              disabled={categoriesLoading}
+              className="w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              Add Category
+            </button>
+          </div>
+
+          {categoryMessage && <p className="mt-4 text-sm text-green-700">{categoryMessage}</p>}
+          {categoryError && <p className="mt-4 text-sm text-red-700">{categoryError}</p>}
+
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Existing Categories</h3>
+            {categoriesLoading ? (
+              <p className="text-sm text-gray-600">Loading categories...</p>
+            ) : categories.length === 0 ? (
+              <p className="text-sm text-gray-600">No categories found.</p>
+            ) : (
+              <ul className="space-y-2">
+                {categories.map((category) => {
+                  const parentCategory = categories.find((c) => c.id === category.parent_category_id);
+                  return (
+                    <li
+                      key={category.id}
+                      className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2"
+                    >
+                      <div className="flex flex-col">
+                        <span>{category.name}</span>
+                        {parentCategory && (
+                          <span className="text-xs text-gray-500">Parent: {parentCategory.name}</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(category.id)}
+                        className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Product Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Brand
+            </label>
+            <select
+              value={selectedBrandId ?? ""}
+              onChange={(e) => setSelectedBrandId(e.target.value === "" ? null : e.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="">None</option>
+              {brands.map((brand) => (
+                <option key={brand.id} value={String(brand.id)}>
+                  {brand.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Category
+            </label>
+            <select
+              value={selectedCategoryId ?? ""}
+              onChange={(e) => setSelectedCategoryId(e.target.value === "" ? null : e.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="">None</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Unit Type
+            </label>
+            <input
+              type="text"
+              value={unitType}
+              onChange={(e) => setUnitType(e.target.value)}
+              required
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Units Per Pack
+            </label>
+            <input
+              type="number"
+              value={unitsPerPack}
+              onChange={(e) => setUnitsPerPack(e.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Minimum Stock Level
+            </label>
+            <input
+              type="number"
+              value={minimumStockLevel}
+              onChange={(e) => setMinimumStockLevel(e.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Reorder Level
+            </label>
+            <input
+              type="number"
+              value={reorderLevel}
+              onChange={(e) => setReorderLevel(e.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={trackBatch}
+                onChange={(e) => setTrackBatch(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Track Batch
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={trackExpiry}
+                onChange={(e) => setTrackExpiry(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Track Expiry
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          >
+            {loading ? "Saving..." : "Save Product"}
+          </button>
+        </form>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Existing Products</h2>
+          {productsLoading ? (
+            <p className="text-sm text-gray-600">Loading products...</p>
+          ) : products.length === 0 ? (
+            <p className="text-sm text-gray-600">No products found.</p>
+          ) : (
+            <ul className="space-y-2">
+              {products.map((product) => {
+                const brand = brands.find((b) => b.id === product.brand_id);
+                const category = categories.find((c) => c.id === product.category_id);
+                return (
+                  <li
+                    key={product.id}
+                    className="flex flex-col gap-2 rounded border border-gray-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium text-gray-900">{product.name}</div>
+                      <div className="text-xs text-gray-500">Brand: {brand?.name ?? "None"}</div>
+                      <div className="text-xs text-gray-500">Category: {category?.name ?? "None"}</div>
+                      <div className="text-xs text-gray-500">Unit Type: {product.unit_type ?? "None"}</div>
+                      <div className="text-xs text-gray-500">Track Batch: {product.track_batch ? "Yes" : "No"}</div>
+                      <div className="text-xs text-gray-500">Track Expiry: {product.track_expiry ? "Yes" : "No"}</div>
+                      <div className="text-xs text-gray-500">Reorder Level: {product.reorder_level ?? 0}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProduct(product.id)}
+                      className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Customer Management</h2>
+          <div className="space-y-4">
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Customer Name</span>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                required
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              />
+            </label>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Shop Name</span>
+                <input
+                  type="text"
+                  value={shopName}
+                  onChange={(e) => setShopName(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Phone</span>
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>WhatsApp</span>
+                <input
+                  type="text"
+                  value={whatsapp}
+                  onChange={(e) => setWhatsapp(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>City</span>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Area</span>
+                <input
+                  type="text"
+                  value={area}
+                  onChange={(e) => setArea(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Customer Type</span>
+                <select
+                  value={customerType}
+                  onChange={(e) => setCustomerType(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="Retailer">Retailer</option>
+                  <option value="Wholesaler">Wholesaler</option>
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Credit Limit</span>
+                <input
+                  type="number"
+                  value={creditLimit}
+                  onChange={(e) => setCreditLimit(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Credit Days</span>
+              <input
+                type="number"
+                value={creditDays}
+                onChange={(e) => setCreditDays(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={handleAddCustomer}
+              disabled={customersLoading}
+              className="w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              Save Customer
+            </button>
+          </div>
+
+          {customerMessage && <p className="mt-4 text-sm text-green-700">{customerMessage}</p>}
+          {customerError && <p className="mt-4 text-sm text-red-700">{customerError}</p>}
+
+          <div className="mt-6 space-y-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">Search Customers</label>
+              <input
+                type="text"
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                placeholder="Search by name, shop, or phone"
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Existing Customers</h3>
+              {customersLoading ? (
+                <p className="text-sm text-gray-600">Loading customers...</p>
+              ) : filteredCustomers.length === 0 ? (
+                <p className="text-sm text-gray-600">No customers found.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {filteredCustomers.map((customer) => (
+                    <li
+                      key={customer.id}
+                      className="flex flex-col gap-2 rounded border border-gray-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="space-y-1 text-sm text-gray-700">
+                        <div className="font-medium text-gray-900">{customer.customer_name}</div>
+                        <div>Shop: {customer.shop_name ?? "None"}</div>
+                        <div>Type: {customer.customer_type ?? "None"}</div>
+                        <div>Phone: {customer.phone ?? "None"}</div>
+                        <div>City: {customer.city ?? "None"}</div>
+                        <div>Credit Limit: {customer.credit_limit ?? 0}</div>
+                        <div>Credit Days: {customer.credit_days ?? 0}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCustomer(customer.id)}
+                        className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Supplier Management</h2>
+          <div className="space-y-4">
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Supplier Name</span>
+              <input
+                type="text"
+                value={supplierName}
+                onChange={(e) => setSupplierName(e.target.value)}
+                required
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              />
+            </label>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Contact Person</span>
+                <input
+                  type="text"
+                  value={contactPerson}
+                  onChange={(e) => setContactPerson(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Phone</span>
+                <input
+                  type="text"
+                  value={supplierPhone}
+                  onChange={(e) => setSupplierPhone(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>WhatsApp</span>
+                <input
+                  type="text"
+                  value={supplierWhatsapp}
+                  onChange={(e) => setSupplierWhatsapp(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>City</span>
+                <input
+                  type="text"
+                  value={supplierCity}
+                  onChange={(e) => setSupplierCity(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Notes</span>
+              <textarea
+                value={supplierNotes}
+                onChange={(e) => setSupplierNotes(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                rows={3}
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={handleAddSupplier}
+              disabled={suppliersLoading}
+              className="w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              Save Supplier
+            </button>
+          </div>
+
+          {supplierMessage && <p className="mt-4 text-sm text-green-700">{supplierMessage}</p>}
+          {supplierError && <p className="mt-4 text-sm text-red-700">{supplierError}</p>}
+
+          <div className="mt-6 space-y-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">Search Suppliers</label>
+              <input
+                type="text"
+                value={supplierSearch}
+                onChange={(e) => setSupplierSearch(e.target.value)}
+                placeholder="Search by name, contact, or phone"
+                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Existing Suppliers</h3>
+              {suppliersLoading ? (
+                <p className="text-sm text-gray-600">Loading suppliers...</p>
+              ) : filteredSuppliers.length === 0 ? (
+                <p className="text-sm text-gray-600">No suppliers found.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {filteredSuppliers.map((supplier) => (
+                    <li
+                      key={supplier.id}
+                      className="flex flex-col gap-2 rounded border border-gray-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="space-y-1 text-sm text-gray-700">
+                        <div className="font-medium text-gray-900">{supplier.supplier_name}</div>
+                        <div>Contact: {supplier.contact_person ?? "None"}</div>
+                        <div>Phone: {supplier.phone ?? "None"}</div>
+                        <div>City: {supplier.city ?? "None"}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSupplier(supplier.id)}
+                        className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Purchase Invoice</h2>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Supplier</span>
+                <select
+                  value={selectedSupplierId ?? ""}
+                  onChange={(e) => setSelectedSupplierId(e.target.value === "" ? null : e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">Select Supplier</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.supplier_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Invoice Number</span>
+                <input
+                  type="text"
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Product Lines</h3>
+
+              {purchaseLines.length === 0 ? (
+                <p className="mb-4 text-sm text-gray-500">No product lines added yet.</p>
+              ) : (
+                <div className="mb-4 space-y-3">
+                  {purchaseLines.map((line, index) => (
+                    <div key={index} className="rounded border border-gray-300 bg-white p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Line {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePurchaseLine(index)}
+                          className="text-xs text-red-600 hover:text-red-800"
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Product</span>
+                          <select
+                            value={line.product_id ?? ""}
+                            onChange={(e) =>
+                              handlePurchaseLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)
+                            }
+                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                          >
+                            <option value="">Select Product</option>
+                            {products.map((product) => (
+                              <option key={product.id} value={product.id}>
+                                {product.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Quantity</span>
+                          <input
+                            type="number"
+                            value={line.quantity}
+                            onChange={(e) => handlePurchaseLineChange(index, "quantity", e.target.value)}
+                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Purchase Price</span>
+                          <input
+                            type="number"
+                            value={line.purchase_price}
+                            onChange={(e) => handlePurchaseLineChange(index, "purchase_price", e.target.value)}
+                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Selling Price</span>
+                          <input
+                            type="number"
+                            value={line.selling_price}
+                            onChange={(e) => handlePurchaseLineChange(index, "selling_price", e.target.value)}
+                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Batch Number</span>
+                          <input
+                            type="text"
+                            value={line.batch_number}
+                            onChange={(e) => handlePurchaseLineChange(index, "batch_number", e.target.value)}
+                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Expiry Date</span>
+                          <input
+                            type="date"
+                            value={line.expiry_date}
+                            onChange={(e) => handlePurchaseLineChange(index, "expiry_date", e.target.value)}
+                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleAddPurchaseLine}
+                className="mb-4 rounded border border-blue-600 px-4 py-2 text-sm text-blue-600 transition hover:bg-blue-50"
+              >
+                + Add Product Line
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCreatePurchaseInvoice}
+              disabled={invoiceLoading}
+              className="w-full rounded bg-green-600 px-4 py-2 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
+            >
+              {invoiceLoading ? "Creating..." : "Save Purchase Invoice"}
+            </button>
+          </div>
+
+          {invoiceMessage && <p className="mt-4 text-sm text-green-700">{invoiceMessage}</p>}
+          {invoiceError && <p className="mt-4 text-sm text-red-700">{invoiceError}</p>}
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Purchase History</h2>
+          {purchaseLoading ? (
+            <p className="text-sm text-gray-600">Loading purchase history...</p>
+          ) : purchaseTransactions.length === 0 ? (
+            <p className="text-sm text-gray-600">No purchase invoices found.</p>
+          ) : (
+            <ul className="space-y-3">
+              {purchaseTransactions.map((transaction) => {
+                const supplier = suppliers.find((s) => s.id === transaction.supplier_id);
+                const date = new Date(transaction.created_at).toLocaleDateString();
+                const lineItems = purchaseItems.filter(
+                  (item) => item.purchase_transaction_id === transaction.id
+                );
+
+                return (
+                  <li
+                    key={transaction.id}
+                    className="rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700"
+                  >
+                    <div className="mb-3 grid gap-2 sm:grid-cols-3">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Invoice</div>
+                        <div className="font-medium text-gray-900">{transaction.invoice_number}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Supplier</div>
+                        <div>{supplier?.supplier_name ?? "Unknown"}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Date</div>
+                        <div className="text-gray-500">{date}</div>
+                      </div>
+                    </div>
+
+                    {lineItems.length === 0 ? (
+                      <div className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500">
+                        No purchase lines recorded for this invoice.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {lineItems.map((item, index) => {
+                          const product = products.find((p) => String(p.id) === String(item.product_id));
+                          const lineTotal = Number(item.quantity || 0) * Number(item.purchase_price || 0);
+                          return (
+                            <div
+                              key={item.id ?? index}
+                              className="rounded border border-gray-200 bg-gray-50 p-3"
+                            >
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <div>
+                                  <div className="text-xs uppercase tracking-wide text-gray-500">Product</div>
+                                  <div className="font-medium text-gray-900">{product?.name ?? "Unknown"}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs uppercase tracking-wide text-gray-500">Quantity</div>
+                                  <div>{item.quantity}</div>
+                                </div>
+                              </div>
+                              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                                <div>
+                                  <div className="text-xs uppercase tracking-wide text-gray-500">Purchase Price</div>
+                                  <div>{item.purchase_price}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs uppercase tracking-wide text-gray-500">Selling Price</div>
+                                  <div>{item.selling_price ?? "-"}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs uppercase tracking-wide text-gray-500">Line Total</div>
+                                  <div>{lineTotal}</div>
+                                </div>
+                              </div>
+                              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                <div>
+                                  <div className="text-xs uppercase tracking-wide text-gray-500">Batch Number</div>
+                                  <div>{item.batch_number ?? "-"}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs uppercase tracking-wide text-gray-500">Expiry Date</div>
+                                  <div>{item.expiry_date ?? "-"}</div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {message && <p className="mt-4 text-sm text-green-700">{message}</p>}
+        {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+      </div>
+    </main>
+  );
+}
