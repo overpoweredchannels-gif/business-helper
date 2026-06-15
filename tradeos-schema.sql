@@ -1,0 +1,2 @@
+-- TradeOS database schema backup
+-- Created after working MVP backup
