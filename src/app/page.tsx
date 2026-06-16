@@ -20,6 +20,7 @@ interface Product {
   brand_id: string | null;
   category_id: string | null;
   unit_type: string | null;
+  last_purchase_price?: number | null;
   default_selling_price?: number | null;
   reorder_level?: number | null;
   track_batch?: boolean | null;
@@ -58,6 +59,14 @@ interface PurchaseTransaction {
   expense_reviewed_at: string | null;
 }
 
+interface SalesTransaction {
+  id: string;
+  customer_id: string;
+  invoice_number: string;
+  created_at: string;
+  sale_date: string | null;
+}
+
 interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;
@@ -73,6 +82,36 @@ interface PurchaseLine {
   batch_number: string;
   expiry_date: string;
 }
+
+const toDateInputValue = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getMonthRange = (monthOffset = 0) => {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+  const end = new Date(today.getFullYear(), today.getMonth() + monthOffset + 1, 0);
+  return {
+    start: toDateInputValue(start),
+    end: toDateInputValue(end),
+  };
+};
+
+const getDateOnly = (dateValue: string | null | undefined) => {
+  if (!dateValue) return null;
+  return dateValue.slice(0, 10);
+};
+
+const isDateInRange = (dateValue: string | null | undefined, startDate: string, endDate: string) => {
+  const dateOnly = getDateOnly(dateValue);
+  if (!dateOnly) return false;
+  if (startDate && dateOnly < startDate) return false;
+  if (endDate && dateOnly > endDate) return false;
+  return true;
+};
 
 export default function Home() {
   const [name, setName] = useState("");
@@ -502,11 +541,44 @@ export default function Home() {
 
       for (const line of salesLines) {
         if (!line.product_id) continue;
+        const latestPurchaseItem = purchaseItems
+          .filter(
+            (item) =>
+              String(item.product_id) === String(line.product_id) &&
+              Number.isFinite(Number(item.purchase_price)) &&
+              Number(item.purchase_price) > 0
+          )
+          .sort((a, b) => {
+            const aTransaction = purchaseTransactions.find(
+              (tx) => tx.id === a.purchase_transaction_id
+            );
+            const bTransaction = purchaseTransactions.find(
+              (tx) => tx.id === b.purchase_transaction_id
+            );
+            const aTime = aTransaction?.created_at
+              ? new Date(aTransaction.created_at).getTime()
+              : 0;
+            const bTime = bTransaction?.created_at
+              ? new Date(bTransaction.created_at).getTime()
+              : 0;
+            return bTime - aTime;
+          })[0];
+        const product = products.find((p) => String(p.id) === String(line.product_id));
+        const latestPurchasePrice = Number(latestPurchaseItem?.purchase_price);
+        const productLastPurchasePrice = Number(product?.last_purchase_price);
+        const purchasePriceSnapshot =
+          Number.isFinite(latestPurchasePrice) && latestPurchasePrice > 0
+            ? latestPurchasePrice
+            : Number.isFinite(productLastPurchasePrice) && productLastPurchasePrice > 0
+              ? productLastPurchasePrice
+              : null;
+
         const { error: itemError } = await supabase.from("sales_items").insert({
           sales_transaction_id: salesTransactionId,
           product_id: line.product_id,
           quantity: Number(line.quantity),
           selling_price: Number(line.selling_price),
+          purchase_price_snapshot: purchasePriceSnapshot,
         });
 
         if (itemError) throw itemError;
@@ -791,7 +863,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, brand_id, category_id, unit_type, default_selling_price, reorder_level, track_batch, track_expiry")
+      .select("id, name, brand_id, category_id, unit_type, last_purchase_price, default_selling_price, reorder_level, track_batch, track_expiry")
       .eq("organization_id", orgId)
       .order("name", { ascending: true });
 
@@ -886,7 +958,7 @@ export default function Home() {
   const [purchaseItems, setPurchaseItems] = useState<any[]>([]);
   const [salesItems, setSalesItems] = useState<any[]>([]);
 
-  const [salesTransactions, setSalesTransactions] = useState<any[]>([]);
+  const [salesTransactions, setSalesTransactions] = useState<SalesTransaction[]>([]);
   const [salesLoading, setSalesLoading] = useState(false);
 
   // Payments
@@ -924,6 +996,10 @@ export default function Home() {
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
   const [salesError, setSalesError] = useState<string | null>(null);
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
+  const currentMonthRange = getMonthRange();
+  const [profitLossStartDate, setProfitLossStartDate] = useState(currentMonthRange.start);
+  const [profitLossEndDate, setProfitLossEndDate] = useState(currentMonthRange.end);
+  const [profitLossDateError, setProfitLossDateError] = useState<string | null>(null);
   const expenseTypes = [
     "Purchase Transport",
     "Sales Delivery",
@@ -1002,7 +1078,7 @@ export default function Home() {
   const fetchSalesItems = async () => {
     const { data, error } = await supabase
       .from("sales_items")
-      .select("id, sales_transaction_id, product_id, quantity, selling_price")
+      .select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot")
       .order("id", { ascending: true });
 
     if (error) {
@@ -1024,7 +1100,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("sales_transactions")
-      .select("id, customer_id, invoice_number, created_at")
+      .select("id, customer_id, invoice_number, created_at, sale_date")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -1575,6 +1651,92 @@ export default function Home() {
     .slice()
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 10);
+  const handleProfitLossStartDateChange = (value: string) => {
+    setProfitLossStartDate(value);
+    if (value && profitLossEndDate && profitLossEndDate < value) {
+      setProfitLossEndDate(value);
+    }
+    setProfitLossDateError(null);
+  };
+  const handleProfitLossEndDateChange = (value: string) => {
+    if (profitLossStartDate && value && value < profitLossStartDate) {
+      setProfitLossDateError("End Date cannot be earlier than Start Date.");
+      return;
+    }
+    setProfitLossEndDate(value);
+    setProfitLossDateError(null);
+  };
+  const applyProfitLossMonthRange = (monthOffset: number) => {
+    const range = getMonthRange(monthOffset);
+    setProfitLossStartDate(range.start);
+    setProfitLossEndDate(range.end);
+    setProfitLossDateError(null);
+  };
+  const applyProfitLossAllTime = () => {
+    setProfitLossStartDate("");
+    setProfitLossEndDate("");
+    setProfitLossDateError(null);
+  };
+  const salesTransactionsInPeriod = salesTransactions.filter((transaction) =>
+    isDateInRange(transaction.sale_date, profitLossStartDate, profitLossEndDate)
+  );
+  const salesTransactionIdsInPeriod = salesTransactionsInPeriod.map((transaction) => transaction.id);
+  const salesItemsInPeriod = salesItems.filter((item) =>
+    salesTransactionIdsInPeriod.includes(item.sales_transaction_id)
+  );
+  const expensesInPeriod = expenses.filter((expense) =>
+    isDateInRange(expense.expense_date, profitLossStartDate, profitLossEndDate)
+  );
+  const profitLossTotals = salesItemsInPeriod.reduce(
+    (totals, item) => {
+      const quantity = Number(item.quantity || 0);
+      const sellingPrice = Number(item.selling_price || 0);
+      const revenue = quantity * sellingPrice;
+      const purchasePriceSnapshot = Number(item.purchase_price_snapshot);
+      const hasValidCost =
+        Number.isFinite(purchasePriceSnapshot) && purchasePriceSnapshot > 0;
+
+      totals.totalRevenue += revenue;
+
+      if (hasValidCost) {
+        totals.knownCostOfGoodsSold += quantity * purchasePriceSnapshot;
+        totals.costedSalesRevenue += revenue;
+      } else {
+        totals.missingCostSalesValue += revenue;
+        totals.missingCostSalesLineCount += 1;
+      }
+
+      return totals;
+    },
+    {
+      totalRevenue: 0,
+      knownCostOfGoodsSold: 0,
+      missingCostSalesValue: 0,
+      costedSalesRevenue: 0,
+      missingCostSalesLineCount: 0,
+    }
+  );
+  const purchaseLinkedExpenses = expensesInPeriod
+    .filter((expense) => Boolean(expense.purchase_transaction_id))
+    .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const operatingExpenses = expensesInPeriod
+    .filter((expense) => !expense.purchase_transaction_id)
+    .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const totalRecordedExpenses = purchaseLinkedExpenses + operatingExpenses;
+  const grossProfitOnCostedSales =
+    profitLossTotals.costedSalesRevenue - profitLossTotals.knownCostOfGoodsSold;
+  const mvpNetProfit =
+    profitLossTotals.totalRevenue -
+    profitLossTotals.knownCostOfGoodsSold -
+    totalRecordedExpenses;
+  const costCoverage =
+    profitLossTotals.totalRevenue > 0
+      ? (profitLossTotals.costedSalesRevenue / profitLossTotals.totalRevenue) * 100
+      : 100;
+  const hasMissingSalesCost = profitLossTotals.missingCostSalesLineCount > 0;
+  const netProfitLabel = hasMissingSalesCost
+    ? "Estimated Net Profit — incomplete cost data"
+    : "Net Profit";
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1856,6 +2018,140 @@ export default function Home() {
               )}
             </div>
           </div>
+        </section>
+
+        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Profit Dashboard</h2>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Start Date</span>
+              <input
+                type="date"
+                value={profitLossStartDate}
+                onChange={(e) => handleProfitLossStartDateChange(e.target.value)}
+                className="rounded border border-gray-300 px-3 py-2"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>End Date</span>
+              <input
+                type="date"
+                value={profitLossEndDate}
+                min={profitLossStartDate || undefined}
+                onChange={(e) => handleProfitLossEndDateChange(e.target.value)}
+                className="rounded border border-gray-300 px-3 py-2"
+              />
+            </label>
+          </div>
+
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => applyProfitLossMonthRange(0)}
+              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+            >
+              This Month
+            </button>
+            <button
+              type="button"
+              onClick={() => applyProfitLossMonthRange(-1)}
+              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+            >
+              Last Month
+            </button>
+            <button
+              type="button"
+              onClick={applyProfitLossAllTime}
+              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+            >
+              All Time
+            </button>
+          </div>
+
+          {profitLossDateError && (
+            <p className="mt-3 text-sm text-red-700">{profitLossDateError}</p>
+          )}
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Total Revenue</div>
+              <div className="mt-2 text-xl font-semibold text-gray-900">
+                {pkrFormatter.format(profitLossTotals.totalRevenue)}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Known Cost of Goods Sold</div>
+              <div className="mt-2 text-xl font-semibold text-gray-900">
+                {pkrFormatter.format(profitLossTotals.knownCostOfGoodsSold)}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Gross Profit on Costed Sales</div>
+              <div className="mt-2 text-xl font-semibold text-gray-900">
+                {pkrFormatter.format(grossProfitOnCostedSales)}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Purchase-Linked Expenses</div>
+              <div className="mt-2 text-xl font-semibold text-gray-900">
+                {pkrFormatter.format(purchaseLinkedExpenses)}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Operating Expenses</div>
+              <div className="mt-2 text-xl font-semibold text-gray-900">
+                {pkrFormatter.format(operatingExpenses)}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Total Recorded Expenses</div>
+              <div className="mt-2 text-xl font-semibold text-gray-900">
+                {pkrFormatter.format(totalRecordedExpenses)}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">{netProfitLabel}</div>
+              <div className="mt-2 text-xl font-semibold text-gray-900">
+                {pkrFormatter.format(mvpNetProfit)}
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Cost Coverage</div>
+              <div className="mt-2 text-xl font-semibold text-gray-900">
+                {costCoverage.toFixed(2)}%
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-3">
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Sales invoices in period</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-900">{salesTransactionsInPeriod.length}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Sales lines in period</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-900">{salesItemsInPeriod.length}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-sm text-gray-500">Expense entries in period</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-900">{expensesInPeriod.length}</div>
+            </div>
+          </div>
+
+          {costCoverage < 100 && (
+            <div className="mt-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+              <p className="font-medium">
+                Some sales do not contain a purchase-cost snapshot. Profit is estimated and may be overstated.
+              </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div>Sales lines missing cost: {profitLossTotals.missingCostSalesLineCount}</div>
+                <div>
+                  Revenue affected by missing cost: {pkrFormatter.format(profitLossTotals.missingCostSalesValue)}
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
