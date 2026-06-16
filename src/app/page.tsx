@@ -937,6 +937,11 @@ export default function Home() {
     "Maintenance",
     "Other",
   ];
+  const pkrFormatter = new Intl.NumberFormat("en-PK", {
+    style: "currency",
+    currency: "PKR",
+    maximumFractionDigits: 2,
+  });
 
   const fetchPurchaseItems = async () => {
     const { data, error } = await supabase
@@ -3139,6 +3144,46 @@ export default function Home() {
                 const lineItems = purchaseItems.filter(
                   (item) => item.purchase_transaction_id === transaction.id
                 );
+                const linkedPurchaseExpenses = expenses.filter(
+                  (expense) => expense.purchase_transaction_id === transaction.id
+                );
+                const purchaseValue = lineItems.reduce(
+                  (sum, item) =>
+                    sum + Number(item.quantity || 0) * Number(item.purchase_price || 0),
+                  0
+                );
+                const linkedExpenseTotal = linkedPurchaseExpenses.reduce(
+                  (sum, expense) => sum + Number(expense.amount || 0),
+                  0
+                );
+                const landedInvoiceCost = purchaseValue + linkedExpenseTotal;
+                const totalPurchasedQuantity = lineItems.reduce(
+                  (sum, item) => sum + Number(item.quantity || 0),
+                  0
+                );
+                const distinctProductIds = Array.from(
+                  new Set(lineItems.map((item) => String(item.product_id ?? "")))
+                ).filter(Boolean);
+                const distinctUnitTypes = Array.from(
+                  new Set(
+                    lineItems
+                      .map((item) => {
+                        const product = products.find(
+                          (p) => String(p.id) === String(item.product_id)
+                        );
+                        return product?.unit_type ?? null;
+                      })
+                      .filter(Boolean)
+                  )
+                );
+                const quantityUnitLabel =
+                  distinctUnitTypes.length === 1 ? distinctUnitTypes[0] : "units";
+                const averageLandedCost =
+                  totalPurchasedQuantity > 0 ? landedInvoiceCost / totalPurchasedQuantity : null;
+                const averageLandedCostLabel =
+                  distinctProductIds.length === 1
+                    ? `Average landed cost per ${quantityUnitLabel}`
+                    : "Blended average across this invoice";
 
                 return (
                   <li
@@ -3202,6 +3247,68 @@ export default function Home() {
                         >
                           Add Expense
                         </button>
+                      )}
+                    </div>
+
+                    <div className="mb-3 rounded border border-blue-100 bg-blue-50 p-3">
+                      <h3 className="mb-2 text-sm font-medium text-blue-950">Cost Summary</h3>
+                      <div className="grid gap-2 text-xs text-blue-950 sm:grid-cols-2 lg:grid-cols-5">
+                        <div>
+                          <div className="uppercase tracking-wide text-blue-700">Purchase Value</div>
+                          <div className="font-medium">{pkrFormatter.format(purchaseValue)}</div>
+                        </div>
+                        <div>
+                          <div className="uppercase tracking-wide text-blue-700">Linked Expenses</div>
+                          <div className="font-medium">{pkrFormatter.format(linkedExpenseTotal)}</div>
+                        </div>
+                        <div>
+                          <div className="uppercase tracking-wide text-blue-700">Landed Invoice Cost</div>
+                          <div className="font-medium">{pkrFormatter.format(landedInvoiceCost)}</div>
+                        </div>
+                        <div>
+                          <div className="uppercase tracking-wide text-blue-700">Total Purchased Quantity</div>
+                          <div className="font-medium">
+                            {totalPurchasedQuantity} {quantityUnitLabel}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="uppercase tracking-wide text-blue-700">{averageLandedCostLabel}</div>
+                          <div className="font-medium">
+                            {averageLandedCost === null ? "-" : pkrFormatter.format(averageLandedCost)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mb-3 rounded border border-gray-200 bg-gray-50 p-3">
+                      <h3 className="mb-2 text-sm font-medium text-gray-900">Linked Purchase Expenses</h3>
+                      {linkedPurchaseExpenses.length === 0 ? (
+                        <p className="text-xs text-gray-500">No purchase-linked expenses recorded.</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {linkedPurchaseExpenses.map((expense) => {
+                            const expenseDate = expense.created_at
+                              ? new Date(expense.created_at).toLocaleDateString()
+                              : "No date";
+                            return (
+                              <li
+                                key={expense.id}
+                                className="rounded border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700"
+                              >
+                                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                  <div>
+                                    <div className="font-medium text-gray-900">{expense.expense_type}</div>
+                                    <div className="text-gray-500">Date: {expenseDate}</div>
+                                  </div>
+                                  <div className="font-medium text-gray-900">
+                                    {pkrFormatter.format(Number(expense.amount || 0))}
+                                  </div>
+                                </div>
+                                {expense.notes && <div className="mt-1">Notes: {expense.notes}</div>}
+                              </li>
+                            );
+                          })}
+                        </ul>
                       )}
                     </div>
 
