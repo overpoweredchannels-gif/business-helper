@@ -611,6 +611,61 @@ export default function Home() {
     }
   };
 
+  const saveExpense = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (expenseLoading) {
+      return;
+    }
+
+    if (!currentOrganizationId) {
+      setExpenseMessage("Error: Organization not loaded. Please login again.");
+      return;
+    }
+
+    if (!expenseType) {
+      setExpenseMessage("Error: Please select an expense type.");
+      return;
+    }
+
+    const amount = Number(expenseAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setExpenseMessage("Error: Please enter an amount greater than zero.");
+      return;
+    }
+
+    setExpenseLoading(true);
+    setExpenseMessage(null);
+
+    const { error } = await supabase.from("expenses").insert({
+      organization_id: currentOrganizationId,
+      expense_type: expenseType,
+      amount,
+      notes: expenseNotes.trim() || null,
+      supplier_id: selectedExpenseSupplierId || null,
+      customer_id: selectedExpenseCustomerId || null,
+      purchase_transaction_id: selectedExpensePurchaseId || null,
+      sales_transaction_id: selectedExpenseSaleId || null,
+    });
+
+    if (error) {
+      setExpenseMessage(`Error saving expense: ${JSON.stringify(error, null, 2)}`);
+      setExpenseLoading(false);
+      return;
+    }
+
+    setExpenseMessage("Expense saved successfully.");
+    setExpenseType("");
+    setExpenseAmount("");
+    setExpenseNotes("");
+    setSelectedExpenseSupplierId("");
+    setSelectedExpenseCustomerId("");
+    setSelectedExpensePurchaseId("");
+    setSelectedExpenseSaleId("");
+    await fetchExpenses(currentOrganizationId);
+    setExpenseLoading(false);
+  };
+
   const fetchCategories = async (organizationId?: string) => {
     setCategoriesLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
@@ -749,6 +804,15 @@ export default function Home() {
   const [customerPayments, setCustomerPayments] = useState<any[]>([]);
   const [supplierPayments, setSupplierPayments] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [expenseType, setExpenseType] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseNotes, setExpenseNotes] = useState("");
+  const [selectedExpenseSupplierId, setSelectedExpenseSupplierId] = useState("");
+  const [selectedExpenseCustomerId, setSelectedExpenseCustomerId] = useState("");
+  const [selectedExpensePurchaseId, setSelectedExpensePurchaseId] = useState("");
+  const [selectedExpenseSaleId, setSelectedExpenseSaleId] = useState("");
+  const [expenseLoading, setExpenseLoading] = useState(false);
+  const [expenseMessage, setExpenseMessage] = useState<string | null>(null);
 
   const [selectedCustomerPaymentId, setSelectedCustomerPaymentId] = useState<string | null>(null);
   const [customerPaymentAmount, setCustomerPaymentAmount] = useState("");
@@ -771,6 +835,19 @@ export default function Home() {
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
   const [salesError, setSalesError] = useState<string | null>(null);
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
+  const expenseTypes = [
+    "Purchase Transport",
+    "Sales Delivery",
+    "Fuel",
+    "Vehicle Rent",
+    "Loading/Unloading",
+    "Salary",
+    "Electricity",
+    "Shop/Warehouse Rent",
+    "Food/Travel",
+    "Maintenance",
+    "Other",
+  ];
 
   const fetchPurchaseItems = async () => {
     const { data, error } = await supabase
@@ -1983,6 +2060,175 @@ export default function Home() {
             </button>
             {supplierPaymentMessage && <p className="mt-2 text-sm text-green-700">{supplierPaymentMessage}</p>}
             {supplierPaymentError && <p className="mt-2 text-sm text-red-700">{supplierPaymentError}</p>}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Expense Management</h2>
+          <form onSubmit={saveExpense} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Expense Type</span>
+                <select
+                  value={expenseType}
+                  onChange={(e) => setExpenseType(e.target.value)}
+                  required
+                  className="rounded border border-gray-300 px-2 py-2"
+                >
+                  <option value="">Select Expense Type</option>
+                  {expenseTypes.map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Amount</span>
+                <input
+                  type="number"
+                  value={expenseAmount}
+                  onChange={(e) => setExpenseAmount(e.target.value)}
+                  min="0.01"
+                  step="0.01"
+                  required
+                  className="rounded border border-gray-300 px-2 py-2"
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Notes</span>
+              <textarea
+                value={expenseNotes}
+                onChange={(e) => setExpenseNotes(e.target.value)}
+                rows={3}
+                className="rounded border border-gray-300 px-2 py-2"
+              />
+            </label>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Supplier</span>
+                <select
+                  value={selectedExpenseSupplierId}
+                  onChange={(e) => setSelectedExpenseSupplierId(e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-2"
+                >
+                  <option value="">No Supplier</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>{supplier.supplier_name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Customer</span>
+                <select
+                  value={selectedExpenseCustomerId}
+                  onChange={(e) => setSelectedExpenseCustomerId(e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-2"
+                >
+                  <option value="">No Customer</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Purchase Invoice</span>
+                <select
+                  value={selectedExpensePurchaseId}
+                  onChange={(e) => setSelectedExpensePurchaseId(e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-2"
+                >
+                  <option value="">No Purchase Invoice</option>
+                  {purchaseTransactions.map((transaction) => (
+                    <option key={transaction.id} value={transaction.id}>{transaction.invoice_number}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Sales Invoice</span>
+                <select
+                  value={selectedExpenseSaleId}
+                  onChange={(e) => setSelectedExpenseSaleId(e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-2"
+                >
+                  <option value="">No Sales Invoice</option>
+                  {salesTransactions.map((transaction) => (
+                    <option key={transaction.id} value={transaction.id}>{transaction.invoice_number}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={expenseLoading}
+              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300"
+            >
+              {expenseLoading ? "Saving..." : "Save Expense"}
+            </button>
+
+            {expenseMessage && (
+              <p className={`text-sm ${expenseMessage.startsWith("Error") ? "text-red-700" : "text-green-700"}`}>
+                {expenseMessage}
+              </p>
+            )}
+          </form>
+
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Recent Expenses</h3>
+            {expenses.length === 0 ? (
+              <p className="text-sm text-gray-600">No expenses recorded yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {expenses.map((expense) => {
+                  const supplier = suppliers.find((s) => s.id === expense.supplier_id);
+                  const customer = customers.find((c) => c.id === expense.customer_id);
+                  const purchaseTransaction = purchaseTransactions.find(
+                    (transaction) => transaction.id === expense.purchase_transaction_id
+                  );
+                  const salesTransaction = salesTransactions.find(
+                    (transaction) => transaction.id === expense.sales_transaction_id
+                  );
+                  const expenseDate = expense.created_at
+                    ? new Date(expense.created_at).toLocaleDateString()
+                    : "No date";
+                  const formattedAmount = new Intl.NumberFormat("en-PK", {
+                    style: "currency",
+                    currency: "PKR",
+                  }).format(Number(expense.amount || 0));
+
+                  return (
+                    <li key={expense.id} className="rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="font-medium text-gray-900">{expense.expense_type}</div>
+                          <div className="text-xs text-gray-500">Date: {expenseDate}</div>
+                        </div>
+                        <div className="font-medium text-gray-900">{formattedAmount}</div>
+                      </div>
+                      {expense.notes && <div className="mt-2">Notes: {expense.notes}</div>}
+                      <div className="mt-2 grid gap-1 text-xs text-gray-600 sm:grid-cols-2">
+                        {expense.supplier_id && <div>Supplier: {supplier?.supplier_name ?? "Unknown"}</div>}
+                        {expense.customer_id && <div>Customer: {customer?.customer_name ?? "Unknown"}</div>}
+                        {expense.purchase_transaction_id && (
+                          <div>Purchase Invoice: {purchaseTransaction?.invoice_number ?? "Unknown"}</div>
+                        )}
+                        {expense.sales_transaction_id && (
+                          <div>Sales Invoice: {salesTransaction?.invoice_number ?? "Unknown"}</div>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </section>
 
