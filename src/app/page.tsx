@@ -1738,6 +1738,86 @@ export default function Home() {
     ? "Estimated Net Profit — incomplete cost data"
     : "Net Profit";
 
+  const expenseCategoryBreakdown = Object.values(
+    expensesInPeriod.reduce<Record<string, { expenseType: string; entryCount: number; totalAmount: number }>>(
+      (groups, expense) => {
+        const expenseType = expense.expense_type || "Uncategorized";
+        if (!groups[expenseType]) {
+          groups[expenseType] = {
+            expenseType,
+            entryCount: 0,
+            totalAmount: 0,
+          };
+        }
+
+        groups[expenseType].entryCount += 1;
+        groups[expenseType].totalAmount += Number(expense.amount || 0);
+        return groups;
+      },
+      {}
+    )
+  ).sort((a, b) => b.totalAmount - a.totalAmount);
+  const productProfitability = Object.values(
+    salesItemsInPeriod.reduce<
+      Record<
+        string,
+        {
+          productId: string;
+          productName: string;
+          quantitySold: number;
+          revenue: number;
+          cost: number;
+          grossProfit: number;
+          hasUnknownCostLines: boolean;
+        }
+      >
+    >((groups, item) => {
+      const productId = String(item.product_id ?? "");
+      if (!productId) return groups;
+
+      const product = products.find((p) => String(p.id) === productId);
+      const productName = product?.name ?? "Unknown Product";
+      const quantity = Number(item.quantity || 0);
+      const sellingPrice = Number(item.selling_price || 0);
+      const revenue = quantity * sellingPrice;
+      const purchasePriceSnapshot = Number(item.purchase_price_snapshot);
+      const hasValidCost =
+        Number.isFinite(purchasePriceSnapshot) && purchasePriceSnapshot > 0;
+
+      if (!groups[productId]) {
+        groups[productId] = {
+          productId,
+          productName,
+          quantitySold: 0,
+          revenue: 0,
+          cost: 0,
+          grossProfit: 0,
+          hasUnknownCostLines: false,
+        };
+      }
+
+      if (hasValidCost) {
+        const cost = quantity * purchasePriceSnapshot;
+        groups[productId].quantitySold += quantity;
+        groups[productId].revenue += revenue;
+        groups[productId].cost += cost;
+        groups[productId].grossProfit += revenue - cost;
+      } else {
+        groups[productId].hasUnknownCostLines = true;
+      }
+
+      return groups;
+    }, {})
+  )
+    .filter((product) => product.revenue > 0)
+    .map((product) => ({
+      ...product,
+      marginPercentage:
+        product.revenue > 0 ? (product.grossProfit / product.revenue) * 100 : 0,
+    }))
+    .sort((a, b) => b.grossProfit - a.grossProfit)
+    .slice(0, 10);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage(null);
@@ -2152,6 +2232,81 @@ export default function Home() {
               </div>
             </div>
           )}
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Expense Category Breakdown</h3>
+              {expenseCategoryBreakdown.length === 0 ? (
+                <p className="text-sm text-gray-600">No expenses in this period.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="text-xs uppercase text-gray-500">
+                      <tr>
+                        <th className="py-2 pr-3">Expense Type</th>
+                        <th className="py-2 pr-3">Entries</th>
+                        <th className="py-2 text-right">Total Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {expenseCategoryBreakdown.map((category) => (
+                        <tr key={category.expenseType}>
+                          <td className="py-2 pr-3 font-medium text-gray-900">{category.expenseType}</td>
+                          <td className="py-2 pr-3 text-gray-700">{category.entryCount}</td>
+                          <td className="py-2 text-right font-medium text-gray-900">
+                            {pkrFormatter.format(category.totalAmount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Top Product Profitability</h3>
+              {productProfitability.length === 0 ? (
+                <p className="text-sm text-gray-600">No costed product sales in this period.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="text-xs uppercase text-gray-500">
+                      <tr>
+                        <th className="py-2 pr-3">Product</th>
+                        <th className="py-2 pr-3">Qty</th>
+                        <th className="py-2 pr-3">Revenue</th>
+                        <th className="py-2 pr-3">Cost</th>
+                        <th className="py-2 pr-3">Gross Profit</th>
+                        <th className="py-2 text-right">Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {productProfitability.map((product) => (
+                        <tr key={product.productId}>
+                          <td className="py-2 pr-3">
+                            <div className="font-medium text-gray-900">{product.productName}</div>
+                            {product.hasUnknownCostLines && (
+                              <div className="text-xs text-amber-700">Partial cost data</div>
+                            )}
+                          </td>
+                          <td className="py-2 pr-3 text-gray-700">{product.quantitySold}</td>
+                          <td className="py-2 pr-3 text-gray-700">{pkrFormatter.format(product.revenue)}</td>
+                          <td className="py-2 pr-3 text-gray-700">{pkrFormatter.format(product.cost)}</td>
+                          <td className="py-2 pr-3 font-medium text-gray-900">
+                            {pkrFormatter.format(product.grossProfit)}
+                          </td>
+                          <td className="py-2 text-right font-medium text-gray-900">
+                            {product.marginPercentage.toFixed(2)}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </section>
 
         <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
