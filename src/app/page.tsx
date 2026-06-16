@@ -665,7 +665,33 @@ export default function Home() {
       return;
     }
 
-    setExpenseMessage("Expense saved successfully.");
+    let statusUpdateWarning: string | null = null;
+
+    if (selectedExpensePurchaseId) {
+      const { error: statusUpdateError } = await supabase
+        .from("purchase_transactions")
+        .update({
+          expense_review_status: "expenses_added",
+          expense_reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", selectedExpensePurchaseId)
+        .eq("organization_id", currentOrganizationId);
+
+      if (statusUpdateError) {
+        statusUpdateWarning = "Expense saved, but purchase expense status could not be updated.";
+        console.error(
+          "Purchase expense status update error:",
+          JSON.stringify(statusUpdateError, null, 2)
+        );
+      }
+    }
+
+    await fetchExpenses(currentOrganizationId);
+    if (selectedExpensePurchaseId && !statusUpdateWarning) {
+      await fetchPurchaseTransactions(currentOrganizationId);
+    }
+
+    setExpenseMessage(statusUpdateWarning ?? "Expense saved successfully.");
     setExpenseType("");
     setExpenseAmount("");
     setExpenseNotes("");
@@ -673,7 +699,6 @@ export default function Home() {
     setSelectedExpenseCustomerId("");
     setSelectedExpensePurchaseId("");
     setSelectedExpenseSaleId("");
-    await fetchExpenses(currentOrganizationId);
     setExpenseLoading(false);
   };
 
@@ -2245,7 +2270,15 @@ export default function Home() {
             </button>
 
             {expenseMessage && (
-              <p className={`text-sm ${expenseMessage.startsWith("Error") ? "text-red-700" : "text-green-700"}`}>
+              <p
+                className={`text-sm ${
+                  expenseMessage.startsWith("Error")
+                    ? "text-red-700"
+                    : expenseMessage.startsWith("Expense saved, but")
+                      ? "text-amber-700"
+                      : "text-green-700"
+                }`}
+              >
                 {expenseMessage}
               </p>
             )}
