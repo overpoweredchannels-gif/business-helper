@@ -54,6 +54,14 @@ interface PurchaseTransaction {
   supplier_id: string;
   invoice_number: string;
   created_at: string;
+  expense_review_status: string | null;
+  expense_reviewed_at: string | null;
+}
+
+interface NewPurchaseExpenseReminder {
+  id: string;
+  invoiceNumber: string;
+  supplierId: string;
 }
 
 interface PurchaseLine {
@@ -131,6 +139,9 @@ export default function Home() {
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [purchaseTransactions, setPurchaseTransactions] = useState<PurchaseTransaction[]>([]);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [newPurchaseExpenseReminder, setNewPurchaseExpenseReminder] =
+    useState<NewPurchaseExpenseReminder | null>(null);
+  const [purchaseExpenseStatusMessage, setPurchaseExpenseStatusMessage] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -666,6 +677,59 @@ export default function Home() {
     setExpenseLoading(false);
   };
 
+  const handleAddPurchaseExpense = (purchaseId: string, supplierId: string) => {
+    setSelectedExpensePurchaseId(purchaseId);
+    setSelectedExpenseSupplierId(supplierId);
+    setSelectedExpenseCustomerId("");
+    setSelectedExpenseSaleId("");
+    document.getElementById("expense-management")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
+  const updatePurchaseExpenseStatus = async (
+    purchaseId: string,
+    status: "no_additional_expense" | "review_later"
+  ) => {
+    setPurchaseExpenseStatusMessage(null);
+
+    if (!currentOrganizationId) {
+      setPurchaseExpenseStatusMessage("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const updateData =
+      status === "no_additional_expense"
+        ? {
+            expense_review_status: "no_additional_expense",
+            expense_reviewed_at: new Date().toISOString(),
+          }
+        : {
+            expense_review_status: "review_later",
+            expense_reviewed_at: null,
+          };
+
+    const { error } = await supabase
+      .from("purchase_transactions")
+      .update(updateData)
+      .eq("id", purchaseId)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      setPurchaseExpenseStatusMessage(`Failed to update expense review: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await fetchPurchaseTransactions(currentOrganizationId);
+    setNewPurchaseExpenseReminder(null);
+    setPurchaseExpenseStatusMessage(
+      status === "no_additional_expense"
+        ? "Purchase marked as having no additional expense."
+        : "Purchase marked for expense review later."
+    );
+  };
+
   const fetchCategories = async (organizationId?: string) => {
     setCategoriesLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
@@ -779,7 +843,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("purchase_transactions")
-      .select("id, supplier_id, invoice_number, created_at")
+      .select("id, supplier_id, invoice_number, created_at, expense_review_status, expense_reviewed_at")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -1339,6 +1403,12 @@ export default function Home() {
       }
 
       setInvoiceMessage("Purchase invoice created successfully");
+      setNewPurchaseExpenseReminder({
+        id: transactionId,
+        invoiceNumber,
+        supplierId: selectedSupplierId,
+      });
+      setPurchaseExpenseStatusMessage(null);
       setSelectedSupplierId(null);
       setInvoiceNumber("");
       setPurchaseLines([]);
@@ -2063,7 +2133,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section id="expense-management" className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Expense Management</h2>
           <form onSubmit={saveExpense} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -2963,6 +3033,54 @@ export default function Home() {
 
           {invoiceMessage && <p className="mt-4 text-sm text-green-700">{invoiceMessage}</p>}
           {invoiceError && <p className="mt-4 text-sm text-red-700">{invoiceError}</p>}
+          {newPurchaseExpenseReminder && (
+            <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-950">
+                Did you pay any transport, fuel, vehicle rent, loading, travel, or other expense to bring this stock to your warehouse?
+              </p>
+              <p className="mt-1 text-xs text-amber-800">
+                Invoice: {newPurchaseExpenseReminder.invoiceNumber}
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleAddPurchaseExpense(
+                      newPurchaseExpenseReminder.id,
+                      newPurchaseExpenseReminder.supplierId
+                    )
+                  }
+                  className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                >
+                  Add Purchase Expense
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updatePurchaseExpenseStatus(
+                      newPurchaseExpenseReminder.id,
+                      "no_additional_expense"
+                    )
+                  }
+                  className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  No Additional Expense
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updatePurchaseExpenseStatus(newPurchaseExpenseReminder.id, "review_later")
+                  }
+                  className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Review Later
+                </button>
+              </div>
+            </div>
+          )}
+          {purchaseExpenseStatusMessage && (
+            <p className="mt-4 text-sm text-green-700">{purchaseExpenseStatusMessage}</p>
+          )}
         </section>
 
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
@@ -2976,6 +3094,15 @@ export default function Home() {
               {purchaseTransactions.map((transaction) => {
                 const supplier = suppliers.find((s) => s.id === transaction.supplier_id);
                 const date = new Date(transaction.created_at).toLocaleDateString();
+                const expenseReviewStatus = transaction.expense_review_status ?? "pending";
+                const expenseReviewLabel =
+                  expenseReviewStatus === "expenses_added"
+                    ? "Expenses added"
+                    : expenseReviewStatus === "no_additional_expense"
+                      ? "No additional expense"
+                      : expenseReviewStatus === "review_later"
+                        ? "Review later"
+                        : "Expense review pending";
                 const lineItems = purchaseItems.filter(
                   (item) => item.purchase_transaction_id === transaction.id
                 );
@@ -2985,7 +3112,7 @@ export default function Home() {
                     key={transaction.id}
                     className="rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700"
                   >
-                    <div className="mb-3 grid gap-2 sm:grid-cols-3">
+                    <div className="mb-3 grid gap-2 sm:grid-cols-4">
                       <div>
                         <div className="text-xs uppercase tracking-wide text-gray-500">Invoice</div>
                         <div className="font-medium text-gray-900">{transaction.invoice_number}</div>
@@ -2998,6 +3125,51 @@ export default function Home() {
                         <div className="text-xs uppercase tracking-wide text-gray-500">Date</div>
                         <div className="text-gray-500">{date}</div>
                       </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Expense Review</div>
+                        <span className="inline-flex rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                          {expenseReviewLabel}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+                      {(expenseReviewStatus === "pending" || expenseReviewStatus === "review_later") && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
+                            className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700"
+                          >
+                            Add Purchase Expense
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updatePurchaseExpenseStatus(transaction.id, "no_additional_expense")}
+                            className="rounded border border-gray-300 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+                          >
+                            No Additional Expense
+                          </button>
+                        </>
+                      )}
+                      {expenseReviewStatus === "expenses_added" && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
+                          className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700"
+                        >
+                          Add Another Expense
+                        </button>
+                      )}
+                      {expenseReviewStatus === "no_additional_expense" && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
+                          className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700"
+                        >
+                          Add Expense
+                        </button>
+                      )}
                     </div>
 
                     {lineItems.length === 0 ? (
