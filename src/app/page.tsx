@@ -147,6 +147,21 @@ export default function Home() {
     checkAuthUser();
   }, []);
 
+  const fetchExpenses = async (organizationId: string) => {
+    const { data, error } = await supabase
+      .from("expenses")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching expenses:", error);
+      return;
+    }
+
+    setExpenses(data ?? []);
+  };
+
   const loadProfile = async (userId: string | null) => {
     if (!userId || typeof userId !== "string") {
       console.error("Invalid userId passed to loadProfile:", userId);
@@ -200,6 +215,7 @@ export default function Home() {
     fetchSalesTransactions(profile.organization_id);
     fetchCustomerPayments(profile.organization_id);
     fetchSupplierPayments(profile.organization_id);
+    fetchExpenses(profile.organization_id);
     fetchPurchaseItems();
     fetchSalesItems();
   };
@@ -732,6 +748,7 @@ export default function Home() {
   // Payments
   const [customerPayments, setCustomerPayments] = useState<any[]>([]);
   const [supplierPayments, setSupplierPayments] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
 
   const [selectedCustomerPaymentId, setSelectedCustomerPaymentId] = useState<string | null>(null);
   const [customerPaymentAmount, setCustomerPaymentAmount] = useState("");
