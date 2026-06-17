@@ -36,8 +36,12 @@ interface Customer {
   city: string | null;
   area: string | null;
   customer_type: string | null;
+  credit_policy: string | null;
   credit_limit: number | null;
   credit_days: number | null;
+  allow_over_limit: boolean | null;
+  allow_overdue_sales: boolean | null;
+  preferred_payment_method: string | null;
 }
 
 interface Supplier {
@@ -150,8 +154,11 @@ export default function Home() {
   const [city, setCity] = useState("");
   const [area, setArea] = useState("");
   const [customerType, setCustomerType] = useState("Retailer");
+  const [creditPolicy, setCreditPolicy] = useState("cash_only");
   const [creditLimit, setCreditLimit] = useState("");
   const [creditDays, setCreditDays] = useState("");
+  const [allowOverLimit, setAllowOverLimit] = useState(false);
+  const [allowOverdueSales, setAllowOverdueSales] = useState(false);
   const [customerMessage, setCustomerMessage] = useState<string | null>(null);
   const [customerError, setCustomerError] = useState<string | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -889,7 +896,7 @@ export default function Home() {
     const { data, error } = await supabase
       .from("customers")
       .select(
-        "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_limit, credit_days"
+        "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method"
       )
       .eq("organization_id", orgId)
       .order("customer_name", { ascending: true });
@@ -1018,6 +1025,30 @@ export default function Home() {
     currency: "PKR",
     maximumFractionDigits: 2,
   });
+  const creditPolicyLabels: Record<string, string> = {
+    cash_only: "Cash Only",
+    limit_only: "Credit Limit Only",
+    days_only: "Credit Days Only",
+    limit_and_days: "Credit Limit and Days",
+    unrestricted: "Unrestricted Credit",
+  };
+  const policyUsesCreditLimit = (policy: string) =>
+    policy === "limit_only" || policy === "limit_and_days";
+  const policyUsesCreditDays = (policy: string) =>
+    policy === "days_only" || policy === "limit_and_days";
+  const handleCreditPolicyChange = (policy: string) => {
+    setCreditPolicy(policy);
+
+    if (!policyUsesCreditLimit(policy)) {
+      setCreditLimit("");
+      setAllowOverLimit(false);
+    }
+
+    if (!policyUsesCreditDays(policy)) {
+      setCreditDays("");
+      setAllowOverdueSales(false);
+    }
+  };
 
   const fetchPurchaseItems = async () => {
     const { data, error } = await supabase
@@ -1256,6 +1287,32 @@ export default function Home() {
       return;
     }
 
+    const requiresCreditLimit = policyUsesCreditLimit(creditPolicy);
+    const requiresCreditDays = policyUsesCreditDays(creditPolicy);
+    const parsedCreditLimit = requiresCreditLimit ? Number(creditLimit) : 0;
+    const parsedCreditDays = requiresCreditDays ? Number(creditDays) : 0;
+
+    if (
+      requiresCreditLimit &&
+      (!creditLimit.trim() || !Number.isFinite(parsedCreditLimit) || parsedCreditLimit < 0)
+    ) {
+      setCustomerError("Credit limit must be a valid amount greater than or equal to zero.");
+      setCustomerMessage(null);
+      return;
+    }
+
+    if (
+      requiresCreditDays &&
+      (!creditDays.trim() ||
+        !Number.isFinite(parsedCreditDays) ||
+        !Number.isInteger(parsedCreditDays) ||
+        parsedCreditDays < 0)
+    ) {
+      setCustomerError("Credit days must be a whole number greater than or equal to zero.");
+      setCustomerMessage(null);
+      return;
+    }
+
     setCustomerError(null);
     setCustomerMessage(null);
     setCustomersLoading(true);
@@ -1268,8 +1325,11 @@ export default function Home() {
       city: city || null,
       area: area || null,
       customer_type: customerType,
-      credit_limit: creditLimit ? Number(creditLimit) : null,
-      credit_days: creditDays ? Number(creditDays) : null,
+      credit_policy: creditPolicy,
+      credit_limit: requiresCreditLimit ? parsedCreditLimit : 0,
+      credit_days: requiresCreditDays ? parsedCreditDays : 0,
+      allow_over_limit: requiresCreditLimit ? allowOverLimit : false,
+      allow_overdue_sales: requiresCreditDays ? allowOverdueSales : false,
       organization_id: currentOrganizationId,
     });
 
@@ -1289,8 +1349,11 @@ export default function Home() {
     setCity("");
     setArea("");
     setCustomerType("Retailer");
+    setCreditPolicy("cash_only");
     setCreditLimit("");
     setCreditDays("");
+    setAllowOverLimit(false);
+    setAllowOverdueSales(false);
     fetchCustomers();
   };
 
@@ -3165,25 +3228,82 @@ export default function Home() {
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-gray-700">
-                <span>Credit Limit</span>
-                <input
-                  type="number"
-                  value={creditLimit}
-                  onChange={(e) => setCreditLimit(e.target.value)}
+                <span>Credit Policy</span>
+                <select
+                  value={creditPolicy}
+                  onChange={(e) => handleCreditPolicyChange(e.target.value)}
                   className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-                />
+                >
+                  <option value="cash_only">Cash Only</option>
+                  <option value="limit_only">Credit Limit Only</option>
+                  <option value="days_only">Credit Days Only</option>
+                  <option value="limit_and_days">Credit Limit and Days</option>
+                  <option value="unrestricted">Unrestricted Credit</option>
+                </select>
               </label>
             </div>
 
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
-              <span>Credit Days</span>
-              <input
-                type="number"
-                value={creditDays}
-                onChange={(e) => setCreditDays(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-              />
-            </label>
+            {(policyUsesCreditLimit(creditPolicy) || policyUsesCreditDays(creditPolicy)) && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {policyUsesCreditLimit(creditPolicy) && (
+                  <label className="flex flex-col gap-2 text-sm text-gray-700">
+                    <span>Credit Limit</span>
+                    <input
+                      type="number"
+                      value={creditLimit}
+                      onChange={(e) => setCreditLimit(e.target.value)}
+                      min="0"
+                      step="0.01"
+                      required
+                      className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                )}
+
+                {policyUsesCreditDays(creditPolicy) && (
+                  <label className="flex flex-col gap-2 text-sm text-gray-700">
+                    <span>Credit Days</span>
+                    <input
+                      type="number"
+                      value={creditDays}
+                      onChange={(e) => setCreditDays(e.target.value)}
+                      min="0"
+                      step="1"
+                      required
+                      className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+
+            {(policyUsesCreditLimit(creditPolicy) || policyUsesCreditDays(creditPolicy)) && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {policyUsesCreditLimit(creditPolicy) && (
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={allowOverLimit}
+                      onChange={(e) => setAllowOverLimit(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <span>Allow Sale Above Credit Limit</span>
+                  </label>
+                )}
+
+                {policyUsesCreditDays(creditPolicy) && (
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={allowOverdueSales}
+                      onChange={(e) => setAllowOverdueSales(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <span>Allow Sale When Previous Credit Is Overdue</span>
+                  </label>
+                )}
+              </div>
+            )}
 
             <button
               type="button"
@@ -3218,29 +3338,55 @@ export default function Home() {
                 <p className="text-sm text-gray-600">No customers found.</p>
               ) : (
                 <ul className="space-y-2">
-                  {filteredCustomers.map((customer) => (
-                    <li
-                      key={customer.id}
-                      className="flex flex-col gap-2 rounded border border-gray-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="space-y-1 text-sm text-gray-700">
-                        <div className="font-medium text-gray-900">{customer.customer_name}</div>
-                        <div>Shop: {customer.shop_name ?? "None"}</div>
-                        <div>Type: {customer.customer_type ?? "None"}</div>
-                        <div>Phone: {customer.phone ?? "None"}</div>
-                        <div>City: {customer.city ?? "None"}</div>
-                        <div>Credit Limit: {customer.credit_limit ?? 0}</div>
-                        <div>Credit Days: {customer.credit_days ?? 0}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCustomer(customer.id)}
-                        className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                  {filteredCustomers.map((customer) => {
+                    const policy = customer.credit_policy ?? "cash_only";
+                    const policyLabel = creditPolicyLabels[policy] ?? creditPolicyLabels.cash_only;
+                    const creditLimitSummary = pkrFormatter.format(Number(customer.credit_limit || 0));
+                    const creditDaysSummary = Number(customer.credit_days || 0);
+                    const creditSummary =
+                      policy === "limit_only"
+                        ? `Limit: ${creditLimitSummary}`
+                        : policy === "days_only"
+                          ? `Terms: ${creditDaysSummary} days`
+                          : policy === "limit_and_days"
+                            ? `Limit + Terms: ${creditLimitSummary}, ${creditDaysSummary} days`
+                            : policyLabel;
+
+                    return (
+                      <li
+                        key={customer.id}
+                        className="flex flex-col gap-2 rounded border border-gray-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
-                        Delete
-                      </button>
-                    </li>
-                  ))}
+                        <div className="space-y-1 text-sm text-gray-700">
+                          <div className="font-medium text-gray-900">{customer.customer_name}</div>
+                          <div>Shop: {customer.shop_name ?? "None"}</div>
+                          <div>Type: {customer.customer_type ?? "None"}</div>
+                          <div>Phone: {customer.phone ?? "None"}</div>
+                          <div>City: {customer.city ?? "None"}</div>
+                          <div>Credit Policy: {creditSummary}</div>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            {customer.allow_over_limit && (
+                              <span className="rounded bg-amber-100 px-2 py-1 text-amber-800">
+                                Above-limit sales allowed
+                              </span>
+                            )}
+                            {customer.allow_overdue_sales && (
+                              <span className="rounded bg-amber-100 px-2 py-1 text-amber-800">
+                                Overdue sales allowed
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCustomer(customer.id)}
+                          className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                        >
+                          Delete
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
