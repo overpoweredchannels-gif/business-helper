@@ -69,6 +69,10 @@ interface SalesTransaction {
   invoice_number: string;
   created_at: string;
   sale_date: string | null;
+  payment_type: string | null;
+  credit_due_date: string | null;
+  credit_limit_snapshot: number | null;
+  credit_days_snapshot: number | null;
 }
 
 interface NewPurchaseExpenseReminder {
@@ -115,6 +119,13 @@ const isDateInRange = (dateValue: string | null | undefined, startDate: string, 
   if (startDate && dateOnly < startDate) return false;
   if (endDate && dateOnly > endDate) return false;
   return true;
+};
+
+const addDaysToDateInputValue = (dateValue: string, days: number) => {
+  const date = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate() + days);
+  return toDateInputValue(date);
 };
 
 export default function Home() {
@@ -467,7 +478,13 @@ export default function Home() {
     setBrands(data ?? []);
   };
 
+  const clearCreditOverrideState = () => {
+    setCreditWarning(null);
+    setCreditOverrideConfirmation(null);
+  };
+
   const handleAddSalesLine = () => {
+    clearCreditOverrideState();
     setSalesLines([
       ...salesLines,
       { product_id: null, quantity: "", selling_price: "" },
@@ -475,6 +492,7 @@ export default function Home() {
   };
 
   const handleRemoveSalesLine = (index: number) => {
+    clearCreditOverrideState();
     setSalesLines(salesLines.filter((_, i) => i !== index));
   };
 
@@ -483,6 +501,7 @@ export default function Home() {
     field: keyof SalesLine,
     value: string | null
   ) => {
+    clearCreditOverrideState();
     const newLines = [...salesLines];
     newLines[index] = { ...newLines[index], [field]: value } as SalesLine;
     // if product selected, populate default selling price
@@ -495,7 +514,29 @@ export default function Home() {
     setSalesLines(newLines);
   };
 
-  const handleCreateSalesInvoice = async () => {
+  const handleSalesCustomerChange = (customerId: string) => {
+    setSelectedCustomerIdForSale(customerId === "" ? null : customerId);
+    setSalesPaymentType("cash");
+    clearCreditOverrideState();
+  };
+
+  const handleSalesPaymentTypeChange = (paymentType: "cash" | "credit") => {
+    setSalesPaymentType(paymentType);
+    clearCreditOverrideState();
+  };
+
+  const handleSalesInvoiceDateChange = (value: string) => {
+    setSalesInvoiceDate(value);
+    clearCreditOverrideState();
+  };
+
+  const handleCreateSalesInvoice = async (overrideConfirmed = false) => {
+    if (salesInvoiceLoading) {
+      return;
+    }
+
+    setCreditWarning(null);
+
     if (!selectedCustomerIdForSale) {
       setSalesError("Please select a customer");
       setSalesMessage(null);
@@ -514,6 +555,115 @@ export default function Home() {
       return;
     }
 
+    if (!salesInvoiceDate || Number.isNaN(new Date(`${salesInvoiceDate}T00:00:00`).getTime())) {
+      setSalesError("Please select a valid sale date");
+      setSalesMessage(null);
+      return;
+    }
+
+    let creditDueDate: string | null = null;
+    let creditLimitSnapshot: number | null = null;
+    let creditDaysSnapshot: number | null = null;
+
+    if (salesPaymentType === "credit") {
+      if (!selectedSalesCustomer) {
+        setSalesError("Please select a valid customer");
+        setSalesMessage(null);
+        return;
+      }
+
+      if (selectedCustomerCreditPolicy === "cash_only") {
+        const warning = "This customer is configured as Cash Only.";
+        setCreditWarning(warning);
+        setSalesError(warning);
+        setSalesMessage(null);
+        return;
+      }
+
+      const policyHasCreditLimit =
+        selectedCustomerCreditPolicy === "limit_only" ||
+        selectedCustomerCreditPolicy === "limit_and_days";
+      const policyHasCreditDays =
+        selectedCustomerCreditPolicy === "days_only" ||
+        selectedCustomerCreditPolicy === "limit_and_days";
+      const isOverCreditLimit =
+        policyHasCreditLimit && projectedCustomerBalance > selectedCustomerCreditLimit;
+      const hasOverdueCredit = policyHasCreditDays && selectedCustomerOverdueInvoiceCount > 0;
+
+      if (isOverCreditLimit && !selectedCustomerAllowsOverLimit) {
+        const warning = `Credit limit exceeded. Current balance: ${pkrFormatter.format(
+          selectedCustomerOutstandingBalance
+        )}. Invoice total: ${pkrFormatter.format(
+          currentSalesInvoiceTotal
+        )}. Projected balance: ${pkrFormatter.format(
+          projectedCustomerBalance
+        )}. Credit limit: ${pkrFormatter.format(selectedCustomerCreditLimit)}.`;
+        setCreditWarning(warning);
+        setSalesError(warning);
+        setSalesMessage(null);
+        return;
+      }
+
+      if (hasOverdueCredit && !selectedCustomerAllowsOverdueSales) {
+        const warning = `Customer has overdue credit. Overdue invoices: ${selectedCustomerOverdueInvoiceCount}. Overdue amount: ${pkrFormatter.format(
+          selectedCustomerTotalOverdueAmount
+        )}. Oldest overdue due date: ${selectedCustomerOldestOverdueDueDate ?? "Unknown"}.`;
+        setCreditWarning(warning);
+        setSalesError(warning);
+        setSalesMessage(null);
+        return;
+      }
+
+      const needsOverLimitOverride = isOverCreditLimit && selectedCustomerAllowsOverLimit;
+      const needsOverdueOverride = hasOverdueCredit && selectedCustomerAllowsOverdueSales;
+      if ((needsOverLimitOverride || needsOverdueOverride) && !overrideConfirmed) {
+        setCreditOverrideConfirmation({
+          overLimit: needsOverLimitOverride,
+          overdue: needsOverdueOverride,
+        });
+        setCreditWarning(null);
+        setSalesError(null);
+        setSalesMessage(null);
+        return;
+      }
+
+      if (
+        selectedCustomerCreditPolicy === "days_only" ||
+        selectedCustomerCreditPolicy === "limit_and_days" ||
+        selectedCustomerHasUsableUnrestrictedCreditDays
+      ) {
+        const validCreditDays =
+          Number.isFinite(selectedCustomerCreditDays) &&
+          Number.isInteger(selectedCustomerCreditDays) &&
+          selectedCustomerCreditDays >= 0;
+        if (!validCreditDays) {
+          setSalesError("Customer credit days are invalid.");
+          setSalesMessage(null);
+          return;
+        }
+
+        creditDueDate = addDaysToDateInputValue(salesInvoiceDate, selectedCustomerCreditDays);
+        if (!creditDueDate) {
+          setSalesError("Could not calculate a valid credit due date.");
+          setSalesMessage(null);
+          return;
+        }
+        creditDaysSnapshot = selectedCustomerCreditDays;
+      }
+
+      if (
+        selectedCustomerCreditPolicy === "limit_only" ||
+        selectedCustomerCreditPolicy === "limit_and_days"
+      ) {
+        if (!Number.isFinite(selectedCustomerCreditLimit) || selectedCustomerCreditLimit < 0) {
+          setSalesError("Customer credit limit is invalid.");
+          setSalesMessage(null);
+          return;
+        }
+        creditLimitSnapshot = selectedCustomerCreditLimit;
+      }
+    }
+
     setSalesError(null);
     setSalesMessage(null);
     setSalesInvoiceLoading(true);
@@ -530,6 +680,11 @@ export default function Home() {
         .insert({
           customer_id: selectedCustomerIdForSale,
           invoice_number: salesInvoiceNumber,
+          sale_date: salesInvoiceDate,
+          payment_type: salesPaymentType,
+          credit_due_date: salesPaymentType === "credit" ? creditDueDate : null,
+          credit_limit_snapshot: salesPaymentType === "credit" ? creditLimitSnapshot : null,
+          credit_days_snapshot: salesPaymentType === "credit" ? creditDaysSnapshot : null,
           notes: null,
           organization_id: currentOrganizationId,
         })
@@ -594,6 +749,9 @@ export default function Home() {
       setSalesMessage("Sales invoice saved successfully");
       setSelectedCustomerIdForSale(null);
       setSalesInvoiceNumber("");
+      setSalesInvoiceDate(toDateInputValue(new Date()));
+      setSalesPaymentType("cash");
+      clearCreditOverrideState();
       setSalesLines([]);
 
       // Refresh dashboard and history
@@ -998,6 +1156,13 @@ export default function Home() {
 
   const [selectedCustomerIdForSale, setSelectedCustomerIdForSale] = useState<string | null>(null);
   const [salesInvoiceNumber, setSalesInvoiceNumber] = useState("");
+  const [salesInvoiceDate, setSalesInvoiceDate] = useState(toDateInputValue(new Date()));
+  const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "credit">("cash");
+  const [creditWarning, setCreditWarning] = useState<string | null>(null);
+  const [creditOverrideConfirmation, setCreditOverrideConfirmation] = useState<{
+    overLimit: boolean;
+    overdue: boolean;
+  } | null>(null);
   interface SalesLine { product_id: string | null; quantity: string; selling_price: string; }
   const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
@@ -1131,7 +1296,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("sales_transactions")
-      .select("id, customer_id, invoice_number, created_at, sale_date")
+      .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -1599,6 +1764,116 @@ export default function Home() {
       (value) => value?.toLowerCase().includes(searchTerm)
     );
   });
+  const selectedSalesCustomer = customers.find((customer) => customer.id === selectedCustomerIdForSale);
+  const selectedCustomerCreditPolicy = selectedSalesCustomer?.credit_policy ?? "cash_only";
+  const selectedCustomerCreditLimit = Number(selectedSalesCustomer?.credit_limit || 0);
+  const selectedCustomerCreditDays = Number(selectedSalesCustomer?.credit_days || 0);
+  const selectedCustomerAllowsOverLimit = Boolean(selectedSalesCustomer?.allow_over_limit);
+  const selectedCustomerAllowsOverdueSales = Boolean(selectedSalesCustomer?.allow_overdue_sales);
+  const selectedCustomerHasUsableUnrestrictedCreditDays =
+    selectedCustomerCreditPolicy === "unrestricted" &&
+    Number.isFinite(selectedCustomerCreditDays) &&
+    Number.isInteger(selectedCustomerCreditDays) &&
+    selectedCustomerCreditDays > 0;
+  const selectedCustomerCreditTransactionIds = salesTransactions
+    .filter(
+      (transaction) =>
+        transaction.customer_id === selectedCustomerIdForSale &&
+        transaction.payment_type === "credit"
+    )
+    .map((transaction) => transaction.id);
+  const selectedCustomerTotalCreditSales = salesItems
+    .filter((item) => selectedCustomerCreditTransactionIds.includes(item.sales_transaction_id))
+    .reduce(
+      (sum, item) => sum + Number(item.quantity || 0) * Number(item.selling_price || 0),
+      0
+    );
+  const selectedCustomerPaymentsReceived = customerPayments
+    .filter((payment) => payment.customer_id === selectedCustomerIdForSale)
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const selectedCustomerOutstandingBalance = Math.max(
+    0,
+    selectedCustomerTotalCreditSales - selectedCustomerPaymentsReceived
+  );
+  const currentSalesInvoiceTotal = salesLines.reduce(
+    (sum, line) => sum + Number(line.quantity || 0) * Number(line.selling_price || 0),
+    0
+  );
+  const projectedCustomerBalance = selectedCustomerOutstandingBalance + currentSalesInvoiceTotal;
+  const todayDateValue = toDateInputValue(new Date());
+  const creditAllocationByTransaction = salesTransactions
+    .filter((transaction) => transaction.payment_type === "credit")
+    .reduce<
+      Record<
+        string,
+        {
+          invoiceTotal: number;
+          remainingUnpaidAmount: number;
+        }
+      >
+    >((allocations, _transaction, _index, creditTransactions) => {
+      if (Object.keys(allocations).length > 0) return allocations;
+
+      const customerIds = Array.from(new Set(creditTransactions.map((transaction) => transaction.customer_id)));
+
+      customerIds.forEach((customerId) => {
+        let remainingPayments = customerPayments
+          .filter((payment) => payment.customer_id === customerId)
+          .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+        creditTransactions
+          .filter((transaction) => transaction.customer_id === customerId)
+          .slice()
+          .sort((a, b) => {
+            const aDate = getDateOnly(a.sale_date) ?? getDateOnly(a.created_at) ?? "";
+            const bDate = getDateOnly(b.sale_date) ?? getDateOnly(b.created_at) ?? "";
+            if (aDate !== bDate) return aDate.localeCompare(bDate);
+            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          })
+          .forEach((transaction) => {
+            const invoiceTotal = salesItems
+              .filter((item) => item.sales_transaction_id === transaction.id)
+              .reduce(
+                (sum, item) => sum + Number(item.quantity || 0) * Number(item.selling_price || 0),
+                0
+              );
+            const appliedPayment = Math.min(Math.max(remainingPayments, 0), invoiceTotal);
+            remainingPayments = Math.max(0, remainingPayments - appliedPayment);
+            allocations[transaction.id] = {
+              invoiceTotal,
+              remainingUnpaidAmount: Math.max(0, invoiceTotal - appliedPayment),
+            };
+          });
+      });
+
+      return allocations;
+    }, {});
+  const selectedCustomerOverdueCreditInvoices = selectedCustomerCreditTransactionIds
+    .map((transactionId) => {
+      const transaction = salesTransactions.find((tx) => tx.id === transactionId);
+      const allocation = creditAllocationByTransaction[transactionId];
+      return {
+        transaction,
+        remainingUnpaidAmount: allocation?.remainingUnpaidAmount ?? 0,
+      };
+    })
+    .filter(
+      ({ transaction, remainingUnpaidAmount }) =>
+        Boolean(transaction?.credit_due_date) &&
+        remainingUnpaidAmount > 0 &&
+        getDateOnly(transaction?.credit_due_date) !== null &&
+        getDateOnly(transaction?.credit_due_date)! < todayDateValue
+    );
+  const selectedCustomerOverdueInvoiceCount = selectedCustomerOverdueCreditInvoices.length;
+  const selectedCustomerTotalOverdueAmount = selectedCustomerOverdueCreditInvoices.reduce(
+    (sum, invoice) => sum + invoice.remainingUnpaidAmount,
+    0
+  );
+  const selectedCustomerOldestOverdueDueDate =
+    selectedCustomerOverdueCreditInvoices
+      .map((invoice) => getDateOnly(invoice.transaction?.credit_due_date))
+      .filter((date): date is string => Boolean(date))
+      .sort()[0] ?? null;
 
   // Inventory calculations per product
   const purchaseTransactionIds = purchaseTransactions.map((tx) => tx.id);
@@ -2462,7 +2737,7 @@ export default function Home() {
                 <span>Customer</span>
                 <select
                   value={selectedCustomerIdForSale ?? ""}
-                  onChange={(e) => setSelectedCustomerIdForSale(e.target.value === "" ? null : e.target.value)}
+                  onChange={(e) => handleSalesCustomerChange(e.target.value)}
                   className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
                 >
                   <option value="">Select Customer</option>
@@ -2482,6 +2757,100 @@ export default function Home() {
                 />
               </label>
             </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Sale Date</span>
+                <input
+                  type="date"
+                  value={salesInvoiceDate}
+                  onChange={(e) => handleSalesInvoiceDateChange(e.target.value)}
+                  required
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Payment Type</span>
+                <select
+                  value={salesPaymentType}
+                  onChange={(e) => handleSalesPaymentTypeChange(e.target.value as "cash" | "credit")}
+                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="cash">Cash</option>
+                  <option value="credit">Credit</option>
+                </select>
+              </label>
+            </div>
+
+            {salesPaymentType === "credit" && selectedSalesCustomer && (
+              <div className="rounded border border-blue-100 bg-blue-50 p-4 text-sm text-blue-950">
+                <h3 className="mb-2 text-base font-medium text-blue-950">Credit Summary</h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>Customer credit policy: {creditPolicyLabels[selectedCustomerCreditPolicy] ?? "Cash Only"}</div>
+                  <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
+                  <div>Current invoice total: {pkrFormatter.format(currentSalesInvoiceTotal)}</div>
+                  <div>Projected balance: {pkrFormatter.format(projectedCustomerBalance)}</div>
+                  {policyUsesCreditLimit(selectedCustomerCreditPolicy) && (
+                    <div>Credit limit: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
+                  )}
+                  {(policyUsesCreditDays(selectedCustomerCreditPolicy) ||
+                    selectedCustomerHasUsableUnrestrictedCreditDays) && (
+                    <div>Credit days: {selectedCustomerCreditDays}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {creditWarning && (
+              <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {creditWarning}
+              </p>
+            )}
+
+            {creditOverrideConfirmation && salesPaymentType === "credit" && (
+              <div className="rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                <h3 className="mb-2 text-base font-medium">Owner Override Required</h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
+                  <div>Current invoice total: {pkrFormatter.format(currentSalesInvoiceTotal)}</div>
+                  <div>Projected balance: {pkrFormatter.format(projectedCustomerBalance)}</div>
+                  {creditOverrideConfirmation.overLimit && (
+                    <>
+                      <div>Credit limit: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
+                      <div>
+                        Over-limit amount: {pkrFormatter.format(Math.max(0, projectedCustomerBalance - selectedCustomerCreditLimit))}
+                      </div>
+                    </>
+                  )}
+                  {creditOverrideConfirmation.overdue && (
+                    <>
+                      <div>Overdue invoices: {selectedCustomerOverdueInvoiceCount}</div>
+                      <div>Total overdue amount: {pkrFormatter.format(selectedCustomerTotalOverdueAmount)}</div>
+                      <div>Oldest overdue date: {selectedCustomerOldestOverdueDueDate ?? "Unknown"}</div>
+                    </>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => handleCreateSalesInvoice(true)}
+                    disabled={salesInvoiceLoading}
+                    className="rounded bg-amber-600 px-3 py-2 text-sm text-white hover:bg-amber-700 disabled:bg-amber-300"
+                  >
+                    Confirm and Save Credit Sale
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearCreditOverrideState}
+                    disabled={salesInvoiceLoading}
+                    className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:text-gray-400"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="border-t pt-4">
               <h3 className="mb-3 text-lg font-medium text-gray-900">Product Lines</h3>
@@ -2554,7 +2923,7 @@ export default function Home() {
 
             <button
               type="button"
-              onClick={handleCreateSalesInvoice}
+              onClick={() => handleCreateSalesInvoice()}
               disabled={salesInvoiceLoading}
               className="w-full rounded bg-green-600 px-4 py-2 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
             >
@@ -2568,6 +2937,9 @@ export default function Home() {
 
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Sales History</h2>
+          <p className="mb-3 text-xs text-gray-500">
+            Credit payments are allocated to the oldest unpaid credit invoices first for this MVP.
+          </p>
           {salesLoading ? (
             <p className="text-sm text-gray-600">Loading sales history...</p>
           ) : salesTransactions.length === 0 ? (
@@ -2577,11 +2949,35 @@ export default function Home() {
               {salesTransactions.map((tx) => {
                 const customer = customers.find((c) => c.id === tx.customer_id);
                 const date = new Date(tx.created_at).toLocaleDateString();
+                const paymentType = tx.payment_type ?? "cash";
+                const creditAllocation = creditAllocationByTransaction[tx.id];
+                const remainingUnpaidAmount = creditAllocation?.remainingUnpaidAmount ?? 0;
+                const creditDueDate = getDateOnly(tx.credit_due_date);
+                const creditStatus =
+                  paymentType === "cash"
+                    ? "Cash"
+                    : remainingUnpaidAmount <= 0
+                      ? "Paid"
+                      : creditDueDate && creditDueDate < todayDateValue
+                        ? "Overdue"
+                        : "Credit outstanding";
                 return (
                   <li key={tx.id} className="flex flex-col gap-1 rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700">
                     <div className="font-medium text-gray-900">Invoice: {tx.invoice_number}</div>
                     <div>Customer: {customer?.customer_name ?? "Unknown"}</div>
                     <div className="text-xs text-gray-500">Date: {date}</div>
+                    <div>Payment Type: {paymentType === "credit" ? "Credit" : "Cash"}</div>
+                    <div>Status: {creditStatus}</div>
+                    {paymentType === "credit" && (
+                      <div>Remaining unpaid: {pkrFormatter.format(remainingUnpaidAmount)}</div>
+                    )}
+                    {creditDueDate && <div>Credit Due Date: {creditDueDate}</div>}
+                    {tx.credit_limit_snapshot != null && (
+                      <div>Credit Limit Snapshot: {pkrFormatter.format(Number(tx.credit_limit_snapshot || 0))}</div>
+                    )}
+                    {tx.credit_days_snapshot != null && (
+                      <div>Credit Days Snapshot: {tx.credit_days_snapshot}</div>
+                    )}
                   </li>
                 );
               })}
