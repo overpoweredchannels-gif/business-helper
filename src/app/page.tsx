@@ -106,6 +106,41 @@ interface SupplierLedgerDisplayEntry extends SupplierLedgerEntry {
   runningBalance: number;
 }
 
+type SectionId =
+  | "dashboard"
+  | "products"
+  | "brands"
+  | "categories"
+  | "customers"
+  | "suppliers"
+  | "purchases"
+  | "sales"
+  | "inventory"
+  | "customer-payments"
+  | "supplier-payments"
+  | "expenses"
+  | "profit-loss"
+  | "customer-credit"
+  | "supplier-ledger";
+
+const navigationItems: Array<{ id: SectionId; label: string }> = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "products", label: "Products" },
+  { id: "brands", label: "Brands" },
+  { id: "categories", label: "Categories" },
+  { id: "customers", label: "Customers" },
+  { id: "suppliers", label: "Suppliers" },
+  { id: "purchases", label: "Purchases" },
+  { id: "sales", label: "Sales" },
+  { id: "inventory", label: "Inventory" },
+  { id: "customer-payments", label: "Customer Payments" },
+  { id: "supplier-payments", label: "Supplier Payments" },
+  { id: "expenses", label: "Expenses" },
+  { id: "profit-loss", label: "Profit & Loss" },
+  { id: "customer-credit", label: "Customer Credit" },
+  { id: "supplier-ledger", label: "Supplier Ledger" },
+];
+
 interface PurchaseLine {
   id?: string;
   product_id: string | null;
@@ -177,6 +212,8 @@ const getUsableTimestamp = (...dateValues: Array<unknown>) => {
 };
 
 export default function Home() {
+  const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [name, setName] = useState("");
   const [unitType, setUnitType] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("");
@@ -1486,6 +1523,8 @@ export default function Home() {
     currency: "PKR",
     maximumFractionDigits: 2,
   });
+  const activeSectionLabel =
+    navigationItems.find((item) => item.id === activeSection)?.label ?? "Dashboard";
   const creditPolicyLabels: Record<string, string> = {
     cash_only: "Cash Only",
     limit_only: "Credit Limit Only",
@@ -2999,14 +3038,26 @@ export default function Home() {
     fetchProducts();
   };
 
-  return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-xl rounded-xl bg-white p-6 shadow-sm">
-        <h1 className="mb-6 text-2xl font-semibold text-gray-900">
-          TradeOS Product Management
-        </h1>
+  const handleSectionChange = (sectionId: SectionId) => {
+    setActiveSection(sectionId);
+    setMobileMenuOpen(false);
+    window.setTimeout(() => {
+      document.getElementById("tradeos-main-content")?.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 0);
+  };
 
-        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
+  if (!currentUser) {
+    return (
+    <main className="min-h-screen bg-gray-100">
+      <div className="mx-auto flex min-h-screen max-w-5xl items-center px-4 py-8">
+        <div className="w-full rounded-xl bg-white p-6 shadow-sm">
+          <div className="mb-6">
+            <h1 className="text-2xl font-semibold text-gray-900">TradeOS</h1>
+            <p className="text-sm text-gray-500">Business Management</p>
+          </div>
+
+          <section className="rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Authentication</h2>
           {currentUser ? (
             <div className="space-y-3 text-sm text-gray-700">
@@ -3117,7 +3168,102 @@ export default function Home() {
             </div>
           )}
         </section>
+        </div>
+      </div>
+    </main>
+    );
+  }
 
+  return (
+    <main className="min-h-screen bg-gray-100">
+      <div className="min-h-screen md:flex">
+        <aside className="hidden w-64 shrink-0 border-r border-gray-200 bg-white md:sticky md:top-0 md:block md:h-screen">
+          <div className="border-b border-gray-200 p-5">
+            <div className="text-2xl font-semibold text-gray-900">TradeOS</div>
+            <div className="text-sm text-gray-500">Business Management</div>
+          </div>
+          <nav className="h-[calc(100vh-89px)] overflow-y-auto p-3">
+            {navigationItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleSectionChange(item.id)}
+                className={`mb-1 w-full rounded px-3 py-2 text-left text-sm transition ${
+                  activeSection === item.id
+                    ? "bg-blue-600 font-medium text-white"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="min-w-0 flex-1">
+          <header className="sticky top-0 z-20 border-b border-gray-200 bg-white">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 md:hidden">
+              <div>
+                <div className="text-lg font-semibold text-gray-900">TradeOS</div>
+                <div className="text-xs text-gray-500">Business Management</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen((open) => !open)}
+                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700"
+              >
+                Menu
+              </button>
+            </div>
+
+            {mobileMenuOpen && (
+              <nav className="border-t border-gray-200 bg-white p-3 md:hidden">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {navigationItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleSectionChange(item.id)}
+                      className={`rounded px-3 py-2 text-left text-sm ${
+                        activeSection === item.id
+                          ? "bg-blue-600 font-medium text-white"
+                          : "bg-gray-50 text-gray-700"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </nav>
+            )}
+
+            <div className="flex flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+              <div>
+                <h1 className="text-2xl font-semibold text-gray-900">{activeSectionLabel}</h1>
+                <div className="mt-1 text-sm text-gray-500">
+                  {(currentProfile?.organization_name ?? organizationName) || "Organization"} · {currentProfile?.full_name ?? currentUser.email}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {authMessage && <span className="text-sm text-green-700">{authMessage}</span>}
+                {authError && <span className="text-sm text-red-700">{authError}</span>}
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={authLoading}
+                  className="rounded bg-red-600 px-4 py-2 text-sm text-white transition hover:bg-red-700 disabled:bg-red-300"
+                >
+                  {authLoading ? "Processing..." : "Logout"}
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <div id="tradeos-main-content" className="h-[calc(100vh-129px)] overflow-y-auto px-4 py-6 md:h-[calc(100vh-97px)] md:px-6">
+            <div className="mx-auto max-w-7xl">
+
+        {activeSection === "dashboard" && (
+        <>
         <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Management Dashboard</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -3229,7 +3375,10 @@ export default function Home() {
             </div>
           </div>
         </section>
+        </>
+        )}
 
+        {activeSection === "profit-loss" && (
         <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Profit Dashboard</h2>
 
@@ -3438,7 +3587,9 @@ export default function Home() {
             </div>
           </div>
         </section>
+        )}
 
+        {activeSection === "brands" && (
         <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Brand Management</h2>
           <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
@@ -3491,7 +3642,9 @@ export default function Home() {
             )}
           </div>
         </section>
+        )}
 
+        {activeSection === "inventory" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Inventory Dashboard</h2>
           {products.length === 0 ? (
@@ -3520,7 +3673,10 @@ export default function Home() {
             </ul>
           )}
         </section>
+        )}
 
+        {activeSection === "sales" && (
+        <>
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Sales Invoice</h2>
           <div className="space-y-4">
@@ -3780,7 +3936,10 @@ export default function Home() {
             </ul>
           )}
         </section>
+        </>
+        )}
 
+        {activeSection === "customer-payments" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Customer Payments</h2>
           <div className="grid gap-4 sm:grid-cols-3">
@@ -4000,7 +4159,9 @@ export default function Home() {
             )}
           </div>
         </section>
+        )}
 
+        {activeSection === "supplier-payments" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Supplier Payments</h2>
           <div className="grid gap-4 sm:grid-cols-3">
@@ -4211,7 +4372,9 @@ export default function Home() {
             )}
           </div>
         </section>
+        )}
 
+        {activeSection === "supplier-ledger" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Supplier Ledger</h2>
           <p className="mb-4 text-xs text-gray-500">
@@ -4360,7 +4523,9 @@ export default function Home() {
             </div>
           )}
         </section>
+        )}
 
+        {activeSection === "expenses" && (
         <section id="expense-management" className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Expense Management</h2>
           <form onSubmit={saveExpense} className="space-y-4">
@@ -4537,7 +4702,9 @@ export default function Home() {
             )}
           </div>
         </section>
+        )}
 
+        {activeSection === "customer-credit" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Receivables Dashboard</h2>
           {customers.length === 0 ? (
@@ -4560,7 +4727,9 @@ export default function Home() {
             </ul>
           )}
         </section>
+        )}
 
+        {activeSection === "supplier-ledger" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Payables Dashboard</h2>
           {suppliers.length === 0 ? (
@@ -4582,7 +4751,9 @@ export default function Home() {
             </ul>
           )}
         </section>
+        )}
 
+        {activeSection === "categories" && (
         <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Category Management</h2>
           <div className="space-y-4">
@@ -4660,7 +4831,10 @@ export default function Home() {
             )}
           </div>
         </section>
+        )}
 
+        {activeSection === "products" && (
+        <>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -4829,7 +5003,10 @@ export default function Home() {
             </ul>
           )}
         </section>
+        </>
+        )}
 
+        {activeSection === "customers" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Customer Management</h2>
           <div className="space-y-4">
@@ -5076,7 +5253,9 @@ export default function Home() {
             </div>
           </div>
         </section>
+        )}
 
+        {activeSection === "suppliers" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Supplier Management</h2>
           <div className="space-y-4">
@@ -5203,7 +5382,10 @@ export default function Home() {
             </div>
           </div>
         </section>
+        )}
 
+        {activeSection === "purchases" && (
+        <>
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Purchase Invoice</h2>
           <div className="space-y-4">
@@ -5687,9 +5869,18 @@ export default function Home() {
             </ul>
           )}
         </section>
+        </>
+        )}
 
-        {message && <p className="mt-4 text-sm text-green-700">{message}</p>}
-        {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+        {activeSection === "products" && (
+          <>
+            {message && <p className="mt-4 text-sm text-green-700">{message}</p>}
+            {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+          </>
+        )}
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );
