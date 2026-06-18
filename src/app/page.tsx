@@ -59,6 +59,7 @@ interface PurchaseTransaction {
   supplier_id: string;
   invoice_number: string;
   created_at: string;
+  purchase_date?: string | null;
   expense_review_status: string | null;
   expense_reviewed_at: string | null;
 }
@@ -79,6 +80,30 @@ interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;
   supplierId: string;
+}
+
+interface SupplierPurchasePaymentAllocation {
+  purchaseTotal: number;
+  explicitAllocatedAmount: number;
+  fallbackAllocatedAmount: number;
+  paidAmount: number;
+  remainingPayableAmount: number;
+}
+
+interface SupplierLedgerEntry {
+  id: string;
+  date: string | null;
+  eventTimestamp: string | null;
+  eventTime: number;
+  eventType: "purchase" | "payment";
+  reference: string;
+  notes: string;
+  debit: number;
+  credit: number;
+}
+
+interface SupplierLedgerDisplayEntry extends SupplierLedgerEntry {
+  runningBalance: number;
 }
 
 interface PurchaseLine {
@@ -131,6 +156,24 @@ const addDaysToDateInputValue = (dateValue: string, days: number) => {
 const safeNumber = (value: unknown) => {
   const numberValue = Number(value ?? 0);
   return Number.isFinite(numberValue) ? numberValue : 0;
+};
+
+const getUsableTimestamp = (...dateValues: Array<unknown>) => {
+  for (const dateValue of dateValues) {
+    if (typeof dateValue !== "string" || !dateValue.trim()) continue;
+    const timestamp = new Date(dateValue).getTime();
+    if (Number.isFinite(timestamp)) {
+      return {
+        value: dateValue,
+        time: timestamp,
+      };
+    }
+  }
+
+  return {
+    value: null,
+    time: 0,
+  };
 };
 
 export default function Home() {
@@ -289,6 +332,7 @@ export default function Home() {
     fetchCustomerPayments(profile.organization_id);
     fetchCustomerPaymentAllocations(profile.organization_id);
     fetchSupplierPayments(profile.organization_id);
+    fetchSupplierPaymentAllocations(profile.organization_id);
     fetchExpenses(profile.organization_id);
     fetchPurchaseItems();
     fetchSalesItems();
@@ -575,6 +619,47 @@ export default function Home() {
 
     setCustomerPaymentError(null);
     setCustomerPaymentAllocationsByInvoice(nextAllocations);
+  };
+
+  const handleSupplierPaymentSupplierChange = (supplierId: string) => {
+    setSelectedSupplierPaymentId(supplierId === "" ? null : supplierId);
+    setSupplierPaymentAllocationsByInvoice({});
+  };
+
+  const handleSupplierPaymentAmountChange = (amount: string) => {
+    setSupplierPaymentAmount(amount);
+    setSupplierPaymentAllocationsByInvoice({});
+  };
+
+  const handleSupplierPaymentAllocationChange = (invoiceId: string, amount: string) => {
+    setSupplierPaymentAllocationsByInvoice((current) => ({
+      ...current,
+      [invoiceId]: amount,
+    }));
+  };
+
+  const handleAutoAllocateSupplierPayment = () => {
+    const paymentAmount = Number(supplierPaymentAmount);
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+      setSupplierPaymentError("Please enter a valid payment amount before auto allocating.");
+      setSupplierPaymentMessage(null);
+      return;
+    }
+
+    let remainingPaymentAmount = paymentAmount;
+    const nextAllocations: Record<string, string> = {};
+
+    unpaidPurchaseInvoicesForSelectedPaymentSupplier.forEach((invoice) => {
+      if (remainingPaymentAmount <= 0) return;
+      const allocationAmount = Math.min(remainingPaymentAmount, invoice.remainingPayableAmount);
+      if (allocationAmount > 0) {
+        nextAllocations[invoice.transaction.id] = String(allocationAmount);
+        remainingPaymentAmount -= allocationAmount;
+      }
+    });
+
+    setSupplierPaymentError(null);
+    setSupplierPaymentAllocationsByInvoice(nextAllocations);
   };
 
   const handleCreateSalesInvoice = async (overrideConfirmed = false) => {
@@ -936,13 +1021,52 @@ export default function Home() {
   };
 
   const handleSaveSupplierPayment = async () => {
+    if (supplierPaymentLoading) {
+      return;
+    }
+
     if (!selectedSupplierPaymentId) {
       setSupplierPaymentError("Please select a supplier");
       setSupplierPaymentMessage(null);
       return;
     }
-    if (!supplierPaymentAmount || Number(supplierPaymentAmount) <= 0) {
+    const paymentAmount = Number(supplierPaymentAmount);
+    if (!supplierPaymentAmount || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
       setSupplierPaymentError("Please enter a valid amount");
+      setSupplierPaymentMessage(null);
+      return;
+    }
+    const allocationRows = unpaidPurchaseInvoicesForSelectedPaymentSupplier
+      .map((invoice) => {
+        const allocationAmount = Number(supplierPaymentAllocationsByInvoice[invoice.transaction.id] || 0);
+        return {
+          invoice,
+          allocationAmount,
+        };
+      })
+      .filter(({ allocationAmount }) => allocationAmount !== 0);
+    const invalidNegativeAllocation = allocationRows.some(
+      ({ allocationAmount }) => !Number.isFinite(allocationAmount) || allocationAmount < 0
+    );
+    if (invalidNegativeAllocation) {
+      setSupplierPaymentError("Allocation amounts must be zero or greater.");
+      setSupplierPaymentMessage(null);
+      return;
+    }
+    const allocationExceedsInvoice = allocationRows.some(
+      ({ invoice, allocationAmount }) => allocationAmount > invoice.remainingPayableAmount
+    );
+    if (allocationExceedsInvoice) {
+      setSupplierPaymentError("Allocation cannot exceed an invoice remaining payable amount.");
+      setSupplierPaymentMessage(null);
+      return;
+    }
+    const totalAllocationAmount = allocationRows.reduce(
+      (sum, row) => sum + row.allocationAmount,
+      0
+    );
+    if (totalAllocationAmount > paymentAmount) {
+      setSupplierPaymentError("Total allocations cannot exceed the payment amount.");
       setSupplierPaymentMessage(null);
       return;
     }
@@ -958,21 +1082,61 @@ export default function Home() {
         return;
       }
 
-      const { error } = await supabase.from("supplier_payments").insert({
-        supplier_id: selectedSupplierPaymentId,
-        amount: Number(supplierPaymentAmount),
-        notes: supplierPaymentNotes || null,
-        organization_id: currentOrganizationId,
-      });
+      const { data: paymentData, error } = await supabase
+        .from("supplier_payments")
+        .insert({
+          supplier_id: selectedSupplierPaymentId,
+          amount: paymentAmount,
+          notes: supplierPaymentNotes || null,
+          organization_id: currentOrganizationId,
+        })
+        .select("id")
+        .single();
 
       if (error) throw error;
+
+      const insertedSupplierPaymentId = paymentData?.id;
+      if (!insertedSupplierPaymentId) {
+        throw new Error("Payment saved but no supplier payment id was returned.");
+      }
+
+      const allocationsToInsert = allocationRows
+        .filter((row) => row.allocationAmount > 0)
+        .map((row) => ({
+          organization_id: currentOrganizationId,
+          supplier_payment_id: insertedSupplierPaymentId,
+          purchase_transaction_id: row.invoice.transaction.id,
+          amount: row.allocationAmount,
+        }));
+
+      if (allocationsToInsert.length > 0) {
+        const { error: allocationError } = await supabase
+          .from("supplier_payment_allocations")
+          .insert(allocationsToInsert);
+
+        if (allocationError) {
+          console.error(
+            "Supabase supplier payment allocation insert error:",
+            JSON.stringify(allocationError, null, 2)
+          );
+          setSupplierPaymentMessage(null);
+          setSupplierPaymentError(
+            "Payment saved, but one or more supplier invoice allocations could not be saved."
+          );
+          await fetchSupplierPayments(currentOrganizationId);
+          await fetchSupplierPaymentAllocations(currentOrganizationId);
+          setSupplierPaymentLoading(false);
+          return;
+        }
+      }
 
       setSupplierPaymentMessage("Payment saved successfully");
       setSelectedSupplierPaymentId(null);
       setSupplierPaymentAmount("");
       setSupplierPaymentNotes("");
-      // refresh
-      fetchSupplierPayments();
+      setSupplierPaymentAllocationsByInvoice({});
+      await fetchSupplierPayments(currentOrganizationId);
+      await fetchSupplierPaymentAllocations(currentOrganizationId);
     } catch (err) {
       setSupplierPaymentError(err instanceof Error ? err.message : "Failed to save payment");
       console.error("Error saving supplier payment:", err);
@@ -1227,7 +1391,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("purchase_transactions")
-      .select("id, supplier_id, invoice_number, created_at, expense_review_status, expense_reviewed_at")
+      .select("id, supplier_id, invoice_number, created_at, purchase_date, expense_review_status, expense_reviewed_at")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -1252,6 +1416,7 @@ export default function Home() {
   const [customerPayments, setCustomerPayments] = useState<any[]>([]);
   const [customerPaymentAllocations, setCustomerPaymentAllocations] = useState<any[]>([]);
   const [supplierPayments, setSupplierPayments] = useState<any[]>([]);
+  const [supplierPaymentAllocations, setSupplierPaymentAllocations] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [expenseType, setExpenseType] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
@@ -1278,6 +1443,13 @@ export default function Home() {
   const [supplierPaymentLoading, setSupplierPaymentLoading] = useState(false);
   const [supplierPaymentMessage, setSupplierPaymentMessage] = useState<string | null>(null);
   const [supplierPaymentError, setSupplierPaymentError] = useState<string | null>(null);
+  const [supplierPaymentAllocationsByInvoice, setSupplierPaymentAllocationsByInvoice] =
+    useState<Record<string, string>>({});
+  const currentMonthRange = getMonthRange();
+  const [selectedSupplierLedgerId, setSelectedSupplierLedgerId] = useState<string>("");
+  const [supplierLedgerStartDate, setSupplierLedgerStartDate] = useState(currentMonthRange.start);
+  const [supplierLedgerEndDate, setSupplierLedgerEndDate] = useState(currentMonthRange.end);
+  const [supplierLedgerDateError, setSupplierLedgerDateError] = useState<string | null>(null);
 
   const [selectedCustomerIdForSale, setSelectedCustomerIdForSale] = useState<string | null>(null);
   const [salesInvoiceNumber, setSalesInvoiceNumber] = useState("");
@@ -1293,7 +1465,6 @@ export default function Home() {
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
   const [salesError, setSalesError] = useState<string | null>(null);
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
-  const currentMonthRange = getMonthRange();
   const [profitLossStartDate, setProfitLossStartDate] = useState(currentMonthRange.start);
   const [profitLossEndDate, setProfitLossEndDate] = useState(currentMonthRange.end);
   const [profitLossDateError, setProfitLossDateError] = useState<string | null>(null);
@@ -1405,7 +1576,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("supplier_payments")
-      .select("id, supplier_id, amount, notes")
+      .select("id, supplier_id, amount, notes, payment_date, created_at")
       .eq("organization_id", orgId)
       .order("id", { ascending: true });
 
@@ -1415,6 +1586,27 @@ export default function Home() {
     }
 
     setSupplierPayments(data ?? []);
+  };
+
+  const fetchSupplierPaymentAllocations = async (organizationId?: string) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setSupplierPaymentAllocations([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("supplier_payment_allocations")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch supplier payment allocations error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setSupplierPaymentAllocations(data ?? []);
   };
 
   const fetchSalesItems = async () => {
@@ -2159,6 +2351,200 @@ export default function Home() {
       if (aDate !== bDate) return bDate.localeCompare(aDate);
       return String(b.payment.id ?? "").localeCompare(String(a.payment.id ?? ""));
     });
+  const purchaseInvoiceTotalsByTransaction = purchaseTransactions.reduce<Record<string, number>>(
+    (totals, transaction) => {
+      totals[transaction.id] = purchaseItems
+        .filter((item) => item.purchase_transaction_id === transaction.id)
+        .reduce(
+          (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.purchase_price),
+          0
+        );
+      return totals;
+    },
+    {}
+  );
+  const purchaseTransactionsById = purchaseTransactions.reduce<Record<string, PurchaseTransaction>>(
+    (transactions, transaction) => {
+      transactions[transaction.id] = transaction;
+      return transactions;
+    },
+    {}
+  );
+  const supplierAllocatedAmountsByPurchaseTransaction =
+    supplierPaymentAllocations.reduce<Record<string, number>>((totals, allocation) => {
+      const purchaseTransactionId = String(allocation.purchase_transaction_id ?? "");
+      if (!purchaseTransactionId) return totals;
+      totals[purchaseTransactionId] =
+        (totals[purchaseTransactionId] ?? 0) + safeNumber(allocation.amount);
+      return totals;
+    }, {});
+  const totalSupplierPaymentsBySupplier = supplierPayments.reduce<Record<string, number>>(
+    (totals, payment) => {
+      const supplierId = String(payment.supplier_id ?? "");
+      if (!supplierId) return totals;
+      totals[supplierId] = (totals[supplierId] ?? 0) + safeNumber(payment.amount);
+      return totals;
+    },
+    {}
+  );
+  const explicitSupplierAllocationsBySupplier =
+    supplierPaymentAllocations.reduce<Record<string, number>>((totals, allocation) => {
+      const purchaseTransactionId = String(allocation.purchase_transaction_id ?? "");
+      const transaction = purchaseTransactionsById[purchaseTransactionId];
+      if (!transaction) return totals;
+      totals[transaction.supplier_id] =
+        (totals[transaction.supplier_id] ?? 0) + safeNumber(allocation.amount);
+      return totals;
+    }, {});
+  const legacySupplierPaymentPoolBySupplier = suppliers.reduce<Record<string, number>>(
+    (pools, supplier) => {
+      pools[supplier.id] = Math.max(
+        0,
+        (totalSupplierPaymentsBySupplier[supplier.id] ?? 0) -
+          (explicitSupplierAllocationsBySupplier[supplier.id] ?? 0)
+      );
+      return pools;
+    },
+    {}
+  );
+  const supplierPaymentAllocationByPurchaseTransaction = purchaseTransactions
+    .slice()
+    .sort((a, b) => {
+      const aDate = getDateOnly(a.created_at) ?? "";
+      const bDate = getDateOnly(b.created_at) ?? "";
+      if (aDate !== bDate) return aDate.localeCompare(bDate);
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    })
+    .reduce<Record<string, SupplierPurchasePaymentAllocation>>((allocations, transaction) => {
+      const purchaseTotal = purchaseInvoiceTotalsByTransaction[transaction.id] ?? 0;
+      const explicitAllocatedAmount = Math.max(
+        0,
+        supplierAllocatedAmountsByPurchaseTransaction[transaction.id] ?? 0
+      );
+      const remainingAfterExplicitAllocation = Math.max(0, purchaseTotal - explicitAllocatedAmount);
+      const availableLegacyPool = legacySupplierPaymentPoolBySupplier[transaction.supplier_id] ?? 0;
+      const fallbackAllocatedAmount = Math.min(
+        availableLegacyPool,
+        remainingAfterExplicitAllocation
+      );
+
+      legacySupplierPaymentPoolBySupplier[transaction.supplier_id] = Math.max(
+        0,
+        availableLegacyPool - fallbackAllocatedAmount
+      );
+      allocations[transaction.id] = {
+        purchaseTotal,
+        explicitAllocatedAmount,
+        fallbackAllocatedAmount,
+        paidAmount: explicitAllocatedAmount + fallbackAllocatedAmount,
+        remainingPayableAmount: Math.max(
+          0,
+          remainingAfterExplicitAllocation - fallbackAllocatedAmount
+        ),
+      };
+      return allocations;
+    }, {});
+  const remainingLegacySupplierPaymentPoolBySupplier = { ...legacySupplierPaymentPoolBySupplier };
+  const unpaidPurchaseInvoicesForSelectedPaymentSupplier: Array<{
+    transaction: PurchaseTransaction;
+    supplier: Supplier | undefined;
+    purchaseTotal: number;
+    explicitAllocatedAmount: number;
+    fallbackAllocatedAmount: number;
+    allocatedAmount: number;
+    remainingPayableAmount: number;
+    purchaseDate: string | null;
+  }> = purchaseTransactions
+    .filter((transaction) => transaction.supplier_id === selectedSupplierPaymentId)
+    .map((transaction) => {
+      const allocation = supplierPaymentAllocationByPurchaseTransaction[transaction.id];
+      const purchaseTotal = allocation?.purchaseTotal ?? purchaseInvoiceTotalsByTransaction[transaction.id] ?? 0;
+      const explicitAllocatedAmount = allocation?.explicitAllocatedAmount ?? 0;
+      const fallbackAllocatedAmount = allocation?.fallbackAllocatedAmount ?? 0;
+      const allocatedAmount = allocation?.paidAmount ?? explicitAllocatedAmount;
+      const remainingPayableAmount = Math.max(0, allocation?.remainingPayableAmount ?? 0);
+      return {
+        transaction,
+        supplier: suppliers.find((supplier) => supplier.id === transaction.supplier_id),
+        purchaseTotal,
+        explicitAllocatedAmount,
+        fallbackAllocatedAmount,
+        allocatedAmount,
+        remainingPayableAmount,
+        purchaseDate: getDateOnly(transaction.created_at),
+      };
+    })
+    .filter((invoice) => invoice.remainingPayableAmount > 0)
+    .sort((a, b) => {
+      const aDate = a.purchaseDate ?? "";
+      const bDate = b.purchaseDate ?? "";
+      if (aDate !== bDate) return aDate.localeCompare(bDate);
+      return new Date(a.transaction.created_at).getTime() - new Date(b.transaction.created_at).getTime();
+    });
+  const supplierPaymentAllocationTotal = Object.values(supplierPaymentAllocationsByInvoice).reduce(
+    (sum, value) => sum + safeNumber(value),
+    0
+  );
+  const supplierPaymentAmountValue = safeNumber(supplierPaymentAmount);
+  const supplierPaymentUnallocatedAmount = Math.max(
+    0,
+    (Number.isFinite(supplierPaymentAmountValue) ? supplierPaymentAmountValue : 0) -
+      supplierPaymentAllocationTotal
+  );
+  const supplierPaymentHistory: Array<{
+    payment: any;
+    supplier: Supplier | undefined;
+    paymentAmount: number;
+    allocations: Array<{
+      allocation: any;
+      transaction: PurchaseTransaction | undefined;
+      amount: number;
+    }>;
+    explicitlyAllocatedAmount: number;
+    unallocatedAmount: number;
+    allocationExceedsPayment: boolean;
+  }> = supplierPayments
+    .map((payment) => {
+      const paymentId = String(payment.id ?? "");
+      const paymentAmount = safeNumber(payment.amount);
+      const allocations = supplierPaymentAllocations
+        .filter((allocation) => String(allocation.supplier_payment_id ?? "") === paymentId)
+        .map((allocation) => {
+          const transaction = purchaseTransactionsById[String(allocation.purchase_transaction_id ?? "")];
+          return {
+            allocation,
+            transaction,
+            amount: safeNumber(allocation.amount),
+          };
+        });
+      const explicitlyAllocatedAmount = allocations.reduce(
+        (sum, allocation) => sum + allocation.amount,
+        0
+      );
+
+      return {
+        payment,
+        supplier: suppliers.find((supplier) => supplier.id === payment.supplier_id),
+        paymentAmount,
+        allocations,
+        explicitlyAllocatedAmount,
+        unallocatedAmount: Math.max(0, paymentAmount - explicitlyAllocatedAmount),
+        allocationExceedsPayment: explicitlyAllocatedAmount > paymentAmount,
+      };
+    })
+    .sort((a, b) => {
+      const aDate = getDateOnly(a.payment.created_at) ?? "";
+      const bDate = getDateOnly(b.payment.created_at) ?? "";
+      if (aDate !== bDate) return bDate.localeCompare(aDate);
+      return String(b.payment.id ?? "").localeCompare(String(a.payment.id ?? ""));
+    });
+  const explicitSupplierAllocationsByPayment =
+    supplierPaymentAllocations.reduce<Record<string, number>>((totals, allocation) => {
+      const paymentId = String(allocation.supplier_payment_id ?? "");
+      if (!paymentId) return totals;
+      totals[paymentId] = (totals[paymentId] ?? 0) + safeNumber(allocation.amount);
+      return totals;
+    }, {});
 
   // Inventory calculations per product
   const purchaseTransactionIds = purchaseTransactions.map((tx) => tx.id);
@@ -2215,22 +2601,21 @@ export default function Home() {
       .filter((tx) => tx.supplier_id === supplier.id)
       .map((t) => t.id);
 
-    const totalPurchases = filteredPurchaseItems
-      .filter((pi) => supplierTxIds.includes(pi.purchase_transaction_id))
-      .reduce((sum, pi) => sum + Number(pi.quantity || 0) * Number(pi.purchase_price || 0), 0);
-
-    const paymentsMade = supplierPayments
-      .filter((p) => p.supplier_id === supplier.id)
-      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-
-    const remainingPayable = totalPurchases - paymentsMade;
-
-    console.log("Payables Debug", {
-      supplierName: supplier.supplier_name,
-      totalPurchases,
-      paymentsMade,
-      remainingPayable,
-    });
+    const totalPurchases = supplierTxIds.reduce(
+      (sum, transactionId) =>
+        sum + (supplierPaymentAllocationByPurchaseTransaction[transactionId]?.purchaseTotal ?? 0),
+      0
+    );
+    const paymentsMade = totalSupplierPaymentsBySupplier[supplier.id] ?? 0;
+    const remainingPayable = supplierTxIds.reduce(
+      (sum, transactionId) =>
+        sum +
+        Math.max(
+          0,
+          supplierPaymentAllocationByPurchaseTransaction[transactionId]?.remainingPayableAmount ?? 0
+        ),
+      0
+    );
 
     return {
       supplierId: supplier.id,
@@ -2240,6 +2625,102 @@ export default function Home() {
       remainingPayable,
     };
   });
+  const selectedSupplierLedgerPurchaseTransactions = purchaseTransactions.filter(
+    (transaction) => transaction.supplier_id === selectedSupplierLedgerId
+  );
+  const selectedSupplierLedgerPayments = supplierPayments.filter(
+    (payment) => payment.supplier_id === selectedSupplierLedgerId
+  );
+  const supplierLedgerRawEntries: SupplierLedgerEntry[] = [
+    ...selectedSupplierLedgerPurchaseTransactions.map((transaction) => {
+      const timestamp = getUsableTimestamp(transaction.purchase_date, transaction.created_at);
+      return {
+        id: `purchase-${transaction.id}`,
+        date: getDateOnly(timestamp.value),
+        eventTimestamp: timestamp.value,
+        eventTime: timestamp.time,
+        eventType: "purchase" as const,
+        reference: `Purchase invoice ${transaction.invoice_number}`,
+        notes: "Purchase invoice",
+        debit: supplierPaymentAllocationByPurchaseTransaction[transaction.id]?.purchaseTotal ?? 0,
+        credit: 0,
+      };
+    }),
+    ...selectedSupplierLedgerPayments.map((payment) => {
+      const timestamp = getUsableTimestamp(payment.payment_date, payment.created_at);
+      const paymentId = String(payment.id ?? "");
+      const unallocatedAmount = Math.max(
+        0,
+        safeNumber(payment.amount) - (explicitSupplierAllocationsByPayment[paymentId] ?? 0)
+      );
+      const paymentNotes = [payment.notes, unallocatedAmount > 0 ? "Unallocated payment" : ""]
+        .filter(Boolean)
+        .join(" - ");
+
+      return {
+        id: `payment-${paymentId}`,
+        date: getDateOnly(timestamp.value),
+        eventTimestamp: timestamp.value,
+        eventTime: timestamp.time,
+        eventType: "payment" as const,
+        reference: "Supplier payment",
+        notes: paymentNotes,
+        debit: 0,
+        credit: safeNumber(payment.amount),
+      };
+    }),
+  ];
+  const supplierLedgerEntriesInDateRange = supplierLedgerRawEntries
+    .filter((entry) => isDateInRange(entry.date, supplierLedgerStartDate, supplierLedgerEndDate))
+    .sort((a, b) => {
+      if (a.eventTime !== b.eventTime) return a.eventTime - b.eventTime;
+      if (a.eventType !== b.eventType) return a.eventType === "purchase" ? -1 : 1;
+      return String(a.id).localeCompare(String(b.id));
+    });
+  const supplierLedgerTotalPurchases = supplierLedgerEntriesInDateRange.reduce(
+    (sum, entry) => sum + entry.debit,
+    0
+  );
+  const supplierLedgerTotalPayments = supplierLedgerEntriesInDateRange.reduce(
+    (sum, entry) => sum + entry.credit,
+    0
+  );
+  const supplierLedgerCurrentBalance = supplierLedgerTotalPurchases - supplierLedgerTotalPayments;
+  const supplierLedgerUnallocatedPayments = selectedSupplierLedgerPayments
+    .filter((payment) =>
+      isDateInRange(
+        getDateOnly(getUsableTimestamp(payment.payment_date, payment.created_at).value),
+        supplierLedgerStartDate,
+        supplierLedgerEndDate
+      )
+    )
+    .reduce((sum, payment) => {
+      const paymentId = String(payment.id ?? "");
+      return (
+        sum +
+        Math.max(
+          0,
+          safeNumber(payment.amount) - (explicitSupplierAllocationsByPayment[paymentId] ?? 0)
+        )
+      );
+    }, 0);
+  const supplierLedgerEntries: SupplierLedgerDisplayEntry[] = supplierLedgerEntriesInDateRange
+    .reduce<SupplierLedgerDisplayEntry[]>((entries, entry) => {
+      const previousBalance = entries[entries.length - 1]?.runningBalance ?? 0;
+      entries.push({
+        id: entry.id,
+        date: entry.date,
+        eventTimestamp: entry.eventTimestamp,
+        eventTime: entry.eventTime,
+        eventType: entry.eventType,
+        reference: entry.reference,
+        notes: entry.notes,
+        debit: Math.max(0, entry.debit),
+        credit: Math.max(0, entry.credit),
+        runningBalance: previousBalance + entry.debit - entry.credit,
+      });
+      return entries;
+    }, []);
 
   const totalProducts = products.length;
   const totalCustomers = customers.length;
@@ -2299,6 +2780,32 @@ export default function Home() {
     setProfitLossStartDate("");
     setProfitLossEndDate("");
     setProfitLossDateError(null);
+  };
+  const handleSupplierLedgerStartDateChange = (value: string) => {
+    setSupplierLedgerStartDate(value);
+    if (value && supplierLedgerEndDate && supplierLedgerEndDate < value) {
+      setSupplierLedgerEndDate(value);
+    }
+    setSupplierLedgerDateError(null);
+  };
+  const handleSupplierLedgerEndDateChange = (value: string) => {
+    if (supplierLedgerStartDate && value && value < supplierLedgerStartDate) {
+      setSupplierLedgerDateError("End Date cannot be earlier than Start Date.");
+      return;
+    }
+    setSupplierLedgerEndDate(value);
+    setSupplierLedgerDateError(null);
+  };
+  const applySupplierLedgerMonthRange = (monthOffset: number) => {
+    const range = getMonthRange(monthOffset);
+    setSupplierLedgerStartDate(range.start);
+    setSupplierLedgerEndDate(range.end);
+    setSupplierLedgerDateError(null);
+  };
+  const applySupplierLedgerAllTime = () => {
+    setSupplierLedgerStartDate("");
+    setSupplierLedgerEndDate("");
+    setSupplierLedgerDateError(null);
   };
   const salesTransactionsInPeriod = salesTransactions.filter((transaction) =>
     isDateInRange(transaction.sale_date, profitLossStartDate, profitLossEndDate)
@@ -3499,7 +4006,7 @@ export default function Home() {
           <div className="grid gap-4 sm:grid-cols-3">
             <select
               value={selectedSupplierPaymentId ?? ""}
-              onChange={(e) => setSelectedSupplierPaymentId(e.target.value === "" ? null : e.target.value)}
+              onChange={(e) => handleSupplierPaymentSupplierChange(e.target.value)}
               className="rounded border border-gray-300 px-2 py-2"
             >
               <option value="">Select Supplier</option>
@@ -3511,7 +4018,7 @@ export default function Home() {
             <input
               type="number"
               value={supplierPaymentAmount}
-              onChange={(e) => setSupplierPaymentAmount(e.target.value)}
+              onChange={(e) => handleSupplierPaymentAmountChange(e.target.value)}
               placeholder="Amount"
               className="rounded border border-gray-300 px-2 py-2"
             />
@@ -3524,6 +4031,101 @@ export default function Home() {
               className="rounded border border-gray-300 px-2 py-2"
             />
           </div>
+
+          {selectedSupplierPaymentId && (
+            <div className="mt-4 rounded border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-lg font-medium text-gray-900">Allocate to Purchase Invoices</h3>
+                <button
+                  type="button"
+                  onClick={handleAutoAllocateSupplierPayment}
+                  className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                >
+                  Auto Allocate Oldest First
+                </button>
+              </div>
+              <p className="mb-3 text-xs text-gray-500">
+                Older supplier payments without invoice allocations are applied to the oldest unpaid purchase invoices first.
+              </p>
+
+              <div className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-gray-500">Payment Amount</div>
+                  <div className="font-medium text-gray-900">
+                    {pkrFormatter.format(Number.isFinite(supplierPaymentAmountValue) ? supplierPaymentAmountValue : 0)}
+                  </div>
+                </div>
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-gray-500">Total Allocated</div>
+                  <div className="font-medium text-gray-900">
+                    {pkrFormatter.format(supplierPaymentAllocationTotal)}
+                  </div>
+                </div>
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-gray-500">Unallocated Amount</div>
+                  <div className="font-medium text-gray-900">
+                    {pkrFormatter.format(supplierPaymentUnallocatedAmount)}
+                  </div>
+                </div>
+              </div>
+
+              {unpaidPurchaseInvoicesForSelectedPaymentSupplier.length === 0 ? (
+                <p className="text-sm text-gray-600">No unpaid purchase invoices for this supplier.</p>
+              ) : (
+                <div className="space-y-3">
+                  {unpaidPurchaseInvoicesForSelectedPaymentSupplier.map((invoice) => (
+                    <div key={invoice.transaction.id} className="rounded border border-gray-200 bg-gray-50 p-3">
+                      <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Invoice</div>
+                          <div className="font-medium text-gray-900">{invoice.transaction.invoice_number}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Purchase Date</div>
+                          <div>{invoice.purchaseDate ?? "-"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Supplier</div>
+                          <div>{invoice.supplier?.supplier_name ?? "Unknown"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Purchase Total</div>
+                          <div>{pkrFormatter.format(invoice.purchaseTotal)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Already Allocated</div>
+                          <div>{pkrFormatter.format(invoice.explicitAllocatedAmount)}</div>
+                          {invoice.fallbackAllocatedAmount > 0 && (
+                            <div className="text-xs text-gray-500">
+                              Remaining also reflects {pkrFormatter.format(invoice.fallbackAllocatedAmount)} older unallocated payment
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Remaining Payable</div>
+                          <div>{pkrFormatter.format(invoice.remainingPayableAmount)}</div>
+                        </div>
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Allocation Amount</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={supplierPaymentAllocationsByInvoice[invoice.transaction.id] ?? ""}
+                            onChange={(e) =>
+                              handleSupplierPaymentAllocationChange(invoice.transaction.id, e.target.value)
+                            }
+                            className="rounded border border-gray-300 px-2 py-1"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-3">
             <button
               type="button"
@@ -3536,6 +4138,227 @@ export default function Home() {
             {supplierPaymentMessage && <p className="mt-2 text-sm text-green-700">{supplierPaymentMessage}</p>}
             {supplierPaymentError && <p className="mt-2 text-sm text-red-700">{supplierPaymentError}</p>}
           </div>
+
+          <div className="mt-6 border-t border-gray-200 pt-4">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Supplier Payment History</h3>
+            {supplierPaymentHistory.length === 0 ? (
+              <p className="text-sm text-gray-600">No supplier payments recorded yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {supplierPaymentHistory.map((historyItem) => (
+                  <li
+                    key={historyItem.payment.id}
+                    className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-700"
+                  >
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Supplier</div>
+                        <div className="font-medium text-gray-900">
+                          {historyItem.supplier?.supplier_name ?? "Unknown"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Payment Date</div>
+                        <div>{getDateOnly(historyItem.payment.created_at) ?? "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Total Payment</div>
+                        <div>{pkrFormatter.format(historyItem.paymentAmount)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Explicitly Allocated</div>
+                        <div>{pkrFormatter.format(historyItem.explicitlyAllocatedAmount)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Unallocated</div>
+                        <div>{pkrFormatter.format(historyItem.unallocatedAmount)}</div>
+                      </div>
+                    </div>
+
+                    {historyItem.payment.notes && (
+                      <p className="mt-2 text-sm text-gray-600">Notes: {historyItem.payment.notes}</p>
+                    )}
+
+                    {historyItem.allocationExceedsPayment && (
+                      <p className="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        Allocation data exceeds payment amount
+                      </p>
+                    )}
+
+                    {historyItem.allocations.length > 0 && (
+                      <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3">
+                        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                          Allocations
+                        </div>
+                        <ul className="space-y-1">
+                          {historyItem.allocations.map((allocationItem) => (
+                            <li
+                              key={allocationItem.allocation.id}
+                              className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <span>
+                                Purchase invoice: {allocationItem.transaction?.invoice_number ?? "Unknown"}
+                              </span>
+                              <span>{pkrFormatter.format(allocationItem.amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Supplier Ledger</h2>
+          <p className="mb-4 text-xs text-gray-500">
+            Older supplier payments without invoice allocations are applied to the oldest unpaid purchase invoices first.
+          </p>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Supplier</span>
+              <select
+                value={selectedSupplierLedgerId}
+                onChange={(e) => setSelectedSupplierLedgerId(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-2"
+              >
+                <option value="">Select Supplier</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>{supplier.supplier_name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Start Date</span>
+              <input
+                type="date"
+                value={supplierLedgerStartDate}
+                onChange={(e) => handleSupplierLedgerStartDateChange(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-2"
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>End Date</span>
+              <input
+                type="date"
+                value={supplierLedgerEndDate}
+                onChange={(e) => handleSupplierLedgerEndDateChange(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-2"
+              />
+            </label>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => applySupplierLedgerMonthRange(0)}
+              className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-white"
+            >
+              This Month
+            </button>
+            <button
+              type="button"
+              onClick={() => applySupplierLedgerMonthRange(-1)}
+              className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-white"
+            >
+              Last Month
+            </button>
+            <button
+              type="button"
+              onClick={applySupplierLedgerAllTime}
+              className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-white"
+            >
+              All Time
+            </button>
+          </div>
+
+          {supplierLedgerDateError && (
+            <p className="mt-2 text-sm text-red-700">{supplierLedgerDateError}</p>
+          )}
+
+          {!selectedSupplierLedgerId ? (
+            <p className="mt-4 text-sm text-gray-600">Select a supplier to view the ledger.</p>
+          ) : (
+            <div className="mt-4 space-y-4">
+              <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded border border-gray-200 bg-white p-3">
+                  <div className="text-gray-500">Total Purchases</div>
+                  <div className="font-medium text-gray-900">
+                    {pkrFormatter.format(supplierLedgerTotalPurchases)}
+                  </div>
+                </div>
+                <div className="rounded border border-gray-200 bg-white p-3">
+                  <div className="text-gray-500">Total Payments</div>
+                  <div className="font-medium text-gray-900">
+                    {pkrFormatter.format(supplierLedgerTotalPayments)}
+                  </div>
+                </div>
+                <div className="rounded border border-gray-200 bg-white p-3">
+                  <div className="text-gray-500">Current Ledger Balance</div>
+                  <div className="font-medium text-gray-900">
+                    {pkrFormatter.format(supplierLedgerCurrentBalance)}
+                  </div>
+                </div>
+                <div className="rounded border border-gray-200 bg-white p-3">
+                  <div className="text-gray-500">Unallocated Payments</div>
+                  <div className="font-medium text-gray-900">
+                    {pkrFormatter.format(supplierLedgerUnallocatedPayments)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded border border-gray-200 bg-white">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2">Date</th>
+                      <th className="px-3 py-2">Reference</th>
+                      <th className="px-3 py-2">Notes</th>
+                      <th className="px-3 py-2">Debit</th>
+                      <th className="px-3 py-2">Credit</th>
+                      <th className="px-3 py-2">Running Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    <tr>
+                      <td className="px-3 py-2">-</td>
+                      <td className="px-3 py-2 font-medium text-gray-900">Opening balance</td>
+                      <td className="px-3 py-2">MVP opening balance</td>
+                      <td className="px-3 py-2">{pkrFormatter.format(0)}</td>
+                      <td className="px-3 py-2">{pkrFormatter.format(0)}</td>
+                      <td className="px-3 py-2 font-medium text-gray-900">{pkrFormatter.format(0)}</td>
+                    </tr>
+                    {supplierLedgerEntries.length === 0 ? (
+                      <tr>
+                        <td className="px-3 py-3 text-gray-600" colSpan={6}>
+                          No supplier ledger entries in this date range.
+                        </td>
+                      </tr>
+                    ) : (
+                      supplierLedgerEntries.map((entry) => (
+                        <tr key={entry.id}>
+                          <td className="px-3 py-2">{entry.date ?? "-"}</td>
+                          <td className="px-3 py-2 font-medium text-gray-900">{entry.reference}</td>
+                          <td className="px-3 py-2">{entry.notes || "-"}</td>
+                          <td className="px-3 py-2">{pkrFormatter.format(entry.debit)}</td>
+                          <td className="px-3 py-2">{pkrFormatter.format(entry.credit)}</td>
+                          <td className="px-3 py-2 font-medium text-gray-900">
+                            {pkrFormatter.format(entry.runningBalance)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
 
         <section id="expense-management" className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
@@ -4642,6 +5465,19 @@ export default function Home() {
                   distinctProductIds.length === 1
                     ? `Average landed cost per ${quantityUnitLabel}`
                     : "Blended average across this invoice";
+                const supplierPaymentSummary =
+                  supplierPaymentAllocationByPurchaseTransaction[transaction.id];
+                const purchasePaymentTotal =
+                  supplierPaymentSummary?.purchaseTotal ?? purchaseValue;
+                const purchasePaidAmount = supplierPaymentSummary?.paidAmount ?? 0;
+                const purchaseRemainingPayable =
+                  supplierPaymentSummary?.remainingPayableAmount ?? purchasePaymentTotal;
+                const purchasePaymentStatus =
+                  purchaseRemainingPayable <= 0
+                    ? "Paid"
+                    : purchasePaidAmount > 0
+                      ? "Partially Paid"
+                      : "Unpaid";
 
                 return (
                   <li
@@ -4666,6 +5502,28 @@ export default function Home() {
                         <span className="inline-flex rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
                           {expenseReviewLabel}
                         </span>
+                      </div>
+                    </div>
+
+                    <div className="mb-3 rounded border border-emerald-100 bg-emerald-50 p-3">
+                      <h3 className="mb-2 text-sm font-medium text-emerald-950">Payment Summary</h3>
+                      <div className="grid gap-2 text-xs text-emerald-950 sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <div className="uppercase tracking-wide text-emerald-700">Purchase Total</div>
+                          <div className="font-medium">{pkrFormatter.format(purchasePaymentTotal)}</div>
+                        </div>
+                        <div>
+                          <div className="uppercase tracking-wide text-emerald-700">Paid Amount</div>
+                          <div className="font-medium">{pkrFormatter.format(purchasePaidAmount)}</div>
+                        </div>
+                        <div>
+                          <div className="uppercase tracking-wide text-emerald-700">Remaining Payable</div>
+                          <div className="font-medium">{pkrFormatter.format(Math.max(0, purchaseRemainingPayable))}</div>
+                        </div>
+                        <div>
+                          <div className="uppercase tracking-wide text-emerald-700">Payment Status</div>
+                          <div className="font-medium">{purchasePaymentStatus}</div>
+                        </div>
                       </div>
                     </div>
 
