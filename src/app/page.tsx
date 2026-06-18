@@ -128,6 +128,11 @@ const addDaysToDateInputValue = (dateValue: string, days: number) => {
   return toDateInputValue(date);
 };
 
+const safeNumber = (value: unknown) => {
+  const numberValue = Number(value ?? 0);
+  return Number.isFinite(numberValue) ? numberValue : 0;
+};
+
 export default function Home() {
   const [name, setName] = useState("");
   const [unitType, setUnitType] = useState("");
@@ -282,6 +287,7 @@ export default function Home() {
     fetchPurchaseTransactions(profile.organization_id);
     fetchSalesTransactions(profile.organization_id);
     fetchCustomerPayments(profile.organization_id);
+    fetchCustomerPaymentAllocations(profile.organization_id);
     fetchSupplierPayments(profile.organization_id);
     fetchExpenses(profile.organization_id);
     fetchPurchaseItems();
@@ -530,6 +536,47 @@ export default function Home() {
     clearCreditOverrideState();
   };
 
+  const handleCustomerPaymentCustomerChange = (customerId: string) => {
+    setSelectedCustomerPaymentId(customerId === "" ? null : customerId);
+    setCustomerPaymentAllocationsByInvoice({});
+  };
+
+  const handleCustomerPaymentAmountChange = (amount: string) => {
+    setCustomerPaymentAmount(amount);
+    setCustomerPaymentAllocationsByInvoice({});
+  };
+
+  const handleCustomerPaymentAllocationChange = (invoiceId: string, amount: string) => {
+    setCustomerPaymentAllocationsByInvoice((current) => ({
+      ...current,
+      [invoiceId]: amount,
+    }));
+  };
+
+  const handleAutoAllocateCustomerPayment = () => {
+    const paymentAmount = Number(customerPaymentAmount);
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+      setCustomerPaymentError("Please enter a valid payment amount before auto allocating.");
+      setCustomerPaymentMessage(null);
+      return;
+    }
+
+    let remainingPaymentAmount = paymentAmount;
+    const nextAllocations: Record<string, string> = {};
+
+    unpaidCreditInvoicesForSelectedPaymentCustomer.forEach((invoice) => {
+      if (remainingPaymentAmount <= 0) return;
+      const allocationAmount = Math.min(remainingPaymentAmount, invoice.remainingUnpaidAmount);
+      if (allocationAmount > 0) {
+        nextAllocations[invoice.transaction.id] = String(allocationAmount);
+        remainingPaymentAmount -= allocationAmount;
+      }
+    });
+
+    setCustomerPaymentError(null);
+    setCustomerPaymentAllocationsByInvoice(nextAllocations);
+  };
+
   const handleCreateSalesInvoice = async (overrideConfirmed = false) => {
     if (salesInvoiceLoading) {
       return;
@@ -773,8 +820,43 @@ export default function Home() {
       setCustomerPaymentMessage(null);
       return;
     }
-    if (!customerPaymentAmount || Number(customerPaymentAmount) <= 0) {
+    const paymentAmount = Number(customerPaymentAmount);
+    if (!customerPaymentAmount || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
       setCustomerPaymentError("Please enter a valid amount");
+      setCustomerPaymentMessage(null);
+      return;
+    }
+    const allocationRows = unpaidCreditInvoicesForSelectedPaymentCustomer
+      .map((invoice) => {
+        const allocationAmount = Number(customerPaymentAllocationsByInvoice[invoice.transaction.id] || 0);
+        return {
+          invoice,
+          allocationAmount,
+        };
+      })
+      .filter(({ allocationAmount }) => allocationAmount !== 0);
+    const invalidNegativeAllocation = allocationRows.some(
+      ({ allocationAmount }) => !Number.isFinite(allocationAmount) || allocationAmount < 0
+    );
+    if (invalidNegativeAllocation) {
+      setCustomerPaymentError("Allocation amounts must be zero or greater.");
+      setCustomerPaymentMessage(null);
+      return;
+    }
+    const allocationExceedsInvoice = allocationRows.some(
+      ({ invoice, allocationAmount }) => allocationAmount > invoice.remainingUnpaidAmount
+    );
+    if (allocationExceedsInvoice) {
+      setCustomerPaymentError("Allocation cannot exceed an invoice remaining balance.");
+      setCustomerPaymentMessage(null);
+      return;
+    }
+    const totalAllocationAmount = allocationRows.reduce(
+      (sum, row) => sum + row.allocationAmount,
+      0
+    );
+    if (totalAllocationAmount > paymentAmount) {
+      setCustomerPaymentError("Total allocations cannot exceed the payment amount.");
       setCustomerPaymentMessage(null);
       return;
     }
@@ -790,21 +872,61 @@ export default function Home() {
         return;
       }
 
-      const { error } = await supabase.from("customer_payments").insert({
+      const { data: paymentData, error } = await supabase
+        .from("customer_payments")
+        .insert({
         customer_id: selectedCustomerPaymentId,
-        amount: Number(customerPaymentAmount),
+          amount: paymentAmount,
         notes: customerPaymentNotes || null,
         organization_id: currentOrganizationId,
-      });
+        })
+        .select("id")
+        .single();
 
       if (error) throw error;
+
+      const insertedPaymentId = paymentData?.id;
+      if (!insertedPaymentId) {
+        throw new Error("Payment saved but no payment id was returned.");
+      }
+
+      const allocationsToInsert = allocationRows
+        .filter((row) => row.allocationAmount > 0)
+        .map((row) => ({
+          organization_id: currentOrganizationId,
+          customer_payment_id: insertedPaymentId,
+          sales_transaction_id: row.invoice.transaction.id,
+          amount: row.allocationAmount,
+        }));
+
+      if (allocationsToInsert.length > 0) {
+        const { error: allocationError } = await supabase
+          .from("customer_payment_allocations")
+          .insert(allocationsToInsert);
+
+        if (allocationError) {
+          console.error(
+            "Supabase customer payment allocation insert error:",
+            JSON.stringify(allocationError, null, 2)
+          );
+          setCustomerPaymentMessage(null);
+          setCustomerPaymentError(
+            "Payment saved, but one or more invoice allocations could not be saved."
+          );
+          await fetchCustomerPayments(currentOrganizationId);
+          await fetchCustomerPaymentAllocations(currentOrganizationId);
+          setCustomerPaymentLoading(false);
+          return;
+        }
+      }
 
       setCustomerPaymentMessage("Payment saved successfully");
       setSelectedCustomerPaymentId(null);
       setCustomerPaymentAmount("");
       setCustomerPaymentNotes("");
-      // refresh
-      fetchCustomerPayments();
+      setCustomerPaymentAllocationsByInvoice({});
+      await fetchCustomerPayments(currentOrganizationId);
+      await fetchCustomerPaymentAllocations(currentOrganizationId);
     } catch (err) {
       setCustomerPaymentError(err instanceof Error ? err.message : "Failed to save payment");
       console.error("Error saving customer payment:", err);
@@ -1128,6 +1250,7 @@ export default function Home() {
 
   // Payments
   const [customerPayments, setCustomerPayments] = useState<any[]>([]);
+  const [customerPaymentAllocations, setCustomerPaymentAllocations] = useState<any[]>([]);
   const [supplierPayments, setSupplierPayments] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [expenseType, setExpenseType] = useState("");
@@ -1146,6 +1269,8 @@ export default function Home() {
   const [customerPaymentLoading, setCustomerPaymentLoading] = useState(false);
   const [customerPaymentMessage, setCustomerPaymentMessage] = useState<string | null>(null);
   const [customerPaymentError, setCustomerPaymentError] = useState<string | null>(null);
+  const [customerPaymentAllocationsByInvoice, setCustomerPaymentAllocationsByInvoice] =
+    useState<Record<string, string>>({});
 
   const [selectedSupplierPaymentId, setSelectedSupplierPaymentId] = useState<string | null>(null);
   const [supplierPaymentAmount, setSupplierPaymentAmount] = useState("");
@@ -1238,7 +1363,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("customer_payments")
-      .select("id, customer_id, amount, notes")
+      .select("id, customer_id, amount, notes, created_at")
       .eq("organization_id", orgId)
       .order("id", { ascending: true });
 
@@ -1248,6 +1373,27 @@ export default function Home() {
     }
 
     setCustomerPayments(data ?? []);
+  };
+
+  const fetchCustomerPaymentAllocations = async (organizationId?: string) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setCustomerPaymentAllocations([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("customer_payment_allocations")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch customer payment allocations error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setCustomerPaymentAllocations(data ?? []);
   };
 
   const fetchSupplierPayments = async (organizationId?: string) => {
@@ -1782,72 +1928,176 @@ export default function Home() {
         transaction.payment_type === "credit"
     )
     .map((transaction) => transaction.id);
-  const selectedCustomerTotalCreditSales = salesItems
-    .filter((item) => selectedCustomerCreditTransactionIds.includes(item.sales_transaction_id))
-    .reduce(
-      (sum, item) => sum + Number(item.quantity || 0) * Number(item.selling_price || 0),
-      0
-    );
-  const selectedCustomerPaymentsReceived = customerPayments
-    .filter((payment) => payment.customer_id === selectedCustomerIdForSale)
-    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const selectedCustomerOutstandingBalance = Math.max(
-    0,
-    selectedCustomerTotalCreditSales - selectedCustomerPaymentsReceived
+  const salesInvoiceTotalsByTransaction = salesTransactions.reduce<Record<string, number>>(
+    (totals, transaction) => {
+      totals[transaction.id] = salesItems
+        .filter((item) => item.sales_transaction_id === transaction.id)
+        .reduce(
+          (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price),
+          0
+        );
+      return totals;
+    },
+    {}
+  );
+  const explicitAllocatedAmountsBySalesTransaction = customerPaymentAllocations.reduce<Record<string, number>>(
+    (totals, allocation) => {
+      const salesTransactionId = String(allocation.sales_transaction_id ?? "");
+      if (!salesTransactionId) return totals;
+      totals[salesTransactionId] =
+        (totals[salesTransactionId] ?? 0) + safeNumber(allocation.amount);
+      return totals;
+    },
+    {}
+  );
+  const creditSalesTransactions = salesTransactions.filter(
+    (transaction) => transaction.payment_type === "credit"
+  );
+  const salesTransactionsById = salesTransactions.reduce<Record<string, SalesTransaction>>(
+    (transactions, transaction) => {
+      transactions[transaction.id] = transaction;
+      return transactions;
+    },
+    {}
+  );
+  const totalCustomerPaymentsByCustomer = customerPayments.reduce<Record<string, number>>(
+    (totals, payment) => {
+      const customerId = String(payment.customer_id ?? "");
+      if (!customerId) return totals;
+      totals[customerId] = (totals[customerId] ?? 0) + safeNumber(payment.amount);
+      return totals;
+    },
+    {}
+  );
+  const explicitAllocatedPaymentsByCustomer = customerPaymentAllocations.reduce<Record<string, number>>(
+    (totals, allocation) => {
+      const salesTransactionId = String(allocation.sales_transaction_id ?? "");
+      const transaction = salesTransactionsById[salesTransactionId];
+      if (!transaction || transaction.payment_type !== "credit") return totals;
+      totals[transaction.customer_id] =
+        (totals[transaction.customer_id] ?? 0) + safeNumber(allocation.amount);
+      return totals;
+    },
+    {}
+  );
+  const legacyUnallocatedPaymentPoolByCustomer = customers.reduce<Record<string, number>>(
+    (pools, customer) => {
+      pools[customer.id] = Math.max(
+        0,
+        (totalCustomerPaymentsByCustomer[customer.id] ?? 0) -
+          (explicitAllocatedPaymentsByCustomer[customer.id] ?? 0)
+      );
+      return pools;
+    },
+    {}
   );
   const currentSalesInvoiceTotal = salesLines.reduce(
-    (sum, line) => sum + Number(line.quantity || 0) * Number(line.selling_price || 0),
+    (sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price),
     0
   );
-  const projectedCustomerBalance = selectedCustomerOutstandingBalance + currentSalesInvoiceTotal;
   const todayDateValue = toDateInputValue(new Date());
   const creditAllocationByTransaction = salesTransactions
     .filter((transaction) => transaction.payment_type === "credit")
+    .sort((a, b) => {
+      const aDate = getDateOnly(a.sale_date) ?? getDateOnly(a.created_at) ?? "";
+      const bDate = getDateOnly(b.sale_date) ?? getDateOnly(b.created_at) ?? "";
+      if (aDate !== bDate) return aDate.localeCompare(bDate);
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    })
     .reduce<
       Record<
         string,
         {
           invoiceTotal: number;
+          explicitAllocatedAmount: number;
+          fallbackAllocatedAmount: number;
+          allocatedAmount: number;
           remainingUnpaidAmount: number;
         }
       >
-    >((allocations, _transaction, _index, creditTransactions) => {
-      if (Object.keys(allocations).length > 0) return allocations;
+    >((allocations, transaction) => {
+      const invoiceTotal = salesInvoiceTotalsByTransaction[transaction.id] ?? 0;
+      const explicitAllocatedAmount = Math.max(
+        0,
+        explicitAllocatedAmountsBySalesTransaction[transaction.id] ?? 0
+      );
+      const remainingAfterExplicitAllocation = Math.max(0, invoiceTotal - explicitAllocatedAmount);
+      const availableLegacyPool = legacyUnallocatedPaymentPoolByCustomer[transaction.customer_id] ?? 0;
+      const fallbackAllocatedAmount = Math.min(
+        availableLegacyPool,
+        remainingAfterExplicitAllocation
+      );
 
-      const customerIds = Array.from(new Set(creditTransactions.map((transaction) => transaction.customer_id)));
-
-      customerIds.forEach((customerId) => {
-        let remainingPayments = customerPayments
-          .filter((payment) => payment.customer_id === customerId)
-          .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-
-        creditTransactions
-          .filter((transaction) => transaction.customer_id === customerId)
-          .slice()
-          .sort((a, b) => {
-            const aDate = getDateOnly(a.sale_date) ?? getDateOnly(a.created_at) ?? "";
-            const bDate = getDateOnly(b.sale_date) ?? getDateOnly(b.created_at) ?? "";
-            if (aDate !== bDate) return aDate.localeCompare(bDate);
-            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-          })
-          .forEach((transaction) => {
-            const invoiceTotal = salesItems
-              .filter((item) => item.sales_transaction_id === transaction.id)
-              .reduce(
-                (sum, item) => sum + Number(item.quantity || 0) * Number(item.selling_price || 0),
-                0
-              );
-            const appliedPayment = Math.min(Math.max(remainingPayments, 0), invoiceTotal);
-            remainingPayments = Math.max(0, remainingPayments - appliedPayment);
-            allocations[transaction.id] = {
-              invoiceTotal,
-              remainingUnpaidAmount: Math.max(0, invoiceTotal - appliedPayment),
-            };
-          });
-      });
-
+      legacyUnallocatedPaymentPoolByCustomer[transaction.customer_id] = Math.max(
+        0,
+        availableLegacyPool - fallbackAllocatedAmount
+      );
+      allocations[transaction.id] = {
+        invoiceTotal,
+        explicitAllocatedAmount,
+        fallbackAllocatedAmount,
+        allocatedAmount: explicitAllocatedAmount + fallbackAllocatedAmount,
+        remainingUnpaidAmount: Math.max(
+          0,
+          remainingAfterExplicitAllocation - fallbackAllocatedAmount
+        ),
+      };
       return allocations;
     }, {});
+  const selectedCustomerOutstandingBalance = selectedCustomerCreditTransactionIds.reduce(
+    (sum, transactionId) =>
+      sum + Math.max(0, creditAllocationByTransaction[transactionId]?.remainingUnpaidAmount ?? 0),
+    0
+  );
+  const projectedCustomerBalance = selectedCustomerOutstandingBalance + currentSalesInvoiceTotal;
+  const unpaidCreditInvoicesForSelectedPaymentCustomer = salesTransactions
+    .filter(
+      (transaction) =>
+        transaction.customer_id === selectedCustomerPaymentId &&
+        transaction.payment_type === "credit"
+    )
+    .map((transaction) => {
+      const allocation = creditAllocationByTransaction[transaction.id];
+      const invoiceTotal = allocation?.invoiceTotal ?? salesInvoiceTotalsByTransaction[transaction.id] ?? 0;
+      const explicitAllocatedAmount = allocation?.explicitAllocatedAmount ?? 0;
+      const fallbackAllocatedAmount = allocation?.fallbackAllocatedAmount ?? 0;
+      const allocatedAmount = allocation?.allocatedAmount ?? explicitAllocatedAmount;
+      const remainingUnpaidAmount = Math.max(0, allocation?.remainingUnpaidAmount ?? 0);
+      const creditDueDate = getDateOnly(transaction.credit_due_date);
+      const status =
+        remainingUnpaidAmount <= 0
+          ? "Paid"
+          : creditDueDate && creditDueDate < todayDateValue
+            ? "Overdue"
+            : "Credit outstanding";
+      return {
+        transaction,
+        invoiceTotal,
+        explicitAllocatedAmount,
+        fallbackAllocatedAmount,
+        allocatedAmount,
+        remainingUnpaidAmount,
+        creditDueDate,
+        status,
+      };
+    })
+    .filter((invoice) => invoice.remainingUnpaidAmount > 0)
+    .sort((a, b) => {
+      const aDate = getDateOnly(a.transaction.sale_date) ?? getDateOnly(a.transaction.created_at) ?? "";
+      const bDate = getDateOnly(b.transaction.sale_date) ?? getDateOnly(b.transaction.created_at) ?? "";
+      if (aDate !== bDate) return aDate.localeCompare(bDate);
+      return new Date(a.transaction.created_at).getTime() - new Date(b.transaction.created_at).getTime();
+    });
+  const customerPaymentAllocationTotal = Object.values(customerPaymentAllocationsByInvoice).reduce(
+    (sum, value) => sum + safeNumber(value),
+    0
+  );
+  const customerPaymentAmountValue = safeNumber(customerPaymentAmount);
+  const customerPaymentUnallocatedAmount = Math.max(
+    0,
+    (Number.isFinite(customerPaymentAmountValue) ? customerPaymentAmountValue : 0) -
+      customerPaymentAllocationTotal
+  );
   const selectedCustomerOverdueCreditInvoices = selectedCustomerCreditTransactionIds
     .map((transactionId) => {
       const transaction = salesTransactions.find((tx) => tx.id === transactionId);
@@ -1874,6 +2124,41 @@ export default function Home() {
       .map((invoice) => getDateOnly(invoice.transaction?.credit_due_date))
       .filter((date): date is string => Boolean(date))
       .sort()[0] ?? null;
+  const customerPaymentHistory = customerPayments
+    .map((payment) => {
+      const paymentId = String(payment.id ?? "");
+      const paymentAmount = safeNumber(payment.amount);
+      const allocations = customerPaymentAllocations
+        .filter((allocation) => String(allocation.customer_payment_id ?? "") === paymentId)
+        .map((allocation) => {
+          const transaction = salesTransactionsById[String(allocation.sales_transaction_id ?? "")];
+          return {
+            allocation,
+            transaction,
+            amount: safeNumber(allocation.amount),
+          };
+        });
+      const explicitlyAllocatedAmount = allocations.reduce(
+        (sum, allocation) => sum + allocation.amount,
+        0
+      );
+
+      return {
+        payment,
+        customer: customers.find((customer) => customer.id === payment.customer_id),
+        paymentAmount,
+        allocations,
+        explicitlyAllocatedAmount,
+        unallocatedAmount: Math.max(0, paymentAmount - explicitlyAllocatedAmount),
+        allocationExceedsPayment: explicitlyAllocatedAmount > paymentAmount,
+      };
+    })
+    .sort((a, b) => {
+      const aDate = getDateOnly(a.payment.created_at) ?? "";
+      const bDate = getDateOnly(b.payment.created_at) ?? "";
+      if (aDate !== bDate) return bDate.localeCompare(aDate);
+      return String(b.payment.id ?? "").localeCompare(String(a.payment.id ?? ""));
+    });
 
   // Inventory calculations per product
   const purchaseTransactionIds = purchaseTransactions.map((tx) => tx.id);
@@ -2938,7 +3223,7 @@ export default function Home() {
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Sales History</h2>
           <p className="mb-3 text-xs text-gray-500">
-            Credit payments are allocated to the oldest unpaid credit invoices first for this MVP.
+            Older unallocated customer payments are applied to the oldest credit invoices first.
           </p>
           {salesLoading ? (
             <p className="text-sm text-gray-600">Loading sales history...</p>
@@ -2969,7 +3254,11 @@ export default function Home() {
                     <div>Payment Type: {paymentType === "credit" ? "Credit" : "Cash"}</div>
                     <div>Status: {creditStatus}</div>
                     {paymentType === "credit" && (
-                      <div>Remaining unpaid: {pkrFormatter.format(remainingUnpaidAmount)}</div>
+                      <>
+                        <div>Invoice Total: {pkrFormatter.format(creditAllocation?.invoiceTotal ?? 0)}</div>
+                        <div>Allocated Payment: {pkrFormatter.format(creditAllocation?.allocatedAmount ?? 0)}</div>
+                        <div>Remaining Balance: {pkrFormatter.format(remainingUnpaidAmount)}</div>
+                      </>
                     )}
                     {creditDueDate && <div>Credit Due Date: {creditDueDate}</div>}
                     {tx.credit_limit_snapshot != null && (
@@ -2990,7 +3279,7 @@ export default function Home() {
           <div className="grid gap-4 sm:grid-cols-3">
             <select
               value={selectedCustomerPaymentId ?? ""}
-              onChange={(e) => setSelectedCustomerPaymentId(e.target.value === "" ? null : e.target.value)}
+              onChange={(e) => handleCustomerPaymentCustomerChange(e.target.value)}
               className="rounded border border-gray-300 px-2 py-2"
             >
               <option value="">Select Customer</option>
@@ -3002,7 +3291,7 @@ export default function Home() {
             <input
               type="number"
               value={customerPaymentAmount}
-              onChange={(e) => setCustomerPaymentAmount(e.target.value)}
+              onChange={(e) => handleCustomerPaymentAmountChange(e.target.value)}
               placeholder="Amount"
               className="rounded border border-gray-300 px-2 py-2"
             />
@@ -3015,6 +3304,105 @@ export default function Home() {
               className="rounded border border-gray-300 px-2 py-2"
             />
           </div>
+
+          {selectedCustomerPaymentId && (
+            <div className="mt-4 rounded border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-lg font-medium text-gray-900">Allocate to Credit Invoices</h3>
+                <button
+                  type="button"
+                  onClick={handleAutoAllocateCustomerPayment}
+                  className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                >
+                  Auto Allocate Oldest First
+                </button>
+              </div>
+              <p className="mb-3 text-xs text-gray-500">
+                Older unallocated customer payments are applied to the oldest credit invoices first.
+              </p>
+
+              <div className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-gray-500">Payment amount</div>
+                  <div className="font-medium text-gray-900">
+                    {pkrFormatter.format(Number.isFinite(customerPaymentAmountValue) ? customerPaymentAmountValue : 0)}
+                  </div>
+                </div>
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-gray-500">Total allocated</div>
+                  <div className="font-medium text-gray-900">
+                    {pkrFormatter.format(customerPaymentAllocationTotal)}
+                  </div>
+                </div>
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-gray-500">Unallocated amount</div>
+                  <div className="font-medium text-gray-900">
+                    {pkrFormatter.format(customerPaymentUnallocatedAmount)}
+                  </div>
+                </div>
+              </div>
+
+              {unpaidCreditInvoicesForSelectedPaymentCustomer.length === 0 ? (
+                <p className="text-sm text-gray-600">No unpaid credit invoices for this customer.</p>
+              ) : (
+                <div className="space-y-3">
+                  {unpaidCreditInvoicesForSelectedPaymentCustomer.map((invoice) => (
+                    <div key={invoice.transaction.id} className="rounded border border-gray-200 bg-gray-50 p-3">
+                      <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Invoice</div>
+                          <div className="font-medium text-gray-900">{invoice.transaction.invoice_number}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Sale Date</div>
+                          <div>{getDateOnly(invoice.transaction.sale_date) ?? "-"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Invoice Total</div>
+                          <div>{pkrFormatter.format(invoice.invoiceTotal)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Allocated</div>
+                          <div>{pkrFormatter.format(invoice.allocatedAmount)}</div>
+                          {invoice.fallbackAllocatedAmount > 0 && (
+                            <div className="text-xs text-gray-500">
+                              Includes {pkrFormatter.format(invoice.fallbackAllocatedAmount)} older unallocated payment
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Remaining</div>
+                          <div>{pkrFormatter.format(invoice.remainingUnpaidAmount)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Due Date</div>
+                          <div>{invoice.creditDueDate ?? "-"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">Status</div>
+                          <div>{invoice.status}</div>
+                        </div>
+                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                          <span>Allocation Amount</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={customerPaymentAllocationsByInvoice[invoice.transaction.id] ?? ""}
+                            onChange={(e) =>
+                              handleCustomerPaymentAllocationChange(invoice.transaction.id, e.target.value)
+                            }
+                            className="rounded border border-gray-300 px-2 py-1"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-3">
             <button
               type="button"
@@ -3026,6 +3414,83 @@ export default function Home() {
             </button>
             {customerPaymentMessage && <p className="mt-2 text-sm text-green-700">{customerPaymentMessage}</p>}
             {customerPaymentError && <p className="mt-2 text-sm text-red-700">{customerPaymentError}</p>}
+          </div>
+
+          <div className="mt-6 border-t border-gray-200 pt-4">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Customer Payment History</h3>
+            {customerPaymentHistory.length === 0 ? (
+              <p className="text-sm text-gray-600">No customer payments recorded yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {customerPaymentHistory.map((historyItem) => (
+                  <li
+                    key={historyItem.payment.id}
+                    className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-700"
+                  >
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Customer</div>
+                        <div className="font-medium text-gray-900">
+                          {historyItem.customer?.customer_name ?? "Unknown"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Payment Date</div>
+                        <div>{getDateOnly(historyItem.payment.created_at) ?? "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Total Payment</div>
+                        <div>{pkrFormatter.format(historyItem.paymentAmount)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Explicitly Allocated</div>
+                        <div>{pkrFormatter.format(historyItem.explicitlyAllocatedAmount)}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-gray-500">Unallocated</div>
+                        <div>{pkrFormatter.format(historyItem.unallocatedAmount)}</div>
+                      </div>
+                    </div>
+
+                    {historyItem.payment.notes && (
+                      <p className="mt-2 text-sm text-gray-600">Notes: {historyItem.payment.notes}</p>
+                    )}
+
+                    {historyItem.unallocatedAmount > 0 && (
+                      <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        Unallocated payment balance
+                      </p>
+                    )}
+                    {historyItem.allocationExceedsPayment && (
+                      <p className="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        Allocation data exceeds payment amount
+                      </p>
+                    )}
+
+                    {historyItem.allocations.length > 0 && (
+                      <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3">
+                        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                          Allocations
+                        </div>
+                        <ul className="space-y-1">
+                          {historyItem.allocations.map((allocationItem) => (
+                            <li
+                              key={allocationItem.allocation.id}
+                              className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <span>
+                                Sales invoice: {allocationItem.transaction?.invoice_number ?? "Unknown"}
+                              </span>
+                              <span>{pkrFormatter.format(allocationItem.amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </section>
 
