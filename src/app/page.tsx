@@ -122,7 +122,8 @@ type SectionId =
   | "expenses"
   | "profit-loss"
   | "customer-credit"
-  | "supplier-ledger";
+  | "supplier-ledger"
+  | "business-settings";
 
 const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
@@ -140,6 +141,7 @@ const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "profit-loss", label: "Profit & Loss" },
   { id: "customer-credit", label: "Customer Credit" },
   { id: "supplier-ledger", label: "Supplier Ledger" },
+  { id: "business-settings", label: "Business Settings" },
 ];
 
 interface PurchaseLine {
@@ -347,6 +349,16 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [organizationName, setOrganizationName] = useState("");
+  const [currentOrganization, setCurrentOrganization] = useState<any | null>(null);
+  const [businessSettingsName, setBusinessSettingsName] = useState("");
+  const [businessSettingsPhone, setBusinessSettingsPhone] = useState("");
+  const [businessSettingsAddress, setBusinessSettingsAddress] = useState("");
+  const [businessSettingsCity, setBusinessSettingsCity] = useState("");
+  const [businessSettingsInvoiceFooterNote, setBusinessSettingsInvoiceFooterNote] = useState("");
+  const [businessSettingsDefaultPaymentTerms, setBusinessSettingsDefaultPaymentTerms] = useState("");
+  const [businessSettingsLoading, setBusinessSettingsLoading] = useState(false);
+  const [businessSettingsMessage, setBusinessSettingsMessage] = useState<string | null>(null);
+  const [businessSettingsError, setBusinessSettingsError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [currentProfile, setCurrentProfile] = useState<any | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
@@ -371,6 +383,38 @@ export default function Home() {
     }
 
     setExpenses(data ?? []);
+  };
+
+  const populateBusinessSettings = (organization: any | null) => {
+    setCurrentOrganization(organization);
+    setBusinessSettingsName(organization?.name ?? "");
+    setBusinessSettingsPhone(organization?.phone ?? "");
+    setBusinessSettingsAddress(organization?.address ?? "");
+    setBusinessSettingsCity(organization?.city ?? "");
+    setBusinessSettingsInvoiceFooterNote(organization?.invoice_footer_note ?? "");
+    setBusinessSettingsDefaultPaymentTerms(organization?.default_payment_terms ?? "");
+  };
+
+  const fetchCurrentOrganization = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      populateBusinessSettings(null);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("organizations")
+      .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms")
+      .eq("id", orgId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Supabase fetch organization error:", JSON.stringify(error, null, 2));
+      setBusinessSettingsError(`Failed to load business settings: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    populateBusinessSettings(data);
   };
 
   const loadProfile = async (userId: string | null) => {
@@ -417,6 +461,7 @@ export default function Home() {
     setAuthError(null);
     setCurrentProfile(profile);
     setCurrentOrganizationId(profile.organization_id);
+    fetchCurrentOrganization(profile.organization_id);
     fetchBrands(profile.organization_id);
     fetchCategories(profile.organization_id);
     fetchProducts(profile.organization_id);
@@ -3160,7 +3205,22 @@ export default function Home() {
     .slice(0, 10);
 
   const organizationDisplayName =
-    (currentProfile?.organization_name ?? organizationName).trim() || "Organization";
+    (currentOrganization?.name ?? currentProfile?.organization_name ?? organizationName).trim() ||
+    "Organization";
+  const businessPhone = String(currentOrganization?.phone ?? "").trim();
+  const businessAddress = String(currentOrganization?.address ?? "").trim();
+  const businessCity = String(currentOrganization?.city ?? "").trim();
+  const businessFooterNote = String(currentOrganization?.invoice_footer_note ?? "").trim();
+  const businessDefaultPaymentTerms = String(currentOrganization?.default_payment_terms ?? "").trim();
+  const businessAddressLine = [businessAddress, businessCity].filter(Boolean).join(", ");
+  const businessBrandingHtml = () =>
+    `<h1>${escapeHtml(organizationDisplayName)}</h1>
+      ${businessPhone ? `<p class="muted">Phone: ${escapeHtml(businessPhone)}</p>` : ""}
+      ${businessAddressLine ? `<p class="muted">${escapeHtml(businessAddressLine)}</p>` : ""}`;
+  const businessPrintFooterHtml = () =>
+    `${businessDefaultPaymentTerms ? `<p><strong>Payment Terms:</strong> ${escapeHtml(businessDefaultPaymentTerms)}</p>` : ""}
+      ${businessFooterNote ? `<p>${escapeHtml(businessFooterNote)}</p>` : ""}
+      <p class="footer">Generated by TradeOS</p>`;
 
   const renderRows = (rows: string[][]) =>
     rows
@@ -3207,8 +3267,7 @@ export default function Home() {
 
     openPrintPreview(
       `Sales Invoice ${transaction.invoice_number}`,
-      `<h1>TradeOS</h1>
-      <p class="muted">${escapeHtml(organizationDisplayName)}</p>
+      `${businessBrandingHtml()}
       <h2>Sales Invoice</h2>
       <div class="grid">
         <div><strong>Invoice:</strong> ${escapeHtml(transaction.invoice_number)}</div>
@@ -3233,7 +3292,7 @@ export default function Home() {
             : ""
         }
       </div>
-      <p class="footer">Generated by TradeOS</p>`
+      ${businessPrintFooterHtml()}`
     );
   };
 
@@ -3279,8 +3338,7 @@ export default function Home() {
 
     openPrintPreview(
       `Purchase Invoice ${transaction.invoice_number}`,
-      `<h1>TradeOS</h1>
-      <p class="muted">${escapeHtml(organizationDisplayName)}</p>
+      `${businessBrandingHtml()}
       <h2>Purchase Invoice</h2>
       <div class="grid">
         <div><strong>Invoice:</strong> ${escapeHtml(transaction.invoice_number)}</div>
@@ -3298,7 +3356,7 @@ export default function Home() {
         <p><strong>Landed Invoice Cost:</strong> ${escapeHtml(formatPKR(landedInvoiceCost))}</p>
         <p><strong>Remaining Payable:</strong> ${escapeHtml(formatPKR(remainingPayable))}</p>
       </div>
-      <p class="footer">Generated by TradeOS</p>`
+      ${businessPrintFooterHtml()}`
     );
   };
 
@@ -3490,8 +3548,7 @@ export default function Home() {
 
     openPrintPreview(
       `Customer Statement ${customer.customer_name}`,
-      `<h1>TradeOS</h1>
-      <p class="muted">${escapeHtml(organizationDisplayName)}</p>
+      `${businessBrandingHtml()}
       <h2>Customer Statement</h2>
       <div class="grid">
         <div><strong>Customer:</strong> ${escapeHtml(customer.customer_name)}</div>
@@ -3504,7 +3561,7 @@ export default function Home() {
         <thead>${renderHeaderRows(["Invoice", "Sale Date", "Invoice Total", "Paid", "Remaining", "Status"])}</thead>
         <tbody>${renderRows(invoiceRows)}</tbody>
       </table>
-      <p class="footer">Generated by TradeOS</p>`
+      ${businessPrintFooterHtml()}`
     );
   };
 
@@ -3526,8 +3583,7 @@ export default function Home() {
 
     openPrintPreview(
       `Supplier Ledger ${supplier.supplier_name}`,
-      `<h1>TradeOS</h1>
-      <p class="muted">${escapeHtml(organizationDisplayName)}</p>
+      `${businessBrandingHtml()}
       <h2>Supplier Ledger</h2>
       <div class="grid">
         <div><strong>Supplier:</strong> ${escapeHtml(supplier.supplier_name)}</div>
@@ -3541,7 +3597,7 @@ export default function Home() {
         <thead>${renderHeaderRows(["Date", "Reference", "Notes", "Debit", "Credit", "Running Balance"])}</thead>
         <tbody>${renderRows([["-", "Opening balance", "MVP opening balance", formatPKR(0), formatPKR(0), formatPKR(0)], ...ledgerRows])}</tbody>
       </table>
-      <p class="footer">Generated by TradeOS</p>`
+      ${businessPrintFooterHtml()}`
     );
   };
 
@@ -3603,6 +3659,59 @@ export default function Home() {
       document.getElementById("tradeos-main-content")?.scrollTo({ top: 0, behavior: "smooth" });
       window.scrollTo({ top: 0, behavior: "smooth" });
     }, 0);
+  };
+
+  const handleSaveBusinessSettings = async () => {
+    setBusinessSettingsMessage(null);
+    setBusinessSettingsError(null);
+
+    const trimmedName = businessSettingsName.trim();
+    if (!trimmedName) {
+      setBusinessSettingsError("Business name is required.");
+      return;
+    }
+
+    if (!currentOrganizationId) {
+      setBusinessSettingsError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    setBusinessSettingsLoading(true);
+
+    const optionalValue = (value: string) => {
+      const trimmedValue = value.trim();
+      return trimmedValue ? trimmedValue : null;
+    };
+
+    try {
+      const { error } = await supabase
+        .from("organizations")
+        .update({
+          name: trimmedName,
+          phone: optionalValue(businessSettingsPhone),
+          address: optionalValue(businessSettingsAddress),
+          city: optionalValue(businessSettingsCity),
+          invoice_footer_note: optionalValue(businessSettingsInvoiceFooterNote),
+          default_payment_terms: optionalValue(businessSettingsDefaultPaymentTerms),
+        })
+        .eq("id", currentOrganizationId);
+
+      if (error) {
+        console.error("Supabase business settings update error:", JSON.stringify(error, null, 2));
+        setBusinessSettingsError(`Failed to save business settings: ${JSON.stringify(error, null, 2)}`);
+        return;
+      }
+
+      await fetchCurrentOrganization(currentOrganizationId);
+      setBusinessSettingsMessage("Business settings saved successfully.");
+    } catch (err) {
+      setBusinessSettingsError(
+        err instanceof Error ? err.message : "Failed to save business settings."
+      );
+      console.error("Error saving business settings:", err);
+    } finally {
+      setBusinessSettingsLoading(false);
+    }
   };
 
   if (!currentUser) {
@@ -3898,7 +4007,7 @@ export default function Home() {
               <div>
                 <h1 className="text-2xl font-semibold text-gray-900">{activeSectionLabel}</h1>
                 <div className="mt-1 text-sm text-gray-500">
-                  {(currentProfile?.organization_name ?? organizationName) || "Organization"} · {currentProfile?.full_name ?? currentUser.email}
+                  {organizationDisplayName} · {currentProfile?.full_name ?? currentUser.email}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -6739,6 +6848,93 @@ export default function Home() {
           )}
         </section>
         </>
+        )}
+
+        {activeSection === "business-settings" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Business Settings</h2>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Business Name</span>
+                <input
+                  type="text"
+                  value={businessSettingsName}
+                  onChange={(e) => setBusinessSettingsName(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Phone</span>
+                <input
+                  type="text"
+                  value={businessSettingsPhone}
+                  onChange={(e) => setBusinessSettingsPhone(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Address</span>
+                <input
+                  type="text"
+                  value={businessSettingsAddress}
+                  onChange={(e) => setBusinessSettingsAddress(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>City</span>
+                <input
+                  type="text"
+                  value={businessSettingsCity}
+                  onChange={(e) => setBusinessSettingsCity(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Invoice Footer Note</span>
+              <textarea
+                value={businessSettingsInvoiceFooterNote}
+                onChange={(e) => setBusinessSettingsInvoiceFooterNote(e.target.value)}
+                rows={3}
+                className="rounded border border-gray-300 px-3 py-2"
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <span>Default Payment Terms</span>
+              <textarea
+                value={businessSettingsDefaultPaymentTerms}
+                onChange={(e) => setBusinessSettingsDefaultPaymentTerms(e.target.value)}
+                rows={2}
+                className="rounded border border-gray-300 px-3 py-2"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={handleSaveBusinessSettings}
+              disabled={businessSettingsLoading}
+              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300"
+            >
+              {businessSettingsLoading ? "Saving..." : "Save Business Settings"}
+            </button>
+          </div>
+
+          {businessSettingsMessage && (
+            <p className="mt-4 text-sm text-green-700">{businessSettingsMessage}</p>
+          )}
+          {businessSettingsError && (
+            <p className="mt-4 whitespace-pre-wrap text-sm text-red-700">{businessSettingsError}</p>
+          )}
+        </section>
         )}
 
         {activeSection === "products" && (
