@@ -22,6 +22,7 @@ interface Product {
   unit_type: string | null;
   last_purchase_price?: number | null;
   default_selling_price?: number | null;
+  minimum_stock_level?: number | null;
   reorder_level?: number | null;
   track_batch?: boolean | null;
   track_expiry?: boolean | null;
@@ -214,6 +215,8 @@ const getUsableTimestamp = (...dateValues: Array<unknown>) => {
 export default function Home() {
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [reorderRecommendationFilter, setReorderRecommendationFilter] = useState("all");
+  const [reorderRecommendationSearch, setReorderRecommendationSearch] = useState("");
   const [name, setName] = useState("");
   const [unitType, setUnitType] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("");
@@ -1263,14 +1266,25 @@ export default function Home() {
   };
 
   const handleAddPurchaseExpense = (purchaseId: string, supplierId: string) => {
+    setActiveSection("expenses");
     setSelectedExpensePurchaseId(purchaseId);
     setSelectedExpenseSupplierId(supplierId);
     setSelectedExpenseCustomerId("");
     setSelectedExpenseSaleId("");
-    document.getElementById("expense-management")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+    setExpenseType((currentType) => currentType || "Purchase Transport");
+    setMobileMenuOpen(false);
+
+    window.setTimeout(() => {
+      document.getElementById("expense-management")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      const expenseSection = document.getElementById("expense-management");
+      const firstExpenseInput = expenseSection?.querySelector("select, input");
+      if (firstExpenseInput instanceof HTMLElement) {
+        firstExpenseInput.focus();
+      }
+    }, 0);
   };
 
   const updatePurchaseExpenseStatus = async (
@@ -1351,7 +1365,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, brand_id, category_id, unit_type, last_purchase_price, default_selling_price, reorder_level, track_batch, track_expiry")
+      .select("id, name, brand_id, category_id, unit_type, last_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry")
       .eq("organization_id", orgId)
       .order("name", { ascending: true });
 
@@ -2612,6 +2626,107 @@ export default function Home() {
       reorderLevel: product.reorder_level ?? 0,
     };
   });
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const thirtyDaysAgoValue = toDateInputValue(thirtyDaysAgo);
+  const salesTransactionsByIdForReorder = salesTransactions.reduce<Record<string, SalesTransaction>>(
+    (transactions, transaction) => {
+      transactions[transaction.id] = transaction;
+      return transactions;
+    },
+    {}
+  );
+  const reorderStatusRank: Record<string, number> = {
+    "Out of Stock": 0,
+    "Urgent Reorder": 1,
+    "Low Stock Soon": 2,
+    Healthy: 3,
+  };
+  const reorderRecommendations = products
+    .map((product) => {
+      const productId = String(product.id);
+      const brand = brands.find((item) => item.id === product.brand_id);
+      const category = categories.find((item) => item.id === product.category_id);
+      const purchasedQty = filteredPurchaseItems
+        .filter((item) => String(item.product_id) === productId)
+        .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+      const soldQty = filteredSalesItems
+        .filter((item) => String(item.product_id) === productId)
+        .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+      const currentStock = purchasedQty - soldQty;
+      const reorderLevel = safeNumber(product.reorder_level ?? product.minimum_stock_level ?? 0);
+      const recentSalesQuantity = filteredSalesItems
+        .filter((item) => {
+          if (String(item.product_id) !== productId) return false;
+          const transaction = salesTransactionsByIdForReorder[String(item.sales_transaction_id ?? "")];
+          const saleDate = getDateOnly(transaction?.sale_date);
+          return Boolean(saleDate && saleDate >= thirtyDaysAgoValue && saleDate <= todayDateValue);
+        })
+        .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+      const dailyAverageSales = recentSalesQuantity / 30;
+      const estimatedDaysLeft =
+        dailyAverageSales > 0 ? currentStock / dailyAverageSales : null;
+      const suggestedReorderQuantity =
+        reorderLevel > 0 ? Math.max(reorderLevel * 2 - currentStock, 0) : 0;
+      const status =
+        currentStock <= 0
+          ? "Out of Stock"
+          : currentStock <= reorderLevel
+            ? "Urgent Reorder"
+            : dailyAverageSales > 0 && estimatedDaysLeft !== null && estimatedDaysLeft <= 7
+              ? "Low Stock Soon"
+              : "Healthy";
+
+      return {
+        productId,
+        productName: product.name,
+        brandName: brand?.name ?? "",
+        categoryName: category?.name ?? "",
+        unitType: product.unit_type ?? "units",
+        currentStock,
+        reorderLevel,
+        recentSalesQuantity,
+        dailyAverageSales,
+        estimatedDaysLeft,
+        suggestedReorderQuantity,
+        status,
+        missingReorderLevel: reorderLevel <= 0,
+      };
+    })
+    .sort((a, b) => {
+      const statusDifference = reorderStatusRank[a.status] - reorderStatusRank[b.status];
+      if (statusDifference !== 0) return statusDifference;
+      return a.currentStock - b.currentStock;
+    });
+  const reorderRecommendationSummary = reorderRecommendations.reduce(
+    (summary, recommendation) => {
+      if (recommendation.status === "Out of Stock") summary.outOfStockCount += 1;
+      if (recommendation.status === "Urgent Reorder") summary.urgentReorderCount += 1;
+      if (recommendation.status === "Low Stock Soon") summary.lowStockSoonCount += 1;
+      if (recommendation.missingReorderLevel) summary.missingReorderLevelCount += 1;
+      return summary;
+    },
+    {
+      outOfStockCount: 0,
+      urgentReorderCount: 0,
+      lowStockSoonCount: 0,
+      missingReorderLevelCount: 0,
+    }
+  );
+  const filteredReorderRecommendations = reorderRecommendations.filter((recommendation) => {
+    const matchesFilter =
+      reorderRecommendationFilter === "all" ||
+      (reorderRecommendationFilter === "missing-reorder-level" &&
+        recommendation.missingReorderLevel) ||
+      recommendation.status === reorderRecommendationFilter;
+    const searchTerm = reorderRecommendationSearch.trim().toLowerCase();
+    const matchesSearch =
+      !searchTerm ||
+      [recommendation.productName, recommendation.brandName, recommendation.categoryName].some(
+        (value) => value.toLowerCase().includes(searchTerm)
+      );
+    return matchesFilter && matchesSearch;
+  });
 
   // Receivables per customer
   const receivablesStats = customers.map((customer) => {
@@ -3293,6 +3408,36 @@ export default function Home() {
             </div>
           </div>
 
+          <div className="mt-6 rounded border border-amber-200 bg-amber-50 p-4">
+            <h3 className="mb-3 text-lg font-medium text-amber-950">Reorder Summary</h3>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded border border-amber-200 bg-white p-3">
+                <div className="text-sm text-amber-700">Out of Stock</div>
+                <div className="mt-1 text-2xl font-semibold text-amber-950">
+                  {reorderRecommendationSummary.outOfStockCount}
+                </div>
+              </div>
+              <div className="rounded border border-amber-200 bg-white p-3">
+                <div className="text-sm text-amber-700">Urgent Reorder</div>
+                <div className="mt-1 text-2xl font-semibold text-amber-950">
+                  {reorderRecommendationSummary.urgentReorderCount}
+                </div>
+              </div>
+              <div className="rounded border border-amber-200 bg-white p-3">
+                <div className="text-sm text-amber-700">Low Stock Soon</div>
+                <div className="mt-1 text-2xl font-semibold text-amber-950">
+                  {reorderRecommendationSummary.lowStockSoonCount}
+                </div>
+              </div>
+              <div className="rounded border border-amber-200 bg-white p-3">
+                <div className="text-sm text-amber-700">No Reorder Level</div>
+                <div className="mt-1 text-2xl font-semibold text-amber-950">
+                  {reorderRecommendationSummary.missingReorderLevelCount}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
               <h3 className="mb-3 text-lg font-medium text-gray-900">Low Stock Products</h3>
@@ -3672,6 +3817,107 @@ export default function Home() {
               ))}
             </ul>
           )}
+
+          <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <h3 className="text-lg font-medium text-gray-900">Inventory Reorder Recommendations</h3>
+              <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
+                <select
+                  value={reorderRecommendationFilter}
+                  onChange={(e) => setReorderRecommendationFilter(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="all">All</option>
+                  <option value="Out of Stock">Out of Stock</option>
+                  <option value="Urgent Reorder">Urgent Reorder</option>
+                  <option value="Low Stock Soon">Low Stock Soon</option>
+                  <option value="Healthy">Healthy</option>
+                  <option value="missing-reorder-level">Missing Reorder Level</option>
+                </select>
+                <input
+                  type="search"
+                  value={reorderRecommendationSearch}
+                  onChange={(e) => setReorderRecommendationSearch(e.target.value)}
+                  placeholder="Search product, brand, category"
+                  className="rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            {filteredReorderRecommendations.length === 0 ? (
+              <p className="text-sm text-gray-600">No reorder recommendations match the current filters.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2">Product</th>
+                      <th className="px-3 py-2">Current Stock</th>
+                      <th className="px-3 py-2">Reorder Level</th>
+                      <th className="px-3 py-2">Recent 30-day Sales</th>
+                      <th className="px-3 py-2">Daily Avg</th>
+                      <th className="px-3 py-2">Days Left</th>
+                      <th className="px-3 py-2">Suggested Reorder</th>
+                      <th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredReorderRecommendations.map((recommendation) => (
+                      <tr key={recommendation.productId}>
+                        <td className="px-3 py-3">
+                          <div className="font-medium text-gray-900">{recommendation.productName}</div>
+                          <div className="text-xs text-gray-500">
+                            {recommendation.brandName || "No brand"} · {recommendation.categoryName || "No category"}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          {recommendation.currentStock} {recommendation.unitType}
+                        </td>
+                        <td className="px-3 py-3">
+                          {recommendation.reorderLevel > 0
+                            ? `${recommendation.reorderLevel} ${recommendation.unitType}`
+                            : "Set reorder level first"}
+                        </td>
+                        <td className="px-3 py-3">
+                          {recommendation.recentSalesQuantity} {recommendation.unitType}
+                        </td>
+                        <td className="px-3 py-3">
+                          {recommendation.dailyAverageSales > 0
+                            ? `${recommendation.dailyAverageSales.toFixed(2)} ${recommendation.unitType}/day`
+                            : "No recent sales"}
+                        </td>
+                        <td className="px-3 py-3">
+                          {recommendation.estimatedDaysLeft === null
+                            ? "No recent sales"
+                            : `${Math.max(0, recommendation.estimatedDaysLeft).toFixed(1)} days`}
+                        </td>
+                        <td className="px-3 py-3">
+                          {recommendation.reorderLevel > 0
+                            ? `${recommendation.suggestedReorderQuantity} ${recommendation.unitType}`
+                            : "Set reorder level first"}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`inline-flex rounded px-2 py-1 text-xs font-medium ${
+                              recommendation.status === "Out of Stock"
+                                ? "bg-red-100 text-red-700"
+                                : recommendation.status === "Urgent Reorder"
+                                  ? "bg-orange-100 text-orange-700"
+                                  : recommendation.status === "Low Stock Soon"
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-green-100 text-green-700"
+                            }`}
+                          >
+                            {recommendation.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </section>
         )}
 
