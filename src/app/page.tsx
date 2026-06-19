@@ -212,9 +212,64 @@ const getUsableTimestamp = (...dateValues: Array<unknown>) => {
   };
 };
 
+const formatPKR = (value: unknown) =>
+  new Intl.NumberFormat("en-PK", {
+    style: "currency",
+    currency: "PKR",
+    maximumFractionDigits: 2,
+  }).format(safeNumber(value));
+
+const formatDate = (value: unknown) => {
+  if (typeof value !== "string" || !value.trim()) return "-";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "-";
+  return date.toLocaleDateString("en-PK", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+};
+
+const escapeHtml = (value: unknown) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const downloadCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
+  if (typeof window === "undefined" || typeof document === "undefined" || rows.length === 0) {
+    return;
+  }
+
+  const headers = Object.keys(rows[0]);
+  const escapeCsvCell = (value: unknown) => {
+    let text = String(value ?? "");
+    if (/^[=+\-@]/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""').replace(/\r?\n/g, "\n")}"`;
+  };
+  const csv = [
+    headers.map(escapeCsvCell).join(","),
+    ...rows.map((row) => headers.map((header) => escapeCsvCell(row[header])).join(",")),
+  ].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 export default function Home() {
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [printPreviewTitle, setPrintPreviewTitle] = useState("");
+  const [printPreviewHtml, setPrintPreviewHtml] = useState("");
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [reorderRecommendationFilter, setReorderRecommendationFilter] = useState("all");
   const [reorderRecommendationSearch, setReorderRecommendationSearch] = useState("");
   const [name, setName] = useState("");
@@ -2683,6 +2738,8 @@ export default function Home() {
         brandName: brand?.name ?? "",
         categoryName: category?.name ?? "",
         unitType: product.unit_type ?? "units",
+        purchasedQty,
+        soldQty,
         currentStock,
         reorderLevel,
         recentSalesQuantity,
@@ -3102,6 +3159,392 @@ export default function Home() {
     .sort((a, b) => b.grossProfit - a.grossProfit)
     .slice(0, 10);
 
+  const organizationDisplayName =
+    (currentProfile?.organization_name ?? organizationName).trim() || "Organization";
+
+  const renderRows = (rows: string[][]) =>
+    rows
+      .map(
+        (row) =>
+          `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`
+      )
+      .join("");
+
+  const renderHeaderRows = (headers: string[]) =>
+    `<tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>`;
+
+  const openPrintPreview = (title: string, html: string) => {
+    if (!html.trim()) return;
+    setPrintPreviewTitle(title.trim() || "Print Preview");
+    setPrintPreviewHtml(html);
+    setIsPrintPreviewOpen(true);
+  };
+
+  const handlePrintSalesInvoice = (transaction: SalesTransaction) => {
+    const customer = customers.find((item) => item.id === transaction.customer_id);
+    const lineItems = salesItems.filter((item) => item.sales_transaction_id === transaction.id);
+    const creditAllocation = creditAllocationByTransaction[transaction.id];
+    const invoiceTotal =
+      creditAllocation?.invoiceTotal ??
+      lineItems.reduce(
+        (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price),
+        0
+      );
+    const lineRows =
+      lineItems.length === 0
+        ? [["No line items found", "-", formatPKR(0), formatPKR(0)]]
+        : lineItems.map((item) => {
+            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+            const quantity = safeNumber(item.quantity);
+            const sellingPrice = safeNumber(item.selling_price);
+            return [
+              product?.name ?? "Unknown Product",
+              String(quantity),
+              formatPKR(sellingPrice),
+              formatPKR(quantity * sellingPrice),
+            ];
+          });
+
+    openPrintPreview(
+      `Sales Invoice ${transaction.invoice_number}`,
+      `<h1>TradeOS</h1>
+      <p class="muted">${escapeHtml(organizationDisplayName)}</p>
+      <h2>Sales Invoice</h2>
+      <div class="grid">
+        <div><strong>Invoice:</strong> ${escapeHtml(transaction.invoice_number)}</div>
+        <div><strong>Sale Date:</strong> ${escapeHtml(formatDate(transaction.sale_date ?? transaction.created_at))}</div>
+        <div><strong>Customer:</strong> ${escapeHtml(customer?.customer_name ?? "Unknown Customer")}</div>
+        <div><strong>Payment Type:</strong> ${escapeHtml(transaction.payment_type === "credit" ? "Credit" : "Cash")}</div>
+        ${
+          transaction.credit_due_date
+            ? `<div><strong>Credit Due Date:</strong> ${escapeHtml(formatDate(transaction.credit_due_date))}</div>`
+            : ""
+        }
+      </div>
+      <table>
+        <thead>${renderHeaderRows(["Product", "Quantity", "Selling Price", "Line Total"])}</thead>
+        <tbody>${renderRows(lineRows)}</tbody>
+      </table>
+      <div class="summary">
+        <p><strong>Grand Total:</strong> ${escapeHtml(formatPKR(invoiceTotal))}</p>
+        ${
+          transaction.payment_type === "credit"
+            ? `<p><strong>Remaining Balance:</strong> ${escapeHtml(formatPKR(creditAllocation?.remainingUnpaidAmount ?? 0))}</p>`
+            : ""
+        }
+      </div>
+      <p class="footer">Generated by TradeOS</p>`
+    );
+  };
+
+  const handlePrintPurchaseInvoice = (transaction: PurchaseTransaction) => {
+    const supplier = suppliers.find((item) => item.id === transaction.supplier_id);
+    const lineItems = purchaseItems.filter((item) => item.purchase_transaction_id === transaction.id);
+    const linkedPurchaseExpenses = expenses.filter(
+      (expense) => expense.purchase_transaction_id === transaction.id
+    );
+    const purchaseValue = lineItems.reduce(
+      (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.purchase_price),
+      0
+    );
+    const linkedExpenseTotal = linkedPurchaseExpenses.reduce(
+      (sum, expense) => sum + safeNumber(expense.amount),
+      0
+    );
+    const landedInvoiceCost = purchaseValue + linkedExpenseTotal;
+    const paymentSummary = supplierPaymentAllocationByPurchaseTransaction[transaction.id];
+    const remainingPayable = Math.max(
+      0,
+      paymentSummary?.remainingPayableAmount ?? paymentSummary?.purchaseTotal ?? purchaseValue
+    );
+    const paidAmount = paymentSummary?.paidAmount ?? 0;
+    const paymentStatus =
+      remainingPayable <= 0 ? "Paid" : paidAmount > 0 ? "Partially Paid" : "Unpaid";
+    const lineRows =
+      lineItems.length === 0
+        ? [["No line items found", "-", formatPKR(0), formatPKR(0), "-", "-"]]
+        : lineItems.map((item) => {
+            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+            const quantity = safeNumber(item.quantity);
+            const purchasePrice = safeNumber(item.purchase_price);
+            return [
+              product?.name ?? "Unknown Product",
+              String(quantity),
+              formatPKR(purchasePrice),
+              formatPKR(quantity * purchasePrice),
+              item.batch_number ?? "-",
+              item.expiry_date ? formatDate(item.expiry_date) : "-",
+            ];
+          });
+
+    openPrintPreview(
+      `Purchase Invoice ${transaction.invoice_number}`,
+      `<h1>TradeOS</h1>
+      <p class="muted">${escapeHtml(organizationDisplayName)}</p>
+      <h2>Purchase Invoice</h2>
+      <div class="grid">
+        <div><strong>Invoice:</strong> ${escapeHtml(transaction.invoice_number)}</div>
+        <div><strong>Purchase Date:</strong> ${escapeHtml(formatDate(transaction.purchase_date ?? transaction.created_at))}</div>
+        <div><strong>Supplier:</strong> ${escapeHtml(supplier?.supplier_name ?? "Unknown Supplier")}</div>
+        <div><strong>Payment Status:</strong> ${escapeHtml(paymentStatus)}</div>
+      </div>
+      <table>
+        <thead>${renderHeaderRows(["Product", "Quantity", "Purchase Price", "Line Total", "Batch", "Expiry"])}</thead>
+        <tbody>${renderRows(lineRows)}</tbody>
+      </table>
+      <div class="summary">
+        <p><strong>Purchase Total:</strong> ${escapeHtml(formatPKR(purchaseValue))}</p>
+        <p><strong>Linked Purchase Expenses:</strong> ${escapeHtml(formatPKR(linkedExpenseTotal))}</p>
+        <p><strong>Landed Invoice Cost:</strong> ${escapeHtml(formatPKR(landedInvoiceCost))}</p>
+        <p><strong>Remaining Payable:</strong> ${escapeHtml(formatPKR(remainingPayable))}</p>
+      </div>
+      <p class="footer">Generated by TradeOS</p>`
+    );
+  };
+
+  const handleExportInventoryCsv = () => {
+    downloadCsv(
+      "tradeos-inventory-report.csv",
+      reorderRecommendations.map((recommendation) => ({
+        "Product Name": recommendation.productName,
+        Brand: recommendation.brandName || "No brand",
+        Category: recommendation.categoryName || "No category",
+        "Unit Type": recommendation.unitType,
+        "Purchased Quantity": recommendation.purchasedQty,
+        "Sold Quantity": recommendation.soldQty,
+        "Current Stock": recommendation.currentStock,
+        "Reorder Level": recommendation.reorderLevel,
+        "Recent 30 Day Sales": recommendation.recentSalesQuantity,
+        "Daily Average Sales": recommendation.dailyAverageSales.toFixed(2),
+        "Estimated Days Left":
+          recommendation.estimatedDaysLeft === null
+            ? "No recent sales"
+            : Math.max(0, recommendation.estimatedDaysLeft).toFixed(1),
+        "Suggested Reorder Quantity": recommendation.suggestedReorderQuantity,
+        "Reorder Status": recommendation.status,
+      }))
+    );
+  };
+
+  const handleExportProfitLossCsv = () => {
+    const summaryRows = [
+      { Section: "Summary", Metric: "Start Date", Value: profitLossStartDate || "All Time" },
+      { Section: "Summary", Metric: "End Date", Value: profitLossEndDate || "All Time" },
+      { Section: "Summary", Metric: "Total Revenue", Value: profitLossTotals.totalRevenue },
+      { Section: "Summary", Metric: "Known Cost of Goods Sold", Value: profitLossTotals.knownCostOfGoodsSold },
+      { Section: "Summary", Metric: "Gross Profit on Costed Sales", Value: grossProfitOnCostedSales },
+      { Section: "Summary", Metric: "Purchase-Linked Expenses", Value: purchaseLinkedExpenses },
+      { Section: "Summary", Metric: "Operating Expenses", Value: operatingExpenses },
+      { Section: "Summary", Metric: "Total Recorded Expenses", Value: totalRecordedExpenses },
+      { Section: "Summary", Metric: netProfitLabel, Value: mvpNetProfit },
+      { Section: "Summary", Metric: "Cost Coverage Percentage", Value: costCoverage.toFixed(2) },
+      { Section: "Summary", Metric: "Missing Cost Sales Value", Value: profitLossTotals.missingCostSalesValue },
+      { Section: "Summary", Metric: "Missing Cost Sales Lines", Value: profitLossTotals.missingCostSalesLineCount },
+    ];
+    const categoryRows = expenseCategoryBreakdown.map((category) => ({
+      Section: "Expense Category",
+      Metric: category.expenseType,
+      Value: category.totalAmount,
+      Entries: category.entryCount,
+    }));
+    downloadCsv("tradeos-profit-loss-report.csv", [...summaryRows, ...categoryRows]);
+  };
+
+  const getCustomerCreditSummary = (customer: Customer) => {
+    const customerCreditTransactionIds = salesTransactions
+      .filter(
+        (transaction) =>
+          transaction.customer_id === customer.id && transaction.payment_type === "credit"
+      )
+      .map((transaction) => transaction.id);
+    const outstandingBalance = customerCreditTransactionIds.reduce(
+      (sum, transactionId) =>
+        sum + Math.max(0, creditAllocationByTransaction[transactionId]?.remainingUnpaidAmount ?? 0),
+      0
+    );
+    const overdueInvoices = customerCreditTransactionIds
+      .map((transactionId) => {
+        const transaction = salesTransactionsById[transactionId];
+        return {
+          transaction,
+          remainingUnpaidAmount:
+            creditAllocationByTransaction[transactionId]?.remainingUnpaidAmount ?? 0,
+        };
+      })
+      .filter(({ transaction, remainingUnpaidAmount }) => {
+        const dueDate = getDateOnly(transaction?.credit_due_date);
+        return Boolean(dueDate && remainingUnpaidAmount > 0 && dueDate < todayDateValue);
+      });
+
+    return {
+      outstandingBalance,
+      overdueAmount: overdueInvoices.reduce(
+        (sum, invoice) => sum + invoice.remainingUnpaidAmount,
+        0
+      ),
+      overdueInvoiceCount: overdueInvoices.length,
+    };
+  };
+
+  const handleExportCustomerBalancesCsv = () => {
+    downloadCsv(
+      "tradeos-customer-balances.csv",
+      customers.map((customer) => {
+        const summary = getCustomerCreditSummary(customer);
+        return {
+          "Customer Name": customer.customer_name,
+          "Customer Type": customer.customer_type ?? "",
+          "Credit Policy": creditPolicyLabels[customer.credit_policy ?? "cash_only"] ?? "Cash Only",
+          "Credit Limit": safeNumber(customer.credit_limit),
+          "Credit Days": safeNumber(customer.credit_days),
+          "Outstanding Balance": summary.outstandingBalance,
+          "Overdue Amount": summary.overdueAmount,
+          "Overdue Invoice Count": summary.overdueInvoiceCount,
+          "Above Limit Allowed": customer.allow_over_limit ? "Yes" : "No",
+          "Overdue Sales Allowed": customer.allow_overdue_sales ? "Yes" : "No",
+        };
+      })
+    );
+  };
+
+  const handleExportSupplierBalancesCsv = () => {
+    downloadCsv(
+      "tradeos-supplier-balances.csv",
+      suppliers.map((supplier) => {
+        const supplierTransactionIds = purchaseTransactions
+          .filter((transaction) => transaction.supplier_id === supplier.id)
+          .map((transaction) => transaction.id);
+        const totalPurchases = supplierTransactionIds.reduce(
+          (sum, transactionId) =>
+            sum + (supplierPaymentAllocationByPurchaseTransaction[transactionId]?.purchaseTotal ?? 0),
+          0
+        );
+        const totalPayments = totalSupplierPaymentsBySupplier[supplier.id] ?? 0;
+        const currentPayable = supplierTransactionIds.reduce(
+          (sum, transactionId) =>
+            sum +
+            Math.max(
+              0,
+              supplierPaymentAllocationByPurchaseTransaction[transactionId]?.remainingPayableAmount ?? 0
+            ),
+          0
+        );
+        const unallocatedPayments = supplierPayments
+          .filter((payment) => payment.supplier_id === supplier.id)
+          .reduce((sum, payment) => {
+            const paymentId = String(payment.id ?? "");
+            return (
+              sum +
+              Math.max(
+                0,
+                safeNumber(payment.amount) - (explicitSupplierAllocationsByPayment[paymentId] ?? 0)
+              )
+            );
+          }, 0);
+        return {
+          "Supplier Name": supplier.supplier_name,
+          "Total Purchases": totalPurchases,
+          "Total Payments": totalPayments,
+          "Current Payable": currentPayable,
+          "Unallocated Payments": unallocatedPayments,
+        };
+      })
+    );
+  };
+
+  const handlePrintCustomerStatement = (customerId: string | null) => {
+    if (!customerId) return;
+    const customer = customers.find((item) => item.id === customerId);
+    if (!customer) return;
+    const customerCreditTransactions = salesTransactions.filter(
+      (transaction) => transaction.customer_id === customerId && transaction.payment_type === "credit"
+    );
+    const totalCreditSales = customerCreditTransactions.reduce(
+      (sum, transaction) => sum + (creditAllocationByTransaction[transaction.id]?.invoiceTotal ?? 0),
+      0
+    );
+    const totalPayments = totalCustomerPaymentsByCustomer[customerId] ?? 0;
+    const summary = getCustomerCreditSummary(customer);
+    const invoiceRows =
+      customerCreditTransactions.length === 0
+        ? [["No credit invoices found", "-", formatPKR(0), formatPKR(0), formatPKR(0), "-"]]
+        : customerCreditTransactions.map((transaction) => {
+            const allocation = creditAllocationByTransaction[transaction.id];
+            const remainingBalance = Math.max(0, allocation?.remainingUnpaidAmount ?? 0);
+            const dueDate = getDateOnly(transaction.credit_due_date);
+            const status =
+              remainingBalance <= 0
+                ? "Paid"
+                : dueDate && dueDate < todayDateValue
+                  ? "Overdue"
+                  : "Credit outstanding";
+            return [
+              transaction.invoice_number,
+              formatDate(transaction.sale_date ?? transaction.created_at),
+              formatPKR(allocation?.invoiceTotal ?? 0),
+              formatPKR(allocation?.allocatedAmount ?? 0),
+              formatPKR(remainingBalance),
+              status,
+            ];
+          });
+
+    openPrintPreview(
+      `Customer Statement ${customer.customer_name}`,
+      `<h1>TradeOS</h1>
+      <p class="muted">${escapeHtml(organizationDisplayName)}</p>
+      <h2>Customer Statement</h2>
+      <div class="grid">
+        <div><strong>Customer:</strong> ${escapeHtml(customer.customer_name)}</div>
+        <div><strong>Credit Policy:</strong> ${escapeHtml(creditPolicyLabels[customer.credit_policy ?? "cash_only"] ?? "Cash Only")}</div>
+        <div><strong>Total Credit Sales:</strong> ${escapeHtml(formatPKR(totalCreditSales))}</div>
+        <div><strong>Total Payments:</strong> ${escapeHtml(formatPKR(totalPayments))}</div>
+        <div><strong>Outstanding Balance:</strong> ${escapeHtml(formatPKR(summary.outstandingBalance))}</div>
+      </div>
+      <table>
+        <thead>${renderHeaderRows(["Invoice", "Sale Date", "Invoice Total", "Paid", "Remaining", "Status"])}</thead>
+        <tbody>${renderRows(invoiceRows)}</tbody>
+      </table>
+      <p class="footer">Generated by TradeOS</p>`
+    );
+  };
+
+  const handlePrintSupplierLedger = () => {
+    if (!selectedSupplierLedgerId) return;
+    const supplier = suppliers.find((item) => item.id === selectedSupplierLedgerId);
+    if (!supplier) return;
+    const ledgerRows =
+      supplierLedgerEntries.length === 0
+        ? [["No supplier ledger entries in this date range", "-", "-", formatPKR(0), formatPKR(0), formatPKR(0)]]
+        : supplierLedgerEntries.map((entry) => [
+            entry.date ?? "-",
+            entry.reference,
+            entry.notes || "-",
+            formatPKR(entry.debit),
+            formatPKR(entry.credit),
+            formatPKR(entry.runningBalance),
+          ]);
+
+    openPrintPreview(
+      `Supplier Ledger ${supplier.supplier_name}`,
+      `<h1>TradeOS</h1>
+      <p class="muted">${escapeHtml(organizationDisplayName)}</p>
+      <h2>Supplier Ledger</h2>
+      <div class="grid">
+        <div><strong>Supplier:</strong> ${escapeHtml(supplier.supplier_name)}</div>
+        <div><strong>Date Range:</strong> ${escapeHtml(supplierLedgerStartDate || "All Time")} to ${escapeHtml(supplierLedgerEndDate || "All Time")}</div>
+        <div><strong>Total Purchases:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalPurchases))}</div>
+        <div><strong>Total Payments:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalPayments))}</div>
+        <div><strong>Current Payable:</strong> ${escapeHtml(formatPKR(supplierLedgerCurrentBalance))}</div>
+        <div><strong>Unallocated Payments:</strong> ${escapeHtml(formatPKR(supplierLedgerUnallocatedPayments))}</div>
+      </div>
+      <table>
+        <thead>${renderHeaderRows(["Date", "Reference", "Notes", "Debit", "Credit", "Running Balance"])}</thead>
+        <tbody>${renderRows([["-", "Opening balance", "MVP opening balance", formatPKR(0), formatPKR(0), formatPKR(0)], ...ledgerRows])}</tbody>
+      </table>
+      <p class="footer">Generated by TradeOS</p>`
+    );
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage(null);
@@ -3291,6 +3734,105 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-100">
+      <style>{`
+        .tradeos-print-document {
+          color: #111827;
+          font-family: Arial, sans-serif;
+          line-height: 1.4;
+        }
+        .tradeos-print-document h1,
+        .tradeos-print-document h2,
+        .tradeos-print-document h3 {
+          margin: 0 0 8px;
+        }
+        .tradeos-print-document .muted {
+          color: #6b7280;
+        }
+        .tradeos-print-document .grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px 24px;
+          margin: 16px 0;
+        }
+        .tradeos-print-document table {
+          border-collapse: collapse;
+          margin-top: 16px;
+          width: 100%;
+        }
+        .tradeos-print-document th,
+        .tradeos-print-document td {
+          border: 1px solid #d1d5db;
+          font-size: 12px;
+          padding: 8px;
+          text-align: left;
+          vertical-align: top;
+        }
+        .tradeos-print-document th {
+          background: #f3f4f6;
+        }
+        .tradeos-print-document .summary {
+          margin-top: 16px;
+          text-align: right;
+        }
+        .tradeos-print-document .footer {
+          border-top: 1px solid #d1d5db;
+          margin-top: 32px;
+          padding-top: 12px;
+        }
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print-preview-content,
+          .print-preview-content * {
+            visibility: visible;
+          }
+          .print-preview-content {
+            background: white;
+            left: 0;
+            padding: 0;
+            position: absolute;
+            top: 0;
+            width: 100%;
+          }
+          .print-preview-shell,
+          .print-preview-actions {
+            display: none !important;
+          }
+          .tradeos-print-document {
+            font-size: 12px;
+          }
+        }
+      `}</style>
+      {isPrintPreviewOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-950/60 p-4 print:static print:bg-white print:p-0">
+          <div className="mx-auto max-w-5xl rounded border border-gray-200 bg-white shadow-xl print:shadow-none">
+            <div className="print-preview-shell flex flex-col gap-3 border-b border-gray-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">{printPreviewTitle}</h2>
+              <div className="print-preview-actions flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+                >
+                  Print
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrintPreviewOpen(false)}
+                  className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div
+              className="print-preview-content tradeos-print-document p-5"
+              dangerouslySetInnerHTML={{ __html: printPreviewHtml }}
+            />
+          </div>
+        </div>
+      )}
       <div className="min-h-screen md:flex">
         <aside className="hidden w-64 shrink-0 border-r border-gray-200 bg-white md:sticky md:top-0 md:block md:h-screen">
           <div className="border-b border-gray-200 p-5">
@@ -3525,7 +4067,16 @@ export default function Home() {
 
         {activeSection === "profit-loss" && (
         <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Profit Dashboard</h2>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-gray-900">Profit Dashboard</h2>
+            <button
+              type="button"
+              onClick={handleExportProfitLossCsv}
+              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+            >
+              Export P&amp;L CSV
+            </button>
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-2 text-sm text-gray-700">
@@ -3791,7 +4342,16 @@ export default function Home() {
 
         {activeSection === "inventory" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Inventory Dashboard</h2>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-gray-900">Inventory Dashboard</h2>
+            <button
+              type="button"
+              onClick={handleExportInventoryCsv}
+              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+            >
+              Export Inventory CSV
+            </button>
+          </div>
           {products.length === 0 ? (
             <p className="text-sm text-gray-600">No products to show.</p>
           ) : (
@@ -4157,7 +4717,16 @@ export default function Home() {
                         : "Credit outstanding";
                 return (
                   <li key={tx.id} className="flex flex-col gap-1 rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700">
-                    <div className="font-medium text-gray-900">Invoice: {tx.invoice_number}</div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="font-medium text-gray-900">Invoice: {tx.invoice_number}</div>
+                      <button
+                        type="button"
+                        onClick={() => handlePrintSalesInvoice(tx)}
+                        className="rounded border border-blue-600 px-3 py-1 text-xs text-blue-600 hover:bg-blue-50"
+                      >
+                        Print Invoice
+                      </button>
+                    </div>
                     <div>Customer: {customer?.customer_name ?? "Unknown"}</div>
                     <div className="text-xs text-gray-500">Date: {date}</div>
                     <div>Payment Type: {paymentType === "credit" ? "Credit" : "Cash"}</div>
@@ -4187,7 +4756,26 @@ export default function Home() {
 
         {activeSection === "customer-payments" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Customer Payments</h2>
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <h2 className="text-xl font-medium text-gray-900">Customer Payments</h2>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleExportCustomerBalancesCsv}
+                className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+              >
+                Export Customer Balances CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePrintCustomerStatement(selectedCustomerPaymentId)}
+                disabled={!selectedCustomerPaymentId}
+                className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+              >
+                Print Customer Statement
+              </button>
+            </div>
+          </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <select
               value={selectedCustomerPaymentId ?? ""}
@@ -4409,7 +4997,16 @@ export default function Home() {
 
         {activeSection === "supplier-payments" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Supplier Payments</h2>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-gray-900">Supplier Payments</h2>
+            <button
+              type="button"
+              onClick={handleExportSupplierBalancesCsv}
+              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+            >
+              Export Supplier Balances CSV
+            </button>
+          </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <select
               value={selectedSupplierPaymentId ?? ""}
@@ -4622,7 +5219,26 @@ export default function Home() {
 
         {activeSection === "supplier-ledger" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Supplier Ledger</h2>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-gray-900">Supplier Ledger</h2>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleExportSupplierBalancesCsv}
+                className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+              >
+                Export Supplier Balances CSV
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintSupplierLedger}
+                disabled={!selectedSupplierLedgerId}
+                className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+              >
+                Print Supplier Ledger
+              </button>
+            </div>
+          </div>
           <p className="mb-4 text-xs text-gray-500">
             Older supplier payments without invoice allocations are applied to the oldest unpaid purchase invoices first.
           </p>
@@ -5955,7 +6571,14 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handlePrintPurchaseInvoice(transaction)}
+                        className="rounded border border-blue-600 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50"
+                      >
+                        Print Purchase
+                      </button>
                       {(expenseReviewStatus === "pending" || expenseReviewStatus === "review_later") && (
                         <>
                           <button
