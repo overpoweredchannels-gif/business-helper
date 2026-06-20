@@ -77,6 +77,37 @@ interface SalesTransaction {
   credit_days_snapshot: number | null;
 }
 
+interface Task {
+  id: string;
+  organization_id: string;
+  title: string;
+  task_type: string;
+  priority: string;
+  status: string;
+  due_date: string | null;
+  notes: string | null;
+  customer_id: string | null;
+  supplier_id: string | null;
+  purchase_transaction_id: string | null;
+  sales_transaction_id: string | null;
+  product_id: number | string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+interface TaskSuggestion {
+  key: string;
+  title: string;
+  reason: string;
+  task_type: string;
+  priority: string;
+  customer_id: string | null;
+  supplier_id: string | null;
+  product_id: number | string | null;
+  purchase_transaction_id: string | null;
+  sales_transaction_id: string | null;
+}
+
 interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;
@@ -123,7 +154,8 @@ type SectionId =
   | "profit-loss"
   | "customer-credit"
   | "supplier-ledger"
-  | "business-settings";
+  | "business-settings"
+  | "task-manager";
 
 const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
@@ -142,6 +174,7 @@ const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "customer-credit", label: "Customer Credit" },
   { id: "supplier-ledger", label: "Supplier Ledger" },
   { id: "business-settings", label: "Business Settings" },
+  { id: "task-manager", label: "Task Manager" },
 ];
 
 interface PurchaseLine {
@@ -266,6 +299,47 @@ const downloadCsv = (filename: string, rows: Array<Record<string, unknown>>) => 
   URL.revokeObjectURL(url);
 };
 
+const taskTypes = [
+  "general",
+  "customer_follow_up",
+  "supplier_follow_up",
+  "payment_collection",
+  "stock_check",
+  "purchase_review",
+  "sales_follow_up",
+  "reorder",
+  "expense_review",
+];
+
+const taskPriorities = ["low", "medium", "high", "urgent"];
+const taskStatuses = ["pending", "in_progress", "completed", "cancelled"];
+
+const taskTypeLabels: Record<string, string> = {
+  general: "General",
+  customer_follow_up: "Customer Follow Up",
+  supplier_follow_up: "Supplier Follow Up",
+  payment_collection: "Payment Collection",
+  stock_check: "Stock Check",
+  purchase_review: "Purchase Review",
+  sales_follow_up: "Sales Follow Up",
+  reorder: "Reorder",
+  expense_review: "Expense Review",
+};
+
+const taskPriorityLabels: Record<string, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  urgent: "Urgent",
+};
+
+const taskStatusLabels: Record<string, string> = {
+  pending: "Pending",
+  in_progress: "In Progress",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
 export default function Home() {
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -365,6 +439,23 @@ export default function Home() {
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskType, setTaskType] = useState("general");
+  const [taskPriority, setTaskPriority] = useState("medium");
+  const [taskStatus, setTaskStatus] = useState("pending");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskNotes, setTaskNotes] = useState("");
+  const [selectedTaskCustomerId, setSelectedTaskCustomerId] = useState("");
+  const [selectedTaskSupplierId, setSelectedTaskSupplierId] = useState("");
+  const [selectedTaskProductId, setSelectedTaskProductId] = useState("");
+  const [selectedTaskPurchaseId, setSelectedTaskPurchaseId] = useState("");
+  const [selectedTaskSaleId, setSelectedTaskSaleId] = useState("");
+  const [taskLoading, setTaskLoading] = useState(false);
+  const [taskMessage, setTaskMessage] = useState<string | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [taskFilter, setTaskFilter] = useState("all");
+  const [taskSearch, setTaskSearch] = useState("");
 
   useEffect(() => {
     checkAuthUser();
@@ -383,6 +474,28 @@ export default function Home() {
     }
 
     setExpenses(data ?? []);
+  };
+
+  const fetchTasks = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setTasks([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Supabase fetch tasks error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setTasks(data ?? []);
   };
 
   const populateBusinessSettings = (organization: any | null) => {
@@ -474,6 +587,7 @@ export default function Home() {
     fetchSupplierPayments(profile.organization_id);
     fetchSupplierPaymentAllocations(profile.organization_id);
     fetchExpenses(profile.organization_id);
+    fetchTasks(profile.organization_id);
     fetchPurchaseItems();
     fetchSalesItems();
   };
@@ -3204,6 +3318,333 @@ export default function Home() {
     .sort((a, b) => b.grossProfit - a.grossProfit)
     .slice(0, 10);
 
+  const resetTaskForm = () => {
+    setTaskTitle("");
+    setTaskType("general");
+    setTaskPriority("medium");
+    setTaskStatus("pending");
+    setTaskDueDate("");
+    setTaskNotes("");
+    setSelectedTaskCustomerId("");
+    setSelectedTaskSupplierId("");
+    setSelectedTaskProductId("");
+    setSelectedTaskPurchaseId("");
+    setSelectedTaskSaleId("");
+  };
+
+  const getTaskRelations = () => {
+    const customerId = customers.some((customer) => customer.id === selectedTaskCustomerId)
+      ? selectedTaskCustomerId
+      : null;
+    const supplierId = suppliers.some((supplier) => supplier.id === selectedTaskSupplierId)
+      ? selectedTaskSupplierId
+      : null;
+    const purchaseTransactionId = purchaseTransactions.some(
+      (transaction) => transaction.id === selectedTaskPurchaseId
+    )
+      ? selectedTaskPurchaseId
+      : null;
+    const salesTransactionId = salesTransactions.some(
+      (transaction) => transaction.id === selectedTaskSaleId
+    )
+      ? selectedTaskSaleId
+      : null;
+    const product = products.find((item) => String(item.id) === selectedTaskProductId);
+
+    return {
+      customerId,
+      supplierId,
+      productId: product ? product.id : null,
+      purchaseTransactionId,
+      salesTransactionId,
+    };
+  };
+
+  const saveTask = async () => {
+    setTaskMessage(null);
+    setTaskError(null);
+
+    const trimmedTitle = taskTitle.trim();
+    if (!trimmedTitle) {
+      setTaskError("Task title is required.");
+      return;
+    }
+
+    if (!currentOrganizationId) {
+      setTaskError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    if (taskDueDate && Number.isNaN(new Date(`${taskDueDate}T00:00:00`).getTime())) {
+      setTaskError("Please enter a valid due date.");
+      return;
+    }
+
+    const relations = getTaskRelations();
+    setTaskLoading(true);
+
+    try {
+      const { error } = await supabase.from("tasks").insert({
+        organization_id: currentOrganizationId,
+        title: trimmedTitle,
+        task_type: taskTypes.includes(taskType) ? taskType : "general",
+        priority: taskPriorities.includes(taskPriority) ? taskPriority : "medium",
+        status: taskStatuses.includes(taskStatus) ? taskStatus : "pending",
+        due_date: taskDueDate || null,
+        notes: taskNotes.trim() || null,
+        customer_id: relations.customerId,
+        supplier_id: relations.supplierId,
+        product_id: relations.productId,
+        purchase_transaction_id: relations.purchaseTransactionId,
+        sales_transaction_id: relations.salesTransactionId,
+        completed_at: taskStatus === "completed" ? new Date().toISOString() : null,
+      });
+
+      if (error) {
+        console.error("Supabase task insert error:", JSON.stringify(error, null, 2));
+        setTaskError(`Failed to save task: ${JSON.stringify(error, null, 2)}`);
+        return;
+      }
+
+      setTaskMessage("Task saved successfully.");
+      resetTaskForm();
+      await fetchTasks(currentOrganizationId);
+    } catch (err) {
+      setTaskError(err instanceof Error ? err.message : "Failed to save task.");
+      console.error("Error saving task:", err);
+    } finally {
+      setTaskLoading(false);
+    }
+  };
+
+  const updateTaskStatus = async (taskId: string, nextStatus: "in_progress" | "completed" | "cancelled") => {
+    setTaskMessage(null);
+    setTaskError(null);
+
+    if (!currentOrganizationId) {
+      setTaskError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({
+        status: nextStatus,
+        completed_at: nextStatus === "completed" ? new Date().toISOString() : null,
+      })
+      .eq("id", taskId)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase task status update error:", JSON.stringify(error, null, 2));
+      setTaskError(`Failed to update task: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    setTaskMessage(`Task marked ${taskStatusLabels[nextStatus].toLowerCase()}.`);
+    await fetchTasks(currentOrganizationId);
+  };
+
+  const taskMatchesRelation = (
+    task: Task,
+    relation: {
+      customer_id?: string | null;
+      supplier_id?: string | null;
+      purchase_transaction_id?: string | null;
+      sales_transaction_id?: string | null;
+      product_id?: number | string | null;
+    }
+  ) =>
+    (!relation.customer_id || task.customer_id === relation.customer_id) &&
+    (!relation.supplier_id || task.supplier_id === relation.supplier_id) &&
+    (!relation.purchase_transaction_id || task.purchase_transaction_id === relation.purchase_transaction_id) &&
+    (!relation.sales_transaction_id || task.sales_transaction_id === relation.sales_transaction_id) &&
+    (relation.product_id == null || String(task.product_id ?? "") === String(relation.product_id));
+
+  const activeTasks = tasks.filter((task) => task.status !== "completed" && task.status !== "cancelled");
+  const hasActiveTask = (
+    title: string,
+    relation: Parameters<typeof taskMatchesRelation>[1]
+  ) =>
+    activeTasks.some(
+      (task) =>
+        task.title.trim().toLowerCase() === title.trim().toLowerCase() &&
+        taskMatchesRelation(task, relation)
+    );
+
+  const taskSuggestions: TaskSuggestion[] = [
+    ...salesTransactions
+      .filter((transaction) => transaction.payment_type === "credit")
+      .map((transaction) => {
+        const allocation = creditAllocationByTransaction[transaction.id];
+        const remainingUnpaidAmount = allocation?.remainingUnpaidAmount ?? 0;
+        const dueDate = getDateOnly(transaction.credit_due_date);
+        const customer = customers.find((item) => item.id === transaction.customer_id);
+        if (!dueDate || dueDate >= todayDateValue || remainingUnpaidAmount <= 0) return null;
+        const title = `Collect overdue payment from ${customer?.customer_name ?? "Unknown Customer"}`;
+        const relation = {
+          customer_id: transaction.customer_id,
+          sales_transaction_id: transaction.id,
+        };
+        if (hasActiveTask(title, relation)) return null;
+        return {
+          key: `overdue-${transaction.id}`,
+          title,
+          reason: `Invoice ${transaction.invoice_number} is overdue with ${formatPKR(remainingUnpaidAmount)} remaining.`,
+          task_type: "payment_collection",
+          priority: "urgent",
+          customer_id: transaction.customer_id,
+          supplier_id: null,
+          product_id: null,
+          purchase_transaction_id: null,
+          sales_transaction_id: transaction.id,
+        };
+      }),
+    ...purchaseTransactions
+      .filter((transaction) =>
+        ["pending", "review_later", null].includes(transaction.expense_review_status as any)
+      )
+      .map((transaction) => {
+        const supplier = suppliers.find((item) => item.id === transaction.supplier_id);
+        const title = `Review purchase expenses for invoice ${transaction.invoice_number}`;
+        const relation = {
+          supplier_id: transaction.supplier_id,
+          purchase_transaction_id: transaction.id,
+        };
+        if (hasActiveTask(title, relation)) return null;
+        return {
+          key: `expense-review-${transaction.id}`,
+          title,
+          reason: `Purchase invoice ${transaction.invoice_number} needs expense review.`,
+          task_type: "expense_review",
+          priority: "medium",
+          customer_id: null,
+          supplier_id: supplier?.id ?? transaction.supplier_id,
+          product_id: null,
+          purchase_transaction_id: transaction.id,
+          sales_transaction_id: null,
+        };
+      }),
+    ...reorderRecommendations
+      .filter((recommendation) =>
+        recommendation.status === "Out of Stock" || recommendation.status === "Urgent Reorder"
+      )
+      .map((recommendation) => {
+        const title = `Prepare reorder for ${recommendation.productName}`;
+        const relation = { product_id: recommendation.productId };
+        if (hasActiveTask(title, relation)) return null;
+        return {
+          key: `reorder-${recommendation.productId}`,
+          title,
+          reason:
+            recommendation.status === "Out of Stock"
+              ? "Product is out of stock."
+              : "Product is at or below reorder level.",
+          task_type: "reorder",
+          priority: recommendation.status === "Out of Stock" ? "urgent" : "high",
+          customer_id: null,
+          supplier_id: null,
+          product_id: recommendation.productId,
+          purchase_transaction_id: null,
+          sales_transaction_id: null,
+        };
+      }),
+  ].filter(Boolean) as TaskSuggestion[];
+
+  const createTaskFromSuggestion = async (suggestion: (typeof taskSuggestions)[number]) => {
+    if (!currentOrganizationId) {
+      setTaskError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    setTaskMessage(null);
+    setTaskError(null);
+    setTaskLoading(true);
+
+    try {
+      const { error } = await supabase.from("tasks").insert({
+        organization_id: currentOrganizationId,
+        title: suggestion.title,
+        task_type: suggestion.task_type,
+        priority: suggestion.priority,
+        status: "pending",
+        due_date: null,
+        notes: suggestion.reason,
+        customer_id: suggestion.customer_id,
+        supplier_id: suggestion.supplier_id,
+        product_id: suggestion.product_id,
+        purchase_transaction_id: suggestion.purchase_transaction_id,
+        sales_transaction_id: suggestion.sales_transaction_id,
+        completed_at: null,
+      });
+
+      if (error) {
+        console.error("Supabase suggested task insert error:", JSON.stringify(error, null, 2));
+        setTaskError(`Failed to create suggested task: ${JSON.stringify(error, null, 2)}`);
+        return;
+      }
+
+      setTaskMessage("Suggested task created.");
+      await fetchTasks(currentOrganizationId);
+    } catch (err) {
+      setTaskError(err instanceof Error ? err.message : "Failed to create suggested task.");
+      console.error("Error creating suggested task:", err);
+    } finally {
+      setTaskLoading(false);
+    }
+  };
+
+  const taskDashboardSummary = tasks.reduce(
+    (summary, task) => {
+      const dueDate = getDateOnly(task.due_date);
+      const active = task.status !== "completed" && task.status !== "cancelled";
+      if (task.status === "pending") summary.pending += 1;
+      if (active && dueDate && dueDate < todayDateValue) summary.overdue += 1;
+      if (active && dueDate === todayDateValue) summary.dueToday += 1;
+      if (task.priority === "urgent" && active) summary.urgent += 1;
+      return summary;
+    },
+    { pending: 0, overdue: 0, dueToday: 0, urgent: 0 }
+  );
+
+  const nextDashboardTasks = tasks
+    .filter((task) => task.status === "pending" || task.status === "in_progress")
+    .slice()
+    .sort((a, b) => {
+      const aDueDate = getDateOnly(a.due_date) ?? "9999-12-31";
+      const bDueDate = getDateOnly(b.due_date) ?? "9999-12-31";
+      if (aDueDate !== bDueDate) return aDueDate.localeCompare(bDueDate);
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    })
+    .slice(0, 5);
+
+  const filteredTasks = tasks.filter((task) => {
+    const dueDate = getDateOnly(task.due_date);
+    const active = task.status !== "completed" && task.status !== "cancelled";
+    const matchesFilter =
+      taskFilter === "all" ||
+      task.status === taskFilter ||
+      (taskFilter === "overdue" && active && Boolean(dueDate && dueDate < todayDateValue)) ||
+      (taskFilter === "due_today" && active && dueDate === todayDateValue) ||
+      (taskFilter === "high_urgent" && (task.priority === "high" || task.priority === "urgent"));
+
+    if (!matchesFilter) return false;
+
+    const customer = customers.find((item) => item.id === task.customer_id);
+    const supplier = suppliers.find((item) => item.id === task.supplier_id);
+    const product = products.find((item) => String(item.id) === String(task.product_id));
+    const searchTerm = taskSearch.trim().toLowerCase();
+    if (!searchTerm) return true;
+
+    return [
+      task.title,
+      task.notes ?? "",
+      customer?.customer_name ?? "",
+      supplier?.supplier_name ?? "",
+      product?.name ?? "",
+    ].some((value) => value.toLowerCase().includes(searchTerm));
+  });
+
   const organizationDisplayName =
     (currentOrganization?.name ?? currentProfile?.organization_name ?? organizationName).trim() ||
     "Organization";
@@ -4086,6 +4527,59 @@ export default function Home() {
                   {reorderRecommendationSummary.missingReorderLevelCount}
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded border border-blue-200 bg-blue-50 p-4">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-lg font-medium text-blue-950">Task Manager Summary</h3>
+              <button
+                type="button"
+                onClick={() => handleSectionChange("task-manager")}
+                className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+              >
+                Open Task Manager
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded border border-blue-200 bg-white p-3">
+                <div className="text-sm text-blue-700">Pending Tasks</div>
+                <div className="mt-1 text-2xl font-semibold text-blue-950">{taskDashboardSummary.pending}</div>
+              </div>
+              <div className="rounded border border-blue-200 bg-white p-3">
+                <div className="text-sm text-blue-700">Overdue Tasks</div>
+                <div className="mt-1 text-2xl font-semibold text-blue-950">{taskDashboardSummary.overdue}</div>
+              </div>
+              <div className="rounded border border-blue-200 bg-white p-3">
+                <div className="text-sm text-blue-700">Due Today</div>
+                <div className="mt-1 text-2xl font-semibold text-blue-950">{taskDashboardSummary.dueToday}</div>
+              </div>
+              <div className="rounded border border-blue-200 bg-white p-3">
+                <div className="text-sm text-blue-700">Urgent Tasks</div>
+                <div className="mt-1 text-2xl font-semibold text-blue-950">{taskDashboardSummary.urgent}</div>
+              </div>
+            </div>
+            <div className="mt-4 rounded border border-blue-200 bg-white p-3">
+              <h4 className="mb-2 text-sm font-medium text-blue-950">Next Tasks</h4>
+              {nextDashboardTasks.length === 0 ? (
+                <p className="text-sm text-gray-600">No pending or in-progress tasks.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {nextDashboardTasks.map((task) => (
+                    <li key={task.id} className="flex flex-col gap-1 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="font-medium text-gray-900">{task.title}</div>
+                        <div className="text-xs text-gray-500">
+                          {taskStatusLabels[task.status] ?? task.status} · Due {getDateOnly(task.due_date) ?? "No due date"}
+                        </div>
+                      </div>
+                      <span className="text-xs font-medium text-blue-700">
+                        {taskPriorityLabels[task.priority] ?? task.priority}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
 
@@ -6848,6 +7342,322 @@ export default function Home() {
           )}
         </section>
         </>
+        )}
+
+        {activeSection === "task-manager" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Task Manager</h2>
+
+          <div className="rounded border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Create Task</h3>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Title</span>
+                <input
+                  type="text"
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Task Type</span>
+                <select
+                  value={taskType}
+                  onChange={(e) => setTaskType(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  {taskTypes.map((type) => (
+                    <option key={type} value={type}>{taskTypeLabels[type]}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Priority</span>
+                <select
+                  value={taskPriority}
+                  onChange={(e) => setTaskPriority(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  {taskPriorities.map((priority) => (
+                    <option key={priority} value={priority}>{taskPriorityLabels[priority]}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Status</span>
+                <select
+                  value={taskStatus}
+                  onChange={(e) => setTaskStatus(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  {taskStatuses.map((status) => (
+                    <option key={status} value={status}>{taskStatusLabels[status]}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Due Date</span>
+                <input
+                  type="date"
+                  value={taskDueDate}
+                  onChange={(e) => setTaskDueDate(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Related Customer</span>
+                <select
+                  value={selectedTaskCustomerId}
+                  onChange={(e) => setSelectedTaskCustomerId(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  <option value="">No customer</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Related Supplier</span>
+                <select
+                  value={selectedTaskSupplierId}
+                  onChange={(e) => setSelectedTaskSupplierId(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  <option value="">No supplier</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>{supplier.supplier_name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Related Product</span>
+                <select
+                  value={selectedTaskProductId}
+                  onChange={(e) => setSelectedTaskProductId(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  <option value="">No product</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={String(product.id)}>{product.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Related Purchase Invoice</span>
+                <select
+                  value={selectedTaskPurchaseId}
+                  onChange={(e) => setSelectedTaskPurchaseId(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  <option value="">No purchase invoice</option>
+                  {purchaseTransactions.map((transaction) => (
+                    <option key={transaction.id} value={transaction.id}>{transaction.invoice_number}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Related Sales Invoice</span>
+                <select
+                  value={selectedTaskSaleId}
+                  onChange={(e) => setSelectedTaskSaleId(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  <option value="">No sales invoice</option>
+                  {salesTransactions.map((transaction) => (
+                    <option key={transaction.id} value={transaction.id}>{transaction.invoice_number}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="mt-4 flex flex-col gap-2 text-sm text-gray-700">
+              <span>Notes</span>
+              <textarea
+                value={taskNotes}
+                onChange={(e) => setTaskNotes(e.target.value)}
+                rows={3}
+                className="rounded border border-gray-300 px-3 py-2"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={saveTask}
+              disabled={taskLoading}
+              className="mt-4 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300"
+            >
+              {taskLoading ? "Saving..." : "Save Task"}
+            </button>
+            {taskMessage && <p className="mt-3 text-sm text-green-700">{taskMessage}</p>}
+            {taskError && <p className="mt-3 whitespace-pre-wrap text-sm text-red-700">{taskError}</p>}
+          </div>
+
+          <div className="mt-6 rounded border border-amber-200 bg-amber-50 p-4">
+            <h3 className="mb-3 text-lg font-medium text-amber-950">Suggested Tasks</h3>
+            {taskSuggestions.length === 0 ? (
+              <p className="text-sm text-amber-900">No suggestions right now.</p>
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {taskSuggestions.map((suggestion) => (
+                  <div key={suggestion.key} className="rounded border border-amber-200 bg-white p-3 text-sm">
+                    <div className="font-medium text-gray-900">{suggestion.title}</div>
+                    <div className="mt-1 text-gray-600">{suggestion.reason}</div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+                      <span>{taskTypeLabels[suggestion.task_type]}</span>
+                      <span>{taskPriorityLabels[suggestion.priority]}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => createTaskFromSuggestion(suggestion)}
+                      disabled={taskLoading}
+                      className="mt-3 rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 disabled:border-gray-300 disabled:text-gray-400"
+                    >
+                      Create Task
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <h3 className="text-lg font-medium text-gray-900">Tasks</h3>
+              <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
+                <select
+                  value={taskFilter}
+                  onChange={(e) => setTaskFilter(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="all">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="due_today">Due Today</option>
+                  <option value="high_urgent">High/Urgent</option>
+                </select>
+                <input
+                  type="search"
+                  value={taskSearch}
+                  onChange={(e) => setTaskSearch(e.target.value)}
+                  placeholder="Search title, notes, customer, supplier, product"
+                  className="rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            {filteredTasks.length === 0 ? (
+              <p className="text-sm text-gray-600">No tasks match the current filters.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2">Task</th>
+                      <th className="px-3 py-2">Type</th>
+                      <th className="px-3 py-2">Priority</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Due</th>
+                      <th className="px-3 py-2">Related</th>
+                      <th className="px-3 py-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredTasks.map((task) => {
+                      const customer = customers.find((item) => item.id === task.customer_id);
+                      const supplier = suppliers.find((item) => item.id === task.supplier_id);
+                      const product = products.find((item) => String(item.id) === String(task.product_id));
+                      const purchase = purchaseTransactions.find((item) => item.id === task.purchase_transaction_id);
+                      const sale = salesTransactions.find((item) => item.id === task.sales_transaction_id);
+                      const dueDate = getDateOnly(task.due_date);
+                      const isOverdue =
+                        task.status !== "completed" &&
+                        task.status !== "cancelled" &&
+                        Boolean(dueDate && dueDate < todayDateValue);
+
+                      return (
+                        <tr key={task.id}>
+                          <td className="px-3 py-3">
+                            <div className="font-medium text-gray-900">{task.title}</div>
+                            {task.notes && <div className="mt-1 text-xs text-gray-500">{task.notes}</div>}
+                          </td>
+                          <td className="px-3 py-3">{taskTypeLabels[task.task_type] ?? task.task_type}</td>
+                          <td className="px-3 py-3">{taskPriorityLabels[task.priority] ?? task.priority}</td>
+                          <td className="px-3 py-3">
+                            <span className={`rounded px-2 py-1 text-xs font-medium ${
+                              task.status === "completed"
+                                ? "bg-green-100 text-green-700"
+                                : task.status === "cancelled"
+                                  ? "bg-gray-100 text-gray-700"
+                                  : isOverdue
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-blue-100 text-blue-700"
+                            }`}>
+                              {isOverdue ? "Overdue" : taskStatusLabels[task.status] ?? task.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">{dueDate ?? "No due date"}</td>
+                          <td className="px-3 py-3 text-xs text-gray-600">
+                            {customer && <div>Customer: {customer.customer_name}</div>}
+                            {supplier && <div>Supplier: {supplier.supplier_name}</div>}
+                            {product && <div>Product: {product.name}</div>}
+                            {purchase && <div>Purchase: {purchase.invoice_number}</div>}
+                            {sale && <div>Sale: {sale.invoice_number}</div>}
+                            {!customer && !supplier && !product && !purchase && !sale && <div>-</div>}
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-col gap-2">
+                              {task.status !== "in_progress" && task.status !== "completed" && task.status !== "cancelled" && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateTaskStatus(task.id, "in_progress")}
+                                  className="rounded border border-blue-600 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50"
+                                >
+                                  Mark In Progress
+                                </button>
+                              )}
+                              {task.status !== "completed" && task.status !== "cancelled" && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateTaskStatus(task.id, "completed")}
+                                  className="rounded border border-green-600 px-2 py-1 text-xs text-green-700 hover:bg-green-50"
+                                >
+                                  Mark Completed
+                                </button>
+                              )}
+                              {task.status !== "cancelled" && task.status !== "completed" && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateTaskStatus(task.id, "cancelled")}
+                                  className="rounded border border-gray-400 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                                >
+                                  Cancel Task
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
         )}
 
         {activeSection === "business-settings" && (
