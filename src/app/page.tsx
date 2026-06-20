@@ -108,6 +108,21 @@ interface TaskSuggestion {
   sales_transaction_id: string | null;
 }
 
+interface AuditLog {
+  id: string;
+  organization_id: string;
+  actor_profile_id: string | null;
+  actor_email: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  entity_label: string | null;
+  description: string | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  created_at: string;
+}
+
 interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;
@@ -155,7 +170,8 @@ type SectionId =
   | "customer-credit"
   | "supplier-ledger"
   | "business-settings"
-  | "task-manager";
+  | "task-manager"
+  | "activity-logs";
 
 const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
@@ -175,6 +191,7 @@ const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "supplier-ledger", label: "Supplier Ledger" },
   { id: "business-settings", label: "Business Settings" },
   { id: "task-manager", label: "Task Manager" },
+  { id: "activity-logs", label: "Activity Logs" },
 ];
 
 interface PurchaseLine {
@@ -456,6 +473,13 @@ export default function Home() {
   const [taskError, setTaskError] = useState<string | null>(null);
   const [taskFilter, setTaskFilter] = useState("all");
   const [taskSearch, setTaskSearch] = useState("");
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [auditLogSearch, setAuditLogSearch] = useState("");
+  const [auditLogEntityFilter, setAuditLogEntityFilter] = useState("all");
+  const [auditLogActionFilter, setAuditLogActionFilter] = useState("all");
+  const [auditLogDateFrom, setAuditLogDateFrom] = useState("");
+  const [auditLogDateTo, setAuditLogDateTo] = useState("");
+  const [expandedAuditLogIds, setExpandedAuditLogIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     checkAuthUser();
@@ -496,6 +520,28 @@ export default function Home() {
     }
 
     setTasks(data ?? []);
+  };
+
+  const fetchAuditLogs = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setAuditLogs([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("audit_logs")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error("Supabase fetch audit logs error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setAuditLogs(data ?? []);
   };
 
   const populateBusinessSettings = (organization: any | null) => {
@@ -588,6 +634,7 @@ export default function Home() {
     fetchSupplierPaymentAllocations(profile.organization_id);
     fetchExpenses(profile.organization_id);
     fetchTasks(profile.organization_id);
+    fetchAuditLogs(profile.organization_id);
     fetchPurchaseItems();
     fetchSalesItems();
   };
@@ -916,6 +963,44 @@ export default function Home() {
     setSupplierPaymentAllocationsByInvoice(nextAllocations);
   };
 
+  const createAuditLog = async (params: {
+    action: string;
+    entity_type: string;
+    entity_id?: string | number | null;
+    entity_label?: string | null;
+    description?: string | null;
+    old_values?: Record<string, unknown> | null;
+    new_values?: Record<string, unknown> | null;
+  }) => {
+    if (!currentOrganizationId) return;
+
+    const payload = {
+      organization_id: currentOrganizationId,
+      actor_profile_id: currentProfile?.id ?? null,
+      actor_email: currentProfile?.email ?? currentUser?.email ?? null,
+      action: params.action,
+      entity_type: params.entity_type,
+      entity_id: params.entity_id == null ? null : String(params.entity_id),
+      entity_label: params.entity_label ?? null,
+      description: params.description ?? null,
+      old_values: params.old_values ?? null,
+      new_values: params.new_values ?? null,
+    };
+
+    try {
+      const { error } = await supabase.from("audit_logs").insert(payload);
+
+      if (error) {
+        console.error("Supabase audit log insert error:", JSON.stringify(error, null, 2));
+        return;
+      }
+
+      await fetchAuditLogs(currentOrganizationId);
+    } catch (err) {
+      console.error("Unexpected audit log insert error:", err);
+    }
+  };
+
   const handleCreateSalesInvoice = async (overrideConfirmed = false) => {
     if (salesInvoiceLoading) {
       return;
@@ -1132,6 +1217,20 @@ export default function Home() {
         if (itemError) throw itemError;
       }
 
+      await createAuditLog({
+        action: "created",
+        entity_type: "sales_invoice",
+        entity_id: salesTransactionId,
+        entity_label: salesInvoiceNumber,
+        description: `Created sales invoice ${salesInvoiceNumber} for ${selectedSalesCustomer?.customer_name ?? "Unknown Customer"}`,
+        new_values: {
+          customer_id: selectedCustomerIdForSale,
+          invoice_number: salesInvoiceNumber,
+          sale_date: salesInvoiceDate,
+          payment_type: salesPaymentType,
+        },
+      });
+
       setSalesMessage("Sales invoice saved successfully");
       setSelectedCustomerIdForSale(null);
       setSalesInvoiceNumber("");
@@ -1259,6 +1358,24 @@ export default function Home() {
         }
       }
 
+      const paymentCustomer = customers.find((customer) => customer.id === selectedCustomerPaymentId);
+      await createAuditLog({
+        action: allocationsToInsert.length > 0 ? "allocated" : "created",
+        entity_type: "customer_payment",
+        entity_id: insertedPaymentId,
+        entity_label: paymentCustomer?.customer_name ?? "Customer payment",
+        description:
+          allocationsToInsert.length > 0
+            ? `Created and allocated customer payment for ${paymentCustomer?.customer_name ?? "Unknown Customer"}`
+            : `Created customer payment for ${paymentCustomer?.customer_name ?? "Unknown Customer"}`,
+        new_values: {
+          customer_id: selectedCustomerPaymentId,
+          amount: paymentAmount,
+          notes: customerPaymentNotes || null,
+          allocations: allocationsToInsert,
+        },
+      });
+
       setCustomerPaymentMessage("Payment saved successfully");
       setSelectedCustomerPaymentId(null);
       setCustomerPaymentAmount("");
@@ -1384,6 +1501,24 @@ export default function Home() {
         }
       }
 
+      const paymentSupplier = suppliers.find((supplier) => supplier.id === selectedSupplierPaymentId);
+      await createAuditLog({
+        action: allocationsToInsert.length > 0 ? "allocated" : "created",
+        entity_type: "supplier_payment",
+        entity_id: insertedSupplierPaymentId,
+        entity_label: paymentSupplier?.supplier_name ?? "Supplier payment",
+        description:
+          allocationsToInsert.length > 0
+            ? `Created and allocated supplier payment for ${paymentSupplier?.supplier_name ?? "Unknown Supplier"}`
+            : `Created supplier payment for ${paymentSupplier?.supplier_name ?? "Unknown Supplier"}`,
+        new_values: {
+          supplier_id: selectedSupplierPaymentId,
+          amount: paymentAmount,
+          notes: supplierPaymentNotes || null,
+          allocations: allocationsToInsert,
+        },
+      });
+
       setSupplierPaymentMessage("Payment saved successfully");
       setSelectedSupplierPaymentId(null);
       setSupplierPaymentAmount("");
@@ -1425,7 +1560,7 @@ export default function Home() {
     setExpenseLoading(true);
     setExpenseMessage(null);
 
-    const { error } = await supabase.from("expenses").insert({
+    const { data: expenseData, error } = await supabase.from("expenses").insert({
       organization_id: currentOrganizationId,
       expense_type: expenseType,
       amount,
@@ -1434,7 +1569,7 @@ export default function Home() {
       customer_id: selectedExpenseCustomerId || null,
       purchase_transaction_id: selectedExpensePurchaseId || null,
       sales_transaction_id: selectedExpenseSaleId || null,
-    });
+    }).select("id").single();
 
     if (error) {
       setExpenseMessage(`Error saving expense: ${JSON.stringify(error, null, 2)}`);
@@ -1467,6 +1602,25 @@ export default function Home() {
     if (selectedExpensePurchaseId && !statusUpdateWarning) {
       await fetchPurchaseTransactions(currentOrganizationId);
     }
+
+    await createAuditLog({
+      action: "created",
+      entity_type: "expense",
+      entity_id: expenseData?.id ?? null,
+      entity_label: expenseType,
+      description: selectedExpensePurchaseId
+        ? `Created linked purchase expense ${expenseType}`
+        : `Created expense ${expenseType}`,
+      new_values: {
+        expense_type: expenseType,
+        amount,
+        notes: expenseNotes.trim() || null,
+        supplier_id: selectedExpenseSupplierId || null,
+        customer_id: selectedExpenseCustomerId || null,
+        purchase_transaction_id: selectedExpensePurchaseId || null,
+        sales_transaction_id: selectedExpenseSaleId || null,
+      },
+    });
 
     setExpenseMessage(statusUpdateWarning ?? "Expense saved successfully.");
     setExpenseType("");
@@ -1534,6 +1688,21 @@ export default function Home() {
       return;
     }
 
+    const reviewedPurchase = purchaseTransactions.find((transaction) => transaction.id === purchaseId);
+    await createAuditLog({
+      action: "reviewed",
+      entity_type: "purchase_invoice",
+      entity_id: purchaseId,
+      entity_label: reviewedPurchase?.invoice_number ?? purchaseId,
+      description:
+        status === "no_additional_expense"
+          ? `Marked purchase invoice ${reviewedPurchase?.invoice_number ?? purchaseId} as no additional expense`
+          : `Marked purchase invoice ${reviewedPurchase?.invoice_number ?? purchaseId} for review later`,
+      new_values: {
+        expense_review_status: status,
+        expense_reviewed_at: updateData.expense_reviewed_at,
+      },
+    });
     await fetchPurchaseTransactions(currentOrganizationId);
     setNewPurchaseExpenseReminder(null);
     setPurchaseExpenseStatusMessage(
@@ -1932,10 +2101,10 @@ export default function Home() {
     setBrandMessage(null);
     setBrandsLoading(true);
 
-    const { error } = await supabase.from("brands").insert({
+    const { data, error } = await supabase.from("brands").insert({
       name: brandName,
       organization_id: currentOrganizationId,
-    });
+    }).select("id").single();
 
     setBrandsLoading(false);
 
@@ -1945,6 +2114,14 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: "created",
+      entity_type: "brand",
+      entity_id: data?.id ?? null,
+      entity_label: brandName,
+      description: `Created brand ${brandName}`,
+      new_values: { name: brandName },
+    });
     setBrandMessage("Brand added successfully");
     setBrandName("");
     fetchBrands();
@@ -1955,6 +2132,7 @@ export default function Home() {
     setBrandMessage(null);
     setBrandsLoading(true);
 
+    const brandToDelete = brands.find((brand) => brand.id === brandId);
     const { error } = await supabase.from("brands").delete().eq("id", brandId);
 
     setBrandsLoading(false);
@@ -1965,6 +2143,14 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "brand",
+      entity_id: brandId,
+      entity_label: brandToDelete?.name ?? brandId,
+      description: `Deleted brand ${brandToDelete?.name ?? brandId}`,
+      old_values: brandToDelete ? { name: brandToDelete.name } : null,
+    });
     setBrandMessage("Brand deleted successfully");
     fetchBrands();
   };
@@ -1986,11 +2172,11 @@ export default function Home() {
     setCategoryMessage(null);
     setCategoriesLoading(true);
 
-    const { error } = await supabase.from("categories").insert({
+    const { data, error } = await supabase.from("categories").insert({
       name: categoryName,
       parent_category_id: parentCategoryId,
       organization_id: currentOrganizationId,
-    });
+    }).select("id").single();
 
     setCategoriesLoading(false);
 
@@ -2000,6 +2186,14 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: "created",
+      entity_type: "category",
+      entity_id: data?.id ?? null,
+      entity_label: categoryName,
+      description: `Created category ${categoryName}`,
+      new_values: { name: categoryName, parent_category_id: parentCategoryId },
+    });
     setCategoryMessage("Category added successfully");
     setCategoryName("");
     setParentCategoryId(null);
@@ -2011,6 +2205,7 @@ export default function Home() {
     setCategoryMessage(null);
     setCategoriesLoading(true);
 
+    const categoryToDelete = categories.find((category) => category.id === categoryId);
     const { error } = await supabase.from("categories").delete().eq("id", categoryId);
 
     setCategoriesLoading(false);
@@ -2021,6 +2216,16 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "category",
+      entity_id: categoryId,
+      entity_label: categoryToDelete?.name ?? categoryId,
+      description: `Deleted category ${categoryToDelete?.name ?? categoryId}`,
+      old_values: categoryToDelete
+        ? { name: categoryToDelete.name, parent_category_id: categoryToDelete.parent_category_id }
+        : null,
+    });
     setCategoryMessage("Category deleted successfully");
     fetchCategories();
   };
@@ -2030,6 +2235,7 @@ export default function Home() {
     setError(null);
     setProductsLoading(true);
 
+    const productToDelete = products.find((product) => product.id === productId);
     const { error } = await supabase.from("products").delete().eq("id", productId);
 
     setProductsLoading(false);
@@ -2040,6 +2246,21 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "product",
+      entity_id: productId,
+      entity_label: productToDelete?.name ?? String(productId),
+      description: `Deleted product ${productToDelete?.name ?? productId}`,
+      old_values: productToDelete
+        ? {
+            name: productToDelete.name,
+            brand_id: productToDelete.brand_id,
+            category_id: productToDelete.category_id,
+            unit_type: productToDelete.unit_type,
+          }
+        : null,
+    });
     setMessage("Product deleted successfully");
     fetchProducts();
   };
@@ -2087,7 +2308,7 @@ export default function Home() {
     setCustomerMessage(null);
     setCustomersLoading(true);
 
-    const { error } = await supabase.from("customers").insert({
+    const { data, error } = await supabase.from("customers").insert({
       customer_name: customerName,
       shop_name: shopName || null,
       phone: phone || null,
@@ -2101,7 +2322,7 @@ export default function Home() {
       allow_over_limit: requiresCreditLimit ? allowOverLimit : false,
       allow_overdue_sales: requiresCreditDays ? allowOverdueSales : false,
       organization_id: currentOrganizationId,
-    });
+    }).select("id").single();
 
     setCustomersLoading(false);
 
@@ -2111,6 +2332,21 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: "created",
+      entity_type: "customer",
+      entity_id: data?.id ?? null,
+      entity_label: customerName,
+      description: `Created customer ${customerName}`,
+      new_values: {
+        customer_name: customerName,
+        shop_name: shopName || null,
+        phone: phone || null,
+        city: city || null,
+        customer_type: customerType,
+        credit_policy: creditPolicy,
+      },
+    });
     setCustomerMessage("Customer saved successfully");
     setCustomerName("");
     setShopName("");
@@ -2132,6 +2368,7 @@ export default function Home() {
     setCustomerMessage(null);
     setCustomersLoading(true);
 
+    const customerToDelete = customers.find((customer) => customer.id === customerId);
     const { error } = await supabase.from("customers").delete().eq("id", customerId);
 
     setCustomersLoading(false);
@@ -2142,6 +2379,21 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "customer",
+      entity_id: customerId,
+      entity_label: customerToDelete?.customer_name ?? customerId,
+      description: `Deleted customer ${customerToDelete?.customer_name ?? customerId}`,
+      old_values: customerToDelete
+        ? {
+            customer_name: customerToDelete.customer_name,
+            shop_name: customerToDelete.shop_name,
+            phone: customerToDelete.phone,
+            city: customerToDelete.city,
+          }
+        : null,
+    });
     setCustomerMessage("Customer deleted successfully");
     fetchCustomers();
   };
@@ -2163,7 +2415,7 @@ export default function Home() {
     setSupplierMessage(null);
     setSuppliersLoading(true);
 
-    const { error } = await supabase.from("suppliers").insert({
+    const { data, error } = await supabase.from("suppliers").insert({
       supplier_name: supplierName,
       contact_person: contactPerson || null,
       phone: supplierPhone || null,
@@ -2171,7 +2423,7 @@ export default function Home() {
       city: supplierCity || null,
       notes: supplierNotes || null,
       organization_id: currentOrganizationId,
-    });
+    }).select("id").single();
 
     setSuppliersLoading(false);
 
@@ -2181,6 +2433,19 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: "created",
+      entity_type: "supplier",
+      entity_id: data?.id ?? null,
+      entity_label: supplierName,
+      description: `Created supplier ${supplierName}`,
+      new_values: {
+        supplier_name: supplierName,
+        contact_person: contactPerson || null,
+        phone: supplierPhone || null,
+        city: supplierCity || null,
+      },
+    });
     setSupplierMessage("Supplier saved successfully");
     setSupplierName("");
     setContactPerson("");
@@ -2196,6 +2461,7 @@ export default function Home() {
     setSupplierMessage(null);
     setSuppliersLoading(true);
 
+    const supplierToDelete = suppliers.find((supplier) => supplier.id === supplierId);
     const { error } = await supabase.from("suppliers").delete().eq("id", supplierId);
 
     setSuppliersLoading(false);
@@ -2206,6 +2472,21 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "supplier",
+      entity_id: supplierId,
+      entity_label: supplierToDelete?.supplier_name ?? supplierId,
+      description: `Deleted supplier ${supplierToDelete?.supplier_name ?? supplierId}`,
+      old_values: supplierToDelete
+        ? {
+            supplier_name: supplierToDelete.supplier_name,
+            contact_person: supplierToDelete.contact_person,
+            phone: supplierToDelete.phone,
+            city: supplierToDelete.city,
+          }
+        : null,
+    });
     setSupplierMessage("Supplier deleted successfully");
     fetchSuppliers();
   };
@@ -2340,6 +2621,20 @@ export default function Home() {
           }
         }
       }
+
+      const purchaseSupplier = suppliers.find((supplier) => supplier.id === selectedSupplierId);
+      await createAuditLog({
+        action: "created",
+        entity_type: "purchase_invoice",
+        entity_id: transactionId,
+        entity_label: invoiceNumber,
+        description: `Created purchase invoice ${invoiceNumber} for ${purchaseSupplier?.supplier_name ?? "Unknown Supplier"}`,
+        new_values: {
+          supplier_id: selectedSupplierId,
+          invoice_number: invoiceNumber,
+          line_count: purchaseLines.length,
+        },
+      });
 
       setInvoiceMessage("Purchase invoice created successfully");
       setNewPurchaseExpenseReminder({
@@ -3384,7 +3679,7 @@ export default function Home() {
     setTaskLoading(true);
 
     try {
-      const { error } = await supabase.from("tasks").insert({
+      const { data, error } = await supabase.from("tasks").insert({
         organization_id: currentOrganizationId,
         title: trimmedTitle,
         task_type: taskTypes.includes(taskType) ? taskType : "general",
@@ -3398,7 +3693,7 @@ export default function Home() {
         purchase_transaction_id: relations.purchaseTransactionId,
         sales_transaction_id: relations.salesTransactionId,
         completed_at: taskStatus === "completed" ? new Date().toISOString() : null,
-      });
+      }).select("id").single();
 
       if (error) {
         console.error("Supabase task insert error:", JSON.stringify(error, null, 2));
@@ -3406,6 +3701,25 @@ export default function Home() {
         return;
       }
 
+      await createAuditLog({
+        action: taskStatus === "completed" ? "completed" : "created",
+        entity_type: "task",
+        entity_id: data?.id ?? null,
+        entity_label: trimmedTitle,
+        description:
+          taskStatus === "completed"
+            ? `Completed task ${trimmedTitle}`
+            : `Created task ${trimmedTitle}`,
+        new_values: {
+          title: trimmedTitle,
+          task_type: taskType,
+          priority: taskPriority,
+          status: taskStatus,
+          due_date: taskDueDate || null,
+          notes: taskNotes.trim() || null,
+          ...relations,
+        },
+      });
       setTaskMessage("Task saved successfully.");
       resetTaskForm();
       await fetchTasks(currentOrganizationId);
@@ -3426,11 +3740,13 @@ export default function Home() {
       return;
     }
 
+    const taskToUpdate = tasks.find((task) => task.id === taskId);
+    const completedAt = nextStatus === "completed" ? new Date().toISOString() : null;
     const { error } = await supabase
       .from("tasks")
       .update({
         status: nextStatus,
-        completed_at: nextStatus === "completed" ? new Date().toISOString() : null,
+        completed_at: completedAt,
       })
       .eq("id", taskId)
       .eq("organization_id", currentOrganizationId);
@@ -3441,6 +3757,25 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: nextStatus === "completed" ? "completed" : nextStatus === "cancelled" ? "cancelled" : "updated",
+      entity_type: "task",
+      entity_id: taskId,
+      entity_label: taskToUpdate?.title ?? taskId,
+      description:
+        nextStatus === "completed"
+          ? `Completed task ${taskToUpdate?.title ?? taskId}`
+          : nextStatus === "cancelled"
+            ? `Cancelled task ${taskToUpdate?.title ?? taskId}`
+            : `Marked task ${taskToUpdate?.title ?? taskId} in progress`,
+      old_values: taskToUpdate
+        ? { status: taskToUpdate.status, completed_at: taskToUpdate.completed_at }
+        : null,
+      new_values: {
+        status: nextStatus,
+        completed_at: completedAt,
+      },
+    });
     setTaskMessage(`Task marked ${taskStatusLabels[nextStatus].toLowerCase()}.`);
     await fetchTasks(currentOrganizationId);
   };
@@ -3562,7 +3897,7 @@ export default function Home() {
     setTaskLoading(true);
 
     try {
-      const { error } = await supabase.from("tasks").insert({
+      const { data, error } = await supabase.from("tasks").insert({
         organization_id: currentOrganizationId,
         title: suggestion.title,
         task_type: suggestion.task_type,
@@ -3576,7 +3911,7 @@ export default function Home() {
         purchase_transaction_id: suggestion.purchase_transaction_id,
         sales_transaction_id: suggestion.sales_transaction_id,
         completed_at: null,
-      });
+      }).select("id").single();
 
       if (error) {
         console.error("Supabase suggested task insert error:", JSON.stringify(error, null, 2));
@@ -3584,6 +3919,25 @@ export default function Home() {
         return;
       }
 
+      await createAuditLog({
+        action: "created",
+        entity_type: "task",
+        entity_id: data?.id ?? null,
+        entity_label: suggestion.title,
+        description: `Created task ${suggestion.title}`,
+        new_values: {
+          title: suggestion.title,
+          task_type: suggestion.task_type,
+          priority: suggestion.priority,
+          status: "pending",
+          notes: suggestion.reason,
+          customer_id: suggestion.customer_id,
+          supplier_id: suggestion.supplier_id,
+          product_id: suggestion.product_id,
+          purchase_transaction_id: suggestion.purchase_transaction_id,
+          sales_transaction_id: suggestion.sales_transaction_id,
+        },
+      });
       setTaskMessage("Suggested task created.");
       await fetchTasks(currentOrganizationId);
     } catch (err) {
@@ -3644,6 +3998,40 @@ export default function Home() {
       product?.name ?? "",
     ].some((value) => value.toLowerCase().includes(searchTerm));
   });
+
+  const auditLogEntityTypes = Array.from(new Set(auditLogs.map((log) => log.entity_type).filter(Boolean))).sort();
+  const auditLogActions = Array.from(new Set(auditLogs.map((log) => log.action).filter(Boolean))).sort();
+  const todayAuditDate = todayDateValue;
+  const filteredAuditLogs = auditLogs.filter((log) => {
+    const logDate = getDateOnly(log.created_at);
+    if (auditLogEntityFilter !== "all" && log.entity_type !== auditLogEntityFilter) return false;
+    if (auditLogActionFilter !== "all" && log.action !== auditLogActionFilter) return false;
+    if (auditLogDateFrom && logDate && logDate < auditLogDateFrom) return false;
+    if (auditLogDateTo && logDate && logDate > auditLogDateTo) return false;
+
+    const searchTerm = auditLogSearch.trim().toLowerCase();
+    if (!searchTerm) return true;
+
+    return [
+      log.action,
+      log.entity_type,
+      log.entity_label ?? "",
+      log.description ?? "",
+      log.actor_email ?? "",
+    ].some((value) => value.toLowerCase().includes(searchTerm));
+  });
+  const auditLogSummary = auditLogs.reduce(
+    (summary, log) => {
+      const logDate = getDateOnly(log.created_at);
+      summary.total += 1;
+      if (logDate === todayAuditDate) summary.today += 1;
+      if (log.action === "created") summary.creates += 1;
+      if (log.action === "updated" || log.action === "deleted") summary.updatesDeletes += 1;
+      return summary;
+    },
+    { total: 0, today: 0, creates: 0, updatesDeletes: 0 }
+  );
+  const recentAuditLogs = auditLogs.slice(0, 5);
 
   const organizationDisplayName =
     (currentOrganization?.name ?? currentProfile?.organization_name ?? organizationName).trim() ||
@@ -4059,7 +4447,7 @@ export default function Home() {
       return;
     }
 
-    const { error: insertError } = await supabase.from("products").insert({
+    const { data: productData, error: insertError } = await supabase.from("products").insert({
       name,
       brand_id: selectedBrandId,
       category_id: selectedCategoryId,
@@ -4070,7 +4458,7 @@ export default function Home() {
       track_batch: trackBatch,
       track_expiry: trackExpiry,
       organization_id: currentOrganizationId,
-    });
+    }).select("id").single();
 
     setLoading(false);
 
@@ -4080,6 +4468,21 @@ export default function Home() {
       return;
     }
 
+    await createAuditLog({
+      action: "created",
+      entity_type: "product",
+      entity_id: productData?.id ?? null,
+      entity_label: name,
+      description: `Created product ${name}`,
+      new_values: {
+        name,
+        brand_id: selectedBrandId,
+        category_id: selectedCategoryId,
+        unit_type: unitType,
+        minimum_stock_level: minimumStockLevel ? Number(minimumStockLevel) : null,
+        reorder_level: reorderLevel ? Number(reorderLevel) : 0,
+      },
+    });
     setMessage("Product saved successfully");
     setName("");
     setUnitType("");
@@ -4125,16 +4528,27 @@ export default function Home() {
     };
 
     try {
+      const oldBusinessSettings = currentOrganization
+        ? {
+            name: currentOrganization.name ?? null,
+            phone: currentOrganization.phone ?? null,
+            address: currentOrganization.address ?? null,
+            city: currentOrganization.city ?? null,
+            invoice_footer_note: currentOrganization.invoice_footer_note ?? null,
+            default_payment_terms: currentOrganization.default_payment_terms ?? null,
+          }
+        : null;
+      const newBusinessSettings = {
+        name: trimmedName,
+        phone: optionalValue(businessSettingsPhone),
+        address: optionalValue(businessSettingsAddress),
+        city: optionalValue(businessSettingsCity),
+        invoice_footer_note: optionalValue(businessSettingsInvoiceFooterNote),
+        default_payment_terms: optionalValue(businessSettingsDefaultPaymentTerms),
+      };
       const { error } = await supabase
         .from("organizations")
-        .update({
-          name: trimmedName,
-          phone: optionalValue(businessSettingsPhone),
-          address: optionalValue(businessSettingsAddress),
-          city: optionalValue(businessSettingsCity),
-          invoice_footer_note: optionalValue(businessSettingsInvoiceFooterNote),
-          default_payment_terms: optionalValue(businessSettingsDefaultPaymentTerms),
-        })
+        .update(newBusinessSettings)
         .eq("id", currentOrganizationId);
 
       if (error) {
@@ -4143,6 +4557,15 @@ export default function Home() {
         return;
       }
 
+      await createAuditLog({
+        action: "updated",
+        entity_type: "business_settings",
+        entity_id: currentOrganizationId,
+        entity_label: trimmedName,
+        description: "Updated business settings",
+        old_values: oldBusinessSettings,
+        new_values: newBusinessSettings,
+      });
       await fetchCurrentOrganization(currentOrganizationId);
       setBusinessSettingsMessage("Business settings saved successfully.");
     } catch (err) {
@@ -4581,6 +5004,38 @@ export default function Home() {
                 </ul>
               )}
             </div>
+          </div>
+
+          <div className="mt-6 rounded border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-lg font-medium text-slate-950">Recent Activity</h3>
+              <button
+                type="button"
+                onClick={() => handleSectionChange("activity-logs")}
+                className="rounded border border-slate-600 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+              >
+                View All Activity
+              </button>
+            </div>
+            {recentAuditLogs.length === 0 ? (
+              <p className="text-sm text-gray-600">No activity logs recorded yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {recentAuditLogs.map((log) => (
+                  <li key={log.id} className="rounded border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <span className="font-medium capitalize text-slate-900">{log.action}</span>
+                        <span className="text-slate-500"> {log.entity_type.replace(/_/g, " ")}</span>
+                        {log.entity_label && <span className="text-slate-700"> - {log.entity_label}</span>}
+                      </div>
+                      <span className="text-xs text-slate-500">{formatDate(log.created_at)}</span>
+                    </div>
+                    {log.description && <p className="mt-1 text-xs text-slate-600">{log.description}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -7342,6 +7797,179 @@ export default function Home() {
           )}
         </section>
         </>
+        )}
+
+        {activeSection === "activity-logs" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">Activity Logs</h2>
+              <p className="mt-1 text-sm text-gray-600">Owner activity history for important TradeOS actions.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchAuditLogs(currentOrganizationId)}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Refresh Logs
+            </button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded border border-gray-200 bg-white p-3">
+              <div className="text-sm text-gray-500">Total Logs</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{auditLogSummary.total}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-3">
+              <div className="text-sm text-gray-500">Today's Activity</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{auditLogSummary.today}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-3">
+              <div className="text-sm text-gray-500">Creates</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{auditLogSummary.creates}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-3">
+              <div className="text-sm text-gray-500">Updates / Deletes</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{auditLogSummary.updatesDeletes}</div>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Filters</h3>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <label className="flex flex-col gap-2 text-sm text-gray-700 lg:col-span-2">
+                <span>Search</span>
+                <input
+                  type="search"
+                  value={auditLogSearch}
+                  onChange={(e) => setAuditLogSearch(e.target.value)}
+                  placeholder="Search action, entity, label, description, actor"
+                  className="rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Entity Type</span>
+                <select
+                  value={auditLogEntityFilter}
+                  onChange={(e) => setAuditLogEntityFilter(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  <option value="all">All entity types</option>
+                  {auditLogEntityTypes.map((entityType) => (
+                    <option key={entityType} value={entityType}>{entityType.replace(/_/g, " ")}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Action</span>
+                <select
+                  value={auditLogActionFilter}
+                  onChange={(e) => setAuditLogActionFilter(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  <option value="all">All actions</option>
+                  {auditLogActions.map((action) => (
+                    <option key={action} value={action}>{action}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Date From</span>
+                <input
+                  type="date"
+                  value={auditLogDateFrom}
+                  onChange={(e) => setAuditLogDateFrom(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Date To</span>
+                <input
+                  type="date"
+                  value={auditLogDateTo}
+                  onChange={(e) => setAuditLogDateTo(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-lg font-medium text-gray-900">Log Entries</h3>
+              <div className="text-sm text-gray-500">{filteredAuditLogs.length} shown</div>
+            </div>
+
+            {filteredAuditLogs.length === 0 ? (
+              <p className="text-sm text-gray-600">No activity logs match the current filters.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2">Time</th>
+                      <th className="px-3 py-2">Action</th>
+                      <th className="px-3 py-2">Entity Type</th>
+                      <th className="px-3 py-2">Entity Label</th>
+                      <th className="px-3 py-2">Description</th>
+                      <th className="px-3 py-2">Actor</th>
+                      <th className="px-3 py-2">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredAuditLogs.map((log) => {
+                      const isExpanded = Boolean(expandedAuditLogIds[log.id]);
+                      return (
+                        <tr key={log.id} className="align-top">
+                          <td className="px-3 py-3 whitespace-nowrap">{formatDate(log.created_at)}</td>
+                          <td className="px-3 py-3 font-medium capitalize text-gray-900">{log.action}</td>
+                          <td className="px-3 py-3">{log.entity_type.replace(/_/g, " ")}</td>
+                          <td className="px-3 py-3">{log.entity_label ?? "-"}</td>
+                          <td className="px-3 py-3 min-w-[240px]">{log.description ?? "-"}</td>
+                          <td className="px-3 py-3">{log.actor_email ?? "-"}</td>
+                          <td className="px-3 py-3">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedAuditLogIds((current) => ({
+                                  ...current,
+                                  [log.id]: !current[log.id],
+                                }))
+                              }
+                              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                            >
+                              {isExpanded ? "Hide" : "Show"}
+                            </button>
+                            {isExpanded && (
+                              <div className="mt-3 grid min-w-[320px] gap-3 lg:grid-cols-2">
+                                <div>
+                                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">Old Values</div>
+                                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-900 p-3 text-xs text-gray-100">
+                                    {JSON.stringify(log.old_values ?? null, null, 2)}
+                                  </pre>
+                                </div>
+                                <div>
+                                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">New Values</div>
+                                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-900 p-3 text-xs text-gray-100">
+                                    {JSON.stringify(log.new_values ?? null, null, 2)}
+                                  </pre>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
         )}
 
         {activeSection === "task-manager" && (
