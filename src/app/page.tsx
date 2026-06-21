@@ -569,7 +569,12 @@ export default function Home() {
     );
   }, [selectedStaffProfileId, staffPermissions]);
 
-  const fetchExpenses = async (organizationId: string) => {
+  const fetchExpenses = async (organizationId: string | null) => {
+    if (!organizationId) {
+      setExpenses([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("expenses")
       .select("*")
@@ -949,7 +954,17 @@ export default function Home() {
     }
   };
 
-  const fetchBrands = async (organizationId?: string) => {
+  const requireOrganization = (actionName: string) => {
+    if (!currentOrganizationId) {
+      const message = `Organization not loaded. Cannot ${actionName}. Please login again.`;
+      console.error(message);
+      setAuthError(message);
+      return false;
+    }
+    return true;
+  };
+
+  const fetchBrands = async (organizationId?: string | null) => {
     setBrandsLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -1117,7 +1132,10 @@ export default function Home() {
     old_values?: Record<string, unknown> | null;
     new_values?: Record<string, unknown> | null;
   }) => {
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) {
+      console.error("Organization not loaded. Cannot create audit log.");
+      return;
+    }
 
     const payload = {
       organization_id: currentOrganizationId,
@@ -1285,7 +1303,7 @@ export default function Home() {
     setSalesInvoiceLoading(true);
 
     try {
-      if (!currentOrganizationId) {
+      if (!requireOrganization("create sales invoice")) {
         setSalesError("Organization not loaded. Please login again.");
         setSalesInvoiceLoading(false);
         return;
@@ -1449,7 +1467,7 @@ export default function Home() {
     setCustomerPaymentLoading(true);
 
     try {
-      if (!currentOrganizationId) {
+      if (!requireOrganization("create customer payment")) {
         setCustomerPaymentError("Organization not loaded. Please login again.");
         setCustomerPaymentLoading(false);
         return;
@@ -1592,7 +1610,7 @@ export default function Home() {
     setSupplierPaymentLoading(true);
 
     try {
-      if (!currentOrganizationId) {
+      if (!requireOrganization("create supplier payment")) {
         setSupplierPaymentError("Organization not loaded. Please login again.");
         setSupplierPaymentLoading(false);
         return;
@@ -1686,7 +1704,7 @@ export default function Home() {
       return;
     }
 
-    if (!currentOrganizationId) {
+    if (!requireOrganization("create expense")) {
       setExpenseMessage("Error: Organization not loaded. Please login again.");
       return;
     }
@@ -1806,7 +1824,7 @@ export default function Home() {
   ) => {
     setPurchaseExpenseStatusMessage(null);
 
-    if (!currentOrganizationId) {
+    if (!requireOrganization("update purchase expense review")) {
       setPurchaseExpenseStatusMessage("Organization not loaded. Please login again.");
       return;
     }
@@ -1857,7 +1875,7 @@ export default function Home() {
     );
   };
 
-  const fetchCategories = async (organizationId?: string) => {
+  const fetchCategories = async (organizationId?: string | null) => {
     setCategoriesLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -1882,7 +1900,7 @@ export default function Home() {
     setCategories(data ?? []);
   };
 
-  const fetchProducts = async (organizationId?: string) => {
+  const fetchProducts = async (organizationId?: string | null) => {
     setProductsLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -1907,7 +1925,7 @@ export default function Home() {
     setProducts(data ?? []);
   };
 
-  const fetchCustomers = async (organizationId?: string) => {
+  const fetchCustomers = async (organizationId?: string | null) => {
     setCustomersLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -1934,7 +1952,7 @@ export default function Home() {
     setCustomers(data ?? []);
   };
 
-  const fetchSuppliers = async (organizationId?: string) => {
+  const fetchSuppliers = async (organizationId?: string | null) => {
     setSuppliersLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -1959,7 +1977,7 @@ export default function Home() {
     setSuppliers(data ?? []);
   };
 
-  const fetchPurchaseTransactions = async (organizationId?: string) => {
+  const fetchPurchaseTransactions = async (organizationId?: string | null) => {
     setPurchaseLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -2147,7 +2165,7 @@ export default function Home() {
     setPurchaseItems(data ?? []);
   };
 
-  const fetchCustomerPayments = async (organizationId?: string) => {
+  const fetchCustomerPayments = async (organizationId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setCustomerPayments([]);
@@ -2168,7 +2186,7 @@ export default function Home() {
     setCustomerPayments(data ?? []);
   };
 
-  const fetchCustomerPaymentAllocations = async (organizationId?: string) => {
+  const fetchCustomerPaymentAllocations = async (organizationId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setCustomerPaymentAllocations([]);
@@ -2189,7 +2207,7 @@ export default function Home() {
     setCustomerPaymentAllocations(data ?? []);
   };
 
-  const fetchSupplierPayments = async (organizationId?: string) => {
+  const fetchSupplierPayments = async (organizationId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setSupplierPayments([]);
@@ -2210,7 +2228,7 @@ export default function Home() {
     setSupplierPayments(data ?? []);
   };
 
-  const fetchSupplierPaymentAllocations = async (organizationId?: string) => {
+  const fetchSupplierPaymentAllocations = async (organizationId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setSupplierPaymentAllocations([]);
@@ -2245,7 +2263,7 @@ export default function Home() {
     setSalesItems(data ?? []);
   };
 
-  const fetchSalesTransactions = async (organizationId?: string) => {
+  const fetchSalesTransactions = async (organizationId?: string | null) => {
     setSalesLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -2277,7 +2295,7 @@ export default function Home() {
       return;
     }
 
-    if (!currentOrganizationId) {
+    if (!requireOrganization("add brand")) {
       setBrandError("Organization not loaded. Please login again.");
       setBrandMessage(null);
       return;
@@ -2316,16 +2334,24 @@ export default function Home() {
   const handleDeleteBrand = async (brandId: string) => {
     setBrandError(null);
     setBrandMessage(null);
+    if (!requireOrganization("delete brand")) {
+      setBrandError("Organization not loaded. Please login again.");
+      return;
+    }
     setBrandsLoading(true);
 
     const brandToDelete = brands.find((brand) => brand.id === brandId);
-    const { error } = await supabase.from("brands").delete().eq("id", brandId);
+    const { error } = await supabase
+      .from("brands")
+      .delete()
+      .eq("id", brandId)
+      .eq("organization_id", currentOrganizationId);
 
     setBrandsLoading(false);
 
     if (error) {
       setBrandError("Failed to delete brand");
-      console.error("Supabase delete brand error:", error);
+      console.error("Supabase delete brand error:", JSON.stringify(error, null, 2));
       return;
     }
 
@@ -2348,7 +2374,7 @@ export default function Home() {
       return;
     }
 
-    if (!currentOrganizationId) {
+    if (!requireOrganization("add category")) {
       setCategoryError("Organization not loaded. Please login again.");
       setCategoryMessage(null);
       return;
@@ -2389,16 +2415,24 @@ export default function Home() {
   const handleDeleteCategory = async (categoryId: string) => {
     setCategoryError(null);
     setCategoryMessage(null);
+    if (!requireOrganization("delete category")) {
+      setCategoryError("Organization not loaded. Please login again.");
+      return;
+    }
     setCategoriesLoading(true);
 
     const categoryToDelete = categories.find((category) => category.id === categoryId);
-    const { error } = await supabase.from("categories").delete().eq("id", categoryId);
+    const { error } = await supabase
+      .from("categories")
+      .delete()
+      .eq("id", categoryId)
+      .eq("organization_id", currentOrganizationId);
 
     setCategoriesLoading(false);
 
     if (error) {
       setCategoryError("Failed to delete category");
-      console.error("Supabase delete category error:", error);
+      console.error("Supabase delete category error:", JSON.stringify(error, null, 2));
       return;
     }
 
@@ -2419,16 +2453,24 @@ export default function Home() {
   const handleDeleteProduct = async (productId: number) => {
     setMessage(null);
     setError(null);
+    if (!requireOrganization("delete product")) {
+      setError("Organization not loaded. Please login again.");
+      return;
+    }
     setProductsLoading(true);
 
     const productToDelete = products.find((product) => product.id === productId);
-    const { error } = await supabase.from("products").delete().eq("id", productId);
+    const { error } = await supabase
+      .from("products")
+      .delete()
+      .eq("id", productId)
+      .eq("organization_id", currentOrganizationId);
 
     setProductsLoading(false);
 
     if (error) {
       setError("Failed to delete product");
-      console.error("Supabase delete product error:", error);
+      console.error("Supabase delete product error:", JSON.stringify(error, null, 2));
       return;
     }
 
@@ -2458,7 +2500,7 @@ export default function Home() {
       return;
     }
 
-    if (!currentOrganizationId) {
+    if (!requireOrganization("add customer")) {
       setCustomerError("Organization not loaded. Please login again.");
       setCustomerMessage(null);
       return;
@@ -2552,16 +2594,24 @@ export default function Home() {
   const handleDeleteCustomer = async (customerId: string) => {
     setCustomerError(null);
     setCustomerMessage(null);
+    if (!requireOrganization("delete customer")) {
+      setCustomerError("Organization not loaded. Please login again.");
+      return;
+    }
     setCustomersLoading(true);
 
     const customerToDelete = customers.find((customer) => customer.id === customerId);
-    const { error } = await supabase.from("customers").delete().eq("id", customerId);
+    const { error } = await supabase
+      .from("customers")
+      .delete()
+      .eq("id", customerId)
+      .eq("organization_id", currentOrganizationId);
 
     setCustomersLoading(false);
 
     if (error) {
       setCustomerError("Failed to delete customer");
-      console.error("Supabase delete customer error:", error);
+      console.error("Supabase delete customer error:", JSON.stringify(error, null, 2));
       return;
     }
 
@@ -2591,7 +2641,7 @@ export default function Home() {
       return;
     }
 
-    if (!currentOrganizationId) {
+    if (!requireOrganization("add supplier")) {
       setSupplierError("Organization not loaded. Please login again.");
       setSupplierMessage(null);
       return;
@@ -2645,16 +2695,24 @@ export default function Home() {
   const handleDeleteSupplier = async (supplierId: string) => {
     setSupplierError(null);
     setSupplierMessage(null);
+    if (!requireOrganization("delete supplier")) {
+      setSupplierError("Organization not loaded. Please login again.");
+      return;
+    }
     setSuppliersLoading(true);
 
     const supplierToDelete = suppliers.find((supplier) => supplier.id === supplierId);
-    const { error } = await supabase.from("suppliers").delete().eq("id", supplierId);
+    const { error } = await supabase
+      .from("suppliers")
+      .delete()
+      .eq("id", supplierId)
+      .eq("organization_id", currentOrganizationId);
 
     setSuppliersLoading(false);
 
     if (error) {
       setSupplierError("Failed to delete supplier");
-      console.error("Supabase delete supplier error:", error);
+      console.error("Supabase delete supplier error:", JSON.stringify(error, null, 2));
       return;
     }
 
@@ -2743,7 +2801,7 @@ export default function Home() {
         purchaseLines,
       });
 
-      if (!currentOrganizationId) {
+      if (!requireOrganization("create purchase invoice")) {
         setInvoiceError("Organization not loaded. Please login again.");
         setInvoiceLoading(false);
         return;
@@ -2800,10 +2858,11 @@ export default function Home() {
           const { error: updateError } = await supabase
             .from("products")
             .update({ default_selling_price: Number(line.selling_price) })
-            .eq("id", line.product_id);
+            .eq("id", line.product_id)
+            .eq("organization_id", currentOrganizationId);
 
           if (updateError) {
-            console.error("Product update error:", updateError);
+            console.error("Product update error:", JSON.stringify(updateError, null, 2));
           }
         }
       }
@@ -3851,7 +3910,7 @@ export default function Home() {
       return;
     }
 
-    if (!currentOrganizationId) {
+    if (!requireOrganization("create task")) {
       setTaskError("Organization not loaded. Please login again.");
       return;
     }
@@ -3921,7 +3980,7 @@ export default function Home() {
     setTaskMessage(null);
     setTaskError(null);
 
-    if (!currentOrganizationId) {
+    if (!requireOrganization("update task status")) {
       setTaskError("Organization not loaded. Please login again.");
       return;
     }
@@ -4073,7 +4132,7 @@ export default function Home() {
   ].filter(Boolean) as TaskSuggestion[];
 
   const createTaskFromSuggestion = async (suggestion: (typeof taskSuggestions)[number]) => {
-    if (!currentOrganizationId) {
+    if (!requireOrganization("create suggested task")) {
       setTaskError("Organization not loaded. Please login again.");
       return;
     }
@@ -4627,7 +4686,7 @@ export default function Home() {
       category_id: selectedCategoryId,
     });
 
-    if (!currentOrganizationId) {
+    if (!requireOrganization("save product")) {
       setError("Organization not loaded. Please login again.");
       setLoading(false);
       return;
@@ -4701,7 +4760,7 @@ export default function Home() {
       return;
     }
 
-    if (!currentOrganizationId) {
+    if (!requireOrganization("save business settings")) {
       setBusinessSettingsError("Organization not loaded. Please login again.");
       return;
     }
@@ -4790,7 +4849,7 @@ export default function Home() {
     setStaffPermissionMessage(null);
     setStaffPermissionError(null);
 
-    if (!profileId || !currentOrganizationId) {
+    if (!profileId || !requireOrganization("update staff profile")) {
       setStaffPermissionError("Staff profile or organization is missing.");
       return;
     }
@@ -4863,7 +4922,7 @@ export default function Home() {
     setStaffPermissionMessage(null);
     setStaffPermissionError(null);
 
-    if (!selectedStaffProfileId || !currentOrganizationId) {
+    if (!selectedStaffProfileId || !requireOrganization("save staff permissions")) {
       setStaffPermissionError("Please select a staff member first.");
       return;
     }
@@ -8180,6 +8239,27 @@ export default function Home() {
             Staff invite by email will be added later. For now, staff accounts can be managed after they sign up under this organization.
           </div>
 
+          <div className="mb-5 rounded border border-emerald-200 bg-emerald-50 p-4">
+            <h3 className="text-lg font-medium text-emerald-950">Security Readiness</h3>
+            <div className="mt-3 grid gap-2 text-sm text-emerald-900 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                Organization ID loaded: {currentOrganizationId ? "Yes" : "No"}
+              </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                Current profile loaded: {currentProfile ? "Yes" : "No"}
+              </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                Staff permissions loaded: {Array.isArray(staffPermissions) ? "Yes" : "No"}
+              </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                RLS Phase 1 app guards active: Yes
+              </div>
+              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 lg:col-span-2">
+                Production RLS database policies still need final hardening.
+              </div>
+            </div>
+          </div>
+
           {staffPermissionMessage && <p className="mb-4 text-sm text-green-700">{staffPermissionMessage}</p>}
           {staffPermissionError && <p className="mb-4 whitespace-pre-wrap text-sm text-red-700">{staffPermissionError}</p>}
 
@@ -8944,4 +9024,5 @@ export default function Home() {
     </main>
   );
 }
+
 
