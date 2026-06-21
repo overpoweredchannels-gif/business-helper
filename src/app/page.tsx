@@ -123,6 +123,32 @@ interface AuditLog {
   created_at: string;
 }
 
+interface StaffProfile {
+  id: string;
+  organization_id: string;
+  email: string | null;
+  role: string | null;
+  is_active: boolean | null;
+  display_name: string | null;
+}
+
+interface StaffPermission {
+  id?: string;
+  organization_id: string;
+  profile_id: string;
+  can_manage_products: boolean | null;
+  can_manage_customers: boolean | null;
+  can_manage_suppliers: boolean | null;
+  can_create_purchases: boolean | null;
+  can_create_sales: boolean | null;
+  can_manage_payments: boolean | null;
+  can_manage_expenses: boolean | null;
+  can_view_profit: boolean | null;
+  can_view_reports: boolean | null;
+  can_manage_tasks: boolean | null;
+  can_manage_settings: boolean | null;
+}
+
 interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;
@@ -171,7 +197,8 @@ type SectionId =
   | "supplier-ledger"
   | "business-settings"
   | "task-manager"
-  | "activity-logs";
+  | "activity-logs"
+  | "staff-permissions";
 
 const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
@@ -192,7 +219,37 @@ const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "business-settings", label: "Business Settings" },
   { id: "task-manager", label: "Task Manager" },
   { id: "activity-logs", label: "Activity Logs" },
+  { id: "staff-permissions", label: "Staff & Permissions" },
 ];
+
+type StaffPermissionKey =
+  | "can_manage_products"
+  | "can_manage_customers"
+  | "can_manage_suppliers"
+  | "can_create_purchases"
+  | "can_create_sales"
+  | "can_manage_payments"
+  | "can_manage_expenses"
+  | "can_view_profit"
+  | "can_view_reports"
+  | "can_manage_tasks"
+  | "can_manage_settings";
+
+const staffPermissionLabels: Array<{ key: StaffPermissionKey; label: string }> = [
+  { key: "can_manage_products", label: "Manage Products" },
+  { key: "can_manage_customers", label: "Manage Customers" },
+  { key: "can_manage_suppliers", label: "Manage Suppliers" },
+  { key: "can_create_purchases", label: "Create Purchases" },
+  { key: "can_create_sales", label: "Create Sales" },
+  { key: "can_manage_payments", label: "Manage Payments" },
+  { key: "can_manage_expenses", label: "Manage Expenses" },
+  { key: "can_view_profit", label: "View Profit" },
+  { key: "can_view_reports", label: "View Reports" },
+  { key: "can_manage_tasks", label: "Manage Tasks" },
+  { key: "can_manage_settings", label: "Manage Settings" },
+];
+
+const staffRoles = ["owner", "admin", "manager", "staff", "accountant", "sales"];
 
 interface PurchaseLine {
   id?: string;
@@ -480,10 +537,37 @@ export default function Home() {
   const [auditLogDateFrom, setAuditLogDateFrom] = useState("");
   const [auditLogDateTo, setAuditLogDateTo] = useState("");
   const [expandedAuditLogIds, setExpandedAuditLogIds] = useState<Record<string, boolean>>({});
+  const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>([]);
+  const [staffPermissions, setStaffPermissions] = useState<StaffPermission[]>([]);
+  const [staffPermissionMessage, setStaffPermissionMessage] = useState<string | null>(null);
+  const [staffPermissionError, setStaffPermissionError] = useState<string | null>(null);
+  const [selectedStaffProfileId, setSelectedStaffProfileId] = useState("");
+  const [staffProfileDrafts, setStaffProfileDrafts] = useState<
+    Record<string, { display_name: string; role: string; is_active: boolean }>
+  >({});
+  const [staffPermissionDraft, setStaffPermissionDraft] = useState<Record<StaffPermissionKey, boolean>>(
+    () =>
+      staffPermissionLabels.reduce((draft, permission) => {
+        draft[permission.key] = false;
+        return draft;
+      }, {} as Record<StaffPermissionKey, boolean>)
+  );
 
   useEffect(() => {
     checkAuthUser();
   }, []);
+
+  useEffect(() => {
+    const selectedPermission = staffPermissions.find(
+      (permission) => permission.profile_id === selectedStaffProfileId
+    );
+    setStaffPermissionDraft(
+      staffPermissionLabels.reduce((draft, permission) => {
+        draft[permission.key] = Boolean(selectedPermission?.[permission.key]);
+        return draft;
+      }, {} as Record<StaffPermissionKey, boolean>)
+    );
+  }, [selectedStaffProfileId, staffPermissions]);
 
   const fetchExpenses = async (organizationId: string) => {
     const { data, error } = await supabase
@@ -542,6 +626,66 @@ export default function Home() {
     }
 
     setAuditLogs(data ?? []);
+  };
+
+  const fetchStaffProfilesAndPermissions = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setStaffProfiles([]);
+      setStaffPermissions([]);
+      setSelectedStaffProfileId("");
+      return;
+    }
+
+    let profilesResult = await supabase
+      .from("profiles")
+      .select("id, organization_id, email, role, is_active, display_name")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: true });
+
+    if (profilesResult.error) {
+      console.warn("Profile created_at ordering unavailable, retrying by email:", profilesResult.error);
+      profilesResult = await supabase
+        .from("profiles")
+        .select("id, organization_id, email, role, is_active, display_name")
+        .eq("organization_id", orgId)
+        .order("email", { ascending: true });
+    }
+
+    if (profilesResult.error) {
+      console.error("Supabase fetch staff profiles error:", JSON.stringify(profilesResult.error, null, 2));
+      return;
+    }
+
+    const { data: permissionsData, error: permissionsError } = await supabase
+      .from("staff_permissions")
+      .select("*")
+      .eq("organization_id", orgId);
+
+    if (permissionsError) {
+      console.error("Supabase fetch staff permissions error:", JSON.stringify(permissionsError, null, 2));
+      return;
+    }
+
+    const profiles = profilesResult.data ?? [];
+    setStaffProfiles(profiles);
+    setStaffPermissions(permissionsData ?? []);
+    setStaffProfileDrafts(
+      profiles.reduce((drafts, profile) => {
+        drafts[profile.id] = {
+          display_name: profile.display_name ?? "",
+          role: profile.role ?? "staff",
+          is_active: profile.is_active !== false,
+        };
+        return drafts;
+      }, {} as Record<string, { display_name: string; role: string; is_active: boolean }>)
+    );
+
+    const nextSelectedStaffProfileId =
+      selectedStaffProfileId && profiles.some((profile) => profile.id === selectedStaffProfileId)
+        ? selectedStaffProfileId
+        : profiles[0]?.id ?? "";
+    setSelectedStaffProfileId(nextSelectedStaffProfileId);
   };
 
   const populateBusinessSettings = (organization: any | null) => {
@@ -635,6 +779,7 @@ export default function Home() {
     fetchExpenses(profile.organization_id);
     fetchTasks(profile.organization_id);
     fetchAuditLogs(profile.organization_id);
+    fetchStaffProfilesAndPermissions(profile.organization_id);
     fetchPurchaseItems();
     fetchSalesItems();
   };
@@ -1920,8 +2065,49 @@ export default function Home() {
     currency: "PKR",
     maximumFractionDigits: 2,
   });
+  const isOwnerOrAdmin = () => {
+    const role = currentProfile?.role;
+    if (!role) return true;
+    return role === "owner" || role === "admin";
+  };
+  const currentStaffPermission = staffPermissions.find(
+    (permission) => permission.profile_id === currentProfile?.id
+  );
+  const hasPermission = (permissionKey: StaffPermissionKey) => {
+    if (isOwnerOrAdmin()) return true;
+    return Boolean(currentStaffPermission?.[permissionKey]);
+  };
+  const sectionPermissionMap: Partial<Record<SectionId, StaffPermissionKey | "owner_admin">> = {
+    products: "can_manage_products",
+    brands: "can_manage_products",
+    categories: "can_manage_products",
+    customers: "can_manage_customers",
+    suppliers: "can_manage_suppliers",
+    purchases: "can_create_purchases",
+    sales: "can_create_sales",
+    "customer-payments": "can_manage_payments",
+    "supplier-payments": "can_manage_payments",
+    expenses: "can_manage_expenses",
+    "profit-loss": "can_view_profit",
+    inventory: "can_view_reports",
+    "customer-credit": "can_manage_customers",
+    "supplier-ledger": "can_manage_payments",
+    "business-settings": "can_manage_settings",
+    "task-manager": "can_manage_tasks",
+    "activity-logs": "owner_admin",
+    "staff-permissions": "owner_admin",
+  };
+  const canAccessSection = (sectionId: SectionId) => {
+    if (sectionId === "dashboard") return true;
+    const requiredPermission = sectionPermissionMap[sectionId];
+    if (!requiredPermission) return true;
+    if (requiredPermission === "owner_admin") return isOwnerOrAdmin();
+    return hasPermission(requiredPermission);
+  };
+  const visibleNavigationItems = navigationItems.filter((item) => canAccessSection(item.id));
   const activeSectionLabel =
     navigationItems.find((item) => item.id === activeSection)?.label ?? "Dashboard";
+  const activeSectionAllowed = canAccessSection(activeSection);
   const creditPolicyLabels: Record<string, string> = {
     cash_only: "Cash Only",
     limit_only: "Credit Limit Only",
@@ -4578,6 +4764,168 @@ export default function Home() {
     }
   };
 
+  const updateStaffProfileDraft = (
+    profileId: string,
+    field: "display_name" | "role" | "is_active",
+    value: string | boolean
+  ) => {
+    setStaffProfileDrafts((current) => {
+      const profile = staffProfiles.find((item) => item.id === profileId);
+      const existing = current[profileId] ?? {
+        display_name: profile?.display_name ?? "",
+        role: profile?.role ?? "staff",
+        is_active: profile?.is_active !== false,
+      };
+      return {
+        ...current,
+        [profileId]: {
+          ...existing,
+          [field]: value,
+        },
+      };
+    });
+  };
+
+  const saveStaffProfile = async (profileId: string) => {
+    setStaffPermissionMessage(null);
+    setStaffPermissionError(null);
+
+    if (!profileId || !currentOrganizationId) {
+      setStaffPermissionError("Staff profile or organization is missing.");
+      return;
+    }
+
+    const profile = staffProfiles.find((item) => item.id === profileId);
+    if (!profile) {
+      setStaffPermissionError("Staff profile was not found.");
+      return;
+    }
+
+    const draft = staffProfileDrafts[profileId] ?? {
+      display_name: profile.display_name ?? "",
+      role: profile.role ?? "staff",
+      is_active: profile.is_active !== false,
+    };
+    const nextRole = staffRoles.includes(draft.role) ? draft.role : "staff";
+    const isSelf = currentProfile?.id === profileId;
+
+    if (isSelf && draft.is_active === false) {
+      setStaffPermissionError("You cannot deactivate your own account.");
+      return;
+    }
+
+    if (isSelf && currentProfile?.role === "owner" && nextRole !== "owner") {
+      setStaffPermissionError("You cannot remove your own owner role.");
+      return;
+    }
+
+    const updatePayload = {
+      display_name: draft.display_name.trim() || null,
+      role: nextRole,
+      is_active: Boolean(draft.is_active),
+    };
+
+    const { error } = await supabase
+      .from("profiles")
+      .update(updatePayload)
+      .eq("id", profileId)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase staff profile update error:", JSON.stringify(error, null, 2));
+      setStaffPermissionError(`Failed to update staff profile: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: "updated",
+      entity_type: "staff_profile",
+      entity_id: profileId,
+      entity_label: updatePayload.display_name ?? profile.email ?? profileId,
+      description: `Updated staff profile ${updatePayload.display_name ?? profile.email ?? profileId}`,
+      old_values: {
+        display_name: profile.display_name ?? null,
+        role: profile.role ?? null,
+        is_active: profile.is_active ?? null,
+      },
+      new_values: updatePayload,
+    });
+
+    if (isSelf) {
+      setCurrentProfile((current: any | null) => (current ? { ...current, ...updatePayload } : current));
+    }
+
+    await fetchStaffProfilesAndPermissions(currentOrganizationId);
+    setStaffPermissionMessage("Staff profile updated successfully.");
+  };
+
+  const saveStaffPermissions = async () => {
+    setStaffPermissionMessage(null);
+    setStaffPermissionError(null);
+
+    if (!selectedStaffProfileId || !currentOrganizationId) {
+      setStaffPermissionError("Please select a staff member first.");
+      return;
+    }
+
+    const selectedProfile = staffProfiles.find((profile) => profile.id === selectedStaffProfileId);
+    if (!selectedProfile) {
+      setStaffPermissionError("Selected staff member was not found.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const permissionPayload = {
+      organization_id: currentOrganizationId,
+      profile_id: selectedStaffProfileId,
+      can_manage_products: Boolean(staffPermissionDraft.can_manage_products),
+      can_manage_customers: Boolean(staffPermissionDraft.can_manage_customers),
+      can_manage_suppliers: Boolean(staffPermissionDraft.can_manage_suppliers),
+      can_create_purchases: Boolean(staffPermissionDraft.can_create_purchases),
+      can_create_sales: Boolean(staffPermissionDraft.can_create_sales),
+      can_manage_payments: Boolean(staffPermissionDraft.can_manage_payments),
+      can_manage_expenses: Boolean(staffPermissionDraft.can_manage_expenses),
+      can_view_profit: Boolean(staffPermissionDraft.can_view_profit),
+      can_view_reports: Boolean(staffPermissionDraft.can_view_reports),
+      can_manage_tasks: Boolean(staffPermissionDraft.can_manage_tasks),
+      can_manage_settings: Boolean(staffPermissionDraft.can_manage_settings),
+      updated_at: now,
+    };
+    const previousPermissions = staffPermissions.find(
+      (permission) => permission.profile_id === selectedStaffProfileId
+    );
+
+    const { error } = await supabase
+      .from("staff_permissions")
+      .upsert(permissionPayload, { onConflict: "organization_id,profile_id" });
+
+    if (error) {
+      console.error("Supabase staff permissions upsert error:", JSON.stringify(error, null, 2));
+      setStaffPermissionError(`Failed to save staff permissions: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    const previousPermissionValues = previousPermissions
+      ? staffPermissionLabels.reduce((values, permission) => {
+          values[permission.key] = Boolean(previousPermissions[permission.key]);
+          return values;
+        }, {} as Record<string, unknown>)
+      : null;
+
+    await createAuditLog({
+      action: "updated",
+      entity_type: "staff_permissions",
+      entity_id: selectedStaffProfileId,
+      entity_label: selectedProfile.display_name ?? selectedProfile.email ?? selectedStaffProfileId,
+      description: `Updated staff permissions for ${selectedProfile.display_name ?? selectedProfile.email ?? selectedStaffProfileId}`,
+      old_values: previousPermissionValues,
+      new_values: permissionPayload,
+    });
+
+    await fetchStaffProfilesAndPermissions(currentOrganizationId);
+    setStaffPermissionMessage("Staff permissions saved successfully.");
+  };
+
   if (!currentUser) {
     return (
     <main className="min-h-screen bg-gray-100">
@@ -4813,7 +5161,7 @@ export default function Home() {
             <div className="text-sm text-gray-500">Business Management</div>
           </div>
           <nav className="h-[calc(100vh-89px)] overflow-y-auto p-3">
-            {navigationItems.map((item) => (
+            {visibleNavigationItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -4849,7 +5197,7 @@ export default function Home() {
             {mobileMenuOpen && (
               <nav className="border-t border-gray-200 bg-white p-3 md:hidden">
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {navigationItems.map((item) => (
+                  {visibleNavigationItems.map((item) => (
                     <button
                       key={item.id}
                       type="button"
@@ -4891,6 +5239,15 @@ export default function Home() {
 
           <div id="tradeos-main-content" className="h-[calc(100vh-129px)] overflow-y-auto px-4 py-6 md:h-[calc(100vh-97px)] md:px-6">
             <div className="mx-auto max-w-7xl">
+
+        {!activeSectionAllowed && (
+        <section className="rounded border border-red-200 bg-red-50 p-5">
+          <h2 className="text-xl font-medium text-red-950">Permission Required</h2>
+          <p className="mt-2 text-sm text-red-800">
+            You do not have permission to view this section. Contact the owner.
+          </p>
+        </section>
+        )}
 
         {activeSection === "dashboard" && (
         <>
@@ -4953,6 +5310,7 @@ export default function Home() {
             </div>
           </div>
 
+          {hasPermission("can_manage_tasks") && (
           <div className="mt-6 rounded border border-blue-200 bg-blue-50 p-4">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-lg font-medium text-blue-950">Task Manager Summary</h3>
@@ -5005,7 +5363,9 @@ export default function Home() {
               )}
             </div>
           </div>
+          )}
 
+          {isOwnerOrAdmin() && (
           <div className="mt-6 rounded border border-slate-200 bg-slate-50 p-4">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-lg font-medium text-slate-950">Recent Activity</h3>
@@ -5037,6 +5397,7 @@ export default function Home() {
               </ul>
             )}
           </div>
+          )}
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
@@ -5123,7 +5484,7 @@ export default function Home() {
         </>
         )}
 
-        {activeSection === "profit-loss" && (
+        {activeSectionAllowed && activeSection === "profit-loss" && (
         <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-gray-900">Profit Dashboard</h2>
@@ -5343,7 +5704,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "brands" && (
+        {activeSectionAllowed && activeSection === "brands" && (
         <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Brand Management</h2>
           <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
@@ -5398,7 +5759,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "inventory" && (
+        {activeSectionAllowed && activeSection === "inventory" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-gray-900">Inventory Dashboard</h2>
@@ -5539,7 +5900,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "sales" && (
+        {activeSectionAllowed && activeSection === "sales" && (
         <>
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Sales Invoice</h2>
@@ -5812,7 +6173,7 @@ export default function Home() {
         </>
         )}
 
-        {activeSection === "customer-payments" && (
+        {activeSectionAllowed && activeSection === "customer-payments" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h2 className="text-xl font-medium text-gray-900">Customer Payments</h2>
@@ -6053,7 +6414,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "supplier-payments" && (
+        {activeSectionAllowed && activeSection === "supplier-payments" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-gray-900">Supplier Payments</h2>
@@ -6275,7 +6636,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "supplier-ledger" && (
+        {activeSectionAllowed && activeSection === "supplier-ledger" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-gray-900">Supplier Ledger</h2>
@@ -6445,7 +6806,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "expenses" && (
+        {activeSectionAllowed && activeSection === "expenses" && (
         <section id="expense-management" className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Expense Management</h2>
           <form onSubmit={saveExpense} className="space-y-4">
@@ -6624,7 +6985,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "customer-credit" && (
+        {activeSectionAllowed && activeSection === "customer-credit" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Receivables Dashboard</h2>
           {customers.length === 0 ? (
@@ -6649,7 +7010,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "supplier-ledger" && (
+        {activeSectionAllowed && activeSection === "supplier-ledger" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Payables Dashboard</h2>
           {suppliers.length === 0 ? (
@@ -6673,7 +7034,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "categories" && (
+        {activeSectionAllowed && activeSection === "categories" && (
         <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Category Management</h2>
           <div className="space-y-4">
@@ -6753,7 +7114,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "products" && (
+        {activeSectionAllowed && activeSection === "products" && (
         <>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -6926,7 +7287,7 @@ export default function Home() {
         </>
         )}
 
-        {activeSection === "customers" && (
+        {activeSectionAllowed && activeSection === "customers" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Customer Management</h2>
           <div className="space-y-4">
@@ -7175,7 +7536,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "suppliers" && (
+        {activeSectionAllowed && activeSection === "suppliers" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Supplier Management</h2>
           <div className="space-y-4">
@@ -7304,7 +7665,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "purchases" && (
+        {activeSectionAllowed && activeSection === "purchases" && (
         <>
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Purchase Invoice</h2>
@@ -7799,7 +8160,202 @@ export default function Home() {
         </>
         )}
 
-        {activeSection === "activity-logs" && (
+        {activeSectionAllowed && activeSection === "staff-permissions" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">Staff & Permissions</h2>
+              <p className="mt-1 text-sm text-gray-600">Manage staff roles, account status, and module access.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchStaffProfilesAndPermissions(currentOrganizationId)}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Refresh Staff
+            </button>
+          </div>
+
+          <div className="mb-5 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            Staff invite by email will be added later. For now, staff accounts can be managed after they sign up under this organization.
+          </div>
+
+          {staffPermissionMessage && <p className="mb-4 text-sm text-green-700">{staffPermissionMessage}</p>}
+          {staffPermissionError && <p className="mb-4 whitespace-pre-wrap text-sm text-red-700">{staffPermissionError}</p>}
+
+          <div className="rounded border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Staff Profiles</h3>
+            {staffProfiles.length === 0 ? (
+              <p className="text-sm text-gray-600">No staff profiles found for this organization.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2">Staff</th>
+                      <th className="px-3 py-2">Role</th>
+                      <th className="px-3 py-2">Active</th>
+                      <th className="px-3 py-2">Permission Summary</th>
+                      <th className="px-3 py-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {staffProfiles.map((profile) => {
+                      const draft = staffProfileDrafts[profile.id] ?? {
+                        display_name: profile.display_name ?? "",
+                        role: profile.role ?? "staff",
+                        is_active: profile.is_active !== false,
+                      };
+                      const profilePermissions = staffPermissions.find(
+                        (permission) => permission.profile_id === profile.id
+                      );
+                      const activePermissionLabels = staffPermissionLabels
+                        .filter((permission) => Boolean(profilePermissions?.[permission.key]))
+                        .map((permission) => permission.label);
+                      const profileIsOwnerOrAdmin = !profile.role || profile.role === "owner" || profile.role === "admin";
+
+                      return (
+                        <tr key={profile.id}>
+                          <td className="min-w-[220px] px-3 py-3">
+                            <input
+                              type="text"
+                              value={draft.display_name}
+                              onChange={(e) => updateStaffProfileDraft(profile.id, "display_name", e.target.value)}
+                              placeholder="Display name"
+                              className="w-full rounded border border-gray-300 px-3 py-2"
+                            />
+                            <div className="mt-1 text-xs text-gray-500">{profile.email ?? "No email"}</div>
+                            {currentProfile?.id === profile.id && (
+                              <div className="mt-1 text-xs font-medium text-blue-700">Current user</div>
+                            )}
+                          </td>
+                          <td className="px-3 py-3">
+                            <select
+                              value={draft.role}
+                              onChange={(e) => updateStaffProfileDraft(profile.id, "role", e.target.value)}
+                              className="rounded border border-gray-300 px-3 py-2"
+                            >
+                              {staffRoles.map((role) => (
+                                <option key={role} value={role}>{role}</option>
+                              ))}
+                            </select>
+                            {profileIsOwnerOrAdmin && (
+                              <div className="mt-2 inline-flex rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-800">
+                                Owner/Admin
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-3">
+                            <label className="inline-flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={draft.is_active}
+                                onChange={(e) => updateStaffProfileDraft(profile.id, "is_active", e.target.checked)}
+                              />
+                              <span>{draft.is_active ? "Active" : "Inactive"}</span>
+                            </label>
+                          </td>
+                          <td className="min-w-[260px] px-3 py-3 text-xs text-gray-600">
+                            {profileIsOwnerOrAdmin ? (
+                              <span>Full access</span>
+                            ) : activePermissionLabels.length > 0 ? (
+                              <span>{activePermissionLabels.join(", ")}</span>
+                            ) : (
+                              <span>No permissions selected</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-col gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedStaffProfileId(profile.id)}
+                                className="rounded border border-blue-600 px-3 py-2 text-xs text-blue-700 hover:bg-blue-50"
+                              >
+                                Edit Permissions
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => saveStaffProfile(profile.id)}
+                                className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700"
+                              >
+                                Save Profile
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Permissions</h3>
+            <label className="flex max-w-xl flex-col gap-2 text-sm text-gray-700">
+              <span>Select Staff Member</span>
+              <select
+                value={selectedStaffProfileId}
+                onChange={(e) => setSelectedStaffProfileId(e.target.value)}
+                className="rounded border border-gray-300 px-3 py-2"
+              >
+                <option value="">Select staff</option>
+                {staffProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.display_name || profile.email || profile.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {(() => {
+              const selectedProfile = staffProfiles.find((profile) => profile.id === selectedStaffProfileId);
+              const selectedProfileIsOwner = selectedProfile?.role === "owner" || !selectedProfile?.role;
+
+              if (!selectedProfile) {
+                return <p className="mt-4 text-sm text-gray-600">Select a staff member to edit permissions.</p>;
+              }
+
+              return (
+                <div className="mt-4">
+                  {selectedProfileIsOwner && (
+                    <div className="mb-4 rounded border border-purple-200 bg-purple-50 p-3 text-sm text-purple-900">
+                      Owners have full access. Permission checkboxes are mainly for non-owner staff.
+                    </div>
+                  )}
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {staffPermissionLabels.map((permission) => (
+                      <label key={permission.key} className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(staffPermissionDraft[permission.key])}
+                          onChange={(e) =>
+                            setStaffPermissionDraft((current) => ({
+                              ...current,
+                              [permission.key]: e.target.checked,
+                            }))
+                          }
+                        />
+                        <span>{permission.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={saveStaffPermissions}
+                    className="mt-4 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                  >
+                    Save Permissions
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "activity-logs" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -7972,7 +8528,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "task-manager" && (
+        {activeSectionAllowed && activeSection === "task-manager" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Task Manager</h2>
 
@@ -8288,7 +8844,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "business-settings" && (
+        {activeSectionAllowed && activeSection === "business-settings" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <h2 className="mb-4 text-xl font-medium text-gray-900">Business Settings</h2>
           <div className="space-y-4">
@@ -8375,7 +8931,7 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "products" && (
+        {activeSectionAllowed && activeSection === "products" && (
           <>
             {message && <p className="mt-4 text-sm text-green-700">{message}</p>}
             {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
@@ -8388,3 +8944,4 @@ export default function Home() {
     </main>
   );
 }
+
