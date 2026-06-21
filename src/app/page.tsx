@@ -130,6 +130,7 @@ interface StaffProfile {
   role: string | null;
   is_active: boolean | null;
   display_name: string | null;
+  auth_user_id?: string | null;
 }
 
 interface StaffPermission {
@@ -644,7 +645,7 @@ export default function Home() {
 
     let profilesResult = await supabase
       .from("profiles")
-      .select("id, organization_id, email, role, is_active, display_name")
+      .select("id, organization_id, email, role, is_active, display_name, auth_user_id")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: true });
 
@@ -652,7 +653,7 @@ export default function Home() {
       console.warn("Profile created_at ordering unavailable, retrying by email:", profilesResult.error);
       profilesResult = await supabase
         .from("profiles")
-        .select("id, organization_id, email, role, is_active, display_name")
+        .select("id, organization_id, email, role, is_active, display_name, auth_user_id")
         .eq("organization_id", orgId)
         .order("email", { ascending: true });
     }
@@ -765,26 +766,46 @@ export default function Home() {
       return;
     }
 
-    console.log("Profile loaded successfully:", { userId, organizationId: profile.organization_id });
+    let resolvedProfile = profile;
+    if (!profile.auth_user_id && profile.id && profile.organization_id) {
+      const { error: authLinkError } = await supabase
+        .from("profiles")
+        .update({ auth_user_id: userId })
+        .eq("id", profile.id)
+        .eq("organization_id", profile.organization_id)
+        .is("auth_user_id", null);
+
+      if (authLinkError) {
+        console.error("Profile auth_user_id link error:", JSON.stringify(authLinkError, null, 2));
+      } else {
+        resolvedProfile = { ...profile, auth_user_id: userId };
+        console.log("Profile auth_user_id linked successfully:", {
+          profileId: profile.id,
+          organizationId: profile.organization_id,
+        });
+      }
+    }
+
+    console.log("Profile loaded successfully:", { userId, organizationId: resolvedProfile.organization_id });
     setAuthError(null);
-    setCurrentProfile(profile);
-    setCurrentOrganizationId(profile.organization_id);
-    fetchCurrentOrganization(profile.organization_id);
-    fetchBrands(profile.organization_id);
-    fetchCategories(profile.organization_id);
-    fetchProducts(profile.organization_id);
-    fetchCustomers(profile.organization_id);
-    fetchSuppliers(profile.organization_id);
-    fetchPurchaseTransactions(profile.organization_id);
-    fetchSalesTransactions(profile.organization_id);
-    fetchCustomerPayments(profile.organization_id);
-    fetchCustomerPaymentAllocations(profile.organization_id);
-    fetchSupplierPayments(profile.organization_id);
-    fetchSupplierPaymentAllocations(profile.organization_id);
-    fetchExpenses(profile.organization_id);
-    fetchTasks(profile.organization_id);
-    fetchAuditLogs(profile.organization_id);
-    fetchStaffProfilesAndPermissions(profile.organization_id);
+    setCurrentProfile(resolvedProfile);
+    setCurrentOrganizationId(resolvedProfile.organization_id);
+    fetchCurrentOrganization(resolvedProfile.organization_id);
+    fetchBrands(resolvedProfile.organization_id);
+    fetchCategories(resolvedProfile.organization_id);
+    fetchProducts(resolvedProfile.organization_id);
+    fetchCustomers(resolvedProfile.organization_id);
+    fetchSuppliers(resolvedProfile.organization_id);
+    fetchPurchaseTransactions(resolvedProfile.organization_id);
+    fetchSalesTransactions(resolvedProfile.organization_id);
+    fetchCustomerPayments(resolvedProfile.organization_id);
+    fetchCustomerPaymentAllocations(resolvedProfile.organization_id);
+    fetchSupplierPayments(resolvedProfile.organization_id);
+    fetchSupplierPaymentAllocations(resolvedProfile.organization_id);
+    fetchExpenses(resolvedProfile.organization_id);
+    fetchTasks(resolvedProfile.organization_id);
+    fetchAuditLogs(resolvedProfile.organization_id);
+    fetchStaffProfilesAndPermissions(resolvedProfile.organization_id);
     fetchPurchaseItems();
     fetchSalesItems();
   };
@@ -8254,8 +8275,17 @@ export default function Home() {
               <div className="rounded border border-emerald-200 bg-white px-3 py-2">
                 RLS Phase 1 app guards active: Yes
               </div>
-              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 lg:col-span-2">
-                Production RLS database policies still need final hardening.
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                Auth user linked to profile: {currentProfile?.auth_user_id ? "Pass" : "Needs link"}
+              </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                Security policy backup table: Manual SQL completed
+              </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                Security helper functions: Created in Supabase
+              </div>
+              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 lg:col-span-3">
+                Ready for RLS Phase 2B policy replacement after final database policy hardening.
               </div>
             </div>
           </div>
