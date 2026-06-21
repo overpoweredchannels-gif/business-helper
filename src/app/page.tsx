@@ -8284,8 +8284,17 @@ export default function Home() {
               <div className="rounded border border-emerald-200 bg-white px-3 py-2">
                 Security helper functions: Created in Supabase
               </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                RLS Phase 2B direct table policies applied: Yes
+              </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                Direct organization-owned tables protected: Yes
+              </div>
+              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                Purchase items and sales items pending Phase 2C.
+              </div>
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 lg:col-span-3">
-                Ready for RLS Phase 2B policy replacement after final database policy hardening.
+                Final cross-organization testing still required.
               </div>
             </div>
           </div>
