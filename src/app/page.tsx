@@ -8290,11 +8290,20 @@ export default function Home() {
               <div className="rounded border border-emerald-200 bg-white px-3 py-2">
                 Direct organization-owned tables protected: Yes
               </div>
-              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
-                Purchase items and sales items pending Phase 2C.
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                RLS Phase 2C child table policies applied: Yes
+              </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                Purchase items protected through purchase invoice organization: Yes
+              </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                Sales items protected through sales invoice organization: Yes
+              </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2 lg:col-span-2">
+                Payment allocation rows protected through parent payment/invoice organization: Yes
               </div>
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 lg:col-span-3">
-                Final cross-organization testing still required.
+                Remaining security task: final cross-organization testing.
               </div>
             </div>
           </div>
