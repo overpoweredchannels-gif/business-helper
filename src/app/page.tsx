@@ -150,6 +150,17 @@ interface StaffPermission {
   can_manage_settings: boolean | null;
 }
 
+interface SecurityCheck {
+  id?: string;
+  organization_id: string;
+  check_key: string;
+  check_label: string;
+  status: "pending" | "pass" | "fail" | string;
+  notes: string | null;
+  checked_at: string | null;
+  checked_by_profile_id: string | null;
+}
+
 interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;
@@ -199,7 +210,8 @@ type SectionId =
   | "business-settings"
   | "task-manager"
   | "activity-logs"
-  | "staff-permissions";
+  | "staff-permissions"
+  | "security-check";
 
 const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
@@ -221,6 +233,7 @@ const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "task-manager", label: "Task Manager" },
   { id: "activity-logs", label: "Activity Logs" },
   { id: "staff-permissions", label: "Staff & Permissions" },
+  { id: "security-check", label: "Security Check" },
 ];
 
 type StaffPermissionKey =
@@ -251,6 +264,24 @@ const staffPermissionLabels: Array<{ key: StaffPermissionKey; label: string }> =
 ];
 
 const staffRoles = ["owner", "admin", "manager", "staff", "accountant", "sales"];
+
+const defaultSecurityChecks: Array<{ key: string; label: string }> = [
+  { key: "app_loads", label: "App loads after RLS hardening" },
+  { key: "owner_profile_linked", label: "Owner profile linked to auth user" },
+  { key: "organization_isolation", label: "Organization-based RLS policies applied" },
+  { key: "child_table_security", label: "Invoice item and payment allocation child tables protected" },
+  { key: "staff_permissions_ui", label: "Staff permissions UI working" },
+  { key: "product_create", label: "Product create works" },
+  { key: "customer_create", label: "Customer create works" },
+  { key: "supplier_create", label: "Supplier create works" },
+  { key: "purchase_create", label: "Purchase invoice with item works" },
+  { key: "sales_create", label: "Sales invoice with item works" },
+  { key: "payment_allocation", label: "Customer/supplier payment allocations work" },
+  { key: "dashboard_reports", label: "Dashboard, Profit & Loss, and reports load" },
+  { key: "print_export", label: "Print invoices and CSV exports work" },
+  { key: "build_passes", label: "Production build passes" },
+  { key: "ready_for_deployment", label: "Ready for Vercel deployment preparation" },
+];
 
 interface PurchaseLine {
   id?: string;
@@ -553,6 +584,10 @@ export default function Home() {
         return draft;
       }, {} as Record<StaffPermissionKey, boolean>)
   );
+  const [securityChecks, setSecurityChecks] = useState<SecurityCheck[]>([]);
+  const [securityCheckNotes, setSecurityCheckNotes] = useState<Record<string, string>>({});
+  const [securityCheckMessage, setSecurityCheckMessage] = useState<string | null>(null);
+  const [securityCheckError, setSecurityCheckError] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuthUser();
@@ -632,6 +667,35 @@ export default function Home() {
     }
 
     setAuditLogs(data ?? []);
+  };
+
+  const fetchSecurityChecks = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setSecurityChecks([]);
+      setSecurityCheckNotes({});
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("security_checks")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("checked_at", { ascending: false, nullsFirst: false });
+
+    if (error) {
+      console.error("Supabase fetch security checks error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    const checks = data ?? [];
+    setSecurityChecks(checks);
+    setSecurityCheckNotes(
+      checks.reduce((notes, check) => {
+        notes[check.check_key] = check.notes ?? "";
+        return notes;
+      }, {} as Record<string, string>)
+    );
   };
 
   const fetchStaffProfilesAndPermissions = async (organizationId?: string | null) => {
@@ -806,6 +870,7 @@ export default function Home() {
     fetchTasks(resolvedProfile.organization_id);
     fetchAuditLogs(resolvedProfile.organization_id);
     fetchStaffProfilesAndPermissions(resolvedProfile.organization_id);
+    fetchSecurityChecks(resolvedProfile.organization_id);
     fetchPurchaseItems();
     fetchSalesItems();
   };
@@ -2135,6 +2200,7 @@ export default function Home() {
     "task-manager": "can_manage_tasks",
     "activity-logs": "owner_admin",
     "staff-permissions": "owner_admin",
+    "security-check": "owner_admin",
   };
   const canAccessSection = (sectionId: SectionId) => {
     if (sectionId === "dashboard") return true;
@@ -4298,6 +4364,33 @@ export default function Home() {
     { total: 0, today: 0, creates: 0, updatesDeletes: 0 }
   );
   const recentAuditLogs = auditLogs.slice(0, 5);
+  const securityChecksByKey = new Map(securityChecks.map((check) => [check.check_key, check]));
+  const displayedSecurityChecks = defaultSecurityChecks.map((defaultCheck) => {
+    const savedCheck = securityChecksByKey.get(defaultCheck.key);
+    return {
+      id: savedCheck?.id,
+      organization_id: savedCheck?.organization_id ?? currentOrganizationId ?? "",
+      check_key: defaultCheck.key,
+      check_label: savedCheck?.check_label ?? defaultCheck.label,
+      status: savedCheck?.status ?? "pending",
+      notes: savedCheck?.notes ?? null,
+      checked_at: savedCheck?.checked_at ?? null,
+      checked_by_profile_id: savedCheck?.checked_by_profile_id ?? null,
+    } as SecurityCheck;
+  });
+  const securityCheckSummary = displayedSecurityChecks.reduce(
+    (summary, check) => {
+      summary.total += 1;
+      if (check.status === "pass") summary.passed += 1;
+      else if (check.status === "fail") summary.failed += 1;
+      else summary.pending += 1;
+      return summary;
+    },
+    { total: 0, passed: 0, pending: 0, failed: 0 }
+  );
+  const allSecurityChecksPassed =
+    securityCheckSummary.total > 0 &&
+    securityCheckSummary.passed === securityCheckSummary.total;
 
   const organizationDisplayName =
     (currentOrganization?.name ?? currentProfile?.organization_name ?? organizationName).trim() ||
@@ -5004,6 +5097,95 @@ export default function Home() {
 
     await fetchStaffProfilesAndPermissions(currentOrganizationId);
     setStaffPermissionMessage("Staff permissions saved successfully.");
+  };
+
+  const seedSecurityChecklist = async () => {
+    setSecurityCheckMessage(null);
+    setSecurityCheckError(null);
+
+    if (!requireOrganization("seed security checklist")) {
+      setSecurityCheckError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const existingChecksByKey = new Map(securityChecks.map((check) => [check.check_key, check]));
+    const rows = defaultSecurityChecks.map((check) => {
+      const existingCheck = existingChecksByKey.get(check.key);
+      return {
+        organization_id: currentOrganizationId,
+        check_key: check.key,
+        check_label: check.label,
+        status: existingCheck?.status ?? "pending",
+        notes: existingCheck?.notes ?? null,
+        checked_at: existingCheck?.checked_at ?? new Date().toISOString(),
+        checked_by_profile_id: existingCheck?.checked_by_profile_id ?? currentProfile?.id ?? null,
+      };
+    });
+
+    const { error } = await supabase
+      .from("security_checks")
+      .upsert(rows, { onConflict: "organization_id,check_key" });
+
+    if (error) {
+      console.error("Supabase security checklist seed error:", JSON.stringify(error, null, 2));
+      setSecurityCheckError(`Failed to seed security checklist: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await fetchSecurityChecks(currentOrganizationId);
+    setSecurityCheckMessage("Security checklist seeded successfully.");
+  };
+
+  const updateSecurityCheckStatus = async (
+    check: SecurityCheck,
+    status: "pending" | "pass" | "fail"
+  ) => {
+    setSecurityCheckMessage(null);
+    setSecurityCheckError(null);
+
+    if (!requireOrganization("update security check")) {
+      setSecurityCheckError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const notes = securityCheckNotes[check.check_key]?.trim() || null;
+    const checkedAt = new Date().toISOString();
+    const payload = {
+      organization_id: currentOrganizationId,
+      check_key: check.check_key,
+      check_label: check.check_label,
+      status,
+      notes,
+      checked_at: checkedAt,
+      checked_by_profile_id: currentProfile?.id ?? null,
+    };
+
+    const { error } = await supabase
+      .from("security_checks")
+      .upsert(payload, { onConflict: "organization_id,check_key" });
+
+    if (error) {
+      console.error("Supabase security check update error:", JSON.stringify(error, null, 2));
+      setSecurityCheckError(`Failed to update security check: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: "updated",
+      entity_type: "security_check",
+      entity_id: check.id ?? check.check_key,
+      entity_label: check.check_label,
+      description: `Updated security check ${check.check_label} to ${status}`,
+      old_values: {
+        status: check.status,
+        notes: check.notes,
+        checked_at: check.checked_at,
+      },
+      new_values: payload,
+    });
+
+    await fetchSecurityChecks(currentOrganizationId);
+    setSecurityCheckMessage(`Security check marked ${status}.`);
   };
 
   if (!currentUser) {
@@ -8305,6 +8487,18 @@ export default function Home() {
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 lg:col-span-3">
                 Remaining security task: final cross-organization testing.
               </div>
+              <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-blue-900 lg:col-span-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span>Final Security Test Mode available.</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSectionChange("security-check")}
+                    className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                  >
+                    Open Security Check
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -8479,6 +8673,134 @@ export default function Home() {
                 </div>
               );
             })()}
+          </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "security-check" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">Security Check</h2>
+              <p className="mt-1 text-sm text-gray-600">Final security test mode and production readiness checklist.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={seedSecurityChecklist}
+                className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+              >
+                Seed Security Checklist
+              </button>
+              <button
+                type="button"
+                onClick={() => fetchSecurityChecks(currentOrganizationId)}
+                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {securityCheckMessage && <p className="mb-4 text-sm text-green-700">{securityCheckMessage}</p>}
+          {securityCheckError && <p className="mb-4 whitespace-pre-wrap text-sm text-red-700">{securityCheckError}</p>}
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded border border-gray-200 bg-white p-3">
+              <div className="text-sm text-gray-500">Total Checks</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{securityCheckSummary.total}</div>
+            </div>
+            <div className="rounded border border-green-200 bg-white p-3">
+              <div className="text-sm text-green-700">Passed</div>
+              <div className="mt-1 text-2xl font-semibold text-green-800">{securityCheckSummary.passed}</div>
+            </div>
+            <div className="rounded border border-amber-200 bg-white p-3">
+              <div className="text-sm text-amber-700">Pending</div>
+              <div className="mt-1 text-2xl font-semibold text-amber-800">{securityCheckSummary.pending}</div>
+            </div>
+            <div className="rounded border border-red-200 bg-white p-3">
+              <div className="text-sm text-red-700">Failed</div>
+              <div className="mt-1 text-2xl font-semibold text-red-800">{securityCheckSummary.failed}</div>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Production Readiness Checklist</h3>
+            <div className="space-y-3">
+              {displayedSecurityChecks.map((check) => {
+                const statusClass =
+                  check.status === "pass"
+                    ? "bg-green-100 text-green-800"
+                    : check.status === "fail"
+                      ? "bg-red-100 text-red-800"
+                      : "bg-amber-100 text-amber-800";
+                return (
+                  <div key={check.check_key} className="rounded border border-gray-200 bg-gray-50 p-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="font-medium text-gray-900">{check.check_label}</h4>
+                          <span className={`rounded px-2 py-1 text-xs font-medium ${statusClass}`}>
+                            {check.status}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          Checked at: {check.checked_at ? formatDate(check.checked_at) : "Not checked yet"}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => updateSecurityCheckStatus(check, "pass")}
+                          className="rounded border border-green-600 px-3 py-2 text-xs text-green-700 hover:bg-green-50"
+                        >
+                          Mark Pass
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateSecurityCheckStatus(check, "fail")}
+                          className="rounded border border-red-600 px-3 py-2 text-xs text-red-700 hover:bg-red-50"
+                        >
+                          Mark Fail
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateSecurityCheckStatus(check, "pending")}
+                          className="rounded border border-gray-400 px-3 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                        >
+                          Reset Pending
+                        </button>
+                      </div>
+                    </div>
+                    <label className="mt-3 flex flex-col gap-2 text-sm text-gray-700">
+                      <span>Notes</span>
+                      <textarea
+                        value={securityCheckNotes[check.check_key] ?? ""}
+                        onChange={(e) =>
+                          setSecurityCheckNotes((current) => ({
+                            ...current,
+                            [check.check_key]: e.target.value,
+                          }))
+                        }
+                        rows={2}
+                        className="rounded border border-gray-300 px-3 py-2"
+                        placeholder="Add notes before marking status"
+                      />
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={`mt-5 rounded border p-4 text-sm ${
+            allSecurityChecksPassed
+              ? "border-green-200 bg-green-50 text-green-900"
+              : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}>
+            {allSecurityChecksPassed
+              ? "TradeOS is ready for deployment preparation."
+              : "Complete all security checks before deployment."}
           </div>
         </section>
         )}
