@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-label="TradeOS icon">
+  <rect width="192" height="192" rx="40" fill="#0f172a"/>
+  <rect x="28" y="28" width="136" height="136" rx="28" fill="#111827" stroke="#fbbf24" stroke-width="4"/>
+  <path d="M54 62h84v20h-31v58H85V82H54V62Z" fill="#f8fafc"/>
+  <path d="M62 143h68" stroke="#fbbf24" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="142" cy="50" r="10" fill="#fbbf24"/>
+</svg>

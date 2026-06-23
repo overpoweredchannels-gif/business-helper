@@ -212,7 +212,8 @@ type SectionId =
   | "activity-logs"
   | "staff-permissions"
   | "security-check"
-  | "deployment";
+  | "deployment"
+  | "mobile-app";
 
 const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
@@ -236,6 +237,7 @@ const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "staff-permissions", label: "Staff & Permissions" },
   { id: "security-check", label: "Security Check" },
   { id: "deployment", label: "Deployment" },
+  { id: "mobile-app", label: "Mobile App" },
 ];
 
 type StaffPermissionKey =
@@ -296,6 +298,27 @@ const deploymentManualChecklistItems = [
   "Product create works on deployed URL",
   "Sale create works on deployed URL",
   "Print invoice works on deployed URL",
+  "PWA manifest added",
+  "Mobile install tested",
+];
+
+const mobileReadinessItems = [
+  { label: "App manifest configured", status: "Ready" },
+  { label: "Mobile install icon configured", status: "Ready" },
+  { label: "Standalone display mode configured", status: "Ready" },
+  { label: "Secure login required", status: "Ready" },
+  { label: "Staff permissions available", status: "Ready" },
+  { label: "Location tracking planned", status: "Planned" },
+  { label: "AI voice shortcut planned", status: "Planned" },
+];
+
+const mobileRoadmapItems = [
+  "Staff duty mode",
+  "Live staff location tracking",
+  "Owner mobile dashboard",
+  "AI voice assistant shortcut",
+  "Push notifications later",
+  "Offline-friendly improvements later",
 ];
 
 interface PurchaseLine {
@@ -2218,6 +2241,7 @@ export default function Home() {
     "staff-permissions": "owner_admin",
     "security-check": "owner_admin",
     deployment: "owner_admin",
+    "mobile-app": "owner_admin",
   };
   const canAccessSection = (sectionId: SectionId) => {
     if (sectionId === "dashboard") return true;
@@ -8582,6 +8606,9 @@ export default function Home() {
               <div className="rounded border border-emerald-200 bg-white px-3 py-2 lg:col-span-2">
                 Payment allocation rows protected through parent payment/invoice organization: Yes
               </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                PWA/mobile readiness added: Yes
+              </div>
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 lg:col-span-3">
                 Remaining security task: final cross-organization testing.
               </div>
@@ -8601,6 +8628,13 @@ export default function Home() {
                     className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
                   >
                     Open Deployment Readiness
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSectionChange("mobile-app")}
+                    className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                  >
+                    Open Mobile App
                   </button>
                 </div>
               </div>
@@ -8778,6 +8812,78 @@ export default function Home() {
                 </div>
               );
             })()}
+          </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "mobile-app" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">Mobile App Readiness</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Install TradeOS from a mobile browser and prepare for future mobile workflows.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSectionChange("deployment")}
+              className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
+            >
+              Open Deployment Readiness
+            </button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {mobileReadinessItems.map((item) => {
+              const ready = item.status === "Ready";
+              return (
+                <div key={item.label} className="rounded border border-gray-200 bg-white p-4">
+                  <div className="text-sm font-medium text-gray-900">{item.label}</div>
+                  <span className={`mt-3 inline-flex rounded px-2 py-1 text-xs font-medium ${
+                    ready ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                  }`}>
+                    {item.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <h3 className="mb-3 text-lg font-medium text-gray-900">Android Chrome</h3>
+              <ol className="list-decimal space-y-2 pl-5 text-sm text-gray-700">
+                <li>Open TradeOS in Chrome.</li>
+                <li>Tap three-dot menu.</li>
+                <li>Tap Add to Home screen or Install app.</li>
+                <li>Open TradeOS from the home screen icon.</li>
+              </ol>
+            </div>
+
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <h3 className="mb-3 text-lg font-medium text-gray-900">iPhone Safari</h3>
+              <ol className="list-decimal space-y-2 pl-5 text-sm text-gray-700">
+                <li>Open TradeOS in Safari.</li>
+                <li>Tap Share.</li>
+                <li>Tap Add to Home Screen.</li>
+                <li>Open TradeOS from the home screen icon.</li>
+              </ol>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-blue-200 bg-blue-50 p-4">
+            <h3 className="text-lg font-medium text-blue-950">Future Mobile Roadmap</h3>
+            <p className="mt-1 text-sm text-blue-900">
+              These mobile capabilities are planned for later and are not active yet.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {mobileRoadmapItems.map((item) => (
+                <div key={item} className="rounded border border-blue-200 bg-white px-3 py-2 text-sm text-blue-900">
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
         </section>
         )}
