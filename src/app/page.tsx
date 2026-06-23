@@ -2,487 +2,56 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
-
-interface Brand {
-  id: string;
-  name: string;
-}
-
-interface Category {
-  id: string;
-  name: string;
-  parent_category_id: string | null;
-}
-
-interface Product {
-  id: number;
-  name: string;
-  brand_id: string | null;
-  category_id: string | null;
-  unit_type: string | null;
-  last_purchase_price?: number | null;
-  default_selling_price?: number | null;
-  minimum_stock_level?: number | null;
-  reorder_level?: number | null;
-  track_batch?: boolean | null;
-  track_expiry?: boolean | null;
-}
-
-interface Customer {
-  id: string;
-  customer_name: string;
-  shop_name: string | null;
-  phone: string | null;
-  whatsapp: string | null;
-  city: string | null;
-  area: string | null;
-  customer_type: string | null;
-  credit_policy: string | null;
-  credit_limit: number | null;
-  credit_days: number | null;
-  allow_over_limit: boolean | null;
-  allow_overdue_sales: boolean | null;
-  preferred_payment_method: string | null;
-}
-
-interface Supplier {
-  id: string;
-  supplier_name: string;
-  contact_person: string | null;
-  phone: string | null;
-  whatsapp: string | null;
-  city: string | null;
-  notes: string | null;
-}
-
-interface PurchaseTransaction {
-  id: string;
-  supplier_id: string;
-  invoice_number: string;
-  created_at: string;
-  purchase_date?: string | null;
-  expense_review_status: string | null;
-  expense_reviewed_at: string | null;
-}
-
-interface SalesTransaction {
-  id: string;
-  customer_id: string;
-  invoice_number: string;
-  created_at: string;
-  sale_date: string | null;
-  payment_type: string | null;
-  credit_due_date: string | null;
-  credit_limit_snapshot: number | null;
-  credit_days_snapshot: number | null;
-}
-
-interface Task {
-  id: string;
-  organization_id: string;
-  title: string;
-  task_type: string;
-  priority: string;
-  status: string;
-  due_date: string | null;
-  notes: string | null;
-  customer_id: string | null;
-  supplier_id: string | null;
-  purchase_transaction_id: string | null;
-  sales_transaction_id: string | null;
-  product_id: number | string | null;
-  created_at: string;
-  completed_at: string | null;
-}
-
-interface TaskSuggestion {
-  key: string;
-  title: string;
-  reason: string;
-  task_type: string;
-  priority: string;
-  customer_id: string | null;
-  supplier_id: string | null;
-  product_id: number | string | null;
-  purchase_transaction_id: string | null;
-  sales_transaction_id: string | null;
-}
-
-interface AuditLog {
-  id: string;
-  organization_id: string;
-  actor_profile_id: string | null;
-  actor_email: string | null;
-  action: string;
-  entity_type: string;
-  entity_id: string | null;
-  entity_label: string | null;
-  description: string | null;
-  old_values: Record<string, unknown> | null;
-  new_values: Record<string, unknown> | null;
-  created_at: string;
-}
-
-interface StaffProfile {
-  id: string;
-  organization_id: string;
-  email: string | null;
-  role: string | null;
-  is_active: boolean | null;
-  display_name: string | null;
-  auth_user_id?: string | null;
-}
-
-interface StaffPermission {
-  id?: string;
-  organization_id: string;
-  profile_id: string;
-  can_manage_products: boolean | null;
-  can_manage_customers: boolean | null;
-  can_manage_suppliers: boolean | null;
-  can_create_purchases: boolean | null;
-  can_create_sales: boolean | null;
-  can_manage_payments: boolean | null;
-  can_manage_expenses: boolean | null;
-  can_view_profit: boolean | null;
-  can_view_reports: boolean | null;
-  can_manage_tasks: boolean | null;
-  can_manage_settings: boolean | null;
-}
-
-interface SecurityCheck {
-  id?: string;
-  organization_id: string;
-  check_key: string;
-  check_label: string;
-  status: "pending" | "pass" | "fail" | string;
-  notes: string | null;
-  checked_at: string | null;
-  checked_by_profile_id: string | null;
-}
-
-interface NewPurchaseExpenseReminder {
-  id: string;
-  invoiceNumber: string;
-  supplierId: string;
-}
-
-interface SupplierPurchasePaymentAllocation {
-  purchaseTotal: number;
-  explicitAllocatedAmount: number;
-  fallbackAllocatedAmount: number;
-  paidAmount: number;
-  remainingPayableAmount: number;
-}
-
-interface SupplierLedgerEntry {
-  id: string;
-  date: string | null;
-  eventTimestamp: string | null;
-  eventTime: number;
-  eventType: "purchase" | "payment";
-  reference: string;
-  notes: string;
-  debit: number;
-  credit: number;
-}
-
-interface SupplierLedgerDisplayEntry extends SupplierLedgerEntry {
-  runningBalance: number;
-}
-
-type SectionId =
-  | "dashboard"
-  | "products"
-  | "brands"
-  | "categories"
-  | "customers"
-  | "suppliers"
-  | "purchases"
-  | "sales"
-  | "inventory"
-  | "customer-payments"
-  | "supplier-payments"
-  | "expenses"
-  | "profit-loss"
-  | "customer-credit"
-  | "supplier-ledger"
-  | "business-settings"
-  | "task-manager"
-  | "activity-logs"
-  | "staff-permissions"
-  | "security-check"
-  | "deployment"
-  | "mobile-app";
-
-const navigationItems: Array<{ id: SectionId; label: string }> = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "products", label: "Products" },
-  { id: "brands", label: "Brands" },
-  { id: "categories", label: "Categories" },
-  { id: "customers", label: "Customers" },
-  { id: "suppliers", label: "Suppliers" },
-  { id: "purchases", label: "Purchases" },
-  { id: "sales", label: "Sales" },
-  { id: "inventory", label: "Inventory" },
-  { id: "customer-payments", label: "Customer Payments" },
-  { id: "supplier-payments", label: "Supplier Payments" },
-  { id: "expenses", label: "Expenses" },
-  { id: "profit-loss", label: "Profit & Loss" },
-  { id: "customer-credit", label: "Customer Credit" },
-  { id: "supplier-ledger", label: "Supplier Ledger" },
-  { id: "business-settings", label: "Business Settings" },
-  { id: "task-manager", label: "Task Manager" },
-  { id: "activity-logs", label: "Activity Logs" },
-  { id: "staff-permissions", label: "Staff & Permissions" },
-  { id: "security-check", label: "Security Check" },
-  { id: "deployment", label: "Deployment" },
-  { id: "mobile-app", label: "Mobile App" },
-];
-
-type StaffPermissionKey =
-  | "can_manage_products"
-  | "can_manage_customers"
-  | "can_manage_suppliers"
-  | "can_create_purchases"
-  | "can_create_sales"
-  | "can_manage_payments"
-  | "can_manage_expenses"
-  | "can_view_profit"
-  | "can_view_reports"
-  | "can_manage_tasks"
-  | "can_manage_settings";
-
-const staffPermissionLabels: Array<{ key: StaffPermissionKey; label: string }> = [
-  { key: "can_manage_products", label: "Manage Products" },
-  { key: "can_manage_customers", label: "Manage Customers" },
-  { key: "can_manage_suppliers", label: "Manage Suppliers" },
-  { key: "can_create_purchases", label: "Create Purchases" },
-  { key: "can_create_sales", label: "Create Sales" },
-  { key: "can_manage_payments", label: "Manage Payments" },
-  { key: "can_manage_expenses", label: "Manage Expenses" },
-  { key: "can_view_profit", label: "View Profit" },
-  { key: "can_view_reports", label: "View Reports" },
-  { key: "can_manage_tasks", label: "Manage Tasks" },
-  { key: "can_manage_settings", label: "Manage Settings" },
-];
-
-const staffRoles = ["owner", "admin", "manager", "staff", "accountant", "sales"];
-
-const defaultSecurityChecks: Array<{ key: string; label: string }> = [
-  { key: "app_loads", label: "App loads after RLS hardening" },
-  { key: "owner_profile_linked", label: "Owner profile linked to auth user" },
-  { key: "organization_isolation", label: "Organization-based RLS policies applied" },
-  { key: "child_table_security", label: "Invoice item and payment allocation child tables protected" },
-  { key: "staff_permissions_ui", label: "Staff permissions UI working" },
-  { key: "product_create", label: "Product create works" },
-  { key: "customer_create", label: "Customer create works" },
-  { key: "supplier_create", label: "Supplier create works" },
-  { key: "purchase_create", label: "Purchase invoice with item works" },
-  { key: "sales_create", label: "Sales invoice with item works" },
-  { key: "payment_allocation", label: "Customer/supplier payment allocations work" },
-  { key: "dashboard_reports", label: "Dashboard, Profit & Loss, and reports load" },
-  { key: "print_export", label: "Print invoices and CSV exports work" },
-  { key: "build_passes", label: "Production build passes" },
-  { key: "ready_for_deployment", label: "Ready for Vercel deployment preparation" },
-];
-
-const deploymentManualChecklistItems = [
-  "Local build passes",
-  "GitHub main branch is pushed",
-  "Vercel project connected to GitHub",
-  "Vercel env variables added",
-  "First deployment succeeds",
-  "Login works on deployed URL",
-  "Dashboard opens on deployed URL",
-  "Product create works on deployed URL",
-  "Sale create works on deployed URL",
-  "Print invoice works on deployed URL",
-  "PWA manifest added",
-  "Mobile install tested",
-];
-
-const mobileReadinessItems = [
-  { label: "App manifest configured", status: "Ready" },
-  { label: "Mobile install icon configured", status: "Ready" },
-  { label: "Standalone display mode configured", status: "Ready" },
-  { label: "Secure login required", status: "Ready" },
-  { label: "Staff permissions available", status: "Ready" },
-  { label: "Location tracking planned", status: "Planned" },
-  { label: "AI voice shortcut planned", status: "Planned" },
-];
-
-const mobileRoadmapItems = [
-  "Staff duty mode",
-  "Live staff location tracking",
-  "Owner mobile dashboard",
-  "AI voice assistant shortcut",
-  "Push notifications later",
-  "Offline-friendly improvements later",
-];
-
-interface PurchaseLine {
-  id?: string;
-  product_id: string | null;
-  quantity: string;
-  purchase_price: string;
-  selling_price: string;
-  batch_number: string;
-  expiry_date: string;
-}
-
-const toDateInputValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const getMonthRange = (monthOffset = 0) => {
-  const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
-  const end = new Date(today.getFullYear(), today.getMonth() + monthOffset + 1, 0);
-  return {
-    start: toDateInputValue(start),
-    end: toDateInputValue(end),
-  };
-};
-
-const getDateOnly = (dateValue: string | null | undefined) => {
-  if (!dateValue) return null;
-  return dateValue.slice(0, 10);
-};
-
-const isDateInRange = (dateValue: string | null | undefined, startDate: string, endDate: string) => {
-  const dateOnly = getDateOnly(dateValue);
-  if (!dateOnly) return false;
-  if (startDate && dateOnly < startDate) return false;
-  if (endDate && dateOnly > endDate) return false;
-  return true;
-};
-
-const addDaysToDateInputValue = (dateValue: string, days: number) => {
-  const date = new Date(`${dateValue}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setDate(date.getDate() + days);
-  return toDateInputValue(date);
-};
-
-const safeNumber = (value: unknown) => {
-  const numberValue = Number(value ?? 0);
-  return Number.isFinite(numberValue) ? numberValue : 0;
-};
-
-const getUsableTimestamp = (...dateValues: Array<unknown>) => {
-  for (const dateValue of dateValues) {
-    if (typeof dateValue !== "string" || !dateValue.trim()) continue;
-    const timestamp = new Date(dateValue).getTime();
-    if (Number.isFinite(timestamp)) {
-      return {
-        value: dateValue,
-        time: timestamp,
-      };
-    }
-  }
-
-  return {
-    value: null,
-    time: 0,
-  };
-};
-
-const formatPKR = (value: unknown) =>
-  new Intl.NumberFormat("en-PK", {
-    style: "currency",
-    currency: "PKR",
-    maximumFractionDigits: 2,
-  }).format(safeNumber(value));
-
-const formatDate = (value: unknown) => {
-  if (typeof value !== "string" || !value.trim()) return "-";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "-";
-  return date.toLocaleDateString("en-PK", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-  });
-};
-
-const escapeHtml = (value: unknown) =>
-  String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-
-const downloadCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
-  if (typeof window === "undefined" || typeof document === "undefined" || rows.length === 0) {
-    return;
-  }
-
-  const headers = Object.keys(rows[0]);
-  const escapeCsvCell = (value: unknown) => {
-    let text = String(value ?? "");
-    if (/^[=+\-@]/.test(text)) text = `'${text}`;
-    return `"${text.replace(/"/g, '""').replace(/\r?\n/g, "\n")}"`;
-  };
-  const csv = [
-    headers.map(escapeCsvCell).join(","),
-    ...rows.map((row) => headers.map((header) => escapeCsvCell(row[header])).join(",")),
-  ].join("\r\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
-
-const taskTypes = [
-  "general",
-  "customer_follow_up",
-  "supplier_follow_up",
-  "payment_collection",
-  "stock_check",
-  "purchase_review",
-  "sales_follow_up",
-  "reorder",
-  "expense_review",
-];
-
-const taskPriorities = ["low", "medium", "high", "urgent"];
-const taskStatuses = ["pending", "in_progress", "completed", "cancelled"];
-
-const taskTypeLabels: Record<string, string> = {
-  general: "General",
-  customer_follow_up: "Customer Follow Up",
-  supplier_follow_up: "Supplier Follow Up",
-  payment_collection: "Payment Collection",
-  stock_check: "Stock Check",
-  purchase_review: "Purchase Review",
-  sales_follow_up: "Sales Follow Up",
-  reorder: "Reorder",
-  expense_review: "Expense Review",
-};
-
-const taskPriorityLabels: Record<string, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
-};
-
-const taskStatusLabels: Record<string, string> = {
-  pending: "Pending",
-  in_progress: "In Progress",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
+import {
+  defaultSecurityChecks,
+  deploymentManualChecklistItems,
+  mobileReadinessItems,
+  mobileRoadmapItems,
+  navigationItems,
+  staffPermissionLabels,
+  staffRoles,
+  taskPriorities,
+  taskPriorityLabels,
+  taskStatuses,
+  taskStatusLabels,
+  taskTypeLabels,
+  taskTypes,
+} from "@/lib/tradeos/constants";
+import {
+  addDaysToDateInputValue,
+  downloadCsv,
+  escapeHtml,
+  formatDate,
+  formatPKR,
+  getDateOnly,
+  getMonthRange,
+  getUsableTimestamp,
+  isDateInRange,
+  toDateInputValue,
+} from "@/lib/tradeos/formatters";
+import type {
+  AuditLog,
+  Brand,
+  Category,
+  Customer,
+  NewPurchaseExpenseReminder,
+  Product,
+  PurchaseLine,
+  PurchaseTransaction,
+  SalesTransaction,
+  SectionId,
+  SecurityCheck,
+  StaffPermission,
+  StaffPermissionKey,
+  StaffProfile,
+  Supplier,
+  SupplierLedgerDisplayEntry,
+  SupplierLedgerEntry,
+  SupplierPurchasePaymentAllocation,
+  Task,
+  TaskSuggestion,
+} from "@/lib/tradeos/types";
+import { safeNumber } from "@/lib/tradeos/validators";
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
