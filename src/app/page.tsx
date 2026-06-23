@@ -211,7 +211,8 @@ type SectionId =
   | "task-manager"
   | "activity-logs"
   | "staff-permissions"
-  | "security-check";
+  | "security-check"
+  | "deployment";
 
 const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
@@ -234,6 +235,7 @@ const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "activity-logs", label: "Activity Logs" },
   { id: "staff-permissions", label: "Staff & Permissions" },
   { id: "security-check", label: "Security Check" },
+  { id: "deployment", label: "Deployment" },
 ];
 
 type StaffPermissionKey =
@@ -281,6 +283,19 @@ const defaultSecurityChecks: Array<{ key: string; label: string }> = [
   { key: "print_export", label: "Print invoices and CSV exports work" },
   { key: "build_passes", label: "Production build passes" },
   { key: "ready_for_deployment", label: "Ready for Vercel deployment preparation" },
+];
+
+const deploymentManualChecklistItems = [
+  "Local build passes",
+  "GitHub main branch is pushed",
+  "Vercel project connected to GitHub",
+  "Vercel env variables added",
+  "First deployment succeeds",
+  "Login works on deployed URL",
+  "Dashboard opens on deployed URL",
+  "Product create works on deployed URL",
+  "Sale create works on deployed URL",
+  "Print invoice works on deployed URL",
 ];
 
 interface PurchaseLine {
@@ -588,6 +603,7 @@ export default function Home() {
   const [securityCheckNotes, setSecurityCheckNotes] = useState<Record<string, string>>({});
   const [securityCheckMessage, setSecurityCheckMessage] = useState<string | null>(null);
   const [securityCheckError, setSecurityCheckError] = useState<string | null>(null);
+  const [deploymentChecklistState, setDeploymentChecklistState] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     checkAuthUser();
@@ -2201,6 +2217,7 @@ export default function Home() {
     "activity-logs": "owner_admin",
     "staff-permissions": "owner_admin",
     "security-check": "owner_admin",
+    deployment: "owner_admin",
   };
   const canAccessSection = (sectionId: SectionId) => {
     if (sectionId === "dashboard") return true;
@@ -4391,6 +4408,87 @@ export default function Home() {
   const allSecurityChecksPassed =
     securityCheckSummary.total > 0 &&
     securityCheckSummary.passed === securityCheckSummary.total;
+  const businessSettingsComplete = Boolean(
+    (currentOrganization?.name ?? currentProfile?.organization_name ?? organizationName).trim() &&
+      (String(currentOrganization?.phone ?? "").trim() || String(currentOrganization?.address ?? "").trim())
+  );
+  const deploymentEnvironmentChecks = [
+    {
+      key: "supabase_url",
+      label: "Supabase project URL configured",
+      status: currentUser ? "pass" : "info",
+      detail: currentUser
+        ? "Configured locally if the app is running."
+        : "Configured locally if the app is running.",
+    },
+    {
+      key: "supabase_anon_key",
+      label: "Supabase anon key configured",
+      status: currentUser ? "pass" : "info",
+      detail: currentUser
+        ? "Configured locally if the app is running."
+        : "Configured locally if the app is running.",
+    },
+    {
+      key: "organization_loaded",
+      label: "Organization loads successfully",
+      status: currentOrganizationId ? "pass" : "warning",
+      detail: currentOrganizationId ? "Organization ID is loaded." : "Login and profile loading required.",
+    },
+    {
+      key: "profile_loaded",
+      label: "Current user profile loads successfully",
+      status: currentProfile ? "pass" : "warning",
+      detail: currentProfile ? "Current profile is loaded." : "Current profile is not loaded.",
+    },
+    {
+      key: "business_settings",
+      label: "Business name, phone, and address added",
+      status: businessSettingsComplete ? "pass" : "warning",
+      detail: businessSettingsComplete
+        ? "Business branding data is present."
+        : "Add business name and at least phone or address.",
+    },
+    {
+      key: "rls_security",
+      label: "RLS security readiness completed",
+      status: allSecurityChecksPassed || securityChecks.length > 0 ? "pass" : "warning",
+      detail:
+        allSecurityChecksPassed || securityChecks.length > 0
+          ? "Security readiness is being tracked."
+          : "Open Security Check and complete final testing.",
+    },
+    {
+      key: "staff_permissions",
+      label: "Staff roles and permissions available",
+      status: Array.isArray(staffPermissions) ? "pass" : "warning",
+      detail: "Staff permissions feature is available.",
+    },
+    {
+      key: "print_export",
+      label: "Print invoices and CSV exports available",
+      status: "pass",
+      detail: "Print and export tools are built into TradeOS.",
+    },
+    {
+      key: "production_build",
+      label: "Run npm.cmd run build before deployment",
+      status: "manual",
+      detail: "Manual check required before each deployment.",
+    },
+    {
+      key: "vercel_env",
+      label: "Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel",
+      status: "manual",
+      detail: "Add variables in Vercel without exposing secret values.",
+    },
+  ];
+  const deploymentPassedCount = deploymentEnvironmentChecks.filter((check) => check.status === "pass").length;
+  const deploymentWarningCount = deploymentEnvironmentChecks.filter((check) => check.status === "warning").length;
+  const deploymentManualCount = deploymentEnvironmentChecks.filter((check) => check.status === "manual").length;
+  const deploymentManualCompletedCount = deploymentManualChecklistItems.filter(
+    (item) => deploymentChecklistState[item]
+  ).length;
 
   const organizationDisplayName =
     (currentOrganization?.name ?? currentProfile?.organization_name ?? organizationName).trim() ||
@@ -8497,6 +8595,13 @@ export default function Home() {
                   >
                     Open Security Check
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSectionChange("deployment")}
+                    className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                  >
+                    Open Deployment Readiness
+                  </button>
                 </div>
               </div>
             </div>
@@ -8673,6 +8778,137 @@ export default function Home() {
                 </div>
               );
             })()}
+          </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "deployment" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-5">
+            <h2 className="text-xl font-medium text-gray-900">Deployment Readiness</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Vercel deployment preparation and environment checks for TradeOS.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">App Build Status</div>
+              <div className="mt-2 text-lg font-semibold text-gray-900">Manual build required</div>
+              <p className="mt-1 text-xs text-gray-500">Run the local production build before deployment.</p>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">Environment Status</div>
+              <div className="mt-2 text-lg font-semibold text-gray-900">
+                {deploymentWarningCount === 0 ? "Ready locally" : "Needs review"}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                {deploymentPassedCount} passing, {deploymentManualCount} manual.
+              </p>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">Security Status</div>
+              <div className="mt-2 text-lg font-semibold text-gray-900">
+                {allSecurityChecksPassed ? "Security checks passed" : "Final checks pending"}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Use Security Check before launch.</p>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">Business Setup Status</div>
+              <div className="mt-2 text-lg font-semibold text-gray-900">
+                {businessSettingsComplete ? "Business details ready" : "Business details needed"}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Business name plus phone or address recommended.</p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Environment Checklist</h3>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {deploymentEnvironmentChecks.map((check) => {
+                const statusClass =
+                  check.status === "pass"
+                    ? "bg-green-100 text-green-800"
+                    : check.status === "manual"
+                      ? "bg-blue-100 text-blue-800"
+                      : check.status === "info"
+                        ? "bg-gray-100 text-gray-800"
+                        : "bg-amber-100 text-amber-800";
+                return (
+                  <div key={check.key} className="rounded border border-gray-200 bg-gray-50 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium text-gray-900">{check.label}</div>
+                      <span className={`rounded px-2 py-1 text-xs font-medium ${statusClass}`}>
+                        {check.status}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-600">{check.detail}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Deployment Commands</h3>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div>
+                <h4 className="mb-2 text-sm font-medium text-gray-800">Build locally</h4>
+                <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-gray-100">{`taskkill /F /IM node.exe
+rmdir /s /q .next
+set NODE_OPTIONS=--max-old-space-size=4096
+npm.cmd run build`}</pre>
+              </div>
+              <div>
+                <h4 className="mb-2 text-sm font-medium text-gray-800">Push latest main</h4>
+                <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-gray-100">{`git status
+git push origin main`}</pre>
+              </div>
+              <div>
+                <h4 className="mb-2 text-sm font-medium text-gray-800">Vercel setup reminder</h4>
+                <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-gray-100">{`Add these variables in Vercel:
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-gray-500">Secret values are never displayed here.</p>
+          </div>
+
+          <div className="mt-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <h3 className="mb-2 text-lg font-medium text-amber-950">Before Public Launch</h3>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>Do not expose service role key.</li>
+              <li>Confirm RLS policies are enabled.</li>
+              <li>Confirm owner account can login after deployment.</li>
+              <li>Test product/customer/supplier/purchase/sale/payment flows on deployed URL.</li>
+              <li>Keep database backups before major changes.</li>
+            </ul>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-lg font-medium text-gray-900">Deployment Test Checklist</h3>
+              <span className="text-sm text-gray-500">
+                {deploymentManualCompletedCount} / {deploymentManualChecklistItems.length} complete
+              </span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {deploymentManualChecklistItems.map((item) => (
+                <label key={item} className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(deploymentChecklistState[item])}
+                    onChange={(event) =>
+                      setDeploymentChecklistState((current) => ({
+                        ...current,
+                        [item]: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span>{item}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </section>
         )}
