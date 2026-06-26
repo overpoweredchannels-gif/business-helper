@@ -22,6 +22,7 @@ export const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "staff-permissions", label: "Staff & Permissions" },
   { id: "security-check", label: "Security Check" },
   { id: "deployment", label: "Deployment" },
+  { id: "staff-duty", label: "Staff Duty" },
   { id: "mobile-app", label: "Mobile App" },
 ];
 
@@ -80,12 +81,11 @@ export const mobileReadinessItems = [
   { label: "Standalone display mode configured", status: "Ready" },
   { label: "Secure login required", status: "Ready" },
   { label: "Staff permissions available", status: "Ready" },
-  { label: "Location tracking planned", status: "Planned" },
+  { label: "Staff duty location tracking V1", status: "Ready" },
   { label: "AI voice shortcut planned", status: "Planned" },
 ];
 
 export const mobileRoadmapItems = [
-  "Staff duty mode",
   "Live staff location tracking",
   "Owner mobile dashboard",
   "AI voice assistant shortcut",

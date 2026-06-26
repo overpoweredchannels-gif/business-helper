@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import {
   defaultSecurityChecks,
@@ -19,9 +19,11 @@ import {
 } from "@/lib/tradeos/constants";
 import {
   addDaysToDateInputValue,
+  calculateDistanceMeters,
   downloadCsv,
   escapeHtml,
   formatDate,
+  formatDateTime,
   formatPKR,
   getDateOnly,
   getMonthRange,
@@ -41,6 +43,9 @@ import type {
   SalesTransaction,
   SectionId,
   SecurityCheck,
+  CurrentLocationSnapshot,
+  StaffDutySession,
+  StaffLocationPoint,
   StaffPermission,
   StaffPermissionKey,
   StaffProfile,
@@ -196,9 +201,28 @@ export default function Home() {
   const [securityCheckMessage, setSecurityCheckMessage] = useState<string | null>(null);
   const [securityCheckError, setSecurityCheckError] = useState<string | null>(null);
   const [deploymentChecklistState, setDeploymentChecklistState] = useState<Record<string, boolean>>({});
+  const [dutySessions, setDutySessions] = useState<StaffDutySession[]>([]);
+  const [locationPoints, setLocationPoints] = useState<StaffLocationPoint[]>([]);
+  const [activeDutySession, setActiveDutySession] = useState<StaffDutySession | null>(null);
+  const [currentDutyLocation, setCurrentDutyLocation] = useState<CurrentLocationSnapshot | null>(null);
+  const [locationTrackingMessage, setLocationTrackingMessage] = useState<string | null>(null);
+  const [locationTrackingError, setLocationTrackingError] = useState<string | null>(null);
+  const [isTrackingLocation, setIsTrackingLocation] = useState(false);
+  const [selectedStaffForLocation, setSelectedStaffForLocation] = useState("");
+  const locationWatchIdRef = useRef<number | null>(null);
+  const activeDutySessionIdRef = useRef<string | null>(null);
+  const lastSavedLocationRef = useRef<{ latitude: number; longitude: number; capturedAt: number } | null>(null);
 
   useEffect(() => {
     checkAuthUser();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (typeof navigator !== "undefined" && locationWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(locationWatchIdRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -366,6 +390,58 @@ export default function Home() {
     setSelectedStaffProfileId(nextSelectedStaffProfileId);
   };
 
+  const fetchDutySessions = async (organizationId?: string | null, profileId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setDutySessions([]);
+      setActiveDutySession(null);
+      activeDutySessionIdRef.current = null;
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("staff_duty_sessions")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("started_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error("Supabase fetch staff duty sessions error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    const sessions = data ?? [];
+    setDutySessions(sessions);
+    const currentProfileId = profileId ?? currentProfile?.id ?? null;
+    const ownActiveSession =
+      sessions.find((session) => session.profile_id === currentProfileId && session.status === "on_duty") ?? null;
+    setActiveDutySession(ownActiveSession);
+    activeDutySessionIdRef.current = ownActiveSession?.id ?? null;
+  };
+
+  const fetchLocationPoints = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setLocationPoints([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("staff_location_points")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("captured_at", { ascending: false })
+      .limit(300);
+
+    if (error) {
+      console.error("Supabase fetch staff location points error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setLocationPoints(data ?? []);
+  };
+
   const populateBusinessSettings = (organization: any | null) => {
     setCurrentOrganization(organization);
     setBusinessSettingsName(organization?.name ?? "");
@@ -479,6 +555,8 @@ export default function Home() {
     fetchAuditLogs(resolvedProfile.organization_id);
     fetchStaffProfilesAndPermissions(resolvedProfile.organization_id);
     fetchSecurityChecks(resolvedProfile.organization_id);
+    fetchDutySessions(resolvedProfile.organization_id, resolvedProfile.id);
+    fetchLocationPoints(resolvedProfile.organization_id);
     fetchPurchaseItems();
     fetchSalesItems();
   };
@@ -856,6 +934,304 @@ export default function Home() {
     } catch (err) {
       console.error("Unexpected audit log insert error:", err);
     }
+  };
+
+  const getGeolocationPosition = () =>
+    new Promise<GeolocationPosition>((resolve, reject) => {
+      if (typeof navigator === "undefined" || !navigator.geolocation) {
+        reject(new Error("This browser does not support location tracking."));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 30000,
+      });
+    });
+
+  const getLocationErrorMessage = (error: unknown) => {
+    const geoError =
+      typeof error === "object" && error !== null && "code" in error
+        ? (error as { code?: number; message?: string })
+        : null;
+
+    if (geoError?.code) {
+      if (geoError.code === 1) {
+        return "Location permission was denied. Please allow location access to start duty tracking.";
+      }
+      if (geoError.code === 2) {
+        return "Location is currently unavailable. Please check GPS/location settings and try again.";
+      }
+      if (geoError.code === 3) {
+        return "Location request timed out. Please try again.";
+      }
+    }
+
+    return error instanceof Error ? error.message : geoError?.message ?? "Could not read current location.";
+  };
+
+  const positionToSnapshot = (position: GeolocationPosition, capturedAt = new Date().toISOString()): CurrentLocationSnapshot => ({
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    accuracy: position.coords.accuracy ?? null,
+    speed: position.coords.speed ?? null,
+    heading: position.coords.heading ?? null,
+    altitude: position.coords.altitude ?? null,
+    captured_at: capturedAt,
+  });
+
+  const saveLocationPoint = async (
+    sessionId: string,
+    snapshot: CurrentLocationSnapshot,
+    options: { force?: boolean } = {}
+  ) => {
+    if (!currentOrganizationId || !currentProfile?.id || !sessionId) {
+      return;
+    }
+
+    const capturedAtTime = new Date(snapshot.captured_at).getTime();
+    const lastSaved = lastSavedLocationRef.current;
+    const distanceFromLastSaved =
+      lastSaved && Number.isFinite(lastSaved.latitude) && Number.isFinite(lastSaved.longitude)
+        ? calculateDistanceMeters(
+            lastSaved.latitude,
+            lastSaved.longitude,
+            snapshot.latitude,
+            snapshot.longitude
+          )
+        : Number.POSITIVE_INFINITY;
+    const enoughTimePassed = !lastSaved || capturedAtTime - lastSaved.capturedAt >= 60000;
+    const meaningfulDistance = distanceFromLastSaved >= 50;
+
+    if (!options.force && !enoughTimePassed && !meaningfulDistance) {
+      return;
+    }
+
+    const payload = {
+      organization_id: currentOrganizationId,
+      profile_id: currentProfile.id,
+      duty_session_id: sessionId,
+      latitude: snapshot.latitude,
+      longitude: snapshot.longitude,
+      accuracy: snapshot.accuracy,
+      speed: snapshot.speed,
+      heading: snapshot.heading,
+      altitude: snapshot.altitude,
+      captured_at: snapshot.captured_at,
+    };
+
+    const { error } = await supabase.from("staff_location_points").insert(payload);
+
+    if (error) {
+      console.error("Supabase staff location point insert error:", JSON.stringify(error, null, 2));
+      setLocationTrackingError(`Could not save latest location: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    lastSavedLocationRef.current = {
+      latitude: snapshot.latitude,
+      longitude: snapshot.longitude,
+      capturedAt: capturedAtTime,
+    };
+    setLocationTrackingMessage(`Location updated at ${formatDateTime(snapshot.captured_at)}.`);
+    await fetchLocationPoints(currentOrganizationId);
+  };
+
+  const stopLocationWatch = () => {
+    if (typeof navigator !== "undefined" && navigator.geolocation && locationWatchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(locationWatchIdRef.current);
+    }
+    locationWatchIdRef.current = null;
+    setIsTrackingLocation(false);
+  };
+
+  const startLocationWatch = (sessionId: string) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationTrackingError("This browser does not support live location tracking.");
+      return;
+    }
+
+    activeDutySessionIdRef.current = sessionId;
+    if (locationWatchIdRef.current !== null) {
+      setIsTrackingLocation(true);
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const snapshot = positionToSnapshot(position);
+        setCurrentDutyLocation(snapshot);
+        const activeSessionId = activeDutySessionIdRef.current;
+        if (activeSessionId) {
+          void saveLocationPoint(activeSessionId, snapshot);
+        }
+      },
+      (error) => {
+        setLocationTrackingError(getLocationErrorMessage(error));
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 30000,
+        timeout: 20000,
+      }
+    );
+
+    locationWatchIdRef.current = watchId;
+    setIsTrackingLocation(true);
+    setLocationTrackingMessage("Live location tracking is active while TradeOS remains open.");
+  };
+
+  const handleStartDuty = async () => {
+    setLocationTrackingError(null);
+    setLocationTrackingMessage(null);
+
+    if (!requireOrganization("start duty")) {
+      setLocationTrackingError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    if (!currentProfile?.id) {
+      setLocationTrackingError("Current staff profile is not loaded. Please login again.");
+      return;
+    }
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationTrackingError("This browser does not support location tracking.");
+      return;
+    }
+
+    const existingActiveSession = activeDutySession ?? dutySessions.find(
+      (session) => session.profile_id === currentProfile.id && session.status === "on_duty"
+    );
+    if (existingActiveSession) {
+      setActiveDutySession(existingActiveSession);
+      activeDutySessionIdRef.current = existingActiveSession.id;
+      startLocationWatch(existingActiveSession.id);
+      setLocationTrackingMessage("Existing active duty session found. Live tracking resumed.");
+      return;
+    }
+
+    try {
+      const position = await getGeolocationPosition();
+      const startedAt = new Date().toISOString();
+      const snapshot = positionToSnapshot(position, startedAt);
+
+      const { data: session, error: sessionError } = await supabase
+        .from("staff_duty_sessions")
+        .insert({
+          organization_id: currentOrganizationId,
+          profile_id: currentProfile.id,
+          status: "on_duty",
+          started_at: startedAt,
+          start_latitude: snapshot.latitude,
+          start_longitude: snapshot.longitude,
+          start_accuracy: snapshot.accuracy,
+          notes: null,
+        })
+        .select("*")
+        .single();
+
+      if (sessionError) {
+        console.error("Supabase staff duty session insert error:", JSON.stringify(sessionError, null, 2));
+        setLocationTrackingError(`Could not start duty: ${JSON.stringify(sessionError, null, 2)}`);
+        return;
+      }
+
+      setActiveDutySession(session);
+      setCurrentDutyLocation(snapshot);
+      activeDutySessionIdRef.current = session.id;
+      await saveLocationPoint(session.id, snapshot, { force: true });
+      startLocationWatch(session.id);
+      await fetchDutySessions(currentOrganizationId, currentProfile.id);
+      await createAuditLog({
+        action: "created",
+        entity_type: "staff_duty",
+        entity_id: session.id,
+        entity_label: currentProfile.display_name ?? currentProfile.email ?? currentProfile.id,
+        description: "Started duty session",
+        new_values: { status: "on_duty", started_at: startedAt },
+      });
+      setLocationTrackingMessage("Duty started. Location tracking is active while TradeOS remains open.");
+    } catch (err) {
+      setLocationTrackingError(getLocationErrorMessage(err));
+    }
+  };
+
+  const handleEndDuty = async () => {
+    setLocationTrackingError(null);
+    setLocationTrackingMessage(null);
+
+    if (!requireOrganization("end duty")) {
+      setLocationTrackingError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    if (!currentProfile?.id) {
+      setLocationTrackingError("Current staff profile is not loaded. Please login again.");
+      return;
+    }
+
+    const sessionToEnd = activeDutySession ?? dutySessions.find(
+      (session) => session.profile_id === currentProfile.id && session.status === "on_duty"
+    );
+    if (!sessionToEnd) {
+      stopLocationWatch();
+      setLocationTrackingMessage("No active duty session found.");
+      return;
+    }
+
+    let endSnapshot: CurrentLocationSnapshot | null = null;
+    try {
+      const position = await getGeolocationPosition();
+      endSnapshot = positionToSnapshot(position);
+    } catch (err) {
+      console.warn("Could not capture final duty location:", err);
+    }
+
+    const endedAt = new Date().toISOString();
+    const updatePayload = {
+      status: "off_duty",
+      ended_at: endedAt,
+      end_latitude: endSnapshot?.latitude ?? null,
+      end_longitude: endSnapshot?.longitude ?? null,
+      end_accuracy: endSnapshot?.accuracy ?? null,
+      updated_at: endedAt,
+    };
+
+    const { error } = await supabase
+      .from("staff_duty_sessions")
+      .update(updatePayload)
+      .eq("id", sessionToEnd.id)
+      .eq("organization_id", currentOrganizationId)
+      .eq("profile_id", currentProfile.id);
+
+    if (error) {
+      console.error("Supabase staff duty session update error:", JSON.stringify(error, null, 2));
+      setLocationTrackingError(`Could not end duty: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    if (endSnapshot) {
+      setCurrentDutyLocation(endSnapshot);
+      await saveLocationPoint(sessionToEnd.id, endSnapshot, { force: true });
+    }
+
+    stopLocationWatch();
+    setActiveDutySession(null);
+    activeDutySessionIdRef.current = null;
+    await fetchDutySessions(currentOrganizationId, currentProfile.id);
+    await fetchLocationPoints(currentOrganizationId);
+    await createAuditLog({
+      action: "updated",
+      entity_type: "staff_duty",
+      entity_id: sessionToEnd.id,
+      entity_label: currentProfile.display_name ?? currentProfile.email ?? currentProfile.id,
+      description: "Ended duty session",
+      old_values: { status: "on_duty" },
+      new_values: { status: "off_duty", ended_at: endedAt },
+    });
+    setLocationTrackingMessage("Duty ended successfully.");
   };
 
   const handleCreateSalesInvoice = async (overrideConfirmed = false) => {
@@ -1823,6 +2199,71 @@ export default function Home() {
   const activeSectionLabel =
     navigationItems.find((item) => item.id === activeSection)?.label ?? "Dashboard";
   const activeSectionAllowed = canAccessSection(activeSection);
+  const ownDutySessions = dutySessions.filter((session) => session.profile_id === currentProfile?.id);
+  const ownLocationPoints = locationPoints.filter((point) => point.profile_id === currentProfile?.id);
+  const visibleDutySessions = isOwnerOrAdmin() ? dutySessions : ownDutySessions;
+  const visibleLocationPoints = isOwnerOrAdmin() ? locationPoints : ownLocationPoints;
+  const latestOwnLocation = currentDutyLocation ?? ownLocationPoints[0] ?? null;
+  const staffProfileById = staffProfiles.reduce((profiles, profile) => {
+    profiles[profile.id] = profile;
+    return profiles;
+  }, {} as Record<string, StaffProfile>);
+  const latestLocationByProfile = visibleLocationPoints.reduce((latest, point) => {
+    const existing = latest[point.profile_id];
+    const pointTime = new Date(point.captured_at).getTime();
+    const existingTime = existing ? new Date(existing.captured_at).getTime() : 0;
+    if (!existing || pointTime > existingTime) {
+      latest[point.profile_id] = point;
+    }
+    return latest;
+  }, {} as Record<string, StaffLocationPoint>);
+  const onDutyProfileIds = new Set(
+    dutySessions
+      .filter((session) => session.status === "on_duty")
+      .map((session) => session.profile_id)
+  );
+  const ownerOnDutyCount = onDutyProfileIds.size;
+  const ownerRecentOffDutyCount = dutySessions.filter((session) => session.status !== "on_duty").length;
+  const selectedLocationProfileId = selectedStaffForLocation || currentProfile?.id || "";
+  const selectedLocationProfile = staffProfileById[selectedLocationProfileId] ?? null;
+  const selectedStaffLocationPoints = visibleLocationPoints
+    .filter((point) => point.profile_id === selectedLocationProfileId)
+    .sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime());
+  const selectedStaffChronologicalPoints = [...selectedStaffLocationPoints].sort(
+    (a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+  );
+  const possibleStops: Array<{
+    startTime: string;
+    endTime: string;
+    durationMinutes: number;
+    latitude: number;
+    longitude: number;
+  }> = [];
+  for (let index = 1; index < selectedStaffChronologicalPoints.length; index += 1) {
+    const previousPoint = selectedStaffChronologicalPoints[index - 1];
+    const currentPoint = selectedStaffChronologicalPoints[index];
+    const distanceMeters = calculateDistanceMeters(
+      previousPoint.latitude,
+      previousPoint.longitude,
+      currentPoint.latitude,
+      currentPoint.longitude
+    );
+    const durationMilliseconds =
+      new Date(currentPoint.captured_at).getTime() - new Date(previousPoint.captured_at).getTime();
+    if (distanceMeters <= 50 && durationMilliseconds >= 5 * 60 * 1000) {
+      possibleStops.push({
+        startTime: previousPoint.captured_at,
+        endTime: currentPoint.captured_at,
+        durationMinutes: Math.round(durationMilliseconds / 60000),
+        latitude: currentPoint.latitude,
+        longitude: currentPoint.longitude,
+      });
+    }
+  }
+  const formatCoordinate = (value: unknown) => {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue.toFixed(6) : "-";
+  };
   const creditPolicyLabels: Record<string, string> = {
     cash_only: "Cash Only",
     limit_only: "Credit Limit Only",
@@ -8178,6 +8619,9 @@ export default function Home() {
               <div className="rounded border border-emerald-200 bg-white px-3 py-2">
                 PWA/mobile readiness added: Yes
               </div>
+              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+                Staff duty location tracking V1 added: Yes
+              </div>
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 lg:col-span-3">
                 Remaining security task: final cross-organization testing.
               </div>
@@ -8204,6 +8648,13 @@ export default function Home() {
                     className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
                   >
                     Open Mobile App
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSectionChange("staff-duty")}
+                    className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                  >
+                    Open Staff Duty
                   </button>
                 </div>
               </div>
@@ -8385,6 +8836,286 @@ export default function Home() {
         </section>
         )}
 
+        {activeSectionAllowed && activeSection === "staff-duty" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">Staff Duty</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Start duty, save browser location points, and monitor staff location while TradeOS is open.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                fetchDutySessions(currentOrganizationId, currentProfile?.id);
+                fetchLocationPoints(currentOrganizationId);
+              }}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Refresh Duty Data
+            </button>
+          </div>
+
+          <div className="mb-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            Location tracking works while the app is open/active. True background tracking may require a native mobile app later.
+          </div>
+
+          {locationTrackingMessage && (
+            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              {locationTrackingMessage}
+            </p>
+          )}
+          {locationTrackingError && (
+            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {locationTrackingError}
+            </p>
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">Current Duty Status</div>
+              <div className={`mt-2 text-2xl font-semibold ${activeDutySession ? "text-green-700" : "text-gray-900"}`}>
+                {activeDutySession ? "On Duty" : "Off Duty"}
+              </div>
+              <p className="mt-2 text-sm text-gray-600">
+                {isTrackingLocation ? "Live tracking is active." : "Live tracking is not active."}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleStartDuty}
+                  disabled={Boolean(activeDutySession)}
+                  className="rounded bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                >
+                  Start Duty
+                </button>
+                <button
+                  type="button"
+                  onClick={handleEndDuty}
+                  disabled={!activeDutySession}
+                  className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                >
+                  End Duty
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">Last Location Update</div>
+              <div className="mt-2 text-lg font-semibold text-gray-900">
+                {latestOwnLocation ? formatDateTime(latestOwnLocation.captured_at) : "No location yet"}
+              </div>
+              <div className="mt-3 space-y-1 text-sm text-gray-700">
+                <div>Latitude: {latestOwnLocation ? formatCoordinate(latestOwnLocation.latitude) : "-"}</div>
+                <div>Longitude: {latestOwnLocation ? formatCoordinate(latestOwnLocation.longitude) : "-"}</div>
+                <div>Accuracy: {latestOwnLocation?.accuracy ? `${Math.round(latestOwnLocation.accuracy)} m` : "-"}</div>
+              </div>
+            </div>
+
+            <div className="rounded border border-blue-200 bg-blue-50 p-4">
+              <div className="text-sm font-medium text-blue-950">Browser Permission</div>
+              <p className="mt-2 text-sm text-blue-900">
+                Your browser will ask for location permission when duty starts. Allow location access and keep TradeOS open for live updates.
+              </p>
+            </div>
+          </div>
+
+          {isOwnerOrAdmin() && (
+            <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Owner Staff Location Monitor</h3>
+                  <p className="mt-1 text-sm text-gray-600">Monitor staff duty sessions and recent location history.</p>
+                </div>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Select Staff</span>
+                  <select
+                    value={selectedStaffForLocation}
+                    onChange={(e) => setSelectedStaffForLocation(e.target.value)}
+                    className="rounded border border-gray-300 px-3 py-2"
+                  >
+                    <option value="">Current user</option>
+                    {staffProfiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.display_name || profile.email || profile.id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-sm text-gray-500">On-duty staff</div>
+                  <div className="mt-1 text-2xl font-semibold text-gray-900">{ownerOnDutyCount}</div>
+                </div>
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-sm text-gray-500">Off-duty/recent sessions</div>
+                  <div className="mt-1 text-2xl font-semibold text-gray-900">{ownerRecentOffDutyCount}</div>
+                </div>
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-sm text-gray-500">Last organization update</div>
+                  <div className="mt-1 text-sm font-semibold text-gray-900">
+                    {visibleLocationPoints[0] ? formatDateTime(visibleLocationPoints[0].captured_at) : "No points yet"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2">Staff</th>
+                      <th className="px-3 py-2">Role</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Latest Location</th>
+                      <th className="px-3 py-2">Last Update</th>
+                      <th className="px-3 py-2">Accuracy</th>
+                      <th className="px-3 py-2">Latest Session Start</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {staffProfiles.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-3 py-4 text-gray-600">No staff profiles loaded.</td>
+                      </tr>
+                    ) : (
+                      staffProfiles.map((profile) => {
+                        const latestPoint = latestLocationByProfile[profile.id];
+                        const latestSession = dutySessions.find((session) => session.profile_id === profile.id);
+                        const isOnDuty = onDutyProfileIds.has(profile.id);
+                        return (
+                          <tr key={profile.id}>
+                            <td className="px-3 py-3">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedStaffForLocation(profile.id)}
+                                className="text-left font-medium text-blue-700 hover:underline"
+                              >
+                                {profile.display_name || profile.email || profile.id}
+                              </button>
+                              <div className="text-xs text-gray-500">{profile.email ?? "No email"}</div>
+                            </td>
+                            <td className="px-3 py-3">{profile.role ?? "owner"}</td>
+                            <td className="px-3 py-3">
+                              <span className={`rounded px-2 py-1 text-xs font-medium ${
+                                isOnDuty ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"
+                              }`}>
+                                {isOnDuty ? "On Duty" : "Off Duty"}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">
+                              {latestPoint ? `${formatCoordinate(latestPoint.latitude)}, ${formatCoordinate(latestPoint.longitude)}` : "-"}
+                            </td>
+                            <td className="px-3 py-3">{latestPoint ? formatDateTime(latestPoint.captured_at) : "-"}</td>
+                            <td className="px-3 py-3">{latestPoint?.accuracy ? `${Math.round(latestPoint.accuracy)} m` : "-"}</td>
+                            <td className="px-3 py-3">{latestSession ? formatDateTime(latestSession.started_at) : "-"}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-6 rounded border border-gray-200 bg-gray-50 p-4">
+                <h4 className="text-base font-medium text-gray-900">
+                  Recent Location History{selectedLocationProfile ? `: ${selectedLocationProfile.display_name || selectedLocationProfile.email || selectedLocationProfile.id}` : ""}
+                </h4>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-white text-left text-xs uppercase tracking-wide text-gray-500">
+                      <tr>
+                        <th className="px-3 py-2">Captured At</th>
+                        <th className="px-3 py-2">Latitude</th>
+                        <th className="px-3 py-2">Longitude</th>
+                        <th className="px-3 py-2">Accuracy</th>
+                        <th className="px-3 py-2">Speed</th>
+                        <th className="px-3 py-2">Map</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {selectedStaffLocationPoints.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-4 text-gray-600">No recent location points for this staff member.</td>
+                        </tr>
+                      ) : (
+                        selectedStaffLocationPoints.slice(0, 50).map((point) => (
+                          <tr key={point.id}>
+                            <td className="px-3 py-3">{formatDateTime(point.captured_at)}</td>
+                            <td className="px-3 py-3">{formatCoordinate(point.latitude)}</td>
+                            <td className="px-3 py-3">{formatCoordinate(point.longitude)}</td>
+                            <td className="px-3 py-3">{point.accuracy ? `${Math.round(point.accuracy)} m` : "-"}</td>
+                            <td className="px-3 py-3">{point.speed ? `${point.speed.toFixed(1)} m/s` : "-"}</td>
+                            <td className="px-3 py-3">
+                              <a
+                                href={`https://www.google.com/maps?q=${point.latitude},${point.longitude}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-blue-700 hover:underline"
+                              >
+                                Open Map
+                              </a>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded border border-purple-200 bg-purple-50 p-4">
+                <h4 className="text-base font-medium text-purple-950">Possible Stops</h4>
+                <p className="mt-1 text-sm text-purple-900">
+                  V1 stop detection checks for two consecutive points within roughly 50 meters over 5 minutes or more.
+                </p>
+                {selectedStaffChronologicalPoints.length < 2 ? (
+                  <p className="mt-3 text-sm text-purple-900">Not enough location history to detect stops yet.</p>
+                ) : possibleStops.length === 0 ? (
+                  <p className="mt-3 text-sm text-purple-900">No possible stops detected from the recent location history.</p>
+                ) : (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="min-w-full divide-y divide-purple-200 text-sm">
+                      <thead className="bg-white text-left text-xs uppercase tracking-wide text-purple-700">
+                        <tr>
+                          <th className="px-3 py-2">Start</th>
+                          <th className="px-3 py-2">End</th>
+                          <th className="px-3 py-2">Duration</th>
+                          <th className="px-3 py-2">Approx Location</th>
+                          <th className="px-3 py-2">Map</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-purple-200 bg-white">
+                        {possibleStops.map((stop) => (
+                          <tr key={`${stop.startTime}-${stop.endTime}`}>
+                            <td className="px-3 py-3">{formatDateTime(stop.startTime)}</td>
+                            <td className="px-3 py-3">{formatDateTime(stop.endTime)}</td>
+                            <td className="px-3 py-3">{stop.durationMinutes} min</td>
+                            <td className="px-3 py-3">{formatCoordinate(stop.latitude)}, {formatCoordinate(stop.longitude)}</td>
+                            <td className="px-3 py-3">
+                              <a
+                                href={`https://www.google.com/maps?q=${stop.latitude},${stop.longitude}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-blue-700 hover:underline"
+                              >
+                                Open Map
+                              </a>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+        )}
+
         {activeSectionAllowed && activeSection === "mobile-app" && (
         <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -8445,6 +9176,9 @@ export default function Home() {
             <h3 className="text-lg font-medium text-blue-950">Future Mobile Roadmap</h3>
             <p className="mt-1 text-sm text-blue-900">
               These mobile capabilities are planned for later and are not active yet.
+            </p>
+            <p className="mt-2 text-sm text-blue-900">
+              Staff Duty Mode uses browser location permission and works best when TradeOS is installed on the phone home screen.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {mobileRoadmapItems.map((item) => (

@@ -95,6 +95,28 @@ export const formatNumber = (value: unknown) =>
 
 export const formatPercent = (value: unknown) => `${formatNumber(value)}%`;
 
+export const calculateDistanceMeters = (
+  firstLatitude: number,
+  firstLongitude: number,
+  secondLatitude: number,
+  secondLongitude: number
+) => {
+  const earthRadiusMeters = 6371000;
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const latitudeDelta = toRadians(secondLatitude - firstLatitude);
+  const longitudeDelta = toRadians(secondLongitude - firstLongitude);
+  const firstLatitudeRadians = toRadians(firstLatitude);
+  const secondLatitudeRadians = toRadians(secondLatitude);
+  const a =
+    Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
+    Math.cos(firstLatitudeRadians) *
+      Math.cos(secondLatitudeRadians) *
+      Math.sin(longitudeDelta / 2) *
+      Math.sin(longitudeDelta / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusMeters * c;
+};
+
 export const escapeHtml = (value: unknown) =>
   String(value ?? "")
     .replace(/&/g, "&amp;")

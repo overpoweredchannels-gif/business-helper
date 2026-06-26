@@ -208,6 +208,7 @@ export type SectionId =
   | "staff-permissions"
   | "security-check"
   | "deployment"
+  | "staff-duty"
   | "mobile-app";
 
 export type StaffPermissionKey =
@@ -231,4 +232,47 @@ export interface PurchaseLine {
   selling_price: string;
   batch_number: string;
   expiry_date: string;
+}
+
+export interface StaffDutySession {
+  id: string;
+  organization_id: string;
+  profile_id: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  start_latitude: number | null;
+  start_longitude: number | null;
+  end_latitude: number | null;
+  end_longitude: number | null;
+  start_accuracy: number | null;
+  end_accuracy: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface StaffLocationPoint {
+  id: string;
+  organization_id: string;
+  profile_id: string;
+  duty_session_id: string;
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  speed: number | null;
+  heading: number | null;
+  altitude: number | null;
+  captured_at: string;
+  created_at: string;
+}
+
+export interface CurrentLocationSnapshot {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  speed: number | null;
+  heading: number | null;
+  altitude: number | null;
+  captured_at: string;
 }
