@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import {
+  aiAssistantExampleCommands,
+  aiAssistantRoadmapItems,
   defaultSecurityChecks,
   deploymentManualChecklistItems,
   mobileReadinessItems,
@@ -32,6 +34,7 @@ import {
   toDateInputValue,
 } from "@/lib/tradeos/formatters";
 import type {
+  AiActionDraft,
   AuditLog,
   Brand,
   Category,
@@ -201,6 +204,11 @@ export default function Home() {
   const [securityCheckMessage, setSecurityCheckMessage] = useState<string | null>(null);
   const [securityCheckError, setSecurityCheckError] = useState<string | null>(null);
   const [deploymentChecklistState, setDeploymentChecklistState] = useState<Record<string, boolean>>({});
+  const [aiActionDrafts, setAiActionDrafts] = useState<AiActionDraft[]>([]);
+  const [aiCommandText, setAiCommandText] = useState("");
+  const [aiAssistantMessage, setAiAssistantMessage] = useState<string | null>(null);
+  const [aiAssistantError, setAiAssistantError] = useState<string | null>(null);
+  const [selectedAiDraftId, setSelectedAiDraftId] = useState("");
   const [dutySessions, setDutySessions] = useState<StaffDutySession[]>([]);
   const [locationPoints, setLocationPoints] = useState<StaffLocationPoint[]>([]);
   const [activeDutySession, setActiveDutySession] = useState<StaffDutySession | null>(null);
@@ -299,6 +307,28 @@ export default function Home() {
     }
 
     setAuditLogs(data ?? []);
+  };
+
+  const fetchAiActionDrafts = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setAiActionDrafts([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("ai_action_drafts")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error("Supabase fetch AI action drafts error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setAiActionDrafts(data ?? []);
   };
 
   const fetchSecurityChecks = async (organizationId?: string | null) => {
@@ -553,6 +583,7 @@ export default function Home() {
     fetchExpenses(resolvedProfile.organization_id);
     fetchTasks(resolvedProfile.organization_id);
     fetchAuditLogs(resolvedProfile.organization_id);
+    fetchAiActionDrafts(resolvedProfile.organization_id);
     fetchStaffProfilesAndPermissions(resolvedProfile.organization_id);
     fetchSecurityChecks(resolvedProfile.organization_id);
     fetchDutySessions(resolvedProfile.organization_id, resolvedProfile.id);
@@ -934,6 +965,337 @@ export default function Home() {
     } catch (err) {
       console.error("Unexpected audit log insert error:", err);
     }
+  };
+
+  const getAiDraftMissingFields = (draft: AiActionDraft) =>
+    Array.isArray(draft.missing_fields) ? draft.missing_fields.filter(Boolean) : [];
+
+  const matchTextEntity = <T extends { id: string | number }>(
+    command: string,
+    items: T[],
+    getLabels: (item: T) => Array<string | null | undefined>
+  ) => {
+    const normalizedCommand = command.toLowerCase();
+    return (
+      items.find((item) =>
+        getLabels(item).some((label) => {
+          const normalizedLabel = String(label ?? "").trim().toLowerCase();
+          return normalizedLabel.length >= 3 && normalizedCommand.includes(normalizedLabel);
+        })
+      ) ?? null
+    );
+  };
+
+  const extractCommandNumbers = (command: string) =>
+    Array.from(command.matchAll(/\b\d+(?:\.\d+)?\b/g)).map((match) => Number(match[0]));
+
+  const parseAiCommand = (command: string) => {
+    const trimmedCommand = command.trim();
+    const lowerCommand = trimmedCommand.toLowerCase();
+    const matchedProduct = matchTextEntity(trimmedCommand, products, (product) => [product.name]);
+    const matchedCustomer = matchTextEntity(trimmedCommand, customers, (customer) => [
+      customer.customer_name,
+      customer.shop_name,
+    ]);
+    const matchedSupplier = matchTextEntity(trimmedCommand, suppliers, (supplier) => [
+      supplier.supplier_name,
+      supplier.contact_person,
+    ]);
+    const matchedPurchaseInvoice =
+      purchaseTransactions.find((transaction) =>
+        lowerCommand.includes(String(transaction.invoice_number ?? "").toLowerCase())
+      ) ?? null;
+    const numbers = extractCommandNumbers(trimmedCommand);
+    const quantity = numbers[0] ?? null;
+    const purchasePriceMatch = lowerCommand.match(/purchase price\s+(\d+(?:\.\d+)?)/);
+    const sellingPriceMatch = lowerCommand.match(/selling price\s+(\d+(?:\.\d+)?)/);
+    const amountMatch = lowerCommand.match(/(?:expense|transport|fuel|rent|loading|salary)[^\d]*(\d+(?:\.\d+)?)/);
+    const actionType = lowerCommand.match(/\b(task|call|remind|follow up)\b/)
+      ? "create_task"
+      : lowerCommand.match(/\b(expense|transport|fuel|rent|loading|salary)\b/)
+        ? "create_expense_draft"
+        : lowerCommand.match(/\b(purchase|bought|buy|from supplier)\b/)
+          ? "create_purchase_draft"
+          : lowerCommand.match(/\b(sale|sell|sold|customer)\b/)
+            ? "create_sale_draft"
+            : "unknown";
+    const parsedData: Record<string, unknown> = {
+      title: actionType === "create_task" ? trimmedCommand.replace(/^add task:\s*/i, "").trim() : null,
+      product_name: matchedProduct?.name ?? null,
+      product_id: matchedProduct?.id ?? null,
+      customer_name: matchedCustomer?.customer_name ?? null,
+      customer_id: matchedCustomer?.id ?? null,
+      supplier_name: matchedSupplier?.supplier_name ?? null,
+      supplier_id: matchedSupplier?.id ?? null,
+      purchase_invoice_number: matchedPurchaseInvoice?.invoice_number ?? null,
+      purchase_transaction_id: matchedPurchaseInvoice?.id ?? null,
+      quantity,
+      purchase_price: purchasePriceMatch ? Number(purchasePriceMatch[1]) : numbers.length >= 2 ? numbers[numbers.length - 2] : null,
+      selling_price: sellingPriceMatch ? Number(sellingPriceMatch[1]) : numbers.length >= 2 ? numbers[numbers.length - 1] : null,
+      expense_amount: amountMatch ? Number(amountMatch[1]) : actionType === "create_expense_draft" ? numbers[0] ?? null : null,
+      expense_type: lowerCommand.includes("fuel")
+        ? "Fuel"
+        : lowerCommand.includes("rent")
+          ? "Vehicle Rent"
+          : lowerCommand.includes("loading")
+            ? "Loading/Unloading"
+            : lowerCommand.includes("salary")
+              ? "Salary"
+              : lowerCommand.includes("transport")
+                ? "Purchase Transport"
+                : null,
+      original_command: trimmedCommand,
+    };
+    const missingFields: string[] = [];
+
+    if (actionType === "unknown") {
+      missingFields.push("supported action type");
+    }
+    if (actionType === "create_purchase_draft") {
+      if (!matchedProduct) missingFields.push("product");
+      if (!matchedSupplier) missingFields.push("supplier");
+      if (!quantity) missingFields.push("quantity");
+      if (!parsedData.purchase_price) missingFields.push("purchase price");
+    }
+    if (actionType === "create_sale_draft") {
+      if (!matchedProduct) missingFields.push("product");
+      if (!matchedCustomer) missingFields.push("customer");
+      if (!quantity) missingFields.push("quantity");
+      if (!parsedData.selling_price) missingFields.push("selling price");
+    }
+    if (actionType === "create_expense_draft") {
+      if (!parsedData.expense_amount) missingFields.push("expense amount");
+      if (!parsedData.expense_type) missingFields.push("expense type");
+    }
+
+    const confirmationSummary =
+      actionType === "create_task"
+        ? `Prepare task: ${String(parsedData.title || trimmedCommand)}`
+        : actionType === "create_purchase_draft"
+          ? `Prepare purchase draft for ${matchedProduct?.name ?? "unknown product"} from ${matchedSupplier?.supplier_name ?? "unknown supplier"}.`
+          : actionType === "create_sale_draft"
+            ? `Prepare sale draft for ${matchedCustomer?.customer_name ?? "unknown customer"} with ${matchedProduct?.name ?? "unknown product"}.`
+            : actionType === "create_expense_draft"
+              ? `Prepare expense draft for ${parsedData.expense_type ?? "unknown expense type"} amount ${formatPKR(parsedData.expense_amount)}.`
+              : "Command could not be matched to a supported draft action.";
+
+    return {
+      actionType,
+      parsedData,
+      missingFields,
+      confirmationSummary,
+      related_customer_id: matchedCustomer?.id ?? null,
+      related_supplier_id: matchedSupplier?.id ?? null,
+      related_product_id: matchedProduct?.id ?? null,
+    };
+  };
+
+  const createAiActionDraft = async () => {
+    setAiAssistantError(null);
+    setAiAssistantMessage(null);
+
+    if (!requireOrganization("create AI action draft")) {
+      setAiAssistantError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    if (!currentProfile?.id) {
+      setAiAssistantError("Current profile is not loaded. Please login again.");
+      return;
+    }
+
+    const commandText = aiCommandText.trim();
+    if (!commandText) {
+      setAiAssistantError("Enter a business command first.");
+      return;
+    }
+
+    const parsed = parseAiCommand(commandText);
+    const now = new Date().toISOString();
+    const payload = {
+      organization_id: currentOrganizationId,
+      profile_id: currentProfile.id,
+      command_text: commandText,
+      action_type: parsed.actionType,
+      status: "draft",
+      parsed_data: parsed.parsedData,
+      missing_fields: parsed.missingFields,
+      confirmation_summary: parsed.confirmationSummary,
+      related_customer_id: parsed.related_customer_id,
+      related_supplier_id: parsed.related_supplier_id,
+      related_product_id: parsed.related_product_id,
+      updated_at: now,
+    };
+
+    const { data, error } = await supabase
+      .from("ai_action_drafts")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Supabase AI action draft insert error:", JSON.stringify(error, null, 2));
+      setAiAssistantError(`Failed to create AI action draft: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: "created",
+      entity_type: "ai_action_draft",
+      entity_id: data?.id ?? null,
+      entity_label: parsed.actionType,
+      description: `Created AI action draft: ${parsed.confirmationSummary}`,
+      new_values: payload,
+    });
+    setSelectedAiDraftId(data?.id ?? "");
+    setAiCommandText("");
+    setAiAssistantMessage("Draft action created for owner review.");
+    await fetchAiActionDrafts(currentOrganizationId);
+  };
+
+  const updateAiDraftStatus = async (
+    draft: AiActionDraft,
+    nextStatus: "needs_info" | "cancelled"
+  ) => {
+    if (!requireOrganization("update AI action draft")) {
+      setAiAssistantError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from("ai_action_drafts")
+      .update({
+        status: nextStatus,
+        updated_at: now,
+        error_message: null,
+      })
+      .eq("id", draft.id)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase AI action draft update error:", JSON.stringify(error, null, 2));
+      setAiAssistantError(`Failed to update draft: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: nextStatus === "cancelled" ? "cancelled" : "updated",
+      entity_type: "ai_action_draft",
+      entity_id: draft.id,
+      entity_label: draft.action_type,
+      description: `${nextStatus === "cancelled" ? "Cancelled" : "Marked needs info for"} AI action draft`,
+      old_values: { status: draft.status },
+      new_values: { status: nextStatus },
+    });
+    setAiAssistantMessage(nextStatus === "cancelled" ? "Draft cancelled." : "Draft marked as needs info.");
+    setAiAssistantError(null);
+    await fetchAiActionDrafts(currentOrganizationId);
+  };
+
+  const executeAiActionDraft = async (draft: AiActionDraft) => {
+    setAiAssistantError(null);
+    setAiAssistantMessage(null);
+
+    if (!requireOrganization("execute AI action draft")) {
+      setAiAssistantError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    if (!currentProfile?.id) {
+      setAiAssistantError("Current profile is not loaded. Please login again.");
+      return;
+    }
+
+    if (draft.status !== "draft" && draft.status !== "needs_info") {
+      setAiAssistantError("Only draft or needs-info AI actions can be executed.");
+      return;
+    }
+
+    const missingFields = getAiDraftMissingFields(draft);
+    if (missingFields.length > 0) {
+      setAiAssistantError(`This draft needs more information first: ${missingFields.join(", ")}.`);
+      return;
+    }
+
+    if (draft.action_type !== "create_task") {
+      setAiAssistantMessage("This draft is prepared for review. Execution for this action type will be added in the next phase.");
+      return;
+    }
+
+    const parsedData = draft.parsed_data ?? {};
+    const title = String(parsedData.title || draft.command_text).trim();
+    const now = new Date().toISOString();
+    const taskPayload = {
+      organization_id: currentOrganizationId,
+      title,
+      task_type: "general",
+      priority: "medium",
+      status: "pending",
+      due_date: null,
+      notes: `Created from AI Assistant command: ${draft.command_text}`,
+      customer_id: draft.related_customer_id ?? null,
+      supplier_id: draft.related_supplier_id ?? null,
+      product_id: draft.related_product_id ?? null,
+      purchase_transaction_id: null,
+      sales_transaction_id: null,
+      completed_at: null,
+    };
+
+    const { data: insertedTask, error: taskError } = await supabase
+      .from("tasks")
+      .insert(taskPayload)
+      .select("id")
+      .single();
+
+    if (taskError) {
+      console.error("Supabase AI task insert error:", JSON.stringify(taskError, null, 2));
+      setAiAssistantError(`Failed to create task from draft: ${JSON.stringify(taskError, null, 2)}`);
+      await supabase
+        .from("ai_action_drafts")
+        .update({
+          status: "failed",
+          error_message: JSON.stringify(taskError, null, 2),
+          updated_at: now,
+        })
+        .eq("id", draft.id)
+        .eq("organization_id", currentOrganizationId);
+      await fetchAiActionDrafts(currentOrganizationId);
+      return;
+    }
+
+    const { error: draftError } = await supabase
+      .from("ai_action_drafts")
+      .update({
+        status: "executed",
+        executed_entity_type: "task",
+        executed_entity_id: insertedTask?.id == null ? null : String(insertedTask.id),
+        executed_at: now,
+        updated_at: now,
+        error_message: null,
+      })
+      .eq("id", draft.id)
+      .eq("organization_id", currentOrganizationId);
+
+    if (draftError) {
+      console.error("Supabase AI action draft execution update error:", JSON.stringify(draftError, null, 2));
+      setAiAssistantError(`Task was created, but draft status could not be updated: ${JSON.stringify(draftError, null, 2)}`);
+      await fetchTasks(currentOrganizationId);
+      return;
+    }
+
+    await createAuditLog({
+      action: "executed",
+      entity_type: "ai_action_draft",
+      entity_id: draft.id,
+      entity_label: draft.action_type,
+      description: `Executed AI action draft into task ${title}`,
+      old_values: { status: draft.status },
+      new_values: { status: "executed", executed_entity_type: "task", executed_entity_id: insertedTask?.id ?? null },
+    });
+    setAiAssistantMessage("AI task draft executed into a real task.");
+    await fetchTasks(currentOrganizationId);
+    await fetchAiActionDrafts(currentOrganizationId);
   };
 
   const getGeolocationPosition = () =>
@@ -2187,6 +2549,7 @@ export default function Home() {
     "security-check": "owner_admin",
     deployment: "owner_admin",
     "mobile-app": "owner_admin",
+    "ai-assistant": "owner_admin",
   };
   const canAccessSection = (sectionId: SectionId) => {
     if (sectionId === "dashboard") return true;
@@ -8832,6 +9195,186 @@ export default function Home() {
                 </div>
               );
             })()}
+          </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "ai-assistant" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">AI Action Assistant</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                This is a safe action-draft assistant. It prepares actions for owner review before saving.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchAiActionDrafts(currentOrganizationId)}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Refresh Drafts
+            </button>
+          </div>
+
+          <div className="mb-5 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            No external AI API is connected in this phase. Commands are parsed locally into safe review drafts.
+            Staff access to AI Assistant can be enabled later by owner.
+          </div>
+
+          {aiAssistantMessage && (
+            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              {aiAssistantMessage}
+            </p>
+          )}
+          {aiAssistantError && (
+            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {aiAssistantError}
+            </p>
+          )}
+
+          <div className="rounded border border-gray-200 bg-white p-4">
+            <label className="block text-sm font-medium text-gray-700" htmlFor="ai-command-text">
+              Business Command
+            </label>
+            <textarea
+              id="ai-command-text"
+              value={aiCommandText}
+              onChange={(e) => setAiCommandText(e.target.value)}
+              rows={4}
+              className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              placeholder="Type a command like: Add task: Call supplier tomorrow about Pepsi rates."
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              {aiAssistantExampleCommands.map((example) => (
+                <button
+                  key={example}
+                  type="button"
+                  onClick={() => setAiCommandText(example)}
+                  className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-800 hover:bg-blue-100"
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={createAiActionDraft}
+              className="mt-4 rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+            >
+              Create Draft Action
+            </button>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 text-lg font-medium text-gray-900">Recent Drafts</h3>
+            {aiActionDrafts.length === 0 ? (
+              <p className="text-sm text-gray-600">No AI action drafts yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {aiActionDrafts.map((draft) => {
+                  const missingFields = getAiDraftMissingFields(draft);
+                  const relatedCustomer = customers.find((customer) => customer.id === draft.related_customer_id);
+                  const relatedSupplier = suppliers.find((supplier) => supplier.id === draft.related_supplier_id);
+                  const relatedProduct = products.find((product) => String(product.id) === String(draft.related_product_id));
+                  const isSelectedDraft = selectedAiDraftId === draft.id;
+                  return (
+                    <div
+                      key={draft.id}
+                      className={`rounded border p-4 ${isSelectedDraft ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-gray-50"}`}
+                    >
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">
+                              {draft.action_type}
+                            </span>
+                            <span className={`rounded px-2 py-1 text-xs font-medium ${
+                              draft.status === "executed"
+                                ? "bg-green-100 text-green-800"
+                                : draft.status === "cancelled" || draft.status === "failed"
+                                  ? "bg-red-100 text-red-800"
+                                  : draft.status === "needs_info"
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-blue-100 text-blue-800"
+                            }`}>
+                              {draft.status}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm font-medium text-gray-900">{draft.command_text}</p>
+                          <p className="mt-1 text-sm text-gray-700">{draft.confirmation_summary}</p>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
+                            <span>Created: {formatDateTime(draft.created_at)}</span>
+                            {relatedCustomer && <span>Customer: {relatedCustomer.customer_name}</span>}
+                            {relatedSupplier && <span>Supplier: {relatedSupplier.supplier_name}</span>}
+                            {relatedProduct && <span>Product: {relatedProduct.name}</span>}
+                          </div>
+                          {missingFields.length > 0 && (
+                            <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                              Missing fields: {missingFields.join(", ")}
+                            </div>
+                          )}
+                          {draft.error_message && (
+                            <div className="mt-2 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                              {draft.error_message}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAiDraftId(draft.id);
+                              updateAiDraftStatus(draft, "needs_info");
+                            }}
+                            disabled={draft.status === "executed" || draft.status === "cancelled"}
+                            className="rounded border border-amber-500 bg-white px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          >
+                            Mark Needs Info
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAiDraftId(draft.id);
+                              updateAiDraftStatus(draft, "cancelled");
+                            }}
+                            disabled={draft.status === "executed" || draft.status === "cancelled"}
+                            className="rounded border border-red-500 bg-white px-3 py-2 text-xs text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          >
+                            Cancel Draft
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAiDraftId(draft.id);
+                              executeAiActionDraft(draft);
+                            }}
+                            disabled={draft.status === "executed" || draft.status === "cancelled" || draft.status === "failed"}
+                            className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                          >
+                            Execute Draft
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 rounded border border-purple-200 bg-purple-50 p-4">
+            <h3 className="text-lg font-medium text-purple-950">Future AI Assistant Roadmap</h3>
+            <p className="mt-1 text-sm text-purple-900">
+              These capabilities are planned for later and are not active in this foundation phase.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {aiAssistantRoadmapItems.map((item) => (
+                <div key={item} className="rounded border border-purple-200 bg-white px-3 py-2 text-sm text-purple-900">
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
         </section>
         )}

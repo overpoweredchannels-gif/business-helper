@@ -23,6 +23,7 @@ export const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "security-check", label: "Security Check" },
   { id: "deployment", label: "Deployment" },
   { id: "staff-duty", label: "Staff Duty" },
+  { id: "ai-assistant", label: "AI Assistant" },
   { id: "mobile-app", label: "Mobile App" },
 ];
 
@@ -91,6 +92,23 @@ export const mobileRoadmapItems = [
   "AI voice assistant shortcut",
   "Push notifications later",
   "Offline-friendly improvements later",
+];
+
+export const aiAssistantExampleCommands = [
+  "Add purchase of 10 cartons Pepsi 500ml from Test Pepsi Agency at purchase price 1000 and selling price 1200.",
+  "Create cash sale for Test Customer: 1 carton Pepsi 500ml at 1200.",
+  "Add task: Call supplier tomorrow about Pepsi rates.",
+  "Add expense: 500 transport expense for purchase invoice TEST-PUR-001.",
+];
+
+export const aiAssistantRoadmapItems = [
+  "Voice input",
+  "AI follow-up questions",
+  "Purchase draft execution",
+  "Sale draft execution",
+  "Expense draft execution",
+  "Owner confirmation before saving",
+  "Market intelligence integration",
 ];
 
 export const taskTypes = [

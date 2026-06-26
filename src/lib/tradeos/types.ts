@@ -209,6 +209,7 @@ export type SectionId =
   | "security-check"
   | "deployment"
   | "staff-duty"
+  | "ai-assistant"
   | "mobile-app";
 
 export type StaffPermissionKey =
@@ -275,4 +276,25 @@ export interface CurrentLocationSnapshot {
   heading: number | null;
   altitude: number | null;
   captured_at: string;
+}
+
+export interface AiActionDraft {
+  id: string;
+  organization_id: string;
+  profile_id: string | null;
+  command_text: string;
+  action_type: string;
+  status: "draft" | "needs_info" | "executed" | "cancelled" | "failed" | string;
+  parsed_data: Record<string, unknown> | null;
+  missing_fields: Array<string> | null;
+  confirmation_summary: string | null;
+  related_customer_id: string | null;
+  related_supplier_id: string | null;
+  related_product_id: number | string | null;
+  executed_entity_type: string | null;
+  executed_entity_id: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string | null;
+  executed_at: string | null;
 }
