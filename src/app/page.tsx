@@ -61,6 +61,38 @@ import type {
 } from "@/lib/tradeos/types";
 import { safeNumber } from "@/lib/tradeos/validators";
 
+type TradeOsSpeechRecognitionEvent = {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: {
+      isFinal: boolean;
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+};
+
+type TradeOsSpeechRecognition = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start: () => void;
+  stop: () => void;
+  abort?: () => void;
+  onresult: ((event: TradeOsSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: { error?: string; message?: string }) => void) | null;
+  onend: (() => void) | null;
+};
+
+type TradeOsSpeechRecognitionConstructor = new () => TradeOsSpeechRecognition;
+
+type TradeOsSpeechWindow = Window & {
+  SpeechRecognition?: TradeOsSpeechRecognitionConstructor;
+  webkitSpeechRecognition?: TradeOsSpeechRecognitionConstructor;
+};
+
 export default function Home() {
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -210,6 +242,11 @@ export default function Home() {
   const [aiAssistantError, setAiAssistantError] = useState<string | null>(null);
   const [selectedAiDraftId, setSelectedAiDraftId] = useState("");
   const [aiDraftAnswerInputs, setAiDraftAnswerInputs] = useState<Record<string, Record<string, string>>>({});
+  const [isVoiceListening, setIsVoiceListening] = useState(false);
+  const [voiceInputMessage, setVoiceInputMessage] = useState<string | null>(null);
+  const [voiceInputError, setVoiceInputError] = useState<string | null>(null);
+  const [voiceTranscriptPreview, setVoiceTranscriptPreview] = useState("");
+  const speechRecognitionRef = useRef<TradeOsSpeechRecognition | null>(null);
   const [dutySessions, setDutySessions] = useState<StaffDutySession[]>([]);
   const [locationPoints, setLocationPoints] = useState<StaffLocationPoint[]>([]);
   const [activeDutySession, setActiveDutySession] = useState<StaffDutySession | null>(null);
@@ -230,6 +267,12 @@ export default function Home() {
     return () => {
       if (typeof navigator !== "undefined" && locationWatchIdRef.current !== null) {
         navigator.geolocation.clearWatch(locationWatchIdRef.current);
+      }
+      if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.onresult = null;
+        speechRecognitionRef.current.onerror = null;
+        speechRecognitionRef.current.onend = null;
+        speechRecognitionRef.current.abort?.();
       }
     };
   }, []);
@@ -1688,6 +1731,90 @@ export default function Home() {
     }
 
     setAiAssistantError("This AI action type is not supported for execution yet.");
+  };
+
+  const getSpeechRecognitionConstructor = () => {
+    if (typeof window === "undefined") return null;
+    const speechWindow = window as TradeOsSpeechWindow;
+    return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
+  };
+
+  const stopVoiceInput = () => {
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.onend = null;
+      speechRecognitionRef.current.stop();
+      speechRecognitionRef.current = null;
+    }
+    setIsVoiceListening(false);
+    setVoiceInputMessage("Voice input stopped.");
+  };
+
+  const startVoiceInput = () => {
+    setVoiceInputError(null);
+    setVoiceInputMessage(null);
+
+    const SpeechRecognitionConstructor = getSpeechRecognitionConstructor();
+    if (!SpeechRecognitionConstructor) {
+      setVoiceInputError("This browser does not support speech recognition. Try Chrome or another supported browser.");
+      setIsVoiceListening(false);
+      return;
+    }
+
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.stop();
+      speechRecognitionRef.current = null;
+    }
+
+    const recognition = new SpeechRecognitionConstructor();
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        transcript += event.results[index][0]?.transcript ?? "";
+      }
+      const cleanedTranscript = transcript.trim();
+      setVoiceTranscriptPreview(cleanedTranscript);
+      if (cleanedTranscript) {
+        setAiCommandText(cleanedTranscript);
+      }
+    };
+    recognition.onerror = (event) => {
+      const errorCode = event.error ?? "unknown";
+      setVoiceInputError(`Voice input error: ${errorCode}. Please check microphone permission and try again.`);
+      setVoiceInputMessage(null);
+      setIsVoiceListening(false);
+    };
+    recognition.onend = () => {
+      setIsVoiceListening(false);
+      setVoiceInputMessage("Voice input finished. Review the command text before creating a draft.");
+      speechRecognitionRef.current = null;
+    };
+
+    try {
+      speechRecognitionRef.current = recognition;
+      recognition.start();
+      setIsVoiceListening(true);
+      setVoiceInputMessage("Listening... speak your TradeOS command");
+    } catch (err) {
+      speechRecognitionRef.current = null;
+      setIsVoiceListening(false);
+      setVoiceInputError(err instanceof Error ? err.message : "Could not start voice input.");
+    }
+  };
+
+  const clearVoiceCommand = () => {
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.onend = null;
+      speechRecognitionRef.current.stop();
+      speechRecognitionRef.current = null;
+    }
+    setIsVoiceListening(false);
+    setAiCommandText("");
+    setVoiceTranscriptPreview("");
+    setVoiceInputMessage(null);
+    setVoiceInputError(null);
   };
 
   const getGeolocationPosition = () =>
@@ -9637,6 +9764,49 @@ export default function Home() {
               className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
               placeholder="Type a command like: Add task: Call supplier tomorrow about Pepsi rates."
             />
+            <div className="mt-3 rounded border border-sky-200 bg-sky-50 p-3">
+              <div className="flex flex-wrap gap-2">
+                {!isVoiceListening ? (
+                  <button
+                    type="button"
+                    onClick={startVoiceInput}
+                    className="rounded bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700"
+                  >
+                    Start Voice Input
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={stopVoiceInput}
+                    className="rounded bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700"
+                  >
+                    Stop Listening
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={clearVoiceCommand}
+                  className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Clear Command
+                </button>
+              </div>
+              {typeof window !== "undefined" && !getSpeechRecognitionConstructor() && (
+                <p className="mt-3 text-sm text-amber-800">
+                  Browser speech recognition is not available here. You can still type commands manually.
+                </p>
+              )}
+              {voiceInputMessage && <p className="mt-3 text-sm text-sky-900">{voiceInputMessage}</p>}
+              {voiceInputError && <p className="mt-3 text-sm text-red-700">{voiceInputError}</p>}
+              {voiceTranscriptPreview && (
+                <div className="mt-3 rounded border border-sky-200 bg-white px-3 py-2 text-sm text-sky-950">
+                  <span className="font-medium">Transcript preview:</span> {voiceTranscriptPreview}
+                </div>
+              )}
+              <p className="mt-3 text-xs text-sky-900">
+                Voice input converts speech to text only. You must still review and confirm before TradeOS saves any record.
+              </p>
+            </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {aiAssistantExampleCommands.map((example) => (
                 <button
@@ -10264,6 +10434,9 @@ export default function Home() {
             </p>
             <p className="mt-2 text-sm text-blue-900">
               Staff Duty Mode uses browser location permission and works best when TradeOS is installed on the phone home screen.
+            </p>
+            <p className="mt-2 text-sm text-blue-900">
+              AI voice input works best in supported mobile browsers. Full home-screen voice shortcut will be added later.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {mobileRoadmapItems.map((item) => (
