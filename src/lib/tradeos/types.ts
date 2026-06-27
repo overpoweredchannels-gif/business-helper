@@ -288,6 +288,10 @@ export interface AiActionDraft {
   parsed_data: Record<string, unknown> | null;
   missing_fields: Array<string> | null;
   confirmation_summary: string | null;
+  follow_up_questions?: Array<{ field: string; question: string; input_type?: string }> | null;
+  follow_up_answers?: Record<string, unknown> | null;
+  ready_to_execute?: boolean | null;
+  execution_preview?: Record<string, unknown> | null;
   related_customer_id: string | null;
   related_supplier_id: string | null;
   related_product_id: number | string | null;
@@ -297,4 +301,5 @@ export interface AiActionDraft {
   created_at: string;
   updated_at: string | null;
   executed_at: string | null;
+  owner_confirmed_at?: string | null;
 }

@@ -209,6 +209,7 @@ export default function Home() {
   const [aiAssistantMessage, setAiAssistantMessage] = useState<string | null>(null);
   const [aiAssistantError, setAiAssistantError] = useState<string | null>(null);
   const [selectedAiDraftId, setSelectedAiDraftId] = useState("");
+  const [aiDraftAnswerInputs, setAiDraftAnswerInputs] = useState<Record<string, Record<string, string>>>({});
   const [dutySessions, setDutySessions] = useState<StaffDutySession[]>([]);
   const [locationPoints, setLocationPoints] = useState<StaffLocationPoint[]>([]);
   const [activeDutySession, setActiveDutySession] = useState<StaffDutySession | null>(null);
@@ -967,9 +968,34 @@ export default function Home() {
     }
   };
 
+  const aiRequiredFields: Record<string, string[]> = {
+    create_task: ["title"],
+    create_purchase_draft: ["supplier_id", "product_id", "quantity", "purchase_price", "selling_price"],
+    create_sale_draft: ["customer_id", "product_id", "quantity", "selling_price", "payment_type"],
+    create_expense_draft: ["amount", "expense_type"],
+  };
+  const aiQuestionLabels: Record<string, string> = {
+    supplier_id: "Which supplier?",
+    customer_id: "Which customer?",
+    product_id: "Which product?",
+    quantity: "How many units/cartons?",
+    purchase_price: "What is the purchase price?",
+    selling_price: "What is the selling price?",
+    payment_type: "Is this cash or credit?",
+    title: "What task should be created?",
+    amount: "What is the expense amount?",
+    expense_type: "What is the expense type?",
+  };
   const getAiDraftMissingFields = (draft: AiActionDraft) =>
     Array.isArray(draft.missing_fields) ? draft.missing_fields.filter(Boolean) : [];
-
+  const getParsedText = (data: Record<string, unknown>, field: string) => {
+    const value = data[field];
+    return typeof value === "string" && value.trim() ? value.trim() : "";
+  };
+  const getParsedNumber = (data: Record<string, unknown>, field: string) => {
+    const value = Number(data[field]);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
   const matchTextEntity = <T extends { id: string | number }>(
     command: string,
     items: T[],
@@ -985,10 +1011,143 @@ export default function Home() {
       ) ?? null
     );
   };
-
   const extractCommandNumbers = (command: string) =>
     Array.from(command.matchAll(/\b\d+(?:\.\d+)?\b/g)).map((match) => Number(match[0]));
+  const generateAiInvoiceNumber = (prefix: string) => {
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[-:TZ.]/g, "")
+      .slice(0, 14);
+    return `${prefix}-${timestamp}`;
+  };
+  const getLatestPurchasePriceSnapshotForProduct = (productId: string | number) => {
+    const latestPurchaseItem = purchaseItems
+      .filter(
+        (item) =>
+          String(item.product_id) === String(productId) &&
+          Number.isFinite(Number(item.purchase_price)) &&
+          Number(item.purchase_price) > 0
+      )
+      .sort((a, b) => {
+        const aTransaction = purchaseTransactions.find((tx) => tx.id === a.purchase_transaction_id);
+        const bTransaction = purchaseTransactions.find((tx) => tx.id === b.purchase_transaction_id);
+        return new Date(bTransaction?.created_at ?? 0).getTime() - new Date(aTransaction?.created_at ?? 0).getTime();
+      })[0];
+    const product = products.find((item) => String(item.id) === String(productId));
+    const latestPurchasePrice = Number(latestPurchaseItem?.purchase_price);
+    const productLastPurchasePrice = Number(product?.last_purchase_price);
+    return Number.isFinite(latestPurchasePrice) && latestPurchasePrice > 0
+      ? latestPurchasePrice
+      : Number.isFinite(productLastPurchasePrice) && productLastPurchasePrice > 0
+        ? productLastPurchasePrice
+        : null;
+  };
+  const getAvailableStockForProduct = (productId: string | number) => {
+    const purchasedQty = filteredPurchaseItems
+      .filter((item) => String(item.product_id) === String(productId))
+      .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+    const soldQty = filteredSalesItems
+      .filter((item) => String(item.product_id) === String(productId))
+      .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+    return purchasedQty - soldQty;
+  };
+  const evaluateAiDraftData = (actionType: string, parsedData: Record<string, unknown>) => {
+    const product = products.find((item) => String(item.id) === String(parsedData.product_id));
+    const supplier = suppliers.find((item) => item.id === parsedData.supplier_id);
+    const customer = customers.find((item) => item.id === parsedData.customer_id);
+    const quantity = getParsedNumber(parsedData, "quantity");
+    const purchasePrice = getParsedNumber(parsedData, "purchase_price");
+    const sellingPrice = getParsedNumber(parsedData, "selling_price");
+    const amount = getParsedNumber(parsedData, "amount");
+    const paymentType = getParsedText(parsedData, "payment_type");
+    const normalizedData = {
+      ...parsedData,
+      product_name: product?.name ?? parsedData.product_name ?? null,
+      supplier_name: supplier?.supplier_name ?? parsedData.supplier_name ?? null,
+      customer_name: customer?.customer_name ?? parsedData.customer_name ?? null,
+    };
+    const requiredFields = aiRequiredFields[actionType] ?? ["supported_action_type"];
+    const missingFields = requiredFields.filter((field) => {
+      if (field === "supplier_id") return !supplier;
+      if (field === "customer_id") return !customer;
+      if (field === "product_id") return !product;
+      if (field === "quantity") return !quantity;
+      if (field === "purchase_price") return !purchasePrice;
+      if (field === "selling_price") return !sellingPrice;
+      if (field === "payment_type") return paymentType !== "cash" && paymentType !== "credit";
+      if (field === "amount") return !amount;
+      if (field === "title") return !getParsedText(normalizedData, "title");
+      if (field === "expense_type") return !getParsedText(normalizedData, "expense_type");
+      return true;
+    });
+    const followUpQuestions = missingFields.map((field) => ({
+      field,
+      question: aiQuestionLabels[field] ?? `Provide ${field}`,
+      input_type: ["quantity", "purchase_price", "selling_price", "amount"].includes(field) ? "number" : "text",
+    }));
+    const readyToExecute = missingFields.length === 0 && actionType !== "unknown";
+    let confirmationSummary = "Command could not be matched to a supported draft action.";
+    let executionPreview: Record<string, unknown> = { note: confirmationSummary };
 
+    if (actionType === "create_task") {
+      const title = getParsedText(normalizedData, "title");
+      confirmationSummary = `Prepare task: ${title || "Task title needed"}`;
+      executionPreview = {
+        title,
+        priority: "medium",
+        status: "pending",
+      };
+    } else if (actionType === "create_purchase_draft") {
+      const total = (quantity ?? 0) * (purchasePrice ?? 0);
+      confirmationSummary = `Prepare purchase draft for ${product?.name ?? "unknown product"} from ${supplier?.supplier_name ?? "unknown supplier"}.`;
+      executionPreview = {
+        supplier: supplier?.supplier_name ?? null,
+        product: product?.name ?? null,
+        quantity,
+        purchase_price: purchasePrice,
+        selling_price: sellingPrice,
+        estimated_total_purchase_value: total,
+        note: "This will create a purchase invoice and purchase item.",
+      };
+    } else if (actionType === "create_sale_draft") {
+      const availableStock = product ? getAvailableStockForProduct(product.id) : null;
+      const total = (quantity ?? 0) * (sellingPrice ?? 0);
+      confirmationSummary = `Prepare sale draft for ${customer?.customer_name ?? "unknown customer"} with ${product?.name ?? "unknown product"}.`;
+      executionPreview = {
+        customer: customer?.customer_name ?? null,
+        product: product?.name ?? null,
+        quantity,
+        selling_price: sellingPrice,
+        estimated_sale_total: total,
+        payment_type: paymentType || null,
+        available_stock: availableStock,
+        stock_warning:
+          availableStock !== null && quantity !== null && availableStock < quantity
+            ? `Available stock is ${availableStock}, below requested quantity ${quantity}.`
+            : null,
+        note: "This will create a sales invoice and sales item.",
+      };
+    } else if (actionType === "create_expense_draft") {
+      confirmationSummary = `Prepare expense draft for ${getParsedText(normalizedData, "expense_type") || "unknown expense type"} amount ${formatPKR(amount)}.`;
+      executionPreview = {
+        expense_type: getParsedText(normalizedData, "expense_type") || null,
+        amount,
+        note: "Expense execution will be added in the next phase.",
+      };
+    }
+
+    return {
+      parsedData: normalizedData,
+      missingFields,
+      followUpQuestions,
+      readyToExecute,
+      confirmationSummary,
+      executionPreview,
+      related_customer_id: customer?.id ?? null,
+      related_supplier_id: supplier?.id ?? null,
+      related_product_id: product?.id ?? null,
+    };
+  };
   const parseAiCommand = (command: string) => {
     const trimmedCommand = command.trim();
     const lowerCommand = trimmedCommand.toLowerCase();
@@ -1001,12 +1160,7 @@ export default function Home() {
       supplier.supplier_name,
       supplier.contact_person,
     ]);
-    const matchedPurchaseInvoice =
-      purchaseTransactions.find((transaction) =>
-        lowerCommand.includes(String(transaction.invoice_number ?? "").toLowerCase())
-      ) ?? null;
     const numbers = extractCommandNumbers(trimmedCommand);
-    const quantity = numbers[0] ?? null;
     const purchasePriceMatch = lowerCommand.match(/purchase price\s+(\d+(?:\.\d+)?)/);
     const sellingPriceMatch = lowerCommand.match(/selling price\s+(\d+(?:\.\d+)?)/);
     const amountMatch = lowerCommand.match(/(?:expense|transport|fuel|rent|loading|salary)[^\d]*(\d+(?:\.\d+)?)/);
@@ -1021,18 +1175,14 @@ export default function Home() {
             : "unknown";
     const parsedData: Record<string, unknown> = {
       title: actionType === "create_task" ? trimmedCommand.replace(/^add task:\s*/i, "").trim() : null,
-      product_name: matchedProduct?.name ?? null,
       product_id: matchedProduct?.id ?? null,
-      customer_name: matchedCustomer?.customer_name ?? null,
       customer_id: matchedCustomer?.id ?? null,
-      supplier_name: matchedSupplier?.supplier_name ?? null,
       supplier_id: matchedSupplier?.id ?? null,
-      purchase_invoice_number: matchedPurchaseInvoice?.invoice_number ?? null,
-      purchase_transaction_id: matchedPurchaseInvoice?.id ?? null,
-      quantity,
+      quantity: numbers[0] ?? null,
       purchase_price: purchasePriceMatch ? Number(purchasePriceMatch[1]) : numbers.length >= 2 ? numbers[numbers.length - 2] : null,
       selling_price: sellingPriceMatch ? Number(sellingPriceMatch[1]) : numbers.length >= 2 ? numbers[numbers.length - 1] : null,
-      expense_amount: amountMatch ? Number(amountMatch[1]) : actionType === "create_expense_draft" ? numbers[0] ?? null : null,
+      payment_type: lowerCommand.includes("credit") ? "credit" : lowerCommand.includes("cash") ? "cash" : null,
+      amount: amountMatch ? Number(amountMatch[1]) : actionType === "create_expense_draft" ? numbers[0] ?? null : null,
       expense_type: lowerCommand.includes("fuel")
         ? "Fuel"
         : lowerCommand.includes("rent")
@@ -1046,48 +1196,7 @@ export default function Home() {
                 : null,
       original_command: trimmedCommand,
     };
-    const missingFields: string[] = [];
-
-    if (actionType === "unknown") {
-      missingFields.push("supported action type");
-    }
-    if (actionType === "create_purchase_draft") {
-      if (!matchedProduct) missingFields.push("product");
-      if (!matchedSupplier) missingFields.push("supplier");
-      if (!quantity) missingFields.push("quantity");
-      if (!parsedData.purchase_price) missingFields.push("purchase price");
-    }
-    if (actionType === "create_sale_draft") {
-      if (!matchedProduct) missingFields.push("product");
-      if (!matchedCustomer) missingFields.push("customer");
-      if (!quantity) missingFields.push("quantity");
-      if (!parsedData.selling_price) missingFields.push("selling price");
-    }
-    if (actionType === "create_expense_draft") {
-      if (!parsedData.expense_amount) missingFields.push("expense amount");
-      if (!parsedData.expense_type) missingFields.push("expense type");
-    }
-
-    const confirmationSummary =
-      actionType === "create_task"
-        ? `Prepare task: ${String(parsedData.title || trimmedCommand)}`
-        : actionType === "create_purchase_draft"
-          ? `Prepare purchase draft for ${matchedProduct?.name ?? "unknown product"} from ${matchedSupplier?.supplier_name ?? "unknown supplier"}.`
-          : actionType === "create_sale_draft"
-            ? `Prepare sale draft for ${matchedCustomer?.customer_name ?? "unknown customer"} with ${matchedProduct?.name ?? "unknown product"}.`
-            : actionType === "create_expense_draft"
-              ? `Prepare expense draft for ${parsedData.expense_type ?? "unknown expense type"} amount ${formatPKR(parsedData.expense_amount)}.`
-              : "Command could not be matched to a supported draft action.";
-
-    return {
-      actionType,
-      parsedData,
-      missingFields,
-      confirmationSummary,
-      related_customer_id: matchedCustomer?.id ?? null,
-      related_supplier_id: matchedSupplier?.id ?? null,
-      related_product_id: matchedProduct?.id ?? null,
-    };
+    return { actionType, ...evaluateAiDraftData(actionType, parsedData) };
   };
 
   const createAiActionDraft = async () => {
@@ -1121,6 +1230,10 @@ export default function Home() {
       parsed_data: parsed.parsedData,
       missing_fields: parsed.missingFields,
       confirmation_summary: parsed.confirmationSummary,
+      follow_up_questions: parsed.followUpQuestions,
+      follow_up_answers: {},
+      ready_to_execute: parsed.readyToExecute,
+      execution_preview: parsed.executionPreview,
       related_customer_id: parsed.related_customer_id,
       related_supplier_id: parsed.related_supplier_id,
       related_product_id: parsed.related_product_id,
@@ -1193,6 +1306,77 @@ export default function Home() {
     await fetchAiActionDrafts(currentOrganizationId);
   };
 
+  const saveAiDraftAnswers = async (draft: AiActionDraft) => {
+    setAiAssistantError(null);
+    setAiAssistantMessage(null);
+
+    if (!requireOrganization("save AI draft answers")) {
+      setAiAssistantError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const answers = aiDraftAnswerInputs[draft.id] ?? {};
+    const normalizedAnswers = Object.entries(answers).reduce<Record<string, unknown>>((values, [field, value]) => {
+      if (["quantity", "purchase_price", "selling_price", "amount"].includes(field)) {
+        const numericValue = Number(value);
+        values[field] = Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
+      } else {
+        values[field] = value || null;
+      }
+      return values;
+    }, {});
+    const previousAnswers = draft.follow_up_answers ?? {};
+    const parsedData = {
+      ...(draft.parsed_data ?? {}),
+      ...normalizedAnswers,
+    };
+    const evaluation = evaluateAiDraftData(draft.action_type, parsedData);
+    const now = new Date().toISOString();
+    const updatePayload = {
+      parsed_data: evaluation.parsedData,
+      missing_fields: evaluation.missingFields,
+      confirmation_summary: evaluation.confirmationSummary,
+      follow_up_questions: evaluation.followUpQuestions,
+      follow_up_answers: {
+        ...previousAnswers,
+        ...normalizedAnswers,
+      },
+      ready_to_execute: evaluation.readyToExecute,
+      execution_preview: evaluation.executionPreview,
+      related_customer_id: evaluation.related_customer_id,
+      related_supplier_id: evaluation.related_supplier_id,
+      related_product_id: evaluation.related_product_id,
+      status: evaluation.readyToExecute ? "draft" : "needs_info",
+      updated_at: now,
+      error_message: null,
+    };
+
+    const { error } = await supabase
+      .from("ai_action_drafts")
+      .update(updatePayload)
+      .eq("id", draft.id)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase AI draft answers update error:", JSON.stringify(error, null, 2));
+      setAiAssistantError(`Failed to save answers: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: "updated",
+      entity_type: "ai_action_draft",
+      entity_id: draft.id,
+      entity_label: draft.action_type,
+      description: "Updated AI action draft follow-up answers",
+      old_values: { missing_fields: draft.missing_fields, follow_up_answers: previousAnswers },
+      new_values: updatePayload,
+    });
+    setAiDraftAnswerInputs((current) => ({ ...current, [draft.id]: {} }));
+    setAiAssistantMessage(evaluation.readyToExecute ? "Answers saved. Draft is ready for owner execution." : "Answers saved. More information is still needed.");
+    await fetchAiActionDrafts(currentOrganizationId);
+  };
+
   const executeAiActionDraft = async (draft: AiActionDraft) => {
     setAiAssistantError(null);
     setAiAssistantMessage(null);
@@ -1212,90 +1396,298 @@ export default function Home() {
       return;
     }
 
-    const missingFields = getAiDraftMissingFields(draft);
+    const evaluation = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
+    const missingFields = evaluation.missingFields;
     if (missingFields.length > 0) {
       setAiAssistantError(`This draft needs more information first: ${missingFields.join(", ")}.`);
       return;
     }
 
-    if (draft.action_type !== "create_task") {
-      setAiAssistantMessage("This draft is prepared for review. Execution for this action type will be added in the next phase.");
+    if (!draft.ready_to_execute && !evaluation.readyToExecute) {
+      setAiAssistantError("Owner confirmation requires this draft to be ready to execute first. Save answers before executing.");
       return;
     }
 
     const parsedData = draft.parsed_data ?? {};
-    const title = String(parsedData.title || draft.command_text).trim();
     const now = new Date().toISOString();
-    const taskPayload = {
-      organization_id: currentOrganizationId,
-      title,
-      task_type: "general",
-      priority: "medium",
-      status: "pending",
-      due_date: null,
-      notes: `Created from AI Assistant command: ${draft.command_text}`,
-      customer_id: draft.related_customer_id ?? null,
-      supplier_id: draft.related_supplier_id ?? null,
-      product_id: draft.related_product_id ?? null,
-      purchase_transaction_id: null,
-      sales_transaction_id: null,
-      completed_at: null,
-    };
-
-    const { data: insertedTask, error: taskError } = await supabase
-      .from("tasks")
-      .insert(taskPayload)
-      .select("id")
-      .single();
-
-    if (taskError) {
-      console.error("Supabase AI task insert error:", JSON.stringify(taskError, null, 2));
-      setAiAssistantError(`Failed to create task from draft: ${JSON.stringify(taskError, null, 2)}`);
+    const markDraftFailed = async (message: string, errorDetails?: unknown) => {
+      const errorMessage = errorDetails ? JSON.stringify(errorDetails, null, 2) : message;
       await supabase
         .from("ai_action_drafts")
         .update({
           status: "failed",
-          error_message: JSON.stringify(taskError, null, 2),
-          updated_at: now,
+          error_message: errorMessage,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", draft.id)
         .eq("organization_id", currentOrganizationId);
+      setAiAssistantError(message);
+      await fetchAiActionDrafts(currentOrganizationId);
+    };
+
+    if (draft.action_type === "create_expense_draft") {
+      setAiAssistantMessage("Expense execution will be added in the next phase.");
+      return;
+    }
+
+    if (draft.action_type === "create_task") {
+      const title = String(parsedData.title || draft.command_text).trim();
+      const taskPayload = {
+        organization_id: currentOrganizationId,
+        title,
+        task_type: String(parsedData.task_type || "general"),
+        priority: "medium",
+        status: "pending",
+        due_date: null,
+        notes: `Created from AI Assistant command: ${draft.command_text}`,
+        customer_id: draft.related_customer_id ?? null,
+        supplier_id: draft.related_supplier_id ?? null,
+        product_id: draft.related_product_id ?? null,
+        purchase_transaction_id: null,
+        sales_transaction_id: null,
+        completed_at: null,
+      };
+
+      const { data: insertedTask, error: taskError } = await supabase
+        .from("tasks")
+        .insert(taskPayload)
+        .select("id")
+        .single();
+
+      if (taskError) {
+        console.error("Supabase AI task insert error:", JSON.stringify(taskError, null, 2));
+        await markDraftFailed("Failed to create task from draft.", taskError);
+        return;
+      }
+
+      const { error: draftError } = await supabase
+        .from("ai_action_drafts")
+        .update({
+          status: "executed",
+          executed_entity_type: "task",
+          executed_entity_id: insertedTask?.id == null ? null : String(insertedTask.id),
+          executed_at: now,
+          owner_confirmed_at: now,
+          updated_at: now,
+          error_message: null,
+        })
+        .eq("id", draft.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (draftError) {
+        console.error("Supabase AI action draft execution update error:", JSON.stringify(draftError, null, 2));
+        setAiAssistantError(`Task was created, but draft status could not be updated: ${JSON.stringify(draftError, null, 2)}`);
+        await fetchTasks(currentOrganizationId);
+        return;
+      }
+
+      await createAuditLog({
+        action: "executed",
+        entity_type: "ai_action_draft",
+        entity_id: draft.id,
+        entity_label: draft.action_type,
+        description: `Executed AI action draft into task ${title}`,
+        old_values: { status: draft.status },
+        new_values: { status: "executed", executed_entity_type: "task", executed_entity_id: insertedTask?.id ?? null },
+      });
+      setAiAssistantMessage("AI task draft executed into a real task.");
+      await fetchTasks(currentOrganizationId);
       await fetchAiActionDrafts(currentOrganizationId);
       return;
     }
 
-    const { error: draftError } = await supabase
-      .from("ai_action_drafts")
-      .update({
-        status: "executed",
-        executed_entity_type: "task",
-        executed_entity_id: insertedTask?.id == null ? null : String(insertedTask.id),
-        executed_at: now,
-        updated_at: now,
-        error_message: null,
-      })
-      .eq("id", draft.id)
-      .eq("organization_id", currentOrganizationId);
+    if (draft.action_type === "create_purchase_draft") {
+      const supplierId = String(parsedData.supplier_id ?? "");
+      const productId = String(parsedData.product_id ?? "");
+      const quantity = Number(parsedData.quantity);
+      const purchasePrice = Number(parsedData.purchase_price);
+      const sellingPrice = Number(parsedData.selling_price);
+      const invoiceNumber = generateAiInvoiceNumber("AI-PUR");
 
-    if (draftError) {
-      console.error("Supabase AI action draft execution update error:", JSON.stringify(draftError, null, 2));
-      setAiAssistantError(`Task was created, but draft status could not be updated: ${JSON.stringify(draftError, null, 2)}`);
-      await fetchTasks(currentOrganizationId);
+      const transactionResult = await supabase
+        .from("purchase_transactions")
+        .insert({
+          supplier_id: supplierId,
+          invoice_number: invoiceNumber,
+          purchase_date: toDateInputValue(new Date()),
+          notes: "Created from AI Assistant draft",
+          expense_review_status: "pending",
+          organization_id: currentOrganizationId,
+        })
+        .select()
+        .single();
+
+      if (transactionResult.error) {
+        console.error("Supabase AI purchase transaction insert error:", JSON.stringify(transactionResult.error, null, 2));
+        await markDraftFailed("Failed to create purchase invoice from draft.", transactionResult.error);
+        return;
+      }
+
+      const purchaseTransactionId = transactionResult.data?.id;
+      if (!purchaseTransactionId) {
+        await markDraftFailed("Failed to create purchase invoice from draft.");
+        return;
+      }
+
+      const { error: itemError } = await supabase.from("purchase_items").insert({
+        purchase_transaction_id: purchaseTransactionId,
+        product_id: productId,
+        quantity,
+        purchase_price: purchasePrice,
+        selling_price: sellingPrice,
+        batch_number: null,
+        expiry_date: null,
+      });
+
+      if (itemError) {
+        console.error("Supabase AI purchase item insert error:", JSON.stringify(itemError, null, 2));
+        await markDraftFailed("Purchase invoice was created, but purchase item could not be saved.", itemError);
+        return;
+      }
+
+      const { error: productUpdateError } = await supabase
+        .from("products")
+        .update({ default_selling_price: sellingPrice })
+        .eq("id", productId)
+        .eq("organization_id", currentOrganizationId);
+      if (productUpdateError) {
+        console.error("Supabase AI product selling price update error:", JSON.stringify(productUpdateError, null, 2));
+      }
+
+      const { error: draftError } = await supabase
+        .from("ai_action_drafts")
+        .update({
+          status: "executed",
+          executed_entity_type: "purchase_invoice",
+          executed_entity_id: String(purchaseTransactionId),
+          executed_at: now,
+          owner_confirmed_at: now,
+          updated_at: now,
+          error_message: null,
+        })
+        .eq("id", draft.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (draftError) {
+        console.error("Supabase AI purchase draft update error:", JSON.stringify(draftError, null, 2));
+        setAiAssistantError(`Purchase was created, but draft status could not be updated: ${JSON.stringify(draftError, null, 2)}`);
+        return;
+      }
+
+      await createAuditLog({
+        action: "executed",
+        entity_type: "ai_action_draft",
+        entity_id: draft.id,
+        entity_label: draft.action_type,
+        description: `Executed AI purchase draft into invoice ${invoiceNumber}`,
+        new_values: { purchase_transaction_id: purchaseTransactionId, invoice_number: invoiceNumber },
+      });
+      setAiAssistantMessage(`AI purchase draft executed into purchase invoice ${invoiceNumber}.`);
+      await fetchPurchaseTransactions(currentOrganizationId);
+      await fetchPurchaseItems();
+      await fetchProducts(currentOrganizationId);
+      await fetchAiActionDrafts(currentOrganizationId);
       return;
     }
 
-    await createAuditLog({
-      action: "executed",
-      entity_type: "ai_action_draft",
-      entity_id: draft.id,
-      entity_label: draft.action_type,
-      description: `Executed AI action draft into task ${title}`,
-      old_values: { status: draft.status },
-      new_values: { status: "executed", executed_entity_type: "task", executed_entity_id: insertedTask?.id ?? null },
-    });
-    setAiAssistantMessage("AI task draft executed into a real task.");
-    await fetchTasks(currentOrganizationId);
-    await fetchAiActionDrafts(currentOrganizationId);
+    if (draft.action_type === "create_sale_draft") {
+      const customerId = String(parsedData.customer_id ?? "");
+      const productId = String(parsedData.product_id ?? "");
+      const quantity = Number(parsedData.quantity);
+      const sellingPrice = Number(parsedData.selling_price);
+      const paymentType = String(parsedData.payment_type ?? "");
+      if (paymentType !== "cash") {
+        setAiAssistantMessage("Credit sale execution will be added in a later phase. For now, AI sale execution supports cash sales only.");
+        return;
+      }
+
+      const availableStock = getAvailableStockForProduct(productId);
+      if (availableStock < quantity) {
+        await markDraftFailed(`Not enough stock. Available stock is ${availableStock}, requested quantity is ${quantity}.`);
+        return;
+      }
+
+      const invoiceNumber = generateAiInvoiceNumber("AI-SALE");
+      const saleDate = toDateInputValue(new Date());
+      const tx = await supabase
+        .from("sales_transactions")
+        .insert({
+          customer_id: customerId,
+          invoice_number: invoiceNumber,
+          sale_date: saleDate,
+          payment_type: "cash",
+          credit_due_date: null,
+          credit_limit_snapshot: null,
+          credit_days_snapshot: null,
+          notes: "Created from AI Assistant draft",
+          organization_id: currentOrganizationId,
+        })
+        .select()
+        .single();
+
+      if (tx.error) {
+        console.error("Supabase AI sales transaction insert error:", JSON.stringify(tx.error, null, 2));
+        await markDraftFailed("Failed to create sales invoice from draft.", tx.error);
+        return;
+      }
+
+      const salesTransactionId = tx.data?.id;
+      if (!salesTransactionId) {
+        await markDraftFailed("Failed to create sales invoice from draft.");
+        return;
+      }
+
+      const { error: itemError } = await supabase.from("sales_items").insert({
+        sales_transaction_id: salesTransactionId,
+        product_id: productId,
+        quantity,
+        selling_price: sellingPrice,
+        purchase_price_snapshot: getLatestPurchasePriceSnapshotForProduct(productId),
+      });
+
+      if (itemError) {
+        console.error("Supabase AI sales item insert error:", JSON.stringify(itemError, null, 2));
+        await markDraftFailed("Sales invoice was created, but sales item could not be saved.", itemError);
+        return;
+      }
+
+      const { error: draftError } = await supabase
+        .from("ai_action_drafts")
+        .update({
+          status: "executed",
+          executed_entity_type: "sales_invoice",
+          executed_entity_id: String(salesTransactionId),
+          executed_at: now,
+          owner_confirmed_at: now,
+          updated_at: now,
+          error_message: null,
+        })
+        .eq("id", draft.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (draftError) {
+        console.error("Supabase AI sale draft update error:", JSON.stringify(draftError, null, 2));
+        setAiAssistantError(`Sale was created, but draft status could not be updated: ${JSON.stringify(draftError, null, 2)}`);
+        return;
+      }
+
+      await createAuditLog({
+        action: "executed",
+        entity_type: "ai_action_draft",
+        entity_id: draft.id,
+        entity_label: draft.action_type,
+        description: `Executed AI sale draft into invoice ${invoiceNumber}`,
+        new_values: { sales_transaction_id: salesTransactionId, invoice_number: invoiceNumber },
+      });
+      setAiAssistantMessage(`AI sale draft executed into sales invoice ${invoiceNumber}.`);
+      await fetchSalesTransactions(currentOrganizationId);
+      await fetchSalesItems();
+      await fetchProducts(currentOrganizationId);
+      await fetchAiActionDrafts(currentOrganizationId);
+      return;
+    }
+
+    setAiAssistantError("This AI action type is not supported for execution yet.");
   };
 
   const getGeolocationPosition = () =>
@@ -9273,11 +9665,29 @@ export default function Home() {
             ) : (
               <div className="space-y-3">
                 {aiActionDrafts.map((draft) => {
-                  const missingFields = getAiDraftMissingFields(draft);
+                  const draftEvaluation = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
+                  const missingFields =
+                    getAiDraftMissingFields(draft).length > 0
+                      ? getAiDraftMissingFields(draft)
+                      : draftEvaluation.missingFields;
+                  const followUpQuestions =
+                    draft.follow_up_questions && draft.follow_up_questions.length > 0
+                      ? draft.follow_up_questions
+                      : draftEvaluation.followUpQuestions;
+                  const executionPreview = draft.execution_preview ?? draftEvaluation.executionPreview;
+                  const readyToExecute = Boolean(draft.ready_to_execute || draftEvaluation.readyToExecute);
                   const relatedCustomer = customers.find((customer) => customer.id === draft.related_customer_id);
                   const relatedSupplier = suppliers.find((supplier) => supplier.id === draft.related_supplier_id);
                   const relatedProduct = products.find((product) => String(product.id) === String(draft.related_product_id));
                   const isSelectedDraft = selectedAiDraftId === draft.id;
+                  const executeLabel =
+                    draft.action_type === "create_purchase_draft"
+                      ? "Execute Purchase"
+                      : draft.action_type === "create_sale_draft"
+                        ? "Execute Sale"
+                        : draft.action_type === "create_task"
+                          ? "Execute Task"
+                          : "Execute Draft";
                   return (
                     <div
                       key={draft.id}
@@ -9300,6 +9710,11 @@ export default function Home() {
                             }`}>
                               {draft.status}
                             </span>
+                            <span className={`rounded px-2 py-1 text-xs font-medium ${
+                              readyToExecute ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"
+                            }`}>
+                              {readyToExecute ? "Ready to execute" : "Not ready"}
+                            </span>
                           </div>
                           <p className="mt-2 text-sm font-medium text-gray-900">{draft.command_text}</p>
                           <p className="mt-1 text-sm text-gray-700">{draft.confirmation_summary}</p>
@@ -9312,6 +9727,127 @@ export default function Home() {
                           {missingFields.length > 0 && (
                             <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                               Missing fields: {missingFields.join(", ")}
+                            </div>
+                          )}
+                          {executionPreview && (
+                            <div className="mt-3 rounded border border-gray-200 bg-white p-3">
+                              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Execution Preview</div>
+                              <div className="mt-2 grid gap-2 text-xs text-gray-700 sm:grid-cols-2">
+                                {Object.entries(executionPreview).map(([key, value]) => {
+                                  if (value === null || value === undefined || value === "") return null;
+                                  const displayValue =
+                                    key.includes("price") ||
+                                    key.includes("total") ||
+                                    key === "amount"
+                                      ? formatPKR(value)
+                                      : String(value);
+                                  return (
+                                    <div key={key} className="rounded border border-gray-100 bg-gray-50 px-2 py-1">
+                                      <span className="font-medium">{key.replace(/_/g, " ")}:</span> {displayValue}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {followUpQuestions.length > 0 && draft.status !== "executed" && draft.status !== "cancelled" && (
+                            <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3">
+                              <div className="text-sm font-medium text-blue-950">Guided Questions</div>
+                              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                {followUpQuestions.map((question) => {
+                                  const currentAnswer =
+                                    aiDraftAnswerInputs[draft.id]?.[question.field] ??
+                                    String((draft.follow_up_answers ?? {})[question.field] ?? (draft.parsed_data ?? {})[question.field] ?? "");
+                                  const updateAnswer = (value: string) =>
+                                    setAiDraftAnswerInputs((current) => ({
+                                      ...current,
+                                      [draft.id]: {
+                                        ...(current[draft.id] ?? {}),
+                                        [question.field]: value,
+                                      },
+                                    }));
+
+                                  if (question.field === "supplier_id") {
+                                    return (
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                        <span>{question.question}</span>
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                          <option value="">Select supplier</option>
+                                          {suppliers.map((supplier) => (
+                                            <option key={supplier.id} value={supplier.id}>{supplier.supplier_name}</option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    );
+                                  }
+                                  if (question.field === "customer_id") {
+                                    return (
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                        <span>{question.question}</span>
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                          <option value="">Select customer</option>
+                                          {customers.map((customer) => (
+                                            <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    );
+                                  }
+                                  if (question.field === "product_id") {
+                                    return (
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                        <span>{question.question}</span>
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                          <option value="">Select product</option>
+                                          {products.map((product) => (
+                                            <option key={product.id} value={product.id}>{product.name}</option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    );
+                                  }
+                                  if (question.field === "payment_type") {
+                                    return (
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                        <span>{question.question}</span>
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                          <option value="">Select payment type</option>
+                                          <option value="cash">Cash</option>
+                                          <option value="credit">Credit</option>
+                                        </select>
+                                      </label>
+                                    );
+                                  }
+                                  return (
+                                    <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                      <span>{question.question}</span>
+                                      <input
+                                        type={question.input_type === "number" ? "number" : "text"}
+                                        min={question.input_type === "number" ? "0" : undefined}
+                                        step={question.input_type === "number" ? "0.01" : undefined}
+                                        value={currentAnswer}
+                                        onChange={(e) => updateAnswer(e.target.value)}
+                                        className="rounded border border-blue-200 px-2 py-2"
+                                      />
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedAiDraftId(draft.id);
+                                  saveAiDraftAnswers(draft);
+                                }}
+                                className="mt-3 rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700"
+                              >
+                                Save Answers
+                              </button>
+                            </div>
+                          )}
+                          {readyToExecute && draft.status !== "executed" && draft.status !== "cancelled" && (
+                            <div className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
+                              Owner confirmation required before saving this action.
                             </div>
                           )}
                           {draft.error_message && (
@@ -9349,10 +9885,16 @@ export default function Home() {
                               setSelectedAiDraftId(draft.id);
                               executeAiActionDraft(draft);
                             }}
-                            disabled={draft.status === "executed" || draft.status === "cancelled" || draft.status === "failed"}
+                            disabled={
+                              draft.status === "executed" ||
+                              draft.status === "cancelled" ||
+                              draft.status === "failed" ||
+                              !readyToExecute ||
+                              missingFields.length > 0
+                            }
                             className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                           >
-                            Execute Draft
+                            {executeLabel}
                           </button>
                         </div>
                       </div>
