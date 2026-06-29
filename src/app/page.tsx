@@ -59,7 +59,7 @@ import type {
   Task,
   TaskSuggestion,
 } from "@/lib/tradeos/types";
-import { safeNumber } from "@/lib/tradeos/validators";
+import { normalizeOptionalUuid, safeNumber, safeTextOrNull } from "@/lib/tradeos/validators";
 
 type TradeOsSpeechRecognitionEvent = {
   resultIndex: number;
@@ -242,6 +242,9 @@ export default function Home() {
   const [aiAssistantError, setAiAssistantError] = useState<string | null>(null);
   const [selectedAiDraftId, setSelectedAiDraftId] = useState("");
   const [aiDraftAnswerInputs, setAiDraftAnswerInputs] = useState<Record<string, Record<string, string>>>({});
+  const [aiDraftStatusFilter, setAiDraftStatusFilter] = useState("all");
+  const [aiDraftActionTypeFilter, setAiDraftActionTypeFilter] = useState("all");
+  const [aiDraftSearch, setAiDraftSearch] = useState("");
   const [isVoiceListening, setIsVoiceListening] = useState(false);
   const [voiceInputMessage, setVoiceInputMessage] = useState<string | null>(null);
   const [voiceInputError, setVoiceInputError] = useState<string | null>(null);
@@ -1011,6 +1014,19 @@ export default function Home() {
     }
   };
 
+  const expenseTypes = [
+    "Purchase Transport",
+    "Sales Delivery",
+    "Fuel",
+    "Vehicle Rent",
+    "Loading/Unloading",
+    "Salary",
+    "Electricity",
+    "Shop/Warehouse Rent",
+    "Food/Travel",
+    "Maintenance",
+    "Other",
+  ];
   const aiRequiredFields: Record<string, string[]> = {
     create_task: ["title"],
     create_purchase_draft: ["supplier_id", "product_id", "quantity", "purchase_price", "selling_price"],
@@ -1056,6 +1072,21 @@ export default function Home() {
   };
   const extractCommandNumbers = (command: string) =>
     Array.from(command.matchAll(/\b\d+(?:\.\d+)?\b/g)).map((match) => Number(match[0]));
+  const expenseActionKeywords = /\b(expense|transport|delivery|fuel|vehicle|rent|loading|unloading|salary|electricity|food|travel|maintenance)\b/;
+  const detectAiExpenseType = (command: string) => {
+    if (command.includes("transport")) return "Purchase Transport";
+    if (command.includes("delivery")) return "Sales Delivery";
+    if (command.includes("fuel")) return "Fuel";
+    if (command.includes("vehicle")) return "Vehicle Rent";
+    if (command.includes("loading") || command.includes("unloading")) return "Loading/Unloading";
+    if (command.includes("salary")) return "Salary";
+    if (command.includes("electricity")) return "Electricity";
+    if (command.includes("rent")) return "Shop/Warehouse Rent";
+    if (command.includes("food") || command.includes("travel")) return "Food/Travel";
+    if (command.includes("maintenance")) return "Maintenance";
+    if (command.includes("other")) return "Other";
+    return null;
+  };
   const generateAiInvoiceNumber = (prefix: string) => {
     const timestamp = new Date()
       .toISOString()
@@ -1086,28 +1117,33 @@ export default function Home() {
         : null;
   };
   const getAvailableStockForProduct = (productId: string | number) => {
-    const purchasedQty = filteredPurchaseItems
+    const purchasedQty = (purchaseItems ?? [])
       .filter((item) => String(item.product_id) === String(productId))
       .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
-    const soldQty = filteredSalesItems
+    const soldQty = (salesItems ?? [])
       .filter((item) => String(item.product_id) === String(productId))
       .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
     return purchasedQty - soldQty;
   };
   const evaluateAiDraftData = (actionType: string, parsedData: Record<string, unknown>) => {
     const product = products.find((item) => String(item.id) === String(parsedData.product_id));
-    const supplier = suppliers.find((item) => item.id === parsedData.supplier_id);
-    const customer = customers.find((item) => item.id === parsedData.customer_id);
+    const supplier = suppliers.find((item) => String(item.id) === String(parsedData.supplier_id));
+    const customer = customers.find((item) => String(item.id) === String(parsedData.customer_id));
+    const linkedPurchase = purchaseTransactions.find((item) => String(item.id) === String(parsedData.purchase_transaction_id));
+    const linkedSale = salesTransactions.find((item) => String(item.id) === String(parsedData.sales_transaction_id));
     const quantity = getParsedNumber(parsedData, "quantity");
     const purchasePrice = getParsedNumber(parsedData, "purchase_price");
     const sellingPrice = getParsedNumber(parsedData, "selling_price");
     const amount = getParsedNumber(parsedData, "amount");
     const paymentType = getParsedText(parsedData, "payment_type");
+    const expenseType = getParsedText(parsedData, "expense_type");
     const normalizedData = {
       ...parsedData,
       product_name: product?.name ?? parsedData.product_name ?? null,
       supplier_name: supplier?.supplier_name ?? parsedData.supplier_name ?? null,
       customer_name: customer?.customer_name ?? parsedData.customer_name ?? null,
+      purchase_invoice_number: linkedPurchase?.invoice_number ?? parsedData.purchase_invoice_number ?? null,
+      sales_invoice_number: linkedSale?.invoice_number ?? parsedData.sales_invoice_number ?? null,
     };
     const requiredFields = aiRequiredFields[actionType] ?? ["supported_action_type"];
     const missingFields = requiredFields.filter((field) => {
@@ -1120,7 +1156,7 @@ export default function Home() {
       if (field === "payment_type") return paymentType !== "cash" && paymentType !== "credit";
       if (field === "amount") return !amount;
       if (field === "title") return !getParsedText(normalizedData, "title");
-      if (field === "expense_type") return !getParsedText(normalizedData, "expense_type");
+      if (field === "expense_type") return !expenseType || !expenseTypes.includes(expenseType);
       return true;
     });
     const followUpQuestions = missingFields.map((field) => ({
@@ -1171,11 +1207,16 @@ export default function Home() {
         note: "This will create a sales invoice and sales item.",
       };
     } else if (actionType === "create_expense_draft") {
-      confirmationSummary = `Prepare expense draft for ${getParsedText(normalizedData, "expense_type") || "unknown expense type"} amount ${formatPKR(amount)}.`;
+      confirmationSummary = `Prepare expense draft for ${expenseType || "unknown expense type"} amount ${formatPKR(amount)}.`;
       executionPreview = {
-        expense_type: getParsedText(normalizedData, "expense_type") || null,
+        expense_type: expenseType || null,
         amount,
-        note: "Expense execution will be added in the next phase.",
+        notes: getParsedText(normalizedData, "notes") || null,
+        linked_supplier: supplier?.supplier_name ?? null,
+        linked_customer: customer?.customer_name ?? null,
+        linked_purchase_invoice: linkedPurchase?.invoice_number ?? null,
+        linked_sales_invoice: linkedSale?.invoice_number ?? null,
+        note: "This will create an expense record.",
       };
     }
 
@@ -1206,10 +1247,10 @@ export default function Home() {
     const numbers = extractCommandNumbers(trimmedCommand);
     const purchasePriceMatch = lowerCommand.match(/purchase price\s+(\d+(?:\.\d+)?)/);
     const sellingPriceMatch = lowerCommand.match(/selling price\s+(\d+(?:\.\d+)?)/);
-    const amountMatch = lowerCommand.match(/(?:expense|transport|fuel|rent|loading|salary)[^\d]*(\d+(?:\.\d+)?)/);
+    const amountMatch = lowerCommand.match(/(?:expense|transport|delivery|fuel|vehicle|rent|loading|unloading|salary|electricity|food|travel|maintenance)[^\d]*(\d+(?:\.\d+)?)/);
     const actionType = lowerCommand.match(/\b(task|call|remind|follow up)\b/)
       ? "create_task"
-      : lowerCommand.match(/\b(expense|transport|fuel|rent|loading|salary)\b/)
+      : lowerCommand.match(expenseActionKeywords)
         ? "create_expense_draft"
         : lowerCommand.match(/\b(purchase|bought|buy|from supplier)\b/)
           ? "create_purchase_draft"
@@ -1226,17 +1267,7 @@ export default function Home() {
       selling_price: sellingPriceMatch ? Number(sellingPriceMatch[1]) : numbers.length >= 2 ? numbers[numbers.length - 1] : null,
       payment_type: lowerCommand.includes("credit") ? "credit" : lowerCommand.includes("cash") ? "cash" : null,
       amount: amountMatch ? Number(amountMatch[1]) : actionType === "create_expense_draft" ? numbers[0] ?? null : null,
-      expense_type: lowerCommand.includes("fuel")
-        ? "Fuel"
-        : lowerCommand.includes("rent")
-          ? "Vehicle Rent"
-          : lowerCommand.includes("loading")
-            ? "Loading/Unloading"
-            : lowerCommand.includes("salary")
-              ? "Salary"
-              : lowerCommand.includes("transport")
-                ? "Purchase Transport"
-                : null,
+      expense_type: actionType === "create_expense_draft" ? detectAiExpenseType(lowerCommand) : null,
       original_command: trimmedCommand,
     };
     return { actionType, ...evaluateAiDraftData(actionType, parsedData) };
@@ -1469,7 +1500,87 @@ export default function Home() {
     };
 
     if (draft.action_type === "create_expense_draft") {
-      setAiAssistantMessage("Expense execution will be added in the next phase.");
+      const amount = Number(parsedData.amount);
+      const expenseTypeValue = safeTextOrNull(parsedData.expense_type);
+      if (!Number.isFinite(amount) || amount <= 0 || !expenseTypeValue || !expenseTypes.includes(expenseTypeValue)) {
+        setAiAssistantError("Expense drafts require a valid amount and supported expense type before execution.");
+        return;
+      }
+
+      const linkedPurchaseId = normalizeOptionalUuid(parsedData.purchase_transaction_id);
+      const expensePayload = {
+        organization_id: currentOrganizationId,
+        expense_type: expenseTypeValue,
+        amount,
+        notes: safeTextOrNull(parsedData.notes),
+        supplier_id: normalizeOptionalUuid(parsedData.supplier_id),
+        customer_id: normalizeOptionalUuid(parsedData.customer_id),
+        purchase_transaction_id: linkedPurchaseId,
+        sales_transaction_id: normalizeOptionalUuid(parsedData.sales_transaction_id),
+      };
+
+      const { data: insertedExpense, error: expenseError } = await supabase
+        .from("expenses")
+        .insert(expensePayload)
+        .select("id")
+        .single();
+
+      if (expenseError) {
+        console.error("Supabase AI expense insert error:", JSON.stringify(expenseError, null, 2));
+        await markDraftFailed("Failed to create expense from draft.", expenseError);
+        return;
+      }
+
+      if (linkedPurchaseId) {
+        const { error: statusUpdateError } = await supabase
+          .from("purchase_transactions")
+          .update({
+            expense_review_status: "expenses_added",
+            expense_reviewed_at: now,
+          })
+          .eq("id", linkedPurchaseId)
+          .eq("organization_id", currentOrganizationId);
+
+        if (statusUpdateError) {
+          console.error("Supabase AI linked purchase expense status update error:", JSON.stringify(statusUpdateError, null, 2));
+        }
+      }
+
+      const { error: draftError } = await supabase
+        .from("ai_action_drafts")
+        .update({
+          status: "executed",
+          executed_entity_type: "expense",
+          executed_entity_id: insertedExpense?.id == null ? null : String(insertedExpense.id),
+          executed_at: now,
+          owner_confirmed_at: now,
+          updated_at: now,
+          error_message: null,
+        })
+        .eq("id", draft.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (draftError) {
+        console.error("Supabase AI expense draft update error:", JSON.stringify(draftError, null, 2));
+        setAiAssistantError(`Expense was created, but draft status could not be updated: ${JSON.stringify(draftError, null, 2)}`);
+        await fetchExpenses(currentOrganizationId);
+        if (linkedPurchaseId) await fetchPurchaseTransactions(currentOrganizationId);
+        return;
+      }
+
+      await createAuditLog({
+        action: "executed",
+        entity_type: "ai_action_draft",
+        entity_id: draft.id,
+        entity_label: draft.action_type,
+        description: `Executed AI expense draft into expense ${expenseTypeValue}`,
+        old_values: { status: draft.status },
+        new_values: { status: "executed", executed_entity_type: "expense", executed_entity_id: insertedExpense?.id ?? null },
+      });
+      setAiAssistantMessage("AI expense draft executed into a real expense.");
+      await fetchExpenses(currentOrganizationId);
+      if (linkedPurchaseId) await fetchPurchaseTransactions(currentOrganizationId);
+      await fetchAiActionDrafts(currentOrganizationId);
       return;
     }
 
@@ -3016,19 +3127,6 @@ export default function Home() {
   const [profitLossStartDate, setProfitLossStartDate] = useState(currentMonthRange.start);
   const [profitLossEndDate, setProfitLossEndDate] = useState(currentMonthRange.end);
   const [profitLossDateError, setProfitLossDateError] = useState<string | null>(null);
-  const expenseTypes = [
-    "Purchase Transport",
-    "Sales Delivery",
-    "Fuel",
-    "Vehicle Rent",
-    "Loading/Unloading",
-    "Salary",
-    "Electricity",
-    "Shop/Warehouse Rent",
-    "Food/Travel",
-    "Maintenance",
-    "Other",
-  ];
   const pkrFormatter = new Intl.NumberFormat("en-PK", {
     style: "currency",
     currency: "PKR",
@@ -3081,6 +3179,38 @@ export default function Home() {
   const activeSectionLabel =
     navigationItems.find((item) => item.id === activeSection)?.label ?? "Dashboard";
   const activeSectionAllowed = canAccessSection(activeSection);
+  const filteredAiActionDrafts = aiActionDrafts.filter((draft) => {
+    const evaluation = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
+    const isReady = Boolean(draft.ready_to_execute || evaluation.readyToExecute);
+    const matchesStatus =
+      aiDraftStatusFilter === "all" ||
+      (aiDraftStatusFilter === "ready" && isReady && draft.status !== "executed" && draft.status !== "cancelled" && draft.status !== "failed") ||
+      draft.status === aiDraftStatusFilter;
+    const actionTypeGroup =
+      draft.action_type === "create_task"
+        ? "task"
+        : draft.action_type === "create_purchase_draft"
+          ? "purchase"
+          : draft.action_type === "create_sale_draft"
+            ? "sale"
+            : draft.action_type === "create_expense_draft"
+              ? "expense"
+              : "unknown";
+    const matchesActionType = aiDraftActionTypeFilter === "all" || aiDraftActionTypeFilter === actionTypeGroup;
+    const search = aiDraftSearch.trim().toLowerCase();
+    const matchesSearch =
+      !search ||
+      [
+        draft.command_text,
+        draft.confirmation_summary,
+        draft.status,
+        draft.action_type,
+        draft.error_message,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(search));
+    return matchesStatus && matchesActionType && matchesSearch;
+  });
   const ownDutySessions = dutySessions.filter((session) => session.profile_id === currentProfile?.id);
   const ownLocationPoints = locationPoints.filter((point) => point.profile_id === currentProfile?.id);
   const visibleDutySessions = isOwnerOrAdmin() ? dutySessions : ownDutySessions;
@@ -9829,12 +9959,64 @@ export default function Home() {
           </div>
 
           <div className="mt-5 rounded border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Recent Drafts</h3>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Recent Drafts</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Showing {filteredAiActionDrafts.length} of {aiActionDrafts.length} draft actions.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[560px]">
+                <label className="flex flex-col gap-1 text-xs text-gray-700">
+                  <span>Status</span>
+                  <select
+                    value={aiDraftStatusFilter}
+                    onChange={(e) => setAiDraftStatusFilter(e.target.value)}
+                    className="rounded border border-gray-300 px-2 py-2"
+                  >
+                    <option value="all">All</option>
+                    <option value="draft">Draft</option>
+                    <option value="ready">Ready</option>
+                    <option value="needs_info">Needs Info</option>
+                    <option value="executed">Executed</option>
+                    <option value="failed">Failed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-gray-700">
+                  <span>Action type</span>
+                  <select
+                    value={aiDraftActionTypeFilter}
+                    onChange={(e) => setAiDraftActionTypeFilter(e.target.value)}
+                    className="rounded border border-gray-300 px-2 py-2"
+                  >
+                    <option value="all">All action types</option>
+                    <option value="task">Task</option>
+                    <option value="purchase">Purchase</option>
+                    <option value="sale">Sale</option>
+                    <option value="expense">Expense</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-gray-700">
+                  <span>Search</span>
+                  <input
+                    type="search"
+                    value={aiDraftSearch}
+                    onChange={(e) => setAiDraftSearch(e.target.value)}
+                    placeholder="Search drafts"
+                    className="rounded border border-gray-300 px-2 py-2"
+                  />
+                </label>
+              </div>
+            </div>
             {aiActionDrafts.length === 0 ? (
-              <p className="text-sm text-gray-600">No AI action drafts yet.</p>
+              <p className="mt-3 text-sm text-gray-600">No AI action drafts yet.</p>
+            ) : filteredAiActionDrafts.length === 0 ? (
+              <p className="mt-3 text-sm text-gray-600">No drafts match the selected filters.</p>
             ) : (
-              <div className="space-y-3">
-                {aiActionDrafts.map((draft) => {
+              <div className="mt-3 space-y-3">
+                {filteredAiActionDrafts.map((draft) => {
                   const draftEvaluation = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
                   const missingFields =
                     getAiDraftMissingFields(draft).length > 0
@@ -9844,11 +10026,32 @@ export default function Home() {
                     draft.follow_up_questions && draft.follow_up_questions.length > 0
                       ? draft.follow_up_questions
                       : draftEvaluation.followUpQuestions;
+                  const expenseOptionalQuestions =
+                    draft.action_type === "create_expense_draft"
+                      ? [
+                          { field: "notes", question: "Notes", input_type: "text" },
+                          { field: "supplier_id", question: "Related supplier", input_type: "select" },
+                          { field: "customer_id", question: "Related customer", input_type: "select" },
+                          { field: "purchase_transaction_id", question: "Related purchase invoice", input_type: "select" },
+                          { field: "sales_transaction_id", question: "Related sales invoice", input_type: "select" },
+                        ]
+                      : [];
+                  const displayedFollowUpQuestions = [
+                    ...followUpQuestions,
+                    ...expenseOptionalQuestions.filter(
+                      (optionalQuestion) =>
+                        !followUpQuestions.some((question) => question.field === optionalQuestion.field)
+                    ),
+                  ];
                   const executionPreview = draft.execution_preview ?? draftEvaluation.executionPreview;
                   const readyToExecute = Boolean(draft.ready_to_execute || draftEvaluation.readyToExecute);
                   const relatedCustomer = customers.find((customer) => customer.id === draft.related_customer_id);
                   const relatedSupplier = suppliers.find((supplier) => supplier.id === draft.related_supplier_id);
                   const relatedProduct = products.find((product) => String(product.id) === String(draft.related_product_id));
+                  const executedTask = tasks.find((task) => String(task.id) === String(draft.executed_entity_id));
+                  const executedPurchase = purchaseTransactions.find((tx) => String(tx.id) === String(draft.executed_entity_id));
+                  const executedSale = salesTransactions.find((tx) => String(tx.id) === String(draft.executed_entity_id));
+                  const executedExpense = expenses.find((expense) => String(expense.id) === String(draft.executed_entity_id));
                   const isSelectedDraft = selectedAiDraftId === draft.id;
                   const executeLabel =
                     draft.action_type === "create_purchase_draft"
@@ -9857,7 +10060,19 @@ export default function Home() {
                         ? "Execute Sale"
                         : draft.action_type === "create_task"
                           ? "Execute Task"
-                          : "Execute Draft";
+                          : draft.action_type === "create_expense_draft"
+                            ? "Execute Expense"
+                            : "Execute Draft";
+                  const executionRecordName =
+                    draft.action_type === "create_purchase_draft"
+                      ? "purchase"
+                      : draft.action_type === "create_sale_draft"
+                        ? "sale"
+                        : draft.action_type === "create_expense_draft"
+                          ? "expense"
+                          : draft.action_type === "create_task"
+                            ? "task"
+                            : "record";
                   return (
                     <div
                       key={draft.id}
@@ -9920,11 +10135,11 @@ export default function Home() {
                               </div>
                             </div>
                           )}
-                          {followUpQuestions.length > 0 && draft.status !== "executed" && draft.status !== "cancelled" && (
+                          {displayedFollowUpQuestions.length > 0 && draft.status !== "executed" && draft.status !== "cancelled" && (
                             <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3">
                               <div className="text-sm font-medium text-blue-950">Guided Questions</div>
                               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                {followUpQuestions.map((question) => {
+                                {displayedFollowUpQuestions.map((question) => {
                                   const currentAnswer =
                                     aiDraftAnswerInputs[draft.id]?.[question.field] ??
                                     String((draft.follow_up_answers ?? {})[question.field] ?? (draft.parsed_data ?? {})[question.field] ?? "");
@@ -9988,6 +10203,49 @@ export default function Home() {
                                       </label>
                                     );
                                   }
+                                  if (question.field === "expense_type") {
+                                    return (
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                        <span>{question.question}</span>
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                          <option value="">Select expense type</option>
+                                          {expenseTypes.map((type) => (
+                                            <option key={type} value={type}>{type}</option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    );
+                                  }
+                                  if (question.field === "purchase_transaction_id") {
+                                    return (
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                        <span>{question.question}</span>
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                          <option value="">Select purchase invoice</option>
+                                          {purchaseTransactions.map((transaction) => (
+                                            <option key={transaction.id} value={transaction.id}>
+                                              {transaction.invoice_number} - {formatDate(transaction.purchase_date)}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    );
+                                  }
+                                  if (question.field === "sales_transaction_id") {
+                                    return (
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                        <span>{question.question}</span>
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                          <option value="">Select sales invoice</option>
+                                          {salesTransactions.map((transaction) => (
+                                            <option key={transaction.id} value={transaction.id}>
+                                              {transaction.invoice_number} - {formatDate(transaction.sale_date)}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    );
+                                  }
                                   return (
                                     <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
                                       <span>{question.question}</span>
@@ -10017,7 +10275,59 @@ export default function Home() {
                           )}
                           {readyToExecute && draft.status !== "executed" && draft.status !== "cancelled" && (
                             <div className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
-                              Owner confirmation required before saving this action.
+                              You are about to create a real {executionRecordName} record. Please confirm details before executing.
+                            </div>
+                          )}
+                          {draft.status === "executed" && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
+                              {draft.executed_entity_type === "task" && (
+                                <>
+                                  <span>Created Task{executedTask?.title ? `: ${executedTask.title}` : ""}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSectionChange("task-manager")}
+                                    className="rounded border border-green-300 bg-white px-2 py-1 text-green-800 hover:bg-green-100"
+                                  >
+                                    Open Tasks
+                                  </button>
+                                </>
+                              )}
+                              {draft.executed_entity_type === "purchase_invoice" && (
+                                <>
+                                  <span>Created Purchase{executedPurchase?.invoice_number ? `: ${executedPurchase.invoice_number}` : ""}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSectionChange("purchases")}
+                                    className="rounded border border-green-300 bg-white px-2 py-1 text-green-800 hover:bg-green-100"
+                                  >
+                                    Open Purchases
+                                  </button>
+                                </>
+                              )}
+                              {draft.executed_entity_type === "sales_invoice" && (
+                                <>
+                                  <span>Created Sale{executedSale?.invoice_number ? `: ${executedSale.invoice_number}` : ""}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSectionChange("sales")}
+                                    className="rounded border border-green-300 bg-white px-2 py-1 text-green-800 hover:bg-green-100"
+                                  >
+                                    Open Sales
+                                  </button>
+                                </>
+                              )}
+                              {draft.executed_entity_type === "expense" && (
+                                <>
+                                  <span>Created Expense{executedExpense?.expense_type ? `: ${executedExpense.expense_type}` : ""}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSectionChange("expenses")}
+                                    className="rounded border border-green-300 bg-white px-2 py-1 text-green-800 hover:bg-green-100"
+                                  >
+                                    Open Expenses
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                           {draft.error_message && (
