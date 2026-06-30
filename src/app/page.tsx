@@ -35,6 +35,7 @@ import {
 } from "@/lib/tradeos/formatters";
 import type {
   AiActionDraft,
+  AiActionMessage,
   AuditLog,
   Brand,
   Category,
@@ -245,6 +246,15 @@ export default function Home() {
   const [aiDraftStatusFilter, setAiDraftStatusFilter] = useState("all");
   const [aiDraftActionTypeFilter, setAiDraftActionTypeFilter] = useState("all");
   const [aiDraftSearch, setAiDraftSearch] = useState("");
+  const [selectedConversationDraftId, setSelectedConversationDraftId] = useState("");
+  const [aiConversationMessages, setAiConversationMessages] = useState<AiActionMessage[]>([]);
+  const [aiConversationInput, setAiConversationInput] = useState("");
+  const [aiConversationMessage, setAiConversationMessage] = useState<string | null>(null);
+  const [aiConversationError, setAiConversationError] = useState<string | null>(null);
+  const [activeMissingField, setActiveMissingField] = useState("");
+  const [isVoiceAnswerListening, setIsVoiceAnswerListening] = useState(false);
+  const [voiceAnswerMessage, setVoiceAnswerMessage] = useState<string | null>(null);
+  const [voiceAnswerError, setVoiceAnswerError] = useState<string | null>(null);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
   const [voiceInputMessage, setVoiceInputMessage] = useState<string | null>(null);
   const [voiceInputError, setVoiceInputError] = useState<string | null>(null);
@@ -376,6 +386,31 @@ export default function Home() {
     }
 
     setAiActionDrafts(data ?? []);
+  };
+
+  const fetchAiActionMessages = async (draftId?: string | null, organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    const selectedDraftId = draftId ?? selectedConversationDraftId;
+    if (!orgId || !selectedDraftId) {
+      setAiConversationMessages([]);
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from("ai_action_messages")
+      .select("*")
+      .eq("organization_id", orgId)
+      .eq("ai_action_draft_id", selectedDraftId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch AI action messages error:", JSON.stringify(error, null, 2));
+      return [];
+    }
+
+    const messages = data ?? [];
+    setAiConversationMessages(messages);
+    return messages;
   };
 
   const fetchSecurityChecks = async (organizationId?: string | null) => {
@@ -1045,6 +1080,28 @@ export default function Home() {
     amount: "What is the expense amount?",
     expense_type: "What is the expense type?",
   };
+  const aiConversationQuestionOrder: Record<string, string[]> = {
+    create_purchase_draft: ["supplier_id", "product_id", "quantity", "purchase_price", "selling_price"],
+    create_sale_draft: ["customer_id", "product_id", "quantity", "selling_price", "payment_type"],
+    create_expense_draft: ["amount", "expense_type"],
+    create_task: ["title"],
+  };
+  const aiConversationQuestionText: Record<string, string> = {
+    supplier_id: "Which supplier?",
+    customer_id: "Which customer?",
+    product_id: "Which product?",
+    quantity: "How many cartons/units?",
+    purchase_price: "What is the purchase price?",
+    selling_price: "What is the selling price?",
+    payment_type: "Is this cash or credit?",
+    amount: "What is the expense amount?",
+    expense_type: "What type of expense is this?",
+    title: "What task should be created?",
+  };
+  const getNextMissingField = (actionType: string, missingFields: string[]) => {
+    const preferredOrder = aiConversationQuestionOrder[actionType] ?? [];
+    return preferredOrder.find((field) => missingFields.includes(field)) ?? missingFields[0] ?? "";
+  };
   const getAiDraftMissingFields = (draft: AiActionDraft) =>
     Array.isArray(draft.missing_fields) ? draft.missing_fields.filter(Boolean) : [];
   const getParsedText = (data: Record<string, unknown>, field: string) => {
@@ -1072,6 +1129,52 @@ export default function Home() {
   };
   const extractCommandNumbers = (command: string) =>
     Array.from(command.matchAll(/\b\d+(?:\.\d+)?\b/g)).map((match) => Number(match[0]));
+  const productSizePattern = /^\s*(ml|milliliter|millilitre|l|liter|litre|g|gram|kg|kilo)\b/i;
+  const isProductSizeNumber = (command: string, matchIndex: number, matchLength: number) =>
+    productSizePattern.test(command.slice(matchIndex + matchLength));
+  const extractQuantityFromText = (text: string) => {
+    const quantityMatch = text.match(/\b(\d+(?:\.\d+)?)\s*(carton|cartons|box|boxes|piece|pieces|pcs|unit|units)\b/i);
+    return quantityMatch ? Number(quantityMatch[1]) : null;
+  };
+  const extractFirstNonSizeNumber = (text: string) => {
+    for (const match of text.matchAll(/\b\d+(?:\.\d+)?\b/g)) {
+      if (!isProductSizeNumber(text, match.index ?? 0, match[0].length)) {
+        return Number(match[0]);
+      }
+    }
+    return null;
+  };
+  const extractPriceFromText = (text: string, field?: "purchase_price" | "selling_price") => {
+    const lowerText = text.toLowerCase();
+    const specificPattern =
+      field === "purchase_price"
+        ? /(?:purchase price|purchase rate|cost price|cost|buying price|buy price|price|rate|at)\s*(?:is|=|:)?\s*(\d+(?:\.\d+)?)/i
+        : field === "selling_price"
+          ? /(?:selling price|sale price|sell price|price|rate|at)\s*(?:is|=|:)?\s*(\d+(?:\.\d+)?)/i
+          : /(?:price|rate|at)\s*(?:is|=|:)?\s*(\d+(?:\.\d+)?)/i;
+    const specificMatch = lowerText.match(specificPattern);
+    if (specificMatch) return Number(specificMatch[1]);
+    return extractFirstNonSizeNumber(text);
+  };
+  const tokenizeSearchText = (text: string) =>
+    text
+      .toLowerCase()
+      .split(/[^a-z0-9.]+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2);
+  const matchProductFromText = (text: string) => {
+    const tokens = tokenizeSearchText(text);
+    if (tokens.length === 0) return null;
+    const scoredProducts = products
+      .map((product) => {
+        const productName = String(product.name ?? "").toLowerCase();
+        const score = tokens.reduce((sum, token) => sum + (productName.includes(token) ? 1 : 0), 0);
+        return { product, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || String(a.product.name).localeCompare(String(b.product.name)));
+    return scoredProducts[0]?.product ?? null;
+  };
   const expenseActionKeywords = /\b(expense|transport|delivery|fuel|vehicle|rent|loading|unloading|salary|electricity|food|travel|maintenance)\b/;
   const detectAiExpenseType = (command: string) => {
     if (command.includes("transport")) return "Purchase Transport";
@@ -1235,7 +1338,7 @@ export default function Home() {
   const parseAiCommand = (command: string) => {
     const trimmedCommand = command.trim();
     const lowerCommand = trimmedCommand.toLowerCase();
-    const matchedProduct = matchTextEntity(trimmedCommand, products, (product) => [product.name]);
+    const matchedProduct = matchProductFromText(trimmedCommand) ?? matchTextEntity(trimmedCommand, products, (product) => [product.name]);
     const matchedCustomer = matchTextEntity(trimmedCommand, customers, (customer) => [
       customer.customer_name,
       customer.shop_name,
@@ -1244,7 +1347,6 @@ export default function Home() {
       supplier.supplier_name,
       supplier.contact_person,
     ]);
-    const numbers = extractCommandNumbers(trimmedCommand);
     const purchasePriceMatch = lowerCommand.match(/purchase price\s+(\d+(?:\.\d+)?)/);
     const sellingPriceMatch = lowerCommand.match(/selling price\s+(\d+(?:\.\d+)?)/);
     const amountMatch = lowerCommand.match(/(?:expense|transport|delivery|fuel|vehicle|rent|loading|unloading|salary|electricity|food|travel|maintenance)[^\d]*(\d+(?:\.\d+)?)/);
@@ -1262,15 +1364,138 @@ export default function Home() {
       product_id: matchedProduct?.id ?? null,
       customer_id: matchedCustomer?.id ?? null,
       supplier_id: matchedSupplier?.id ?? null,
-      quantity: numbers[0] ?? null,
-      purchase_price: purchasePriceMatch ? Number(purchasePriceMatch[1]) : numbers.length >= 2 ? numbers[numbers.length - 2] : null,
-      selling_price: sellingPriceMatch ? Number(sellingPriceMatch[1]) : numbers.length >= 2 ? numbers[numbers.length - 1] : null,
+      quantity: actionType === "create_purchase_draft" || actionType === "create_sale_draft" ? extractQuantityFromText(trimmedCommand) : null,
+      purchase_price: purchasePriceMatch ? Number(purchasePriceMatch[1]) : actionType === "create_purchase_draft" ? extractPriceFromText(trimmedCommand, "purchase_price") : null,
+      selling_price: sellingPriceMatch ? Number(sellingPriceMatch[1]) : actionType === "create_purchase_draft" || actionType === "create_sale_draft" ? extractPriceFromText(trimmedCommand, "selling_price") : null,
       payment_type: lowerCommand.includes("credit") ? "credit" : lowerCommand.includes("cash") ? "cash" : null,
-      amount: amountMatch ? Number(amountMatch[1]) : actionType === "create_expense_draft" ? numbers[0] ?? null : null,
+      amount: amountMatch ? Number(amountMatch[1]) : actionType === "create_expense_draft" ? extractFirstNonSizeNumber(trimmedCommand) : null,
       expense_type: actionType === "create_expense_draft" ? detectAiExpenseType(lowerCommand) : null,
       original_command: trimmedCommand,
     };
     return { actionType, ...evaluateAiDraftData(actionType, parsedData) };
+  };
+
+  const addAiActionMessage = async ({
+    draftId,
+    role,
+    messageType,
+    messageText,
+    relatedField = null,
+    parsedValue = null,
+  }: {
+    draftId: string | null;
+    role: "owner" | "assistant" | "system";
+    messageType: "command" | "question" | "answer" | "confirmation" | "execution" | "error" | "text";
+    messageText: string;
+    relatedField?: string | null;
+    parsedValue?: unknown;
+  }) => {
+    if (!currentOrganizationId || !messageText.trim()) {
+      return null;
+    }
+
+    const payload = {
+      organization_id: currentOrganizationId,
+      profile_id: currentProfile?.id ?? null,
+      ai_action_draft_id: draftId,
+      role,
+      message_type: messageType,
+      message_text: messageText.trim(),
+      related_field: relatedField ?? null,
+      parsed_value: parsedValue ?? null,
+    };
+
+    const { data, error } = await supabase
+      .from("ai_action_messages")
+      .insert(payload)
+      .select("*")
+      .single();
+
+    if (error) {
+      console.error("Supabase AI action message insert error:", JSON.stringify(error, null, 2));
+      return null;
+    }
+
+    return data as AiActionMessage;
+  };
+
+  const ensureAiQuestionMessage = async (
+    draft: AiActionDraft,
+    field: string,
+    existingMessages: AiActionMessage[] = aiConversationMessages
+  ) => {
+    if (!field) return existingMessages;
+    const alreadyAsked = existingMessages.some(
+      (message) => message.role === "assistant" && message.message_type === "question" && message.related_field === field
+    );
+    if (alreadyAsked) {
+      return existingMessages;
+    }
+
+    const questionText = aiConversationQuestionText[field] ?? aiQuestionLabels[field] ?? `Please provide ${field}.`;
+    const insertedMessage = await addAiActionMessage({
+      draftId: draft.id,
+      role: "assistant",
+      messageType: "question",
+      messageText: questionText,
+      relatedField: field,
+    });
+    return insertedMessage ? [...existingMessages, insertedMessage] : existingMessages;
+  };
+
+  const getConversationDraft = () =>
+    aiActionDrafts.find((draft) => draft.id === selectedConversationDraftId) ?? null;
+
+  const parseConversationAnswer = (draft: AiActionDraft, field: string, answer: string) => {
+    const trimmedAnswer = answer.trim();
+    const lowerAnswer = trimmedAnswer.toLowerCase();
+    let parsedValue: unknown = null;
+    let matchedCustomerId: string | null = draft.related_customer_id ?? null;
+    let matchedSupplierId: string | null = draft.related_supplier_id ?? null;
+    let matchedProductId: string | number | null = draft.related_product_id ?? null;
+
+    if (field === "supplier_id") {
+      const matchedSupplier = matchTextEntity(trimmedAnswer, suppliers, (supplier) => [
+        supplier.supplier_name,
+        supplier.contact_person,
+      ]);
+      parsedValue = matchedSupplier?.id ?? null;
+      matchedSupplierId = matchedSupplier?.id ?? null;
+    } else if (field === "customer_id") {
+      const matchedCustomer = matchTextEntity(trimmedAnswer, customers, (customer) => [
+        customer.customer_name,
+        customer.shop_name,
+      ]);
+      parsedValue = matchedCustomer?.id ?? null;
+      matchedCustomerId = matchedCustomer?.id ?? null;
+    } else if (field === "product_id") {
+      const matchedProduct = matchProductFromText(trimmedAnswer);
+      parsedValue = matchedProduct?.id ?? null;
+      matchedProductId = matchedProduct?.id ?? null;
+    } else if (field === "quantity") {
+      parsedValue = extractQuantityFromText(trimmedAnswer) ?? extractFirstNonSizeNumber(trimmedAnswer);
+    } else if (field === "purchase_price") {
+      parsedValue = extractPriceFromText(trimmedAnswer, "purchase_price");
+    } else if (field === "selling_price") {
+      parsedValue = extractPriceFromText(trimmedAnswer, "selling_price");
+    } else if (field === "payment_type") {
+      parsedValue = lowerAnswer.includes("credit") ? "credit" : lowerAnswer.includes("cash") ? "cash" : null;
+    } else if (field === "amount") {
+      parsedValue = extractFirstNonSizeNumber(trimmedAnswer);
+    } else if (field === "expense_type") {
+      parsedValue = detectAiExpenseType(lowerAnswer) ?? expenseTypes.find((type) => type.toLowerCase() === lowerAnswer) ?? null;
+    } else if (field === "title") {
+      parsedValue = trimmedAnswer || null;
+    } else {
+      parsedValue = trimmedAnswer || null;
+    }
+
+    return {
+      parsedValue,
+      related_customer_id: matchedCustomerId,
+      related_supplier_id: matchedSupplierId,
+      related_product_id: matchedProductId,
+    };
   };
 
   const createAiActionDraft = async () => {
@@ -1317,7 +1542,7 @@ export default function Home() {
     const { data, error } = await supabase
       .from("ai_action_drafts")
       .insert(payload)
-      .select("id")
+      .select("*")
       .single();
 
     if (error) {
@@ -1335,9 +1560,13 @@ export default function Home() {
       new_values: payload,
     });
     setSelectedAiDraftId(data?.id ?? "");
+    setSelectedConversationDraftId(data?.id ?? "");
     setAiCommandText("");
     setAiAssistantMessage("Draft action created for owner review.");
     await fetchAiActionDrafts(currentOrganizationId);
+    if (data?.id) {
+      await continueAiConversation(data as AiActionDraft);
+    }
   };
 
   const updateAiDraftStatus = async (
@@ -1449,6 +1678,223 @@ export default function Home() {
     setAiDraftAnswerInputs((current) => ({ ...current, [draft.id]: {} }));
     setAiAssistantMessage(evaluation.readyToExecute ? "Answers saved. Draft is ready for owner execution." : "Answers saved. More information is still needed.");
     await fetchAiActionDrafts(currentOrganizationId);
+  };
+
+  const continueAiConversation = async (draft: AiActionDraft) => {
+    setAiConversationError(null);
+    setAiConversationMessage(null);
+    setSelectedConversationDraftId(draft.id);
+    setSelectedAiDraftId(draft.id);
+
+    const existingMessages = await fetchAiActionMessages(draft.id, currentOrganizationId);
+    let nextMessages = existingMessages;
+    if (!nextMessages.some((message) => message.message_type === "command")) {
+      const commandMessage = await addAiActionMessage({
+        draftId: draft.id,
+        role: "owner",
+        messageType: "command",
+        messageText: draft.command_text,
+      });
+      if (commandMessage) nextMessages = [...nextMessages, commandMessage];
+    }
+
+    const evaluation = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
+    const missingFields =
+      getAiDraftMissingFields(draft).length > 0 ? getAiDraftMissingFields(draft) : evaluation.missingFields;
+    const nextField = getNextMissingField(draft.action_type, missingFields);
+    setActiveMissingField(nextField);
+
+    if (nextField) {
+      nextMessages = await ensureAiQuestionMessage(draft, nextField, nextMessages);
+      setAiConversationMessage("Conversation opened. Answer the current question to continue.");
+    } else if (draft.ready_to_execute || evaluation.readyToExecute) {
+      const hasConfirmation = nextMessages.some((message) => message.message_type === "confirmation");
+      if (!hasConfirmation) {
+        const confirmationMessage = await addAiActionMessage({
+          draftId: draft.id,
+          role: "assistant",
+          messageType: "confirmation",
+          messageText: `${evaluation.confirmationSummary} Should I execute this now?`,
+        });
+        if (confirmationMessage) nextMessages = [...nextMessages, confirmationMessage];
+      }
+      setAiConversationMessage("Draft is ready. Confirm before execution.");
+    }
+
+    setAiConversationMessages(nextMessages);
+  };
+
+  const sendAiConversationAnswer = async () => {
+    setAiConversationError(null);
+    setAiConversationMessage(null);
+
+    if (!requireOrganization("send AI conversation answer")) {
+      setAiConversationError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const draft = getConversationDraft();
+    if (!draft) {
+      setAiConversationError("Select a draft conversation first.");
+      return;
+    }
+
+    const answer = aiConversationInput.trim();
+    if (!answer) {
+      setAiConversationError("Type or speak an answer first.");
+      return;
+    }
+
+    const lowerAnswer = answer.toLowerCase();
+    const evaluationBeforeAnswer = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
+    const isReady = Boolean(draft.ready_to_execute || evaluationBeforeAnswer.readyToExecute);
+
+    await addAiActionMessage({
+      draftId: draft.id,
+      role: "owner",
+      messageType: "answer",
+      messageText: answer,
+      relatedField: activeMissingField || null,
+    });
+
+    if (isReady && /^(yes|confirm|proceed|save it|execute|execute now)$/i.test(lowerAnswer)) {
+      await addAiActionMessage({
+        draftId: draft.id,
+        role: "assistant",
+        messageType: "execution",
+        messageText: "Owner confirmed execution from conversation.",
+      });
+      await createAuditLog({
+        action: "executed",
+        entity_type: "ai_action_draft",
+        entity_id: draft.id,
+        entity_label: draft.action_type,
+        description: "AI draft execution confirmed from conversation",
+      });
+      setAiConversationInput("");
+      await executeAiActionDraft(draft);
+      await fetchAiActionMessages(draft.id, currentOrganizationId);
+      return;
+    }
+
+    if (isReady && /^(no|cancel|stop)$/i.test(lowerAnswer)) {
+      await updateAiDraftStatus(draft, "cancelled");
+      await addAiActionMessage({
+        draftId: draft.id,
+        role: "assistant",
+        messageType: "text",
+        messageText: "Draft cancelled from conversation.",
+      });
+      setAiConversationInput("");
+      await fetchAiActionMessages(draft.id, currentOrganizationId);
+      return;
+    }
+
+    const missingFields =
+      getAiDraftMissingFields(draft).length > 0 ? getAiDraftMissingFields(draft) : evaluationBeforeAnswer.missingFields;
+    const field = activeMissingField || getNextMissingField(draft.action_type, missingFields);
+    if (!field) {
+      await addAiActionMessage({
+        draftId: draft.id,
+        role: "assistant",
+        messageType: "confirmation",
+        messageText: `${evaluationBeforeAnswer.confirmationSummary} Should I execute this now?`,
+      });
+      setAiConversationInput("");
+      await fetchAiActionMessages(draft.id, currentOrganizationId);
+      return;
+    }
+
+    const parsedAnswer = parseConversationAnswer(draft, field, answer);
+    if (parsedAnswer.parsedValue === null || parsedAnswer.parsedValue === "") {
+      await addAiActionMessage({
+        draftId: draft.id,
+        role: "assistant",
+        messageType: "question",
+        messageText: `I could not understand that answer. ${aiConversationQuestionText[field] ?? "Please try again."}`,
+        relatedField: field,
+      });
+      setAiConversationInput("");
+      await fetchAiActionMessages(draft.id, currentOrganizationId);
+      return;
+    }
+
+    const previousAnswers = draft.follow_up_answers ?? {};
+    const parsedData = {
+      ...(draft.parsed_data ?? {}),
+      [field]: parsedAnswer.parsedValue,
+    };
+    const evaluation = evaluateAiDraftData(draft.action_type, parsedData);
+    const now = new Date().toISOString();
+    const updatePayload = {
+      parsed_data: evaluation.parsedData,
+      missing_fields: evaluation.missingFields,
+      confirmation_summary: evaluation.confirmationSummary,
+      follow_up_questions: evaluation.followUpQuestions,
+      follow_up_answers: {
+        ...previousAnswers,
+        [field]: parsedAnswer.parsedValue,
+      },
+      ready_to_execute: evaluation.readyToExecute,
+      execution_preview: evaluation.executionPreview,
+      related_customer_id: parsedAnswer.related_customer_id ?? evaluation.related_customer_id,
+      related_supplier_id: parsedAnswer.related_supplier_id ?? evaluation.related_supplier_id,
+      related_product_id: parsedAnswer.related_product_id ?? evaluation.related_product_id,
+      status: evaluation.readyToExecute ? "draft" : "needs_info",
+      updated_at: now,
+      error_message: null,
+    };
+
+    const { error } = await supabase
+      .from("ai_action_drafts")
+      .update(updatePayload)
+      .eq("id", draft.id)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase AI conversation draft update error:", JSON.stringify(error, null, 2));
+      setAiConversationError(`Failed to update draft from answer: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await addAiActionMessage({
+      draftId: draft.id,
+      role: "system",
+      messageType: "answer",
+      messageText: `Saved answer for ${field}.`,
+      relatedField: field,
+      parsedValue: parsedAnswer.parsedValue,
+    });
+    await createAuditLog({
+      action: "updated",
+      entity_type: "ai_action_draft",
+      entity_id: draft.id,
+      entity_label: draft.action_type,
+      description: `Saved AI conversation answer for ${field}`,
+      new_values: { [field]: parsedAnswer.parsedValue },
+    });
+
+    await fetchAiActionDrafts(currentOrganizationId);
+    const refreshedDraft = {
+      ...draft,
+      ...updatePayload,
+    } as AiActionDraft;
+    const nextField = getNextMissingField(refreshedDraft.action_type, evaluation.missingFields);
+    setActiveMissingField(nextField);
+    if (nextField) {
+      await ensureAiQuestionMessage(refreshedDraft, nextField);
+      setAiConversationMessage("Answer saved. Next question is ready.");
+    } else {
+      await addAiActionMessage({
+        draftId: draft.id,
+        role: "assistant",
+        messageType: "confirmation",
+        messageText: `${evaluation.confirmationSummary} Should I execute this now?`,
+      });
+      setAiConversationMessage("Draft is complete. Confirm before execution.");
+    }
+    setAiConversationInput("");
+    await fetchAiActionMessages(draft.id, currentOrganizationId);
   };
 
   const executeAiActionDraft = async (draft: AiActionDraft) => {
@@ -1926,6 +2372,82 @@ export default function Home() {
     setVoiceTranscriptPreview("");
     setVoiceInputMessage(null);
     setVoiceInputError(null);
+  };
+
+  const stopVoiceAnswerInput = () => {
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.onend = null;
+      speechRecognitionRef.current.stop();
+      speechRecognitionRef.current = null;
+    }
+    setIsVoiceAnswerListening(false);
+    setVoiceAnswerMessage("Voice answer stopped.");
+  };
+
+  const startVoiceAnswerInput = () => {
+    setVoiceAnswerError(null);
+    setVoiceAnswerMessage(null);
+
+    const SpeechRecognitionConstructor = getSpeechRecognitionConstructor();
+    if (!SpeechRecognitionConstructor) {
+      setVoiceAnswerError("This browser does not support speech recognition. Try Chrome or another supported browser.");
+      setIsVoiceAnswerListening(false);
+      return;
+    }
+
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.stop();
+      speechRecognitionRef.current = null;
+    }
+
+    const recognition = new SpeechRecognitionConstructor();
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        transcript += event.results[index][0]?.transcript ?? "";
+      }
+      const cleanedTranscript = transcript.trim();
+      if (cleanedTranscript) {
+        setAiConversationInput(cleanedTranscript);
+      }
+    };
+    recognition.onerror = (event) => {
+      const errorCode = event.error ?? "unknown";
+      setVoiceAnswerError(`Voice answer error: ${errorCode}. Please check microphone permission and try again.`);
+      setVoiceAnswerMessage(null);
+      setIsVoiceAnswerListening(false);
+    };
+    recognition.onend = () => {
+      setIsVoiceAnswerListening(false);
+      setVoiceAnswerMessage("Voice answer finished. Review the answer before sending.");
+      speechRecognitionRef.current = null;
+    };
+
+    try {
+      speechRecognitionRef.current = recognition;
+      recognition.start();
+      setIsVoiceAnswerListening(true);
+      setVoiceAnswerMessage("Listening... answer the current TradeOS question");
+    } catch (err) {
+      speechRecognitionRef.current = null;
+      setIsVoiceAnswerListening(false);
+      setVoiceAnswerError(err instanceof Error ? err.message : "Could not start voice answer input.");
+    }
+  };
+
+  const clearVoiceAnswerInput = () => {
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.onend = null;
+      speechRecognitionRef.current.stop();
+      speechRecognitionRef.current = null;
+    }
+    setIsVoiceAnswerListening(false);
+    setAiConversationInput("");
+    setVoiceAnswerMessage(null);
+    setVoiceAnswerError(null);
   };
 
   const getGeolocationPosition = () =>
@@ -3211,6 +3733,19 @@ export default function Home() {
         .some((value) => String(value).toLowerCase().includes(search));
     return matchesStatus && matchesActionType && matchesSearch;
   });
+  const selectedConversationDraft =
+    aiActionDrafts.find((draft) => draft.id === selectedConversationDraftId) ?? null;
+  const selectedConversationEvaluation = selectedConversationDraft
+    ? evaluateAiDraftData(selectedConversationDraft.action_type, selectedConversationDraft.parsed_data ?? {})
+    : null;
+  const selectedConversationMissingFields = selectedConversationDraft
+    ? getAiDraftMissingFields(selectedConversationDraft).length > 0
+      ? getAiDraftMissingFields(selectedConversationDraft)
+      : selectedConversationEvaluation?.missingFields ?? []
+    : [];
+  const selectedConversationReady = Boolean(
+    selectedConversationDraft?.ready_to_execute || selectedConversationEvaluation?.readyToExecute
+  );
   const ownDutySessions = dutySessions.filter((session) => session.profile_id === currentProfile?.id);
   const ownLocationPoints = locationPoints.filter((point) => point.profile_id === currentProfile?.id);
   const visibleDutySessions = isOwnerOrAdmin() ? dutySessions : ownDutySessions;
@@ -9958,6 +10493,173 @@ export default function Home() {
             </button>
           </div>
 
+          <div className="mt-5 rounded border border-indigo-200 bg-white p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Conversation Panel</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Continue a draft one question at a time. Voice answers become text first and never execute automatically.
+                </p>
+              </div>
+              {selectedConversationDraft && (
+                <span className="rounded bg-indigo-100 px-2 py-1 text-xs font-medium text-indigo-800">
+                  {selectedConversationDraft.action_type}
+                </span>
+              )}
+            </div>
+
+            {!selectedConversationDraft ? (
+              <p className="mt-4 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                Select Continue Conversation on a draft to start.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-xs uppercase tracking-wide text-gray-500">Draft summary</div>
+                  <p className="mt-1 text-sm font-medium text-gray-900">{selectedConversationDraft.command_text}</p>
+                  <p className="mt-1 text-sm text-gray-700">{selectedConversationDraft.confirmation_summary}</p>
+                  {selectedConversationMissingFields.length > 0 && (
+                    <p className="mt-2 text-xs text-amber-800">
+                      Missing: {selectedConversationMissingFields.join(", ")}
+                    </p>
+                  )}
+                </div>
+
+                {aiConversationMessage && (
+                  <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                    {aiConversationMessage}
+                  </p>
+                )}
+                {aiConversationError && (
+                  <p className="whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                    {aiConversationError}
+                  </p>
+                )}
+
+                <div className="max-h-80 space-y-2 overflow-y-auto rounded border border-gray-200 bg-gray-50 p-3">
+                  {aiConversationMessages.length === 0 ? (
+                    <p className="text-sm text-gray-600">No conversation messages yet.</p>
+                  ) : (
+                    aiConversationMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`rounded px-3 py-2 text-sm ${
+                          message.role === "owner"
+                            ? "ml-auto bg-blue-600 text-white"
+                            : message.role === "assistant"
+                              ? "mr-auto bg-white text-gray-900"
+                              : "mx-auto bg-gray-200 text-gray-700"
+                        } max-w-[92%]`}
+                      >
+                        <div className="text-[11px] opacity-75">
+                          {message.role} · {message.message_type}
+                          {message.related_field ? ` · ${message.related_field}` : ""}
+                        </div>
+                        <div className="mt-1">{message.message_text}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {selectedConversationReady && (
+                  <div className="rounded border border-green-200 bg-green-50 p-3">
+                    <div className="text-sm font-medium text-green-950">Final Confirmation</div>
+                    <p className="mt-1 text-sm text-green-900">{selectedConversationEvaluation?.confirmationSummary}</p>
+                    {selectedConversationEvaluation?.executionPreview && (
+                      <div className="mt-2 grid gap-2 text-xs text-green-900 sm:grid-cols-2">
+                        {Object.entries(selectedConversationEvaluation.executionPreview).map(([key, value]) => {
+                          if (value === null || value === undefined || value === "") return null;
+                          const displayValue =
+                            key.includes("price") || key.includes("total") || key === "amount"
+                              ? formatPKR(value)
+                              : String(value);
+                          return (
+                            <div key={key} className="rounded border border-green-200 bg-white px-2 py-1">
+                              <span className="font-medium">{key.replace(/_/g, " ")}:</span> {displayValue}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => executeAiActionDraft(selectedConversationDraft)}
+                        disabled={selectedConversationDraft.status === "executed" || selectedConversationDraft.status === "cancelled"}
+                        className="rounded bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                      >
+                        Execute Now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateAiDraftStatus(selectedConversationDraft, "cancelled")}
+                        disabled={selectedConversationDraft.status === "executed" || selectedConversationDraft.status === "cancelled"}
+                        className="rounded border border-red-500 bg-white px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                      >
+                        Cancel Draft
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded border border-indigo-200 bg-indigo-50 p-3">
+                  <label className="block text-sm font-medium text-indigo-950" htmlFor="ai-conversation-answer">
+                    Owner Answer
+                  </label>
+                  <textarea
+                    id="ai-conversation-answer"
+                    value={aiConversationInput}
+                    onChange={(e) => setAiConversationInput(e.target.value)}
+                    rows={3}
+                    className="mt-2 w-full rounded border border-indigo-200 px-3 py-2 text-sm"
+                    placeholder={
+                      selectedConversationReady
+                        ? "Type yes, confirm, proceed, or no/cancel."
+                        : activeMissingField
+                          ? aiConversationQuestionText[activeMissingField] ?? "Answer the current question"
+                          : "Answer the assistant question"
+                    }
+                  />
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {!isVoiceAnswerListening ? (
+                      <button
+                        type="button"
+                        onClick={startVoiceAnswerInput}
+                        className="rounded bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700"
+                      >
+                        Start Voice Answer
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={stopVoiceAnswerInput}
+                        className="rounded bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700"
+                      >
+                        Stop Listening
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={clearVoiceAnswerInput}
+                      className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Clear Answer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={sendAiConversationAnswer}
+                      className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                    >
+                      Send Answer
+                    </button>
+                  </div>
+                  {voiceAnswerMessage && <p className="mt-2 text-sm text-indigo-900">{voiceAnswerMessage}</p>}
+                  {voiceAnswerError && <p className="mt-2 text-sm text-red-700">{voiceAnswerError}</p>}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="mt-5 rounded border border-gray-200 bg-white p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
@@ -10137,7 +10839,10 @@ export default function Home() {
                           )}
                           {displayedFollowUpQuestions.length > 0 && draft.status !== "executed" && draft.status !== "cancelled" && (
                             <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3">
-                              <div className="text-sm font-medium text-blue-950">Guided Questions</div>
+                              <div className="text-sm font-medium text-blue-950">Manual draft fields</div>
+                              <p className="mt-1 text-xs text-blue-900">
+                                Backup form for directly editing draft fields if conversation is not enough.
+                              </p>
                               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                 {displayedFollowUpQuestions.map((question) => {
                                   const currentAnswer =
@@ -10337,6 +11042,13 @@ export default function Home() {
                           )}
                         </div>
                         <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => continueAiConversation(draft)}
+                            className="rounded border border-indigo-500 bg-white px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
+                          >
+                            Continue Conversation
+                          </button>
                           <button
                             type="button"
                             onClick={() => {

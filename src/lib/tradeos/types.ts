@@ -303,3 +303,16 @@ export interface AiActionDraft {
   executed_at: string | null;
   owner_confirmed_at?: string | null;
 }
+
+export interface AiActionMessage {
+  id: string;
+  organization_id: string;
+  profile_id: string | null;
+  ai_action_draft_id: string | null;
+  role: "owner" | "assistant" | "system" | string;
+  message_type: "command" | "question" | "answer" | "confirmation" | "execution" | "error" | "text" | string;
+  message_text: string;
+  related_field: string | null;
+  parsed_value: unknown;
+  created_at: string;
+}
