@@ -7,6 +7,14 @@ import {
   aiAssistantRoadmapItems,
   defaultSecurityChecks,
   deploymentManualChecklistItems,
+  marketAffectedAreaOptions,
+  marketCategoryOptions,
+  marketConfidenceOptions,
+  marketImpactDirectionOptions,
+  marketImpactLevelOptions,
+  marketImportQueueExampleChips,
+  marketIntelligenceExampleChips,
+  marketIntelligenceStatusOptions,
   mobileReadinessItems,
   mobileRoadmapItems,
   navigationItems,
@@ -40,6 +48,9 @@ import type {
   Brand,
   Category,
   Customer,
+  MarketIntelligenceItem,
+  MarketImportQueueItem,
+  MarketNewsSource,
   NewPurchaseExpenseReminder,
   Product,
   PurchaseLine,
@@ -60,7 +71,7 @@ import type {
   Task,
   TaskSuggestion,
 } from "@/lib/tradeos/types";
-import { normalizeOptionalUuid, safeNumber, safeTextOrNull } from "@/lib/tradeos/validators";
+import { isValidUuid, normalizeOptionalUuid, safeNumber, safeTextOrNull } from "@/lib/tradeos/validators";
 
 type TradeOsSpeechRecognitionEvent = {
   resultIndex: number;
@@ -260,6 +271,51 @@ export default function Home() {
   const [voiceInputError, setVoiceInputError] = useState<string | null>(null);
   const [voiceTranscriptPreview, setVoiceTranscriptPreview] = useState("");
   const speechRecognitionRef = useRef<TradeOsSpeechRecognition | null>(null);
+  const [marketNewsSources, setMarketNewsSources] = useState<MarketNewsSource[]>([]);
+  const [marketIntelligenceItems, setMarketIntelligenceItems] = useState<MarketIntelligenceItem[]>([]);
+  const [marketImportQueueItems, setMarketImportQueueItems] = useState<MarketImportQueueItem[]>([]);
+  const [marketIntelligenceMessage, setMarketIntelligenceMessage] = useState<string | null>(null);
+  const [marketIntelligenceError, setMarketIntelligenceError] = useState<string | null>(null);
+  const [marketImportQueueMessage, setMarketImportQueueMessage] = useState<string | null>(null);
+  const [marketImportQueueError, setMarketImportQueueError] = useState<string | null>(null);
+  const [marketIntelligenceSearch, setMarketIntelligenceSearch] = useState("");
+  const [marketIntelligenceCategoryFilter, setMarketIntelligenceCategoryFilter] = useState("all");
+  const [marketIntelligenceImpactFilter, setMarketIntelligenceImpactFilter] = useState("all");
+  const [marketIntelligenceStatusFilter, setMarketIntelligenceStatusFilter] = useState("all");
+  const [marketImportQueueSearch, setMarketImportQueueSearch] = useState("");
+  const [marketImportQueueStatusFilter, setMarketImportQueueStatusFilter] = useState("all");
+  const [selectedMarketImportQueueId, setSelectedMarketImportQueueId] = useState("");
+  const [marketTitle, setMarketTitle] = useState("");
+  const [marketSummary, setMarketSummary] = useState("");
+  const [marketSourceName, setMarketSourceName] = useState("");
+  const [marketSourceUrl, setMarketSourceUrl] = useState("");
+  const [marketCategory, setMarketCategory] = useState("");
+  const [marketRelatedProductCategory, setMarketRelatedProductCategory] = useState("");
+  const [marketRelatedProductId, setMarketRelatedProductId] = useState("");
+  const [marketImpactDirection, setMarketImpactDirection] = useState("");
+  const [marketImpactLevel, setMarketImpactLevel] = useState("");
+  const [marketConfidenceLevel, setMarketConfidenceLevel] = useState("");
+  const [marketAffectedArea, setMarketAffectedArea] = useState("");
+  const [marketSuggestedAction, setMarketSuggestedAction] = useState("");
+  const [marketNewsDate, setMarketNewsDate] = useState(toDateInputValue(new Date()));
+  const [marketStatus, setMarketStatus] = useState("active");
+  const [marketNewsSourceName, setMarketNewsSourceName] = useState("");
+  const [marketNewsSourceType, setMarketNewsSourceType] = useState("");
+  const [marketNewsSourceUrl, setMarketNewsSourceUrl] = useState("");
+  const [marketNewsSourceCountry, setMarketNewsSourceCountry] = useState("Pakistan");
+  const [marketNewsSourceIsActive, setMarketNewsSourceIsActive] = useState(true);
+  const [marketImportSourceName, setMarketImportSourceName] = useState("");
+  const [marketImportSourceUrl, setMarketImportSourceUrl] = useState("");
+  const [marketImportRawTitle, setMarketImportRawTitle] = useState("");
+  const [marketImportRawSummary, setMarketImportRawSummary] = useState("");
+  const [marketImportRawText, setMarketImportRawText] = useState("");
+  const [marketImportSuggestedCategory, setMarketImportSuggestedCategory] = useState("");
+  const [marketImportSuggestedImpactDirection, setMarketImportSuggestedImpactDirection] = useState("");
+  const [marketImportSuggestedImpactLevel, setMarketImportSuggestedImpactLevel] = useState("");
+  const [marketImportSuggestedConfidenceLevel, setMarketImportSuggestedConfidenceLevel] = useState("");
+  const [marketImportSuggestedAffectedArea, setMarketImportSuggestedAffectedArea] = useState("");
+  const [marketImportSuggestedAction, setMarketImportSuggestedAction] = useState("");
+  const [marketImportNotes, setMarketImportNotes] = useState("");
   const [dutySessions, setDutySessions] = useState<StaffDutySession[]>([]);
   const [locationPoints, setLocationPoints] = useState<StaffLocationPoint[]>([]);
   const [activeDutySession, setActiveDutySession] = useState<StaffDutySession | null>(null);
@@ -411,6 +467,72 @@ export default function Home() {
     const messages = data ?? [];
     setAiConversationMessages(messages);
     return messages;
+  };
+
+  const fetchMarketNewsSources = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setMarketNewsSources([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("market_news_sources")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Supabase fetch market news sources error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setMarketNewsSources(data ?? []);
+  };
+
+  const fetchMarketIntelligenceItems = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setMarketIntelligenceItems([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("market_intelligence_items")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("news_date", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error("Supabase fetch market intelligence items error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setMarketIntelligenceItems(data ?? []);
+  };
+
+  const fetchMarketImportQueueItems = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setMarketImportQueueItems([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("market_import_queue")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error("Supabase fetch market import queue error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setMarketImportQueueItems(data ?? []);
   };
 
   const fetchSecurityChecks = async (organizationId?: string | null) => {
@@ -666,6 +788,9 @@ export default function Home() {
     fetchTasks(resolvedProfile.organization_id);
     fetchAuditLogs(resolvedProfile.organization_id);
     fetchAiActionDrafts(resolvedProfile.organization_id);
+    fetchMarketNewsSources(resolvedProfile.organization_id);
+    fetchMarketIntelligenceItems(resolvedProfile.organization_id);
+    fetchMarketImportQueueItems(resolvedProfile.organization_id);
     fetchStaffProfilesAndPermissions(resolvedProfile.organization_id);
     fetchSecurityChecks(resolvedProfile.organization_id);
     fetchDutySessions(resolvedProfile.organization_id, resolvedProfile.id);
@@ -3689,6 +3814,7 @@ export default function Home() {
     deployment: "owner_admin",
     "mobile-app": "owner_admin",
     "ai-assistant": "owner_admin",
+    "market-intelligence": "owner_admin",
   };
   const canAccessSection = (sectionId: SectionId) => {
     if (sectionId === "dashboard") return true;
@@ -3746,6 +3872,68 @@ export default function Home() {
   const selectedConversationReady = Boolean(
     selectedConversationDraft?.ready_to_execute || selectedConversationEvaluation?.readyToExecute
   );
+  const marketWeekStart = new Date();
+  marketWeekStart.setDate(marketWeekStart.getDate() - 7);
+  const marketIntelligenceSummary = marketIntelligenceItems.reduce(
+    (summary, item) => {
+      const createdTime = new Date(item.created_at ?? 0).getTime();
+      if (item.status === "active") summary.active += 1;
+      if (item.impact_level === "high" || item.impact_level === "critical") summary.highCritical += 1;
+      if (item.impact_direction === "price_up") summary.priceUp += 1;
+      if (item.impact_direction === "supply_shortage") summary.supplyShortage += 1;
+      if (Number.isFinite(createdTime) && createdTime >= marketWeekStart.getTime()) summary.addedThisWeek += 1;
+      return summary;
+    },
+    { active: 0, highCritical: 0, priceUp: 0, supplyShortage: 0, addedThisWeek: 0 }
+  );
+  const marketImportQueueSummary = marketImportQueueItems.reduce(
+    (summary, item) => {
+      if (item.review_status === "pending") summary.pending += 1;
+      if (item.review_status === "reviewing") summary.reviewing += 1;
+      if (item.review_status === "converted") summary.converted += 1;
+      if (item.review_status === "ignored") summary.ignored += 1;
+      return summary;
+    },
+    { pending: 0, reviewing: 0, converted: 0, ignored: 0 }
+  );
+  const filteredMarketIntelligenceItems = marketIntelligenceItems.filter((item) => {
+    const search = marketIntelligenceSearch.trim().toLowerCase();
+    const matchesSearch =
+      !search ||
+      [
+        item.title,
+        item.summary,
+        item.source_name,
+        item.suggested_action,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(search));
+    const matchesCategory =
+      marketIntelligenceCategoryFilter === "all" || item.market_category === marketIntelligenceCategoryFilter;
+    const matchesImpact =
+      marketIntelligenceImpactFilter === "all" || item.impact_direction === marketIntelligenceImpactFilter;
+    const matchesStatus =
+      marketIntelligenceStatusFilter === "all" || item.status === marketIntelligenceStatusFilter;
+    return matchesSearch && matchesCategory && matchesImpact && matchesStatus;
+  });
+  const filteredMarketImportQueueItems = marketImportQueueItems.filter((item) => {
+    const search = marketImportQueueSearch.trim().toLowerCase();
+    const matchesSearch =
+      !search ||
+      [
+        item.raw_title,
+        item.raw_summary,
+        item.raw_text,
+        item.source_name,
+        item.source_url,
+        item.notes,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(search));
+    const matchesStatus =
+      marketImportQueueStatusFilter === "all" || item.review_status === marketImportQueueStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
   const ownDutySessions = dutySessions.filter((session) => session.profile_id === currentProfile?.id);
   const ownLocationPoints = locationPoints.filter((point) => point.profile_id === currentProfile?.id);
   const visibleDutySessions = isOwnerOrAdmin() ? dutySessions : ownDutySessions;
@@ -6543,6 +6731,496 @@ export default function Home() {
     }, 0);
   };
 
+  const getMarketLabel = (options: Array<{ value: string; label: string }>, value: string | null | undefined) =>
+    options.find((option) => option.value === value)?.label ?? value ?? "-";
+
+  const resetMarketIntelligenceForm = () => {
+    setMarketTitle("");
+    setMarketSummary("");
+    setMarketSourceName("");
+    setMarketSourceUrl("");
+    setMarketCategory("");
+    setMarketRelatedProductCategory("");
+    setMarketRelatedProductId("");
+    setMarketImpactDirection("");
+    setMarketImpactLevel("");
+    setMarketConfidenceLevel("");
+    setMarketAffectedArea("");
+    setMarketSuggestedAction("");
+    setMarketNewsDate(toDateInputValue(new Date()));
+    setMarketStatus("active");
+  };
+
+  const fillMarketExample = (example: (typeof marketIntelligenceExampleChips)[number]) => {
+    setMarketTitle(example.title);
+    setMarketSummary(example.summary);
+    setMarketCategory(example.market_category);
+    setMarketImpactDirection(example.impact_direction);
+    setMarketImpactLevel(example.impact_level);
+    setMarketConfidenceLevel(example.confidence_level);
+    setMarketAffectedArea(example.affected_area);
+    setMarketSuggestedAction(example.suggested_action);
+    setMarketStatus("active");
+    setMarketNewsDate(toDateInputValue(new Date()));
+  };
+
+  const resetMarketImportQueueForm = () => {
+    setMarketImportSourceName("");
+    setMarketImportSourceUrl("");
+    setMarketImportRawTitle("");
+    setMarketImportRawSummary("");
+    setMarketImportRawText("");
+    setMarketImportSuggestedCategory("");
+    setMarketImportSuggestedImpactDirection("");
+    setMarketImportSuggestedImpactLevel("");
+    setMarketImportSuggestedConfidenceLevel("");
+    setMarketImportSuggestedAffectedArea("");
+    setMarketImportSuggestedAction("");
+    setMarketImportNotes("");
+  };
+
+  const fillMarketImportExample = (example: (typeof marketImportQueueExampleChips)[number]) => {
+    setMarketImportRawTitle(example.raw_title);
+    setMarketImportRawSummary(example.raw_summary);
+    setMarketImportRawText(example.raw_text);
+    setMarketImportSuggestedCategory(example.suggested_market_category);
+    setMarketImportSuggestedImpactDirection(example.suggested_impact_direction);
+    setMarketImportSuggestedImpactLevel(example.suggested_impact_level);
+    setMarketImportSuggestedConfidenceLevel(example.suggested_confidence_level);
+    setMarketImportSuggestedAffectedArea(example.suggested_affected_area);
+    setMarketImportSuggestedAction(example.suggested_action);
+  };
+
+  const createMarketImportQueueItem = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMarketImportQueueMessage(null);
+    setMarketImportQueueError(null);
+
+    if (!requireOrganization("create market import queue item")) {
+      setMarketImportQueueError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const hasRawInput = [
+      marketImportRawTitle,
+      marketImportRawSummary,
+      marketImportRawText,
+      marketImportSourceUrl,
+    ].some((value) => value.trim().length > 0);
+    if (!hasRawInput) {
+      setMarketImportQueueError("Add at least a raw title, summary, text note, or source URL.");
+      return;
+    }
+
+    const payload = {
+      organization_id: currentOrganizationId,
+      created_by_profile_id: currentProfile?.id ?? null,
+      source_name: safeTextOrNull(marketImportSourceName),
+      source_url: safeTextOrNull(marketImportSourceUrl),
+      raw_title: safeTextOrNull(marketImportRawTitle),
+      raw_summary: safeTextOrNull(marketImportRawSummary),
+      raw_text: safeTextOrNull(marketImportRawText),
+      suggested_market_category: marketImportSuggestedCategory || null,
+      suggested_impact_direction: marketImportSuggestedImpactDirection || null,
+      suggested_impact_level: marketImportSuggestedImpactLevel || null,
+      suggested_confidence_level: marketImportSuggestedConfidenceLevel || null,
+      suggested_affected_area: marketImportSuggestedAffectedArea || null,
+      suggested_action: safeTextOrNull(marketImportSuggestedAction),
+      review_status: "pending",
+      converted_intelligence_item_id: null,
+      notes: safeTextOrNull(marketImportNotes),
+    };
+
+    const { data, error } = await supabase
+      .from("market_import_queue")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Supabase market import queue insert error:", JSON.stringify(error, null, 2));
+      setMarketImportQueueError(`Failed to add import queue item: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: "created",
+      entity_type: "market_import_queue",
+      entity_id: data?.id ?? null,
+      entity_label: payload.raw_title ?? payload.source_name ?? "Market import queue item",
+      description: "Created market import queue item",
+      new_values: payload,
+    });
+    resetMarketImportQueueForm();
+    await fetchMarketImportQueueItems(currentOrganizationId);
+    setMarketImportQueueMessage("Import queue item added for review.");
+  };
+
+  const createMarketIntelligenceItem = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMarketIntelligenceMessage(null);
+    setMarketIntelligenceError(null);
+
+    if (!requireOrganization("create market intelligence item")) {
+      setMarketIntelligenceError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const title = marketTitle.trim();
+    if (!title) {
+      setMarketIntelligenceError("Title is required.");
+      return;
+    }
+    if (!marketCategory || !marketImpactDirection || !marketImpactLevel || !marketConfidenceLevel || !marketAffectedArea) {
+      setMarketIntelligenceError("Market category, impact direction, impact level, confidence, and affected area are required.");
+      return;
+    }
+
+    const payload = {
+      organization_id: currentOrganizationId,
+      created_by_profile_id: currentProfile?.id ?? null,
+      title,
+      summary: safeTextOrNull(marketSummary),
+      source_name: safeTextOrNull(marketSourceName),
+      source_url: safeTextOrNull(marketSourceUrl),
+      market_category: marketCategory,
+      related_product_category: safeTextOrNull(marketRelatedProductCategory),
+      related_product_id: marketRelatedProductId || null,
+      impact_direction: marketImpactDirection,
+      impact_level: marketImpactLevel,
+      confidence_level: marketConfidenceLevel,
+      affected_area: marketAffectedArea,
+      suggested_action: safeTextOrNull(marketSuggestedAction),
+      news_date: marketNewsDate || null,
+      status: marketStatus || "active",
+    };
+
+    const { data, error } = await supabase
+      .from("market_intelligence_items")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Supabase market intelligence insert error:", JSON.stringify(error, null, 2));
+      setMarketIntelligenceError(`Failed to add market intelligence item: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: "created",
+      entity_type: "market_intelligence_item",
+      entity_id: data?.id ?? null,
+      entity_label: title,
+      description: `Created market intelligence item ${title}`,
+      new_values: payload,
+    });
+    let conversionWarning: string | null = null;
+    if (selectedMarketImportQueueId) {
+      if (!isValidUuid(selectedMarketImportQueueId)) {
+        conversionWarning = "Intelligence item saved, but selected import queue ID was invalid.";
+      } else {
+        const now = new Date().toISOString();
+        const { error: queueUpdateError } = await supabase
+          .from("market_import_queue")
+          .update({
+            review_status: "converted",
+            converted_intelligence_item_id: data?.id ?? null,
+            reviewed_at: now,
+            updated_at: now,
+          })
+          .eq("id", selectedMarketImportQueueId)
+          .eq("organization_id", currentOrganizationId);
+
+        if (queueUpdateError) {
+          console.error("Supabase market import queue conversion update error:", JSON.stringify(queueUpdateError, null, 2));
+          conversionWarning = "Intelligence item saved, but import queue item could not be marked converted.";
+        } else {
+          await createAuditLog({
+            action: "updated",
+            entity_type: "market_import_queue",
+            entity_id: selectedMarketImportQueueId,
+            entity_label: title,
+            description: `Converted import queue item into market intelligence item ${title}`,
+            new_values: {
+              review_status: "converted",
+              converted_intelligence_item_id: data?.id ?? null,
+            },
+          });
+          setSelectedMarketImportQueueId("");
+          await fetchMarketImportQueueItems(currentOrganizationId);
+        }
+      }
+    }
+    resetMarketIntelligenceForm();
+    await fetchMarketIntelligenceItems(currentOrganizationId);
+    setMarketIntelligenceMessage(conversionWarning ?? "Market intelligence item added.");
+  };
+
+  const createMarketNewsSource = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMarketIntelligenceMessage(null);
+    setMarketIntelligenceError(null);
+
+    if (!requireOrganization("create market news source")) {
+      setMarketIntelligenceError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const sourceName = marketNewsSourceName.trim();
+    const sourceType = marketNewsSourceType.trim();
+    if (!sourceName || !sourceType) {
+      setMarketIntelligenceError("Source name and source type are required.");
+      return;
+    }
+
+    const payload = {
+      organization_id: currentOrganizationId,
+      source_name: sourceName,
+      source_type: sourceType,
+      source_url: safeTextOrNull(marketNewsSourceUrl),
+      country: safeTextOrNull(marketNewsSourceCountry) ?? "Pakistan",
+      is_active: marketNewsSourceIsActive,
+    };
+
+    const { data, error } = await supabase
+      .from("market_news_sources")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Supabase market news source insert error:", JSON.stringify(error, null, 2));
+      setMarketIntelligenceError(`Failed to add news source: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: "created",
+      entity_type: "market_news_source",
+      entity_id: data?.id ?? null,
+      entity_label: sourceName,
+      description: `Created market news source ${sourceName}`,
+      new_values: payload,
+    });
+    setMarketNewsSourceName("");
+    setMarketNewsSourceType("");
+    setMarketNewsSourceUrl("");
+    setMarketNewsSourceCountry("Pakistan");
+    setMarketNewsSourceIsActive(true);
+    await fetchMarketNewsSources(currentOrganizationId);
+    setMarketIntelligenceMessage("Market news source added.");
+  };
+
+  const updateMarketIntelligenceStatus = async (
+    item: MarketIntelligenceItem,
+    nextStatus: "active" | "watching" | "archived"
+  ) => {
+    setMarketIntelligenceMessage(null);
+    setMarketIntelligenceError(null);
+
+    if (!requireOrganization("update market intelligence status")) {
+      setMarketIntelligenceError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const itemId = item.id;
+    const allowedStatuses = ["active", "watching", "archived"];
+    if (!itemId || !isValidUuid(itemId)) {
+      setMarketIntelligenceError("Cannot update status because this market intelligence item has an invalid ID.");
+      return;
+    }
+
+    if (!allowedStatuses.includes(nextStatus)) {
+      setMarketIntelligenceError("Cannot update status because the requested status is not supported.");
+      return;
+    }
+
+    const updatePayload = {
+      status: nextStatus,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const { error } = await supabase
+        .from("market_intelligence_items")
+        .update(updatePayload)
+        .eq("id", itemId)
+        .eq("organization_id", currentOrganizationId);
+
+      if (error) {
+        console.error("Supabase market intelligence status update error:", error);
+        setMarketIntelligenceError("Failed to update item status. Please try again.");
+        return;
+      }
+    } catch (err) {
+      console.error("Supabase market intelligence status update error:", err);
+      setMarketIntelligenceError("Failed to update item status. Please try again.");
+      return;
+    }
+
+    await createAuditLog({
+      action: "updated",
+      entity_type: "market_intelligence_item",
+      entity_id: itemId,
+      entity_label: item.title,
+      description: `Updated market intelligence item ${item.title} to ${nextStatus}`,
+      old_values: { status: item.status },
+      new_values: updatePayload,
+    });
+    await fetchMarketIntelligenceItems(currentOrganizationId);
+    setMarketIntelligenceError(null);
+    setMarketIntelligenceMessage(`Market intelligence item marked ${nextStatus}.`);
+  };
+
+  const updateMarketImportQueueStatus = async (
+    item: MarketImportQueueItem,
+    nextStatus: "pending" | "reviewing" | "ignored"
+  ) => {
+    setMarketImportQueueMessage(null);
+    setMarketImportQueueError(null);
+
+    if (!requireOrganization("update market import queue status")) {
+      setMarketImportQueueError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    if (!item.id || !isValidUuid(item.id)) {
+      setMarketImportQueueError("Cannot update import queue status because this item has an invalid ID.");
+      return;
+    }
+
+    const allowedStatuses = ["pending", "reviewing", "ignored"];
+    if (!allowedStatuses.includes(nextStatus)) {
+      setMarketImportQueueError("Cannot update import queue status because the requested status is not supported.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updatePayload = {
+      review_status: nextStatus,
+      updated_at: now,
+      reviewed_at: nextStatus === "pending" ? null : now,
+    };
+
+    const { error } = await supabase
+      .from("market_import_queue")
+      .update(updatePayload)
+      .eq("id", item.id)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase market import queue status update error:", JSON.stringify(error, null, 2));
+      setMarketImportQueueError("Failed to update import queue status. Please try again.");
+      return;
+    }
+
+    await createAuditLog({
+      action: "updated",
+      entity_type: "market_import_queue",
+      entity_id: item.id,
+      entity_label: item.raw_title ?? item.source_name ?? "Market import queue item",
+      description: `Updated market import queue item to ${nextStatus}`,
+      old_values: { review_status: item.review_status },
+      new_values: updatePayload,
+    });
+    await fetchMarketImportQueueItems(currentOrganizationId);
+    setMarketImportQueueMessage(`Import queue item marked ${nextStatus}.`);
+  };
+
+  const convertMarketImportQueueItem = (item: MarketImportQueueItem) => {
+    setSelectedMarketImportQueueId(item.id);
+    setMarketTitle(item.raw_title ?? item.source_name ?? "");
+    setMarketSummary(item.raw_summary ?? item.raw_text ?? "");
+    setMarketSourceName(item.source_name ?? "");
+    setMarketSourceUrl(item.source_url ?? "");
+    setMarketCategory(item.suggested_market_category ?? "");
+    setMarketRelatedProductCategory("");
+    setMarketRelatedProductId("");
+    setMarketImpactDirection(item.suggested_impact_direction ?? "");
+    setMarketImpactLevel(item.suggested_impact_level ?? "");
+    setMarketConfidenceLevel(item.suggested_confidence_level ?? "");
+    setMarketAffectedArea(item.suggested_affected_area ?? "");
+    setMarketSuggestedAction(item.suggested_action ?? "");
+    setMarketNewsDate(toDateInputValue(new Date()));
+    setMarketStatus("active");
+    setMarketIntelligenceMessage("Review details, then save as intelligence item.");
+    window.setTimeout(() => {
+      document.getElementById("market-intelligence-item-form")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
+  };
+
+  const deleteMarketIntelligenceItem = async (item: MarketIntelligenceItem) => {
+    if (!window.confirm(`Delete market intelligence item "${item.title}"?`)) return;
+    setMarketIntelligenceMessage(null);
+    setMarketIntelligenceError(null);
+
+    if (!requireOrganization("delete market intelligence item")) {
+      setMarketIntelligenceError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("market_intelligence_items")
+      .delete()
+      .eq("id", item.id)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase market intelligence delete error:", JSON.stringify(error, null, 2));
+      setMarketIntelligenceError(`Failed to delete item: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "market_intelligence_item",
+      entity_id: item.id,
+      entity_label: item.title,
+      description: `Deleted market intelligence item ${item.title}`,
+      old_values: { ...item },
+    });
+    await fetchMarketIntelligenceItems(currentOrganizationId);
+    setMarketIntelligenceMessage("Market intelligence item deleted.");
+  };
+
+  const deleteMarketNewsSource = async (source: MarketNewsSource) => {
+    if (!window.confirm(`Delete news source "${source.source_name}"?`)) return;
+    setMarketIntelligenceMessage(null);
+    setMarketIntelligenceError(null);
+
+    if (!requireOrganization("delete market news source")) {
+      setMarketIntelligenceError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("market_news_sources")
+      .delete()
+      .eq("id", source.id)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase market news source delete error:", JSON.stringify(error, null, 2));
+      setMarketIntelligenceError(`Failed to delete source: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "market_news_source",
+      entity_id: source.id,
+      entity_label: source.source_name,
+      description: `Deleted market news source ${source.source_name}`,
+      old_values: { ...source },
+    });
+    await fetchMarketNewsSources(currentOrganizationId);
+    setMarketIntelligenceMessage("Market news source deleted.");
+  };
+
   const handleSaveBusinessSettings = async () => {
     setBusinessSettingsMessage(null);
     setBusinessSettingsError(null);
@@ -7250,6 +7928,48 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          {isOwnerOrAdmin() && (
+          <div className="mt-6 rounded border border-emerald-200 bg-emerald-50 p-4">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-emerald-950">Market Intelligence</h3>
+                <p className="mt-1 text-sm text-emerald-900">
+                  Track manual business signals for pricing, supply, inventory, and cashflow.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSectionChange("market-intelligence")}
+                className="rounded border border-emerald-600 bg-white px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50"
+              >
+                Open Market Intelligence
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">High Impact Signals</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.highCritical}</div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">Price-Up Signals</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.priceUp}</div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">Supply Shortage Signals</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.supplyShortage}</div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">Pending Imports</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketImportQueueSummary.pending}</div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">Reviewing Imports</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketImportQueueSummary.reviewing}</div>
+              </div>
+            </div>
+          </div>
+          )}
 
           {hasPermission("can_manage_tasks") && (
           <div className="mt-6 rounded border border-blue-200 bg-blue-50 p-4">
@@ -10379,6 +11099,608 @@ export default function Home() {
                 </div>
               );
             })()}
+          </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "market-intelligence" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">Market Intelligence</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Market Intelligence helps owners track news and business signals that may affect buying, selling, pricing, inventory, and cashflow. AI analysis and automated news ingestion will be added later.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                fetchMarketNewsSources(currentOrganizationId);
+                fetchMarketIntelligenceItems(currentOrganizationId);
+                fetchMarketImportQueueItems(currentOrganizationId);
+              }}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Refresh Market Data
+            </button>
+          </div>
+
+          <div className="mb-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            This is a manual advisory dashboard. It does not fetch live news, scrape websites, or run AI analysis yet.
+          </div>
+
+          {marketIntelligenceMessage && (
+            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              {marketIntelligenceMessage}
+            </p>
+          )}
+          {marketIntelligenceError && (
+            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {marketIntelligenceError}
+            </p>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">Active Items</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.active}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">High/Critical</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.highCritical}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">Price-Up Signals</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.priceUp}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">Supply Shortage</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.supplyShortage}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">Added This Week</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.addedThisWeek}</div>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-indigo-200 bg-white p-4">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Import Queue</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Paste market news links, supplier updates, policy notes, or raw market observations here. Review them before converting into intelligence items.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs sm:min-w-[260px]">
+                <div className="rounded border border-indigo-200 bg-indigo-50 p-2">
+                  <div className="text-indigo-700">Pending</div>
+                  <div className="text-lg font-semibold text-indigo-950">{marketImportQueueSummary.pending}</div>
+                </div>
+                <div className="rounded border border-indigo-200 bg-indigo-50 p-2">
+                  <div className="text-indigo-700">Reviewing</div>
+                  <div className="text-lg font-semibold text-indigo-950">{marketImportQueueSummary.reviewing}</div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              This queue is owner-controlled. TradeOS does not fetch websites, scrape pages, or save intelligence items automatically.
+            </div>
+
+            {marketImportQueueMessage && (
+              <p className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                {marketImportQueueMessage}
+              </p>
+            )}
+            {marketImportQueueError && (
+              <p className="mt-3 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                {marketImportQueueError}
+              </p>
+            )}
+
+            <form onSubmit={createMarketImportQueueItem} className="mt-4 rounded border border-gray-200 bg-gray-50 p-4">
+              <h4 className="text-base font-medium text-gray-900">Add Import Queue Item</h4>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {marketImportQueueExampleChips.map((example) => (
+                  <button
+                    key={example.raw_title}
+                    type="button"
+                    onClick={() => fillMarketImportExample(example)}
+                    className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs text-indigo-800 hover:bg-indigo-100"
+                  >
+                    {example.raw_title}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Source Name</span>
+                  <input value={marketImportSourceName} onChange={(e) => setMarketImportSourceName(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Source URL</span>
+                  <input value={marketImportSourceUrl} onChange={(e) => setMarketImportSourceUrl(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Raw Title</span>
+                  <input value={marketImportRawTitle} onChange={(e) => setMarketImportRawTitle(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Suggested Market Category</span>
+                  <select value={marketImportSuggestedCategory} onChange={(e) => setMarketImportSuggestedCategory(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                    <option value="">Not suggested</option>
+                    {marketCategoryOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                  <span>Raw Summary</span>
+                  <textarea value={marketImportRawSummary} onChange={(e) => setMarketImportRawSummary(e.target.value)} rows={2} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                  <span>Raw Text / Notes</span>
+                  <textarea value={marketImportRawText} onChange={(e) => setMarketImportRawText(e.target.value)} rows={3} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Suggested Impact Direction</span>
+                  <select value={marketImportSuggestedImpactDirection} onChange={(e) => setMarketImportSuggestedImpactDirection(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                    <option value="">Not suggested</option>
+                    {marketImpactDirectionOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Suggested Impact Level</span>
+                  <select value={marketImportSuggestedImpactLevel} onChange={(e) => setMarketImportSuggestedImpactLevel(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                    <option value="">Not suggested</option>
+                    {marketImpactLevelOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Suggested Confidence</span>
+                  <select value={marketImportSuggestedConfidenceLevel} onChange={(e) => setMarketImportSuggestedConfidenceLevel(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                    <option value="">Not suggested</option>
+                    {marketConfidenceOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Suggested Affected Area</span>
+                  <select value={marketImportSuggestedAffectedArea} onChange={(e) => setMarketImportSuggestedAffectedArea(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                    <option value="">Not suggested</option>
+                    {marketAffectedAreaOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                  <span>Suggested Action</span>
+                  <textarea value={marketImportSuggestedAction} onChange={(e) => setMarketImportSuggestedAction(e.target.value)} rows={2} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                  <span>Internal Notes</span>
+                  <textarea value={marketImportNotes} onChange={(e) => setMarketImportNotes(e.target.value)} rows={2} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+              </div>
+              <button type="submit" className="mt-4 rounded bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700">
+                Add to Import Queue
+              </button>
+            </form>
+
+            <div className="mt-5 rounded border border-gray-200 bg-gray-50 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <h4 className="text-base font-medium text-gray-900">Queued Imports</h4>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Showing {filteredMarketImportQueueItems.length} of {marketImportQueueItems.length} queued imports.
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[420px]">
+                  <input
+                    type="search"
+                    value={marketImportQueueSearch}
+                    onChange={(e) => setMarketImportQueueSearch(e.target.value)}
+                    placeholder="Search queue"
+                    className="rounded border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  <select value={marketImportQueueStatusFilter} onChange={(e) => setMarketImportQueueStatusFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+                    <option value="all">All statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="reviewing">Reviewing</option>
+                    <option value="converted">Converted</option>
+                    <option value="ignored">Ignored</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mt-4 space-y-3">
+                {filteredMarketImportQueueItems.length === 0 ? (
+                  <p className="rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-600">
+                    No import queue items match the current filters.
+                  </p>
+                ) : (
+                  filteredMarketImportQueueItems.map((item) => (
+                    <div key={item.id} className="rounded border border-gray-200 bg-white p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded bg-indigo-100 px-2 py-1 text-xs font-medium text-indigo-800">
+                              {item.review_status}
+                            </span>
+                            {item.suggested_market_category && (
+                              <span className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                                {getMarketLabel(marketCategoryOptions, item.suggested_market_category)}
+                              </span>
+                            )}
+                            {item.suggested_impact_direction && (
+                              <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                                {getMarketLabel(marketImpactDirectionOptions, item.suggested_impact_direction)}
+                              </span>
+                            )}
+                          </div>
+                          <h5 className="mt-2 text-sm font-semibold text-gray-900">{item.raw_title || "Untitled import"}</h5>
+                          <div className="mt-1 text-xs text-gray-600">
+                            Source: {item.source_name || "Manual note"} · Created: {formatDateTime(item.created_at)}
+                          </div>
+                          {item.source_url && <div className="mt-1 break-all text-xs text-blue-700">{item.source_url}</div>}
+                          {item.raw_summary && <p className="mt-2 text-sm text-gray-700">{item.raw_summary}</p>}
+                          {item.raw_text && (
+                            <p className="mt-2 text-xs text-gray-600">
+                              {item.raw_text.length > 220 ? `${item.raw_text.slice(0, 220)}...` : item.raw_text}
+                            </p>
+                          )}
+                          <div className="mt-2 grid gap-1 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
+                            <div>Impact: {getMarketLabel(marketImpactLevelOptions, item.suggested_impact_level)}</div>
+                            <div>Confidence: {getMarketLabel(marketConfidenceOptions, item.suggested_confidence_level)}</div>
+                            <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, item.suggested_affected_area)}</div>
+                            <div>Converted item: {item.converted_intelligence_item_id ?? "-"}</div>
+                            <div>Reviewed: {formatDateTime(item.reviewed_at)}</div>
+                            <div>Updated: {formatDateTime(item.updated_at)}</div>
+                          </div>
+                          {item.suggested_action && (
+                            <div className="mt-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                              Suggested action: {item.suggested_action}
+                            </div>
+                          )}
+                          {item.notes && <div className="mt-2 text-xs text-gray-600">Notes: {item.notes}</div>}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateMarketImportQueueStatus(item, "reviewing")}
+                            disabled={item.review_status === "reviewing" || item.review_status === "converted"}
+                            className="rounded border border-indigo-500 bg-white px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          >
+                            Mark Reviewing
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateMarketImportQueueStatus(item, "ignored")}
+                            disabled={item.review_status === "ignored" || item.review_status === "converted"}
+                            className="rounded border border-gray-500 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          >
+                            Ignore
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateMarketImportQueueStatus(item, "pending")}
+                            disabled={item.review_status === "pending" || item.review_status === "converted"}
+                            className="rounded border border-amber-500 bg-white px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          >
+                            Reopen Pending
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => convertMarketImportQueueItem(item)}
+                            disabled={item.review_status === "converted"}
+                            className="rounded bg-emerald-600 px-3 py-2 text-xs text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                          >
+                            Convert to Intelligence Item
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-[2fr_1fr]">
+            <form id="market-intelligence-item-form" onSubmit={createMarketIntelligenceItem} className="rounded border border-gray-200 bg-white p-4">
+              <h3 className="text-lg font-medium text-gray-900">Add Intelligence Item</h3>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {marketIntelligenceExampleChips.map((example) => (
+                  <button
+                    key={example.title}
+                    type="button"
+                    onClick={() => fillMarketExample(example)}
+                    className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-800 hover:bg-emerald-100"
+                  >
+                    {example.title}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Title</span>
+                  <input value={marketTitle} onChange={(e) => setMarketTitle(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Source Name</span>
+                  <input value={marketSourceName} onChange={(e) => setMarketSourceName(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                  <span>Summary</span>
+                  <textarea value={marketSummary} onChange={(e) => setMarketSummary(e.target.value)} rows={3} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Source URL</span>
+                  <input value={marketSourceUrl} onChange={(e) => setMarketSourceUrl(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Market Category</span>
+                  <select value={marketCategory} onChange={(e) => setMarketCategory(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required>
+                    <option value="">Select category</option>
+                    {marketCategoryOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Related Product Category</span>
+                  <select value={marketRelatedProductCategory} onChange={(e) => setMarketRelatedProductCategory(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                    <option value="">None</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.name}>{category.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Related Product</span>
+                  <select value={marketRelatedProductId} onChange={(e) => setMarketRelatedProductId(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                    <option value="">None</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>{product.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Impact Direction</span>
+                  <select value={marketImpactDirection} onChange={(e) => setMarketImpactDirection(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required>
+                    <option value="">Select direction</option>
+                    {marketImpactDirectionOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Impact Level</span>
+                  <select value={marketImpactLevel} onChange={(e) => setMarketImpactLevel(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required>
+                    <option value="">Select level</option>
+                    {marketImpactLevelOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Confidence Level</span>
+                  <select value={marketConfidenceLevel} onChange={(e) => setMarketConfidenceLevel(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required>
+                    <option value="">Select confidence</option>
+                    {marketConfidenceOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Affected Area</span>
+                  <select value={marketAffectedArea} onChange={(e) => setMarketAffectedArea(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required>
+                    <option value="">Select area</option>
+                    {marketAffectedAreaOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>News Date</span>
+                  <input type="date" value={marketNewsDate} onChange={(e) => setMarketNewsDate(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Status</span>
+                  <select value={marketStatus} onChange={(e) => setMarketStatus(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                    {marketIntelligenceStatusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                  <span>Suggested Action</span>
+                  <textarea value={marketSuggestedAction} onChange={(e) => setMarketSuggestedAction(e.target.value)} rows={2} className="rounded border border-gray-300 px-3 py-2" />
+                </label>
+              </div>
+              <button type="submit" className="mt-4 rounded bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700">
+                Save Intelligence Item
+              </button>
+            </form>
+
+            <div className="space-y-5">
+              <form onSubmit={createMarketNewsSource} className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="text-lg font-medium text-gray-900">Add News Source</h3>
+                <div className="mt-4 space-y-3">
+                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                    <span>Source Name</span>
+                    <input value={marketNewsSourceName} onChange={(e) => setMarketNewsSourceName(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                    <span>Source Type</span>
+                    <input value={marketNewsSourceType} onChange={(e) => setMarketNewsSourceType(e.target.value)} placeholder="newspaper, government, market, supplier" className="rounded border border-gray-300 px-3 py-2" required />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                    <span>Source URL</span>
+                    <input value={marketNewsSourceUrl} onChange={(e) => setMarketNewsSourceUrl(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                    <span>Country</span>
+                    <input value={marketNewsSourceCountry} onChange={(e) => setMarketNewsSourceCountry(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" checked={marketNewsSourceIsActive} onChange={(e) => setMarketNewsSourceIsActive(e.target.checked)} />
+                    Active
+                  </label>
+                </div>
+                <button type="submit" className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800">
+                  Save News Source
+                </button>
+              </form>
+
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="text-lg font-medium text-gray-900">News Sources</h3>
+                <div className="mt-3 space-y-2">
+                  {marketNewsSources.length === 0 ? (
+                    <p className="text-sm text-gray-600">No manual news sources added yet.</p>
+                  ) : (
+                    marketNewsSources.map((source) => (
+                      <div key={source.id} className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+                        <div className="font-medium text-gray-900">{source.source_name}</div>
+                        <div className="text-gray-600">{source.source_type} · {source.country ?? "Pakistan"} · {source.is_active ? "Active" : "Inactive"}</div>
+                        {source.source_url && <div className="break-all text-xs text-blue-700">{source.source_url}</div>}
+                        <button
+                          type="button"
+                          onClick={() => deleteMarketNewsSource(source)}
+                          className="mt-2 rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                        >
+                          Delete Source
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Intelligence Feed</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Showing {filteredMarketIntelligenceItems.length} of {marketIntelligenceItems.length} manual signals.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <input
+                  type="search"
+                  value={marketIntelligenceSearch}
+                  onChange={(e) => setMarketIntelligenceSearch(e.target.value)}
+                  placeholder="Search title, summary, source"
+                  className="rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+                <select value={marketIntelligenceCategoryFilter} onChange={(e) => setMarketIntelligenceCategoryFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+                  <option value="all">All categories</option>
+                  {marketCategoryOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <select value={marketIntelligenceImpactFilter} onChange={(e) => setMarketIntelligenceImpactFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+                  <option value="all">All impacts</option>
+                  {marketImpactDirectionOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <select value={marketIntelligenceStatusFilter} onChange={(e) => setMarketIntelligenceStatusFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+                  <option value="all">All statuses</option>
+                  {marketIntelligenceStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {filteredMarketIntelligenceItems.length === 0 ? (
+                <p className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+                  No market intelligence items match the current filters.
+                </p>
+              ) : (
+                filteredMarketIntelligenceItems.map((item) => {
+                  const relatedProduct = products.find((product) => String(product.id) === String(item.related_product_id));
+                  return (
+                    <div key={item.id} className="rounded border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">
+                              {getMarketLabel(marketCategoryOptions, item.market_category)}
+                            </span>
+                            <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                              {getMarketLabel(marketImpactDirectionOptions, item.impact_direction)}
+                            </span>
+                            <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
+                              {getMarketLabel(marketImpactLevelOptions, item.impact_level)}
+                            </span>
+                            <span className="rounded bg-white px-2 py-1 text-xs font-medium text-gray-700">
+                              {getMarketLabel(marketIntelligenceStatusOptions, item.status)}
+                            </span>
+                          </div>
+                          <h4 className="mt-2 text-base font-semibold text-gray-900">{item.title}</h4>
+                          {item.summary && <p className="mt-1 text-sm text-gray-700">{item.summary}</p>}
+                          <div className="mt-2 grid gap-1 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
+                            <div>Source: {item.source_name || "Manual note"}</div>
+                            <div>Confidence: {getMarketLabel(marketConfidenceOptions, item.confidence_level)}</div>
+                            <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, item.affected_area)}</div>
+                            <div>Related product: {relatedProduct?.name ?? item.related_product_category ?? "-"}</div>
+                            <div>News date: {formatDate(item.news_date)}</div>
+                            <div>Created: {formatDateTime(item.created_at)}</div>
+                          </div>
+                          {item.source_url && <div className="mt-1 break-all text-xs text-blue-700">{item.source_url}</div>}
+                          {item.suggested_action && (
+                            <div className="mt-3 rounded border border-emerald-200 bg-white px-3 py-2 text-sm text-emerald-900">
+                              Suggested action: {item.suggested_action}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateMarketIntelligenceStatus(item, "watching")}
+                            disabled={item.status === "watching"}
+                            className="rounded border border-amber-500 bg-white px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          >
+                            Mark Watching
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateMarketIntelligenceStatus(item, "archived")}
+                            disabled={item.status === "archived"}
+                            className="rounded border border-gray-500 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          >
+                            Archive
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateMarketIntelligenceStatus(item, "active")}
+                            disabled={item.status === "active"}
+                            className="rounded border border-emerald-500 bg-white px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          >
+                            Reactivate
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteMarketIntelligenceItem(item)}
+                            className="rounded border border-red-500 bg-white px-3 py-2 text-xs text-red-700 hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </section>
         )}

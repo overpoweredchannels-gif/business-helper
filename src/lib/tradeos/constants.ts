@@ -24,6 +24,7 @@ export const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "deployment", label: "Deployment" },
   { id: "staff-duty", label: "Staff Duty" },
   { id: "ai-assistant", label: "AI Assistant" },
+  { id: "market-intelligence", label: "Market Intelligence" },
   { id: "mobile-app", label: "Mobile App" },
 ];
 
@@ -151,3 +152,170 @@ export const taskStatusLabels: Record<string, string> = {
   completed: "Completed",
   cancelled: "Cancelled",
 };
+
+export const marketCategoryOptions = [
+  { value: "cooking_oil_ghee", label: "Cooking Oil & Ghee" },
+  { value: "sugar", label: "Sugar" },
+  { value: "wheat_flour", label: "Wheat Flour" },
+  { value: "rice", label: "Rice" },
+  { value: "pulses", label: "Pulses" },
+  { value: "spices", label: "Spices" },
+  { value: "beverages", label: "Beverages" },
+  { value: "dairy", label: "Dairy" },
+  { value: "fuel_transport", label: "Fuel & Transport" },
+  { value: "packaging", label: "Packaging" },
+  { value: "currency_imports", label: "Currency & Imports" },
+  { value: "taxes_policy", label: "Taxes & Policy" },
+  { value: "weather_agriculture", label: "Weather & Agriculture" },
+  { value: "general_fmcg", label: "General FMCG" },
+];
+
+export const marketImpactDirectionOptions = [
+  { value: "price_up", label: "Price Up" },
+  { value: "price_down", label: "Price Down" },
+  { value: "supply_shortage", label: "Supply Shortage" },
+  { value: "supply_improvement", label: "Supply Improvement" },
+  { value: "demand_up", label: "Demand Up" },
+  { value: "demand_down", label: "Demand Down" },
+  { value: "neutral", label: "Neutral" },
+];
+
+export const marketImpactLevelOptions = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "critical", label: "Critical" },
+];
+
+export const marketConfidenceOptions = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+];
+
+export const marketAffectedAreaOptions = [
+  { value: "buying", label: "Buying" },
+  { value: "selling", label: "Selling" },
+  { value: "inventory", label: "Inventory" },
+  { value: "transport", label: "Transport" },
+  { value: "pricing", label: "Pricing" },
+  { value: "cashflow", label: "Cashflow" },
+  { value: "business", label: "Business" },
+];
+
+export const marketIntelligenceStatusOptions = [
+  { value: "active", label: "Active" },
+  { value: "watching", label: "Watching" },
+  { value: "archived", label: "Archived" },
+];
+
+export const marketIntelligenceExampleChips = [
+  {
+    title: "Cooking oil import cost rising - possible price increase",
+    summary: "Manual signal: import or landing costs may be rising for cooking oil and ghee.",
+    market_category: "cooking_oil_ghee",
+    impact_direction: "price_up",
+    impact_level: "high",
+    confidence_level: "medium",
+    affected_area: "buying",
+    suggested_action: "Review supplier rates and avoid underpricing current stock.",
+  },
+  {
+    title: "Fuel price increase - delivery cost may rise",
+    summary: "Manual signal: transport and delivery costs may increase after fuel price movement.",
+    market_category: "fuel_transport",
+    impact_direction: "price_up",
+    impact_level: "medium",
+    confidence_level: "medium",
+    affected_area: "transport",
+    suggested_action: "Check delivery charges and update transport expense assumptions.",
+  },
+  {
+    title: "Sugar supply concern - keep watch on stock",
+    summary: "Manual signal: sugar supply concerns may affect availability and buying price.",
+    market_category: "sugar",
+    impact_direction: "supply_shortage",
+    impact_level: "high",
+    confidence_level: "medium",
+    affected_area: "inventory",
+    suggested_action: "Monitor supplier availability and avoid stockouts.",
+  },
+  {
+    title: "Currency depreciation - imported items may become expensive",
+    summary: "Manual signal: currency movement may affect imported FMCG, packaging, and raw materials.",
+    market_category: "currency_imports",
+    impact_direction: "price_up",
+    impact_level: "high",
+    confidence_level: "medium",
+    affected_area: "pricing",
+    suggested_action: "Review prices for imported or import-linked items.",
+  },
+  {
+    title: "Weather impact on crops - pulses/rice prices may move",
+    summary: "Manual signal: weather conditions may affect crop output and commodity prices.",
+    market_category: "weather_agriculture",
+    impact_direction: "neutral",
+    impact_level: "medium",
+    confidence_level: "low",
+    affected_area: "buying",
+    suggested_action: "Watch wholesale market prices before large purchases.",
+  },
+];
+
+export const marketImportQueueExampleChips = [
+  {
+    raw_title: "News link about cooking oil import cost",
+    raw_summary: "Owner pasted note: cooking oil import cost may be rising.",
+    raw_text: "Paste the source link or manual summary here before converting to a structured intelligence item.",
+    suggested_market_category: "cooking_oil_ghee",
+    suggested_impact_direction: "price_up",
+    suggested_impact_level: "high",
+    suggested_confidence_level: "medium",
+    suggested_affected_area: "buying",
+    suggested_action: "Review supplier costs and current selling prices.",
+  },
+  {
+    raw_title: "Supplier says sugar supply is tight",
+    raw_summary: "Supplier update: sugar availability may be limited.",
+    raw_text: "Manual supplier update awaiting owner review.",
+    suggested_market_category: "sugar",
+    suggested_impact_direction: "supply_shortage",
+    suggested_impact_level: "high",
+    suggested_confidence_level: "medium",
+    suggested_affected_area: "inventory",
+    suggested_action: "Monitor stock and supplier availability before committing sales.",
+  },
+  {
+    raw_title: "Fuel price update may increase delivery cost",
+    raw_summary: "Fuel price movement may increase transport and delivery costs.",
+    raw_text: "Manual fuel/transport observation awaiting review.",
+    suggested_market_category: "fuel_transport",
+    suggested_impact_direction: "price_up",
+    suggested_impact_level: "medium",
+    suggested_confidence_level: "medium",
+    suggested_affected_area: "transport",
+    suggested_action: "Review delivery charges and transport expense assumptions.",
+  },
+  {
+    raw_title: "Currency movement may affect imported goods",
+    raw_summary: "Currency depreciation may make imported or import-linked goods expensive.",
+    raw_text: "Manual currency/import note awaiting review.",
+    suggested_market_category: "currency_imports",
+    suggested_impact_direction: "price_up",
+    suggested_impact_level: "high",
+    suggested_confidence_level: "medium",
+    suggested_affected_area: "pricing",
+    suggested_action: "Review pricing for imported items and packaging.",
+  },
+  {
+    raw_title: "Weather/crop update may affect pulses/rice",
+    raw_summary: "Weather or crop conditions may affect pulses and rice prices.",
+    raw_text: "Manual agriculture/weather observation awaiting review.",
+    suggested_market_category: "weather_agriculture",
+    suggested_impact_direction: "neutral",
+    suggested_impact_level: "medium",
+    suggested_confidence_level: "low",
+    suggested_affected_area: "buying",
+    suggested_action: "Watch wholesale market prices before large purchases.",
+  },
+];

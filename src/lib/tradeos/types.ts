@@ -156,6 +156,63 @@ export interface SecurityCheck {
   checked_by_profile_id: string | null;
 }
 
+export interface MarketNewsSource {
+  id: string;
+  organization_id: string;
+  source_name: string;
+  source_type: string;
+  source_url: string | null;
+  country: string | null;
+  is_active: boolean | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface MarketIntelligenceItem {
+  id: string;
+  organization_id: string;
+  created_by_profile_id: string | null;
+  title: string;
+  summary: string | null;
+  source_name: string | null;
+  source_url: string | null;
+  market_category: string;
+  related_product_category: string | null;
+  related_product_id: number | string | null;
+  impact_direction: string;
+  impact_level: string;
+  confidence_level: string;
+  affected_area: string;
+  suggested_action: string | null;
+  news_date: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface MarketImportQueueItem {
+  id: string;
+  organization_id: string;
+  created_by_profile_id: string | null;
+  source_name: string | null;
+  source_url: string | null;
+  raw_title: string | null;
+  raw_summary: string | null;
+  raw_text: string | null;
+  suggested_market_category: string | null;
+  suggested_impact_direction: string | null;
+  suggested_impact_level: string | null;
+  suggested_confidence_level: string | null;
+  suggested_affected_area: string | null;
+  suggested_action: string | null;
+  review_status: string;
+  converted_intelligence_item_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string | null;
+  reviewed_at: string | null;
+}
+
 export interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;
@@ -210,6 +267,7 @@ export type SectionId =
   | "deployment"
   | "staff-duty"
   | "ai-assistant"
+  | "market-intelligence"
   | "mobile-app";
 
 export type StaffPermissionKey =
