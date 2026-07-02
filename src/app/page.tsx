@@ -48,6 +48,7 @@ import type {
   Brand,
   Category,
   Customer,
+  MarketAiAnalysis,
   MarketIntelligenceItem,
   MarketImportQueueItem,
   MarketNewsSource,
@@ -274,10 +275,15 @@ export default function Home() {
   const [marketNewsSources, setMarketNewsSources] = useState<MarketNewsSource[]>([]);
   const [marketIntelligenceItems, setMarketIntelligenceItems] = useState<MarketIntelligenceItem[]>([]);
   const [marketImportQueueItems, setMarketImportQueueItems] = useState<MarketImportQueueItem[]>([]);
+  const [marketAiAnalyses, setMarketAiAnalyses] = useState<MarketAiAnalysis[]>([]);
   const [marketIntelligenceMessage, setMarketIntelligenceMessage] = useState<string | null>(null);
   const [marketIntelligenceError, setMarketIntelligenceError] = useState<string | null>(null);
   const [marketImportQueueMessage, setMarketImportQueueMessage] = useState<string | null>(null);
   const [marketImportQueueError, setMarketImportQueueError] = useState<string | null>(null);
+  const [marketAiAnalysisMessage, setMarketAiAnalysisMessage] = useState<string | null>(null);
+  const [marketAiAnalysisError, setMarketAiAnalysisError] = useState<string | null>(null);
+  const [marketAiAnalysisLoadingId, setMarketAiAnalysisLoadingId] = useState("");
+  const [selectedAiAnalysisId, setSelectedAiAnalysisId] = useState("");
   const [marketIntelligenceSearch, setMarketIntelligenceSearch] = useState("");
   const [marketIntelligenceCategoryFilter, setMarketIntelligenceCategoryFilter] = useState("all");
   const [marketIntelligenceImpactFilter, setMarketIntelligenceImpactFilter] = useState("all");
@@ -533,6 +539,28 @@ export default function Home() {
     }
 
     setMarketImportQueueItems(data ?? []);
+  };
+
+  const fetchMarketAiAnalyses = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setMarketAiAnalyses([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("market_ai_analyses")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error("Supabase fetch market AI analyses error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setMarketAiAnalyses(data ?? []);
   };
 
   const fetchSecurityChecks = async (organizationId?: string | null) => {
@@ -791,6 +819,7 @@ export default function Home() {
     fetchMarketNewsSources(resolvedProfile.organization_id);
     fetchMarketIntelligenceItems(resolvedProfile.organization_id);
     fetchMarketImportQueueItems(resolvedProfile.organization_id);
+    fetchMarketAiAnalyses(resolvedProfile.organization_id);
     fetchStaffProfilesAndPermissions(resolvedProfile.organization_id);
     fetchSecurityChecks(resolvedProfile.organization_id);
     fetchDutySessions(resolvedProfile.organization_id, resolvedProfile.id);
@@ -3896,6 +3925,15 @@ export default function Home() {
     },
     { pending: 0, reviewing: 0, converted: 0, ignored: 0 }
   );
+  const marketAiAnalysisSummary = marketAiAnalyses.reduce(
+    (summary, analysis) => {
+      if (analysis.review_status === "draft") summary.draft += 1;
+      if (analysis.ai_impact_level === "high") summary.high += 1;
+      if (analysis.ai_impact_level === "critical") summary.critical += 1;
+      return summary;
+    },
+    { draft: 0, high: 0, critical: 0 }
+  );
   const filteredMarketIntelligenceItems = marketIntelligenceItems.filter((item) => {
     const search = marketIntelligenceSearch.trim().toLowerCase();
     const matchesSearch =
@@ -6749,9 +6787,13 @@ export default function Home() {
     setMarketSuggestedAction("");
     setMarketNewsDate(toDateInputValue(new Date()));
     setMarketStatus("active");
+    setSelectedMarketImportQueueId("");
+    setSelectedAiAnalysisId("");
   };
 
   const fillMarketExample = (example: (typeof marketIntelligenceExampleChips)[number]) => {
+    setSelectedMarketImportQueueId("");
+    setSelectedAiAnalysisId("");
     setMarketTitle(example.title);
     setMarketSummary(example.summary);
     setMarketCategory(example.market_category);
@@ -6952,6 +6994,46 @@ export default function Home() {
         }
       }
     }
+    if (selectedAiAnalysisId) {
+      if (!isValidUuid(selectedAiAnalysisId)) {
+        conversionWarning = conversionWarning
+          ? `${conversionWarning} AI analysis ID was invalid.`
+          : "Intelligence item saved, but selected AI analysis ID was invalid.";
+      } else {
+        const now = new Date().toISOString();
+        const { error: aiAnalysisUpdateError } = await supabase
+          .from("market_ai_analyses")
+          .update({
+            review_status: "converted",
+            converted_intelligence_item_id: data?.id ?? null,
+            reviewed_at: now,
+            updated_at: now,
+          })
+          .eq("id", selectedAiAnalysisId)
+          .eq("organization_id", currentOrganizationId);
+
+        if (aiAnalysisUpdateError) {
+          console.error("Supabase market AI analysis conversion update error:", JSON.stringify(aiAnalysisUpdateError, null, 2));
+          conversionWarning = conversionWarning
+            ? `${conversionWarning} AI analysis could not be marked converted.`
+            : "Intelligence item saved, but AI analysis could not be marked converted.";
+        } else {
+          await createAuditLog({
+            action: "updated",
+            entity_type: "market_ai_analysis",
+            entity_id: selectedAiAnalysisId,
+            entity_label: title,
+            description: `Converted AI analysis into market intelligence item ${title}`,
+            new_values: {
+              review_status: "converted",
+              converted_intelligence_item_id: data?.id ?? null,
+            },
+          });
+          setSelectedAiAnalysisId("");
+          await fetchMarketAiAnalyses(currentOrganizationId);
+        }
+      }
+    }
     resetMarketIntelligenceForm();
     await fetchMarketIntelligenceItems(currentOrganizationId);
     setMarketIntelligenceMessage(conversionWarning ?? "Market intelligence item added.");
@@ -7130,6 +7212,7 @@ export default function Home() {
 
   const convertMarketImportQueueItem = (item: MarketImportQueueItem) => {
     setSelectedMarketImportQueueId(item.id);
+    setSelectedAiAnalysisId("");
     setMarketTitle(item.raw_title ?? item.source_name ?? "");
     setMarketSummary(item.raw_summary ?? item.raw_text ?? "");
     setMarketSourceName(item.source_name ?? "");
@@ -7151,6 +7234,244 @@ export default function Home() {
         block: "start",
       });
     }, 0);
+  };
+
+  const runMarketAiAnalysis = async ({
+    loadingId,
+    marketImportQueueId,
+    marketIntelligenceItemId,
+    title,
+    summary,
+    rawText,
+    sourceName,
+    sourceUrl,
+    marketCategory,
+  }: {
+    loadingId: string;
+    marketImportQueueId?: string | null;
+    marketIntelligenceItemId?: string | null;
+    title: string | null;
+    summary: string | null;
+    rawText: string | null;
+    sourceName: string | null;
+    sourceUrl: string | null;
+    marketCategory: string | null;
+  }) => {
+    setMarketAiAnalysisMessage(null);
+    setMarketAiAnalysisError(null);
+
+    if (!requireOrganization("analyze market intelligence with AI")) {
+      setMarketAiAnalysisError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    if (!isOwnerOrAdmin()) {
+      setMarketAiAnalysisError("Only owner/admin users can run AI market analysis.");
+      return;
+    }
+
+    const sourceId = marketImportQueueId ?? marketIntelligenceItemId;
+    if (!sourceId || !isValidUuid(sourceId)) {
+      setMarketAiAnalysisError("Cannot analyze this item because its ID is invalid.");
+      return;
+    }
+
+    setMarketAiAnalysisLoadingId(loadingId);
+    try {
+      const response = await fetch("/api/market-intelligence/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          summary,
+          raw_text: rawText,
+          source_name: sourceName,
+          source_url: sourceUrl,
+          market_category: marketCategory,
+          context_country: "Pakistan",
+          business_context: "TradeOS wholesale/FMCG business management app",
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        const safeDetails =
+          typeof result?.details === "string"
+            ? result.details
+            : result?.details
+              ? JSON.stringify(result.details)
+              : "";
+        setMarketAiAnalysisError(
+          safeDetails
+            ? `AI analysis failed: ${result?.error ?? "Request failed"} - ${safeDetails}`
+            : result?.error ?? "AI analysis failed. Please try again."
+        );
+        return;
+      }
+
+      const analysis = result.analysis ?? {};
+      const payload = {
+        organization_id: currentOrganizationId,
+        created_by_profile_id: currentProfile?.id ?? null,
+        market_import_queue_id: marketImportQueueId ?? null,
+        market_intelligence_item_id: marketIntelligenceItemId ?? null,
+        input_title: safeTextOrNull(title ?? ""),
+        input_summary: safeTextOrNull(summary ?? ""),
+        input_text: safeTextOrNull(rawText ?? ""),
+        input_source_name: safeTextOrNull(sourceName ?? ""),
+        input_source_url: safeTextOrNull(sourceUrl ?? ""),
+        ai_summary: safeTextOrNull(analysis.summary),
+        ai_reasoning: safeTextOrNull(analysis.reasoning),
+        ai_market_category: analysis.market_category ?? "general_fmcg",
+        ai_impact_direction: analysis.impact_direction ?? "neutral",
+        ai_impact_level: analysis.impact_level ?? "medium",
+        ai_confidence_level: analysis.confidence_level ?? "medium",
+        ai_affected_area: analysis.affected_area ?? "business",
+        ai_suggested_action: safeTextOrNull(analysis.suggested_action),
+        ai_risks: safeTextOrNull(analysis.risks),
+        ai_owner_questions: safeTextOrNull(analysis.owner_questions),
+        raw_ai_response: result.raw ?? null,
+        review_status: "draft",
+      };
+
+      const { data, error } = await supabase
+        .from("market_ai_analyses")
+        .insert(payload)
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("Supabase market AI analysis insert error:", JSON.stringify(error, null, 2));
+        setMarketAiAnalysisError(`Failed to save AI analysis: ${JSON.stringify(error, null, 2)}`);
+        return;
+      }
+
+      await createAuditLog({
+        action: "created",
+        entity_type: "market_ai_analysis",
+        entity_id: data?.id ?? null,
+        entity_label: payload.input_title ?? "Market AI analysis",
+        description: "Created market AI analysis",
+        new_values: payload,
+      });
+      await fetchMarketAiAnalyses(currentOrganizationId);
+      setMarketAiAnalysisMessage("AI analysis created for owner review.");
+    } catch (error) {
+      console.error("Market AI analysis request error:", error);
+      setMarketAiAnalysisError("AI analysis failed. Please try again.");
+    } finally {
+      setMarketAiAnalysisLoadingId("");
+    }
+  };
+
+  const analyzeMarketImportQueueItem = (item: MarketImportQueueItem) =>
+    runMarketAiAnalysis({
+      loadingId: `queue-${item.id}`,
+      marketImportQueueId: item.id,
+      title: item.raw_title,
+      summary: item.raw_summary,
+      rawText: item.raw_text,
+      sourceName: item.source_name,
+      sourceUrl: item.source_url,
+      marketCategory: item.suggested_market_category,
+    });
+
+  const analyzeMarketIntelligenceItem = (item: MarketIntelligenceItem) =>
+    runMarketAiAnalysis({
+      loadingId: `item-${item.id}`,
+      marketIntelligenceItemId: item.id,
+      title: item.title,
+      summary: item.summary,
+      rawText: item.suggested_action,
+      sourceName: item.source_name,
+      sourceUrl: item.source_url,
+      marketCategory: item.market_category,
+    });
+
+  const convertMarketAiAnalysisToIntelligenceItem = (analysis: MarketAiAnalysis) => {
+    setSelectedAiAnalysisId(analysis.id);
+    setSelectedMarketImportQueueId("");
+    const summaryParts = [
+      analysis.ai_summary,
+      analysis.ai_reasoning ? `Reasoning: ${analysis.ai_reasoning}` : "",
+      analysis.ai_risks ? `Risks: ${analysis.ai_risks}` : "",
+      analysis.ai_owner_questions ? `Owner questions: ${analysis.ai_owner_questions}` : "",
+    ].filter(Boolean);
+    setMarketTitle(analysis.input_title ?? analysis.ai_summary ?? "AI market analysis");
+    setMarketSummary(summaryParts.join("\n\n"));
+    setMarketSourceName(analysis.input_source_name ?? "");
+    setMarketSourceUrl(analysis.input_source_url ?? "");
+    setMarketCategory(analysis.ai_market_category ?? "general_fmcg");
+    setMarketRelatedProductCategory("");
+    setMarketRelatedProductId("");
+    setMarketImpactDirection(analysis.ai_impact_direction ?? "neutral");
+    setMarketImpactLevel(analysis.ai_impact_level ?? "medium");
+    setMarketConfidenceLevel(analysis.ai_confidence_level ?? "medium");
+    setMarketAffectedArea(analysis.ai_affected_area ?? "business");
+    setMarketSuggestedAction(analysis.ai_suggested_action ?? "");
+    setMarketNewsDate(toDateInputValue(new Date()));
+    setMarketStatus("active");
+    setMarketAiAnalysisMessage("Review AI analysis, then save as intelligence item.");
+    window.setTimeout(() => {
+      document.getElementById("market-intelligence-item-form")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
+  };
+
+  const updateMarketAiAnalysisStatus = async (
+    analysis: MarketAiAnalysis,
+    nextStatus: "draft" | "reviewed" | "ignored"
+  ) => {
+    setMarketAiAnalysisMessage(null);
+    setMarketAiAnalysisError(null);
+
+    if (!requireOrganization("update market AI analysis status")) {
+      setMarketAiAnalysisError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    if (!analysis.id || !isValidUuid(analysis.id)) {
+      setMarketAiAnalysisError("Cannot update AI analysis status because this analysis has an invalid ID.");
+      return;
+    }
+
+    const allowedStatuses = ["draft", "reviewed", "ignored"];
+    if (!allowedStatuses.includes(nextStatus)) {
+      setMarketAiAnalysisError("Cannot update AI analysis because the requested status is not supported.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updatePayload = {
+      review_status: nextStatus,
+      reviewed_at: nextStatus === "draft" ? null : now,
+      updated_at: now,
+    };
+
+    const { error } = await supabase
+      .from("market_ai_analyses")
+      .update(updatePayload)
+      .eq("id", analysis.id)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase market AI analysis status update error:", JSON.stringify(error, null, 2));
+      setMarketAiAnalysisError("Failed to update AI analysis status. Please try again.");
+      return;
+    }
+
+    await createAuditLog({
+      action: "updated",
+      entity_type: "market_ai_analysis",
+      entity_id: analysis.id,
+      entity_label: analysis.input_title ?? analysis.ai_summary ?? "Market AI analysis",
+      description: `Updated market AI analysis to ${nextStatus}`,
+      old_values: { review_status: analysis.review_status },
+      new_values: updatePayload,
+    });
+    await fetchMarketAiAnalyses(currentOrganizationId);
+    setMarketAiAnalysisMessage(`AI analysis marked ${nextStatus}.`);
   };
 
   const deleteMarketIntelligenceItem = async (item: MarketIntelligenceItem) => {
@@ -7946,7 +8267,7 @@ export default function Home() {
                 Open Market Intelligence
               </button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
               <div className="rounded border border-emerald-200 bg-white p-3">
                 <div className="text-sm text-emerald-700">High Impact Signals</div>
                 <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.highCritical}</div>
@@ -7966,6 +8287,18 @@ export default function Home() {
               <div className="rounded border border-emerald-200 bg-white p-3">
                 <div className="text-sm text-emerald-700">Reviewing Imports</div>
                 <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketImportQueueSummary.reviewing}</div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">AI Draft Analyses</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketAiAnalysisSummary.draft}</div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">High Impact AI</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketAiAnalysisSummary.high}</div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">Critical AI</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketAiAnalysisSummary.critical}</div>
               </div>
             </div>
           </div>
@@ -11118,6 +11451,7 @@ export default function Home() {
                 fetchMarketNewsSources(currentOrganizationId);
                 fetchMarketIntelligenceItems(currentOrganizationId);
                 fetchMarketImportQueueItems(currentOrganizationId);
+                fetchMarketAiAnalyses(currentOrganizationId);
               }}
               className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
@@ -11126,7 +11460,8 @@ export default function Home() {
           </div>
 
           <div className="mb-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            This is a manual advisory dashboard. It does not fetch live news, scrape websites, or run AI analysis yet.
+            This is an owner-reviewed advisory dashboard. TradeOS does not fetch live news or scrape websites automatically.
+            AI analysis can be wrong. Use it as advisory support, not automatic decision-making.
           </div>
 
           {marketIntelligenceMessage && (
@@ -11139,8 +11474,18 @@ export default function Home() {
               {marketIntelligenceError}
             </p>
           )}
+          {marketAiAnalysisMessage && (
+            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              {marketAiAnalysisMessage}
+            </p>
+          )}
+          {marketAiAnalysisError && (
+            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {marketAiAnalysisError}
+            </p>
+          )}
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
             <div className="rounded border border-gray-200 bg-white p-4">
               <div className="text-sm text-gray-500">Active Items</div>
               <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.active}</div>
@@ -11160,6 +11505,18 @@ export default function Home() {
             <div className="rounded border border-gray-200 bg-white p-4">
               <div className="text-sm text-gray-500">Added This Week</div>
               <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.addedThisWeek}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">AI Draft Analyses</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketAiAnalysisSummary.draft}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">High Impact AI</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketAiAnalysisSummary.high}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="text-sm text-gray-500">Critical AI</div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketAiAnalysisSummary.critical}</div>
             </div>
           </div>
 
@@ -11370,6 +11727,14 @@ export default function Home() {
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
+                            onClick={() => analyzeMarketImportQueueItem(item)}
+                            disabled={marketAiAnalysisLoadingId === `queue-${item.id}` || item.review_status === "converted"}
+                            className="rounded border border-purple-500 bg-white px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          >
+                            {marketAiAnalysisLoadingId === `queue-${item.id}` ? "Analyzing..." : "Analyze with AI"}
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => updateMarketImportQueueStatus(item, "reviewing")}
                             disabled={item.review_status === "reviewing" || item.review_status === "converted"}
                             className="rounded border border-indigo-500 bg-white px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
@@ -11409,9 +11774,134 @@ export default function Home() {
             </div>
           </div>
 
+          <div className="mt-5 rounded border border-purple-200 bg-white p-4">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">AI Analysis Reviews</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  AI analysis is advisory. Owner should review before taking action.
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs sm:min-w-[300px]">
+                <div className="rounded border border-purple-200 bg-purple-50 p-2">
+                  <div className="text-purple-700">Draft</div>
+                  <div className="text-lg font-semibold text-purple-950">{marketAiAnalysisSummary.draft}</div>
+                </div>
+                <div className="rounded border border-purple-200 bg-purple-50 p-2">
+                  <div className="text-purple-700">High</div>
+                  <div className="text-lg font-semibold text-purple-950">{marketAiAnalysisSummary.high}</div>
+                </div>
+                <div className="rounded border border-purple-200 bg-purple-50 p-2">
+                  <div className="text-purple-700">Critical</div>
+                  <div className="text-lg font-semibold text-purple-950">{marketAiAnalysisSummary.critical}</div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              AI analysis can be wrong. Use it as advisory support, not automatic decision-making.
+            </div>
+            <div className="mt-4 space-y-3">
+              {marketAiAnalyses.length === 0 ? (
+                <p className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+                  No AI analyses created yet. Use Analyze with AI on an import queue item or market intelligence item.
+                </p>
+              ) : (
+                marketAiAnalyses.map((analysis) => (
+                  <div key={analysis.id} className="rounded border border-purple-100 bg-purple-50 p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="rounded bg-purple-700 px-2 py-1 text-xs font-medium text-white">
+                            {analysis.review_status}
+                          </span>
+                          <span className="rounded bg-white px-2 py-1 text-xs font-medium text-purple-800">
+                            {getMarketLabel(marketCategoryOptions, analysis.ai_market_category)}
+                          </span>
+                          <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                            {getMarketLabel(marketImpactDirectionOptions, analysis.ai_impact_direction)}
+                          </span>
+                          <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
+                            {getMarketLabel(marketImpactLevelOptions, analysis.ai_impact_level)}
+                          </span>
+                        </div>
+                        <h4 className="mt-2 text-base font-semibold text-gray-900">
+                          {analysis.input_title || analysis.ai_summary || "AI market analysis"}
+                        </h4>
+                        <div className="mt-1 text-xs text-gray-600">
+                          Source: {analysis.input_source_name || "Manual note"} - Created: {formatDateTime(analysis.created_at)}
+                        </div>
+                        {analysis.input_source_url && <div className="mt-1 break-all text-xs text-blue-700">{analysis.input_source_url}</div>}
+                        {analysis.ai_summary && <p className="mt-2 text-sm text-gray-800">{analysis.ai_summary}</p>}
+                        {analysis.ai_reasoning && (
+                          <div className="mt-2 rounded border border-purple-100 bg-white px-3 py-2 text-sm text-gray-700">
+                            Reasoning: {analysis.ai_reasoning}
+                          </div>
+                        )}
+                        <div className="mt-2 grid gap-1 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
+                          <div>Confidence: {getMarketLabel(marketConfidenceOptions, analysis.ai_confidence_level)}</div>
+                          <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, analysis.ai_affected_area)}</div>
+                          <div>Reviewed: {formatDateTime(analysis.reviewed_at)}</div>
+                          <div>Import queue: {analysis.market_import_queue_id ?? "-"}</div>
+                          <div>Market item: {analysis.market_intelligence_item_id ?? "-"}</div>
+                          <div>Converted item: {analysis.converted_intelligence_item_id ?? "-"}</div>
+                        </div>
+                        {analysis.ai_suggested_action && (
+                          <div className="mt-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                            Suggested action: {analysis.ai_suggested_action}
+                          </div>
+                        )}
+                        {analysis.ai_risks && <div className="mt-2 text-xs text-red-700">Risks: {analysis.ai_risks}</div>}
+                        {analysis.ai_owner_questions && <div className="mt-1 text-xs text-gray-700">Owner questions: {analysis.ai_owner_questions}</div>}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => convertMarketAiAnalysisToIntelligenceItem(analysis)}
+                          disabled={analysis.review_status === "converted"}
+                          className="rounded bg-emerald-600 px-3 py-2 text-xs text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                        >
+                          Use as Intelligence Item
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateMarketAiAnalysisStatus(analysis, "reviewed")}
+                          disabled={analysis.review_status === "reviewed" || analysis.review_status === "converted"}
+                          className="rounded border border-blue-500 bg-white px-3 py-2 text-xs text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                        >
+                          Mark Reviewed
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateMarketAiAnalysisStatus(analysis, "ignored")}
+                          disabled={analysis.review_status === "ignored" || analysis.review_status === "converted"}
+                          className="rounded border border-gray-500 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                        >
+                          Ignore
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateMarketAiAnalysisStatus(analysis, "draft")}
+                          disabled={analysis.review_status === "draft" || analysis.review_status === "converted"}
+                          className="rounded border border-purple-500 bg-white px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                        >
+                          Reopen Draft
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           <div className="mt-5 grid gap-5 lg:grid-cols-[2fr_1fr]">
             <form id="market-intelligence-item-form" onSubmit={createMarketIntelligenceItem} className="rounded border border-gray-200 bg-white p-4">
               <h3 className="text-lg font-medium text-gray-900">Add Intelligence Item</h3>
+              {selectedAiAnalysisId && (
+                <p className="mt-2 rounded border border-purple-200 bg-purple-50 px-3 py-2 text-sm text-purple-900">
+                  This form is prefilled from an AI analysis. Review details before saving.
+                </p>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 {marketIntelligenceExampleChips.map((example) => (
                   <button
@@ -11663,6 +12153,14 @@ export default function Home() {
                           )}
                         </div>
                         <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => analyzeMarketIntelligenceItem(item)}
+                            disabled={marketAiAnalysisLoadingId === `item-${item.id}`}
+                            className="rounded border border-purple-500 bg-white px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          >
+                            {marketAiAnalysisLoadingId === `item-${item.id}` ? "Analyzing..." : "Analyze with AI"}
+                          </button>
                           <button
                             type="button"
                             onClick={() => updateMarketIntelligenceStatus(item, "watching")}

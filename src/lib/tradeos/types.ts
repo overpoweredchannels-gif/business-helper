@@ -213,6 +213,35 @@ export interface MarketImportQueueItem {
   reviewed_at: string | null;
 }
 
+export interface MarketAiAnalysis {
+  id: string;
+  organization_id: string;
+  created_by_profile_id: string | null;
+  market_import_queue_id: string | null;
+  market_intelligence_item_id: string | null;
+  input_title: string | null;
+  input_summary: string | null;
+  input_text: string | null;
+  input_source_name: string | null;
+  input_source_url: string | null;
+  ai_summary: string | null;
+  ai_reasoning: string | null;
+  ai_market_category: string | null;
+  ai_impact_direction: string | null;
+  ai_impact_level: string | null;
+  ai_confidence_level: string | null;
+  ai_affected_area: string | null;
+  ai_suggested_action: string | null;
+  ai_risks: string | null;
+  ai_owner_questions: string | null;
+  raw_ai_response: unknown;
+  review_status: string;
+  converted_intelligence_item_id: string | null;
+  created_at: string;
+  updated_at: string | null;
+  reviewed_at: string | null;
+}
+
 export interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;
