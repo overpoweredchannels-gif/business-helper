@@ -242,6 +242,32 @@ export interface MarketAiAnalysis {
   reviewed_at: string | null;
 }
 
+export interface AiBusinessQueryResult {
+  answer: string;
+  query_type: string;
+  language: string;
+  key_points: string[];
+  warnings: string[];
+}
+
+export interface AiBusinessQueryLog {
+  id: string;
+  organization_id: string;
+  created_by_profile_id: string | null;
+  question: string;
+  answer: string | null;
+  query_type: string | null;
+  language: string | null;
+  date_range_start: string | null;
+  date_range_end: string | null;
+  summary_data: unknown;
+  raw_ai_response: unknown;
+  status: string;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
 export interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;
@@ -296,6 +322,7 @@ export type SectionId =
   | "deployment"
   | "staff-duty"
   | "ai-assistant"
+  | "ai-business-query"
   | "market-intelligence"
   | "mobile-app";
 

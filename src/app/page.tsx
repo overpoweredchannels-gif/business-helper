@@ -44,6 +44,8 @@ import {
 import type {
   AiActionDraft,
   AiActionMessage,
+  AiBusinessQueryLog,
+  AiBusinessQueryResult,
   AuditLog,
   Brand,
   Category,
@@ -272,6 +274,19 @@ export default function Home() {
   const [voiceInputError, setVoiceInputError] = useState<string | null>(null);
   const [voiceTranscriptPreview, setVoiceTranscriptPreview] = useState("");
   const speechRecognitionRef = useRef<TradeOsSpeechRecognition | null>(null);
+  const [aiBusinessQuestion, setAiBusinessQuestion] = useState("");
+  const [aiBusinessLanguage, setAiBusinessLanguage] = useState("auto");
+  const [aiBusinessQueryMessage, setAiBusinessQueryMessage] = useState<string | null>(null);
+  const [aiBusinessQueryError, setAiBusinessQueryError] = useState<string | null>(null);
+  const [aiBusinessQueryLoading, setAiBusinessQueryLoading] = useState(false);
+  const [aiBusinessQueryLogs, setAiBusinessQueryLogs] = useState<AiBusinessQueryLog[]>([]);
+  const [aiBusinessQueryResult, setAiBusinessQueryResult] = useState<AiBusinessQueryResult | null>(null);
+  const [aiBusinessDateRange, setAiBusinessDateRange] = useState<{
+    start: string;
+    end: string;
+    label: string;
+    preset: string;
+  }>({ start: toDateInputValue(new Date()), end: toDateInputValue(new Date()), label: "Today", preset: "today" });
   const [marketNewsSources, setMarketNewsSources] = useState<MarketNewsSource[]>([]);
   const [marketIntelligenceItems, setMarketIntelligenceItems] = useState<MarketIntelligenceItem[]>([]);
   const [marketImportQueueItems, setMarketImportQueueItems] = useState<MarketImportQueueItem[]>([]);
@@ -473,6 +488,28 @@ export default function Home() {
     const messages = data ?? [];
     setAiConversationMessages(messages);
     return messages;
+  };
+
+  const fetchAiBusinessQueryLogs = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setAiBusinessQueryLogs([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("ai_business_query_logs")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error("Supabase fetch AI business query logs error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setAiBusinessQueryLogs(data ?? []);
   };
 
   const fetchMarketNewsSources = async (organizationId?: string | null) => {
@@ -816,6 +853,7 @@ export default function Home() {
     fetchTasks(resolvedProfile.organization_id);
     fetchAuditLogs(resolvedProfile.organization_id);
     fetchAiActionDrafts(resolvedProfile.organization_id);
+    fetchAiBusinessQueryLogs(resolvedProfile.organization_id);
     fetchMarketNewsSources(resolvedProfile.organization_id);
     fetchMarketIntelligenceItems(resolvedProfile.organization_id);
     fetchMarketImportQueueItems(resolvedProfile.organization_id);
@@ -3843,6 +3881,7 @@ export default function Home() {
     deployment: "owner_admin",
     "mobile-app": "owner_admin",
     "ai-assistant": "owner_admin",
+    "ai-business-query": "owner_admin",
     "market-intelligence": "owner_admin",
   };
   const canAccessSection = (sectionId: SectionId) => {
@@ -6601,6 +6640,465 @@ export default function Home() {
         };
       })
     );
+  };
+
+  const getAiBusinessPresetRange = (preset: string) => {
+    const now = new Date();
+    const today = toDateInputValue(now);
+    if (preset === "yesterday") {
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const value = toDateInputValue(yesterday);
+      return { start: value, end: value, label: "Yesterday", preset };
+    }
+    if (preset === "this-week") {
+      const weekStart = new Date(now);
+      const day = weekStart.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      weekStart.setDate(weekStart.getDate() + diff);
+      return { start: toDateInputValue(weekStart), end: today, label: "This Week", preset };
+    }
+    if (preset === "last-week") {
+      const end = new Date(now);
+      const day = end.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      end.setDate(end.getDate() + diff - 1);
+      const start = new Date(end);
+      start.setDate(start.getDate() - 6);
+      return { start: toDateInputValue(start), end: toDateInputValue(end), label: "Last Week", preset };
+    }
+    if (preset === "this-month") {
+      const range = getMonthRange();
+      return { start: range.start, end: today < range.end ? today : range.end, label: "This Month", preset };
+    }
+    if (preset === "last-month") {
+      const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastMonthEnd = new Date(firstOfThisMonth);
+      lastMonthEnd.setDate(lastMonthEnd.getDate() - 1);
+      const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1);
+      return {
+        start: toDateInputValue(lastMonthStart),
+        end: toDateInputValue(lastMonthEnd),
+        label: "Last Month",
+        preset,
+      };
+    }
+    return { start: today, end: today, label: "Today", preset: "today" };
+  };
+
+  const setAiBusinessPresetRange = (preset: string) => {
+    setAiBusinessDateRange(getAiBusinessPresetRange(preset));
+  };
+
+  const detectAiBusinessDateRange = (question: string) => {
+    const text = question.toLowerCase();
+    if (/\b(yesterday|kal)\b/.test(text)) return getAiBusinessPresetRange("yesterday");
+    if (/\b(today|aaj)\b/.test(text)) return getAiBusinessPresetRange("today");
+    if (text.includes("last week")) return getAiBusinessPresetRange("last-week");
+    if (text.includes("this week")) return getAiBusinessPresetRange("this-week");
+    if (text.includes("last month")) return getAiBusinessPresetRange("last-month");
+    if (text.includes("this month")) return getAiBusinessPresetRange("this-month");
+    if (text.includes("what happened") || text.includes("kya hua")) return getAiBusinessPresetRange("today");
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 6);
+    return {
+      start: toDateInputValue(start),
+      end: toDateInputValue(end),
+      label: "Last 7 Days",
+      preset: "last-7-days",
+    };
+  };
+
+  const detectAiBusinessQueryType = (question: string) => {
+    const text = question.toLowerCase();
+    if (/(staff|employee|seller|salesman|duty|location|kaam)/.test(text)) return "staff_activity";
+    if (/(sale|invoice|revenue|sales)/.test(text)) return "sales_summary";
+    if (/(payment|collection|paid|pay|received|vasooli)/.test(text)) return "payments_summary";
+    if (/(stock|inventory|low stock|out of stock)/.test(text)) return "inventory_summary";
+    if (/(customer owes|receivable|customer balance|customers owe|qarz)/.test(text)) return "customer_balance";
+    if (/(supplier payable|supplier balance|suppliers do i owe|owe supplier)/.test(text)) return "supplier_balance";
+    if (/(expense|cost|kharcha)/.test(text)) return "expenses_summary";
+    if (/(news|market|intelligence|alert|alerts)/.test(text)) return "market_summary";
+    if (/(what happened|kya hua|business)/.test(text)) return "business_overview";
+    return "general";
+  };
+
+  const detectAiBusinessLanguage = (question: string) => {
+    if (aiBusinessLanguage !== "auto") return aiBusinessLanguage;
+    if (/[\u0600-\u06FF]/.test(question)) return "urdu";
+    if (/\b(aaj|kal|kya|hua|kaam|kitna|kis|ne|mein|hai)\b/i.test(question)) return "roman_urdu";
+    return "english";
+  };
+
+  const isAiBusinessDateInRange = (value: unknown, start: string, end: string) => {
+    const date = value === null || value === undefined ? null : getDateOnly(String(value));
+    return Boolean(date && date >= start && date <= end);
+  };
+
+  const getProfileLabel = (profileId: string | null | undefined) => {
+    const profile = staffProfiles.find((item) => item.id === profileId);
+    return profile?.display_name || profile?.email || profile?.role || "Unknown staff";
+  };
+
+  const buildAiBusinessSummary = (
+    question: string,
+    dateRange: { start: string; end: string; label: string },
+    queryType: string
+  ) => {
+    const inRange = (value: unknown) => isAiBusinessDateInRange(value, dateRange.start, dateRange.end);
+    const salesInRange = salesTransactions.filter((transaction) =>
+      inRange(transaction.sale_date ?? transaction.created_at)
+    );
+    const salesInvoiceTotals = salesInRange.map((transaction) => {
+      const total = salesItems
+        .filter((item) => item.sales_transaction_id === transaction.id)
+        .reduce((sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price), 0);
+      const customer = customers.find((item) => item.id === transaction.customer_id);
+      const createdBy = String((transaction as any).created_by_profile_id ?? (transaction as any).profile_id ?? "");
+      return {
+        id: transaction.id,
+        invoice_number: transaction.invoice_number,
+        date: getDateOnly(transaction.sale_date ?? transaction.created_at),
+        customer: customer?.customer_name ?? "Unknown customer",
+        payment_type: transaction.payment_type ?? "cash",
+        total_amount: total,
+        staff: createdBy ? getProfileLabel(createdBy) : "Not available",
+      };
+    });
+    const purchasesInRange = purchaseTransactions.filter((transaction) =>
+      inRange(transaction.purchase_date ?? transaction.created_at)
+    );
+    const purchaseRows = purchasesInRange.map((transaction) => {
+      const supplier = suppliers.find((item) => item.id === transaction.supplier_id);
+      return {
+        invoice_number: transaction.invoice_number,
+        date: getDateOnly(transaction.purchase_date ?? transaction.created_at),
+        supplier: supplier?.supplier_name ?? "Unknown supplier",
+        total_amount: purchaseInvoiceTotalsByTransaction[transaction.id] ?? 0,
+      };
+    });
+    const customerPaymentsInRange = customerPayments.filter((payment) =>
+      inRange(payment.payment_date ?? payment.created_at)
+    );
+    const supplierPaymentsInRange = supplierPayments.filter((payment) =>
+      inRange(payment.payment_date ?? payment.created_at)
+    );
+    const expensesInRange = expenses.filter((expense) => inRange(expense.expense_date ?? expense.created_at));
+    const tasksInRange = tasks.filter((task) =>
+      [task.created_at, task.due_date, task.completed_at].some((value) => inRange(value))
+    );
+    const dutySessionsInRange = dutySessions.filter((session) =>
+      [session.started_at, session.ended_at].some((value) => inRange(value))
+    );
+    const auditLogsInRange = auditLogs.filter((log) => inRange(log.created_at));
+
+    const customerPaymentsByCustomer = customerPaymentsInRange.reduce<Record<string, number>>((totals, payment) => {
+      const customer = customers.find((item) => item.id === payment.customer_id);
+      const label = customer?.customer_name ?? "Unknown customer";
+      totals[label] = (totals[label] ?? 0) + safeNumber(payment.amount);
+      return totals;
+    }, {});
+    const supplierPaymentsBySupplier = supplierPaymentsInRange.reduce<Record<string, number>>((totals, payment) => {
+      const supplier = suppliers.find((item) => item.id === payment.supplier_id);
+      const label = supplier?.supplier_name ?? "Unknown supplier";
+      totals[label] = (totals[label] ?? 0) + safeNumber(payment.amount);
+      return totals;
+    }, {});
+    const expensesByType = expensesInRange.reduce<Record<string, number>>((totals, expense) => {
+      const type = String(expense.expense_type ?? "Other");
+      totals[type] = (totals[type] ?? 0) + safeNumber(expense.amount);
+      return totals;
+    }, {});
+
+    return {
+      question,
+      query_type: queryType,
+      date_range: dateRange,
+      notes: [
+        "This is a read-only summary built from currently loaded TradeOS data.",
+        staffProfiles.length === 0 ? "Staff profile data is not available." : "",
+      ].filter(Boolean),
+      sales: {
+        count: salesInvoiceTotals.length,
+        total_amount: salesInvoiceTotals.reduce((sum, invoice) => sum + invoice.total_amount, 0),
+        invoices: salesInvoiceTotals.slice(0, 25),
+        by_customer: salesInvoiceTotals.reduce<Record<string, number>>((totals, invoice) => {
+          totals[invoice.customer] = (totals[invoice.customer] ?? 0) + invoice.total_amount;
+          return totals;
+        }, {}),
+        by_staff: salesInvoiceTotals.reduce<Record<string, number>>((totals, invoice) => {
+          totals[invoice.staff] = (totals[invoice.staff] ?? 0) + invoice.total_amount;
+          return totals;
+        }, {}),
+      },
+      purchases: {
+        count: purchaseRows.length,
+        total_amount: purchaseRows.reduce((sum, purchase) => sum + purchase.total_amount, 0),
+        invoices: purchaseRows.slice(0, 20),
+      },
+      customer_payments: {
+        count: customerPaymentsInRange.length,
+        total_amount: customerPaymentsInRange.reduce((sum, payment) => sum + safeNumber(payment.amount), 0),
+        by_customer: customerPaymentsByCustomer,
+      },
+      supplier_payments: {
+        count: supplierPaymentsInRange.length,
+        total_amount: supplierPaymentsInRange.reduce((sum, payment) => sum + safeNumber(payment.amount), 0),
+        by_supplier: supplierPaymentsBySupplier,
+      },
+      expenses: {
+        count: expensesInRange.length,
+        total_amount: expensesInRange.reduce((sum, expense) => sum + safeNumber(expense.amount), 0),
+        by_type: expensesByType,
+      },
+      tasks: {
+        total: tasksInRange.length,
+        pending: tasksInRange.filter((task) => task.status === "pending").length,
+        completed: tasksInRange.filter((task) => task.status === "completed").length,
+        overdue: tasks.filter((task) => {
+          const dueDate = getDateOnly(task.due_date);
+          return Boolean(dueDate && dueDate < todayDateValue && !["completed", "cancelled"].includes(task.status));
+        }).length,
+        recent: tasksInRange.slice(0, 20).map((task) => ({
+          title: task.title,
+          status: task.status,
+          priority: task.priority,
+          due_date: task.due_date,
+          completed_at: task.completed_at,
+        })),
+      },
+      staff_activity: {
+        staff_profiles: staffProfiles.map((profile) => ({
+          id: profile.id,
+          name: profile.display_name || profile.email || profile.role || "Unnamed staff",
+          role: profile.role,
+          is_active: profile.is_active,
+        })),
+        duty_sessions: dutySessionsInRange.slice(0, 25).map((session) => ({
+          staff: getProfileLabel(session.profile_id),
+          status: session.status,
+          started_at: session.started_at,
+          ended_at: session.ended_at,
+          notes: session.notes,
+        })),
+        last_locations: Object.values(latestLocationByProfile).slice(0, 20).map((point) => ({
+          staff: getProfileLabel(point.profile_id),
+          captured_at: point.captured_at,
+          latitude: point.latitude,
+          longitude: point.longitude,
+          accuracy: point.accuracy,
+        })),
+        audit_activity: auditLogsInRange.slice(0, 25).map((log) => ({
+          actor: log.actor_email ?? getProfileLabel(log.actor_profile_id),
+          action: log.action,
+          entity_type: log.entity_type,
+          entity_label: log.entity_label,
+          description: log.description,
+          created_at: log.created_at,
+        })),
+        attribution_note: "Staff attribution depends on whether records have profile/audit/duty data.",
+      },
+      inventory: {
+        low_stock_products: reorderRecommendations
+          .filter((item) => item.status === "Urgent Reorder" || item.status === "Low Stock Soon")
+          .slice(0, 25),
+        out_of_stock_products: reorderRecommendations
+          .filter((item) => item.status === "Out of Stock")
+          .slice(0, 25),
+        stock_summary: reorderRecommendationSummary,
+      },
+      balances: {
+        customer_receivables: customers
+          .map((customer) => {
+            const summary = getCustomerCreditSummary(customer);
+            return {
+              customer: customer.customer_name,
+              outstanding_balance: summary.outstandingBalance,
+              overdue_amount: summary.overdueAmount,
+              overdue_invoice_count: summary.overdueInvoiceCount,
+            };
+          })
+          .filter((item) => item.outstanding_balance > 0)
+          .slice(0, 25),
+        supplier_payables: suppliers
+          .map((supplier) => {
+            const transactionIds = purchaseTransactions
+              .filter((transaction) => transaction.supplier_id === supplier.id)
+              .map((transaction) => transaction.id);
+            const currentPayable = transactionIds.reduce(
+              (sum, transactionId) =>
+                sum + Math.max(0, supplierPaymentAllocationByPurchaseTransaction[transactionId]?.remainingPayableAmount ?? 0),
+              0
+            );
+            return { supplier: supplier.supplier_name, current_payable: currentPayable };
+          })
+          .filter((item) => item.current_payable > 0)
+          .slice(0, 25),
+      },
+      market_intelligence: {
+        high_impact_items: marketIntelligenceItems
+          .filter((item) => item.status === "active" && item.impact_level === "high")
+          .slice(0, 15),
+        critical_items: marketIntelligenceItems
+          .filter((item) => item.status === "active" && item.impact_level === "critical")
+          .slice(0, 15),
+        price_up_signals: marketIntelligenceItems
+          .filter((item) => item.status === "active" && item.impact_direction === "price_up")
+          .slice(0, 15),
+        supply_shortage_signals: marketIntelligenceItems
+          .filter((item) => item.status === "active" && item.impact_direction === "supply_shortage")
+          .slice(0, 15),
+        recent_ai_analyses: marketAiAnalyses.slice(0, 10).map((analysis) => ({
+          title: analysis.input_title,
+          summary: analysis.ai_summary,
+          impact_level: analysis.ai_impact_level,
+          suggested_action: analysis.ai_suggested_action,
+          review_status: analysis.review_status,
+          created_at: analysis.created_at,
+        })),
+      },
+    };
+  };
+
+  const saveAiBusinessQueryLog = async (payload: {
+    question: string;
+    answer: string | null;
+    query_type: string;
+    language: string;
+    date_range_start: string;
+    date_range_end: string;
+    summary_data: unknown;
+    raw_ai_response: unknown;
+    status: string;
+    error_message: string | null;
+  }) => {
+    if (!currentOrganizationId) return;
+    const { error } = await supabase.from("ai_business_query_logs").insert({
+      organization_id: currentOrganizationId,
+      created_by_profile_id: currentProfile?.id ?? null,
+      question: payload.question,
+      answer: payload.answer,
+      query_type: payload.query_type,
+      language: payload.language,
+      date_range_start: payload.date_range_start,
+      date_range_end: payload.date_range_end,
+      summary_data: payload.summary_data ?? null,
+      raw_ai_response: payload.raw_ai_response ?? null,
+      status: payload.status,
+      error_message: payload.error_message,
+    });
+    if (error) {
+      console.error("Supabase AI business query log insert error:", JSON.stringify(error, null, 2));
+    }
+  };
+
+  const askAiBusinessQuestion = async () => {
+    setAiBusinessQueryMessage(null);
+    setAiBusinessQueryError(null);
+    setAiBusinessQueryResult(null);
+
+    if (!requireOrganization("ask AI business query")) {
+      setAiBusinessQueryError("Organization not loaded. Please login again.");
+      return;
+    }
+    if (!isOwnerOrAdmin()) {
+      setAiBusinessQueryError("Only owner/admin users can use AI Business Query in this version.");
+      return;
+    }
+
+    const question = aiBusinessQuestion.trim();
+    if (!question) {
+      setAiBusinessQueryError("Please enter a business question.");
+      return;
+    }
+
+    const dateRange = detectAiBusinessDateRange(question);
+    const queryType = detectAiBusinessQueryType(question);
+    const language = detectAiBusinessLanguage(question);
+    const summaryData = buildAiBusinessSummary(question, dateRange, queryType);
+    setAiBusinessDateRange(dateRange);
+    setAiBusinessQueryLoading(true);
+
+    try {
+      const response = await fetch("/api/ai-business-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          language,
+          query_type: queryType,
+          date_range_start: dateRange.start,
+          date_range_end: dateRange.end,
+          business_summary: summaryData,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        const details = typeof result?.details === "string" ? result.details : "";
+        const errorMessage = details
+          ? `AI business query failed: ${result?.error ?? "Request failed"} - ${details}`
+          : result?.error ?? "AI business query failed. Please try again.";
+        setAiBusinessQueryError(errorMessage);
+        await saveAiBusinessQueryLog({
+          question,
+          answer: null,
+          query_type: queryType,
+          language,
+          date_range_start: dateRange.start,
+          date_range_end: dateRange.end,
+          summary_data: summaryData,
+          raw_ai_response: result ?? null,
+          status: "failed",
+          error_message: errorMessage,
+        });
+        await fetchAiBusinessQueryLogs(currentOrganizationId);
+        return;
+      }
+
+      setAiBusinessQueryResult(result.result);
+      await saveAiBusinessQueryLog({
+        question,
+        answer: result.result?.answer ?? null,
+        query_type: result.result?.query_type ?? queryType,
+        language: result.result?.language ?? language,
+        date_range_start: dateRange.start,
+        date_range_end: dateRange.end,
+        summary_data: summaryData,
+        raw_ai_response: result.raw ?? null,
+        status: "answered",
+        error_message: null,
+      });
+      await createAuditLog({
+        action: "created",
+        entity_type: "ai_business_query",
+        entity_id: null,
+        entity_label: question,
+        description: `Asked AI business query: ${question}`,
+        new_values: {
+          query_type: queryType,
+          language,
+          date_range_start: dateRange.start,
+          date_range_end: dateRange.end,
+        },
+      });
+      await fetchAiBusinessQueryLogs(currentOrganizationId);
+      setAiBusinessQueryMessage("AI business answer generated and logged.");
+    } catch (error) {
+      console.error("AI business query request error:", error);
+      setAiBusinessQueryError("AI business query failed. Please try again.");
+    } finally {
+      setAiBusinessQueryLoading(false);
+    }
+  };
+
+  const reuseAiBusinessQuestion = (question: string, reAsk = false) => {
+    setAiBusinessQuestion(question);
+    setAiBusinessQueryError(null);
+    setAiBusinessQueryMessage(reAsk ? "Question loaded. Click Ask AI to re-run it." : "Question loaded.");
+    window.setTimeout(() => {
+      document.getElementById("ai-business-question")?.focus();
+    }, 0);
   };
 
   const handlePrintCustomerStatement = (customerId: string | null) => {
@@ -12197,6 +12695,217 @@ export default function Home() {
                     </div>
                   );
                 })
+              )}
+            </div>
+          </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "ai-business-query" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">AI Business Query</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Ask read-only business questions. AI uses your TradeOS data summary and does not change records.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchAiBusinessQueryLogs(currentOrganizationId)}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Refresh History
+            </button>
+          </div>
+
+          <div className="mb-5 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            AI can summarize and advise from available data. It cannot guarantee accuracy and does not perform write actions from this screen.
+          </div>
+
+          {aiBusinessQueryMessage && (
+            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              {aiBusinessQueryMessage}
+            </p>
+          )}
+          {aiBusinessQueryError && (
+            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {aiBusinessQueryError}
+            </p>
+          )}
+
+          <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Language</span>
+                  <select
+                    value={aiBusinessLanguage}
+                    onChange={(event) => setAiBusinessLanguage(event.target.value)}
+                    className="rounded border border-gray-300 px-3 py-2"
+                  >
+                    <option value="auto">Auto</option>
+                    <option value="english">English</option>
+                    <option value="urdu">Urdu</option>
+                    <option value="roman_urdu">Roman Urdu</option>
+                  </select>
+                </label>
+                <div className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Date range hint</span>
+                  <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    {aiBusinessDateRange.label}: {formatDate(aiBusinessDateRange.start)} - {formatDate(aiBusinessDateRange.end)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[
+                  ["today", "Today"],
+                  ["yesterday", "Yesterday"],
+                  ["this-week", "This Week"],
+                  ["this-month", "This Month"],
+                ].map(([preset, label]) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setAiBusinessPresetRange(preset)}
+                    className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-800 hover:bg-blue-100"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="ai-business-question">
+                Business Question
+              </label>
+              <textarea
+                id="ai-business-question"
+                value={aiBusinessQuestion}
+                onChange={(event) => setAiBusinessQuestion(event.target.value)}
+                rows={4}
+                className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                placeholder="What happened yesterday?"
+              />
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[
+                  "What happened yesterday?",
+                  "What did my staff do yesterday?",
+                  "Which customers paid today?",
+                  "Which products are low stock?",
+                  "What market alerts should I watch?",
+                  "Aaj business mein kya hua?",
+                  "Kal staff ne kya kaam kiya?",
+                ].map((question) => (
+                  <button
+                    key={question}
+                    type="button"
+                    onClick={() => setAiBusinessQuestion(question)}
+                    className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs text-indigo-800 hover:bg-indigo-100"
+                  >
+                    {question}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={askAiBusinessQuestion}
+                disabled={aiBusinessQueryLoading}
+                className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+              >
+                {aiBusinessQueryLoading ? "Asking AI..." : "Ask AI"}
+              </button>
+            </div>
+
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <h3 className="text-lg font-medium text-gray-900">Current Answer</h3>
+              {!aiBusinessQueryResult ? (
+                <p className="mt-3 text-sm text-gray-600">Ask a question to see the answer here.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  <p className="whitespace-pre-wrap text-sm text-gray-800">{aiBusinessQueryResult.answer}</p>
+                  {aiBusinessQueryResult.key_points.length > 0 && (
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">Key Points</div>
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                        {aiBusinessQueryResult.key_points.map((point) => (
+                          <li key={point}>{point}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {aiBusinessQueryResult.warnings.length > 0 && (
+                    <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2">
+                      <div className="text-sm font-medium text-amber-900">Warnings</div>
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-amber-800">
+                        {aiBusinessQueryResult.warnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className="grid gap-2 text-xs text-gray-600 sm:grid-cols-2">
+                    <div>Type: {aiBusinessQueryResult.query_type}</div>
+                    <div>Language: {aiBusinessQueryResult.language}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Recent Query History</h3>
+                <p className="mt-1 text-sm text-gray-600">Recent answered and failed read-only AI business questions.</p>
+              </div>
+              <div className="text-sm text-gray-500">{aiBusinessQueryLogs.length} logs</div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {aiBusinessQueryLogs.length === 0 ? (
+                <p className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+                  No AI business query logs yet.
+                </p>
+              ) : (
+                aiBusinessQueryLogs.map((log) => (
+                  <div key={log.id} className="rounded border border-gray-200 bg-gray-50 p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">{log.status}</span>
+                          <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">{log.query_type ?? "general"}</span>
+                          <span className="rounded bg-white px-2 py-1 text-xs font-medium text-gray-700">{log.language ?? "auto"}</span>
+                        </div>
+                        <h4 className="mt-2 text-sm font-semibold text-gray-900">{log.question}</h4>
+                        <div className="mt-1 text-xs text-gray-600">
+                          {formatDate(log.date_range_start)} - {formatDate(log.date_range_end)} - {formatDateTime(log.created_at)}
+                        </div>
+                        {log.answer && (
+                          <p className="mt-2 text-sm text-gray-700">
+                            {log.answer.length > 280 ? `${log.answer.slice(0, 280)}...` : log.answer}
+                          </p>
+                        )}
+                        {log.error_message && <p className="mt-2 text-sm text-red-700">{log.error_message}</p>}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => reuseAiBusinessQuestion(log.question, true)}
+                          className="rounded border border-blue-500 bg-white px-3 py-2 text-xs text-blue-700 hover:bg-blue-50"
+                        >
+                          Re-ask
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => reuseAiBusinessQuestion(log.question)}
+                          className="rounded border border-gray-300 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+                        >
+                          Use Question
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>
