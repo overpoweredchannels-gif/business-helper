@@ -287,6 +287,15 @@ export default function Home() {
     label: string;
     preset: string;
   }>({ start: toDateInputValue(new Date()), end: toDateInputValue(new Date()), label: "Today", preset: "today" });
+  const [isAiBusinessSpeaking, setIsAiBusinessSpeaking] = useState(false);
+  const [aiBusinessVoiceMessage, setAiBusinessVoiceMessage] = useState<string | null>(null);
+  const [aiBusinessVoiceError, setAiBusinessVoiceError] = useState<string | null>(null);
+  const [selectedAiBusinessVoiceName, setSelectedAiBusinessVoiceName] = useState("");
+  const [availableSpeechVoices, setAvailableSpeechVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [aiBusinessVoiceRate, setAiBusinessVoiceRate] = useState("1.0");
+  const [aiBusinessVoicePitch, setAiBusinessVoicePitch] = useState("1.0");
+  const [autoReadAiBusinessAnswer, setAutoReadAiBusinessAnswer] = useState(false);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [marketNewsSources, setMarketNewsSources] = useState<MarketNewsSource[]>([]);
   const [marketIntelligenceItems, setMarketIntelligenceItems] = useState<MarketIntelligenceItem[]>([]);
   const [marketImportQueueItems, setMarketImportQueueItems] = useState<MarketImportQueueItem[]>([]);
@@ -364,6 +373,24 @@ export default function Home() {
         speechRecognitionRef.current.onend = null;
         speechRecognitionRef.current.abort?.();
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+    const loadVoices = () => {
+      setAvailableSpeechVoices(window.speechSynthesis.getVoices());
+    };
+
+    loadVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+
+    return () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
+      window.speechSynthesis.cancel();
+      currentUtteranceRef.current = null;
+      setIsAiBusinessSpeaking(false);
     };
   }, []);
 
@@ -6731,6 +6758,81 @@ export default function Home() {
     return "english";
   };
 
+  const getAiBusinessSpeechLanguage = () => {
+    const detectedLanguage = detectAiBusinessLanguage(aiBusinessQuestion);
+    if (detectedLanguage === "urdu") return "ur-PK";
+    if (detectedLanguage === "roman_urdu") return "en-PK";
+    return "en-US";
+  };
+
+  const getPreferredAiBusinessVoice = () => {
+    if (selectedAiBusinessVoiceName) {
+      return availableSpeechVoices.find((voice) => voice.name === selectedAiBusinessVoiceName) ?? null;
+    }
+
+    const detectedLanguage = detectAiBusinessLanguage(aiBusinessQuestion);
+    const byLang = (prefix: string) =>
+      availableSpeechVoices.find((voice) => voice.lang.toLowerCase().startsWith(prefix));
+    const regionalEnglish =
+      availableSpeechVoices.find((voice) => ["en-pk", "en-in"].includes(voice.lang.toLowerCase())) ??
+      byLang("en");
+
+    if (detectedLanguage === "urdu") {
+      return byLang("ur") ?? regionalEnglish ?? null;
+    }
+    if (detectedLanguage === "roman_urdu") {
+      return regionalEnglish ?? byLang("ur") ?? null;
+    }
+    return byLang("en") ?? null;
+  };
+
+  const stopAiBusinessVoice = () => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    currentUtteranceRef.current = null;
+    setIsAiBusinessSpeaking(false);
+  };
+
+  const speakAiBusinessAnswer = (answerText?: string | null) => {
+    setAiBusinessVoiceMessage(null);
+    setAiBusinessVoiceError(null);
+
+    const text = (answerText ?? aiBusinessQueryResult?.answer ?? "").trim();
+    if (!text) {
+      setAiBusinessVoiceError("No AI answer is available to read aloud.");
+      return;
+    }
+    if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
+      setAiBusinessVoiceError("Voice reply is not supported in this browser.");
+      return;
+    }
+
+    stopAiBusinessVoice();
+    const utterance = new SpeechSynthesisUtterance(text);
+    const preferredVoice = getPreferredAiBusinessVoice();
+    if (preferredVoice) utterance.voice = preferredVoice;
+    utterance.lang = preferredVoice?.lang ?? getAiBusinessSpeechLanguage();
+    utterance.rate = safeNumber(aiBusinessVoiceRate) || 1;
+    utterance.pitch = safeNumber(aiBusinessVoicePitch) || 1;
+    utterance.onstart = () => {
+      setIsAiBusinessSpeaking(true);
+      setAiBusinessVoiceMessage("Reading AI answer aloud.");
+    };
+    utterance.onend = () => {
+      currentUtteranceRef.current = null;
+      setIsAiBusinessSpeaking(false);
+      setAiBusinessVoiceMessage("Voice reply finished.");
+    };
+    utterance.onerror = () => {
+      currentUtteranceRef.current = null;
+      setIsAiBusinessSpeaking(false);
+      setAiBusinessVoiceError("Voice reply could not be played. Try another browser voice.");
+    };
+    currentUtteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
   const isAiBusinessDateInRange = (value: unknown, start: string, end: string) => {
     const date = value === null || value === undefined ? null : getDateOnly(String(value));
     return Boolean(date && date >= start && date <= end);
@@ -7057,6 +7159,9 @@ export default function Home() {
       }
 
       setAiBusinessQueryResult(result.result);
+      if (autoReadAiBusinessAnswer && result.result?.answer) {
+        window.setTimeout(() => speakAiBusinessAnswer(result.result.answer), 0);
+      }
       await saveAiBusinessQueryLog({
         question,
         answer: result.result?.answer ?? null,
@@ -7259,6 +7364,9 @@ export default function Home() {
   };
 
   const handleSectionChange = (sectionId: SectionId) => {
+    if (sectionId !== "ai-business-query") {
+      stopAiBusinessVoice();
+    }
     setActiveSection(sectionId);
     setMobileMenuOpen(false);
     window.setTimeout(() => {
@@ -12850,6 +12958,92 @@ export default function Home() {
                   </div>
                 </div>
               )}
+              <div className="mt-5 rounded border border-sky-200 bg-sky-50 p-3">
+                <h4 className="text-sm font-medium text-sky-950">Voice Reply</h4>
+                <p className="mt-1 text-xs text-sky-900">
+                  Voice reply reads the AI answer aloud. It does not execute business actions.
+                </p>
+                {typeof window !== "undefined" && !window.speechSynthesis && (
+                  <p className="mt-2 text-sm text-amber-800">Voice reply is not supported in this browser.</p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => speakAiBusinessAnswer()}
+                    disabled={!aiBusinessQueryResult?.answer}
+                    className="rounded bg-sky-600 px-3 py-2 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                  >
+                    {isAiBusinessSpeaking ? "Playing..." : "Play Voice Reply"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopAiBusinessVoice}
+                    disabled={!isAiBusinessSpeaking}
+                    className="rounded border border-red-400 bg-white px-3 py-2 text-xs text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                  >
+                    Stop Voice
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => speakAiBusinessAnswer(aiBusinessQueryResult?.answer)}
+                    disabled={!aiBusinessQueryResult?.answer}
+                    className="rounded border border-sky-500 bg-white px-3 py-2 text-xs text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                  >
+                    Replay Last Answer
+                  </button>
+                </div>
+                <label className="mt-3 flex items-center gap-2 text-xs text-sky-950">
+                  <input
+                    type="checkbox"
+                    checked={autoReadAiBusinessAnswer}
+                    onChange={(event) => setAutoReadAiBusinessAnswer(event.target.checked)}
+                  />
+                  Auto-read AI answer
+                </label>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <label className="flex flex-col gap-1 text-xs text-sky-950 sm:col-span-3">
+                    <span>Voice</span>
+                    <select
+                      value={selectedAiBusinessVoiceName}
+                      onChange={(event) => setSelectedAiBusinessVoiceName(event.target.value)}
+                      className="rounded border border-sky-200 px-2 py-2 text-xs"
+                    >
+                      <option value="">Auto voice</option>
+                      {availableSpeechVoices.map((voice) => (
+                        <option key={`${voice.name}-${voice.lang}`} value={voice.name}>
+                          {voice.name} ({voice.lang})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-sky-950">
+                    <span>Rate</span>
+                    <select
+                      value={aiBusinessVoiceRate}
+                      onChange={(event) => setAiBusinessVoiceRate(event.target.value)}
+                      className="rounded border border-sky-200 px-2 py-2 text-xs"
+                    >
+                      <option value="0.8">0.8</option>
+                      <option value="1.0">1.0</option>
+                      <option value="1.2">1.2</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-sky-950">
+                    <span>Pitch</span>
+                    <select
+                      value={aiBusinessVoicePitch}
+                      onChange={(event) => setAiBusinessVoicePitch(event.target.value)}
+                      className="rounded border border-sky-200 px-2 py-2 text-xs"
+                    >
+                      <option value="0.9">0.9</option>
+                      <option value="1.0">1.0</option>
+                      <option value="1.1">1.1</option>
+                    </select>
+                  </label>
+                </div>
+                {aiBusinessVoiceMessage && <p className="mt-2 text-xs text-sky-900">{aiBusinessVoiceMessage}</p>}
+                {aiBusinessVoiceError && <p className="mt-2 text-xs text-red-700">{aiBusinessVoiceError}</p>}
+              </div>
             </div>
           </div>
 
@@ -12888,6 +13082,15 @@ export default function Home() {
                         {log.error_message && <p className="mt-2 text-sm text-red-700">{log.error_message}</p>}
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        {log.answer && (
+                          <button
+                            type="button"
+                            onClick={() => speakAiBusinessAnswer(log.answer)}
+                            className="rounded border border-sky-500 bg-white px-3 py-2 text-xs text-sky-700 hover:bg-sky-50"
+                          >
+                            Read Answer
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => reuseAiBusinessQuestion(log.question, true)}
