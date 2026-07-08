@@ -289,6 +289,12 @@ export default function Home() {
   const [aiVoiceTranscriptPreview, setAiVoiceTranscriptPreview] = useState("");
   const [aiVoiceAutoSpeak, setAiVoiceAutoSpeak] = useState(true);
   const [aiVoiceLastResponse, setAiVoiceLastResponse] = useState("");
+  const [aiVoiceActiveActionDraftId, setAiVoiceActiveActionDraftId] = useState("");
+  const [aiVoiceActiveActionDraft, setAiVoiceActiveActionDraft] = useState<AiActionDraft | null>(null);
+  const [aiVoiceActiveMissingField, setAiVoiceActiveMissingField] = useState("");
+  const [aiVoiceActionConversationMessage, setAiVoiceActionConversationMessage] = useState<string | null>(null);
+  const [aiVoiceActionConversationError, setAiVoiceActionConversationError] = useState<string | null>(null);
+  const [aiVoiceAwaitingConfirmation, setAiVoiceAwaitingConfirmation] = useState(false);
   const aiVoiceRecognitionRef = useRef<TradeOsSpeechRecognition | null>(null);
   const aiVoiceUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [aiBusinessQuestion, setAiBusinessQuestion] = useState("");
@@ -1417,7 +1423,11 @@ export default function Home() {
       items.find((item) =>
         getLabels(item).some((label) => {
           const normalizedLabel = String(label ?? "").trim().toLowerCase();
-          return normalizedLabel.length >= 3 && normalizedCommand.includes(normalizedLabel);
+          return (
+            normalizedLabel.length >= 3 &&
+            (normalizedCommand.includes(normalizedLabel) ||
+              (normalizedCommand.length >= 3 && normalizedLabel.includes(normalizedCommand)))
+          );
         })
       ) ?? null
     );
@@ -1429,7 +1439,57 @@ export default function Home() {
     productSizePattern.test(command.slice(matchIndex + matchLength));
   const extractQuantityFromText = (text: string) => {
     const quantityMatch = text.match(/\b(\d+(?:\.\d+)?)\s*(carton|cartons|box|boxes|piece|pieces|pcs|unit|units)\b/i);
-    return quantityMatch ? Number(quantityMatch[1]) : null;
+    if (quantityMatch) return Number(quantityMatch[1]);
+    const wordQuantityMatch = text.match(
+      /\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*(carton|cartons|box|boxes|piece|pieces|pcs|unit|units)\b/i
+    );
+    return wordQuantityMatch ? parseSimpleSpokenNumber(wordQuantityMatch[1]) : null;
+  };
+  const parseSimpleSpokenNumber = (text: string) => {
+    const normalizedText = text
+      .toLowerCase()
+      .replace(/[-,]/g, " ")
+      .replace(/\b(price|rate|amount|purchase|selling|sale|cost|is|hai|kya|kitni|rs|rupees|pkr)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const directNumber = normalizedText.match(/\b\d+(?:\.\d+)?\b/);
+    if (directNumber) return Number(directNumber[0]);
+    const spokenNumberMap: Record<string, number> = {
+      zero: 0,
+      one: 1,
+      two: 2,
+      three: 3,
+      four: 4,
+      five: 5,
+      six: 6,
+      seven: 7,
+      eight: 8,
+      nine: 9,
+      ten: 10,
+      eleven: 11,
+      twelve: 12,
+      thirteen: 13,
+      fourteen: 14,
+      fifteen: 15,
+      sixteen: 16,
+      seventeen: 17,
+      eighteen: 18,
+      nineteen: 19,
+      twenty: 20,
+      thirty: 30,
+      forty: 40,
+      fifty: 50,
+      hundred: 100,
+      thousand: 1000,
+    };
+    if (normalizedText === "one thousand") return 1000;
+    if (normalizedText === "twelve hundred") return 1200;
+    if (normalizedText === "fifteen hundred") return 1500;
+    const words = normalizedText.split(" ").filter(Boolean);
+    if (words.length === 1) return spokenNumberMap[words[0]] ?? null;
+    if (words.length === 2 && words[1] === "hundred" && spokenNumberMap[words[0]]) return spokenNumberMap[words[0]] * 100;
+    if (words.length === 2 && words[1] === "thousand" && spokenNumberMap[words[0]]) return spokenNumberMap[words[0]] * 1000;
+    return null;
   };
   const extractFirstNonSizeNumber = (text: string) => {
     for (const match of text.matchAll(/\b\d+(?:\.\d+)?\b/g)) {
@@ -1437,7 +1497,7 @@ export default function Home() {
         return Number(match[0]);
       }
     }
-    return null;
+    return parseSimpleSpokenNumber(text);
   };
   const extractPriceFromText = (text: string, field?: "purchase_price" | "selling_price") => {
     const lowerText = text.toLowerCase();
@@ -1774,7 +1834,12 @@ export default function Home() {
     } else if (field === "selling_price") {
       parsedValue = extractPriceFromText(trimmedAnswer, "selling_price");
     } else if (field === "payment_type") {
-      parsedValue = lowerAnswer.includes("credit") ? "credit" : lowerAnswer.includes("cash") ? "cash" : null;
+      parsedValue =
+        lowerAnswer.includes("credit") || lowerAnswer.includes("udhaar") || lowerAnswer.includes("qarz")
+          ? "credit"
+          : lowerAnswer.includes("cash") || lowerAnswer.includes("naqad")
+            ? "cash"
+            : null;
     } else if (field === "amount") {
       parsedValue = extractFirstNonSizeNumber(trimmedAnswer);
     } else if (field === "expense_type") {
@@ -7324,7 +7389,7 @@ export default function Home() {
   }: {
     sessionId: string | null;
     role: "owner" | "assistant" | "system";
-    messageType: "voice" | "text" | "answer" | "draft_created" | "clarification" | "error";
+    messageType: "voice" | "text" | "answer" | "draft_created" | "clarification" | "question" | "confirmation" | "execution" | "error";
     messageText: string;
     detectedIntent?: string | null;
     routedTo?: string | null;
@@ -7411,6 +7476,296 @@ export default function Home() {
     }
     await fetchAiVoiceOperatorSessions(currentOrganizationId);
     setAiVoiceOperatorMessage("Voice operator session ended.");
+  };
+
+  const getAiVoiceActionQuestionText = (field: string) => {
+    const romanUrduQuestions: Record<string, string> = {
+      supplier_id: "Konsa supplier?",
+      customer_id: "Konsa customer?",
+      product_id: "Konsa product?",
+      quantity: "Kitne cartons ya units?",
+      purchase_price: "Purchase price kya hai?",
+      selling_price: "Selling price kya hai?",
+      payment_type: "Cash ya credit?",
+      amount: "Expense amount kitni hai?",
+      expense_type: "Expense type kya hai?",
+      title: "Task kya create karna hai?",
+    };
+    if (aiVoiceLanguage === "roman_urdu") return romanUrduQuestions[field] ?? "Jawab dein.";
+    const voiceQuestions: Record<string, string> = {
+      supplier_id: "Which supplier?",
+      customer_id: "Which customer?",
+      product_id: "Which product?",
+      quantity: "How many cartons or units?",
+      purchase_price: "What is the purchase price?",
+      selling_price: "What is the selling price?",
+      payment_type: "Is this cash or credit?",
+      amount: "What is the expense amount?",
+      expense_type: "What type of expense is this?",
+      title: "What task should I create?",
+    };
+    return voiceQuestions[field] ?? aiConversationQuestionText[field] ?? `Please provide ${field}.`;
+  };
+
+  const getAiVoiceExecutionSuccessText = (actionType: string) => {
+    if (actionType === "create_task") return "Task created successfully.";
+    if (actionType === "create_purchase_draft") return "Purchase invoice created successfully.";
+    if (actionType === "create_sale_draft") return "Sale invoice created successfully.";
+    if (actionType === "create_expense_draft") return "Expense recorded successfully.";
+    return "Action completed successfully.";
+  };
+
+  const clearAiVoiceActionConversation = () => {
+    setAiVoiceActiveActionDraftId("");
+    setAiVoiceActiveActionDraft(null);
+    setAiVoiceActiveMissingField("");
+    setAiVoiceAwaitingConfirmation(false);
+  };
+
+  const promptAiVoiceActionDraft = async (draft: AiActionDraft, sessionId: string) => {
+    const evaluation = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
+    const missingFields = getAiDraftMissingFields(draft).length > 0 ? getAiDraftMissingFields(draft) : evaluation.missingFields;
+    const nextField = getNextMissingField(draft.action_type, missingFields);
+    const hydratedDraft = {
+      ...draft,
+      parsed_data: evaluation.parsedData,
+      missing_fields: evaluation.missingFields,
+      confirmation_summary: evaluation.confirmationSummary,
+      ready_to_execute: evaluation.readyToExecute,
+      execution_preview: evaluation.executionPreview,
+    } as AiActionDraft;
+
+    setAiVoiceActiveActionDraftId(draft.id);
+    setAiVoiceActiveActionDraft(hydratedDraft);
+    setSelectedAiDraftId(draft.id);
+    setSelectedConversationDraftId(draft.id);
+    setAiVoiceActionConversationError(null);
+
+    if (nextField) {
+      const question = getAiVoiceActionQuestionText(nextField);
+      setAiVoiceActiveMissingField(nextField);
+      setAiVoiceAwaitingConfirmation(false);
+      setAiVoiceActionConversationMessage(question);
+      setAiVoiceLastResponse(question);
+      await addAiVoiceOperatorMessage({
+        sessionId,
+        role: "assistant",
+        messageType: "question",
+        messageText: question,
+        detectedIntent: "action_command",
+        routedTo: "ai-assistant",
+        relatedAiActionDraftId: draft.id,
+      });
+      if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(question);
+      return;
+    }
+
+    const confirmation = `I have all details. Please confirm: ${evaluation.confirmationSummary} Should I save it?`;
+    setAiVoiceActiveMissingField("");
+    setAiVoiceAwaitingConfirmation(true);
+    setAiVoiceActionConversationMessage(confirmation);
+    setAiVoiceLastResponse(confirmation);
+    await addAiVoiceOperatorMessage({
+      sessionId,
+      role: "assistant",
+      messageType: "confirmation",
+      messageText: confirmation,
+      detectedIntent: "action_command",
+      routedTo: "ai-assistant",
+      relatedAiActionDraftId: draft.id,
+    });
+    if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(confirmation);
+  };
+
+  const updateAiVoiceActionDraftFromAnswer = async (sessionId: string, answer: string) => {
+    const draft =
+      aiVoiceActiveActionDraft ??
+      aiActionDrafts.find((item) => item.id === aiVoiceActiveActionDraftId) ??
+      null;
+    if (!draft || !aiVoiceActiveMissingField) {
+      setAiVoiceActionConversationError("No active action question is waiting for an answer.");
+      return;
+    }
+
+    const field = aiVoiceActiveMissingField;
+    const parsedAnswer = parseConversationAnswer(draft, field, answer);
+    if (parsedAnswer.parsedValue === null || parsedAnswer.parsedValue === "") {
+      const retryQuestion = `I could not understand that answer. ${getAiVoiceActionQuestionText(field)}`;
+      setAiVoiceActionConversationError(retryQuestion);
+      setAiVoiceLastResponse(retryQuestion);
+      await addAiVoiceOperatorMessage({
+        sessionId,
+        role: "assistant",
+        messageType: "question",
+        messageText: retryQuestion,
+        detectedIntent: "action_command",
+        routedTo: "ai-assistant",
+        relatedAiActionDraftId: draft.id,
+      });
+      if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(retryQuestion);
+      return;
+    }
+
+    await addAiActionMessage({
+      draftId: draft.id,
+      role: "owner",
+      messageType: "answer",
+      messageText: answer,
+      relatedField: field,
+      parsedValue: parsedAnswer.parsedValue,
+    });
+
+    const previousAnswers = draft.follow_up_answers ?? {};
+    const parsedData = {
+      ...(draft.parsed_data ?? {}),
+      [field]: parsedAnswer.parsedValue,
+    };
+    const evaluation = evaluateAiDraftData(draft.action_type, parsedData);
+    const now = new Date().toISOString();
+    const updatePayload = {
+      parsed_data: evaluation.parsedData,
+      missing_fields: evaluation.missingFields,
+      confirmation_summary: evaluation.confirmationSummary,
+      follow_up_questions: evaluation.followUpQuestions,
+      follow_up_answers: {
+        ...previousAnswers,
+        [field]: parsedAnswer.parsedValue,
+      },
+      ready_to_execute: evaluation.readyToExecute,
+      execution_preview: evaluation.executionPreview,
+      related_customer_id: parsedAnswer.related_customer_id ?? evaluation.related_customer_id,
+      related_supplier_id: parsedAnswer.related_supplier_id ?? evaluation.related_supplier_id,
+      related_product_id: parsedAnswer.related_product_id ?? evaluation.related_product_id,
+      status: evaluation.readyToExecute ? "draft" : "needs_info",
+      updated_at: now,
+      error_message: null,
+    };
+
+    const { error } = await supabase
+      .from("ai_action_drafts")
+      .update(updatePayload)
+      .eq("id", draft.id)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase AI voice action draft answer update error:", JSON.stringify(error, null, 2));
+      const message = "Could not save that answer to the action draft. Please try again.";
+      setAiVoiceActionConversationError(message);
+      setAiVoiceLastResponse(message);
+      if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(message);
+      return;
+    }
+
+    await addAiActionMessage({
+      draftId: draft.id,
+      role: "system",
+      messageType: "answer",
+      messageText: `Saved answer for ${field}.`,
+      relatedField: field,
+      parsedValue: parsedAnswer.parsedValue,
+    });
+    await createAuditLog({
+      action: "updated",
+      entity_type: "ai_action_draft",
+      entity_id: draft.id,
+      entity_label: draft.action_type,
+      description: `Saved AI voice operator answer for ${field}`,
+      new_values: { [field]: parsedAnswer.parsedValue },
+    });
+
+    const refreshedDraft = { ...draft, ...updatePayload } as AiActionDraft;
+    setAiVoiceActiveActionDraft(refreshedDraft);
+    await fetchAiActionDrafts(currentOrganizationId);
+    await promptAiVoiceActionDraft(refreshedDraft, sessionId);
+  };
+
+  const cancelAiVoiceActionConversation = async (sessionId: string) => {
+    const draft =
+      aiVoiceActiveActionDraft ??
+      aiActionDrafts.find((item) => item.id === aiVoiceActiveActionDraftId) ??
+      null;
+    if (draft) {
+      await updateAiDraftStatus(draft, "cancelled");
+    }
+    const reply = "Okay, I will not save it.";
+    clearAiVoiceActionConversation();
+    setAiVoiceActionConversationMessage(reply);
+    setAiVoiceLastResponse(reply);
+    await addAiVoiceOperatorMessage({
+      sessionId,
+      role: "assistant",
+      messageType: "answer",
+      messageText: reply,
+      detectedIntent: "action_command",
+      routedTo: "ai-assistant",
+      relatedAiActionDraftId: draft?.id ?? null,
+    });
+    if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+  };
+
+  const executeAiVoiceActionDraft = async (sessionId: string) => {
+    const draft =
+      aiVoiceActiveActionDraft ??
+      aiActionDrafts.find((item) => item.id === aiVoiceActiveActionDraftId) ??
+      null;
+    if (!draft) {
+      const reply = "No linked action draft is ready to execute.";
+      setAiVoiceActionConversationError(reply);
+      setAiVoiceLastResponse(reply);
+      if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+      return;
+    }
+    const evaluation = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
+    if (evaluation.missingFields.length > 0 || (!draft.ready_to_execute && !evaluation.readyToExecute)) {
+      const reply = `This draft needs more information first: ${evaluation.missingFields.join(", ")}.`;
+      setAiVoiceActionConversationError(reply);
+      setAiVoiceLastResponse(reply);
+      if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+      return;
+    }
+
+    await addAiActionMessage({
+      draftId: draft.id,
+      role: "assistant",
+      messageType: "execution",
+      messageText: "Owner confirmed execution from AI Voice Operator.",
+    });
+    await executeAiActionDraft(draft);
+
+    const { data: refreshedDraft, error } = await supabase
+      .from("ai_action_drafts")
+      .select("*")
+      .eq("id", draft.id)
+      .eq("organization_id", currentOrganizationId)
+      .single();
+    if (error) {
+      console.error("Supabase AI voice execution refresh error:", JSON.stringify(error, null, 2));
+    }
+
+    const executed = refreshedDraft?.status === "executed";
+    const reply = executed
+      ? getAiVoiceExecutionSuccessText(draft.action_type)
+      : `Could not complete this action: ${refreshedDraft?.error_message || aiAssistantError || "Please review the linked draft."}`;
+    await addAiVoiceOperatorMessage({
+      sessionId,
+      role: "assistant",
+      messageType: executed ? "execution" : "error",
+      messageText: reply,
+      detectedIntent: "action_command",
+      routedTo: "ai-assistant",
+      relatedAiActionDraftId: draft.id,
+    });
+    setAiVoiceLastResponse(reply);
+    setAiVoiceActionConversationMessage(reply);
+    if (executed) {
+      clearAiVoiceActionConversation();
+    } else {
+      setAiVoiceActiveActionDraft((refreshedDraft as AiActionDraft) ?? draft);
+      setAiVoiceActionConversationError(reply);
+    }
+    if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+    await fetchAiActionDrafts(currentOrganizationId);
+    await fetchAiVoiceOperatorMessages(sessionId, currentOrganizationId);
   };
 
   const createAiActionDraftFromOperator = async (commandText: string) => {
@@ -7610,7 +7965,12 @@ export default function Home() {
     try {
       const sessionId = await ensureAiVoiceSession();
       if (!sessionId) return;
-      const route = detectAiVoiceIntent(input);
+      const lowerInput = input.toLowerCase();
+      const normalizedControlInput = lowerInput.replace(/[.!?۔،,]+/g, "").replace(/\s+/g, " ").trim();
+      const hasActiveActionConversation = Boolean(aiVoiceActiveActionDraftId || aiVoiceActiveActionDraft);
+      const route = hasActiveActionConversation
+        ? { intent: "action_command", routed_to: "ai-assistant", confidence: 1 }
+        : detectAiVoiceIntent(input);
       await addAiVoiceOperatorMessage({
         sessionId,
         role: "owner",
@@ -7620,24 +7980,45 @@ export default function Home() {
         routedTo: route.routed_to,
       });
 
-      const recentReadyDraft = aiActionDrafts
-        .filter((draft) => !["executed", "cancelled", "failed"].includes(draft.status))
-        .find((draft) => draft.ready_to_execute || evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {}).readyToExecute);
-      if (/^(yes|confirm|proceed|save it|execute|haan|theek hai|kar do|save karo)$/i.test(input) && recentReadyDraft) {
-        await executeAiActionDraft(recentReadyDraft);
-        const reply = "Confirmed. I used the existing safe AI Action Assistant execution flow for the ready draft.";
-        await addAiVoiceOperatorMessage({
-          sessionId,
-          role: "assistant",
-          messageType: "answer",
-          messageText: reply,
-          detectedIntent: "action_command",
-          routedTo: "ai-assistant",
-          relatedAiActionDraftId: recentReadyDraft.id,
-        });
-        setAiVoiceLastResponse(reply);
-        if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+      if (
+        hasActiveActionConversation &&
+        /^(cancel|stop|start over|no|nahi|mat karo)$/i.test(normalizedControlInput)
+      ) {
+        await cancelAiVoiceActionConversation(sessionId);
         setAiVoiceInput("");
+        setAiVoiceTranscriptPreview("");
+        await fetchAiVoiceOperatorMessages(sessionId, currentOrganizationId);
+        return;
+      }
+
+      if (aiVoiceAwaitingConfirmation && hasActiveActionConversation) {
+        if (/^(yes|confirm|proceed|save it|execute|do it|haan|han|theek hai|kar do|save karo|chalao|proceed karo)$/i.test(normalizedControlInput)) {
+          await executeAiVoiceActionDraft(sessionId);
+        } else {
+          const reply = "Please say yes, proceed, haan, or save it to confirm. Say cancel to stop.";
+          setAiVoiceLastResponse(reply);
+          setAiVoiceActionConversationMessage(reply);
+          await addAiVoiceOperatorMessage({
+            sessionId,
+            role: "assistant",
+            messageType: "confirmation",
+            messageText: reply,
+            detectedIntent: "action_command",
+            routedTo: "ai-assistant",
+            relatedAiActionDraftId: aiVoiceActiveActionDraftId || aiVoiceActiveActionDraft?.id || null,
+          });
+          if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+        }
+        setAiVoiceInput("");
+        setAiVoiceTranscriptPreview("");
+        await fetchAiVoiceOperatorMessages(sessionId, currentOrganizationId);
+        return;
+      }
+
+      if (aiVoiceActiveMissingField && hasActiveActionConversation) {
+        await updateAiVoiceActionDraftFromAnswer(sessionId, input);
+        setAiVoiceInput("");
+        setAiVoiceTranscriptPreview("");
         await fetchAiVoiceOperatorMessages(sessionId, currentOrganizationId);
         return;
       }
@@ -7670,7 +8051,12 @@ export default function Home() {
           relatedAiActionDraftId: draft?.id ?? null,
         });
         setAiVoiceLastResponse(reply);
-        if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+        setAiVoiceActionConversationMessage(reply);
+        if (draft) {
+          await promptAiVoiceActionDraft(draft, sessionId);
+        } else if (aiVoiceAutoSpeak) {
+          speakAiVoiceOperatorReply(reply);
+        }
       } else {
         const reply = "I can help with business summaries, staff activity, stock, market news, or creating draft sales/purchases/expenses/tasks. Please say what you want me to do.";
         await addAiVoiceOperatorMessage({
@@ -13388,13 +13774,122 @@ export default function Home() {
                 onChange={(event) => setAiVoiceInput(event.target.value)}
                 rows={4}
                 className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-                placeholder="What happened yesterday? Or: Create sale for Test Customer 1 carton Pepsi 500ml cash"
+                placeholder={
+                  aiVoiceAwaitingConfirmation
+                    ? "Say yes/proceed/haan to save, or cancel to stop."
+                    : aiVoiceActiveMissingField
+                      ? "Answer the assistant's question..."
+                      : "What happened yesterday? Or: Create sale for Test Customer 1 carton Pepsi 500ml cash"
+                }
               />
               {aiVoiceTranscriptPreview && (
                 <div className="mt-2 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
                   Transcript preview: {aiVoiceTranscriptPreview}
                 </div>
               )}
+              {aiVoiceActionConversationMessage && (
+                <div className="mt-3 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-950">
+                  {aiVoiceActionConversationMessage}
+                </div>
+              )}
+              {aiVoiceActionConversationError && (
+                <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  {aiVoiceActionConversationError}
+                </div>
+              )}
+
+              {aiVoiceActiveActionDraftId && (() => {
+                const activeDraft =
+                  aiVoiceActiveActionDraft ??
+                  aiActionDrafts.find((draft) => draft.id === aiVoiceActiveActionDraftId) ??
+                  null;
+                const activeEvaluation = activeDraft
+                  ? evaluateAiDraftData(activeDraft.action_type, activeDraft.parsed_data ?? {})
+                  : null;
+                const missingFields =
+                  activeDraft && getAiDraftMissingFields(activeDraft).length > 0
+                    ? getAiDraftMissingFields(activeDraft)
+                    : activeEvaluation?.missingFields ?? [];
+                const readyToExecute = Boolean(activeDraft?.ready_to_execute || activeEvaluation?.readyToExecute);
+                return (
+                  <div className="mt-4 rounded border border-indigo-200 bg-white p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="text-base font-medium text-gray-900">Active Action Draft</h3>
+                        <p className="mt-1 text-sm text-gray-600">
+                          {activeDraft?.action_type ?? "Linked draft"} - {activeDraft?.status ?? "loading"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAiDraftId(aiVoiceActiveActionDraftId);
+                            setSelectedConversationDraftId(aiVoiceActiveActionDraftId);
+                            handleSectionChange("ai-assistant");
+                          }}
+                          className="rounded border border-indigo-500 bg-white px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
+                        >
+                          Open in AI Assistant
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const sessionId = await ensureAiVoiceSession();
+                            if (sessionId) await cancelAiVoiceActionConversation(sessionId);
+                          }}
+                          className="rounded border border-red-400 bg-white px-3 py-2 text-xs text-red-700 hover:bg-red-50"
+                        >
+                          Cancel Draft
+                        </button>
+                        {readyToExecute && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const sessionId = await ensureAiVoiceSession();
+                              if (sessionId) await executeAiVoiceActionDraft(sessionId);
+                            }}
+                            className="rounded bg-gray-900 px-3 py-2 text-xs text-white hover:bg-gray-800"
+                          >
+                            Execute Now
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                        <div className="font-medium text-gray-900">Current question</div>
+                        <div className="mt-1">
+                          {aiVoiceActiveMissingField
+                            ? getAiVoiceActionQuestionText(aiVoiceActiveMissingField)
+                            : aiVoiceAwaitingConfirmation
+                              ? "Waiting for owner confirmation."
+                              : "No question pending."}
+                        </div>
+                      </div>
+                      <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                        <div className="font-medium text-gray-900">Readiness</div>
+                        <div className="mt-1">{readyToExecute ? "Ready to execute" : "Needs more information"}</div>
+                        <div className="mt-1">Missing: {missingFields.length > 0 ? missingFields.join(", ") : "None"}</div>
+                      </div>
+                    </div>
+                    {activeEvaluation?.confirmationSummary && (
+                      <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                        <div className="font-medium text-gray-900">Confirmation summary</div>
+                        <p className="mt-1">{activeEvaluation.confirmationSummary}</p>
+                      </div>
+                    )}
+                    {activeEvaluation?.executionPreview && (
+                      <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                        <div className="font-medium text-gray-900">Execution preview</div>
+                        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs">
+                          {JSON.stringify(activeEvaluation.executionPreview, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {!isAiVoiceListening ? (
