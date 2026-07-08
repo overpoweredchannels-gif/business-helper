@@ -46,6 +46,8 @@ import type {
   AiActionMessage,
   AiBusinessQueryLog,
   AiBusinessQueryResult,
+  AiVoiceOperatorMessage,
+  AiVoiceOperatorSession,
   AuditLog,
   Brand,
   Category,
@@ -274,6 +276,21 @@ export default function Home() {
   const [voiceInputError, setVoiceInputError] = useState<string | null>(null);
   const [voiceTranscriptPreview, setVoiceTranscriptPreview] = useState("");
   const speechRecognitionRef = useRef<TradeOsSpeechRecognition | null>(null);
+  const [aiVoiceSessions, setAiVoiceSessions] = useState<AiVoiceOperatorSession[]>([]);
+  const [aiVoiceMessages, setAiVoiceMessages] = useState<AiVoiceOperatorMessage[]>([]);
+  const [selectedAiVoiceSessionId, setSelectedAiVoiceSessionId] = useState("");
+  const [aiVoiceInput, setAiVoiceInput] = useState("");
+  const [aiVoiceLanguage, setAiVoiceLanguage] = useState("auto");
+  const [aiVoiceOperatorMessage, setAiVoiceOperatorMessage] = useState<string | null>(null);
+  const [aiVoiceOperatorError, setAiVoiceOperatorError] = useState<string | null>(null);
+  const [aiVoiceOperatorLoading, setAiVoiceOperatorLoading] = useState(false);
+  const [isAiVoiceListening, setIsAiVoiceListening] = useState(false);
+  const [isAiVoiceSpeaking, setIsAiVoiceSpeaking] = useState(false);
+  const [aiVoiceTranscriptPreview, setAiVoiceTranscriptPreview] = useState("");
+  const [aiVoiceAutoSpeak, setAiVoiceAutoSpeak] = useState(true);
+  const [aiVoiceLastResponse, setAiVoiceLastResponse] = useState("");
+  const aiVoiceRecognitionRef = useRef<TradeOsSpeechRecognition | null>(null);
+  const aiVoiceUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [aiBusinessQuestion, setAiBusinessQuestion] = useState("");
   const [aiBusinessLanguage, setAiBusinessLanguage] = useState("auto");
   const [aiBusinessQueryMessage, setAiBusinessQueryMessage] = useState<string | null>(null);
@@ -372,6 +389,15 @@ export default function Home() {
         speechRecognitionRef.current.onerror = null;
         speechRecognitionRef.current.onend = null;
         speechRecognitionRef.current.abort?.();
+      }
+      if (aiVoiceRecognitionRef.current) {
+        aiVoiceRecognitionRef.current.onresult = null;
+        aiVoiceRecognitionRef.current.onerror = null;
+        aiVoiceRecognitionRef.current.onend = null;
+        aiVoiceRecognitionRef.current.abort?.();
+      }
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
       }
     };
   }, []);
@@ -537,6 +563,55 @@ export default function Home() {
     }
 
     setAiBusinessQueryLogs(data ?? []);
+  };
+
+  const fetchAiVoiceOperatorSessions = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setAiVoiceSessions([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("ai_voice_operator_sessions")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error("Supabase fetch AI voice sessions error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setAiVoiceSessions(data ?? []);
+  };
+
+  const fetchAiVoiceOperatorMessages = async (
+    sessionId?: string | null,
+    organizationId?: string | null
+  ) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    const activeSessionId = sessionId ?? selectedAiVoiceSessionId;
+    if (!orgId || !activeSessionId) {
+      setAiVoiceMessages([]);
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from("ai_voice_operator_messages")
+      .select("*")
+      .eq("organization_id", orgId)
+      .eq("voice_session_id", activeSessionId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch AI voice messages error:", JSON.stringify(error, null, 2));
+      return [];
+    }
+
+    setAiVoiceMessages(data ?? []);
+    return data ?? [];
   };
 
   const fetchMarketNewsSources = async (organizationId?: string | null) => {
@@ -881,6 +956,7 @@ export default function Home() {
     fetchAuditLogs(resolvedProfile.organization_id);
     fetchAiActionDrafts(resolvedProfile.organization_id);
     fetchAiBusinessQueryLogs(resolvedProfile.organization_id);
+    fetchAiVoiceOperatorSessions(resolvedProfile.organization_id);
     fetchMarketNewsSources(resolvedProfile.organization_id);
     fetchMarketIntelligenceItems(resolvedProfile.organization_id);
     fetchMarketImportQueueItems(resolvedProfile.organization_id);
@@ -3909,6 +3985,7 @@ export default function Home() {
     "mobile-app": "owner_admin",
     "ai-assistant": "owner_admin",
     "ai-business-query": "owner_admin",
+    "ai-voice-operator": "owner_admin",
     "market-intelligence": "owner_admin",
   };
   const canAccessSection = (sectionId: SectionId) => {
@@ -7075,8 +7152,8 @@ export default function Home() {
     status: string;
     error_message: string | null;
   }) => {
-    if (!currentOrganizationId) return;
-    const { error } = await supabase.from("ai_business_query_logs").insert({
+    if (!currentOrganizationId) return null;
+    const { data, error } = await supabase.from("ai_business_query_logs").insert({
       organization_id: currentOrganizationId,
       created_by_profile_id: currentProfile?.id ?? null,
       question: payload.question,
@@ -7089,10 +7166,12 @@ export default function Home() {
       raw_ai_response: payload.raw_ai_response ?? null,
       status: payload.status,
       error_message: payload.error_message,
-    });
+    }).select("id").single();
     if (error) {
       console.error("Supabase AI business query log insert error:", JSON.stringify(error, null, 2));
+      return null;
     }
+    return data?.id ?? null;
   };
 
   const askAiBusinessQuestion = async () => {
@@ -7204,6 +7283,414 @@ export default function Home() {
     window.setTimeout(() => {
       document.getElementById("ai-business-question")?.focus();
     }, 0);
+  };
+
+  const getAiVoiceSpeechLanguage = () => {
+    if (aiVoiceLanguage === "urdu") return "ur-PK";
+    if (aiVoiceLanguage === "roman_urdu") return "en-PK";
+    return "en-US";
+  };
+
+  const detectAiVoiceIntent = (inputText: string) => {
+    const text = inputText.toLowerCase();
+    if (/(create sale|add sale|create purchase|add purchase|add expense|record payment|add task|update stock|invoice banao|sale banao|purchase banao)/.test(text)) {
+      return { intent: "action_command", routed_to: "ai-assistant", confidence: 0.9 };
+    }
+    if (/(staff|employee|seller|salesman|duty|location|kis ne kya kiya|staff ne kya kaam kiya)/.test(text)) {
+      return { intent: "staff_activity_query", routed_to: "ai-business-query", confidence: 0.86 };
+    }
+    if (/(stock|inventory|low stock|product stock|kitna stock)/.test(text)) {
+      return { intent: "inventory_query", routed_to: "ai-business-query", confidence: 0.86 };
+    }
+    if (/(market|news|intelligence|price news|oil price|sugar news|fuel news|aaj ki news|market update)/.test(text)) {
+      return { intent: "market_query", routed_to: "ai-business-query", confidence: 0.82 };
+    }
+    if (/(what happened|summary|report|today|yesterday|business|profit|loss|sales report|payments|receivables|payables|kya hua)/.test(text)) {
+      return { intent: "business_query", routed_to: "ai-business-query", confidence: 0.8 };
+    }
+    return { intent: "unknown", routed_to: "clarification", confidence: 0.2 };
+  };
+
+  const addAiVoiceOperatorMessage = async ({
+    sessionId,
+    role,
+    messageType,
+    messageText,
+    detectedIntent = null,
+    routedTo = null,
+    relatedAiActionDraftId = null,
+    relatedBusinessQueryLogId = null,
+    relatedMarketAiAnalysisId = null,
+  }: {
+    sessionId: string | null;
+    role: "owner" | "assistant" | "system";
+    messageType: "voice" | "text" | "answer" | "draft_created" | "clarification" | "error";
+    messageText: string;
+    detectedIntent?: string | null;
+    routedTo?: string | null;
+    relatedAiActionDraftId?: string | null;
+    relatedBusinessQueryLogId?: string | null;
+    relatedMarketAiAnalysisId?: string | null;
+  }) => {
+    if (!currentOrganizationId || !sessionId || !messageText.trim()) return null;
+    const payload = {
+      organization_id: currentOrganizationId,
+      profile_id: currentProfile?.id ?? null,
+      voice_session_id: sessionId,
+      role,
+      message_type: messageType,
+      message_text: messageText,
+      detected_intent: detectedIntent,
+      routed_to: routedTo,
+      related_ai_action_draft_id: relatedAiActionDraftId,
+      related_business_query_log_id: relatedBusinessQueryLogId,
+      related_market_ai_analysis_id: relatedMarketAiAnalysisId,
+    };
+    const { data, error } = await supabase
+      .from("ai_voice_operator_messages")
+      .insert(payload)
+      .select("*")
+      .single();
+    if (error) {
+      console.error("Supabase AI voice message insert error:", JSON.stringify(error, null, 2));
+      return null;
+    }
+    return data as AiVoiceOperatorMessage;
+  };
+
+  const startAiVoiceOperatorSession = async () => {
+    setAiVoiceOperatorError(null);
+    setAiVoiceOperatorMessage(null);
+    if (!requireOrganization("start AI voice operator session")) {
+      setAiVoiceOperatorError("Organization not loaded. Please login again.");
+      return null;
+    }
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("ai_voice_operator_sessions")
+      .insert({
+        organization_id: currentOrganizationId,
+        profile_id: currentProfile?.id ?? null,
+        session_title: "Voice Operator Session",
+        language: aiVoiceLanguage || "auto",
+        started_at: now,
+        status: "active",
+        updated_at: now,
+      })
+      .select("*")
+      .single();
+    if (error) {
+      console.error("Supabase AI voice session insert error:", JSON.stringify(error, null, 2));
+      setAiVoiceOperatorError("Could not start voice session. Please try again.");
+      return null;
+    }
+    setSelectedAiVoiceSessionId(data.id);
+    await fetchAiVoiceOperatorSessions(currentOrganizationId);
+    await fetchAiVoiceOperatorMessages(data.id, currentOrganizationId);
+    setAiVoiceOperatorMessage("Voice operator session started.");
+    return data.id as string;
+  };
+
+  const ensureAiVoiceSession = async () => {
+    if (selectedAiVoiceSessionId) return selectedAiVoiceSessionId;
+    return startAiVoiceOperatorSession();
+  };
+
+  const endAiVoiceOperatorSession = async () => {
+    if (!selectedAiVoiceSessionId || !currentOrganizationId) return;
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from("ai_voice_operator_sessions")
+      .update({ status: "ended", ended_at: now, updated_at: now })
+      .eq("id", selectedAiVoiceSessionId)
+      .eq("organization_id", currentOrganizationId);
+    if (error) {
+      console.error("Supabase AI voice session end error:", JSON.stringify(error, null, 2));
+      setAiVoiceOperatorError("Could not end voice session. Please try again.");
+      return;
+    }
+    await fetchAiVoiceOperatorSessions(currentOrganizationId);
+    setAiVoiceOperatorMessage("Voice operator session ended.");
+  };
+
+  const createAiActionDraftFromOperator = async (commandText: string) => {
+    if (!currentOrganizationId) return null;
+    const parsed = parseAiCommand(commandText);
+    const now = new Date().toISOString();
+    const payload = {
+      organization_id: currentOrganizationId,
+      profile_id: currentProfile?.id ?? null,
+      command_text: commandText,
+      action_type: parsed.actionType,
+      status: "draft",
+      parsed_data: parsed.parsedData,
+      missing_fields: parsed.missingFields,
+      confirmation_summary: parsed.confirmationSummary,
+      follow_up_questions: parsed.followUpQuestions,
+      follow_up_answers: {},
+      ready_to_execute: parsed.readyToExecute,
+      execution_preview: parsed.executionPreview,
+      related_customer_id: parsed.related_customer_id,
+      related_supplier_id: parsed.related_supplier_id,
+      related_product_id: parsed.related_product_id,
+      updated_at: now,
+    };
+    const { data, error } = await supabase
+      .from("ai_action_drafts")
+      .insert(payload)
+      .select("*")
+      .single();
+    if (error) {
+      console.error("Supabase AI voice action draft insert error:", JSON.stringify(error, null, 2));
+      return null;
+    }
+    await createAuditLog({
+      action: "created",
+      entity_type: "ai_action_draft",
+      entity_id: data?.id ?? null,
+      entity_label: parsed.actionType,
+      description: `Created AI action draft from voice operator: ${parsed.confirmationSummary}`,
+      new_values: payload,
+    });
+    setSelectedAiDraftId(data?.id ?? "");
+    setSelectedConversationDraftId(data?.id ?? "");
+    await fetchAiActionDrafts(currentOrganizationId);
+    if (data?.id) await continueAiConversation(data as AiActionDraft);
+    return data as AiActionDraft;
+  };
+
+  const runAiBusinessQueryFromOperator = async (question: string) => {
+    const dateRange = detectAiBusinessDateRange(question);
+    const queryType = detectAiBusinessQueryType(question);
+    const language = aiVoiceLanguage === "auto" ? detectAiBusinessLanguage(question) : aiVoiceLanguage;
+    const summaryData = buildAiBusinessSummary(question, dateRange, queryType);
+    const response = await fetch("/api/ai-business-query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question,
+        language,
+        query_type: queryType,
+        date_range_start: dateRange.start,
+        date_range_end: dateRange.end,
+        business_summary: summaryData,
+      }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.ok) {
+      const details = typeof result?.details === "string" ? result.details : "";
+      const errorMessage = details
+        ? `AI business query failed: ${result?.error ?? "Request failed"} - ${details}`
+        : result?.error ?? "AI business query failed. Please try again.";
+      const failedLogId = await saveAiBusinessQueryLog({
+        question,
+        answer: null,
+        query_type: queryType,
+        language,
+        date_range_start: dateRange.start,
+        date_range_end: dateRange.end,
+        summary_data: summaryData,
+        raw_ai_response: result ?? null,
+        status: "failed",
+        error_message: errorMessage,
+      });
+      await fetchAiBusinessQueryLogs(currentOrganizationId);
+      return { answer: errorMessage, logId: failedLogId, queryType, language, failed: true };
+    }
+    const logId = await saveAiBusinessQueryLog({
+      question,
+      answer: result.result?.answer ?? null,
+      query_type: result.result?.query_type ?? queryType,
+      language: result.result?.language ?? language,
+      date_range_start: dateRange.start,
+      date_range_end: dateRange.end,
+      summary_data: summaryData,
+      raw_ai_response: result.raw ?? null,
+      status: "answered",
+      error_message: null,
+    });
+    await fetchAiBusinessQueryLogs(currentOrganizationId);
+    return {
+      answer: result.result?.answer ?? "I could not produce an answer from the available data.",
+      logId,
+      queryType: result.result?.query_type ?? queryType,
+      language: result.result?.language ?? language,
+      failed: false,
+    };
+  };
+
+  const stopAiVoiceOperatorReply = () => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    aiVoiceUtteranceRef.current = null;
+    setIsAiVoiceSpeaking(false);
+  };
+
+  const speakAiVoiceOperatorReply = (text: string) => {
+    if (!text.trim()) return;
+    if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
+      setAiVoiceOperatorError("Voice reply is not supported in this browser.");
+      return;
+    }
+    stopAiVoiceOperatorReply();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = getAiVoiceSpeechLanguage();
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onstart = () => setIsAiVoiceSpeaking(true);
+    utterance.onend = () => {
+      aiVoiceUtteranceRef.current = null;
+      setIsAiVoiceSpeaking(false);
+    };
+    utterance.onerror = () => {
+      aiVoiceUtteranceRef.current = null;
+      setIsAiVoiceSpeaking(false);
+      setAiVoiceOperatorError("Voice reply could not be played in this browser.");
+    };
+    aiVoiceUtteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const startAiVoiceListening = () => {
+    setAiVoiceOperatorError(null);
+    const Recognition = getSpeechRecognitionConstructor();
+    if (!Recognition) {
+      setAiVoiceOperatorError("Voice input is not supported in this browser.");
+      return;
+    }
+    if (aiVoiceRecognitionRef.current) {
+      aiVoiceRecognitionRef.current.abort?.();
+    }
+    const recognition = new Recognition();
+    recognition.lang = getAiVoiceSpeechLanguage();
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        transcript += event.results[index][0].transcript;
+      }
+      const cleanTranscript = transcript.trim();
+      setAiVoiceTranscriptPreview(cleanTranscript);
+      if (cleanTranscript) setAiVoiceInput(cleanTranscript);
+    };
+    recognition.onerror = (event) => {
+      setIsAiVoiceListening(false);
+      setAiVoiceOperatorError(event.error ? `Voice input error: ${event.error}` : "Voice input failed.");
+    };
+    recognition.onend = () => setIsAiVoiceListening(false);
+    aiVoiceRecognitionRef.current = recognition;
+    setIsAiVoiceListening(true);
+    recognition.start();
+  };
+
+  const stopAiVoiceListening = () => {
+    aiVoiceRecognitionRef.current?.stop();
+    setIsAiVoiceListening(false);
+  };
+
+  const sendToAiVoiceOperator = async () => {
+    setAiVoiceOperatorError(null);
+    setAiVoiceOperatorMessage(null);
+    if (!requireOrganization("send to AI voice operator")) {
+      setAiVoiceOperatorError("Organization not loaded. Please login again.");
+      return;
+    }
+    if (!isOwnerOrAdmin()) {
+      setAiVoiceOperatorError("Only owner/admin users can use AI Voice Operator in this version.");
+      return;
+    }
+    const input = aiVoiceInput.trim();
+    if (!input) {
+      setAiVoiceOperatorError("Speak or type a command first.");
+      return;
+    }
+    setAiVoiceOperatorLoading(true);
+    try {
+      const sessionId = await ensureAiVoiceSession();
+      if (!sessionId) return;
+      const route = detectAiVoiceIntent(input);
+      await addAiVoiceOperatorMessage({
+        sessionId,
+        role: "owner",
+        messageType: aiVoiceTranscriptPreview ? "voice" : "text",
+        messageText: input,
+        detectedIntent: route.intent,
+        routedTo: route.routed_to,
+      });
+
+      const recentReadyDraft = aiActionDrafts
+        .filter((draft) => !["executed", "cancelled", "failed"].includes(draft.status))
+        .find((draft) => draft.ready_to_execute || evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {}).readyToExecute);
+      if (/^(yes|confirm|proceed|save it|execute|haan|theek hai|kar do|save karo)$/i.test(input) && recentReadyDraft) {
+        await executeAiActionDraft(recentReadyDraft);
+        const reply = "Confirmed. I used the existing safe AI Action Assistant execution flow for the ready draft.";
+        await addAiVoiceOperatorMessage({
+          sessionId,
+          role: "assistant",
+          messageType: "answer",
+          messageText: reply,
+          detectedIntent: "action_command",
+          routedTo: "ai-assistant",
+          relatedAiActionDraftId: recentReadyDraft.id,
+        });
+        setAiVoiceLastResponse(reply);
+        if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+        setAiVoiceInput("");
+        await fetchAiVoiceOperatorMessages(sessionId, currentOrganizationId);
+        return;
+      }
+
+      if (["business_query", "staff_activity_query", "inventory_query", "market_query"].includes(route.intent)) {
+        const queryResult = await runAiBusinessQueryFromOperator(input);
+        await addAiVoiceOperatorMessage({
+          sessionId,
+          role: "assistant",
+          messageType: queryResult.failed ? "error" : "answer",
+          messageText: queryResult.answer,
+          detectedIntent: route.intent,
+          routedTo: "ai-business-query",
+          relatedBusinessQueryLogId: queryResult.logId,
+        });
+        setAiVoiceLastResponse(queryResult.answer);
+        if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(queryResult.answer);
+      } else if (route.intent === "action_command") {
+        const draft = await createAiActionDraftFromOperator(input);
+        const reply = draft
+          ? "I prepared this as a draft. I will ask missing questions and require confirmation before saving."
+          : "I could not prepare this action draft. Please try again or open AI Assistant.";
+        await addAiVoiceOperatorMessage({
+          sessionId,
+          role: "assistant",
+          messageType: draft ? "draft_created" : "error",
+          messageText: reply,
+          detectedIntent: route.intent,
+          routedTo: "ai-assistant",
+          relatedAiActionDraftId: draft?.id ?? null,
+        });
+        setAiVoiceLastResponse(reply);
+        if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+      } else {
+        const reply = "I can help with business summaries, staff activity, stock, market news, or creating draft sales/purchases/expenses/tasks. Please say what you want me to do.";
+        await addAiVoiceOperatorMessage({
+          sessionId,
+          role: "assistant",
+          messageType: "clarification",
+          messageText: reply,
+          detectedIntent: "unknown",
+          routedTo: "clarification",
+        });
+        setAiVoiceLastResponse(reply);
+        if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+      }
+      setAiVoiceInput("");
+      setAiVoiceTranscriptPreview("");
+      await fetchAiVoiceOperatorMessages(sessionId, currentOrganizationId);
+      setAiVoiceOperatorMessage("Voice operator handled the request safely.");
+    } finally {
+      setAiVoiceOperatorLoading(false);
+    }
   };
 
   const handlePrintCustomerStatement = (customerId: string | null) => {
@@ -7366,6 +7853,10 @@ export default function Home() {
   const handleSectionChange = (sectionId: SectionId) => {
     if (sectionId !== "ai-business-query") {
       stopAiBusinessVoice();
+    }
+    if (sectionId !== "ai-voice-operator") {
+      stopAiVoiceListening();
+      stopAiVoiceOperatorReply();
     }
     setActiveSection(sectionId);
     setMobileMenuOpen(false);
@@ -12803,6 +13294,262 @@ export default function Home() {
                     </div>
                   );
                 })
+              )}
+            </div>
+          </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "ai-voice-operator" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">AI Voice Business Operator</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Speak or type business questions and commands. TradeOS will answer questions, prepare actions as drafts, and require confirmation before saving records.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={startAiVoiceOperatorSession}
+                className="rounded bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-800"
+              >
+                Start New Session
+              </button>
+              <button
+                type="button"
+                onClick={endAiVoiceOperatorSession}
+                disabled={!selectedAiVoiceSessionId}
+                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+              >
+                End Session
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            Voice operator does not delete records or perform sensitive changes automatically. Action commands become drafts and still require owner confirmation.
+          </div>
+
+          {aiVoiceOperatorMessage && (
+            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              {aiVoiceOperatorMessage}
+            </p>
+          )}
+          {aiVoiceOperatorError && (
+            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {aiVoiceOperatorError}
+            </p>
+          )}
+
+          <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Language</span>
+                  <select
+                    value={aiVoiceLanguage}
+                    onChange={(event) => setAiVoiceLanguage(event.target.value)}
+                    className="rounded border border-gray-300 px-3 py-2"
+                  >
+                    <option value="auto">Auto</option>
+                    <option value="english">English</option>
+                    <option value="urdu">Urdu</option>
+                    <option value="roman_urdu">Roman Urdu</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Session</span>
+                  <select
+                    value={selectedAiVoiceSessionId}
+                    onChange={(event) => {
+                      setSelectedAiVoiceSessionId(event.target.value);
+                      fetchAiVoiceOperatorMessages(event.target.value, currentOrganizationId);
+                    }}
+                    className="rounded border border-gray-300 px-3 py-2"
+                  >
+                    <option value="">No active session</option>
+                    {aiVoiceSessions.map((session) => (
+                      <option key={session.id} value={session.id}>
+                        {session.session_title ?? "Voice Operator Session"} - {session.status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="ai-voice-operator-input">
+                Speak or type your command
+              </label>
+              <textarea
+                id="ai-voice-operator-input"
+                value={aiVoiceInput}
+                onChange={(event) => setAiVoiceInput(event.target.value)}
+                rows={4}
+                className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                placeholder="What happened yesterday? Or: Create sale for Test Customer 1 carton Pepsi 500ml cash"
+              />
+              {aiVoiceTranscriptPreview && (
+                <div className="mt-2 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+                  Transcript preview: {aiVoiceTranscriptPreview}
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {!isAiVoiceListening ? (
+                  <button
+                    type="button"
+                    onClick={startAiVoiceListening}
+                    className="rounded bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700"
+                  >
+                    Start Listening
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={stopAiVoiceListening}
+                    className="rounded bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700"
+                  >
+                    Stop Listening
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={sendToAiVoiceOperator}
+                  disabled={aiVoiceOperatorLoading}
+                  className="rounded bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                >
+                  {aiVoiceOperatorLoading ? "Sending..." : "Send to Operator"}
+                </button>
+                <button
+                  type="button"
+                  onClick={stopAiVoiceOperatorReply}
+                  disabled={!isAiVoiceSpeaking}
+                  className="rounded border border-red-400 bg-white px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                >
+                  Stop Voice Reply
+                </button>
+              </div>
+              <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={aiVoiceAutoSpeak}
+                  onChange={(event) => setAiVoiceAutoSpeak(event.target.checked)}
+                />
+                Auto-speak replies
+              </label>
+              {typeof window !== "undefined" && !getSpeechRecognitionConstructor() && (
+                <p className="mt-3 text-sm text-amber-800">Voice input is not supported in this browser. You can still type commands.</p>
+              )}
+              {typeof window !== "undefined" && !window.speechSynthesis && (
+                <p className="mt-2 text-sm text-amber-800">Voice reply is not supported in this browser.</p>
+              )}
+            </div>
+
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <h3 className="text-lg font-medium text-gray-900">Last Operator Reply</h3>
+              {aiVoiceLastResponse ? (
+                <p className="mt-3 whitespace-pre-wrap text-sm text-gray-800">{aiVoiceLastResponse}</p>
+              ) : (
+                <p className="mt-3 text-sm text-gray-600">No reply yet.</p>
+              )}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSectionChange("ai-business-query")}
+                  className="rounded border border-blue-500 bg-white px-3 py-2 text-xs text-blue-700 hover:bg-blue-50"
+                >
+                  Open AI Business Query
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSectionChange("ai-assistant")}
+                  className="rounded border border-indigo-500 bg-white px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
+                >
+                  Open AI Assistant
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSectionChange("market-intelligence")}
+                  className="rounded border border-emerald-500 bg-white px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50"
+                >
+                  Open Market Intelligence
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Conversation History</h3>
+                <p className="mt-1 text-sm text-gray-600">Owner commands, assistant replies, detected intent, and routed module.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchAiVoiceOperatorMessages(selectedAiVoiceSessionId, currentOrganizationId)}
+                disabled={!selectedAiVoiceSessionId}
+                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+              >
+                Refresh Messages
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {aiVoiceMessages.length === 0 ? (
+                <p className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+                  No voice operator messages yet.
+                </p>
+              ) : (
+                aiVoiceMessages.map((message) => (
+                  <div key={message.id} className="rounded border border-gray-200 bg-gray-50 p-4">
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">{message.role}</span>
+                      <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">{message.message_type}</span>
+                      {message.detected_intent && (
+                        <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">{message.detected_intent}</span>
+                      )}
+                      {message.routed_to && (
+                        <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">{message.routed_to}</span>
+                      )}
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{message.message_text}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {message.related_ai_action_draft_id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAiDraftId(message.related_ai_action_draft_id ?? "");
+                            setSelectedConversationDraftId(message.related_ai_action_draft_id ?? "");
+                            handleSectionChange("ai-assistant");
+                          }}
+                          className="rounded border border-indigo-500 bg-white px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50"
+                        >
+                          Open AI Assistant Draft
+                        </button>
+                      )}
+                      {message.related_business_query_log_id && (
+                        <button
+                          type="button"
+                          onClick={() => handleSectionChange("ai-business-query")}
+                          className="rounded border border-blue-500 bg-white px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
+                        >
+                          Open AI Business Query
+                        </button>
+                      )}
+                      {message.related_market_ai_analysis_id && (
+                        <button
+                          type="button"
+                          onClick={() => handleSectionChange("market-intelligence")}
+                          className="rounded border border-emerald-500 bg-white px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50"
+                        >
+                          Open Market Intelligence
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-2 text-xs text-gray-500">{formatDateTime(message.created_at)}</div>
+                  </div>
+                ))
               )}
             </div>
           </div>

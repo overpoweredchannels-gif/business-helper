@@ -268,6 +268,35 @@ export interface AiBusinessQueryLog {
   updated_at: string | null;
 }
 
+export interface AiVoiceOperatorSession {
+  id: string;
+  organization_id: string;
+  profile_id: string | null;
+  session_title: string | null;
+  language: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface AiVoiceOperatorMessage {
+  id: string;
+  organization_id: string;
+  profile_id: string | null;
+  voice_session_id: string | null;
+  role: string;
+  message_type: string;
+  message_text: string;
+  detected_intent: string | null;
+  routed_to: string | null;
+  related_ai_action_draft_id: string | null;
+  related_business_query_log_id: string | null;
+  related_market_ai_analysis_id: string | null;
+  created_at: string;
+}
+
 export interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;
@@ -323,6 +352,7 @@ export type SectionId =
   | "staff-duty"
   | "ai-assistant"
   | "ai-business-query"
+  | "ai-voice-operator"
   | "market-intelligence"
   | "mobile-app";
 
