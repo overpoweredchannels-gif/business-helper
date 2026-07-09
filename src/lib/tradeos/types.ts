@@ -297,6 +297,40 @@ export interface AiVoiceOperatorMessage {
   created_at: string;
 }
 
+export interface AiAlert {
+  id: string;
+  organization_id: string;
+  created_by_profile_id: string | null;
+  alert_type: string;
+  title: string;
+  summary: string | null;
+  severity: string;
+  source_type: string | null;
+  source_entity_type: string | null;
+  source_entity_id: string | null;
+  recommended_action: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string | null;
+  resolved_at: string | null;
+}
+
+export interface AiDailyBriefing {
+  id: string;
+  organization_id: string;
+  created_by_profile_id: string | null;
+  briefing_date: string;
+  language: string | null;
+  title: string;
+  summary: string | null;
+  top_signals: unknown;
+  recommended_actions: unknown;
+  raw_summary_data: unknown;
+  status: string;
+  created_at: string;
+  updated_at: string | null;
+}
+
 export interface NewPurchaseExpenseReminder {
   id: string;
   invoiceNumber: string;

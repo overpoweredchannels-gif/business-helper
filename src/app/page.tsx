@@ -44,8 +44,10 @@ import {
 import type {
   AiActionDraft,
   AiActionMessage,
+  AiAlert,
   AiBusinessQueryLog,
   AiBusinessQueryResult,
+  AiDailyBriefing,
   AiVoiceOperatorMessage,
   AiVoiceOperatorSession,
   AuditLog,
@@ -297,6 +299,13 @@ export default function Home() {
   const [aiVoiceAwaitingConfirmation, setAiVoiceAwaitingConfirmation] = useState(false);
   const aiVoiceRecognitionRef = useRef<TradeOsSpeechRecognition | null>(null);
   const aiVoiceUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const [aiAlerts, setAiAlerts] = useState<AiAlert[]>([]);
+  const [aiDailyBriefings, setAiDailyBriefings] = useState<AiDailyBriefing[]>([]);
+  const [aiBriefingMessage, setAiBriefingMessage] = useState<string | null>(null);
+  const [aiBriefingError, setAiBriefingError] = useState<string | null>(null);
+  const [aiBriefingLoading, setAiBriefingLoading] = useState(false);
+  const [aiAlertStatusFilter, setAiAlertStatusFilter] = useState("active");
+  const [aiAlertSeverityFilter, setAiAlertSeverityFilter] = useState("all");
   const [aiBusinessQuestion, setAiBusinessQuestion] = useState("");
   const [aiBusinessLanguage, setAiBusinessLanguage] = useState("auto");
   const [aiBusinessQueryMessage, setAiBusinessQueryMessage] = useState<string | null>(null);
@@ -618,6 +627,51 @@ export default function Home() {
 
     setAiVoiceMessages(data ?? []);
     return data ?? [];
+  };
+
+  const fetchAiAlerts = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setAiAlerts([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("ai_alerts")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error("Supabase fetch AI alerts error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setAiAlerts(data ?? []);
+  };
+
+  const fetchAiDailyBriefings = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setAiDailyBriefings([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("ai_daily_briefings")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("briefing_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    if (error) {
+      console.error("Supabase fetch AI daily briefings error:", JSON.stringify(error, null, 2));
+      return;
+    }
+
+    setAiDailyBriefings(data ?? []);
   };
 
   const fetchMarketNewsSources = async (organizationId?: string | null) => {
@@ -963,6 +1017,8 @@ export default function Home() {
     fetchAiActionDrafts(resolvedProfile.organization_id);
     fetchAiBusinessQueryLogs(resolvedProfile.organization_id);
     fetchAiVoiceOperatorSessions(resolvedProfile.organization_id);
+    fetchAiAlerts(resolvedProfile.organization_id);
+    fetchAiDailyBriefings(resolvedProfile.organization_id);
     fetchMarketNewsSources(resolvedProfile.organization_id);
     fetchMarketIntelligenceItems(resolvedProfile.organization_id);
     fetchMarketImportQueueItems(resolvedProfile.organization_id);
@@ -7205,6 +7261,493 @@ export default function Home() {
     };
   };
 
+  const getArrayValue = (value: unknown) => (Array.isArray(value) ? value : []);
+  const activeAiAlerts = aiAlerts.filter((alert) => alert.status === "active");
+  const filteredAiAlerts = aiAlerts.filter((alert) => {
+    const matchesStatus = aiAlertStatusFilter === "all" || alert.status === aiAlertStatusFilter;
+    const matchesSeverity = aiAlertSeverityFilter === "all" || alert.severity === aiAlertSeverityFilter;
+    return matchesStatus && matchesSeverity;
+  });
+  const latestAiDailyBriefing = aiDailyBriefings[0] ?? null;
+  const todayAiDailyBriefing =
+    aiDailyBriefings.find((briefing) => getDateOnly(briefing.briefing_date) === todayDateValue) ?? null;
+  const aiAlertSummary = aiAlerts.reduce(
+    (summary, alert) => {
+      if (alert.status === "active") summary.active += 1;
+      if (alert.status === "active" && alert.severity === "critical") summary.critical += 1;
+      if (alert.status === "active" && alert.severity === "high") summary.high += 1;
+      if (alert.status === "resolved") summary.resolved += 1;
+      return summary;
+    },
+    { active: 0, critical: 0, high: 0, resolved: 0 }
+  );
+
+  const buildDailyBriefingSummary = (dateRange: { start: string; end: string; label: string }, language: string) => {
+    const baseSummary = buildAiBusinessSummary("Generate an owner daily business briefing from this data.", dateRange, "business_overview");
+    return {
+      ...baseSummary,
+      language,
+      alerts: {
+        active_count: activeAiAlerts.length,
+        critical_count: activeAiAlerts.filter((alert) => alert.severity === "critical").length,
+        high_count: activeAiAlerts.filter((alert) => alert.severity === "high").length,
+        active_alerts: activeAiAlerts.slice(0, 25).map((alert) => ({
+          alert_type: alert.alert_type,
+          severity: alert.severity,
+          title: alert.title,
+          summary: alert.summary,
+          recommended_action: alert.recommended_action,
+          source_entity_type: alert.source_entity_type,
+        })),
+      },
+    };
+  };
+
+  const buildLocalDailyBriefingText = (summaryData: Record<string, any>) => {
+    const sales = summaryData.sales ?? {};
+    const purchases = summaryData.purchases ?? {};
+    const customerPayments = summaryData.customer_payments ?? {};
+    const supplierPayments = summaryData.supplier_payments ?? {};
+    const expensesSummary = summaryData.expenses ?? {};
+    const inventory = summaryData.inventory ?? {};
+    const market = summaryData.market_intelligence ?? {};
+    const alerts = summaryData.alerts ?? {};
+    const lines = [
+      `${summaryData.date_range?.label ?? "Today"} briefing:`,
+      `Sales: ${safeNumber(sales.count)} invoices totaling ${formatPKR(safeNumber(sales.total_amount))}.`,
+      `Purchases: ${safeNumber(purchases.count)} invoices totaling ${formatPKR(safeNumber(purchases.total_amount))}.`,
+      `Customer collections: ${safeNumber(customerPayments.count)} payments totaling ${formatPKR(safeNumber(customerPayments.total_amount))}.`,
+      `Supplier payments: ${safeNumber(supplierPayments.count)} payments totaling ${formatPKR(safeNumber(supplierPayments.total_amount))}.`,
+      `Expenses: ${safeNumber(expensesSummary.count)} entries totaling ${formatPKR(safeNumber(expensesSummary.total_amount))}.`,
+      `Inventory: ${safeNumber(inventory.stock_summary?.outOfStockCount)} out of stock, ${safeNumber(inventory.stock_summary?.urgentReorderCount)} urgent reorder, ${safeNumber(inventory.stock_summary?.lowStockSoonCount)} low stock soon.`,
+      `Alerts: ${safeNumber(alerts.active_count)} active, including ${safeNumber(alerts.critical_count)} critical and ${safeNumber(alerts.high_count)} high severity.`,
+      `Market signals: ${getArrayValue(market.critical_items).length} critical, ${getArrayValue(market.high_impact_items).length} high impact, ${getArrayValue(market.price_up_signals).length} price-up, ${getArrayValue(market.supply_shortage_signals).length} supply-shortage.`,
+    ];
+    return lines.join("\n");
+  };
+
+  const generateAiBusinessAlerts = async () => {
+    setAiBriefingMessage(null);
+    setAiBriefingError(null);
+
+    if (!requireOrganization("generate AI business alerts")) {
+      setAiBriefingError("Organization not loaded. Please login again.");
+      return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
+    }
+    if (!isOwnerOrAdmin()) {
+      setAiBriefingError("Only owner/admin users can generate AI alerts.");
+      return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
+    }
+
+    type AlertCandidate = {
+      alert_type: string;
+      title: string;
+      summary: string;
+      severity: "low" | "medium" | "high" | "critical";
+      source_type: string;
+      source_entity_type: string;
+      source_entity_id: string | null;
+      recommended_action: string;
+    };
+
+    const candidates: AlertCandidate[] = [];
+    reorderRecommendations
+      .filter((recommendation) => recommendation.status === "Out of Stock" || recommendation.status === "Urgent Reorder")
+      .slice(0, 30)
+      .forEach((recommendation) => {
+        candidates.push({
+          alert_type: "inventory",
+          title: `${recommendation.status}: ${recommendation.productName}`,
+          summary: `${recommendation.productName} stock is ${recommendation.currentStock} ${recommendation.unitType}. Reorder level is ${recommendation.reorderLevel}.`,
+          severity: recommendation.status === "Out of Stock" ? "critical" : "high",
+          source_type: "inventory",
+          source_entity_type: "product",
+          source_entity_id: String(recommendation.productId),
+          recommended_action:
+            recommendation.status === "Out of Stock"
+              ? "Create purchase plan immediately or pause sales for this product."
+              : "Review stock and prepare reorder before shortage affects sales.",
+        });
+      });
+
+    tasks
+      .filter((task) => {
+        const dueDate = getDateOnly(task.due_date);
+        return Boolean(dueDate && dueDate < todayDateValue && !["completed", "cancelled"].includes(task.status));
+      })
+      .slice(0, 20)
+      .forEach((task) => {
+        candidates.push({
+          alert_type: "task",
+          title: `Overdue task: ${task.title}`,
+          summary: `Task was due on ${formatDate(task.due_date)} and is still ${task.status}.`,
+          severity: task.priority === "urgent" ? "high" : "medium",
+          source_type: "task",
+          source_entity_type: "task",
+          source_entity_id: task.id,
+          recommended_action: "Review the task owner and complete or reschedule it today.",
+        });
+      });
+
+    marketIntelligenceItems
+      .filter((item) => item.status === "active")
+      .filter(
+        (item) =>
+          item.impact_level === "high" ||
+          item.impact_level === "critical" ||
+          item.impact_direction === "price_up" ||
+          item.impact_direction === "supply_shortage"
+      )
+      .slice(0, 25)
+      .forEach((item) => {
+        const severity = item.impact_level === "critical" ? "critical" : item.impact_level === "high" ? "high" : "medium";
+        candidates.push({
+          alert_type: "market",
+          title: `Market signal: ${item.title}`,
+          summary: item.summary ?? `Market impact: ${item.impact_direction || "neutral"}.`,
+          severity,
+          source_type: "market_intelligence",
+          source_entity_type: "market_intelligence_item",
+          source_entity_id: item.id,
+          recommended_action: item.suggested_action || "Review pricing, buying, and inventory exposure.",
+        });
+      });
+
+    customers
+      .map((customer) => ({ customer, summary: getCustomerCreditSummary(customer) }))
+      .filter((item) => item.summary.overdueAmount > 0)
+      .sort((a, b) => b.summary.overdueAmount - a.summary.overdueAmount)
+      .slice(0, 10)
+      .forEach(({ customer, summary }) => {
+        candidates.push({
+          alert_type: "payment",
+          title: `Overdue receivable: ${customer.customer_name}`,
+          summary: `${formatPKR(summary.overdueAmount)} overdue across ${summary.overdueInvoiceCount} invoice(s).`,
+          severity: summary.overdueAmount >= 50000 ? "high" : "medium",
+          source_type: "customer_credit",
+          source_entity_type: "customer",
+          source_entity_id: customer.id,
+          recommended_action: "Contact customer and plan collection before allowing more credit.",
+        });
+      });
+
+    suppliers
+      .map((supplier) => {
+        const transactionIds = purchaseTransactions
+          .filter((transaction) => transaction.supplier_id === supplier.id)
+          .map((transaction) => transaction.id);
+        const payable = transactionIds.reduce(
+          (sum, transactionId) =>
+            sum + Math.max(0, supplierPaymentAllocationByPurchaseTransaction[transactionId]?.remainingPayableAmount ?? 0),
+          0
+        );
+        return { supplier, payable };
+      })
+      .filter((item) => item.payable >= 100000)
+      .sort((a, b) => b.payable - a.payable)
+      .slice(0, 10)
+      .forEach(({ supplier, payable }) => {
+        candidates.push({
+          alert_type: "payment",
+          title: `Supplier payable pressure: ${supplier.supplier_name}`,
+          summary: `Current payable is ${formatPKR(payable)}.`,
+          severity: payable >= 250000 ? "high" : "medium",
+          source_type: "supplier_ledger",
+          source_entity_type: "supplier",
+          source_entity_id: supplier.id,
+          recommended_action: "Review supplier payment plan and cashflow before new purchases.",
+        });
+      });
+
+    const todayExpenses = expenses.filter((expense) => getDateOnly(expense.expense_date ?? expense.created_at) === todayDateValue);
+    const todayExpenseTotal = todayExpenses.reduce((sum, expense) => sum + safeNumber(expense.amount), 0);
+    if (todayExpenses.length > 0 && todayExpenseTotal >= 25000) {
+      candidates.push({
+        alert_type: "expense",
+        title: "High expenses recorded today",
+        summary: `${todayExpenses.length} expense entries total ${formatPKR(todayExpenseTotal)} today.`,
+        severity: todayExpenseTotal >= 75000 ? "high" : "medium",
+        source_type: "expenses",
+        source_entity_type: "expense_day",
+        source_entity_id: todayDateValue,
+        recommended_action: "Review expense categories and confirm large costs are expected.",
+      });
+    }
+
+    if (staffProfiles.length > 0 && dutySessions.length > 0 && ownerOnDutyCount === 0) {
+      candidates.push({
+        alert_type: "staff",
+        title: "No staff currently on duty",
+        summary: "Staff duty tracking exists, but no active on-duty session is currently visible.",
+        severity: "medium",
+        source_type: "staff_duty",
+        source_entity_type: "staff_duty",
+        source_entity_id: todayDateValue,
+        recommended_action: "Confirm whether staff should start duty tracking today.",
+      });
+    }
+
+    const uniqueCandidates = candidates.filter(
+      (candidate, index, allCandidates) =>
+        index ===
+        allCandidates.findIndex(
+          (item) =>
+            item.alert_type === candidate.alert_type &&
+            item.source_entity_type === candidate.source_entity_type &&
+            item.source_entity_id === candidate.source_entity_id &&
+            item.title === candidate.title
+        )
+    );
+    const newCandidates = uniqueCandidates.filter(
+      (candidate) =>
+        !aiAlerts.some(
+          (alert) =>
+            alert.status === "active" &&
+            alert.alert_type === candidate.alert_type &&
+            alert.source_entity_type === candidate.source_entity_type &&
+            alert.source_entity_id === candidate.source_entity_id &&
+            alert.title === candidate.title
+        )
+    );
+
+    if (newCandidates.length === 0) {
+      const message = "No new alerts were created. Existing active alerts already cover current signals.";
+      setAiBriefingMessage(message);
+      return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
+    }
+
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("ai_alerts").insert(
+      newCandidates.map((candidate) => ({
+        organization_id: currentOrganizationId,
+        created_by_profile_id: currentProfile?.id ?? null,
+        alert_type: candidate.alert_type,
+        title: candidate.title,
+        summary: candidate.summary,
+        severity: candidate.severity,
+        source_type: candidate.source_type,
+        source_entity_type: candidate.source_entity_type,
+        source_entity_id: candidate.source_entity_id,
+        recommended_action: candidate.recommended_action,
+        status: "active",
+        updated_at: now,
+        resolved_at: null,
+      }))
+    );
+
+    if (error) {
+      console.error("Supabase AI alerts insert error:", JSON.stringify(error, null, 2));
+      setAiBriefingError(`Failed to generate alerts: ${JSON.stringify(error, null, 2)}`);
+      return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
+    }
+
+    await createAuditLog({
+      action: "created",
+      entity_type: "ai_alert",
+      entity_id: null,
+      entity_label: "AI business alerts",
+      description: `Generated ${newCandidates.length} AI business alert(s)`,
+      new_values: { count: newCandidates.length, alerts: newCandidates.map((item) => item.title) },
+    });
+    await fetchAiAlerts(currentOrganizationId);
+    setAiBriefingMessage(`Generated ${newCandidates.length} new alert(s).`);
+    return { createdCount: newCandidates.length, activeCount: activeAiAlerts.length + newCandidates.length, createdAlerts: newCandidates };
+  };
+
+  const updateAiAlertStatus = async (alert: AiAlert, nextStatus: "active" | "resolved" | "archived") => {
+    setAiBriefingMessage(null);
+    setAiBriefingError(null);
+
+    if (!requireOrganization("update AI alert")) {
+      setAiBriefingError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from("ai_alerts")
+      .update({
+        status: nextStatus,
+        updated_at: now,
+        resolved_at: nextStatus === "resolved" ? now : null,
+      })
+      .eq("id", alert.id)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase AI alert status update error:", JSON.stringify(error, null, 2));
+      setAiBriefingError(`Failed to update alert: ${JSON.stringify(error, null, 2)}`);
+      return;
+    }
+
+    await createAuditLog({
+      action: "updated",
+      entity_type: "ai_alert",
+      entity_id: alert.id,
+      entity_label: alert.title,
+      description: `Updated AI alert status to ${nextStatus}`,
+      old_values: { status: alert.status },
+      new_values: { status: nextStatus },
+    });
+    await fetchAiAlerts(currentOrganizationId);
+    setAiBriefingMessage(`Alert marked ${nextStatus}.`);
+  };
+
+  const generateDailyBriefing = async () => {
+    setAiBriefingMessage(null);
+    setAiBriefingError(null);
+
+    if (!requireOrganization("generate daily briefing")) {
+      setAiBriefingError("Organization not loaded. Please login again.");
+      return null;
+    }
+    if (!isOwnerOrAdmin()) {
+      setAiBriefingError("Only owner/admin users can generate daily briefings.");
+      return null;
+    }
+
+    setAiBriefingLoading(true);
+    try {
+      const alertResult = await generateAiBusinessAlerts();
+      const dateRange = { start: todayDateValue, end: todayDateValue, label: "Today" };
+      const language = aiVoiceLanguage === "auto" ? "auto" : aiVoiceLanguage;
+      const summaryData = buildDailyBriefingSummary(dateRange, language) as Record<string, any>;
+      if (alertResult.createdAlerts.length > 0) {
+        const generatedAlertSummaries = alertResult.createdAlerts.map((alert) => ({
+          alert_type: alert.alert_type,
+          severity: alert.severity,
+          title: alert.title,
+          summary: alert.summary,
+          recommended_action: alert.recommended_action,
+          source_entity_type: alert.source_entity_type,
+        }));
+        summaryData.alerts = {
+          ...(summaryData.alerts ?? {}),
+          active_count: safeNumber(summaryData.alerts?.active_count) + alertResult.createdAlerts.length,
+          active_alerts: [...getArrayValue(summaryData.alerts?.active_alerts), ...generatedAlertSummaries].slice(0, 25),
+        };
+      }
+      const localSummary = buildLocalDailyBriefingText(summaryData as Record<string, any>);
+      let briefingSummary = localSummary;
+      let rawAiResponse: unknown = null;
+
+      try {
+        const response = await fetch("/api/ai-business-query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: "Generate an owner daily business briefing from this data.",
+            language,
+            query_type: "business_overview",
+            date_range_start: dateRange.start,
+            date_range_end: dateRange.end,
+            business_summary: summaryData,
+          }),
+        });
+        const result = await response.json().catch(() => null);
+        rawAiResponse = result ?? null;
+        if (response.ok && result?.ok && result.result?.answer) {
+          briefingSummary = result.result.answer;
+        }
+      } catch (err) {
+        console.error("AI daily briefing Gemini route error:", err);
+      }
+
+      const topSignals = [
+        ...getArrayValue(summaryData.alerts?.active_alerts)
+          .slice(0, 8)
+          .map((alert: any) => `${String(alert.severity ?? "medium").toUpperCase()}: ${String(alert.title ?? "Alert")}`),
+        ...reorderRecommendations
+          .filter((item) => item.status === "Out of Stock" || item.status === "Urgent Reorder")
+          .slice(0, 5)
+          .map((item) => `${item.status}: ${item.productName}`),
+        ...marketIntelligenceItems
+          .filter((item) => item.status === "active" && (item.impact_level === "critical" || item.impact_level === "high"))
+          .slice(0, 5)
+          .map((item) => `Market ${item.impact_level}: ${item.title}`),
+      ].slice(0, 15);
+      const recommendedActions = [
+        ...activeAiAlerts.map((alert) => alert.recommended_action).filter(Boolean).slice(0, 10),
+        reorderRecommendationSummary.outOfStockCount > 0 ? "Prioritize out-of-stock product purchasing." : "",
+        marketIntelligenceSummary.priceUp > 0 ? "Review selling prices for categories affected by price-up signals." : "",
+      ].filter(Boolean);
+      const now = new Date().toISOString();
+      const payload = {
+        organization_id: currentOrganizationId,
+        created_by_profile_id: currentProfile?.id ?? null,
+        briefing_date: todayDateValue,
+        language,
+        title: "Today's Business Briefing",
+        summary: briefingSummary,
+        top_signals: topSignals,
+        recommended_actions: recommendedActions,
+        raw_summary_data: {
+          summaryData,
+          rawAiResponse,
+        },
+        status: "generated",
+        updated_at: now,
+      };
+
+      const { data, error } = await supabase
+        .from("ai_daily_briefings")
+        .insert(payload)
+        .select("*")
+        .single();
+
+      if (error) {
+        console.error("Supabase AI daily briefing insert error:", JSON.stringify(error, null, 2));
+        setAiBriefingError(`Failed to save briefing: ${JSON.stringify(error, null, 2)}`);
+        return null;
+      }
+
+      await createAuditLog({
+        action: "created",
+        entity_type: "ai_daily_briefing",
+        entity_id: data?.id ?? null,
+        entity_label: payload.title,
+        description: "Generated daily business briefing",
+        new_values: { briefing_date: todayDateValue, top_signals: topSignals.length },
+      });
+      await fetchAiDailyBriefings(currentOrganizationId);
+      setAiBriefingMessage("Today's briefing generated.");
+      setAiVoiceLastResponse(briefingSummary);
+      if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(briefingSummary);
+      return data as AiDailyBriefing;
+    } finally {
+      setAiBriefingLoading(false);
+    }
+  };
+
+  const readLatestDailyBriefing = () => {
+    const briefing = latestAiDailyBriefing;
+    if (!briefing?.summary) {
+      setAiBriefingError("No briefing is available yet. Generate today's briefing first.");
+      return;
+    }
+    setAiVoiceLastResponse(briefing.summary);
+    speakAiVoiceOperatorReply(briefing.summary);
+  };
+
+  const summarizeActiveAlertsForVoice = async () => {
+    if (activeAiAlerts.length === 0) {
+      const result = await generateAiBusinessAlerts();
+      if (result.createdCount > 0) {
+        return `Generated ${result.createdCount} new active alert${result.createdCount === 1 ? "" : "s"}. Please review the Daily Briefing and Alerts panel for details.`;
+      }
+    }
+    const visibleAlerts = aiAlerts.filter((alert) => alert.status === "active").slice(0, 8);
+    if (visibleAlerts.length === 0) {
+      return "No active AI alerts found from currently loaded TradeOS data.";
+    }
+    return [
+      `You have ${visibleAlerts.length} active alert${visibleAlerts.length === 1 ? "" : "s"}.`,
+      ...visibleAlerts.map(
+        (alert) => `${alert.severity.toUpperCase()} ${alert.alert_type}: ${alert.title}. ${alert.recommended_action ?? ""}`.trim()
+      ),
+    ].join("\n");
+  };
+
   const saveAiBusinessQueryLog = async (payload: {
     question: string;
     answer: string | null;
@@ -7358,6 +7901,12 @@ export default function Home() {
 
   const detectAiVoiceIntent = (inputText: string) => {
     const text = inputText.toLowerCase();
+    if (/(today'?s briefing|daily briefing|business briefing|what should i watch|important alerts|read alerts|aaj ka briefing|aaj kya dekhna hai|important cheezen batao|read today'?s business summary)/.test(text)) {
+      return { intent: "daily_briefing", routed_to: "ai-voice-operator", confidence: 0.92 };
+    }
+    if (/(alerts|warnings|risks|issues|important alert|any important alerts)/.test(text)) {
+      return { intent: "alerts_summary", routed_to: "ai-voice-operator", confidence: 0.88 };
+    }
     if (/(create sale|add sale|create purchase|add purchase|add expense|record payment|add task|update stock|invoice banao|sale banao|purchase banao)/.test(text)) {
       return { intent: "action_command", routed_to: "ai-assistant", confidence: 0.9 };
     }
@@ -8023,7 +8572,32 @@ export default function Home() {
         return;
       }
 
-      if (["business_query", "staff_activity_query", "inventory_query", "market_query"].includes(route.intent)) {
+      if (route.intent === "daily_briefing") {
+        const briefing = todayAiDailyBriefing ?? (await generateDailyBriefing());
+        const reply = briefing?.summary ?? "I could not generate today's briefing from the available data.";
+        await addAiVoiceOperatorMessage({
+          sessionId,
+          role: "assistant",
+          messageType: "answer",
+          messageText: reply,
+          detectedIntent: route.intent,
+          routedTo: "ai-voice-operator",
+        });
+        setAiVoiceLastResponse(reply);
+        if (aiVoiceAutoSpeak && briefing?.summary) speakAiVoiceOperatorReply(briefing.summary);
+      } else if (route.intent === "alerts_summary") {
+        const reply = await summarizeActiveAlertsForVoice();
+        await addAiVoiceOperatorMessage({
+          sessionId,
+          role: "assistant",
+          messageType: "answer",
+          messageText: reply,
+          detectedIntent: route.intent,
+          routedTo: "ai-voice-operator",
+        });
+        setAiVoiceLastResponse(reply);
+        if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
+      } else if (["business_query", "staff_activity_query", "inventory_query", "market_query"].includes(route.intent)) {
         const queryResult = await runAiBusinessQueryFromOperator(input);
         await addAiVoiceOperatorMessage({
           sessionId,
@@ -13728,6 +14302,215 @@ export default function Home() {
               {aiVoiceOperatorError}
             </p>
           )}
+
+          <div className="mb-5 rounded border border-purple-200 bg-purple-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-purple-950">Daily Briefing & Alerts</h3>
+                <p className="mt-1 text-sm text-purple-900">
+                  Alerts and briefings are advisory. Owner should review before making business decisions.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={generateDailyBriefing}
+                  disabled={aiBriefingLoading}
+                  className="rounded bg-purple-700 px-3 py-2 text-sm text-white hover:bg-purple-800 disabled:cursor-not-allowed disabled:bg-purple-300"
+                >
+                  {aiBriefingLoading ? "Generating..." : "Generate Today's Briefing"}
+                </button>
+                <button
+                  type="button"
+                  onClick={generateAiBusinessAlerts}
+                  disabled={aiBriefingLoading}
+                  className="rounded border border-purple-300 bg-white px-3 py-2 text-sm text-purple-800 hover:bg-purple-100 disabled:cursor-not-allowed disabled:text-purple-300"
+                >
+                  Generate Alerts
+                </button>
+                <button
+                  type="button"
+                  onClick={readLatestDailyBriefing}
+                  disabled={!latestAiDailyBriefing?.summary}
+                  className="rounded border border-sky-300 bg-white px-3 py-2 text-sm text-sky-800 hover:bg-sky-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                >
+                  Read Latest Briefing
+                </button>
+                <button
+                  type="button"
+                  onClick={stopAiVoiceOperatorReply}
+                  disabled={!isAiVoiceSpeaking}
+                  className="rounded border border-red-300 bg-white px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                >
+                  Stop Voice
+                </button>
+              </div>
+            </div>
+
+            {aiBriefingMessage && (
+              <p className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                {aiBriefingMessage}
+              </p>
+            )}
+            {aiBriefingError && (
+              <p className="mt-3 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                {aiBriefingError}
+              </p>
+            )}
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              <div className="rounded border border-purple-100 bg-white p-3">
+                <div className="text-xs text-purple-700">Active Alerts</div>
+                <div className="mt-1 text-2xl font-semibold text-purple-950">{aiAlertSummary.active}</div>
+              </div>
+              <div className="rounded border border-purple-100 bg-white p-3">
+                <div className="text-xs text-purple-700">Critical</div>
+                <div className="mt-1 text-2xl font-semibold text-purple-950">{aiAlertSummary.critical}</div>
+              </div>
+              <div className="rounded border border-purple-100 bg-white p-3">
+                <div className="text-xs text-purple-700">High</div>
+                <div className="mt-1 text-2xl font-semibold text-purple-950">{aiAlertSummary.high}</div>
+              </div>
+              <div className="rounded border border-purple-100 bg-white p-3">
+                <div className="text-xs text-purple-700">Briefings</div>
+                <div className="mt-1 text-2xl font-semibold text-purple-950">{aiDailyBriefings.length}</div>
+              </div>
+            </div>
+
+            {latestAiDailyBriefing ? (
+              <div className="mt-4 rounded border border-purple-100 bg-white p-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h4 className="font-medium text-gray-900">{latestAiDailyBriefing.title}</h4>
+                    <p className="text-xs text-gray-500">
+                      {formatDate(latestAiDailyBriefing.briefing_date)} - created {formatDateTime(latestAiDailyBriefing.created_at)}
+                    </p>
+                  </div>
+                  <span className="w-fit rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-800">
+                    {latestAiDailyBriefing.status}
+                  </span>
+                </div>
+                <p className="mt-3 whitespace-pre-wrap text-sm text-gray-800">{latestAiDailyBriefing.summary}</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Top signals</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                      {getArrayValue(latestAiDailyBriefing.top_signals).slice(0, 8).map((signal, index) => (
+                        <li key={`${String(signal)}-${index}`}>{String(signal)}</li>
+                      ))}
+                      {getArrayValue(latestAiDailyBriefing.top_signals).length === 0 && <li>No top signals saved.</li>}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Recommended actions</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                      {getArrayValue(latestAiDailyBriefing.recommended_actions).slice(0, 8).map((action, index) => (
+                        <li key={`${String(action)}-${index}`}>{String(action)}</li>
+                      ))}
+                      {getArrayValue(latestAiDailyBriefing.recommended_actions).length === 0 && <li>No recommended actions saved.</li>}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-4 rounded border border-purple-100 bg-white px-3 py-3 text-sm text-gray-600">
+                No daily briefing generated yet.
+              </p>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <select
+                value={aiAlertStatusFilter}
+                onChange={(event) => setAiAlertStatusFilter(event.target.value)}
+                className="rounded border border-purple-200 bg-white px-3 py-2 text-sm"
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="resolved">Resolved</option>
+                <option value="archived">Archived</option>
+              </select>
+              <select
+                value={aiAlertSeverityFilter}
+                onChange={(event) => setAiAlertSeverityFilter(event.target.value)}
+                className="rounded border border-purple-200 bg-white px-3 py-2 text-sm"
+              >
+                <option value="all">All severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              {filteredAiAlerts.length === 0 ? (
+                <p className="rounded border border-purple-100 bg-white px-3 py-3 text-sm text-gray-600">
+                  No alerts match the current filters.
+                </p>
+              ) : (
+                filteredAiAlerts.slice(0, 25).map((alert) => (
+                  <div key={alert.id} className="rounded border border-purple-100 bg-white p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">{alert.alert_type}</span>
+                          <span
+                            className={`rounded px-2 py-1 text-xs font-medium ${
+                              alert.severity === "critical"
+                                ? "bg-red-100 text-red-800"
+                                : alert.severity === "high"
+                                  ? "bg-orange-100 text-orange-800"
+                                  : alert.severity === "medium"
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-gray-100 text-gray-700"
+                            }`}
+                          >
+                            {alert.severity}
+                          </span>
+                          <span className="rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-800">{alert.status}</span>
+                        </div>
+                        <h4 className="mt-2 font-medium text-gray-900">{alert.title}</h4>
+                        {alert.summary && <p className="mt-1 text-sm text-gray-700">{alert.summary}</p>}
+                        {alert.recommended_action && (
+                          <p className="mt-2 text-sm text-purple-900">Recommended: {alert.recommended_action}</p>
+                        )}
+                        <p className="mt-2 text-xs text-gray-500">Created {formatDateTime(alert.created_at)}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {alert.status !== "resolved" && (
+                          <button
+                            type="button"
+                            onClick={() => updateAiAlertStatus(alert, "resolved")}
+                            className="rounded border border-green-400 bg-white px-2 py-1 text-xs text-green-700 hover:bg-green-50"
+                          >
+                            Mark Resolved
+                          </button>
+                        )}
+                        {alert.status !== "active" && (
+                          <button
+                            type="button"
+                            onClick={() => updateAiAlertStatus(alert, "active")}
+                            className="rounded border border-blue-400 bg-white px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
+                          >
+                            Reopen
+                          </button>
+                        )}
+                        {alert.status !== "archived" && (
+                          <button
+                            type="button"
+                            onClick={() => updateAiAlertStatus(alert, "archived")}
+                            className="rounded border border-gray-400 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                          >
+                            Archive
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
           <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
             <div className="rounded border border-gray-200 bg-white p-4">
