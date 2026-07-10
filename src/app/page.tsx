@@ -286,11 +286,20 @@ export default function Home() {
   const [aiVoiceOperatorMessage, setAiVoiceOperatorMessage] = useState<string | null>(null);
   const [aiVoiceOperatorError, setAiVoiceOperatorError] = useState<string | null>(null);
   const [aiVoiceOperatorLoading, setAiVoiceOperatorLoading] = useState(false);
+  const aiVoiceOperatorLoadingRef = useRef(false);
   const [isAiVoiceListening, setIsAiVoiceListening] = useState(false);
   const [isAiVoiceSpeaking, setIsAiVoiceSpeaking] = useState(false);
   const [aiVoiceTranscriptPreview, setAiVoiceTranscriptPreview] = useState("");
   const [aiVoiceAutoSpeak, setAiVoiceAutoSpeak] = useState(true);
   const [aiVoiceLastResponse, setAiVoiceLastResponse] = useState("");
+  const [aiVoiceAutoSendEnabled, setAiVoiceAutoSendEnabled] = useState(false);
+  const [aiVoiceAutoSendDelayMs, setAiVoiceAutoSendDelayMs] = useState(1500);
+  const [aiVoiceAutoSendCountdown, setAiVoiceAutoSendCountdown] = useState(0);
+  const [aiVoiceAutoSendTimerActive, setAiVoiceAutoSendTimerActive] = useState(false);
+  const [aiVoicePendingAutoSendText, setAiVoicePendingAutoSendText] = useState("");
+  const [aiVoiceSpeechCleanPreview, setAiVoiceSpeechCleanPreview] = useState("");
+  const [aiVoiceHandsFreeMessage, setAiVoiceHandsFreeMessage] = useState<string | null>(null);
+  const [aiVoiceHandsFreeError, setAiVoiceHandsFreeError] = useState<string | null>(null);
   const [aiVoiceActiveActionDraftId, setAiVoiceActiveActionDraftId] = useState("");
   const [aiVoiceActiveActionDraft, setAiVoiceActiveActionDraft] = useState<AiActionDraft | null>(null);
   const [aiVoiceActiveMissingField, setAiVoiceActiveMissingField] = useState("");
@@ -299,6 +308,11 @@ export default function Home() {
   const [aiVoiceAwaitingConfirmation, setAiVoiceAwaitingConfirmation] = useState(false);
   const aiVoiceRecognitionRef = useRef<TradeOsSpeechRecognition | null>(null);
   const aiVoiceUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const aiVoiceInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const aiVoiceAutoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiVoiceAutoSendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const aiVoiceFinalTranscriptRef = useRef("");
+  const aiVoiceLastAutoSentRef = useRef<{ text: string; sentAt: number }>({ text: "", sentAt: 0 });
   const [aiAlerts, setAiAlerts] = useState<AiAlert[]>([]);
   const [aiDailyBriefings, setAiDailyBriefings] = useState<AiDailyBriefing[]>([]);
   const [aiBriefingMessage, setAiBriefingMessage] = useState<string | null>(null);
@@ -395,6 +409,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    aiVoiceOperatorLoadingRef.current = aiVoiceOperatorLoading;
+  }, [aiVoiceOperatorLoading]);
+
+  useEffect(() => {
     return () => {
       if (typeof navigator !== "undefined" && locationWatchIdRef.current !== null) {
         navigator.geolocation.clearWatch(locationWatchIdRef.current);
@@ -410,6 +428,12 @@ export default function Home() {
         aiVoiceRecognitionRef.current.onerror = null;
         aiVoiceRecognitionRef.current.onend = null;
         aiVoiceRecognitionRef.current.abort?.();
+      }
+      if (aiVoiceAutoSendTimerRef.current) {
+        clearTimeout(aiVoiceAutoSendTimerRef.current);
+      }
+      if (aiVoiceAutoSendIntervalRef.current) {
+        clearInterval(aiVoiceAutoSendIntervalRef.current);
       }
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel();
@@ -6984,6 +7008,65 @@ export default function Home() {
     return byLang("en") ?? null;
   };
 
+  const detectSpeechLanguageFromText = (text: string, language = "auto") => {
+    if (language && language !== "auto") return language;
+    if (/[\u0600-\u06FF]/.test(text)) return "urdu";
+    if (/\b(ajj|dasso|kinna|kinne|kam|grahak)\b/i.test(text)) return "punjabi";
+    if (/\b(aaj|kal|kya|batao|kaam|kitna|kitne|udhaar|qarz|naqad|supplier|customer)\b/i.test(text)) {
+      return "roman_urdu";
+    }
+    return "english";
+  };
+
+  const cleanTextForSpeech = (text: string, language = "auto") => {
+    const detectedLanguage = detectSpeechLanguageFromText(text, language);
+    let speechText = String(text ?? "");
+    speechText = speechText.replace(/```[\s\S]*?```/g, " ");
+    speechText = speechText.replace(/`/g, "");
+    speechText = speechText.replace(/^\s{0,3}#{1,6}\s*/gm, "");
+    speechText = speechText.replace(/^\s*[-*•]\s+/gm, "");
+    speechText = speechText.replace(/\*\*?\*?/g, "");
+    speechText = speechText.replace(/[|_~{}[\]<>]/g, " ");
+    speechText = speechText.replace(/"{\s*|\s*}"/g, " ");
+    speechText = speechText.replace(/[{}[\]]/g, " ");
+    speechText = speechText.replace(/\s[-=]{2,}\s/g, ". ");
+    speechText = speechText.replace(/\s*\/\s*/g, " or ");
+    speechText = speechText.replace(/^\s*\d+\.\s+/gm, "");
+    speechText = speechText.replace(/^\s*[A-Za-z ]{2,35}:\s*/gm, (match) => match.replace(":", ". "));
+    speechText = speechText.replace(/:\s*/g, ". ");
+    speechText = speechText.replace(/\r?\n+/g, ". ");
+    speechText = speechText.replace(/[;]+/g, ". ");
+    speechText = speechText.replace(/[!]{2,}/g, ".");
+    speechText = speechText.replace(/[?]{2,}/g, "?");
+    speechText = speechText.replace(/[.]{3,}/g, ".");
+    speechText = speechText.replace(/\s+,/g, ",");
+    speechText = speechText.replace(/\s+\./g, ".");
+    speechText = speechText.replace(/\.\s*\./g, ". ");
+    speechText = speechText.replace(/\s{2,}/g, " ").trim();
+    if (detectedLanguage === "urdu") {
+      return speechText;
+    }
+    return speechText;
+  };
+
+  const prepareLocalizedSpeechText = (text: string, language = "auto") =>
+    cleanTextForSpeech(text, detectSpeechLanguageFromText(text, language));
+
+  const getPreferredSpeechVoice = (language: string) => {
+    const normalizedLanguage = language.toLowerCase();
+    const byLang = (prefix: string) =>
+      availableSpeechVoices.find((voice) => voice.lang.toLowerCase().startsWith(prefix));
+    const regionalEnglish =
+      availableSpeechVoices.find((voice) => ["en-pk", "en-in"].includes(voice.lang.toLowerCase())) ??
+      byLang("en");
+    if (normalizedLanguage === "urdu") return byLang("ur") ?? regionalEnglish ?? null;
+    if (normalizedLanguage === "punjabi") return byLang("pa") ?? byLang("ur") ?? regionalEnglish ?? null;
+    if (normalizedLanguage === "roman_urdu" || normalizedLanguage === "roman_punjabi") {
+      return regionalEnglish ?? byLang("ur") ?? byLang("pa") ?? null;
+    }
+    return byLang("en") ?? regionalEnglish ?? null;
+  };
+
   const stopAiBusinessVoice = () => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -7007,10 +7090,27 @@ export default function Home() {
     }
 
     stopAiBusinessVoice();
-    const utterance = new SpeechSynthesisUtterance(text);
-    const preferredVoice = getPreferredAiBusinessVoice();
+    const detectedLanguage = detectAiBusinessLanguage(text);
+    const speechText = prepareLocalizedSpeechText(text, detectedLanguage);
+    if (!speechText) {
+      setAiBusinessVoiceError("The AI answer did not contain readable speech text.");
+      return;
+    }
+    setAiVoiceSpeechCleanPreview(speechText);
+    const utterance = new SpeechSynthesisUtterance(speechText);
+    const preferredVoice = selectedAiBusinessVoiceName
+      ? getPreferredAiBusinessVoice()
+      : getPreferredSpeechVoice(detectedLanguage);
     if (preferredVoice) utterance.voice = preferredVoice;
-    utterance.lang = preferredVoice?.lang ?? getAiBusinessSpeechLanguage();
+    utterance.lang =
+      preferredVoice?.lang ??
+      (detectedLanguage === "urdu"
+        ? "ur-PK"
+        : detectedLanguage === "punjabi"
+          ? "pa-PK"
+          : detectedLanguage === "roman_urdu"
+            ? "en-PK"
+            : "en-US");
     utterance.rate = safeNumber(aiBusinessVoiceRate) || 1;
     utterance.pitch = safeNumber(aiBusinessVoicePitch) || 1;
     utterance.onstart = () => {
@@ -8438,8 +8538,14 @@ export default function Home() {
       return;
     }
     stopAiVoiceOperatorReply();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = getAiVoiceSpeechLanguage();
+    const detectedLanguage = detectSpeechLanguageFromText(text, aiVoiceLanguage);
+    const speechText = prepareLocalizedSpeechText(text, detectedLanguage);
+    if (!speechText) return;
+    setAiVoiceSpeechCleanPreview(speechText);
+    const utterance = new SpeechSynthesisUtterance(speechText);
+    const preferredVoice = getPreferredSpeechVoice(detectedLanguage);
+    if (preferredVoice) utterance.voice = preferredVoice;
+    utterance.lang = preferredVoice?.lang ?? getAiVoiceSpeechLanguage();
     utterance.rate = 1;
     utterance.pitch = 1;
     utterance.onstart = () => setIsAiVoiceSpeaking(true);
@@ -8456,8 +8562,94 @@ export default function Home() {
     window.speechSynthesis.speak(utterance);
   };
 
+  const clearAiVoiceAutoSendTimers = () => {
+    if (aiVoiceAutoSendTimerRef.current) {
+      clearTimeout(aiVoiceAutoSendTimerRef.current);
+      aiVoiceAutoSendTimerRef.current = null;
+    }
+    if (aiVoiceAutoSendIntervalRef.current) {
+      clearInterval(aiVoiceAutoSendIntervalRef.current);
+      aiVoiceAutoSendIntervalRef.current = null;
+    }
+    setAiVoiceAutoSendTimerActive(false);
+    setAiVoiceAutoSendCountdown(0);
+  };
+
+  const cancelAiVoiceAutoSend = (message = "Auto-send cancelled. You can edit the text or send manually.") => {
+    clearAiVoiceAutoSendTimers();
+    setAiVoicePendingAutoSendText("");
+    setAiVoiceHandsFreeMessage(message);
+    setAiVoiceHandsFreeError(null);
+  };
+
+  const editAiVoiceBeforeSending = () => {
+    cancelAiVoiceAutoSend("Auto-send paused. Edit the text, then send when ready.");
+    window.setTimeout(() => aiVoiceInputRef.current?.focus(), 0);
+  };
+
+  const scheduleAiVoiceAutoSend = (transcript: string) => {
+    const cleanTranscript = transcript.trim();
+    if (!cleanTranscript || !aiVoiceAutoSendEnabled || aiVoiceOperatorLoadingRef.current) return;
+    clearAiVoiceAutoSendTimers();
+    setAiVoicePendingAutoSendText(cleanTranscript);
+    setAiVoiceInput(cleanTranscript);
+    setAiVoiceHandsFreeError(null);
+    setAiVoiceHandsFreeMessage(`Sending in ${(aiVoiceAutoSendDelayMs / 1000).toFixed(1)} seconds...`);
+    setAiVoiceAutoSendTimerActive(true);
+    setAiVoiceAutoSendCountdown(aiVoiceAutoSendDelayMs);
+    const startedAt = Date.now();
+    aiVoiceAutoSendIntervalRef.current = setInterval(() => {
+      const remaining = Math.max(0, aiVoiceAutoSendDelayMs - (Date.now() - startedAt));
+      setAiVoiceAutoSendCountdown(remaining);
+      setAiVoiceHandsFreeMessage(`Sending in ${(remaining / 1000).toFixed(1)} seconds...`);
+      if (remaining <= 0 && aiVoiceAutoSendIntervalRef.current) {
+        clearInterval(aiVoiceAutoSendIntervalRef.current);
+        aiVoiceAutoSendIntervalRef.current = null;
+      }
+    }, 100);
+    aiVoiceAutoSendTimerRef.current = setTimeout(() => {
+      const now = Date.now();
+      const lastSent = aiVoiceLastAutoSentRef.current;
+      clearAiVoiceAutoSendTimers();
+      if (aiVoiceOperatorLoadingRef.current) {
+        setAiVoiceHandsFreeError("Operator is still processing. Auto-send skipped.");
+        return;
+      }
+      if (lastSent.text === cleanTranscript && now - lastSent.sentAt < 2000) {
+        setAiVoiceHandsFreeError("Duplicate voice send skipped.");
+        return;
+      }
+      aiVoiceLastAutoSentRef.current = { text: cleanTranscript, sentAt: now };
+      setAiVoicePendingAutoSendText("");
+      setAiVoiceHandsFreeMessage("Sent to operator.");
+      void sendToAiVoiceOperator(cleanTranscript, "voice");
+    }, aiVoiceAutoSendDelayMs);
+  };
+
+  const sendAiVoicePendingNow = () => {
+    const pendingText = (aiVoicePendingAutoSendText || aiVoiceInput).trim();
+    if (!pendingText) {
+      setAiVoiceHandsFreeError("No pending voice text to send.");
+      return;
+    }
+    clearAiVoiceAutoSendTimers();
+    const now = Date.now();
+    const lastSent = aiVoiceLastAutoSentRef.current;
+    if (lastSent.text === pendingText && now - lastSent.sentAt < 2000) {
+      setAiVoiceHandsFreeError("Duplicate voice send skipped.");
+      return;
+    }
+    aiVoiceLastAutoSentRef.current = { text: pendingText, sentAt: now };
+    setAiVoicePendingAutoSendText("");
+    setAiVoiceHandsFreeMessage("Sent to operator.");
+    void sendToAiVoiceOperator(pendingText, "voice");
+  };
+
   const startAiVoiceListening = () => {
     setAiVoiceOperatorError(null);
+    setAiVoiceHandsFreeError(null);
+    setAiVoiceHandsFreeMessage("Listening...");
+    cancelAiVoiceAutoSend("Listening... speak your TradeOS command.");
     const Recognition = getSpeechRecognitionConstructor();
     if (!Recognition) {
       setAiVoiceOperatorError("Voice input is not supported in this browser.");
@@ -8470,20 +8662,41 @@ export default function Home() {
     recognition.lang = getAiVoiceSpeechLanguage();
     recognition.interimResults = true;
     recognition.continuous = false;
+    aiVoiceFinalTranscriptRef.current = "";
     recognition.onresult = (event) => {
       let transcript = "";
+      let finalTranscript = "";
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        transcript += event.results[index][0].transcript;
+        const resultText = event.results[index][0].transcript;
+        transcript += resultText;
+        if (event.results[index].isFinal) {
+          finalTranscript += resultText;
+        }
       }
       const cleanTranscript = transcript.trim();
+      const cleanFinalTranscript = finalTranscript.trim();
       setAiVoiceTranscriptPreview(cleanTranscript);
       if (cleanTranscript) setAiVoiceInput(cleanTranscript);
+      if (cleanFinalTranscript) {
+        aiVoiceFinalTranscriptRef.current = cleanFinalTranscript;
+      }
     };
     recognition.onerror = (event) => {
       setIsAiVoiceListening(false);
+      clearAiVoiceAutoSendTimers();
       setAiVoiceOperatorError(event.error ? `Voice input error: ${event.error}` : "Voice input failed.");
     };
-    recognition.onend = () => setIsAiVoiceListening(false);
+    recognition.onend = () => {
+      setIsAiVoiceListening(false);
+      const transcript = (aiVoiceFinalTranscriptRef.current || aiVoiceTranscriptPreview || aiVoiceInput).trim();
+      if (aiVoiceAutoSendEnabled && transcript) {
+        scheduleAiVoiceAutoSend(transcript);
+      } else if (transcript) {
+        setAiVoiceHandsFreeMessage("Voice captured. Review and send when ready.");
+      } else {
+        setAiVoiceHandsFreeMessage("Listening ended. No speech was captured.");
+      }
+    };
     aiVoiceRecognitionRef.current = recognition;
     setIsAiVoiceListening(true);
     recognition.start();
@@ -8494,9 +8707,10 @@ export default function Home() {
     setIsAiVoiceListening(false);
   };
 
-  const sendToAiVoiceOperator = async () => {
+  const sendToAiVoiceOperator = async (overrideText?: string, source: "voice" | "text" = aiVoiceTranscriptPreview ? "voice" : "text") => {
     setAiVoiceOperatorError(null);
     setAiVoiceOperatorMessage(null);
+    setAiVoiceHandsFreeError(null);
     if (!requireOrganization("send to AI voice operator")) {
       setAiVoiceOperatorError("Organization not loaded. Please login again.");
       return;
@@ -8505,12 +8719,18 @@ export default function Home() {
       setAiVoiceOperatorError("Only owner/admin users can use AI Voice Operator in this version.");
       return;
     }
-    const input = aiVoiceInput.trim();
+    if (aiVoiceOperatorLoadingRef.current) {
+      setAiVoiceHandsFreeError("Operator is already processing. Please wait.");
+      return;
+    }
+    clearAiVoiceAutoSendTimers();
+    const input = (overrideText ?? aiVoiceInput).trim();
     if (!input) {
       setAiVoiceOperatorError("Speak or type a command first.");
       return;
     }
     setAiVoiceOperatorLoading(true);
+    aiVoiceOperatorLoadingRef.current = true;
     try {
       const sessionId = await ensureAiVoiceSession();
       if (!sessionId) return;
@@ -8523,7 +8743,7 @@ export default function Home() {
       await addAiVoiceOperatorMessage({
         sessionId,
         role: "owner",
-        messageType: aiVoiceTranscriptPreview ? "voice" : "text",
+        messageType: source,
         messageText: input,
         detectedIntent: route.intent,
         routedTo: route.routed_to,
@@ -8646,10 +8866,13 @@ export default function Home() {
       }
       setAiVoiceInput("");
       setAiVoiceTranscriptPreview("");
+      setAiVoicePendingAutoSendText("");
       await fetchAiVoiceOperatorMessages(sessionId, currentOrganizationId);
       setAiVoiceOperatorMessage("Voice operator handled the request safely.");
+      setAiVoiceHandsFreeMessage("Sent to operator.");
     } finally {
       setAiVoiceOperatorLoading(false);
+      aiVoiceOperatorLoadingRef.current = false;
     }
   };
 
@@ -8817,6 +9040,7 @@ export default function Home() {
     if (sectionId !== "ai-voice-operator") {
       stopAiVoiceListening();
       stopAiVoiceOperatorReply();
+      cancelAiVoiceAutoSend("Auto-send cancelled.");
     }
     setActiveSection(sectionId);
     setMobileMenuOpen(false);
@@ -14548,13 +14772,101 @@ export default function Home() {
                 </label>
               </div>
 
+              <div className="mt-4 rounded border border-sky-200 bg-sky-50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-base font-medium text-sky-950">Hands-Free Mode</h3>
+                    <p className="mt-1 text-sm text-sky-900">
+                      Auto-send only sends your spoken text to the operator. Write actions still require confirmation before saving.
+                    </p>
+                    <p className="mt-1 text-xs text-sky-800">
+                      Browser voices may not pronounce Urdu/Punjabi perfectly. Premium AI voice support will be added later.
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-sky-950">
+                    <input
+                      type="checkbox"
+                      checked={aiVoiceAutoSendEnabled}
+                      onChange={(event) => {
+                        setAiVoiceAutoSendEnabled(event.target.checked);
+                        if (!event.target.checked) cancelAiVoiceAutoSend("Auto-send turned off.");
+                      }}
+                    />
+                    Auto-send voice command after I stop speaking
+                  </label>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_2fr]">
+                  <label className="flex flex-col gap-1 text-sm text-sky-950">
+                    <span>Auto-send delay</span>
+                    <select
+                      value={aiVoiceAutoSendDelayMs}
+                      onChange={(event) => setAiVoiceAutoSendDelayMs(Number(event.target.value))}
+                      disabled={!aiVoiceAutoSendEnabled}
+                      className="rounded border border-sky-200 bg-white px-3 py-2 disabled:cursor-not-allowed disabled:bg-gray-100"
+                    >
+                      <option value={1000}>1 second</option>
+                      <option value={1500}>1.5 seconds</option>
+                      <option value={2000}>2 seconds</option>
+                      <option value={3000}>3 seconds</option>
+                    </select>
+                  </label>
+                  <div className="rounded border border-sky-100 bg-white px-3 py-2 text-sm text-sky-950">
+                    <div className="font-medium">Status</div>
+                    <div className="mt-1">
+                      {isAiVoiceListening
+                        ? "Listening"
+                        : aiVoiceAutoSendTimerActive
+                          ? `Waiting to auto-send (${(aiVoiceAutoSendCountdown / 1000).toFixed(1)}s)`
+                          : aiVoiceHandsFreeMessage ?? "Ready"}
+                    </div>
+                    {aiVoiceHandsFreeError && <div className="mt-1 text-red-700">{aiVoiceHandsFreeError}</div>}
+                  </div>
+                </div>
+                {(aiVoiceAutoSendTimerActive || aiVoicePendingAutoSendText) && (
+                  <div className="mt-3 rounded border border-sky-100 bg-white p-3">
+                    <div className="text-xs font-medium uppercase tracking-wide text-sky-700">Pending voice text</div>
+                    <p className="mt-1 text-sm text-gray-800">{aiVoicePendingAutoSendText || aiVoiceInput}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => cancelAiVoiceAutoSend()}
+                        className="rounded border border-red-300 bg-white px-3 py-2 text-xs text-red-700 hover:bg-red-50"
+                      >
+                        Cancel Auto-Send
+                      </button>
+                      <button
+                        type="button"
+                        onClick={sendAiVoicePendingNow}
+                        disabled={aiVoiceOperatorLoading}
+                        className="rounded bg-sky-700 px-3 py-2 text-xs text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-300"
+                      >
+                        Send Now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={editAiVoiceBeforeSending}
+                        className="rounded border border-sky-300 bg-white px-3 py-2 text-xs text-sky-800 hover:bg-sky-50"
+                      >
+                        Edit Before Sending
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="ai-voice-operator-input">
                 Speak or type your command
               </label>
               <textarea
                 id="ai-voice-operator-input"
+                ref={aiVoiceInputRef}
                 value={aiVoiceInput}
-                onChange={(event) => setAiVoiceInput(event.target.value)}
+                onChange={(event) => {
+                  if (aiVoiceAutoSendTimerActive) {
+                    cancelAiVoiceAutoSend("Auto-send paused while you edit.");
+                  }
+                  setAiVoiceInput(event.target.value);
+                }}
                 rows={4}
                 className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 placeholder={
@@ -14694,7 +15006,7 @@ export default function Home() {
                 )}
                 <button
                   type="button"
-                  onClick={sendToAiVoiceOperator}
+                  onClick={() => sendToAiVoiceOperator()}
                   disabled={aiVoiceOperatorLoading}
                   className="rounded bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
                 >
@@ -14731,6 +15043,14 @@ export default function Home() {
                 <p className="mt-3 whitespace-pre-wrap text-sm text-gray-800">{aiVoiceLastResponse}</p>
               ) : (
                 <p className="mt-3 text-sm text-gray-600">No reply yet.</p>
+              )}
+              {aiVoiceSpeechCleanPreview && (
+                <div className="mt-3 rounded border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                  Voice will read a cleaned version of this answer:
+                  <div className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-gray-700">
+                    {aiVoiceSpeechCleanPreview}
+                  </div>
+                </div>
               )}
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
