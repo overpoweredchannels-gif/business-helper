@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callAiProviderRouter } from "@/lib/ai/provider-router";
 
 export const runtime = "nodejs";
 
@@ -10,77 +11,16 @@ type BusinessQueryResult = {
   warnings: string[];
 };
 
-const temporaryGeminiStatuses = new Set([429, 500, 502, 503, 504]);
-
 const safeText = (value: unknown, maxLength = 4000) => {
   if (value === null || value === undefined) return "";
   const text = String(value).trim();
   return text.length > maxLength ? text.slice(0, maxLength) : text;
 };
 
-const stripJsonFences = (text: string) =>
-  text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
-const parseResponseText = (text: string) => {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { text };
-  }
+const safeNumber = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 };
-
-const extractGeminiText = (rawResponse: any) =>
-  safeText(rawResponse?.candidates?.[0]?.content?.parts?.[0]?.text, 12000);
-
-const parseJsonObject = (text: string) => {
-  const cleanText = stripJsonFences(text);
-  try {
-    return JSON.parse(cleanText);
-  } catch {
-    const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    try {
-      return JSON.parse(jsonMatch[0]);
-    } catch {
-      return null;
-    }
-  }
-};
-
-const getGeminiErrorDetails = (rawResponse: any) => {
-  const message = safeText(rawResponse?.error?.message, 600);
-  const status = safeText(rawResponse?.error?.status, 100);
-  const code = rawResponse?.error?.code === undefined ? "" : safeText(rawResponse.error.code, 50);
-  return [message, status ? `Status: ${status}` : "", code ? `Code: ${code}` : ""]
-    .filter(Boolean)
-    .join(" | ") || "Gemini returned an error without a readable message.";
-};
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const callGemini = (model: string, apiKey: string, prompt: string) =>
-  fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: "POST",
-    headers: {
-      "x-goog-api-key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.2,
-      },
-    }),
-  });
 
 const normalizeStringArray = (value: unknown) =>
   Array.isArray(value)
@@ -95,17 +35,63 @@ const sanitizeResult = (value: any, fallbackAnswer: string, queryType: string, l
   warnings: normalizeStringArray(value?.warnings),
 });
 
-export async function POST(request: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const model = process.env.GEMINI_MARKET_MODEL || "gemini-2.5-flash";
+const getSummarySection = (summary: any, key: string) =>
+  summary && typeof summary === "object" && summary[key] && typeof summary[key] === "object"
+    ? summary[key]
+    : {};
 
-  if (!apiKey) {
-    return NextResponse.json(
-      { ok: false, error: "AI business query is not configured. Missing GEMINI_API_KEY." },
-      { status: 500 }
-    );
+const buildLocalFallbackResult = (
+  question: string,
+  language: string,
+  queryType: string,
+  businessSummary: any
+): BusinessQueryResult => {
+  const sales = getSummarySection(businessSummary, "sales");
+  const purchases = getSummarySection(businessSummary, "purchases");
+  const customerPayments = getSummarySection(businessSummary, "customer_payments");
+  const supplierPayments = getSummarySection(businessSummary, "supplier_payments");
+  const expenses = getSummarySection(businessSummary, "expenses");
+  const tasks = getSummarySection(businessSummary, "tasks");
+  const inventory = getSummarySection(businessSummary, "inventory");
+  const marketIntelligence = getSummarySection(businessSummary, "market_intelligence");
+
+  const keyPoints = [
+    `Sales: ${safeNumber(sales.count)} invoice(s), total ${safeNumber(sales.total_amount).toLocaleString("en-PK")}.`,
+    `Purchases: ${safeNumber(purchases.count)} invoice(s), total ${safeNumber(purchases.total_amount).toLocaleString("en-PK")}.`,
+    `Customer payments: ${safeNumber(customerPayments.count)} payment(s), total ${safeNumber(customerPayments.total_amount).toLocaleString("en-PK")}.`,
+    `Supplier payments: ${safeNumber(supplierPayments.count)} payment(s), total ${safeNumber(supplierPayments.total_amount).toLocaleString("en-PK")}.`,
+    `Expenses: ${safeNumber(expenses.count)} entry/entries, total ${safeNumber(expenses.total_amount).toLocaleString("en-PK")}.`,
+    `Tasks: ${safeNumber(tasks.pending)} pending, ${safeNumber(tasks.completed)} completed, ${safeNumber(tasks.overdue)} overdue.`,
+  ];
+
+  const lowStockCount = Array.isArray(inventory.low_stock_products) ? inventory.low_stock_products.length : 0;
+  const outOfStockCount = Array.isArray(inventory.out_of_stock_products) ? inventory.out_of_stock_products.length : 0;
+  if (lowStockCount || outOfStockCount) {
+    keyPoints.push(`Inventory alerts: ${outOfStockCount} out of stock, ${lowStockCount} low stock.`);
   }
 
+  const highImpactCount = Array.isArray(marketIntelligence.high_impact_items)
+    ? marketIntelligence.high_impact_items.length
+    : 0;
+  const criticalCount = Array.isArray(marketIntelligence.critical_items)
+    ? marketIntelligence.critical_items.length
+    : 0;
+  if (highImpactCount || criticalCount) {
+    keyPoints.push(`Market alerts: ${criticalCount} critical, ${highImpactCount} high impact.`);
+  }
+
+  return {
+    answer: `AI providers are unavailable, but here is a local TradeOS summary for "${question}". ${keyPoints.join(" ")}`,
+    query_type: queryType || "general",
+    language: language || "auto",
+    key_points: keyPoints,
+    warnings: ["This is a local fallback summary. It is not a Gemini/OpenAI/Groq generated answer."],
+  };
+};
+
+const localFallbackEnabled = () => safeText(process.env.AI_ENABLE_LOCAL_FALLBACK).toLowerCase() === "true";
+
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const question = safeText(body?.question, 1000);
@@ -152,69 +138,64 @@ business_summary:
 ${summaryText}
 `;
 
-    let response = await callGemini(model, apiKey, prompt);
-    if (temporaryGeminiStatuses.has(response.status)) {
-      await sleep(800);
-      response = await callGemini(model, apiKey, prompt);
-    }
+    const routerResult = await callAiProviderRouter({
+      task: "ai_business_query",
+      prompt,
+      jsonMode: true,
+      temperature: 0.2,
+      expectedJsonShapeDescription: `{
+  "answer": string,
+  "query_type": string,
+  "language": string,
+  "key_points": string[],
+  "warnings": string[]
+}`,
+    });
 
-    const rawResponseText = await response.text();
-    const rawResponse = parseResponseText(rawResponseText);
+    if (!routerResult.ok) {
+      console.error("AI business query provider router error:", {
+        error: routerResult.error,
+        attempts: routerResult.attempts,
+      });
 
-    if (!response.ok) {
-      const details = getGeminiErrorDetails(rawResponse);
-      console.error("Gemini business query error:", { status: response.status, details });
+      if (localFallbackEnabled()) {
+        return NextResponse.json({
+          ok: true,
+          provider: "local_fallback",
+          model: "local_summary",
+          result: buildLocalFallbackResult(question, language, queryType, businessSummary),
+          raw: { attempts: routerResult.attempts, fallback: true },
+        });
+      }
+
       return NextResponse.json(
         {
           ok: false,
-          provider: "gemini",
-          error: "Gemini request failed",
-          status: response.status,
-          details,
+          error: "AI providers are temporarily unavailable. Tried configured providers.",
+          details: routerResult.error,
+          attempts: routerResult.attempts,
         },
         { status: 502 }
       );
     }
 
-    const outputText = extractGeminiText(rawResponse);
-    if (!outputText) {
-      return NextResponse.json(
-        {
-          ok: false,
-          provider: "gemini",
-          error: "Gemini did not return analyzable text.",
-          details: "The model returned an empty response. Try shortening or rewording the question.",
-        },
-        { status: 502 }
-      );
-    }
-
-    const parsed = parseJsonObject(outputText);
-    const fallbackResult = sanitizeResult(
-      { answer: outputText, query_type: queryType, language, key_points: [], warnings: ["Model response was not valid JSON, so TradeOS used the text answer."] },
-      outputText,
-      queryType,
-      language
-    );
-    const result = parsed
-      ? sanitizeResult(parsed, outputText, queryType, language)
-      : fallbackResult;
+    const fallbackAnswer = routerResult.text || "AI returned an empty answer.";
+    const result = sanitizeResult(routerResult.json, fallbackAnswer, queryType, language);
 
     return NextResponse.json({
       ok: true,
-      provider: "gemini",
-      model,
+      provider: routerResult.provider,
+      model: routerResult.model,
       result,
-      raw: rawResponse,
+      raw: routerResult.raw,
     });
   } catch (error) {
-    const details = error instanceof Error ? error.message : "Unknown Gemini connection error";
-    console.error("Gemini business query route error:", details);
+    const details = error instanceof Error ? error.message : "Unknown AI business query error";
+    console.error("AI business query route error:", details);
     return NextResponse.json(
       {
         ok: false,
-        provider: "gemini",
-        error: "Could not connect to Gemini API",
+        error: "Could not run AI business query",
         details,
       },
       { status: 500 }
