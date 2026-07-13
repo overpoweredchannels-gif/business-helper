@@ -14,6 +14,7 @@ export const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "supplier-payments", label: "Supplier Payments" },
   { id: "expenses", label: "Expenses" },
   { id: "profit-loss", label: "Profit & Loss" },
+  { id: "business-intelligence", label: "Business Intelligence" },
   { id: "customer-credit", label: "Customer Credit" },
   { id: "supplier-ledger", label: "Supplier Ledger" },
   { id: "business-settings", label: "Business Settings" },

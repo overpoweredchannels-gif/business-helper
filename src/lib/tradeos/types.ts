@@ -375,6 +375,7 @@ export type SectionId =
   | "supplier-payments"
   | "expenses"
   | "profit-loss"
+  | "business-intelligence"
   | "customer-credit"
   | "supplier-ledger"
   | "business-settings"

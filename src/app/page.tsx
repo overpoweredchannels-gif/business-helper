@@ -4089,6 +4089,17 @@ export default function Home() {
   const [profitLossStartDate, setProfitLossStartDate] = useState(currentMonthRange.start);
   const [profitLossEndDate, setProfitLossEndDate] = useState(currentMonthRange.end);
   const [profitLossDateError, setProfitLossDateError] = useState<string | null>(null);
+  const [biDateRange, setBiDateRange] = useState("last_30_days");
+  const [biStartDate, setBiStartDate] = useState("");
+  const [biEndDate, setBiEndDate] = useState("");
+  const [biSearch, setBiSearch] = useState("");
+  const [biCategoryFilter, setBiCategoryFilter] = useState("all");
+  const [biStaffFilter, setBiStaffFilter] = useState("all");
+  const [biCustomerFilter, setBiCustomerFilter] = useState("all");
+  const [biProductFilter, setBiProductFilter] = useState("all");
+  const [biMetricView, setBiMetricView] = useState("overview");
+  const [biMessage, setBiMessage] = useState<string | null>(null);
+  const [biError, setBiError] = useState<string | null>(null);
   const pkrFormatter = new Intl.NumberFormat("en-PK", {
     style: "currency",
     currency: "PKR",
@@ -4118,6 +4129,7 @@ export default function Home() {
     "supplier-payments": "can_manage_payments",
     expenses: "can_manage_expenses",
     "profit-loss": "can_view_profit",
+    "business-intelligence": "owner_admin",
     inventory: "can_view_reports",
     "customer-credit": "can_manage_customers",
     "supplier-ledger": "can_manage_payments",
@@ -5856,6 +5868,663 @@ export default function Home() {
     })
     .sort((a, b) => b.quantitySold - a.quantitySold)
     .slice(0, 10);
+  const getBusinessIntelligenceDateRange = () => {
+    const today = new Date();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay());
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const lastSevenDays = new Date(today);
+    lastSevenDays.setDate(today.getDate() - 6);
+    const lastThirtyDays = new Date(today);
+    lastThirtyDays.setDate(today.getDate() - 29);
+    const thisYearStart = new Date(today.getFullYear(), 0, 1);
+    const lastMonthRange = getMonthRange(-1);
+
+    if (biDateRange === "today") {
+      return { start: todayDateValue, end: todayDateValue, label: "Today" };
+    }
+    if (biDateRange === "yesterday") {
+      const value = toDateInputValue(yesterday);
+      return { start: value, end: value, label: "Yesterday" };
+    }
+    if (biDateRange === "last_7_days") {
+      return { start: toDateInputValue(lastSevenDays), end: todayDateValue, label: "Last 7 Days" };
+    }
+    if (biDateRange === "this_month") {
+      return { start: currentMonthRange.start, end: currentMonthRange.end, label: "This Month" };
+    }
+    if (biDateRange === "last_month") {
+      return { start: lastMonthRange.start, end: lastMonthRange.end, label: "Last Month" };
+    }
+    if (biDateRange === "this_year") {
+      return { start: toDateInputValue(thisYearStart), end: todayDateValue, label: "This Year" };
+    }
+    if (biDateRange === "all_time") {
+      return { start: "", end: "", label: "All Time" };
+    }
+    if (biDateRange === "custom") {
+      return { start: biStartDate, end: biEndDate, label: "Custom Range" };
+    }
+    return { start: toDateInputValue(lastThirtyDays), end: todayDateValue, label: "Last 30 Days" };
+  };
+  const biResolvedDateRange = getBusinessIntelligenceDateRange();
+  const isInBiRange = (...dateValues: Array<unknown>) => {
+    const timestamp = getUsableTimestamp(...dateValues);
+    const dateOnly = getDateOnly(timestamp.value);
+    return isDateInRange(dateOnly, biResolvedDateRange.start, biResolvedDateRange.end);
+  };
+  const isCurrentOrganizationRecord = (record: any) =>
+    !record?.organization_id || !currentOrganizationId || record.organization_id === currentOrganizationId;
+  const getBiProfileLabel = (profileId: unknown) => {
+    const profile = staffProfiles.find((item) => String(item.id) === String(profileId));
+    return profile?.display_name || profile?.email || (profileId ? `Profile ${String(profileId).slice(0, 8)}` : "Unassigned");
+  };
+  const getRecordProfileId = (record: any) =>
+    record?.created_by_profile_id ?? record?.profile_id ?? record?.created_by ?? record?.actor_profile_id ?? null;
+  const addGroupedAmount = (groups: Record<string, number>, key: string, amount: number) => {
+    groups[key] = (groups[key] ?? 0) + safeNumber(amount);
+  };
+  const buildBusinessIntelligenceAnalytics = () => {
+    const search = biSearch.trim().toLowerCase();
+    const productById = products.reduce<Record<string, Product>>((lookup, product) => {
+      lookup[String(product.id)] = product;
+      return lookup;
+    }, {});
+    const customerById = customers.reduce<Record<string, Customer>>((lookup, customer) => {
+      lookup[String(customer.id)] = customer;
+      return lookup;
+    }, {});
+    const supplierById = suppliers.reduce<Record<string, Supplier>>((lookup, supplier) => {
+      lookup[String(supplier.id)] = supplier;
+      return lookup;
+    }, {});
+    const brandById = brands.reduce<Record<string, Brand>>((lookup, brand) => {
+      lookup[String(brand.id)] = brand;
+      return lookup;
+    }, {});
+    const categoryById = categories.reduce<Record<string, Category>>((lookup, category) => {
+      lookup[String(category.id)] = category;
+      return lookup;
+    }, {});
+    const salesById = salesTransactions.reduce<Record<string, SalesTransaction>>((lookup, transaction) => {
+      lookup[String(transaction.id)] = transaction;
+      return lookup;
+    }, {});
+    const purchasesById = purchaseTransactions.reduce<Record<string, PurchaseTransaction>>((lookup, transaction) => {
+      lookup[String(transaction.id)] = transaction;
+      return lookup;
+    }, {});
+
+    const matchesSearch = (values: Array<unknown>) =>
+      !search || values.filter(Boolean).some((value) => String(value).toLowerCase().includes(search));
+
+    const selectedSalesTransactions = salesTransactions.filter((transaction) => {
+      if (!isCurrentOrganizationRecord(transaction)) return false;
+      if (!isInBiRange(transaction.sale_date, transaction.created_at)) return false;
+      const customer = customerById[String(transaction.customer_id)];
+      if (biCustomerFilter !== "all" && transaction.customer_id !== biCustomerFilter) return false;
+      const profileId = getRecordProfileId(transaction);
+      if (biStaffFilter !== "all" && String(profileId) !== biStaffFilter) return false;
+      return matchesSearch([transaction.invoice_number, customer?.customer_name, customer?.shop_name]);
+    });
+    const selectedSaleIds = new Set(selectedSalesTransactions.map((transaction) => String(transaction.id)));
+    const selectedSalesItems = salesItems.filter((item) => {
+      const transaction = salesById[String(item.sales_transaction_id)];
+      if (!selectedSaleIds.has(String(item.sales_transaction_id))) return false;
+      const product = productById[String(item.product_id)];
+      const category = product?.category_id ? categoryById[String(product.category_id)] : null;
+      if (biProductFilter !== "all" && String(item.product_id) !== biProductFilter) return false;
+      if (biCategoryFilter !== "all" && String(product?.category_id ?? "") !== biCategoryFilter) return false;
+      return matchesSearch([product?.name, category?.name, transaction?.invoice_number]);
+    });
+    const selectedPurchaseTransactions = purchaseTransactions.filter((transaction) => {
+      if (!isCurrentOrganizationRecord(transaction)) return false;
+      if (!isInBiRange(transaction.purchase_date, transaction.created_at)) return false;
+      const supplier = supplierById[String(transaction.supplier_id)];
+      const profileId = getRecordProfileId(transaction);
+      if (biStaffFilter !== "all" && String(profileId) !== biStaffFilter) return false;
+      return matchesSearch([transaction.invoice_number, supplier?.supplier_name]);
+    });
+    const selectedPurchaseIds = new Set(selectedPurchaseTransactions.map((transaction) => String(transaction.id)));
+    const selectedPurchaseItems = purchaseItems.filter((item) => {
+      if (!selectedPurchaseIds.has(String(item.purchase_transaction_id))) return false;
+      const product = productById[String(item.product_id)];
+      const category = product?.category_id ? categoryById[String(product.category_id)] : null;
+      if (biProductFilter !== "all" && String(item.product_id) !== biProductFilter) return false;
+      if (biCategoryFilter !== "all" && String(product?.category_id ?? "") !== biCategoryFilter) return false;
+      return matchesSearch([product?.name, category?.name, purchasesById[String(item.purchase_transaction_id)]?.invoice_number]);
+    });
+    const selectedCustomerPayments = customerPayments.filter((payment) => {
+      if (!isCurrentOrganizationRecord(payment)) return false;
+      if (!isInBiRange(payment.payment_date, payment.created_at)) return false;
+      const customer = customerById[String(payment.customer_id)];
+      const profileId = getRecordProfileId(payment);
+      if (biCustomerFilter !== "all" && payment.customer_id !== biCustomerFilter) return false;
+      if (biStaffFilter !== "all" && String(profileId) !== biStaffFilter) return false;
+      return matchesSearch([customer?.customer_name, customer?.shop_name, payment.notes]);
+    });
+    const selectedSupplierPayments = supplierPayments.filter((payment) => {
+      if (!isCurrentOrganizationRecord(payment)) return false;
+      if (!isInBiRange(payment.payment_date, payment.created_at)) return false;
+      const supplier = supplierById[String(payment.supplier_id)];
+      const profileId = getRecordProfileId(payment);
+      if (biStaffFilter !== "all" && String(profileId) !== biStaffFilter) return false;
+      return matchesSearch([supplier?.supplier_name, payment.notes]);
+    });
+    const selectedExpenses = expenses.filter((expense) => {
+      if (!isCurrentOrganizationRecord(expense)) return false;
+      if (!isInBiRange(expense.expense_date, expense.created_at)) return false;
+      if (biCustomerFilter !== "all" && expense.customer_id !== biCustomerFilter) return false;
+      if (biProductFilter !== "all") return false;
+      return matchesSearch([expense.expense_type, expense.notes]);
+    });
+    const selectedTasks = tasks.filter((task) => {
+      if (!isCurrentOrganizationRecord(task)) return false;
+      if (!isInBiRange(task.completed_at, task.due_date, task.created_at)) return false;
+      if (biCustomerFilter !== "all" && task.customer_id !== biCustomerFilter) return false;
+      if (biProductFilter !== "all" && String(task.product_id ?? "") !== biProductFilter) return false;
+      return matchesSearch([task.title, task.notes, task.task_type, task.priority, task.status]);
+    });
+    const selectedDutySessions = dutySessions.filter((session) => {
+      if (!isCurrentOrganizationRecord(session)) return false;
+      if (!isInBiRange(session.started_at, session.created_at)) return false;
+      if (biStaffFilter !== "all" && session.profile_id !== biStaffFilter) return false;
+      return matchesSearch([getBiProfileLabel(session.profile_id), session.status, session.notes]);
+    });
+    const selectedAuditLogs = auditLogs.filter((log) => {
+      if (!isCurrentOrganizationRecord(log)) return false;
+      if (!isInBiRange(log.created_at)) return false;
+      if (biStaffFilter !== "all" && log.actor_profile_id !== biStaffFilter) return false;
+      return matchesSearch([log.description, log.entity_label, log.entity_type, log.action, log.actor_email]);
+    });
+
+    const salesLineTotals = selectedSalesItems.reduce(
+      (totals, item) => {
+        const quantity = safeNumber(item.quantity);
+        const sellingPrice = safeNumber(item.selling_price);
+        const revenue = quantity * sellingPrice;
+        const costSnapshot = safeNumber(item.purchase_price_snapshot);
+        const product = productById[String(item.product_id)];
+        const fallbackCost = safeNumber(product?.last_purchase_price);
+        const unitCost = costSnapshot > 0 ? costSnapshot : fallbackCost > 0 ? fallbackCost : null;
+        totals.revenue += revenue;
+        if (unitCost !== null) {
+          totals.knownCogs += quantity * unitCost;
+          totals.costedRevenue += revenue;
+        } else {
+          totals.unknownCostRevenue += revenue;
+          totals.unknownCostLines += 1;
+        }
+        return totals;
+      },
+      { revenue: 0, knownCogs: 0, costedRevenue: 0, unknownCostRevenue: 0, unknownCostLines: 0 }
+    );
+    const totalPurchasesAmount = selectedPurchaseItems.reduce(
+      (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.purchase_price),
+      0
+    );
+    const customerCollectionsTotal = selectedCustomerPayments.reduce((sum, payment) => sum + safeNumber(payment.amount), 0);
+    const supplierPaymentsTotal = selectedSupplierPayments.reduce((sum, payment) => sum + safeNumber(payment.amount), 0);
+    const expensesTotal = selectedExpenses.reduce((sum, expense) => sum + safeNumber(expense.amount), 0);
+    const estimatedGrossProfit = salesLineTotals.costedRevenue - salesLineTotals.knownCogs;
+    const estimatedNetProfit = salesLineTotals.revenue - salesLineTotals.knownCogs - expensesTotal;
+
+    const productAnalytics = products
+      .map((product) => {
+        const productId = String(product.id);
+        const productSalesItems = selectedSalesItems.filter((item) => String(item.product_id) === productId);
+        const invoiceIds = new Set(productSalesItems.map((item) => String(item.sales_transaction_id)));
+        const quantitySold = productSalesItems.reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+        const salesValue = productSalesItems.reduce(
+          (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price),
+          0
+        );
+        const knownCogs = productSalesItems.reduce((sum, item) => {
+          const quantity = safeNumber(item.quantity);
+          const costSnapshot = safeNumber(item.purchase_price_snapshot);
+          const fallbackCost = safeNumber(product.last_purchase_price);
+          const unitCost = costSnapshot > 0 ? costSnapshot : fallbackCost > 0 ? fallbackCost : null;
+          return unitCost === null ? sum : sum + quantity * unitCost;
+        }, 0);
+        const unknownCostLineCount = productSalesItems.filter((item) => {
+          const costSnapshot = safeNumber(item.purchase_price_snapshot);
+          const fallbackCost = safeNumber(product.last_purchase_price);
+          return costSnapshot <= 0 && fallbackCost <= 0;
+        }).length;
+        const stock = reorderRecommendations.find((recommendation) => recommendation.productId === productId);
+        const brand = product.brand_id ? brandById[String(product.brand_id)] : null;
+        const category = product.category_id ? categoryById[String(product.category_id)] : null;
+        const grossProfit = salesValue > 0 && unknownCostLineCount < productSalesItems.length ? salesValue - knownCogs : 0;
+        return {
+          productId,
+          productName: product.name,
+          brandName: brand?.name ?? "No brand",
+          categoryName: category?.name ?? "No category",
+          categoryId: product.category_id ?? "",
+          quantitySold,
+          salesValue,
+          knownCogs,
+          grossProfit,
+          profitMargin: salesValue > 0 && knownCogs > 0 ? ((salesValue - knownCogs) / salesValue) * 100 : 0,
+          invoiceCount: invoiceIds.size,
+          averageSellingPrice: quantitySold > 0 ? salesValue / quantitySold : 0,
+          currentStock: stock?.currentStock ?? 0,
+          reorderLevel: stock?.reorderLevel ?? safeNumber(product.reorder_level ?? product.minimum_stock_level ?? 0),
+          stockStatus: stock?.status ?? "Healthy",
+          recentSalesQuantity: stock?.recentSalesQuantity ?? 0,
+          estimatedDaysLeft: stock?.estimatedDaysLeft ?? null,
+          suggestedReorderQuantity: stock?.suggestedReorderQuantity ?? 0,
+          unknownCostLineCount,
+        };
+      })
+      .filter((item) => {
+        if (biProductFilter !== "all" && item.productId !== biProductFilter) return false;
+        if (biCategoryFilter !== "all" && item.categoryId !== biCategoryFilter) return false;
+        return matchesSearch([item.productName, item.brandName, item.categoryName]);
+      });
+
+    const customerAnalytics = customers
+      .map((customer) => {
+        const customerSales = selectedSalesTransactions.filter((transaction) => transaction.customer_id === customer.id);
+        const customerSaleIds = new Set(customerSales.map((transaction) => String(transaction.id)));
+        const totalSales = selectedSalesItems
+          .filter((item) => customerSaleIds.has(String(item.sales_transaction_id)))
+          .reduce((sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price), 0);
+        const paymentsReceived = selectedCustomerPayments
+          .filter((payment) => payment.customer_id === customer.id)
+          .reduce((sum, payment) => sum + safeNumber(payment.amount), 0);
+        const customerCreditTransactions = salesTransactions.filter(
+          (transaction) => transaction.customer_id === customer.id && transaction.payment_type === "credit"
+        );
+        const currentBalance = customerCreditTransactions.reduce(
+          (sum, transaction) =>
+            sum + Math.max(0, creditAllocationByTransaction[transaction.id]?.remainingUnpaidAmount ?? 0),
+          0
+        );
+        const overdueInvoices = customerCreditTransactions.filter((transaction) => {
+          const dueDate = getDateOnly(transaction.credit_due_date);
+          const remaining = creditAllocationByTransaction[transaction.id]?.remainingUnpaidAmount ?? 0;
+          return Boolean(dueDate && dueDate < todayDateValue && remaining > 0);
+        });
+        const overdueAmount = overdueInvoices.reduce(
+          (sum, transaction) => sum + Math.max(0, creditAllocationByTransaction[transaction.id]?.remainingUnpaidAmount ?? 0),
+          0
+        );
+        const lastSaleDate = customerSales
+          .map((transaction) => getUsableTimestamp(transaction.sale_date, transaction.created_at))
+          .sort((a, b) => b.time - a.time)[0]?.value ?? null;
+        const lastPaymentDate = selectedCustomerPayments
+          .filter((payment) => payment.customer_id === customer.id)
+          .map((payment) => getUsableTimestamp(payment.payment_date, payment.created_at))
+          .sort((a, b) => b.time - a.time)[0]?.value ?? null;
+        return {
+          customerId: customer.id,
+          customerName: customer.customer_name,
+          shopName: customer.shop_name ?? "",
+          totalSales,
+          invoiceCount: customerSales.length,
+          averageInvoiceValue: customerSales.length > 0 ? totalSales / customerSales.length : 0,
+          paymentsReceived,
+          outstandingBalance: Math.max(0, currentBalance),
+          overdueAmount,
+          overdueInvoiceCount: overdueInvoices.length,
+          lastSaleDate,
+          lastPaymentDate,
+        };
+      })
+      .filter((item) => {
+        if (biCustomerFilter !== "all" && item.customerId !== biCustomerFilter) return false;
+        return matchesSearch([item.customerName, item.shopName]);
+      });
+
+    const staffAnalytics = staffProfiles
+      .map((profile) => {
+        const profileId = profile.id;
+        const salesCount = selectedSalesTransactions.filter((transaction) => String(getRecordProfileId(transaction)) === profileId).length;
+        const salesAmount = selectedSalesItems
+          .filter((item) => String(getRecordProfileId(salesById[String(item.sales_transaction_id)])) === profileId)
+          .reduce((sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price), 0);
+        const paymentsCollected = selectedCustomerPayments
+          .filter((payment) => String(getRecordProfileId(payment)) === profileId)
+          .reduce((sum, payment) => sum + safeNumber(payment.amount), 0);
+        const profileTasks = selectedTasks.filter((task) => String(getRecordProfileId(task)) === profileId);
+        const profileDutySessions = selectedDutySessions.filter((session) => session.profile_id === profileId);
+        const dutyHours = profileDutySessions.reduce((sum, session) => {
+          const start = new Date(session.started_at).getTime();
+          const end = session.ended_at ? new Date(session.ended_at).getTime() : Date.now();
+          if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return sum;
+          return sum + (end - start) / 3600000;
+        }, 0);
+        const latestLocation = locationPoints
+          .filter((point) => point.profile_id === profileId)
+          .sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime())[0];
+        const activityLogCount = selectedAuditLogs.filter((log) => log.actor_profile_id === profileId).length;
+        return {
+          profileId,
+          staffName: profile.display_name || profile.email || "Unnamed staff",
+          role: profile.role || "staff",
+          salesCount,
+          salesAmount,
+          paymentsCollected,
+          tasksCreated: profileTasks.length,
+          tasksCompleted: profileTasks.filter((task) => task.status === "completed").length,
+          dutySessionsCount: profileDutySessions.length,
+          dutyHours,
+          lastLocationAt: latestLocation?.captured_at ?? null,
+          activityLogCount,
+        };
+      })
+      .filter((item) => {
+        if (biStaffFilter !== "all" && item.profileId !== biStaffFilter) return false;
+        return matchesSearch([item.staffName, item.role]);
+      });
+
+    const expensesByType = Object.values(
+      selectedExpenses.reduce<Record<string, { expenseType: string; entryCount: number; totalAmount: number }>>((groups, expense) => {
+        const expenseType = expense.expense_type || "Uncategorized";
+        if (!groups[expenseType]) groups[expenseType] = { expenseType, entryCount: 0, totalAmount: 0 };
+        groups[expenseType].entryCount += 1;
+        groups[expenseType].totalAmount += safeNumber(expense.amount);
+        return groups;
+      }, {})
+    ).sort((a, b) => b.totalAmount - a.totalAmount);
+    const purchaseLinkedExpenseTotal = selectedExpenses
+      .filter((expense) => Boolean(expense.purchase_transaction_id))
+      .reduce((sum, expense) => sum + safeNumber(expense.amount), 0);
+    const salesLinkedExpenseTotal = selectedExpenses
+      .filter((expense) => Boolean(expense.sales_transaction_id))
+      .reduce((sum, expense) => sum + safeNumber(expense.amount), 0);
+    const operatingExpenseTotal = selectedExpenses
+      .filter((expense) => !expense.purchase_transaction_id && !expense.sales_transaction_id)
+      .reduce((sum, expense) => sum + safeNumber(expense.amount), 0);
+
+    const dailyGroups: Record<string, { date: string; sales: number; purchases: number; collections: number; expenses: number; profit: number }> = {};
+    const ensureDay = (dateValue: string | null | undefined) => {
+      const date = getDateOnly(dateValue) ?? "No date";
+      if (!dailyGroups[date]) dailyGroups[date] = { date, sales: 0, purchases: 0, collections: 0, expenses: 0, profit: 0 };
+      return dailyGroups[date];
+    };
+    selectedSalesItems.forEach((item) => {
+      const transaction = salesById[String(item.sales_transaction_id)];
+      const group = ensureDay(getDateOnly(getUsableTimestamp(transaction?.sale_date, transaction?.created_at).value));
+      const quantity = safeNumber(item.quantity);
+      const revenue = quantity * safeNumber(item.selling_price);
+      const costSnapshot = safeNumber(item.purchase_price_snapshot);
+      const fallbackCost = safeNumber(productById[String(item.product_id)]?.last_purchase_price);
+      const unitCost = costSnapshot > 0 ? costSnapshot : fallbackCost > 0 ? fallbackCost : null;
+      group.sales += revenue;
+      group.profit += unitCost === null ? 0 : revenue - quantity * unitCost;
+    });
+    selectedPurchaseItems.forEach((item) => {
+      const transaction = purchasesById[String(item.purchase_transaction_id)];
+      ensureDay(getDateOnly(getUsableTimestamp(transaction?.purchase_date, transaction?.created_at).value)).purchases +=
+        safeNumber(item.quantity) * safeNumber(item.purchase_price);
+    });
+    selectedCustomerPayments.forEach((payment) => {
+      ensureDay(getDateOnly(getUsableTimestamp(payment.payment_date, payment.created_at).value)).collections += safeNumber(payment.amount);
+    });
+    selectedExpenses.forEach((expense) => {
+      const amount = safeNumber(expense.amount);
+      const group = ensureDay(getDateOnly(getUsableTimestamp(expense.expense_date, expense.created_at).value));
+      group.expenses += amount;
+      group.profit -= amount;
+    });
+    const dailyTrends = Object.values(dailyGroups)
+      .filter((group) => group.date !== "No date")
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const monthlySalesGroups: Record<string, number> = {};
+    const weekdaySalesGroups: Record<string, number> = {};
+    selectedSalesItems.forEach((item) => {
+      const transaction = salesById[String(item.sales_transaction_id)];
+      const dateValue = getDateOnly(getUsableTimestamp(transaction?.sale_date, transaction?.created_at).value);
+      const amount = safeNumber(item.quantity) * safeNumber(item.selling_price);
+      if (dateValue) {
+        const date = new Date(`${dateValue}T00:00:00`);
+        const month = dateValue.slice(0, 7);
+        addGroupedAmount(monthlySalesGroups, month, amount);
+        addGroupedAmount(weekdaySalesGroups, date.toLocaleDateString("en-PK", { weekday: "long" }), amount);
+      }
+    });
+    const monthlySales = Object.entries(monthlySalesGroups)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    const weekdaySales = Object.entries(weekdaySalesGroups)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+    const bestMonth = monthlySales.slice().sort((a, b) => b.value - a.value)[0] ?? null;
+    const bestWeekday = weekdaySales[0] ?? null;
+    const enoughSeasonalData = monthlySales.length >= 3 || selectedSalesTransactions.length >= 30;
+    const productMonthGroups = selectedSalesItems.reduce<Record<string, Record<string, number>>>((groups, item) => {
+      const transaction = salesById[String(item.sales_transaction_id)];
+      const dateValue = getDateOnly(getUsableTimestamp(transaction?.sale_date, transaction?.created_at).value);
+      if (!dateValue) return groups;
+      const productName = productById[String(item.product_id)]?.name ?? "Unknown Product";
+      if (!groups[productName]) groups[productName] = {};
+      addGroupedAmount(groups[productName], dateValue.slice(0, 7), safeNumber(item.quantity));
+      return groups;
+    }, {});
+    const strongestProductMonth = Object.entries(productMonthGroups)
+      .flatMap(([productName, months]) =>
+        Object.entries(months).map(([month, quantity]) => ({ productName, month, quantity }))
+      )
+      .sort((a, b) => b.quantity - a.quantity)[0] ?? null;
+
+    const activeCustomerCount = new Set(selectedSalesTransactions.map((transaction) => transaction.customer_id)).size;
+    const productsSoldCount = new Set(selectedSalesItems.map((item) => String(item.product_id))).size;
+    const topByQuantity = productAnalytics.slice().sort((a, b) => b.quantitySold - a.quantitySold).slice(0, 10);
+    const topBySalesValue = productAnalytics.slice().sort((a, b) => b.salesValue - a.salesValue).slice(0, 10);
+    const mostProfitable = productAnalytics.slice().sort((a, b) => b.grossProfit - a.grossProfit).slice(0, 10);
+    const lowMarginProducts = productAnalytics
+      .filter((product) => product.salesValue > 0 && product.knownCogs > 0 && product.profitMargin < 10)
+      .sort((a, b) => a.profitMargin - b.profitMargin)
+      .slice(0, 10);
+    const slowMovingProducts = productAnalytics
+      .filter((product) => product.quantitySold <= 0 && product.currentStock > 0)
+      .sort((a, b) => b.currentStock - a.currentStock)
+      .slice(0, 10);
+    const outOfStockProducts = productAnalytics.filter((product) => product.currentStock <= 0);
+    const lowStockProducts = productAnalytics.filter((product) => product.currentStock > 0 && product.currentStock <= product.reorderLevel);
+    const fastMovingProducts = productAnalytics
+      .filter((product) => product.quantitySold > 0)
+      .sort((a, b) => b.quantitySold - a.quantitySold)
+      .slice(0, 10);
+    const inventoryStockValue = productAnalytics.reduce((sum, product) => {
+      const sourceProduct = productById[product.productId];
+      const lastPurchasePrice = safeNumber(sourceProduct?.last_purchase_price);
+      return sum + Math.max(0, product.currentStock) * (lastPurchasePrice > 0 ? lastPurchasePrice : 0);
+    }, 0);
+    const topCustomersBySales = customerAnalytics.slice().sort((a, b) => b.totalSales - a.totalSales).slice(0, 10);
+    const topCustomersByPayments = customerAnalytics.slice().sort((a, b) => b.paymentsReceived - a.paymentsReceived).slice(0, 10);
+    const customersWithHighOutstanding = customerAnalytics
+      .filter((customer) => customer.outstandingBalance > 0)
+      .sort((a, b) => b.outstandingBalance - a.outstandingBalance)
+      .slice(0, 10);
+    const inactiveCustomers = customerAnalytics
+      .filter((customer) => customer.invoiceCount === 0 && customer.paymentsReceived === 0)
+      .slice(0, 10);
+    const bestProduct = topBySalesValue[0] ?? null;
+    const bestProfitProduct = mostProfitable[0] ?? null;
+    const highestExpenseCategory = expensesByType[0] ?? null;
+    const bestCustomer = topCustomersBySales[0] ?? null;
+    const marketSignalNote =
+      marketIntelligenceSummary.highCritical > 0
+        ? `${marketIntelligenceSummary.highCritical} high or critical market signal(s) need review.`
+        : "No high-impact market signals in the current loaded data.";
+
+    return {
+      range: biResolvedDateRange,
+      selectedSalesTransactions,
+      selectedSalesItems,
+      selectedPurchaseTransactions,
+      selectedPurchaseItems,
+      selectedCustomerPayments,
+      selectedSupplierPayments,
+      selectedExpenses,
+      selectedTasks,
+      selectedDutySessions,
+      selectedAuditLogs,
+      overview: {
+        totalSalesAmount: salesLineTotals.revenue,
+        salesInvoiceCount: selectedSalesTransactions.length,
+        totalPurchasesAmount,
+        purchaseInvoiceCount: selectedPurchaseTransactions.length,
+        customerCollectionsTotal,
+        supplierPaymentsTotal,
+        expensesTotal,
+        estimatedGrossProfit,
+        estimatedNetProfit,
+        averageSaleValue: selectedSalesTransactions.length > 0 ? salesLineTotals.revenue / selectedSalesTransactions.length : 0,
+        activeCustomerCount,
+        productsSoldCount,
+        lowStockCount: lowStockProducts.length,
+        outOfStockCount: outOfStockProducts.length,
+        knownCogs: salesLineTotals.knownCogs,
+        unknownCostRevenue: salesLineTotals.unknownCostRevenue,
+        unknownCostLines: salesLineTotals.unknownCostLines,
+      },
+      productAnalytics,
+      topByQuantity,
+      topBySalesValue,
+      mostProfitable,
+      lowMarginProducts,
+      slowMovingProducts,
+      outOfStockProducts,
+      lowStockProducts,
+      fastMovingProducts,
+      customerAnalytics,
+      topCustomersBySales,
+      topCustomersByPayments,
+      customersWithHighOutstanding,
+      inactiveCustomers,
+      staffAnalytics,
+      expensesByType,
+      purchaseLinkedExpenseTotal,
+      salesLinkedExpenseTotal,
+      operatingExpenseTotal,
+      dailyTrends,
+      monthlySales,
+      weekdaySales,
+      bestMonth,
+      bestWeekday,
+      strongestProductMonth,
+      enoughSeasonalData,
+      inventoryStockValue,
+      insights: {
+        bestProduct,
+        bestProfitProduct,
+        highestExpenseCategory,
+        bestCustomer,
+        lowStockWarning:
+          outOfStockProducts.length > 0
+            ? `${outOfStockProducts.length} product(s) are out of stock.`
+            : lowStockProducts.length > 0
+              ? `${lowStockProducts.length} product(s) are at or below reorder level.`
+              : "No urgent low-stock warning in this filtered view.",
+        staffActivityNote:
+          "Staff attribution depends on which records contain creator/profile information.",
+        marketSignalNote,
+      },
+    };
+  };
+  const businessIntelligenceAnalytics = buildBusinessIntelligenceAnalytics();
+  const biMetricViews = [
+    { value: "overview", label: "Overview" },
+    { value: "products", label: "Products" },
+    { value: "customers", label: "Customers" },
+    { value: "staff", label: "Staff" },
+    { value: "expenses", label: "Expenses" },
+    { value: "inventory", label: "Inventory" },
+    { value: "trends", label: "Trends" },
+    { value: "seasonal", label: "Seasonal" },
+  ];
+  const biDateRangeOptions = [
+    { value: "today", label: "Today" },
+    { value: "yesterday", label: "Yesterday" },
+    { value: "last_7_days", label: "Last 7 Days" },
+    { value: "last_30_days", label: "Last 30 Days" },
+    { value: "this_month", label: "This Month" },
+    { value: "last_month", label: "Last Month" },
+    { value: "this_year", label: "This Year" },
+    { value: "all_time", label: "All Time" },
+    { value: "custom", label: "Custom" },
+  ];
+  const getBiBarWidth = (value: number, maxValue: number) => `${maxValue > 0 ? Math.max(4, (value / maxValue) * 100) : 0}%`;
+  const exportBiProductAnalyticsCsv = () => {
+    downloadCsv(
+      "tradeos-bi-product-analytics.csv",
+      businessIntelligenceAnalytics.productAnalytics.map((product) => ({
+        Product: product.productName,
+        Brand: product.brandName,
+        Category: product.categoryName,
+        "Quantity Sold": product.quantitySold,
+        "Sales Value": product.salesValue,
+        "Known COGS": product.knownCogs,
+        "Gross Profit": product.grossProfit,
+        "Profit Margin %": product.profitMargin,
+        "Invoice Count": product.invoiceCount,
+        "Average Selling Price": product.averageSellingPrice,
+        "Current Stock": product.currentStock,
+        "Reorder Level": product.reorderLevel,
+        "Stock Status": product.stockStatus,
+      }))
+    );
+    setBiMessage("Product analytics CSV exported.");
+    setBiError(null);
+  };
+  const exportBiCustomerAnalyticsCsv = () => {
+    downloadCsv(
+      "tradeos-bi-customer-analytics.csv",
+      businessIntelligenceAnalytics.customerAnalytics.map((customer) => ({
+        Customer: customer.customerName,
+        Shop: customer.shopName,
+        "Total Sales": customer.totalSales,
+        "Invoice Count": customer.invoiceCount,
+        "Average Invoice Value": customer.averageInvoiceValue,
+        "Payments Received": customer.paymentsReceived,
+        "Outstanding Balance": customer.outstandingBalance,
+        "Overdue Amount": customer.overdueAmount,
+        "Overdue Invoice Count": customer.overdueInvoiceCount,
+        "Last Sale": getDateOnly(customer.lastSaleDate),
+        "Last Payment": getDateOnly(customer.lastPaymentDate),
+      }))
+    );
+    setBiMessage("Customer analytics CSV exported.");
+    setBiError(null);
+  };
+  const exportBiStaffAnalyticsCsv = () => {
+    downloadCsv(
+      "tradeos-bi-staff-analytics.csv",
+      businessIntelligenceAnalytics.staffAnalytics.map((staff) => ({
+        Staff: staff.staffName,
+        Role: staff.role,
+        "Sales Count": staff.salesCount,
+        "Sales Amount": staff.salesAmount,
+        "Payments Collected": staff.paymentsCollected,
+        "Tasks Created": staff.tasksCreated,
+        "Tasks Completed": staff.tasksCompleted,
+        "Duty Sessions": staff.dutySessionsCount,
+        "Duty Hours": staff.dutyHours,
+        "Last Location": formatDateTime(staff.lastLocationAt),
+        "Activity Logs": staff.activityLogCount,
+      }))
+    );
+    setBiMessage("Staff analytics CSV exported.");
+    setBiError(null);
+  };
+  const exportBiExpenseAnalyticsCsv = () => {
+    downloadCsv(
+      "tradeos-bi-expense-analytics.csv",
+      businessIntelligenceAnalytics.expensesByType.map((expense) => ({
+        "Expense Type": expense.expenseType,
+        Entries: expense.entryCount,
+        "Total Amount": expense.totalAmount,
+      }))
+    );
+    setBiMessage("Expense analytics CSV exported.");
+    setBiError(null);
+  };
   const recentSalesInvoices = salesTransactions
     .slice()
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -10501,6 +11170,52 @@ export default function Home() {
             </div>
           </div>
 
+          {isOwnerOrAdmin() && (
+          <div className="mt-6 rounded border border-indigo-200 bg-indigo-50 p-4">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-indigo-950">Business Intelligence</h3>
+                <p className="mt-1 text-sm text-indigo-900">
+                  Deep analytics for sales, profit, customers, staff, expenses, inventory, and trends.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSectionChange("business-intelligence")}
+                className="rounded border border-indigo-600 bg-white px-3 py-2 text-sm text-indigo-700 hover:bg-indigo-50"
+              >
+                Open Business Intelligence
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded border border-indigo-200 bg-white p-3">
+                <div className="text-sm text-indigo-700">Sales This Period</div>
+                <div className="mt-1 text-2xl font-semibold text-indigo-950">
+                  {formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount)}
+                </div>
+              </div>
+              <div className="rounded border border-indigo-200 bg-white p-3">
+                <div className="text-sm text-indigo-700">Profit Estimate</div>
+                <div className="mt-1 text-2xl font-semibold text-indigo-950">
+                  {formatPKR(businessIntelligenceAnalytics.overview.estimatedNetProfit)}
+                </div>
+              </div>
+              <div className="rounded border border-indigo-200 bg-white p-3">
+                <div className="text-sm text-indigo-700">Low Stock Products</div>
+                <div className="mt-1 text-2xl font-semibold text-indigo-950">
+                  {businessIntelligenceAnalytics.overview.lowStockCount}
+                </div>
+              </div>
+              <div className="rounded border border-indigo-200 bg-white p-3">
+                <div className="text-sm text-indigo-700">Out of Stock</div>
+                <div className="mt-1 text-2xl font-semibold text-indigo-950">
+                  {businessIntelligenceAnalytics.overview.outOfStockCount}
+                </div>
+              </div>
+            </div>
+          </div>
+          )}
+
           <div className="mt-6 rounded border border-amber-200 bg-amber-50 p-4">
             <h3 className="mb-3 text-lg font-medium text-amber-950">Reorder Summary</h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -10757,6 +11472,550 @@ export default function Home() {
           </div>
         </section>
         </>
+        )}
+
+        {activeSectionAllowed && activeSection === "business-intelligence" && (
+        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">Business Intelligence &amp; Deep Analytics</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Analyze product, customer, staff, inventory, expense, and profit performance from your OP OWNER data.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={exportBiProductAnalyticsCsv} className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
+                Export product CSV
+              </button>
+              <button type="button" onClick={exportBiCustomerAnalyticsCsv} className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
+                Export customer CSV
+              </button>
+              <button type="button" onClick={exportBiStaffAnalyticsCsv} className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
+                Export staff CSV
+              </button>
+              <button type="button" onClick={exportBiExpenseAnalyticsCsv} className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
+                Export expense CSV
+              </button>
+            </div>
+          </div>
+
+          {biMessage && <div className="mb-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{biMessage}</div>}
+          {biError && <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{biError}</div>}
+
+          <div className="mb-5 rounded border border-gray-200 bg-white p-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <span>Date range</span>
+                <select
+                  value={biDateRange}
+                  onChange={(event) => {
+                    setBiDateRange(event.target.value);
+                    setBiMessage(null);
+                    setBiError(null);
+                  }}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  {biDateRangeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <span>Search</span>
+                <input
+                  value={biSearch}
+                  onChange={(event) => setBiSearch(event.target.value)}
+                  placeholder="Product, customer, invoice, staff..."
+                  className="rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <span>Category</span>
+                <select value={biCategoryFilter} onChange={(event) => setBiCategoryFilter(event.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <option value="all">All categories</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <span>Staff</span>
+                <select value={biStaffFilter} onChange={(event) => setBiStaffFilter(event.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <option value="all">All staff</option>
+                  {staffProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>{profile.display_name || profile.email || profile.id}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <span>Customer</span>
+                <select value={biCustomerFilter} onChange={(event) => setBiCustomerFilter(event.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <option value="all">All customers</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <span>Product</span>
+                <select value={biProductFilter} onChange={(event) => setBiProductFilter(event.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <option value="all">All products</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={String(product.id)}>{product.name}</option>
+                  ))}
+                </select>
+              </label>
+              {biDateRange === "custom" && (
+                <>
+                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                    <span>Start date</span>
+                    <input
+                      type="date"
+                      value={biStartDate}
+                      onChange={(event) => {
+                        setBiStartDate(event.target.value);
+                        if (event.target.value && biEndDate && biEndDate < event.target.value) setBiEndDate(event.target.value);
+                      }}
+                      className="rounded border border-gray-300 px-3 py-2"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                    <span>End date</span>
+                    <input
+                      type="date"
+                      value={biEndDate}
+                      min={biStartDate || undefined}
+                      onChange={(event) => setBiEndDate(event.target.value)}
+                      className="rounded border border-gray-300 px-3 py-2"
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {biMetricViews.map((view) => (
+                <button
+                  key={view.value}
+                  type="button"
+                  onClick={() => setBiMetricView(view.value)}
+                  className={`rounded border px-3 py-2 text-sm ${
+                    biMetricView === view.value
+                      ? "border-gray-900 bg-gray-900 text-white"
+                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {view.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Current analytics range: {businessIntelligenceAnalytics.range.label}
+              {businessIntelligenceAnalytics.range.start || businessIntelligenceAnalytics.range.end
+                ? ` (${businessIntelligenceAnalytics.range.start || "start"} to ${businessIntelligenceAnalytics.range.end || "today"})`
+                : " (all loaded history)"}
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ["Total Sales", formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount)],
+              ["Sales Invoices", businessIntelligenceAnalytics.overview.salesInvoiceCount],
+              ["Total Purchases", formatPKR(businessIntelligenceAnalytics.overview.totalPurchasesAmount)],
+              ["Purchase Invoices", businessIntelligenceAnalytics.overview.purchaseInvoiceCount],
+              ["Collections", formatPKR(businessIntelligenceAnalytics.overview.customerCollectionsTotal)],
+              ["Supplier Payments", formatPKR(businessIntelligenceAnalytics.overview.supplierPaymentsTotal)],
+              ["Expenses", formatPKR(businessIntelligenceAnalytics.overview.expensesTotal)],
+              ["Estimated Net Profit", formatPKR(businessIntelligenceAnalytics.overview.estimatedNetProfit)],
+              ["Estimated Gross Profit", formatPKR(businessIntelligenceAnalytics.overview.estimatedGrossProfit)],
+              ["Average Sale Value", formatPKR(businessIntelligenceAnalytics.overview.averageSaleValue)],
+              ["Active Customers", businessIntelligenceAnalytics.overview.activeCustomerCount],
+              ["Products Sold", businessIntelligenceAnalytics.overview.productsSoldCount],
+              ["Low Stock", businessIntelligenceAnalytics.overview.lowStockCount],
+              ["Out of Stock", businessIntelligenceAnalytics.overview.outOfStockCount],
+              ["Unknown Cost Lines", businessIntelligenceAnalytics.overview.unknownCostLines],
+              ["Unknown Cost Revenue", formatPKR(businessIntelligenceAnalytics.overview.unknownCostRevenue)],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="text-sm text-gray-500">{label}</div>
+                <div className="mt-2 text-2xl font-semibold text-gray-900">{value}</div>
+              </div>
+            ))}
+          </div>
+
+          {businessIntelligenceAnalytics.overview.unknownCostLines > 0 && (
+            <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              Some sales lines do not have reliable cost. Profit is estimated and unknown costs are not treated as zero.
+            </div>
+          )}
+
+          {(biMetricView === "overview" || biMetricView === "products") && (
+            <div className="mt-6 grid gap-4 xl:grid-cols-3">
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Top Selling Products by Quantity</h3>
+                {businessIntelligenceAnalytics.topByQuantity.length === 0 ? (
+                  <p className="text-sm text-gray-600">No product sales in this range.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {businessIntelligenceAnalytics.topByQuantity.map((product) => {
+                      const maxValue = Math.max(...businessIntelligenceAnalytics.topByQuantity.map((item) => item.quantitySold), 0);
+                      return (
+                        <div key={product.productId}>
+                          <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+                            <span className="truncate text-gray-800">{product.productName}</span>
+                            <span className="font-medium text-gray-900">{product.quantitySold}</span>
+                          </div>
+                          <div className="h-2 rounded bg-gray-100">
+                            <div className="h-2 rounded bg-blue-500" style={{ width: getBiBarWidth(product.quantitySold, maxValue) }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Most Profitable Products</h3>
+                {businessIntelligenceAnalytics.mostProfitable.length === 0 ? (
+                  <p className="text-sm text-gray-600">No costed product profit in this range.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="text-xs uppercase text-gray-500">
+                        <tr>
+                          <th className="py-2 pr-3">Product</th>
+                          <th className="py-2 pr-3">Profit</th>
+                          <th className="py-2 pr-3">Margin</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {businessIntelligenceAnalytics.mostProfitable.map((product) => (
+                          <tr key={product.productId}>
+                            <td className="py-2 pr-3">{product.productName}</td>
+                            <td className="py-2 pr-3">{formatPKR(product.grossProfit)}</td>
+                            <td className="py-2 pr-3">{product.profitMargin.toFixed(1)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Product Stock Watch</h3>
+                <div className="space-y-3">
+                  {businessIntelligenceAnalytics.outOfStockProducts.slice(0, 5).map((product) => (
+                    <div key={product.productId} className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm">
+                      <div className="font-medium text-red-950">{product.productName}</div>
+                      <div className="text-red-700">Out of stock · Reorder {product.suggestedReorderQuantity}</div>
+                    </div>
+                  ))}
+                  {businessIntelligenceAnalytics.lowStockProducts.slice(0, 5).map((product) => (
+                    <div key={product.productId} className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                      <div className="font-medium text-amber-950">{product.productName}</div>
+                      <div className="text-amber-700">Stock {product.currentStock} · Reorder level {product.reorderLevel}</div>
+                    </div>
+                  ))}
+                  {businessIntelligenceAnalytics.outOfStockProducts.length === 0 && businessIntelligenceAnalytics.lowStockProducts.length === 0 && (
+                    <p className="text-sm text-gray-600">No urgent stock warnings in this filtered view.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(biMetricView === "overview" || biMetricView === "customers") && (
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Top Customers by Sales</h3>
+                {businessIntelligenceAnalytics.topCustomersBySales.length === 0 ? (
+                  <p className="text-sm text-gray-600">No customer sales in this range.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {businessIntelligenceAnalytics.topCustomersBySales.map((customer) => {
+                      const maxValue = Math.max(...businessIntelligenceAnalytics.topCustomersBySales.map((item) => item.totalSales), 0);
+                      return (
+                        <div key={customer.customerId}>
+                          <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+                            <span className="truncate text-gray-800">{customer.customerName}</span>
+                            <span className="font-medium text-gray-900">{formatPKR(customer.totalSales)}</span>
+                          </div>
+                          <div className="h-2 rounded bg-gray-100">
+                            <div className="h-2 rounded bg-emerald-500" style={{ width: getBiBarWidth(customer.totalSales, maxValue) }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Customer Payment &amp; Credit Signals</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="text-xs uppercase text-gray-500">
+                      <tr>
+                        <th className="py-2 pr-3">Customer</th>
+                        <th className="py-2 pr-3">Payments</th>
+                        <th className="py-2 pr-3">Outstanding</th>
+                        <th className="py-2 pr-3">Overdue</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {businessIntelligenceAnalytics.customersWithHighOutstanding.slice(0, 10).map((customer) => (
+                        <tr key={customer.customerId}>
+                          <td className="py-2 pr-3">{customer.customerName}</td>
+                          <td className="py-2 pr-3">{formatPKR(customer.paymentsReceived)}</td>
+                          <td className="py-2 pr-3">{formatPKR(customer.outstandingBalance)}</td>
+                          <td className="py-2 pr-3">{formatPKR(customer.overdueAmount)}</td>
+                        </tr>
+                      ))}
+                      {businessIntelligenceAnalytics.customersWithHighOutstanding.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-3 text-gray-600">No outstanding customer balances in this filtered view.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(biMetricView === "overview" || biMetricView === "staff") && (
+            <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-lg font-medium text-gray-900">Staff Performance</h3>
+                <p className="text-xs text-gray-500">Staff attribution depends on which records contain creator/profile information.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs uppercase text-gray-500">
+                    <tr>
+                      <th className="py-2 pr-3">Staff</th>
+                      <th className="py-2 pr-3">Sales</th>
+                      <th className="py-2 pr-3">Collected</th>
+                      <th className="py-2 pr-3">Tasks</th>
+                      <th className="py-2 pr-3">Duty Hours</th>
+                      <th className="py-2 pr-3">Last Location</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {businessIntelligenceAnalytics.staffAnalytics.map((staff) => (
+                      <tr key={staff.profileId}>
+                        <td className="py-2 pr-3">{staff.staffName}</td>
+                        <td className="py-2 pr-3">{formatPKR(staff.salesAmount)}</td>
+                        <td className="py-2 pr-3">{formatPKR(staff.paymentsCollected)}</td>
+                        <td className="py-2 pr-3">{staff.tasksCompleted}/{staff.tasksCreated}</td>
+                        <td className="py-2 pr-3">{staff.dutyHours.toFixed(1)}</td>
+                        <td className="py-2 pr-3">{formatDateTime(staff.lastLocationAt)}</td>
+                      </tr>
+                    ))}
+                    {businessIntelligenceAnalytics.staffAnalytics.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-3 text-gray-600">No staff activity matched these filters.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {(biMetricView === "overview" || biMetricView === "expenses") && (
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Expense Categories</h3>
+                {businessIntelligenceAnalytics.expensesByType.length === 0 ? (
+                  <p className="text-sm text-gray-600">No expenses in this range.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {businessIntelligenceAnalytics.expensesByType.map((expense) => {
+                      const maxValue = Math.max(...businessIntelligenceAnalytics.expensesByType.map((item) => item.totalAmount), 0);
+                      return (
+                        <div key={expense.expenseType}>
+                          <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+                            <span className="truncate text-gray-800">{expense.expenseType} ({expense.entryCount})</span>
+                            <span className="font-medium text-gray-900">{formatPKR(expense.totalAmount)}</span>
+                          </div>
+                          <div className="h-2 rounded bg-gray-100">
+                            <div className="h-2 rounded bg-red-500" style={{ width: getBiBarWidth(expense.totalAmount, maxValue) }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Expense Split</h3>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                    <div className="text-xs text-gray-500">Purchase-linked</div>
+                    <div className="mt-1 font-semibold text-gray-900">{formatPKR(businessIntelligenceAnalytics.purchaseLinkedExpenseTotal)}</div>
+                  </div>
+                  <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                    <div className="text-xs text-gray-500">Sales-linked</div>
+                    <div className="mt-1 font-semibold text-gray-900">{formatPKR(businessIntelligenceAnalytics.salesLinkedExpenseTotal)}</div>
+                  </div>
+                  <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                    <div className="text-xs text-gray-500">Operating</div>
+                    <div className="mt-1 font-semibold text-gray-900">{formatPKR(businessIntelligenceAnalytics.operatingExpenseTotal)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(biMetricView === "overview" || biMetricView === "inventory") && (
+            <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-lg font-medium text-gray-900">Inventory Movement</h3>
+                <span className="text-sm text-gray-600">Estimated stock value: {formatPKR(businessIntelligenceAnalytics.inventoryStockValue)}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs uppercase text-gray-500">
+                    <tr>
+                      <th className="py-2 pr-3">Product</th>
+                      <th className="py-2 pr-3">Sold</th>
+                      <th className="py-2 pr-3">Stock</th>
+                      <th className="py-2 pr-3">Days Left</th>
+                      <th className="py-2 pr-3">Suggested Reorder</th>
+                      <th className="py-2 pr-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {businessIntelligenceAnalytics.productAnalytics
+                      .slice()
+                      .sort((a, b) => a.currentStock - b.currentStock)
+                      .slice(0, 20)
+                      .map((product) => (
+                        <tr key={product.productId}>
+                          <td className="py-2 pr-3">{product.productName}</td>
+                          <td className="py-2 pr-3">{product.quantitySold}</td>
+                          <td className="py-2 pr-3">{product.currentStock}</td>
+                          <td className="py-2 pr-3">{product.estimatedDaysLeft === null ? "No recent sales" : product.estimatedDaysLeft.toFixed(1)}</td>
+                          <td className="py-2 pr-3">{product.reorderLevel > 0 ? product.suggestedReorderQuantity : "Set reorder level first"}</td>
+                          <td className="py-2 pr-3">{product.stockStatus}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {(biMetricView === "overview" || biMetricView === "trends") && (
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Daily Sales Trend</h3>
+                {businessIntelligenceAnalytics.dailyTrends.length === 0 ? (
+                  <p className="text-sm text-gray-600">No trend data in this range.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {businessIntelligenceAnalytics.dailyTrends.slice(-14).map((day) => {
+                      const maxValue = Math.max(...businessIntelligenceAnalytics.dailyTrends.map((item) => item.sales), 0);
+                      return (
+                        <div key={day.date}>
+                          <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                            <span>{formatDate(day.date)}</span>
+                            <span>{formatPKR(day.sales)}</span>
+                          </div>
+                          <div className="h-2 rounded bg-gray-100">
+                            <div className="h-2 rounded bg-blue-500" style={{ width: getBiBarWidth(day.sales, maxValue) }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Daily Profit / Expense Trend</h3>
+                <div className="space-y-3">
+                  {businessIntelligenceAnalytics.dailyTrends.slice(-14).map((day) => {
+                    const maxValue = Math.max(...businessIntelligenceAnalytics.dailyTrends.map((item) => Math.max(Math.abs(item.profit), item.expenses)), 0);
+                    return (
+                      <div key={day.date}>
+                        <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                          <span>{formatDate(day.date)}</span>
+                          <span>Profit {formatPKR(day.profit)} · Expense {formatPKR(day.expenses)}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1">
+                          <div className="h-2 rounded bg-gray-100">
+                            <div className="h-2 rounded bg-emerald-500" style={{ width: getBiBarWidth(Math.max(0, day.profit), maxValue) }} />
+                          </div>
+                          <div className="h-2 rounded bg-gray-100">
+                            <div className="h-2 rounded bg-red-500" style={{ width: getBiBarWidth(day.expenses, maxValue) }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {businessIntelligenceAnalytics.dailyTrends.length === 0 && <p className="text-sm text-gray-600">No profit trend data in this range.</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(biMetricView === "overview" || biMetricView === "seasonal") && (
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Seasonal Movement</h3>
+                {!businessIntelligenceAnalytics.enoughSeasonalData && (
+                  <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    More data is needed for strong seasonal analysis.
+                  </p>
+                )}
+                <div className="space-y-2 text-sm text-gray-700">
+                  <div>Best month: <span className="font-medium text-gray-900">{businessIntelligenceAnalytics.bestMonth?.label ?? "Not enough data"}</span> {businessIntelligenceAnalytics.bestMonth ? formatPKR(businessIntelligenceAnalytics.bestMonth.value) : ""}</div>
+                  <div>Best day of week: <span className="font-medium text-gray-900">{businessIntelligenceAnalytics.bestWeekday?.label ?? "Not enough data"}</span> {businessIntelligenceAnalytics.bestWeekday ? formatPKR(businessIntelligenceAnalytics.bestWeekday.value) : ""}</div>
+                  <div>Strongest product month: <span className="font-medium text-gray-900">{businessIntelligenceAnalytics.strongestProductMonth ? `${businessIntelligenceAnalytics.strongestProductMonth.productName} in ${businessIntelligenceAnalytics.strongestProductMonth.month}` : "Not enough data"}</span></div>
+                </div>
+              </div>
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="mb-3 text-lg font-medium text-gray-900">Monthly Sales</h3>
+                <div className="space-y-3">
+                  {businessIntelligenceAnalytics.monthlySales.map((month) => {
+                    const maxValue = Math.max(...businessIntelligenceAnalytics.monthlySales.map((item) => item.value), 0);
+                    return (
+                      <div key={month.label}>
+                        <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                          <span>{month.label}</span>
+                          <span>{formatPKR(month.value)}</span>
+                        </div>
+                        <div className="h-2 rounded bg-gray-100">
+                          <div className="h-2 rounded bg-purple-500" style={{ width: getBiBarWidth(month.value, maxValue) }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {businessIntelligenceAnalytics.monthlySales.length === 0 && <p className="text-sm text-gray-600">No monthly sales data.</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            {[
+              ["Best product", businessIntelligenceAnalytics.insights.bestProduct ? `${businessIntelligenceAnalytics.insights.bestProduct.productName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestProduct.salesValue)}` : "No sales signal yet"],
+              ["Most profitable product", businessIntelligenceAnalytics.insights.bestProfitProduct ? `${businessIntelligenceAnalytics.insights.bestProfitProduct.productName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestProfitProduct.grossProfit)}` : "No costed profit signal yet"],
+              ["Highest expense category", businessIntelligenceAnalytics.insights.highestExpenseCategory ? `${businessIntelligenceAnalytics.insights.highestExpenseCategory.expenseType} · ${formatPKR(businessIntelligenceAnalytics.insights.highestExpenseCategory.totalAmount)}` : "No expense signal yet"],
+              ["Best customer", businessIntelligenceAnalytics.insights.bestCustomer ? `${businessIntelligenceAnalytics.insights.bestCustomer.customerName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestCustomer.totalSales)}` : "No customer signal yet"],
+              ["Low stock warning", businessIntelligenceAnalytics.insights.lowStockWarning],
+              ["Staff activity note", businessIntelligenceAnalytics.insights.staffActivityNote],
+              ["Market signal note", businessIntelligenceAnalytics.insights.marketSignalNote],
+              ["AI analytics note", "AI explanation for analytics will be added next, so the owner can ask why sales increased or dropped."],
+            ].map(([title, body]) => (
+              <div key={String(title)} className="rounded border border-gray-200 bg-white p-4">
+                <div className="text-sm font-medium text-gray-900">{title}</div>
+                <p className="mt-2 text-sm text-gray-600">{body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
         )}
 
         {activeSectionAllowed && activeSection === "profit-loss" && (
