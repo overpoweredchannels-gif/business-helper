@@ -111,7 +111,44 @@ export async function POST(request: NextRequest) {
     }
 
     const summaryText = safeText(JSON.stringify(businessSummary), 24000);
-    const prompt = `
+    const isAnalyticsExplainer = queryType === "analytics_explainer";
+    const prompt = isAnalyticsExplainer
+      ? `
+You are OP OWNER AI Analytics Explainer for a Pakistani wholesale/trading business.
+Answer ONLY from the provided analytics context. Do not invent numbers, percentages, product names, customer names, or causes.
+If the provided data is not enough to answer accurately, say exactly: "There is not enough recorded business data to answer this accurately."
+Do not execute actions or suggest that you changed records.
+
+Language setting: ${language}
+Reply in the requested language. For Urdu or Roman Urdu, keep business terms understandable for Pakistani traders.
+
+Question: ${question}
+Query type: ${queryType}
+Date range: ${dateRangeStart || "-"} to ${dateRangeEnd || "-"}
+
+Structure the answer with these headings:
+Summary
+Evidence
+Recommendations
+Confidence
+
+Use Evidence only for facts and numbers present in business_summary.
+Use Recommendations only when they follow from those facts.
+Confidence must be High, Medium, or Low, with a short reason.
+
+Return JSON only:
+{
+  "answer": string,
+  "query_type": string,
+  "language": string,
+  "key_points": string[],
+  "warnings": string[]
+}
+
+business_summary:
+${summaryText}
+`
+      : `
 You are TradeOS Business Assistant for Pakistani wholesalers, traders, distributors, and general store suppliers.
 Answer only from the provided business_summary. Do not invent data. If data is missing, say it is not available.
 Do not execute actions or suggest that you changed records.

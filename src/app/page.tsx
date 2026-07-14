@@ -4100,6 +4100,12 @@ export default function Home() {
   const [biMetricView, setBiMetricView] = useState("overview");
   const [biMessage, setBiMessage] = useState<string | null>(null);
   const [biError, setBiError] = useState<string | null>(null);
+  const [aiAnalyticsQuestion, setAiAnalyticsQuestion] = useState("");
+  const [aiAnalyticsLanguage, setAiAnalyticsLanguage] = useState("english");
+  const [aiAnalyticsLoading, setAiAnalyticsLoading] = useState(false);
+  const [aiAnalyticsMessage, setAiAnalyticsMessage] = useState<string | null>(null);
+  const [aiAnalyticsError, setAiAnalyticsError] = useState<string | null>(null);
+  const [aiAnalyticsResult, setAiAnalyticsResult] = useState<AiBusinessQueryResult | null>(null);
   const pkrFormatter = new Intl.NumberFormat("en-PK", {
     style: "currency",
     currency: "PKR",
@@ -4130,6 +4136,7 @@ export default function Home() {
     expenses: "can_manage_expenses",
     "profit-loss": "can_view_profit",
     "business-intelligence": "owner_admin",
+    "ai-analytics": "owner_admin",
     inventory: "can_view_reports",
     "customer-credit": "can_manage_customers",
     "supplier-ledger": "can_manage_payments",
@@ -6524,6 +6531,278 @@ export default function Home() {
     );
     setBiMessage("Expense analytics CSV exported.");
     setBiError(null);
+  };
+  const getBusinessHealthScore = () => {
+    const overview = businessIntelligenceAnalytics.overview;
+    let score = 50;
+    const reasons: string[] = [];
+    if (overview.totalSalesAmount > 0) {
+      score += 10;
+      reasons.push("Sales are recorded in the selected analytics period.");
+    } else {
+      score -= 10;
+      reasons.push("No sales are recorded in the selected analytics period.");
+    }
+    if (overview.estimatedNetProfit > 0) {
+      score += 20;
+      reasons.push("Estimated net profit is positive.");
+    } else if (overview.totalSalesAmount > 0) {
+      score -= 15;
+      reasons.push("Estimated net profit is not positive based on recorded cost and expense data.");
+    }
+    if (overview.outOfStockCount > 0) {
+      score -= 20;
+      reasons.push(`${overview.outOfStockCount} product(s) are out of stock.`);
+    } else if (overview.lowStockCount > 0) {
+      score -= 10;
+      reasons.push(`${overview.lowStockCount} product(s) are low stock.`);
+    } else {
+      score += 10;
+      reasons.push("No urgent low-stock issue appears in the current analytics view.");
+    }
+    if (overview.customerCollectionsTotal >= overview.totalSalesAmount * 0.5 || overview.totalSalesAmount === 0) {
+      score += 10;
+      reasons.push("Collections look reasonable compared with recorded sales.");
+    } else {
+      score -= 10;
+      reasons.push("Collections are low compared with recorded sales.");
+    }
+    if (overview.expensesTotal > overview.totalSalesAmount && overview.totalSalesAmount > 0) {
+      score -= 15;
+      reasons.push("Expenses are higher than recorded sales for the selected period.");
+    } else {
+      score += 5;
+      reasons.push("Expenses are not higher than sales in this view.");
+    }
+    const boundedScore = Math.max(0, Math.min(100, score));
+    const label =
+      boundedScore >= 85
+        ? "Excellent"
+        : boundedScore >= 70
+          ? "Good"
+          : boundedScore >= 50
+            ? "Average"
+            : boundedScore >= 30
+              ? "Needs Attention"
+              : "Critical";
+    return { score: boundedScore, label, reasons };
+  };
+  const businessHealthScore = getBusinessHealthScore();
+  const buildAnalyticsContext = () => {
+    const analytics = businessIntelligenceAnalytics;
+    return {
+      range: analytics.range,
+      business_health: businessHealthScore,
+      sales: {
+        total_amount: analytics.overview.totalSalesAmount,
+        invoice_count: analytics.overview.salesInvoiceCount,
+        average_sale_value: analytics.overview.averageSaleValue,
+        active_customers: analytics.overview.activeCustomerCount,
+      },
+      profit: {
+        estimated_gross_profit: analytics.overview.estimatedGrossProfit,
+        estimated_net_profit: analytics.overview.estimatedNetProfit,
+        known_cogs: analytics.overview.knownCogs,
+        unknown_cost_lines: analytics.overview.unknownCostLines,
+        unknown_cost_revenue: analytics.overview.unknownCostRevenue,
+      },
+      purchases: {
+        total_amount: analytics.overview.totalPurchasesAmount,
+        invoice_count: analytics.overview.purchaseInvoiceCount,
+      },
+      expenses: {
+        total_amount: analytics.overview.expensesTotal,
+        purchase_linked_total: analytics.purchaseLinkedExpenseTotal,
+        sales_linked_total: analytics.salesLinkedExpenseTotal,
+        operating_total: analytics.operatingExpenseTotal,
+        top_categories: analytics.expensesByType.slice(0, 8),
+      },
+      collections: {
+        customer_collections_total: analytics.overview.customerCollectionsTotal,
+        supplier_payments_total: analytics.overview.supplierPaymentsTotal,
+      },
+      inventory: {
+        low_stock_count: analytics.overview.lowStockCount,
+        out_of_stock_count: analytics.overview.outOfStockCount,
+        stock_value_estimate: analytics.inventoryStockValue,
+        out_of_stock_products: analytics.outOfStockProducts.slice(0, 10).map((product) => ({
+          product: product.productName,
+          current_stock: product.currentStock,
+          suggested_reorder_quantity: product.suggestedReorderQuantity,
+        })),
+        low_stock_products: analytics.lowStockProducts.slice(0, 10).map((product) => ({
+          product: product.productName,
+          current_stock: product.currentStock,
+          reorder_level: product.reorderLevel,
+          suggested_reorder_quantity: product.suggestedReorderQuantity,
+        })),
+      },
+      products: {
+        products_sold_count: analytics.overview.productsSoldCount,
+        top_by_quantity: analytics.topByQuantity.slice(0, 8).map((product) => ({
+          product: product.productName,
+          quantity_sold: product.quantitySold,
+          sales_value: product.salesValue,
+        })),
+        top_by_sales_value: analytics.topBySalesValue.slice(0, 8).map((product) => ({
+          product: product.productName,
+          sales_value: product.salesValue,
+          quantity_sold: product.quantitySold,
+        })),
+        most_profitable: analytics.mostProfitable.slice(0, 8).map((product) => ({
+          product: product.productName,
+          gross_profit: product.grossProfit,
+          profit_margin: product.profitMargin,
+        })),
+        low_margin: analytics.lowMarginProducts.slice(0, 8).map((product) => ({
+          product: product.productName,
+          profit_margin: product.profitMargin,
+          sales_value: product.salesValue,
+        })),
+        slow_moving: analytics.slowMovingProducts.slice(0, 8).map((product) => ({
+          product: product.productName,
+          current_stock: product.currentStock,
+        })),
+      },
+      customers: {
+        top_by_sales: analytics.topCustomersBySales.slice(0, 8).map((customer) => ({
+          customer: customer.customerName,
+          sales: customer.totalSales,
+          invoice_count: customer.invoiceCount,
+        })),
+        top_by_payments: analytics.topCustomersByPayments.slice(0, 8).map((customer) => ({
+          customer: customer.customerName,
+          payments_received: customer.paymentsReceived,
+        })),
+        high_outstanding: analytics.customersWithHighOutstanding.slice(0, 8).map((customer) => ({
+          customer: customer.customerName,
+          outstanding_balance: customer.outstandingBalance,
+          overdue_amount: customer.overdueAmount,
+          overdue_invoice_count: customer.overdueInvoiceCount,
+        })),
+        inactive_customers: analytics.inactiveCustomers.slice(0, 8).map((customer) => customer.customerName),
+      },
+      staff: {
+        attribution_note: analytics.insights.staffActivityNote,
+        top_activity: analytics.staffAnalytics.slice(0, 8).map((staff) => ({
+          staff: staff.staffName,
+          sales_amount: staff.salesAmount,
+          payments_collected: staff.paymentsCollected,
+          tasks_completed: staff.tasksCompleted,
+          duty_hours: staff.dutyHours,
+        })),
+      },
+      trends: {
+        daily: analytics.dailyTrends.slice(-14),
+        monthly_sales: analytics.monthlySales,
+        best_month: analytics.bestMonth,
+        best_weekday: analytics.bestWeekday,
+        strongest_product_month: analytics.strongestProductMonth,
+      },
+      market_signals: {
+        note: analytics.insights.marketSignalNote,
+        high_or_critical_count: marketIntelligenceSummary.highCritical,
+        price_up_count: marketIntelligenceSummary.priceUp,
+        supply_shortage_count: marketIntelligenceSummary.supplyShortage,
+      },
+      insight_cards: analytics.insights,
+    };
+  };
+  const getAnalyticsTopPriorities = () => {
+    const priorities: string[] = [];
+    const topOutstanding = businessIntelligenceAnalytics.customersWithHighOutstanding[0];
+    if (topOutstanding) priorities.push(`Collect overdue or outstanding payments from ${topOutstanding.customerName} (${formatPKR(topOutstanding.outstandingBalance)}).`);
+    const topOutOfStock = businessIntelligenceAnalytics.outOfStockProducts[0];
+    if (topOutOfStock) priorities.push(`Reorder ${topOutOfStock.productName}; current stock is ${topOutOfStock.currentStock}.`);
+    const topLowStock = businessIntelligenceAnalytics.lowStockProducts[0];
+    if (!topOutOfStock && topLowStock) priorities.push(`Prepare reorder for ${topLowStock.productName}; stock is near reorder level.`);
+    const topExpense = businessIntelligenceAnalytics.expensesByType[0];
+    if (topExpense) priorities.push(`Review ${topExpense.expenseType} expenses (${formatPKR(topExpense.totalAmount)}).`);
+    const lowMargin = businessIntelligenceAnalytics.lowMarginProducts[0];
+    if (lowMargin) priorities.push(`Review pricing or cost for low-margin product ${lowMargin.productName}.`);
+    const slowMoving = businessIntelligenceAnalytics.slowMovingProducts[0];
+    if (slowMoving) priorities.push(`Check slow-moving stock for ${slowMoving.productName}.`);
+    const inactiveCustomer = businessIntelligenceAnalytics.inactiveCustomers[0];
+    if (inactiveCustomer) priorities.push(`Follow up inactive customer ${inactiveCustomer.customerName}.`);
+    if (priorities.length === 0) priorities.push("Keep recording sales, purchases, payments, expenses, and stock movement to improve analytics quality.");
+    return priorities.slice(0, 5);
+  };
+  const analyticsTopPriorities = getAnalyticsTopPriorities();
+  const fillAiAnalyticsQuestion = (question: string) => {
+    setAiAnalyticsQuestion(question);
+    setAiAnalyticsError(null);
+    setAiAnalyticsMessage("Question loaded. Review or ask AI.");
+    window.setTimeout(() => document.getElementById("ai-analytics-question")?.focus(), 0);
+  };
+  const openAiAnalyticsFromBusinessIntelligence = () => {
+    setAiAnalyticsQuestion(`Explain these ${businessIntelligenceAnalytics.range.label} analytics and tell me what to focus on.`);
+    setActiveSection("ai-analytics");
+    setMobileMenuOpen(false);
+    window.setTimeout(() => {
+      document.getElementById("tradeos-main-content")?.scrollTo({ top: 0, behavior: "smooth" });
+      document.getElementById("ai-analytics-question")?.focus();
+    }, 0);
+  };
+  const askAiAnalyticsQuestion = async () => {
+    setAiAnalyticsMessage(null);
+    setAiAnalyticsError(null);
+    setAiAnalyticsResult(null);
+
+    if (!requireOrganization("ask AI analytics")) {
+      setAiAnalyticsError("Organization not loaded. Please login again.");
+      return;
+    }
+    if (!isOwnerOrAdmin()) {
+      setAiAnalyticsError("Only owner/admin users can use AI Analytics in this version.");
+      return;
+    }
+    const question = aiAnalyticsQuestion.trim();
+    if (!question) {
+      setAiAnalyticsError("Please enter an analytics question.");
+      return;
+    }
+    const analyticsContext = buildAnalyticsContext();
+    const enoughData =
+      businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ||
+      businessIntelligenceAnalytics.overview.totalPurchasesAmount > 0 ||
+      businessIntelligenceAnalytics.overview.expensesTotal > 0 ||
+      businessIntelligenceAnalytics.productAnalytics.length > 0;
+    setAiAnalyticsLoading(true);
+    try {
+      const response = await fetch("/api/ai-business-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          language: aiAnalyticsLanguage,
+          query_type: "analytics_explainer",
+          date_range_start: businessIntelligenceAnalytics.range.start,
+          date_range_end: businessIntelligenceAnalytics.range.end,
+          business_summary: {
+            analytics_context: analyticsContext,
+            business_intelligence_summary: {
+              overview: businessIntelligenceAnalytics.overview,
+              priorities: analyticsTopPriorities,
+              health_score: businessHealthScore,
+              enough_recorded_data: enoughData,
+            },
+          },
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        const details = typeof result?.details === "string" ? result.details : "";
+        setAiAnalyticsError(details ? `${result?.error ?? "AI analytics failed"} - ${details}` : result?.error ?? "AI analytics failed. Please try again.");
+        return;
+      }
+      setAiAnalyticsResult(result.result);
+      setAiAnalyticsMessage("AI analytics explanation generated from current OP OWNER data.");
+    } catch (error) {
+      console.error("AI analytics request error:", error);
+      setAiAnalyticsError("AI analytics failed. Please try again.");
+    } finally {
+      setAiAnalyticsLoading(false);
+    }
   };
   const recentSalesInvoices = salesTransactions
     .slice()
@@ -11484,6 +11763,9 @@ export default function Home() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={openAiAnalyticsFromBusinessIntelligence} className="rounded border border-indigo-600 bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700">
+                Ask AI About These Analytics
+              </button>
               <button type="button" onClick={exportBiProductAnalyticsCsv} className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
                 Export product CSV
               </button>
@@ -16409,6 +16691,175 @@ export default function Home() {
                 ))
               )}
             </div>
+          </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "ai-analytics" && (
+        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">AI Analytics Explainer</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Ask why performance changed, what is strongest, and what to focus on next. Answers use only current OP OWNER analytics data.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSectionChange("business-intelligence")}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Open Business Intelligence
+            </button>
+          </div>
+
+          <div className="mb-5 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            AI Analytics does not create or update records. It explains the analytics context already loaded in OP OWNER and must say when data is not enough.
+          </div>
+
+          {aiAnalyticsMessage && (
+            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{aiAnalyticsMessage}</p>
+          )}
+          {aiAnalyticsError && (
+            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{aiAnalyticsError}</p>
+          )}
+
+          <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
+            <div className="rounded border border-gray-200 bg-white p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Reply language</span>
+                  <select
+                    value={aiAnalyticsLanguage}
+                    onChange={(event) => setAiAnalyticsLanguage(event.target.value)}
+                    className="rounded border border-gray-300 px-3 py-2"
+                  >
+                    <option value="english">English</option>
+                    <option value="urdu">Urdu</option>
+                    <option value="roman_urdu">Roman Urdu</option>
+                  </select>
+                </label>
+                <div className="flex flex-col gap-1 text-sm text-gray-700">
+                  <span>Analytics range</span>
+                  <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    {businessIntelligenceAnalytics.range.label}
+                    {businessIntelligenceAnalytics.range.start || businessIntelligenceAnalytics.range.end
+                      ? ` (${businessIntelligenceAnalytics.range.start || "start"} to ${businessIntelligenceAnalytics.range.end || "today"})`
+                      : " (all loaded history)"}
+                  </div>
+                </div>
+              </div>
+
+              <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="ai-analytics-question">
+                Analytics Question
+              </label>
+              <textarea
+                id="ai-analytics-question"
+                value={aiAnalyticsQuestion}
+                onChange={(event) => setAiAnalyticsQuestion(event.target.value)}
+                rows={4}
+                className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                placeholder="Why did sales drop?"
+              />
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[
+                  "Explain Dashboard",
+                  "Business Health",
+                  "Top Priorities",
+                  "Reorder Advice",
+                  "Profit Analysis",
+                  "Expense Analysis",
+                  "Customer Analysis",
+                  "Inventory Analysis",
+                  "Product Analysis",
+                  "Cash Flow Summary",
+                ].map((question) => (
+                  <button
+                    key={question}
+                    type="button"
+                    onClick={() => fillAiAnalyticsQuestion(question)}
+                    className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs text-indigo-800 hover:bg-indigo-100"
+                  >
+                    {question}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={askAiAnalyticsQuestion}
+                disabled={aiAnalyticsLoading}
+                className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+              >
+                {aiAnalyticsLoading ? "Explaining..." : "Ask AI Analytics"}
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="text-lg font-medium text-gray-900">Business Health Score</h3>
+                <div className="mt-3 flex items-end gap-3">
+                  <div className="text-4xl font-semibold text-gray-900">{businessHealthScore.score}</div>
+                  <div className="pb-1 text-lg font-medium text-gray-700">{businessHealthScore.label}</div>
+                </div>
+                <div className="mt-3 h-2 rounded bg-gray-100">
+                  <div className="h-2 rounded bg-indigo-600" style={{ width: `${businessHealthScore.score}%` }} />
+                </div>
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-600">
+                  {businessHealthScore.reasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded border border-gray-200 bg-white p-4">
+                <h3 className="text-lg font-medium text-gray-900">Top Priorities</h3>
+                <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-gray-700">
+                  {analyticsTopPriorities.map((priority) => (
+                    <li key={priority}>{priority}</li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+            <h3 className="text-lg font-medium text-gray-900">AI Explanation</h3>
+            {!aiAnalyticsResult ? (
+              <p className="mt-3 text-sm text-gray-600">Ask a question to see a grounded analytics explanation.</p>
+            ) : (
+              <div className="mt-3 space-y-4">
+                <div>
+                  <div className="text-sm font-medium text-gray-900">Summary</div>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{aiAnalyticsResult.answer}</p>
+                </div>
+                {aiAnalyticsResult.key_points.length > 0 && (
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">Evidence</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                      {aiAnalyticsResult.key_points.map((point) => (
+                        <li key={point}>{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {aiAnalyticsResult.warnings.length > 0 && (
+                  <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2">
+                    <div className="text-sm font-medium text-amber-900">Recommendations and Confidence Notes</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-amber-800">
+                      {aiAnalyticsResult.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="grid gap-2 text-xs text-gray-600 sm:grid-cols-2">
+                  <div>Type: {aiAnalyticsResult.query_type}</div>
+                  <div>Language: {aiAnalyticsResult.language}</div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
         )}
