@@ -358,6 +358,12 @@ export default function Home() {
   const [marketIntelligenceCategoryFilter, setMarketIntelligenceCategoryFilter] = useState("all");
   const [marketIntelligenceImpactFilter, setMarketIntelligenceImpactFilter] = useState("all");
   const [marketIntelligenceStatusFilter, setMarketIntelligenceStatusFilter] = useState("all");
+  const [marketIntelligenceTab, setMarketIntelligenceTab] = useState("overview");
+  const [marketIntelligenceRiskFilter, setMarketIntelligenceRiskFilter] = useState("all");
+  const [marketIntelligenceOpportunityFilter, setMarketIntelligenceOpportunityFilter] = useState("all");
+  const [marketIntelligenceUrgencyFilter, setMarketIntelligenceUrgencyFilter] = useState("all");
+  const [marketIntelligenceAreaFilter, setMarketIntelligenceAreaFilter] = useState("all");
+  const [marketIntelligenceSourceFilter, setMarketIntelligenceSourceFilter] = useState("all");
   const [marketImportQueueSearch, setMarketImportQueueSearch] = useState("");
   const [marketImportQueueStatusFilter, setMarketImportQueueStatusFilter] = useState("all");
   const [selectedMarketImportQueueId, setSelectedMarketImportQueueId] = useState("");
@@ -4208,6 +4214,218 @@ export default function Home() {
   const selectedConversationReady = Boolean(
     selectedConversationDraft?.ready_to_execute || selectedConversationEvaluation?.readyToExecute
   );
+  const marketBusinessAreaOptions = [
+    "Supply Chain",
+    "Inventory",
+    "Pricing",
+    "Sales",
+    "Demand",
+    "Transportation",
+    "Imports",
+    "Exports",
+    "Currency",
+    "Government",
+    "Taxation",
+    "Energy",
+    "Operations",
+  ];
+  const marketUrgencyOptions = ["Very High", "High", "Medium", "Low", "Monitor"];
+  const marketHealthImpactOptions = ["Positive", "Neutral", "Negative", "Mixed"];
+  const marketIntelligenceTabOptions = [
+    { value: "overview", label: "Overview" },
+    { value: "threats", label: "Threats" },
+    { value: "opportunities", label: "Opportunities" },
+    { value: "high-priority", label: "High Priority" },
+    { value: "all", label: "All Intelligence" },
+  ];
+  const getMarketAiAdvisoryPayload = (analysis: MarketAiAnalysis | null | undefined) => {
+    const raw = analysis?.raw_ai_response as any;
+    const directAnalysis =
+      raw && typeof raw === "object" && !Array.isArray(raw) && ("executive_summary" in raw || "business_impact" in raw || "risk_score" in raw)
+        ? raw
+        : null;
+    const nestedAnalysis =
+      directAnalysis || !raw || typeof raw !== "object" || Array.isArray(raw)
+        ? null
+        : raw?.analysis ?? raw?.advisory ?? raw?.result ?? null;
+    const advisory = (directAnalysis ?? nestedAnalysis) as Record<string, unknown> | null;
+    if (advisory && typeof advisory === "object") {
+      return advisory;
+    }
+    if (!analysis) return null;
+
+    return {
+      summary: analysis.ai_summary ?? "",
+      reasoning: analysis.ai_reasoning ?? "",
+      market_category: analysis.ai_market_category ?? "",
+      impact_direction: analysis.ai_impact_direction ?? "",
+      impact_level: analysis.ai_impact_level ?? "",
+      confidence_level: analysis.ai_confidence_level ?? "",
+      affected_area: analysis.ai_affected_area ?? "",
+      suggested_action: analysis.ai_suggested_action ?? "",
+      risks: analysis.ai_risks ?? "",
+      owner_questions: analysis.ai_owner_questions ?? "",
+      executive_summary: analysis.ai_summary ?? "",
+      business_impact: analysis.ai_reasoning ?? "",
+      risk_score: safeNumber(null),
+      opportunity_score: safeNumber(null),
+      urgency: "",
+      confidence: "",
+      affected_business_areas: [],
+      affected_products: [],
+      affected_categories: [],
+      threat_detection: [],
+      opportunity_detection: [],
+      suggested_owner_actions: [],
+      business_health_impact: "",
+      business_health_reason: "",
+      why_it_matters: "",
+    };
+  };
+  const getLatestMarketAnalysisForItem = (itemId: string) =>
+    marketAiAnalyses
+      .filter((analysis) => analysis.market_intelligence_item_id === itemId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null;
+  const getMarketScoreFromImpact = (impactLevel: string | null | undefined) => {
+    if (impactLevel === "critical") return 90;
+    if (impactLevel === "high") return 75;
+    if (impactLevel === "medium") return 50;
+    if (impactLevel === "low") return 25;
+    return 35;
+  };
+  const getMarketRiskOpportunityDefaults = (item: MarketIntelligenceItem, advisory: any) => {
+    const direction = item.impact_direction;
+    const baseScore = getMarketScoreFromImpact(item.impact_level);
+    const riskScore =
+      safeNumber(advisory?.risk_score) ||
+      (["price_up", "supply_shortage", "demand_down"].includes(direction) ? baseScore : Math.round(baseScore * 0.4));
+    const opportunityScore =
+      safeNumber(advisory?.opportunity_score) ||
+      (["price_down", "supply_improvement", "demand_up"].includes(direction) ? baseScore : Math.round(baseScore * 0.35));
+    return {
+      riskScore: Math.max(0, Math.min(100, riskScore)),
+      opportunityScore: Math.max(0, Math.min(100, opportunityScore)),
+    };
+  };
+  const normalizeMarketArray = (value: unknown) => {
+    if (Array.isArray(value)) return value.map((item) => String(item ?? "").trim()).filter(Boolean).slice(0, 12);
+    if (typeof value === "string") return value.split(/[,;\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 12);
+    return [];
+  };
+  const inferMarketAreas = (item: MarketIntelligenceItem, advisory: any) => {
+    const explicitAreas = normalizeMarketArray(advisory?.affected_business_areas).filter((area) =>
+      marketBusinessAreaOptions.includes(area)
+    );
+    if (explicitAreas.length > 0) return explicitAreas;
+    const areas = new Set<string>();
+    if (item.affected_area === "inventory" || item.impact_direction === "supply_shortage") areas.add("Inventory");
+    if (item.affected_area === "pricing" || item.impact_direction === "price_up" || item.impact_direction === "price_down") areas.add("Pricing");
+    if (item.affected_area === "transport" || item.market_category === "fuel_transport") areas.add("Transportation");
+    if (item.market_category === "currency_imports") areas.add("Currency");
+    if (item.market_category === "taxes_policy") {
+      areas.add("Government");
+      areas.add("Taxation");
+    }
+    if (item.impact_direction === "demand_up" || item.impact_direction === "demand_down") areas.add("Demand");
+    if (item.affected_area === "selling") areas.add("Sales");
+    if (areas.size === 0) areas.add("Operations");
+    return Array.from(areas);
+  };
+  const inferThreats = (item: MarketIntelligenceItem, advisory: any) => {
+    const threats = normalizeMarketArray(advisory?.threat_detection);
+    if (threats.length > 0) return threats;
+    const inferred: string[] = [];
+    if (item.impact_direction === "price_up") inferred.push("Price increase");
+    if (item.impact_direction === "price_down") inferred.push("Price decrease");
+    if (item.impact_direction === "supply_shortage") inferred.push("Shortage");
+    if (item.impact_direction === "demand_up") inferred.push("Demand increase");
+    if (item.impact_direction === "demand_down") inferred.push("Demand decrease");
+    if (item.market_category === "currency_imports") inferred.push("Currency movement");
+    if (item.market_category === "taxes_policy") inferred.push("Tax change", "Government regulation");
+    if (item.market_category === "fuel_transport") inferred.push("Fuel impact", "Transport disruption");
+    if (item.market_category === "weather_agriculture") inferred.push("Weather impact");
+    return inferred;
+  };
+  const inferOpportunities = (item: MarketIntelligenceItem, advisory: any) => {
+    const opportunities = normalizeMarketArray(advisory?.opportunity_detection);
+    if (opportunities.length > 0) return opportunities;
+    const inferred: string[] = [];
+    if (item.impact_direction === "demand_up") inferred.push("High demand");
+    if (item.impact_direction === "price_down" || item.impact_direction === "supply_improvement") inferred.push("Cheaper inventory", "Supplier opportunity");
+    if (item.impact_direction === "price_up") inferred.push("Margin improvement");
+    return inferred;
+  };
+  const getMarketUrgency = (item: MarketIntelligenceItem, riskScore: number, opportunityScore: number, advisory: any) => {
+    const explicit = String(advisory?.urgency ?? "").trim();
+    if (marketUrgencyOptions.includes(explicit)) return explicit;
+    if (riskScore >= 85 || item.impact_level === "critical") return "Very High";
+    if (riskScore >= 70 || opportunityScore >= 80 || item.impact_level === "high") return "High";
+    if (riskScore >= 45 || opportunityScore >= 45 || item.impact_level === "medium") return "Medium";
+    if (riskScore >= 20 || opportunityScore >= 20) return "Low";
+    return "Monitor";
+  };
+  const getMarketHealthImpact = (item: MarketIntelligenceItem, riskScore: number, opportunityScore: number, advisory: any) => {
+    const explicit = String(advisory?.business_health_impact ?? "").trim();
+    if (marketHealthImpactOptions.includes(explicit)) return explicit;
+    if (riskScore >= 65 && opportunityScore >= 55) return "Mixed";
+    if (riskScore >= 65) return "Negative";
+    if (opportunityScore >= 65) return "Positive";
+    return "Neutral";
+  };
+  const buildMarketAdvisory = (item: MarketIntelligenceItem) => {
+    const latestAnalysis = getLatestMarketAnalysisForItem(item.id);
+    const advisory = getMarketAiAdvisoryPayload(latestAnalysis);
+    const { riskScore, opportunityScore } = getMarketRiskOpportunityDefaults(item, advisory);
+    const relatedProduct = products.find((product) => String(product.id) === String(item.related_product_id));
+    const affectedProducts = normalizeMarketArray(advisory?.affected_products);
+    const affectedCategories = normalizeMarketArray(advisory?.affected_categories);
+    if (relatedProduct?.name && affectedProducts.length === 0) affectedProducts.push(relatedProduct.name);
+    if (item.related_product_category && affectedCategories.length === 0) affectedCategories.push(item.related_product_category);
+    const affectedBusinessAreas = inferMarketAreas(item, advisory);
+    const threatDetection = inferThreats(item, advisory);
+    const opportunityDetection = inferOpportunities(item, advisory);
+    const urgency = getMarketUrgency(item, riskScore, opportunityScore, advisory);
+    const businessHealthImpact = getMarketHealthImpact(item, riskScore, opportunityScore, advisory);
+    const suggestedOwnerActions =
+      normalizeMarketArray(advisory?.suggested_owner_actions).length > 0
+        ? normalizeMarketArray(advisory?.suggested_owner_actions)
+        : item.suggested_action
+          ? [item.suggested_action]
+          : ["Review this signal before making buying, pricing, or inventory decisions."];
+    const executiveSummary =
+      String(advisory?.executive_summary ?? "").trim() ||
+      item.summary ||
+      "This market intelligence item needs owner review before action.";
+    const businessImpact =
+      String(advisory?.business_impact ?? "").trim() ||
+      latestAnalysis?.ai_reasoning ||
+      `Potential impact on ${affectedBusinessAreas.join(", ")} based on supplied item text.`;
+    const whyItMatters =
+      String(advisory?.why_it_matters ?? "").trim() ||
+      "This matters because supplier rates, inventory availability, pricing, and customer demand can affect cashflow and margin.";
+    return {
+      item,
+      latestAnalysis,
+      executiveSummary,
+      businessImpact,
+      riskScore,
+      opportunityScore,
+      urgency,
+      confidence: String(advisory?.confidence ?? "").trim() || item.confidence_level || "medium",
+      affectedBusinessAreas,
+      affectedProducts,
+      affectedCategories,
+      threatDetection,
+      opportunityDetection,
+      suggestedOwnerActions,
+      businessHealthImpact,
+      businessHealthReason:
+        String(advisory?.business_health_reason ?? "").trim() ||
+        `${businessHealthImpact} impact based on risk score ${riskScore} and opportunity score ${opportunityScore}.`,
+      whyItMatters,
+    };
+  };
+  const marketAdvisoryItems = marketIntelligenceItems.map(buildMarketAdvisory);
   const marketWeekStart = new Date();
   marketWeekStart.setDate(marketWeekStart.getDate() - 7);
   const marketIntelligenceSummary = marketIntelligenceItems.reduce(
@@ -4241,6 +4459,41 @@ export default function Home() {
     },
     { draft: 0, high: 0, critical: 0 }
   );
+  const marketSourceOptions = Array.from(
+    new Set(marketAdvisoryItems.map((advisory) => advisory.item.source_name || "Manual note"))
+  ).sort((a, b) => a.localeCompare(b));
+  const marketV2Summary = marketAdvisoryItems.reduce(
+    (summary, advisory) => {
+      if (advisory.riskScore >= 70) summary.highRisk += 1;
+      if (advisory.opportunityScore >= 70) summary.highOpportunity += 1;
+      if (
+        advisory.riskScore >= 70 ||
+        advisory.opportunityScore >= 70 ||
+        advisory.urgency === "Very High" ||
+        advisory.urgency === "High"
+      ) {
+        summary.requiringAttention += 1;
+        const advisoryTime = new Date(advisory.item.news_date || advisory.item.created_at || 0).getTime();
+        const existingTime = summary.newestImportantUpdate
+          ? new Date(
+              summary.newestImportantUpdate.item.news_date ||
+                summary.newestImportantUpdate.item.created_at ||
+                0
+            ).getTime()
+          : 0;
+        if (!summary.newestImportantUpdate || advisoryTime > existingTime) {
+          summary.newestImportantUpdate = advisory;
+        }
+      }
+      return summary;
+    },
+    {
+      highRisk: 0,
+      highOpportunity: 0,
+      requiringAttention: 0,
+      newestImportantUpdate: null as ReturnType<typeof buildMarketAdvisory> | null,
+    }
+  );
   const filteredMarketIntelligenceItems = marketIntelligenceItems.filter((item) => {
     const search = marketIntelligenceSearch.trim().toLowerCase();
     const matchesSearch =
@@ -4260,6 +4513,68 @@ export default function Home() {
     const matchesStatus =
       marketIntelligenceStatusFilter === "all" || item.status === marketIntelligenceStatusFilter;
     return matchesSearch && matchesCategory && matchesImpact && matchesStatus;
+  });
+  const filteredMarketAdvisoryItems = marketAdvisoryItems.filter((advisory) => {
+    const item = advisory.item;
+    const search = marketIntelligenceSearch.trim().toLowerCase();
+    const matchesSearch =
+      !search ||
+      [
+        item.title,
+        item.summary,
+        item.source_name,
+        item.suggested_action,
+        advisory.executiveSummary,
+        advisory.businessImpact,
+        advisory.whyItMatters,
+        ...advisory.affectedBusinessAreas,
+        ...advisory.affectedProducts,
+        ...advisory.affectedCategories,
+        ...advisory.suggestedOwnerActions,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(search));
+    const matchesCategory =
+      marketIntelligenceCategoryFilter === "all" || item.market_category === marketIntelligenceCategoryFilter;
+    const matchesImpact =
+      marketIntelligenceImpactFilter === "all" || item.impact_direction === marketIntelligenceImpactFilter;
+    const matchesStatus =
+      marketIntelligenceStatusFilter === "all" || item.status === marketIntelligenceStatusFilter;
+    const matchesRisk =
+      marketIntelligenceRiskFilter === "all" || advisory.riskScore >= Number(marketIntelligenceRiskFilter);
+    const matchesOpportunity =
+      marketIntelligenceOpportunityFilter === "all" ||
+      advisory.opportunityScore >= Number(marketIntelligenceOpportunityFilter);
+    const matchesUrgency =
+      marketIntelligenceUrgencyFilter === "all" || advisory.urgency === marketIntelligenceUrgencyFilter;
+    const matchesArea =
+      marketIntelligenceAreaFilter === "all" || advisory.affectedBusinessAreas.includes(marketIntelligenceAreaFilter);
+    const matchesSource =
+      marketIntelligenceSourceFilter === "all" ||
+      (item.source_name || "Manual note") === marketIntelligenceSourceFilter;
+    const matchesTab =
+      marketIntelligenceTab === "all" ||
+      (marketIntelligenceTab === "overview" && item.status !== "archived") ||
+      (marketIntelligenceTab === "threats" && (advisory.riskScore >= 50 || advisory.threatDetection.length > 0)) ||
+      (marketIntelligenceTab === "opportunities" &&
+        (advisory.opportunityScore >= 50 || advisory.opportunityDetection.length > 0)) ||
+      (marketIntelligenceTab === "high-priority" &&
+        (advisory.riskScore >= 70 ||
+          advisory.opportunityScore >= 70 ||
+          advisory.urgency === "Very High" ||
+          advisory.urgency === "High"));
+    return (
+      matchesSearch &&
+      matchesCategory &&
+      matchesImpact &&
+      matchesStatus &&
+      matchesRisk &&
+      matchesOpportunity &&
+      matchesUrgency &&
+      matchesArea &&
+      matchesSource &&
+      matchesTab
+    );
   });
   const filteredMarketImportQueueItems = marketImportQueueItems.filter((item) => {
     const search = marketImportQueueSearch.trim().toLowerCase();
@@ -8905,7 +9220,12 @@ export default function Home() {
         date_range_start: dateRange.start,
         date_range_end: dateRange.end,
         summary_data: summaryData,
-        raw_ai_response: result.raw ?? null,
+        raw_ai_response: {
+          provider: result.provider ?? null,
+          model: result.model ?? null,
+          provider_raw: result.raw ?? null,
+          advisory: result.result ?? null,
+        },
         status: "answered",
         error_message: null,
       });
@@ -11529,9 +11849,9 @@ export default function Home() {
           <div className="mt-6 rounded border border-emerald-200 bg-emerald-50 p-4">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-emerald-950">Market Intelligence</h3>
+                <h3 className="text-lg font-medium text-emerald-950">Market Intelligence Summary</h3>
                 <p className="mt-1 text-sm text-emerald-900">
-                  Track manual business signals for pricing, supply, inventory, and cashflow.
+                  AI-powered advisory view for threats, opportunities, urgency, and owner actions.
                 </p>
               </div>
               <button
@@ -11542,38 +11862,26 @@ export default function Home() {
                 Open Market Intelligence
               </button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">High Impact Signals</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.highCritical}</div>
+                <div className="text-sm text-emerald-700">High Risk Alerts</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.highRisk}</div>
               </div>
               <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">Price-Up Signals</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.priceUp}</div>
+                <div className="text-sm text-emerald-700">High Opportunity Alerts</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.highOpportunity}</div>
               </div>
               <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">Supply Shortage Signals</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.supplyShortage}</div>
+                <div className="text-sm text-emerald-700">Items Requiring Attention</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.requiringAttention}</div>
               </div>
               <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">Pending Imports</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketImportQueueSummary.pending}</div>
-              </div>
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">Reviewing Imports</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketImportQueueSummary.reviewing}</div>
-              </div>
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">AI Draft Analyses</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketAiAnalysisSummary.draft}</div>
-              </div>
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">High Impact AI</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketAiAnalysisSummary.high}</div>
-              </div>
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">Critical AI</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketAiAnalysisSummary.critical}</div>
+                <div className="text-sm text-emerald-700">Newest Important Update</div>
+                <div className="mt-1 text-sm font-semibold text-emerald-950">
+                  {marketV2Summary.newestImportantUpdate
+                    ? marketV2Summary.newestImportantUpdate.item.title
+                    : "No urgent update"}
+                </div>
               </div>
             </div>
           </div>
@@ -15307,39 +15615,92 @@ export default function Home() {
             </p>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">Active Items</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.active}</div>
+          <div className="rounded border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-emerald-950">Market Intelligence Summary</h3>
+                <p className="mt-1 text-sm text-emerald-900">
+                  Professional advisory output for executive summary, business impact, risk, opportunity, owner actions, and health impact.
+                </p>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3 text-sm text-emerald-900">
+                <div className="font-medium">High Risk Alerts</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.highRisk}</div>
+              </div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">High/Critical</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.highCritical}</div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">Active Items</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.active}</div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">High/Critical</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.highCritical}</div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">High Opportunity Alerts</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.highOpportunity}</div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-white p-3">
+                <div className="text-sm text-emerald-700">Items Requiring Attention</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.requiringAttention}</div>
+              </div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">Price-Up Signals</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.priceUp}</div>
-            </div>
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">Supply Shortage</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.supplyShortage}</div>
-            </div>
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">Added This Week</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketIntelligenceSummary.addedThisWeek}</div>
-            </div>
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">AI Draft Analyses</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketAiAnalysisSummary.draft}</div>
-            </div>
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">High Impact AI</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketAiAnalysisSummary.high}</div>
-            </div>
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">Critical AI</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{marketAiAnalysisSummary.critical}</div>
-            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {marketIntelligenceTabOptions.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setMarketIntelligenceTab(tab.value)}
+                className={`rounded-full border px-3 py-1.5 text-sm ${
+                  marketIntelligenceTab === tab.value
+                    ? "border-emerald-600 bg-emerald-600 text-white"
+                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-2 lg:grid-cols-6">
+            <input
+              type="search"
+              value={marketIntelligenceSearch}
+              onChange={(e) => setMarketIntelligenceSearch(e.target.value)}
+              placeholder="Search advisory items"
+              className="rounded border border-gray-300 px-3 py-2 text-sm"
+            />
+            <select value={marketIntelligenceRiskFilter} onChange={(e) => setMarketIntelligenceRiskFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+              <option value="all">All risk levels</option>
+              <option value="70">70+ risk</option>
+              <option value="50">50+ risk</option>
+            </select>
+            <select value={marketIntelligenceOpportunityFilter} onChange={(e) => setMarketIntelligenceOpportunityFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+              <option value="all">All opportunity levels</option>
+              <option value="70">70+ opportunity</option>
+              <option value="50">50+ opportunity</option>
+            </select>
+            <select value={marketIntelligenceUrgencyFilter} onChange={(e) => setMarketIntelligenceUrgencyFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+              <option value="all">All urgencies</option>
+              {marketUrgencyOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+            <select value={marketIntelligenceAreaFilter} onChange={(e) => setMarketIntelligenceAreaFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+              <option value="all">All business areas</option>
+              {marketBusinessAreaOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+            <select value={marketIntelligenceSourceFilter} onChange={(e) => setMarketIntelligenceSourceFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+              <option value="all">All sources</option>
+              {marketSourceOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
           </div>
 
           <div className="mt-5 rounded border border-indigo-200 bg-white p-4">
@@ -15899,80 +16260,146 @@ export default function Home() {
               <div>
                 <h3 className="text-lg font-medium text-gray-900">Intelligence Feed</h3>
                 <p className="mt-1 text-sm text-gray-600">
-                  Showing {filteredMarketIntelligenceItems.length} of {marketIntelligenceItems.length} manual signals.
+                  Showing {filteredMarketAdvisoryItems.length} of {marketAdvisoryItems.length} advisory items.
                 </p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <input
-                  type="search"
-                  value={marketIntelligenceSearch}
-                  onChange={(e) => setMarketIntelligenceSearch(e.target.value)}
-                  placeholder="Search title, summary, source"
-                  className="rounded border border-gray-300 px-3 py-2 text-sm"
-                />
-                <select value={marketIntelligenceCategoryFilter} onChange={(e) => setMarketIntelligenceCategoryFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
-                  <option value="all">All categories</option>
-                  {marketCategoryOptions.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-                <select value={marketIntelligenceImpactFilter} onChange={(e) => setMarketIntelligenceImpactFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
-                  <option value="all">All impacts</option>
-                  {marketImpactDirectionOptions.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-                <select value={marketIntelligenceStatusFilter} onChange={(e) => setMarketIntelligenceStatusFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
-                  <option value="all">All statuses</option>
-                  {marketIntelligenceStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
               </div>
             </div>
 
             <div className="mt-4 space-y-3">
-              {filteredMarketIntelligenceItems.length === 0 ? (
+              {filteredMarketAdvisoryItems.length === 0 ? (
                 <p className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
                   No market intelligence items match the current filters.
                 </p>
               ) : (
-                filteredMarketIntelligenceItems.map((item) => {
+                filteredMarketAdvisoryItems.map((advisory) => {
+                  const item = advisory.item;
                   const relatedProduct = products.find((product) => String(product.id) === String(item.related_product_id));
                   return (
                     <div key={item.id} className="rounded border border-gray-200 bg-gray-50 p-4">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
+                        <div className="flex-1">
                           <div className="flex flex-wrap gap-2">
                             <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">
                               {getMarketLabel(marketCategoryOptions, item.market_category)}
                             </span>
                             <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
-                              {getMarketLabel(marketImpactDirectionOptions, item.impact_direction)}
+                              {advisory.urgency}
                             </span>
-                            <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
-                              {getMarketLabel(marketImpactLevelOptions, item.impact_level)}
+                            <span className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700">
+                              Risk {advisory.riskScore}
                             </span>
-                            <span className="rounded bg-white px-2 py-1 text-xs font-medium text-gray-700">
-                              {getMarketLabel(marketIntelligenceStatusOptions, item.status)}
+                            <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">
+                              Opportunity {advisory.opportunityScore}
+                            </span>
+                            <span className="rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                              {advisory.businessHealthImpact}
                             </span>
                           </div>
                           <h4 className="mt-2 text-base font-semibold text-gray-900">{item.title}</h4>
-                          {item.summary && <p className="mt-1 text-sm text-gray-700">{item.summary}</p>}
-                          <div className="mt-2 grid gap-1 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
+                          {advisory.executiveSummary && (
+                            <div className="mt-3 rounded border border-slate-200 bg-white p-3">
+                              <div className="text-xs uppercase tracking-wide text-slate-500">Executive Summary</div>
+                              <p className="mt-1 text-sm text-gray-700">{advisory.executiveSummary}</p>
+                            </div>
+                          )}
+                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                            <div className="rounded border border-gray-200 bg-white p-3">
+                              <div className="text-xs uppercase tracking-wide text-gray-500">Business Impact</div>
+                              <p className="mt-1 text-sm text-gray-700">{advisory.businessImpact}</p>
+                            </div>
+                            <div className="rounded border border-gray-200 bg-white p-3">
+                              <div className="text-xs uppercase tracking-wide text-gray-500">Why This Matters</div>
+                              <p className="mt-1 text-sm text-gray-700">{advisory.whyItMatters}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="rounded border border-gray-200 bg-white p-3">
+                              <div className="text-xs uppercase tracking-wide text-gray-500">Risk Score</div>
+                              <div className="mt-1 text-lg font-semibold text-gray-900">{advisory.riskScore}</div>
+                            </div>
+                            <div className="rounded border border-gray-200 bg-white p-3">
+                              <div className="text-xs uppercase tracking-wide text-gray-500">Opportunity Score</div>
+                              <div className="mt-1 text-lg font-semibold text-gray-900">{advisory.opportunityScore}</div>
+                            </div>
+                            <div className="rounded border border-gray-200 bg-white p-3">
+                              <div className="text-xs uppercase tracking-wide text-gray-500">Confidence</div>
+                              <div className="mt-1 text-lg font-semibold text-gray-900">{advisory.confidence}</div>
+                            </div>
+                            <div className="rounded border border-gray-200 bg-white p-3">
+                              <div className="text-xs uppercase tracking-wide text-gray-500">Urgency</div>
+                              <div className="mt-1 text-lg font-semibold text-gray-900">{advisory.urgency}</div>
+                            </div>
+                          </div>
+                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                            <div className="rounded border border-gray-200 bg-white p-3">
+                              <div className="text-xs uppercase tracking-wide text-gray-500">Affected Business Areas</div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {advisory.affectedBusinessAreas.map((area) => (
+                                  <span key={area} className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700">{area}</span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="rounded border border-gray-200 bg-white p-3">
+                              <div className="text-xs uppercase tracking-wide text-gray-500">Affected Products & Categories</div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {advisory.affectedProducts.map((product) => (
+                                  <span key={product} className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">{product}</span>
+                                ))}
+                                {advisory.affectedCategories.map((category) => (
+                                  <span key={category} className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-800">{category}</span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                            <div className="rounded border border-red-100 bg-red-50 p-3">
+                              <div className="text-xs uppercase tracking-wide text-red-600">Threat Detection</div>
+                              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-red-800">
+                                {advisory.threatDetection.length > 0 ? (
+                                  advisory.threatDetection.map((threat) => <li key={threat}>{threat}</li>)
+                                ) : (
+                                  <li>No direct threat signals detected.</li>
+                                )}
+                              </ul>
+                            </div>
+                            <div className="rounded border border-emerald-100 bg-emerald-50 p-3">
+                              <div className="text-xs uppercase tracking-wide text-emerald-700">Opportunity Detection</div>
+                              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-emerald-800">
+                                {advisory.opportunityDetection.length > 0 ? (
+                                  advisory.opportunityDetection.map((opportunity) => <li key={opportunity}>{opportunity}</li>)
+                                ) : (
+                                  <li>No clear opportunity signals detected.</li>
+                                )}
+                              </ul>
+                            </div>
+                          </div>
+                          <div className="mt-3 rounded border border-gray-200 bg-white p-3">
+                            <div className="text-xs uppercase tracking-wide text-gray-500">Suggested Owner Actions</div>
+                            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                              {advisory.suggestedOwnerActions.map((action) => (
+                                <li key={action}>{action}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3">
+                            <div className="text-xs uppercase tracking-wide text-slate-600">Business Health Impact</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              <span className="rounded bg-white px-2 py-1 text-sm font-medium text-slate-800">{advisory.businessHealthImpact}</span>
+                              <span className="text-sm text-slate-700">{advisory.businessHealthReason}</span>
+                            </div>
+                          </div>
+                          <div className="mt-3 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                            Future versions will combine Business Intelligence, Inventory, Sales, Purchases, Customer demand, and Supplier history to generate personalized recommendations.
+                          </div>
+                          <div className="mt-3 grid gap-1 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
                             <div>Source: {item.source_name || "Manual note"}</div>
-                            <div>Confidence: {getMarketLabel(marketConfidenceOptions, item.confidence_level)}</div>
-                            <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, item.affected_area)}</div>
                             <div>Related product: {relatedProduct?.name ?? item.related_product_category ?? "-"}</div>
                             <div>News date: {formatDate(item.news_date)}</div>
                             <div>Created: {formatDateTime(item.created_at)}</div>
+                            <div>Status: {getMarketLabel(marketIntelligenceStatusOptions, item.status)}</div>
+                            <div>Impact: {getMarketLabel(marketImpactDirectionOptions, item.impact_direction)}</div>
                           </div>
                           {item.source_url && <div className="mt-1 break-all text-xs text-blue-700">{item.source_url}</div>}
-                          {item.suggested_action && (
-                            <div className="mt-3 rounded border border-emerald-200 bg-white px-3 py-2 text-sm text-emerald-900">
-                              Suggested action: {item.suggested_action}
-                            </div>
-                          )}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <button
