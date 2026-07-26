@@ -1062,9 +1062,13 @@ export default function Home() {
   };
 
   const checkAuthUser = async () => {
+    const logTag = `[CHECK_AUTH ${Date.now()}]`;
+    console.log(`${logTag} ===== checkAuthUser invoked =====`);
+    console.log(`${logTag} URL=${typeof window !== "undefined" ? window.location.href : "server"}`);
+
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError) {
-      console.error("Error checking auth session:", sessionError);
+      console.error(`${logTag} sessionError:`, sessionError);
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
@@ -1072,15 +1076,18 @@ export default function Home() {
     }
 
     if (!sessionData?.session) {
+      console.log(`${logTag} no session found — user not authenticated`);
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
       return;
     }
 
+    console.log(`${logTag} session found. expires_at=${sessionData.session.expires_at}, access_token length=${sessionData.session.access_token?.length ?? 0}`);
+
     const { data, error } = await supabase.auth.getUser();
     if (error) {
-      console.error("Error fetching auth user:", error);
+      console.error(`${logTag} getUser error:`, error);
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
@@ -1088,10 +1095,26 @@ export default function Home() {
     }
 
     const user = data.user ?? null;
+    console.log(`${logTag} user loaded: id=${user?.id ?? "null"}, email=${user?.email ?? "null"}, email_confirmed_at=${user?.email_confirmed_at ?? "null"}, confirmed_at=${user?.confirmed_at ?? "null"}`);
     setCurrentUser(user);
     if (user?.id) {
-      await loadProfile(user.id);
+      try {
+        console.log(`${logTag} calling provisionWorkspace...`);
+        await provisionWorkspace();
+        console.log(`${logTag} provisionWorkspace succeeded, calling loadProfile...`);
+        await loadProfile(user.id);
+        console.log(`${logTag} loadProfile succeeded`);
+      } catch (provisionErr) {
+        console.error(`${logTag} CATCH: provisionWorkspace threw:`, provisionErr);
+        console.error(`${logTag} CATCH: provisionErr is Error? ${provisionErr instanceof Error}`);
+        console.error(`${logTag} CATCH: provisionErr.message =`, provisionErr instanceof Error ? provisionErr.message : String(provisionErr));
+        console.error(`${logTag} CATCH: provisionErr.stack =`, provisionErr instanceof Error ? provisionErr.stack : "N/A");
+        setAuthError(provisionErr instanceof Error ? provisionErr.message : "Workspace provisioning failed.");
+        setCurrentProfile(null);
+        setCurrentOrganizationId(null);
+      }
     } else {
+      console.log(`${logTag} user?.id is falsy — calling setCurrentProfile(null)`);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
     }
@@ -1112,6 +1135,12 @@ export default function Home() {
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            organization_name: organizationName.trim(),
+          },
+        },
       });
 
       if (signUpError) {
@@ -1123,46 +1152,73 @@ export default function Home() {
         throw new Error("Signup succeeded but no user was returned.");
       }
 
-      const { data: orgData, error: orgError } = await supabase
-        .from("organizations")
-        .insert({ name: organizationName })
-        .select()
-        .single();
-
-      if (orgError) {
-        throw orgError;
-      }
-
-      const organizationId = orgData?.id;
-      if (!organizationId) {
-        throw new Error("Failed to create organization.");
-      }
-
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: user.id,
-        organization_id: organizationId,
-        full_name: fullName,
-        role_name: "owner",
-        is_active: true,
-      });
-
-      if (profileError) {
-        throw profileError;
-      }
-
-      setAuthMessage("Account created successfully. Please verify your email if required.");
+      setAuthMessage("Account created. Please verify your email before signing in.");
       setEmail("");
       setPassword("");
       setFullName("");
       setOrganizationName("");
-      setCurrentUser(user);
-      await loadProfile(user.id);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Failed to create account");
       console.error("Signup error:", err);
     } finally {
       setAuthLoading(false);
     }
+  };
+
+  // Provision the workspace for the authenticated user via the server endpoint.
+  // Idempotent: returns alreadyProvisioned=true when the workspace already exists.
+  // Throws on failure so the caller's existing error path can surface the message.
+  const provisionWorkspace = async () => {
+    const logTag = `[CLIENT_PROVISION ${Date.now()}]`;
+    console.log(`${logTag} ===== CLIENT PROVISION STARTED =====`);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    console.log(`${logTag} session exists? ${Boolean(sessionData?.session)}, accessToken length? ${accessToken?.length ?? 0}`);
+
+    if (!accessToken) {
+      console.log(`${logTag} FAIL: no access token in session`);
+      throw new Error("Authentication session unavailable for workspace provisioning.");
+    }
+
+    const provisionResponse = await fetch("/api/auth/provision", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    console.log(`${logTag} fetch completed. status=${provisionResponse.status}, ok=${provisionResponse.ok}`);
+    console.log(`${logTag} content-type=${provisionResponse.headers.get("content-type")}`);
+
+    if (!provisionResponse.ok) {
+      let responseBodyText: string;
+      try {
+        responseBodyText = await provisionResponse.text();
+      } catch {
+        responseBodyText = "<failed to read body>";
+      }
+      console.log(`${logTag} FAIL: response body text (first 500 chars): ${responseBodyText.slice(0, 500)}`);
+      let provisionBody: Record<string, unknown> = {};
+      try {
+        provisionBody = JSON.parse(responseBodyText);
+        console.log(`${logTag} FAIL: parsed JSON body:`, JSON.stringify(provisionBody));
+      } catch {
+        console.log(`${logTag} FAIL: response body is NOT valid JSON — likely HTML error page`);
+      }
+      throw new Error((provisionBody.error as string) || "Workspace provisioning failed.");
+    }
+
+    const responseBodyText = await provisionResponse.text();
+    console.log(`${logTag} SUCCESS: response body: ${responseBodyText.slice(0, 300)}`);
+    let provisionBody: Record<string, unknown> = {};
+    try {
+      provisionBody = JSON.parse(responseBodyText);
+    } catch {
+      console.log(`${logTag} WARN: success response body not parseable as JSON`);
+    }
+    console.log(`${logTag} ===== CLIENT PROVISION COMPLETE =====`);
+    return provisionBody as { alreadyProvisioned?: boolean };
   };
 
   const handleLogin = async () => {
@@ -1189,6 +1245,7 @@ export default function Home() {
       const user = loginData.user;
       setCurrentUser(user ?? null);
       if (user?.id) {
+        await provisionWorkspace();
         await loadProfile(user.id);
       } else {
         setCurrentProfile(null);
@@ -15572,7 +15629,7 @@ export default function Home() {
             <div>
               <h2 className="text-xl font-medium text-gray-900">Market Intelligence</h2>
               <p className="mt-1 text-sm text-gray-600">
-                Market Intelligence helps owners track news and business signals that may affect buying, selling, pricing, inventory, and cashflow. AI analysis and automated news ingestion will be added later.
+                Market Intelligence converts owner-reviewed business signals into advisory summaries, risk and opportunity scores, urgency, and practical owner actions.
               </p>
             </div>
             <button
