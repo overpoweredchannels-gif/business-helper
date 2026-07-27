@@ -42,34 +42,44 @@ export default function OnboardingPage() {
   }, [businessName, router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-6">
-      <div className="mx-auto grid w-[400px] gap-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Welcome!</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            One last step. What's your business called?
-          </p>
-        </div>
-        <form onSubmit={handleSubmit} className="grid gap-4">
-          <div className="grid gap-2">
-            <label htmlFor="business-name" className="text-sm font-medium">
-              Business Name
-            </label>
-            <input
-              id="business-name"
-              type="text"
-              required
-              placeholder="My Business"
-              value={businessName}
-              onChange={(e) => setBusinessName(e.target.value)}
-              className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
+    <div className="flex min-h-screen items-center justify-center p-6 bg-background">
+      <div className="w-full max-w-[420px]">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-2 mb-4">
+            <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
+              <span className="text-primary-foreground font-heading font-bold text-lg">T</span>
+            </div>
+            <span className="font-heading font-bold text-xl text-foreground">TradeOS</span>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" disabled={loading}>
-            {loading ? "Setting up..." : "Complete Setup"}
-          </Button>
-        </form>
+        </div>
+        <div className="bg-card rounded-[18px] border border-border p-6 sm:p-8 shadow-[0_2px_12px_rgba(45,41,38,0.08)]">
+          <div className="text-center mb-6">
+            <h1 className="font-heading font-bold text-2xl text-foreground">Welcome!</h1>
+            <p className="text-body text-sm mt-1.5">
+              One last step. What&apos;s your business called?
+            </p>
+          </div>
+          <form onSubmit={handleSubmit} className="grid gap-4">
+            <div className="grid gap-1.5">
+              <label htmlFor="business-name" className="text-sm font-medium text-foreground">
+                Business Name
+              </label>
+              <input
+                id="business-name"
+                type="text"
+                required
+                placeholder="My Business"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                className="flex h-11 w-full rounded-lg border border-input bg-card px-3.5 py-2.5 text-sm text-foreground transition-all placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring"
+              />
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" disabled={loading} size="lg">
+              {loading ? "Setting up..." : "Complete Setup"}
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   );

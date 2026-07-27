@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useState, useId, useEffect, useCallback } from "react";
+import { useState, useCallback, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Slot } from "@radix-ui/react-slot";
-import * as LabelPrimitive from "@radix-ui/react-label";
-import { cva, type VariantProps } from "class-variance-authority";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import {
+  Mail, Lock, User, Eye, EyeOff, Loader2, Shield,
+  BarChart3, Users, CheckCircle2, AlertCircle,
+  ArrowLeft
+} from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "@/lib/supabase/client";
@@ -16,177 +16,236 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export interface TypewriterProps {
-  text: string | string[];
-  speed?: number;
-  cursor?: string;
-  loop?: boolean;
-  deleteSpeed?: number;
-  delay?: number;
-  className?: string;
+type AuthView = "signin" | "signup" | "forgot" | "verify" | "reset-sent";
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "outline" | "ghost" | "link";
+  size?: "md" | "lg";
 }
 
-export function Typewriter({
-  text,
-  speed = 100,
-  cursor = "|",
-  loop = false,
-  deleteSpeed = 50,
-  delay = 1500,
-  className,
-}: TypewriterProps) {
-  const [displayText, setDisplayText] = useState("");
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [textArrayIndex, setTextArrayIndex] = useState(0);
-
-  const textArray = Array.isArray(text) ? text : [text];
-  const currentText = textArray[textArrayIndex] || "";
-
-  useEffect(() => {
-    if (!currentText) return;
-
-    const timeout = setTimeout(
-      () => {
-        if (!isDeleting) {
-          if (currentIndex < currentText.length) {
-            setDisplayText((prev) => prev + currentText[currentIndex]);
-            setCurrentIndex((prev) => prev + 1);
-          } else if (loop) {
-            setTimeout(() => setIsDeleting(true), delay);
-          }
-        } else {
-          if (displayText.length > 0) {
-            setDisplayText((prev) => prev.slice(0, -1));
-          } else {
-            setIsDeleting(false);
-            setCurrentIndex(0);
-            setTextArrayIndex((prev) => (prev + 1) % textArray.length);
-          }
-        }
-      },
-      isDeleting ? deleteSpeed : speed,
-    );
-
-    return () => clearTimeout(timeout);
-  }, [
-    currentIndex,
-    isDeleting,
-    currentText,
-    loop,
-    speed,
-    deleteSpeed,
-    delay,
-    displayText,
-    text,
-  ]);
-
+export function Button({ className, variant = "primary", size = "md", ...props }: ButtonProps) {
   return (
-    <span className={className}>
-      {displayText}
-      <span className="animate-pulse">{cursor}</span>
-    </span>
+    <button
+      className={cn(
+        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 w-full",
+        variant === "primary" && "bg-primary text-primary-foreground hover:bg-primary-hover shadow-sm hover:shadow-md",
+        variant === "outline" && "border border-input bg-background text-foreground hover:bg-muted",
+        variant === "ghost" && "text-foreground hover:bg-muted",
+        variant === "link" && "text-primary underline-offset-4 hover:underline w-auto",
+        size === "md" && "h-11 px-5 text-sm",
+        size === "lg" && "h-12 px-6 text-base",
+        className
+      )}
+      {...props}
+    />
   );
 }
 
-const labelVariants = cva(
-  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-);
-
-const Label = React.forwardRef<
-  React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> &
-    VariantProps<typeof labelVariants>
->(({ className, ...props }, ref) => (
-  <LabelPrimitive.Root ref={ref} className={cn(labelVariants(), className)} {...props} />
-));
-Label.displayName = LabelPrimitive.Root.displayName;
-
-const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        outline: "border border-input dark:border-input/50 bg-background hover:bg-accent hover:text-accent-foreground",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary-foreground/60 underline-offset-4 hover:underline",
-      },
-      size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-12 rounded-md px-6",
-        icon: "h-8 w-8",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-);
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
-  asChild?: boolean;
-}
-export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
-    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />;
-  }
-);
-Button.displayName = "Button";
-
-const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
-    return (
-      <input
-        type={type}
-        className={cn(
-          "flex h-10 w-full rounded-lg border border-input dark:border-input/50 bg-background px-3 py-3 text-sm text-foreground shadow-sm shadow-black/5 transition-shadow placeholder:text-muted-foreground/70 focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
-          className
+function Field({ label, icon, error, className, id, ...props }: {
+  label: string;
+  icon?: ReactNode;
+  error?: string | null;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
+  const generatedId = React.useId();
+  const inputId = id || generatedId;
+  return (
+    <div className="grid gap-1.5">
+      <label htmlFor={inputId} className="text-sm font-medium text-foreground">{label}</label>
+      <div className="relative">
+        {icon && (
+          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+            {icon}
+          </div>
         )}
-        ref={ref}
-        {...props}
-      />
-    );
-  }
-);
-Input.displayName = "Input";
-
-export interface PasswordInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label?: string;
+        <input
+          id={inputId}
+          className={cn(
+            "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 text-sm text-foreground transition-all placeholder:text-muted-foreground/60",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring",
+            "disabled:cursor-not-allowed disabled:opacity-50",
+            icon && "pl-10",
+            error && "border-destructive focus-visible:ring-destructive",
+            !error && "border-input",
+            className
+          )}
+          {...props}
+        />
+      </div>
+      {error && (
+        <p className="text-xs text-destructive flex items-center gap-1">
+          <AlertCircle className="size-3" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }
-const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
-  ({ className, label, ...props }, ref) => {
-    const id = useId();
-    const [showPassword, setShowPassword] = useState(false);
-    const togglePasswordVisibility = () => setShowPassword((prev) => !prev);
-    return (
-      <div className="grid w-full items-center gap-2">
-        {label && <Label htmlFor={id}>{label}</Label>}
-        <div className="relative">
-          <Input id={id} type={showPassword ? "text" : "password"} className={cn("pe-10", className)} ref={ref} {...props} />
-          <button type="button" onClick={togglePasswordVisibility} className="absolute inset-y-0 end-0 flex h-full w-10 items-center justify-center text-muted-foreground/80 transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50" aria-label={showPassword ? "Hide password" : "Show password"}>
-            {showPassword ? (<EyeOff className="size-4" aria-hidden="true" />) : (<Eye className="size-4" aria-hidden="true" />)}
-          </button>
+
+function PasswordField({ label, error, ...props }: {
+  label: string;
+  error?: string | null;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
+  const [show, setShow] = useState(false);
+  const generatedId = React.useId();
+  return (
+    <div className="grid gap-1.5">
+      <label htmlFor={generatedId} className="text-sm font-medium text-foreground">{label}</label>
+      <div className="relative">
+        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+          <Lock className="size-4" />
+        </div>
+        <input
+          id={generatedId}
+          type={show ? "text" : "password"}
+          className={cn(
+            "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 pr-10 text-sm text-foreground transition-all placeholder:text-muted-foreground/60",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring",
+            "disabled:cursor-not-allowed disabled:opacity-50",
+            error && "border-destructive focus-visible:ring-destructive",
+            !error && "border-input",
+          )}
+          {...props}
+        />
+        <button
+          type="button"
+          onClick={() => setShow(s => !s)}
+          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          tabIndex={-1}
+          aria-label={show ? "Hide password" : "Show password"}
+        >
+          {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </button>
+      </div>
+      {error && (
+        <p className="text-xs text-destructive flex items-center gap-1">
+          <AlertCircle className="size-3" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Checkbox({ label, checked, onChange }: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const id = React.useId();
+  return (
+    <label htmlFor={id} className="flex items-center gap-2 cursor-pointer group">
+      <div className={cn(
+        "size-4 rounded border-2 flex items-center justify-center transition-colors shrink-0",
+        checked ? "bg-primary border-primary" : "border-muted-foreground/40 group-hover:border-muted-foreground/60"
+      )}>
+        {checked && <CheckCircle2 className="size-3 text-primary-foreground" />}
+      </div>
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="sr-only"
+      />
+      <span className="text-sm text-body">{label}</span>
+    </label>
+  );
+}
+
+function Alert({ variant = "error", children }: { variant?: "error" | "success" | "warning"; children: ReactNode }) {
+  return (
+    <div className={cn(
+      "flex items-start gap-2 rounded-lg p-3 text-sm",
+      variant === "error" && "bg-destructive-bg text-destructive",
+      variant === "success" && "bg-success/10 text-success",
+      variant === "warning" && "bg-warning/10 text-warning",
+    )}>
+      <AlertCircle className="size-4 mt-0.5 shrink-0" />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function TrustBadges() {
+  return (
+    <div className="flex items-center justify-center gap-2 mt-6 text-xs text-light-text">
+      <span>256-bit encryption</span>
+      <span className="text-muted-light">·</span>
+      <span>SOC 2 compliant</span>
+      <span className="text-muted-light">·</span>
+      <span>99.9% uptime</span>
+    </div>
+  );
+}
+
+function LeftPanel() {
+  return (
+    <div className="hidden lg:flex w-[45%] min-h-screen bg-panel p-10 xl:p-14 flex-col justify-between">
+      <div>
+        <div className="flex items-center gap-2.5 mb-10">
+          <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
+            <span className="text-primary-foreground font-heading font-bold text-lg">T</span>
+          </div>
+          <span className="font-heading font-bold text-xl text-white/90">TradeOS</span>
+        </div>
+
+        <h2 className="font-heading font-bold text-3xl xl:text-4xl text-white leading-tight mb-4">
+          Business Operating System
+        </h2>
+        <p className="text-white/60 text-base leading-relaxed max-w-md">
+          Streamline your wholesale and retail operations with real-time analytics, 
+          smart inventory management, and enterprise-grade security.
+        </p>
+
+        <div className="grid gap-4 mt-10">
+          {[
+            { icon: BarChart3, title: "Real-time Analytics", desc: "Monitor inventory, sales, and margins in real-time" },
+            { icon: Users, title: "Smart Inventory", desc: "AI-driven stock management and demand forecasting" },
+            { icon: Shield, title: "Enterprise Security", desc: "SOC 2 compliant with end-to-end encryption" },
+          ].map((item, i) => (
+            <div
+              key={item.title}
+              className="flex items-start gap-3.5 p-4 rounded-xl bg-white/5 border border-white/10 animate-fadeIn"
+              style={{ animationDelay: `${200 + i * 100}ms` }}
+            >
+              <div className="size-9 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
+                <item.icon className="size-4.5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-sm text-white/90">{item.title}</p>
+                <p className="text-xs text-white/50 mt-0.5">{item.desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-    );
-  }
-);
-PasswordInput.displayName = "PasswordInput";
 
-function SignInForm({ onToggleMode }: { onToggleMode: () => void }) {
+      <div className="flex items-center gap-6 pt-8 border-t border-white/10">
+        {[
+          { value: "10K+", label: "Businesses" },
+          { value: "99.9%", label: "Uptime" },
+          { value: "24/7", label: "Support" },
+        ].map((stat) => (
+          <div key={stat.label}>
+            <p className="font-heading font-bold text-lg text-white">{stat.value}</p>
+            <p className="text-xs text-white/50">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { email?: string }) => void }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSignIn = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
     setLoading(true);
     try {
@@ -201,43 +260,88 @@ function SignInForm({ onToggleMode }: { onToggleMode: () => void }) {
   }, [email, password, router]);
 
   return (
-    <form onSubmit={handleSignIn} autoComplete="on" className="flex flex-col gap-8">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="text-2xl font-bold">Sign in to your account</h1>
-        <p className="text-balance text-sm text-muted-foreground">Enter your email below to sign in</p>
+    <form onSubmit={handleSubmit} autoComplete="on" className="animate-slideUp">
+      <div className="text-center mb-6">
+        <h1 className="font-heading font-bold text-2xl text-foreground">Sign in to your account</h1>
+        <p className="text-body text-sm mt-1.5">Welcome back! Enter your credentials to continue.</p>
       </div>
+
       <div className="grid gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" type="email" placeholder="m@example.com" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Field
+          label="Email"
+          type="email"
+          placeholder="m@example.com"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          icon={<Mail className="size-4" />}
+          error={error && error.includes("email") ? error : null}
+        />
+        <PasswordField
+          label="Password"
+          required
+          autoComplete="current-password"
+          placeholder="Enter your password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          error={error && !error.includes("email") ? error : null}
+        />
+
+        <div className="flex items-center justify-between">
+          <Checkbox label="Keep me signed in" checked={rememberMe} onChange={setRememberMe} />
+          <button type="button" onClick={() => onNavigate("forgot", { email })} className="text-sm text-primary hover:text-primary-hover transition-colors">
+            Forgot password?
+          </button>
         </div>
-        <PasswordInput name="password" label="Password" required autoComplete="current-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" disabled={loading} className="mt-2">
-          {loading ? "Signing in..." : "Sign In"}
+
+        {error && <Alert>{error}</Alert>}
+
+        <Button type="submit" disabled={loading} size="lg">
+          {loading ? <Loader2 className="size-4 animate-spin" /> : null}
+          {loading ? "Signing in..." : "Sign in to TradeOS"}
         </Button>
       </div>
-      <div className="text-center text-sm">
-        Don't have an account?{" "}
-        <Button variant="link" className="pl-1 text-foreground" type="button" onClick={onToggleMode}>
+
+      <div className="relative my-6">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center">
+          <span className="bg-card px-3 text-xs text-light-text">or continue with</span>
+        </div>
+      </div>
+
+      <GoogleButton />
+
+      <p className="text-center text-sm text-body mt-6">
+        Don&apos;t have an account?{" "}
+        <button type="button" onClick={() => onNavigate("signup")} className="text-primary hover:text-primary-hover font-medium transition-colors">
           Sign up
-        </Button>
-      </div>
+        </button>
+      </p>
     </form>
   );
 }
 
-function SignUpForm({ onToggleMode }: { onToggleMode: () => void }) {
+function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { email?: string }) => void }) {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSignUp = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
     setLoading(true);
     try {
       const { error: signUpError } = await supabase.auth.signUp({
@@ -251,51 +355,226 @@ function SignUpForm({ onToggleMode }: { onToggleMode: () => void }) {
         },
       });
       if (signUpError) throw signUpError;
-      router.push("/login?check_email=true");
+      onNavigate("verify", { email });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
     } finally {
       setLoading(false);
     }
-  }, [fullName, email, password, router]);
+  }, [fullName, email, password, confirmPassword, router, onNavigate]);
 
   return (
-    <form onSubmit={handleSignUp} autoComplete="on" className="flex flex-col gap-8">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="text-2xl font-bold">Create an account</h1>
-        <p className="text-balance text-sm text-muted-foreground">Enter your details below to sign up</p>
+    <form onSubmit={handleSubmit} autoComplete="on" className="animate-slideUp">
+      <div className="text-center mb-6">
+        <h1 className="font-heading font-bold text-2xl text-foreground">Create your account</h1>
+        <p className="text-body text-sm mt-1.5">Get started with your free account.</p>
       </div>
+
       <div className="grid gap-4">
-        <div className="grid gap-1">
-          <Label htmlFor="name">Full Name</Label>
-          <Input id="name" name="name" type="text" placeholder="John Doe" required autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" type="email" placeholder="m@example.com" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        </div>
-        <PasswordInput name="password" label="Password" required autoComplete="new-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" disabled={loading} className="mt-2">
-          {loading ? "Creating account..." : "Sign Up"}
+        <Field
+          label="Full Name"
+          type="text"
+          placeholder="John Doe"
+          required
+          autoComplete="name"
+          value={fullName}
+          onChange={e => setFullName(e.target.value)}
+          icon={<User className="size-4" />}
+        />
+        <Field
+          label="Email"
+          type="email"
+          placeholder="m@example.com"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          icon={<Mail className="size-4" />}
+        />
+        <PasswordField
+          label="Password"
+          required
+          autoComplete="new-password"
+          placeholder="Create a password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+        />
+        <PasswordField
+          label="Confirm Password"
+          required
+          autoComplete="new-password"
+          placeholder="Confirm your password"
+          value={confirmPassword}
+          onChange={e => setConfirmPassword(e.target.value)}
+        />
+
+        {error && <Alert>{error}</Alert>}
+
+        <Button type="submit" disabled={loading} size="lg">
+          {loading ? <Loader2 className="size-4 animate-spin" /> : null}
+          {loading ? "Creating account..." : "Create account"}
         </Button>
       </div>
-      <div className="text-center text-sm">
+
+      <div className="relative my-6">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center">
+          <span className="bg-card px-3 text-xs text-light-text">or continue with</span>
+        </div>
+      </div>
+
+      <GoogleButton />
+
+      <p className="text-center text-sm text-body mt-6">
         Already have an account?{" "}
-        <Button variant="link" className="pl-1 text-foreground" type="button" onClick={onToggleMode}>
+        <button type="button" onClick={() => onNavigate("signin")} className="text-primary hover:text-primary-hover font-medium transition-colors">
           Sign in
-        </Button>
-      </div>
+        </button>
+      </p>
     </form>
   );
 }
 
-function GoogleButton() {
-  const router = useRouter();
+function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: AuthView, data?: { email?: string }) => void; initialEmail?: string }) {
+  const [email, setEmail] = useState(initialEmail || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleGoogleSignIn = useCallback(async () => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!email) { setError("Please enter your email"); return; }
+    setLoading(true);
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
+      });
+      if (resetError) throw resetError;
+      onNavigate("reset-sent", { email });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send reset link");
+    } finally {
+      setLoading(false);
+    }
+  }, [email, onNavigate]);
+
+  return (
+    <form onSubmit={handleSubmit} className="animate-slideUp">
+      <div className="text-center mb-6">
+        <div className="mx-auto mb-4 size-14 rounded-full bg-primary-light flex items-center justify-center">
+          <Lock className="size-6 text-primary" />
+        </div>
+        <h1 className="font-heading font-bold text-2xl text-foreground">Forgot your password?</h1>
+        <p className="text-body text-sm mt-1.5">Enter your email and we&apos;ll send you a reset link.</p>
+      </div>
+
+      <div className="grid gap-4">
+        <Field
+          label="Email"
+          type="email"
+          placeholder="m@example.com"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          icon={<Mail className="size-4" />}
+          error={error}
+        />
+
+        <Button type="submit" disabled={loading} size="lg">
+          {loading ? <Loader2 className="size-4 animate-spin" /> : null}
+          {loading ? "Sending..." : "Send reset link"}
+        </Button>
+      </div>
+
+      <button type="button" onClick={() => onNavigate("signin")} className="flex items-center justify-center gap-1.5 text-sm text-body hover:text-foreground transition-colors mt-6 mx-auto">
+        <ArrowLeft className="size-4" />
+        Back to sign in
+      </button>
+    </form>
+  );
+}
+
+function VerifyEmail({ email, onNavigate }: { email?: string; onNavigate: (view: AuthView, data?: { email?: string }) => void }) {
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+
+  const handleResend = useCallback(async () => {
+    if (!email) return;
+    setResending(true);
+    try {
+      await supabase.auth.resend({ type: "signup", email });
+      setResent(true);
+    } catch {
+      // silently fail
+    } finally {
+      setResending(false);
+    }
+  }, [email]);
+
+  return (
+    <div className="animate-slideUp">
+      <div className="text-center mb-6">
+        <div className="mx-auto mb-4 size-14 rounded-full bg-primary-light flex items-center justify-center">
+          <Mail className="size-6 text-primary" />
+        </div>
+        <h1 className="font-heading font-bold text-2xl text-foreground">Verify your email</h1>
+        {email && (
+          <p className="text-body text-sm mt-1.5">
+            We&apos;ve sent a verification link to <span className="font-medium text-foreground">{email}</span>
+          </p>
+        )}
+      </div>
+
+      <Alert variant="warning">
+        Didn&apos;t receive the email? Check your spam folder or try again.
+      </Alert>
+
+      <div className="mt-6 grid gap-3">
+        <Button variant="outline" onClick={handleResend} disabled={resending || resent}>
+          {resending ? <Loader2 className="size-4 animate-spin" /> : null}
+          {resent ? "Verification email sent" : "Resend verification email"}
+        </Button>
+      </div>
+
+      <button type="button" onClick={() => onNavigate("signin")} className="flex items-center justify-center gap-1.5 text-sm text-body hover:text-foreground transition-colors mt-6 mx-auto">
+        <ArrowLeft className="size-4" />
+        Back to sign in
+      </button>
+    </div>
+  );
+}
+
+function ResetSent({ email, onNavigate }: { email?: string; onNavigate: (view: AuthView) => void }) {
+  return (
+    <div className="animate-slideUp">
+      <div className="text-center mb-6">
+        <div className="mx-auto mb-4 size-14 rounded-full bg-primary-light flex items-center justify-center">
+          <CheckCircle2 className="size-6 text-primary" />
+        </div>
+        <h1 className="font-heading font-bold text-2xl text-foreground">Check your inbox</h1>
+        {email && (
+          <p className="text-body text-sm mt-1.5">
+            We&apos;ve sent a password reset link to <span className="font-medium text-foreground">{email}</span>.
+            Please check your inbox and follow the instructions.
+          </p>
+        )}
+      </div>
+
+      <Button onClick={() => onNavigate("signin")} size="lg">
+        Back to sign in
+      </Button>
+    </div>
+  );
+}
+
+function GoogleButton() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleClick = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
@@ -308,108 +587,73 @@ function GoogleButton() {
       setError(err instanceof Error ? err.message : "Google sign in failed");
       setLoading(false);
     }
-  }, [router]);
+  }, []);
 
   return (
     <div className="grid gap-2">
-      <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
-        <span className="relative z-10 bg-background px-2 text-muted-foreground">Or continue with</span>
-      </div>
-      <Button variant="outline" type="button" onClick={handleGoogleSignIn} disabled={loading}>
+      <Button variant="outline" type="button" onClick={handleClick} disabled={loading}>
         {loading ? (
-          <Loader2 className="mr-2 size-4 animate-spin" />
+          <Loader2 className="size-4 animate-spin" />
         ) : (
-          <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google icon" className="mr-2 h-4 w-4" />
+          <svg className="size-4" viewBox="0 0 24 24" fill="none">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
         )}
         {loading ? "Connecting..." : "Continue with Google"}
       </Button>
-      {error && <p className="text-center text-sm text-destructive">{error}</p>}
+      {error && <Alert>{error}</Alert>}
     </div>
   );
 }
 
-interface AuthContentProps {
-  image?: {
-    src: string;
-    alt: string;
-  };
-  quote?: {
-    text: string;
-    author: string;
-  };
-}
-
 interface AuthUIProps {
   defaultMode?: "signin" | "signup";
-  signInContent?: AuthContentProps;
-  signUpContent?: AuthContentProps;
 }
 
-const defaultSignInImage = { src: "/auth-illustration.png", alt: "Sign in illustration" };
-const defaultSignInQuote = { text: "Welcome Back! The journey continues.", author: "TradeOS" };
-const defaultSignUpImage = { src: "/auth-illustration.png", alt: "Sign up illustration" };
-const defaultSignUpQuote = { text: "Create an account. A new chapter awaits.", author: "TradeOS" };
+export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
+  const [view, setView] = useState<AuthView>(defaultMode);
+  const [email, setEmail] = useState<string>("");
 
-export function AuthUI({ defaultMode = "signin", signInContent = {}, signUpContent = {} }: AuthUIProps) {
-  const [isSignIn, setIsSignIn] = useState(defaultMode === "signin");
-  const toggleForm = () => setIsSignIn((prev) => !prev);
-
-  const currentImage = { ...defaultSignInImage, ...(isSignIn ? signInContent.image : signUpContent.image) };
-  const currentQuote = { ...defaultSignInQuote, ...(isSignIn ? signInContent.quote : signUpContent.quote) };
-  const currentContent = { image: currentImage, quote: currentQuote };
+  const handleNavigate = useCallback((newView: AuthView, data?: { email?: string }) => {
+    if (data?.email) setEmail(data.email);
+    setView(newView);
+  }, []);
 
   return (
-    <div className="w-full min-h-screen flex flex-col md:grid md:grid-cols-2">
+    <div className="min-h-screen flex">
       <style>{`
         input[type="password"]::-ms-reveal,
         input[type="password"]::-ms-clear { display: none; }
       `}</style>
 
-      {/* Mobile: image banner */}
-      <div
-        className="relative h-48 md:hidden bg-cover bg-center overflow-hidden shrink-0"
-        style={{ backgroundImage: `url(${currentContent.image.src})` }}
-      >
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-background" />
-        <div className="absolute bottom-4 left-4 right-4">
-          <blockquote className="text-center text-foreground">
-            <p className="text-sm font-medium">
-              &ldquo;<Typewriter key={currentContent.quote.text} text={currentContent.quote.text} speed={50} />&rdquo;
-            </p>
-            <cite className="block text-xs font-light text-muted-foreground not-italic mt-1">
-              &mdash; {currentContent.quote.author}
-            </cite>
-          </blockquote>
-        </div>
-      </div>
+      <LeftPanel />
 
-      {/* Form section */}
-      <div className="flex items-center justify-center p-6 md:py-12">
-        <div className="mx-auto grid w-[350px] gap-2">
-          {isSignIn ? (
-            <SignInForm onToggleMode={toggleForm} />
-          ) : (
-            <SignUpForm onToggleMode={toggleForm} />
-          )}
-          <GoogleButton />
-        </div>
-      </div>
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
+        <div className="w-full max-w-[420px]">
+          <div className="lg:hidden text-center mb-8 animate-fadeIn">
+            <div className="inline-flex items-center gap-2">
+              <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
+                <span className="text-primary-foreground font-heading font-bold text-lg">T</span>
+              </div>
+              <span className="font-heading font-bold text-xl text-foreground">TradeOS</span>
+            </div>
+          </div>
 
-      {/* Desktop: image full height */}
-      <div
-        className="hidden md:block relative bg-cover bg-center min-h-screen"
-        style={{ backgroundImage: `url(${currentContent.image.src})` }}
-      >
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/5 to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-6 pb-8">
-          <blockquote className="space-y-2 text-center text-foreground">
-            <p className="text-lg font-medium">
-              &ldquo;<Typewriter key={currentContent.quote.text} text={currentContent.quote.text} speed={60} />&rdquo;
-            </p>
-            <cite className="block text-sm font-light text-muted-foreground not-italic">
-              &mdash; {currentContent.quote.author}
-            </cite>
-          </blockquote>
+          <div
+            key={view}
+            className="bg-card rounded-[18px] border border-border p-6 sm:p-8 shadow-[0_2px_12px_rgba(45,41,38,0.08)]"
+          >
+            {view === "signin" && <SignInForm onNavigate={handleNavigate} />}
+            {view === "signup" && <SignUpForm onNavigate={handleNavigate} />}
+            {view === "forgot" && <ForgotPasswordForm onNavigate={handleNavigate} initialEmail={email} />}
+            {view === "verify" && <VerifyEmail email={email} onNavigate={handleNavigate} />}
+            {view === "reset-sent" && <ResetSent email={email} onNavigate={handleNavigate} />}
+          </div>
+
+          <TrustBadges />
         </div>
       </div>
     </div>
