@@ -1,0 +1,54 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
+
+export default function AuthCallbackPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleCallback = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push("/login");
+        return;
+      }
+
+      const token = session.access_token;
+      try {
+        const provisionRes = await fetch("/api/auth/provision", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        });
+
+        if (!provisionRes.ok) {
+          const body = await provisionRes.json().catch(() => ({}));
+          if (body.code === "email_not_verified") {
+            router.push("/login");
+            return;
+          }
+          router.push("/login");
+          return;
+        }
+
+        const provisionBody = await provisionRes.json();
+        if (provisionBody.needsOnboarding) {
+          router.push("/onboarding");
+        } else {
+          router.push("/");
+        }
+      } catch {
+        router.push("/login");
+      }
+    };
+
+    handleCallback();
+  }, [router]);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <p className="text-muted-foreground">Completing sign in...</p>
+    </div>
+  );
+}

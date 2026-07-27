@@ -11483,115 +11483,23 @@ export default function Home() {
           </div>
 
           <section className="rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Authentication</h2>
-          {currentUser ? (
-            <div className="space-y-3 text-sm text-gray-700">
-              <div>Logged in as: <span className="font-medium text-gray-900">{currentUser.email}</span></div>
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={authLoading}
-                className="rounded bg-red-600 px-4 py-2 text-white transition hover:bg-red-700 disabled:bg-red-300"
-              >
-                {authLoading ? "Processing..." : "Logout"}
-              </button>
-              {authMessage && <p className="text-sm text-green-700">{authMessage}</p>}
-              {authError && <p className="text-sm text-red-700">{authError}</p>}
-              {currentUser && !currentProfile && (
-                <p className="text-sm text-red-700">Profile not found. Please contact support.</p>
-              )}
-            </div>
-          ) : (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Create Account</h3>
-                <div className="space-y-3 text-sm text-gray-700">
-                  <label className="block">
-                    <span className="text-gray-700">Full Name</span>
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-gray-700">Organization Name</span>
-                    <input
-                      type="text"
-                      value={organizationName}
-                      onChange={(e) => setOrganizationName(e.target.value)}
-                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-gray-700">Email</span>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-gray-700">Password</span>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleSignUp}
-                    disabled={authLoading}
-                    className="mt-2 w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:bg-blue-300"
-                  >
-                    {authLoading ? "Processing..." : "Create Account"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Login</h3>
-                <div className="space-y-3 text-sm text-gray-700">
-                  <label className="block">
-                    <span className="text-gray-700">Email</span>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-gray-700">Password</span>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleLogin}
-                    disabled={authLoading}
-                    className="mt-2 w-full rounded bg-green-600 px-4 py-2 text-white transition hover:bg-green-700 disabled:bg-green-300"
-                  >
-                    {authLoading ? "Processing..." : "Login"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-          {!currentUser && (authMessage || authError) && (
-            <div className="mt-4">
-              {authMessage && <p className="text-sm text-green-700">{authMessage}</p>}
-              {authError && <p className="text-sm text-red-700">{authError}</p>}
-            </div>
-          )}
+          <h2 className="mb-4 text-xl font-medium text-gray-900">Account</h2>
+          <div className="space-y-3 text-sm text-gray-700">
+            <div>Logged in as: <span className="font-medium text-gray-900">{currentUser?.email}</span></div>
+            {currentProfile?.organization_id && (
+              <div>Organization: <span className="font-medium text-gray-900">{currentOrganizationId}</span></div>
+            )}
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={authLoading}
+              className="rounded bg-red-600 px-4 py-2 text-white transition hover:bg-red-700 disabled:bg-red-300"
+            >
+              {authLoading ? "Processing..." : "Logout"}
+            </button>
+            {authMessage && <p className="text-sm text-green-700">{authMessage}</p>}
+            {authError && <p className="text-sm text-red-700">{authError}</p>}
+          </div>
         </section>
         </div>
       </div>

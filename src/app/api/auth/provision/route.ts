@@ -59,6 +59,17 @@ export async function POST(request: NextRequest) {
     return makeErrorResponse("Missing access token for authenticated provisioning.", 401, "missing_token");
   }
 
+  // ── 1b. Optional body params (for onboarding) ──
+  let requestBodyOrgName: string | null = null;
+  try {
+    const body = await request.clone().json();
+    if (body?.organization_name && typeof body.organization_name === "string") {
+      requestBodyOrgName = body.organization_name.trim();
+    }
+  } catch {
+    // body not JSON or no org name — fine
+  }
+
   // ── 2. Supabase service client ──
   let supabaseService;
   try {
@@ -172,6 +183,14 @@ export async function POST(request: NextRequest) {
         .update(updates)
         .eq("id", existingProfile.id)
         .eq("organization_id", existingProfile.organization_id);
+    }
+
+    if (requestBodyOrgName) {
+      console.log(`${logTag} CHECKPOINT 5b2: updating organization name to "${requestBodyOrgName}"`);
+      await supabaseService
+        .from("organizations")
+        .update({ name: requestBodyOrgName })
+        .eq("id", existingProfile.organization_id);
     }
 
     let existingPermissions, permissionCheckError;
@@ -371,7 +390,8 @@ export async function POST(request: NextRequest) {
   }
 
   // ── 10. Final return ──
-  console.log(`${logTag} CHECKPOINT 10: SUCCESS — returning alreadyProvisioned=false, org_id=${organizationId}`);
+  const needsOnboarding = !rawOrgName;
+  console.log(`${logTag} CHECKPOINT 10: SUCCESS — returning alreadyProvisioned=false, org_id=${organizationId}, needsOnboarding=${needsOnboarding}`);
   console.log(`${logTag} ===== PROVISION COMPLETE =====`);
-  return NextResponse.json({ ok: true, alreadyProvisioned: false, organization_id: organizationId });
+  return NextResponse.json({ ok: true, alreadyProvisioned: false, organization_id: organizationId, needsOnboarding });
 }
