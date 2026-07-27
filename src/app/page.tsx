@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import {
   aiAssistantExampleCommands,
@@ -113,6 +114,7 @@ type TradeOsSpeechWindow = Window & {
 };
 
 export default function Home() {
+  const router = useRouter();
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [printPreviewTitle, setPrintPreviewTitle] = useState("");
@@ -1275,6 +1277,7 @@ export default function Home() {
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
       setAuthMessage("Logged out successfully.");
+      router.push("/login");
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Failed to log out");
       console.error("Logout error:", err);
