@@ -29,9 +29,11 @@
   --color-border: #e4e1da;
   --color-input: #e4e1da;
   --color-ring: #c15f3c;
-  --font-sans: var(--font-inter);
+  --font-ui: var(--font-plus-jakarta);
   --font-heading: var(--font-plus-jakarta);
-  --font-mono: var(--font-geist-mono);
+  --font-brand: var(--font-libre-baskerville);
+  --font-mono: ui-monospace, monospace;
+  --text-small: 0.8125rem;
   --radius: 1rem;
 }
 
@@ -93,7 +95,7 @@
 body {
   background: var(--color-background);
   color: var(--color-foreground);
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
 }
 
 input:-webkit-autofill,

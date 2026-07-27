@@ -47,14 +47,14 @@ export default function OnboardingPage() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
             <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-heading font-bold text-lg">T</span>
+              <span className="text-primary-foreground font-brand font-bold text-lg">T</span>
             </div>
-            <span className="font-heading font-bold text-xl text-foreground">TradeOS</span>
+            <span className="font-brand font-bold text-xl text-foreground">TradeOS</span>
           </div>
         </div>
         <div className="bg-card rounded-[18px] border border-border p-6 sm:p-8 shadow-[0_2px_12px_rgba(45,41,38,0.08)]">
           <div className="text-center mb-6">
-            <h1 className="font-heading font-bold text-2xl text-foreground">Welcome!</h1>
+            <h1 className="font-brand font-bold text-2xl text-foreground">Welcome!</h1>
             <p className="text-body text-sm mt-1.5">
               One last step. What&apos;s your business called?
             </p>

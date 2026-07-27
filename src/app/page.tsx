@@ -11515,7 +11515,7 @@ export default function Home() {
       <style>{`
         .tradeos-print-document {
           color: var(--color-foreground);
-          font-family: Arial, sans-serif;
+          font-family: var(--font-ui);
           line-height: 1.4;
         }
         .tradeos-print-document h1,

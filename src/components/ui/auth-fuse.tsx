@@ -184,9 +184,9 @@ function LeftPanel() {
       <div>
         <div className="flex items-center gap-2.5 mb-10">
           <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-heading font-bold text-lg">T</span>
+            <span className="text-primary-foreground font-brand font-bold text-lg">T</span>
           </div>
-          <span className="font-heading font-bold text-xl text-white/90">TradeOS</span>
+          <span className="font-brand font-bold text-xl text-white/90">TradeOS</span>
         </div>
 
         <h2 className="font-heading font-bold text-3xl xl:text-4xl text-white leading-tight mb-4">
@@ -636,9 +636,9 @@ export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
           <div className="lg:hidden text-center mb-8 animate-fadeIn">
             <div className="inline-flex items-center gap-2">
               <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-heading font-bold text-lg">T</span>
+                <span className="text-primary-foreground font-brand font-bold text-lg">T</span>
               </div>
-              <span className="font-heading font-bold text-xl text-foreground">TradeOS</span>
+              <span className="font-brand font-bold text-xl text-foreground">TradeOS</span>
             </div>
           </div>
 
