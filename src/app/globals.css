@@ -1,49 +1,48 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --radius: 1rem;
-  --accent: oklch(0.89 0 0);
-  --destructive-foreground: oklch(0.985 0 0);
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-primary: #1e1b4b;
+  --color-background: #f4f3ee;
+  --color-foreground: #1c1a18;
+  --color-card: #ffffff;
+  --color-card-foreground: #1c1a18;
+  --color-primary: #c15f3c;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #334155;
-  --color-secondary-foreground: #ffffff;
-  --color-muted: oklch(0.94 0 0);
-  --color-muted-foreground: oklch(0.54 0 0);
-  --color-accent: var(--accent);
-  --color-accent-foreground: #171717;
-  --color-destructive: oklch(0.58 0.18 27);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: oklch(0.89 0 0);
-  --color-input: oklch(0.89 0 0);
-  --color-ring: #1e1b4b;
+  --color-secondary: #eed9d0;
+  --color-secondary-foreground: #7a3a22;
+  --color-muted: #eceae5;
+  --color-muted-foreground: #8a867b;
+  --color-accent: #f0ebe3;
+  --color-accent-foreground: #7a3a22;
+  --color-destructive: #c13c3c;
+  --color-destructive-foreground: #ffffff;
+  --color-success: #7a9a6d;
+  --color-success-foreground: #ffffff;
+  --color-warning: #c99c3e;
+  --color-warning-foreground: #ffffff;
+  --color-border: #d6d3cb;
+  --color-input: #d6d3cb;
+  --color-ring: #c15f3c;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --radius: 1rem;
 }
 
 .dark {
-  --background: oklch(0.125 0 0);
-  --accent: oklch(0.229 0 0);
-  --destructive-foreground: oklch(0.985 0 0);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-background: #141312;
+  --color-foreground: #f4f3ee;
+  --color-card: #1c1a18;
+  --color-card-foreground: #f4f3ee;
+  --color-secondary: #3a2a24;
+  --color-secondary-foreground: #e8d5cb;
+  --color-muted: #2a2825;
+  --color-muted-foreground: #8a867b;
+  --color-accent: #2a2825;
+  --color-accent-foreground: #e8d5cb;
+  --color-border: #3a3835;
+  --color-input: #3a3835;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-background);
+  color: var(--color-foreground);
 }

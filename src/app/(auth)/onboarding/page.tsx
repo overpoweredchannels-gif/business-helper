@@ -65,7 +65,7 @@ export default function OnboardingPage() {
               className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={loading}>
             {loading ? "Setting up..." : "Complete Setup"}
           </Button>

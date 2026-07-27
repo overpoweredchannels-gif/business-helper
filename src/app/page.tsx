@@ -11477,31 +11477,31 @@ export default function Home() {
 
   if (!currentUser) {
     return (
-    <main className="min-h-screen bg-gray-100">
+    <main className="min-h-screen bg-muted">
       <div className="mx-auto flex min-h-screen max-w-5xl items-center px-4 py-8">
-        <div className="w-full rounded-xl bg-white p-6 shadow-sm">
+        <div className="w-full rounded-xl bg-card p-6 shadow-sm">
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-gray-900">TradeOS</h1>
-            <p className="text-sm text-gray-500">Business Management</p>
+            <h1 className="text-2xl font-semibold text-foreground">TradeOS</h1>
+            <p className="text-sm text-muted-foreground/80">Business Management</p>
           </div>
 
-          <section className="rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Account</h2>
-          <div className="space-y-3 text-sm text-gray-700">
-            <div>Logged in as: <span className="font-medium text-gray-900">{currentUser?.email}</span></div>
+          <section className="rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Account</h2>
+          <div className="space-y-3 text-sm text-foreground/80">
+            <div>Logged in as: <span className="font-medium text-foreground">{currentUser?.email}</span></div>
             {currentProfile?.organization_id && (
-              <div>Organization: <span className="font-medium text-gray-900">{currentOrganizationId}</span></div>
+              <div>Organization: <span className="font-medium text-foreground">{currentOrganizationId}</span></div>
             )}
             <button
               type="button"
               onClick={handleLogout}
               disabled={authLoading}
-              className="rounded bg-red-600 px-4 py-2 text-white transition hover:bg-red-700 disabled:bg-red-300"
+              className="rounded bg-destructive px-4 py-2 text-white transition hover:bg-destructive/90 disabled:bg-destructive/30"
             >
               {authLoading ? "Processing..." : "Logout"}
             </button>
-            {authMessage && <p className="text-sm text-green-700">{authMessage}</p>}
-            {authError && <p className="text-sm text-red-700">{authError}</p>}
+            {authMessage && <p className="text-sm text-success">{authMessage}</p>}
+            {authError && <p className="text-sm text-destructive">{authError}</p>}
           </div>
         </section>
         </div>
@@ -11511,10 +11511,10 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-100">
+    <main className="min-h-screen bg-muted">
       <style>{`
         .tradeos-print-document {
-          color: #111827;
+          color: var(--color-foreground);
           font-family: Arial, sans-serif;
           line-height: 1.4;
         }
@@ -11524,7 +11524,7 @@ export default function Home() {
           margin: 0 0 8px;
         }
         .tradeos-print-document .muted {
-          color: #6b7280;
+          color: var(--color-muted-foreground);
         }
         .tradeos-print-document .grid {
           display: grid;
@@ -11539,21 +11539,21 @@ export default function Home() {
         }
         .tradeos-print-document th,
         .tradeos-print-document td {
-          border: 1px solid #d1d5db;
+          border: 1px solid var(--color-border);
           font-size: 12px;
           padding: 8px;
           text-align: left;
           vertical-align: top;
         }
         .tradeos-print-document th {
-          background: #f3f4f6;
+          background: var(--color-muted);
         }
         .tradeos-print-document .summary {
           margin-top: 16px;
           text-align: right;
         }
         .tradeos-print-document .footer {
-          border-top: 1px solid #d1d5db;
+          border-top: 1px solid var(--color-border);
           margin-top: 32px;
           padding-top: 12px;
         }
@@ -11583,22 +11583,22 @@ export default function Home() {
         }
       `}</style>
       {isPrintPreviewOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-950/60 p-4 print:static print:bg-white print:p-0">
-          <div className="mx-auto max-w-5xl rounded border border-gray-200 bg-white shadow-xl print:shadow-none">
-            <div className="print-preview-shell flex flex-col gap-3 border-b border-gray-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">{printPreviewTitle}</h2>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-foreground/10 p-4 print:static print:bg-card print:p-0">
+          <div className="mx-auto max-w-5xl rounded border border-border bg-card shadow-xl print:shadow-none">
+            <div className="print-preview-shell flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-lg font-semibold text-foreground">{printPreviewTitle}</h2>
               <div className="print-preview-actions flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+                  className="rounded bg-primary px-4 py-2 text-sm text-white hover:bg-primary/90"
                 >
                   Print
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsPrintPreviewOpen(false)}
-                  className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                 >
                   Close
                 </button>
@@ -11612,10 +11612,10 @@ export default function Home() {
         </div>
       )}
       <div className="min-h-screen md:flex">
-        <aside className="hidden w-64 shrink-0 border-r border-gray-200 bg-white md:sticky md:top-0 md:block md:h-screen">
-          <div className="border-b border-gray-200 p-5">
-            <div className="text-2xl font-semibold text-gray-900">TradeOS</div>
-            <div className="text-sm text-gray-500">Business Management</div>
+        <aside className="hidden w-64 shrink-0 border-r border-border bg-card md:sticky md:top-0 md:block md:h-screen">
+          <div className="border-b border-border p-5">
+            <div className="text-2xl font-semibold text-foreground">TradeOS</div>
+            <div className="text-sm text-muted-foreground/80">Business Management</div>
           </div>
           <nav className="h-[calc(100vh-89px)] overflow-y-auto p-3">
             {visibleNavigationItems.map((item) => (
@@ -11625,8 +11625,8 @@ export default function Home() {
                 onClick={() => handleSectionChange(item.id)}
                 className={`mb-1 w-full rounded px-3 py-2 text-left text-sm transition ${
                   activeSection === item.id
-                    ? "bg-blue-600 font-medium text-white"
-                    : "text-gray-700 hover:bg-gray-100"
+                    ? "bg-primary font-medium text-white"
+                    : "text-foreground/80 hover:bg-muted"
                 }`}
               >
                 {item.label}
@@ -11636,23 +11636,23 @@ export default function Home() {
         </aside>
 
         <div className="min-w-0 flex-1">
-          <header className="sticky top-0 z-20 border-b border-gray-200 bg-white">
+          <header className="sticky top-0 z-20 border-b border-border bg-card">
             <div className="flex items-center justify-between gap-3 px-4 py-3 md:hidden">
               <div>
-                <div className="text-lg font-semibold text-gray-900">TradeOS</div>
-                <div className="text-xs text-gray-500">Business Management</div>
+                <div className="text-lg font-semibold text-foreground">TradeOS</div>
+                <div className="text-xs text-muted-foreground/80">Business Management</div>
               </div>
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen((open) => !open)}
-                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                className="rounded border border-border px-3 py-2 text-sm text-foreground/80"
               >
                 Menu
               </button>
             </div>
 
             {mobileMenuOpen && (
-              <nav className="border-t border-gray-200 bg-white p-3 md:hidden">
+              <nav className="border-t border-border bg-card p-3 md:hidden">
                 <div className="grid gap-2 sm:grid-cols-2">
                   {visibleNavigationItems.map((item) => (
                     <button
@@ -11661,8 +11661,8 @@ export default function Home() {
                       onClick={() => handleSectionChange(item.id)}
                       className={`rounded px-3 py-2 text-left text-sm ${
                         activeSection === item.id
-                          ? "bg-blue-600 font-medium text-white"
-                          : "bg-gray-50 text-gray-700"
+                          ? "bg-primary font-medium text-white"
+                          : "bg-muted/30 text-foreground/80"
                       }`}
                     >
                       {item.label}
@@ -11674,19 +11674,19 @@ export default function Home() {
 
             <div className="flex flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
               <div>
-                <h1 className="text-2xl font-semibold text-gray-900">{activeSectionLabel}</h1>
-                <div className="mt-1 text-sm text-gray-500">
+                <h1 className="text-2xl font-semibold text-foreground">{activeSectionLabel}</h1>
+                <div className="mt-1 text-sm text-muted-foreground/80">
                   {organizationDisplayName} · {currentProfile?.full_name ?? currentUser.email}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {authMessage && <span className="text-sm text-green-700">{authMessage}</span>}
-                {authError && <span className="text-sm text-red-700">{authError}</span>}
+                {authMessage && <span className="text-sm text-success">{authMessage}</span>}
+                {authError && <span className="text-sm text-destructive">{authError}</span>}
                 <button
                   type="button"
                   onClick={handleLogout}
                   disabled={authLoading}
-                  className="rounded bg-red-600 px-4 py-2 text-sm text-white transition hover:bg-red-700 disabled:bg-red-300"
+                  className="rounded bg-destructive px-4 py-2 text-sm text-white transition hover:bg-destructive/90 disabled:bg-destructive/30"
                 >
                   {authLoading ? "Processing..." : "Logout"}
                 </button>
@@ -11698,9 +11698,9 @@ export default function Home() {
             <div className="mx-auto max-w-7xl">
 
         {!activeSectionAllowed && (
-        <section className="rounded border border-red-200 bg-red-50 p-5">
-          <h2 className="text-xl font-medium text-red-950">Permission Required</h2>
-          <p className="mt-2 text-sm text-red-800">
+        <section className="rounded border border-destructive/20 bg-destructive/5 p-5">
+          <h2 className="text-xl font-medium text-destructive/90">Permission Required</h2>
+          <p className="mt-2 text-sm text-destructive/90">
             You do not have permission to view this section. Contact the owner.
           </p>
         </section>
@@ -11708,74 +11708,74 @@ export default function Home() {
 
         {activeSection === "dashboard" && (
         <>
-        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Management Dashboard</h2>
+        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Management Dashboard</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Total Products</div>
-              <div className="mt-2 text-2xl font-semibold text-gray-900">{totalProducts}</div>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Total Products</div>
+              <div className="mt-2 text-2xl font-semibold text-foreground">{totalProducts}</div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Total Customers</div>
-              <div className="mt-2 text-2xl font-semibold text-gray-900">{totalCustomers}</div>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Total Customers</div>
+              <div className="mt-2 text-2xl font-semibold text-foreground">{totalCustomers}</div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Total Suppliers</div>
-              <div className="mt-2 text-2xl font-semibold text-gray-900">{totalSuppliers}</div>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Total Suppliers</div>
+              <div className="mt-2 text-2xl font-semibold text-foreground">{totalSuppliers}</div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Total Receivables</div>
-              <div className="mt-2 text-2xl font-semibold text-gray-900">{totalReceivables.toFixed(2)}</div>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Total Receivables</div>
+              <div className="mt-2 text-2xl font-semibold text-foreground">{totalReceivables.toFixed(2)}</div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Total Payables</div>
-              <div className="mt-2 text-2xl font-semibold text-gray-900">{totalPayables.toFixed(2)}</div>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Total Payables</div>
+              <div className="mt-2 text-2xl font-semibold text-foreground">{totalPayables.toFixed(2)}</div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Inventory Value</div>
-              <div className="mt-2 text-2xl font-semibold text-gray-900">{inventoryValue.toFixed(2)}</div>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Inventory Value</div>
+              <div className="mt-2 text-2xl font-semibold text-foreground">{inventoryValue.toFixed(2)}</div>
             </div>
           </div>
 
           {isOwnerOrAdmin() && (
-          <div className="mt-6 rounded border border-indigo-200 bg-indigo-50 p-4">
+          <div className="mt-6 rounded border border-primary/20 bg-primary/5 p-4">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-indigo-950">Business Intelligence</h3>
-                <p className="mt-1 text-sm text-indigo-900">
+                <h3 className="text-lg font-medium text-primary/90">Business Intelligence</h3>
+                <p className="mt-1 text-sm text-primary">
                   Deep analytics for sales, profit, customers, staff, expenses, inventory, and trends.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => handleSectionChange("business-intelligence")}
-                className="rounded border border-indigo-600 bg-white px-3 py-2 text-sm text-indigo-700 hover:bg-indigo-50"
+                className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5"
               >
                 Open Business Intelligence
               </button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-indigo-200 bg-white p-3">
-                <div className="text-sm text-indigo-700">Sales This Period</div>
-                <div className="mt-1 text-2xl font-semibold text-indigo-950">
+              <div className="rounded border border-primary/20 bg-card p-3">
+                <div className="text-sm text-primary">Sales This Period</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">
                   {formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount)}
                 </div>
               </div>
-              <div className="rounded border border-indigo-200 bg-white p-3">
-                <div className="text-sm text-indigo-700">Profit Estimate</div>
-                <div className="mt-1 text-2xl font-semibold text-indigo-950">
+              <div className="rounded border border-primary/20 bg-card p-3">
+                <div className="text-sm text-primary">Profit Estimate</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">
                   {formatPKR(businessIntelligenceAnalytics.overview.estimatedNetProfit)}
                 </div>
               </div>
-              <div className="rounded border border-indigo-200 bg-white p-3">
-                <div className="text-sm text-indigo-700">Low Stock Products</div>
-                <div className="mt-1 text-2xl font-semibold text-indigo-950">
+              <div className="rounded border border-primary/20 bg-card p-3">
+                <div className="text-sm text-primary">Low Stock Products</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">
                   {businessIntelligenceAnalytics.overview.lowStockCount}
                 </div>
               </div>
-              <div className="rounded border border-indigo-200 bg-white p-3">
-                <div className="text-sm text-indigo-700">Out of Stock</div>
-                <div className="mt-1 text-2xl font-semibold text-indigo-950">
+              <div className="rounded border border-primary/20 bg-card p-3">
+                <div className="text-sm text-primary">Out of Stock</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">
                   {businessIntelligenceAnalytics.overview.outOfStockCount}
                 </div>
               </div>
@@ -11783,30 +11783,30 @@ export default function Home() {
           </div>
           )}
 
-          <div className="mt-6 rounded border border-amber-200 bg-amber-50 p-4">
-            <h3 className="mb-3 text-lg font-medium text-amber-950">Reorder Summary</h3>
+          <div className="mt-6 rounded border border-warning/20 bg-warning/5 p-4">
+            <h3 className="mb-3 text-lg font-medium text-warning/80">Reorder Summary</h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-amber-200 bg-white p-3">
-                <div className="text-sm text-amber-700">Out of Stock</div>
-                <div className="mt-1 text-2xl font-semibold text-amber-950">
+              <div className="rounded border border-warning/20 bg-card p-3">
+                <div className="text-sm text-warning">Out of Stock</div>
+                <div className="mt-1 text-2xl font-semibold text-warning/80">
                   {reorderRecommendationSummary.outOfStockCount}
                 </div>
               </div>
-              <div className="rounded border border-amber-200 bg-white p-3">
-                <div className="text-sm text-amber-700">Urgent Reorder</div>
-                <div className="mt-1 text-2xl font-semibold text-amber-950">
+              <div className="rounded border border-warning/20 bg-card p-3">
+                <div className="text-sm text-warning">Urgent Reorder</div>
+                <div className="mt-1 text-2xl font-semibold text-warning/80">
                   {reorderRecommendationSummary.urgentReorderCount}
                 </div>
               </div>
-              <div className="rounded border border-amber-200 bg-white p-3">
-                <div className="text-sm text-amber-700">Low Stock Soon</div>
-                <div className="mt-1 text-2xl font-semibold text-amber-950">
+              <div className="rounded border border-warning/20 bg-card p-3">
+                <div className="text-sm text-warning">Low Stock Soon</div>
+                <div className="mt-1 text-2xl font-semibold text-warning/80">
                   {reorderRecommendationSummary.lowStockSoonCount}
                 </div>
               </div>
-              <div className="rounded border border-amber-200 bg-white p-3">
-                <div className="text-sm text-amber-700">No Reorder Level</div>
-                <div className="mt-1 text-2xl font-semibold text-amber-950">
+              <div className="rounded border border-warning/20 bg-card p-3">
+                <div className="text-sm text-warning">No Reorder Level</div>
+                <div className="mt-1 text-2xl font-semibold text-warning/80">
                   {reorderRecommendationSummary.missingReorderLevelCount}
                 </div>
               </div>
@@ -11814,38 +11814,38 @@ export default function Home() {
           </div>
 
           {isOwnerOrAdmin() && (
-          <div className="mt-6 rounded border border-emerald-200 bg-emerald-50 p-4">
+          <div className="mt-6 rounded border border-success/20 bg-success/5 p-4">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-emerald-950">Market Intelligence Summary</h3>
-                <p className="mt-1 text-sm text-emerald-900">
+                <h3 className="text-lg font-medium text-success/90">Market Intelligence Summary</h3>
+                <p className="mt-1 text-sm text-success/80">
                   AI-powered advisory view for threats, opportunities, urgency, and owner actions.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => handleSectionChange("market-intelligence")}
-                className="rounded border border-emerald-600 bg-white px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50"
+                className="rounded border border-success bg-card px-3 py-2 text-sm text-success hover:bg-success/5"
               >
                 Open Market Intelligence
               </button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">High Risk Alerts</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.highRisk}</div>
+              <div className="rounded border border-success/20 bg-card p-3">
+                <div className="text-sm text-success">High Risk Alerts</div>
+                <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.highRisk}</div>
               </div>
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">High Opportunity Alerts</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.highOpportunity}</div>
+              <div className="rounded border border-success/20 bg-card p-3">
+                <div className="text-sm text-success">High Opportunity Alerts</div>
+                <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.highOpportunity}</div>
               </div>
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">Items Requiring Attention</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.requiringAttention}</div>
+              <div className="rounded border border-success/20 bg-card p-3">
+                <div className="text-sm text-success">Items Requiring Attention</div>
+                <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.requiringAttention}</div>
               </div>
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">Newest Important Update</div>
-                <div className="mt-1 text-sm font-semibold text-emerald-950">
+              <div className="rounded border border-success/20 bg-card p-3">
+                <div className="text-sm text-success">Newest Important Update</div>
+                <div className="mt-1 text-sm font-semibold text-success/90">
                   {marketV2Summary.newestImportantUpdate
                     ? marketV2Summary.newestImportantUpdate.item.title
                     : "No urgent update"}
@@ -11856,50 +11856,50 @@ export default function Home() {
           )}
 
           {hasPermission("can_manage_tasks") && (
-          <div className="mt-6 rounded border border-blue-200 bg-blue-50 p-4">
+          <div className="mt-6 rounded border border-primary/20 bg-primary/5 p-4">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-medium text-blue-950">Task Manager Summary</h3>
+              <h3 className="text-lg font-medium text-primary/90">Task Manager Summary</h3>
               <button
                 type="button"
                 onClick={() => handleSectionChange("task-manager")}
-                className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5"
               >
                 Open Task Manager
               </button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-blue-200 bg-white p-3">
-                <div className="text-sm text-blue-700">Pending Tasks</div>
-                <div className="mt-1 text-2xl font-semibold text-blue-950">{taskDashboardSummary.pending}</div>
+              <div className="rounded border border-primary/20 bg-card p-3">
+                <div className="text-sm text-primary">Pending Tasks</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">{taskDashboardSummary.pending}</div>
               </div>
-              <div className="rounded border border-blue-200 bg-white p-3">
-                <div className="text-sm text-blue-700">Overdue Tasks</div>
-                <div className="mt-1 text-2xl font-semibold text-blue-950">{taskDashboardSummary.overdue}</div>
+              <div className="rounded border border-primary/20 bg-card p-3">
+                <div className="text-sm text-primary">Overdue Tasks</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">{taskDashboardSummary.overdue}</div>
               </div>
-              <div className="rounded border border-blue-200 bg-white p-3">
-                <div className="text-sm text-blue-700">Due Today</div>
-                <div className="mt-1 text-2xl font-semibold text-blue-950">{taskDashboardSummary.dueToday}</div>
+              <div className="rounded border border-primary/20 bg-card p-3">
+                <div className="text-sm text-primary">Due Today</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">{taskDashboardSummary.dueToday}</div>
               </div>
-              <div className="rounded border border-blue-200 bg-white p-3">
-                <div className="text-sm text-blue-700">Urgent Tasks</div>
-                <div className="mt-1 text-2xl font-semibold text-blue-950">{taskDashboardSummary.urgent}</div>
+              <div className="rounded border border-primary/20 bg-card p-3">
+                <div className="text-sm text-primary">Urgent Tasks</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">{taskDashboardSummary.urgent}</div>
               </div>
             </div>
-            <div className="mt-4 rounded border border-blue-200 bg-white p-3">
-              <h4 className="mb-2 text-sm font-medium text-blue-950">Next Tasks</h4>
+            <div className="mt-4 rounded border border-primary/20 bg-card p-3">
+              <h4 className="mb-2 text-sm font-medium text-primary/90">Next Tasks</h4>
               {nextDashboardTasks.length === 0 ? (
-                <p className="text-sm text-gray-600">No pending or in-progress tasks.</p>
+                <p className="text-sm text-muted-foreground">No pending or in-progress tasks.</p>
               ) : (
                 <ul className="space-y-2">
                   {nextDashboardTasks.map((task) => (
-                    <li key={task.id} className="flex flex-col gap-1 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                    <li key={task.id} className="flex flex-col gap-1 rounded border border-border bg-muted/30 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <div className="font-medium text-gray-900">{task.title}</div>
-                        <div className="text-xs text-gray-500">
+                        <div className="font-medium text-foreground">{task.title}</div>
+                        <div className="text-xs text-muted-foreground/80">
                           {taskStatusLabels[task.status] ?? task.status} · Due {getDateOnly(task.due_date) ?? "No due date"}
                         </div>
                       </div>
-                      <span className="text-xs font-medium text-blue-700">
+                      <span className="text-xs font-medium text-primary">
                         {taskPriorityLabels[task.priority] ?? task.priority}
                       </span>
                     </li>
@@ -11917,17 +11917,17 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => handleSectionChange("activity-logs")}
-                className="rounded border border-slate-600 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                className="rounded border border-slate-600 bg-card px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
               >
                 View All Activity
               </button>
             </div>
             {recentAuditLogs.length === 0 ? (
-              <p className="text-sm text-gray-600">No activity logs recorded yet.</p>
+              <p className="text-sm text-muted-foreground">No activity logs recorded yet.</p>
             ) : (
               <ul className="space-y-2">
                 {recentAuditLogs.map((log) => (
-                  <li key={log.id} className="rounded border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <li key={log.id} className="rounded border border-slate-200 bg-card px-3 py-2 text-sm">
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <span className="font-medium capitalize text-slate-900">{log.action}</span>
@@ -11945,38 +11945,38 @@ export default function Home() {
           )}
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Low Stock Products</h3>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Low Stock Products</h3>
               {lowStockProducts.length === 0 ? (
-                <p className="text-sm text-gray-600">No low stock products.</p>
+                <p className="text-sm text-muted-foreground">No low stock products.</p>
               ) : (
                 <ul className="space-y-2">
                   {lowStockProducts.map((item) => (
-                    <li key={item.productId} className="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                    <li key={item.productId} className="rounded border border-border bg-muted/30 px-3 py-2">
                       <div className="flex items-center justify-between gap-4">
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{item.productName}</div>
-                          <div className="text-xs text-gray-500">Reorder Level: {item.reorderLevel}</div>
+                          <div className="text-sm font-medium text-foreground">{item.productName}</div>
+                          <div className="text-xs text-muted-foreground/80">Reorder Level: {item.reorderLevel}</div>
                         </div>
-                        <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">REORDER REQUIRED</span>
+                        <span className="rounded-full bg-destructive/10 px-2 py-1 text-xs font-semibold text-destructive">REORDER REQUIRED</span>
                       </div>
-                      <div className="mt-1 text-xs text-gray-600">Current Stock: {item.currentStock}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Current Stock: {item.currentStock}</div>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
 
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Top Selling Products</h3>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Top Selling Products</h3>
               {topSellingProducts.length === 0 ? (
-                <p className="text-sm text-gray-600">No sales yet.</p>
+                <p className="text-sm text-muted-foreground">No sales yet.</p>
               ) : (
                 <ul className="space-y-2">
                   {topSellingProducts.map((item) => (
-                    <li key={item.productId} className="flex items-center justify-between rounded border border-gray-200 bg-gray-50 px-3 py-2">
-                      <span className="text-sm text-gray-900">{item.productName}</span>
-                      <span className="text-sm font-semibold text-gray-700">{item.quantitySold}</span>
+                    <li key={item.productId} className="flex items-center justify-between rounded border border-border bg-muted/30 px-3 py-2">
+                      <span className="text-sm text-foreground">{item.productName}</span>
+                      <span className="text-sm font-semibold text-foreground/80">{item.quantitySold}</span>
                     </li>
                   ))}
                 </ul>
@@ -11985,19 +11985,19 @@ export default function Home() {
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Recent Sales</h3>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Recent Sales</h3>
               {recentSalesInvoices.length === 0 ? (
-                <p className="text-sm text-gray-600">No recent sales.</p>
+                <p className="text-sm text-muted-foreground">No recent sales.</p>
               ) : (
                 <ul className="space-y-2">
                   {recentSalesInvoices.map((tx) => {
                     const customer = customers.find((c) => c.id === tx.customer_id);
                     return (
-                      <li key={tx.id} className="rounded border border-gray-200 bg-gray-50 px-3 py-2">
-                        <div className="text-sm font-medium text-gray-900">{tx.invoice_number}</div>
-                        <div className="text-xs text-gray-500">{customer?.customer_name ?? "Unknown Customer"}</div>
-                        <div className="text-xs text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</div>
+                      <li key={tx.id} className="rounded border border-border bg-muted/30 px-3 py-2">
+                        <div className="text-sm font-medium text-foreground">{tx.invoice_number}</div>
+                        <div className="text-xs text-muted-foreground/80">{customer?.customer_name ?? "Unknown Customer"}</div>
+                        <div className="text-xs text-muted-foreground/80">{new Date(tx.created_at).toLocaleDateString()}</div>
                       </li>
                     );
                   })}
@@ -12005,19 +12005,19 @@ export default function Home() {
               )}
             </div>
 
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Recent Purchases</h3>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Recent Purchases</h3>
               {recentPurchaseInvoices.length === 0 ? (
-                <p className="text-sm text-gray-600">No recent purchases.</p>
+                <p className="text-sm text-muted-foreground">No recent purchases.</p>
               ) : (
                 <ul className="space-y-2">
                   {recentPurchaseInvoices.map((tx) => {
                     const supplier = suppliers.find((s) => s.id === tx.supplier_id);
                     return (
-                      <li key={tx.id} className="rounded border border-gray-200 bg-gray-50 px-3 py-2">
-                        <div className="text-sm font-medium text-gray-900">{tx.invoice_number}</div>
-                        <div className="text-xs text-gray-500">{supplier?.supplier_name ?? "Unknown Supplier"}</div>
-                        <div className="text-xs text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</div>
+                      <li key={tx.id} className="rounded border border-border bg-muted/30 px-3 py-2">
+                        <div className="text-sm font-medium text-foreground">{tx.invoice_number}</div>
+                        <div className="text-xs text-muted-foreground/80">{supplier?.supplier_name ?? "Unknown Supplier"}</div>
+                        <div className="text-xs text-muted-foreground/80">{new Date(tx.created_at).toLocaleDateString()}</div>
                       </li>
                     );
                   })}
@@ -12030,39 +12030,39 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "business-intelligence" && (
-        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">Business Intelligence &amp; Deep Analytics</h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <h2 className="text-xl font-medium text-foreground">Business Intelligence &amp; Deep Analytics</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
                 Analyze product, customer, staff, inventory, expense, and profit performance from your OP OWNER data.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={openAiAnalyticsFromBusinessIntelligence} className="rounded border border-indigo-600 bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700">
+              <button type="button" onClick={openAiAnalyticsFromBusinessIntelligence} className="rounded border border-primary bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90">
                 Ask AI About These Analytics
               </button>
-              <button type="button" onClick={exportBiProductAnalyticsCsv} className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
+              <button type="button" onClick={exportBiProductAnalyticsCsv} className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5">
                 Export product CSV
               </button>
-              <button type="button" onClick={exportBiCustomerAnalyticsCsv} className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
+              <button type="button" onClick={exportBiCustomerAnalyticsCsv} className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5">
                 Export customer CSV
               </button>
-              <button type="button" onClick={exportBiStaffAnalyticsCsv} className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
+              <button type="button" onClick={exportBiStaffAnalyticsCsv} className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5">
                 Export staff CSV
               </button>
-              <button type="button" onClick={exportBiExpenseAnalyticsCsv} className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">
+              <button type="button" onClick={exportBiExpenseAnalyticsCsv} className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5">
                 Export expense CSV
               </button>
             </div>
           </div>
 
-          {biMessage && <div className="mb-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{biMessage}</div>}
-          {biError && <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{biError}</div>}
+          {biMessage && <div className="mb-3 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">{biMessage}</div>}
+          {biError && <div className="mb-3 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{biError}</div>}
 
-          <div className="mb-5 rounded border border-gray-200 bg-white p-4">
+          <div className="mb-5 rounded border border-border bg-card p-4">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
+              <label className="flex flex-col gap-1 text-sm text-foreground/80">
                 <span>Date range</span>
                 <select
                   value={biDateRange}
@@ -12071,52 +12071,52 @@ export default function Home() {
                     setBiMessage(null);
                     setBiError(null);
                   }}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   {biDateRangeOptions.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
+              <label className="flex flex-col gap-1 text-sm text-foreground/80">
                 <span>Search</span>
                 <input
                   value={biSearch}
                   onChange={(event) => setBiSearch(event.target.value)}
                   placeholder="Product, customer, invoice, staff..."
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 />
               </label>
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
+              <label className="flex flex-col gap-1 text-sm text-foreground/80">
                 <span>Category</span>
-                <select value={biCategoryFilter} onChange={(event) => setBiCategoryFilter(event.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                <select value={biCategoryFilter} onChange={(event) => setBiCategoryFilter(event.target.value)} className="rounded border border-border px-3 py-2">
                   <option value="all">All categories</option>
                   {categories.map((category) => (
                     <option key={category.id} value={category.id}>{category.name}</option>
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
+              <label className="flex flex-col gap-1 text-sm text-foreground/80">
                 <span>Staff</span>
-                <select value={biStaffFilter} onChange={(event) => setBiStaffFilter(event.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                <select value={biStaffFilter} onChange={(event) => setBiStaffFilter(event.target.value)} className="rounded border border-border px-3 py-2">
                   <option value="all">All staff</option>
                   {staffProfiles.map((profile) => (
                     <option key={profile.id} value={profile.id}>{profile.display_name || profile.email || profile.id}</option>
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
+              <label className="flex flex-col gap-1 text-sm text-foreground/80">
                 <span>Customer</span>
-                <select value={biCustomerFilter} onChange={(event) => setBiCustomerFilter(event.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                <select value={biCustomerFilter} onChange={(event) => setBiCustomerFilter(event.target.value)} className="rounded border border-border px-3 py-2">
                   <option value="all">All customers</option>
                   {customers.map((customer) => (
                     <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
+              <label className="flex flex-col gap-1 text-sm text-foreground/80">
                 <span>Product</span>
-                <select value={biProductFilter} onChange={(event) => setBiProductFilter(event.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                <select value={biProductFilter} onChange={(event) => setBiProductFilter(event.target.value)} className="rounded border border-border px-3 py-2">
                   <option value="all">All products</option>
                   {products.map((product) => (
                     <option key={product.id} value={String(product.id)}>{product.name}</option>
@@ -12125,7 +12125,7 @@ export default function Home() {
               </label>
               {biDateRange === "custom" && (
                 <>
-                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <label className="flex flex-col gap-1 text-sm text-foreground/80">
                     <span>Start date</span>
                     <input
                       type="date"
@@ -12134,17 +12134,17 @@ export default function Home() {
                         setBiStartDate(event.target.value);
                         if (event.target.value && biEndDate && biEndDate < event.target.value) setBiEndDate(event.target.value);
                       }}
-                      className="rounded border border-gray-300 px-3 py-2"
+                      className="rounded border border-border px-3 py-2"
                     />
                   </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <label className="flex flex-col gap-1 text-sm text-foreground/80">
                     <span>End date</span>
                     <input
                       type="date"
                       value={biEndDate}
                       min={biStartDate || undefined}
                       onChange={(event) => setBiEndDate(event.target.value)}
-                      className="rounded border border-gray-300 px-3 py-2"
+                      className="rounded border border-border px-3 py-2"
                     />
                   </label>
                 </>
@@ -12158,15 +12158,15 @@ export default function Home() {
                   onClick={() => setBiMetricView(view.value)}
                   className={`rounded border px-3 py-2 text-sm ${
                     biMetricView === view.value
-                      ? "border-gray-900 bg-gray-900 text-white"
-                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      ? "border-foreground bg-foreground text-white"
+                      : "border-border bg-card text-foreground/80 hover:bg-muted/30"
                   }`}
                 >
                   {view.label}
                 </button>
               ))}
             </div>
-            <p className="mt-3 text-xs text-gray-500">
+            <p className="mt-3 text-xs text-muted-foreground/80">
               Current analytics range: {businessIntelligenceAnalytics.range.label}
               {businessIntelligenceAnalytics.range.start || businessIntelligenceAnalytics.range.end
                 ? ` (${businessIntelligenceAnalytics.range.start || "start"} to ${businessIntelligenceAnalytics.range.end || "today"})`
@@ -12193,25 +12193,25 @@ export default function Home() {
               ["Unknown Cost Lines", businessIntelligenceAnalytics.overview.unknownCostLines],
               ["Unknown Cost Revenue", formatPKR(businessIntelligenceAnalytics.overview.unknownCostRevenue)],
             ].map(([label, value]) => (
-              <div key={String(label)} className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-                <div className="text-sm text-gray-500">{label}</div>
-                <div className="mt-2 text-2xl font-semibold text-gray-900">{value}</div>
+              <div key={String(label)} className="rounded border border-border bg-card p-4 shadow-sm">
+                <div className="text-sm text-muted-foreground/80">{label}</div>
+                <div className="mt-2 text-2xl font-semibold text-foreground">{value}</div>
               </div>
             ))}
           </div>
 
           {businessIntelligenceAnalytics.overview.unknownCostLines > 0 && (
-            <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            <div className="mt-4 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning">
               Some sales lines do not have reliable cost. Profit is estimated and unknown costs are not treated as zero.
             </div>
           )}
 
           {(biMetricView === "overview" || biMetricView === "products") && (
             <div className="mt-6 grid gap-4 xl:grid-cols-3">
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Top Selling Products by Quantity</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Top Selling Products by Quantity</h3>
                 {businessIntelligenceAnalytics.topByQuantity.length === 0 ? (
-                  <p className="text-sm text-gray-600">No product sales in this range.</p>
+                  <p className="text-sm text-muted-foreground">No product sales in this range.</p>
                 ) : (
                   <div className="space-y-3">
                     {businessIntelligenceAnalytics.topByQuantity.map((product) => {
@@ -12219,11 +12219,11 @@ export default function Home() {
                       return (
                         <div key={product.productId}>
                           <div className="mb-1 flex items-center justify-between gap-3 text-sm">
-                            <span className="truncate text-gray-800">{product.productName}</span>
-                            <span className="font-medium text-gray-900">{product.quantitySold}</span>
+                            <span className="truncate text-foreground">{product.productName}</span>
+                            <span className="font-medium text-foreground">{product.quantitySold}</span>
                           </div>
-                          <div className="h-2 rounded bg-gray-100">
-                            <div className="h-2 rounded bg-blue-500" style={{ width: getBiBarWidth(product.quantitySold, maxValue) }} />
+                          <div className="h-2 rounded bg-muted">
+                            <div className="h-2 rounded bg-primary" style={{ width: getBiBarWidth(product.quantitySold, maxValue) }} />
                           </div>
                         </div>
                       );
@@ -12232,14 +12232,14 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Most Profitable Products</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Most Profitable Products</h3>
                 {businessIntelligenceAnalytics.mostProfitable.length === 0 ? (
-                  <p className="text-sm text-gray-600">No costed product profit in this range.</p>
+                  <p className="text-sm text-muted-foreground">No costed product profit in this range.</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-left text-sm">
-                      <thead className="text-xs uppercase text-gray-500">
+                      <thead className="text-xs uppercase text-muted-foreground/80">
                         <tr>
                           <th className="py-2 pr-3">Product</th>
                           <th className="py-2 pr-3">Profit</th>
@@ -12260,23 +12260,23 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Product Stock Watch</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Product Stock Watch</h3>
                 <div className="space-y-3">
                   {businessIntelligenceAnalytics.outOfStockProducts.slice(0, 5).map((product) => (
-                    <div key={product.productId} className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm">
-                      <div className="font-medium text-red-950">{product.productName}</div>
-                      <div className="text-red-700">Out of stock · Reorder {product.suggestedReorderQuantity}</div>
+                    <div key={product.productId} className="rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm">
+                      <div className="font-medium text-destructive/90">{product.productName}</div>
+                      <div className="text-destructive">Out of stock · Reorder {product.suggestedReorderQuantity}</div>
                     </div>
                   ))}
                   {businessIntelligenceAnalytics.lowStockProducts.slice(0, 5).map((product) => (
-                    <div key={product.productId} className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-                      <div className="font-medium text-amber-950">{product.productName}</div>
-                      <div className="text-amber-700">Stock {product.currentStock} · Reorder level {product.reorderLevel}</div>
+                    <div key={product.productId} className="rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm">
+                      <div className="font-medium text-warning/80">{product.productName}</div>
+                      <div className="text-warning">Stock {product.currentStock} · Reorder level {product.reorderLevel}</div>
                     </div>
                   ))}
                   {businessIntelligenceAnalytics.outOfStockProducts.length === 0 && businessIntelligenceAnalytics.lowStockProducts.length === 0 && (
-                    <p className="text-sm text-gray-600">No urgent stock warnings in this filtered view.</p>
+                    <p className="text-sm text-muted-foreground">No urgent stock warnings in this filtered view.</p>
                   )}
                 </div>
               </div>
@@ -12285,10 +12285,10 @@ export default function Home() {
 
           {(biMetricView === "overview" || biMetricView === "customers") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Top Customers by Sales</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Top Customers by Sales</h3>
                 {businessIntelligenceAnalytics.topCustomersBySales.length === 0 ? (
-                  <p className="text-sm text-gray-600">No customer sales in this range.</p>
+                  <p className="text-sm text-muted-foreground">No customer sales in this range.</p>
                 ) : (
                   <div className="space-y-3">
                     {businessIntelligenceAnalytics.topCustomersBySales.map((customer) => {
@@ -12296,11 +12296,11 @@ export default function Home() {
                       return (
                         <div key={customer.customerId}>
                           <div className="mb-1 flex items-center justify-between gap-3 text-sm">
-                            <span className="truncate text-gray-800">{customer.customerName}</span>
-                            <span className="font-medium text-gray-900">{formatPKR(customer.totalSales)}</span>
+                            <span className="truncate text-foreground">{customer.customerName}</span>
+                            <span className="font-medium text-foreground">{formatPKR(customer.totalSales)}</span>
                           </div>
-                          <div className="h-2 rounded bg-gray-100">
-                            <div className="h-2 rounded bg-emerald-500" style={{ width: getBiBarWidth(customer.totalSales, maxValue) }} />
+                          <div className="h-2 rounded bg-muted">
+                            <div className="h-2 rounded bg-success" style={{ width: getBiBarWidth(customer.totalSales, maxValue) }} />
                           </div>
                         </div>
                       );
@@ -12308,11 +12308,11 @@ export default function Home() {
                   </div>
                 )}
               </div>
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Customer Payment &amp; Credit Signals</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Customer Payment &amp; Credit Signals</h3>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="text-xs uppercase text-gray-500">
+                    <thead className="text-xs uppercase text-muted-foreground/80">
                       <tr>
                         <th className="py-2 pr-3">Customer</th>
                         <th className="py-2 pr-3">Payments</th>
@@ -12331,7 +12331,7 @@ export default function Home() {
                       ))}
                       {businessIntelligenceAnalytics.customersWithHighOutstanding.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="py-3 text-gray-600">No outstanding customer balances in this filtered view.</td>
+                          <td colSpan={4} className="py-3 text-muted-foreground">No outstanding customer balances in this filtered view.</td>
                         </tr>
                       )}
                     </tbody>
@@ -12342,14 +12342,14 @@ export default function Home() {
           )}
 
           {(biMetricView === "overview" || biMetricView === "staff") && (
-            <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+            <div className="mt-6 rounded border border-border bg-card p-4">
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-lg font-medium text-gray-900">Staff Performance</h3>
-                <p className="text-xs text-gray-500">Staff attribution depends on which records contain creator/profile information.</p>
+                <h3 className="text-lg font-medium text-foreground">Staff Performance</h3>
+                <p className="text-xs text-muted-foreground/80">Staff attribution depends on which records contain creator/profile information.</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="text-xs uppercase text-gray-500">
+                  <thead className="text-xs uppercase text-muted-foreground/80">
                     <tr>
                       <th className="py-2 pr-3">Staff</th>
                       <th className="py-2 pr-3">Sales</th>
@@ -12372,7 +12372,7 @@ export default function Home() {
                     ))}
                     {businessIntelligenceAnalytics.staffAnalytics.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-3 text-gray-600">No staff activity matched these filters.</td>
+                        <td colSpan={6} className="py-3 text-muted-foreground">No staff activity matched these filters.</td>
                       </tr>
                     )}
                   </tbody>
@@ -12383,10 +12383,10 @@ export default function Home() {
 
           {(biMetricView === "overview" || biMetricView === "expenses") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Expense Categories</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Expense Categories</h3>
                 {businessIntelligenceAnalytics.expensesByType.length === 0 ? (
-                  <p className="text-sm text-gray-600">No expenses in this range.</p>
+                  <p className="text-sm text-muted-foreground">No expenses in this range.</p>
                 ) : (
                   <div className="space-y-3">
                     {businessIntelligenceAnalytics.expensesByType.map((expense) => {
@@ -12394,11 +12394,11 @@ export default function Home() {
                       return (
                         <div key={expense.expenseType}>
                           <div className="mb-1 flex items-center justify-between gap-3 text-sm">
-                            <span className="truncate text-gray-800">{expense.expenseType} ({expense.entryCount})</span>
-                            <span className="font-medium text-gray-900">{formatPKR(expense.totalAmount)}</span>
+                            <span className="truncate text-foreground">{expense.expenseType} ({expense.entryCount})</span>
+                            <span className="font-medium text-foreground">{formatPKR(expense.totalAmount)}</span>
                           </div>
-                          <div className="h-2 rounded bg-gray-100">
-                            <div className="h-2 rounded bg-red-500" style={{ width: getBiBarWidth(expense.totalAmount, maxValue) }} />
+                          <div className="h-2 rounded bg-muted">
+                            <div className="h-2 rounded bg-destructive" style={{ width: getBiBarWidth(expense.totalAmount, maxValue) }} />
                           </div>
                         </div>
                       );
@@ -12406,20 +12406,20 @@ export default function Home() {
                   </div>
                 )}
               </div>
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Expense Split</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Expense Split</h3>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                    <div className="text-xs text-gray-500">Purchase-linked</div>
-                    <div className="mt-1 font-semibold text-gray-900">{formatPKR(businessIntelligenceAnalytics.purchaseLinkedExpenseTotal)}</div>
+                  <div className="rounded border border-border bg-muted/30 p-3">
+                    <div className="text-xs text-muted-foreground/80">Purchase-linked</div>
+                    <div className="mt-1 font-semibold text-foreground">{formatPKR(businessIntelligenceAnalytics.purchaseLinkedExpenseTotal)}</div>
                   </div>
-                  <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                    <div className="text-xs text-gray-500">Sales-linked</div>
-                    <div className="mt-1 font-semibold text-gray-900">{formatPKR(businessIntelligenceAnalytics.salesLinkedExpenseTotal)}</div>
+                  <div className="rounded border border-border bg-muted/30 p-3">
+                    <div className="text-xs text-muted-foreground/80">Sales-linked</div>
+                    <div className="mt-1 font-semibold text-foreground">{formatPKR(businessIntelligenceAnalytics.salesLinkedExpenseTotal)}</div>
                   </div>
-                  <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                    <div className="text-xs text-gray-500">Operating</div>
-                    <div className="mt-1 font-semibold text-gray-900">{formatPKR(businessIntelligenceAnalytics.operatingExpenseTotal)}</div>
+                  <div className="rounded border border-border bg-muted/30 p-3">
+                    <div className="text-xs text-muted-foreground/80">Operating</div>
+                    <div className="mt-1 font-semibold text-foreground">{formatPKR(businessIntelligenceAnalytics.operatingExpenseTotal)}</div>
                   </div>
                 </div>
               </div>
@@ -12427,14 +12427,14 @@ export default function Home() {
           )}
 
           {(biMetricView === "overview" || biMetricView === "inventory") && (
-            <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+            <div className="mt-6 rounded border border-border bg-card p-4">
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-lg font-medium text-gray-900">Inventory Movement</h3>
-                <span className="text-sm text-gray-600">Estimated stock value: {formatPKR(businessIntelligenceAnalytics.inventoryStockValue)}</span>
+                <h3 className="text-lg font-medium text-foreground">Inventory Movement</h3>
+                <span className="text-sm text-muted-foreground">Estimated stock value: {formatPKR(businessIntelligenceAnalytics.inventoryStockValue)}</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="text-xs uppercase text-gray-500">
+                  <thead className="text-xs uppercase text-muted-foreground/80">
                     <tr>
                       <th className="py-2 pr-3">Product</th>
                       <th className="py-2 pr-3">Sold</th>
@@ -12467,22 +12467,22 @@ export default function Home() {
 
           {(biMetricView === "overview" || biMetricView === "trends") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Daily Sales Trend</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Daily Sales Trend</h3>
                 {businessIntelligenceAnalytics.dailyTrends.length === 0 ? (
-                  <p className="text-sm text-gray-600">No trend data in this range.</p>
+                  <p className="text-sm text-muted-foreground">No trend data in this range.</p>
                 ) : (
                   <div className="space-y-3">
                     {businessIntelligenceAnalytics.dailyTrends.slice(-14).map((day) => {
                       const maxValue = Math.max(...businessIntelligenceAnalytics.dailyTrends.map((item) => item.sales), 0);
                       return (
                         <div key={day.date}>
-                          <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                          <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                             <span>{formatDate(day.date)}</span>
                             <span>{formatPKR(day.sales)}</span>
                           </div>
-                          <div className="h-2 rounded bg-gray-100">
-                            <div className="h-2 rounded bg-blue-500" style={{ width: getBiBarWidth(day.sales, maxValue) }} />
+                          <div className="h-2 rounded bg-muted">
+                            <div className="h-2 rounded bg-primary" style={{ width: getBiBarWidth(day.sales, maxValue) }} />
                           </div>
                         </div>
                       );
@@ -12490,29 +12490,29 @@ export default function Home() {
                   </div>
                 )}
               </div>
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Daily Profit / Expense Trend</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Daily Profit / Expense Trend</h3>
                 <div className="space-y-3">
                   {businessIntelligenceAnalytics.dailyTrends.slice(-14).map((day) => {
                     const maxValue = Math.max(...businessIntelligenceAnalytics.dailyTrends.map((item) => Math.max(Math.abs(item.profit), item.expenses)), 0);
                     return (
                       <div key={day.date}>
-                        <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                        <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                           <span>{formatDate(day.date)}</span>
                           <span>Profit {formatPKR(day.profit)} · Expense {formatPKR(day.expenses)}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-1">
-                          <div className="h-2 rounded bg-gray-100">
-                            <div className="h-2 rounded bg-emerald-500" style={{ width: getBiBarWidth(Math.max(0, day.profit), maxValue) }} />
+                          <div className="h-2 rounded bg-muted">
+                            <div className="h-2 rounded bg-success" style={{ width: getBiBarWidth(Math.max(0, day.profit), maxValue) }} />
                           </div>
-                          <div className="h-2 rounded bg-gray-100">
-                            <div className="h-2 rounded bg-red-500" style={{ width: getBiBarWidth(day.expenses, maxValue) }} />
+                          <div className="h-2 rounded bg-muted">
+                            <div className="h-2 rounded bg-destructive" style={{ width: getBiBarWidth(day.expenses, maxValue) }} />
                           </div>
                         </div>
                       </div>
                     );
                   })}
-                  {businessIntelligenceAnalytics.dailyTrends.length === 0 && <p className="text-sm text-gray-600">No profit trend data in this range.</p>}
+                  {businessIntelligenceAnalytics.dailyTrends.length === 0 && <p className="text-sm text-muted-foreground">No profit trend data in this range.</p>}
                 </div>
               </div>
             </div>
@@ -12520,37 +12520,37 @@ export default function Home() {
 
           {(biMetricView === "overview" || biMetricView === "seasonal") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Seasonal Movement</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Seasonal Movement</h3>
                 {!businessIntelligenceAnalytics.enoughSeasonalData && (
-                  <p className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <p className="mb-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning">
                     More data is needed for strong seasonal analysis.
                   </p>
                 )}
-                <div className="space-y-2 text-sm text-gray-700">
-                  <div>Best month: <span className="font-medium text-gray-900">{businessIntelligenceAnalytics.bestMonth?.label ?? "Not enough data"}</span> {businessIntelligenceAnalytics.bestMonth ? formatPKR(businessIntelligenceAnalytics.bestMonth.value) : ""}</div>
-                  <div>Best day of week: <span className="font-medium text-gray-900">{businessIntelligenceAnalytics.bestWeekday?.label ?? "Not enough data"}</span> {businessIntelligenceAnalytics.bestWeekday ? formatPKR(businessIntelligenceAnalytics.bestWeekday.value) : ""}</div>
-                  <div>Strongest product month: <span className="font-medium text-gray-900">{businessIntelligenceAnalytics.strongestProductMonth ? `${businessIntelligenceAnalytics.strongestProductMonth.productName} in ${businessIntelligenceAnalytics.strongestProductMonth.month}` : "Not enough data"}</span></div>
+                <div className="space-y-2 text-sm text-foreground/80">
+                  <div>Best month: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.bestMonth?.label ?? "Not enough data"}</span> {businessIntelligenceAnalytics.bestMonth ? formatPKR(businessIntelligenceAnalytics.bestMonth.value) : ""}</div>
+                  <div>Best day of week: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.bestWeekday?.label ?? "Not enough data"}</span> {businessIntelligenceAnalytics.bestWeekday ? formatPKR(businessIntelligenceAnalytics.bestWeekday.value) : ""}</div>
+                  <div>Strongest product month: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.strongestProductMonth ? `${businessIntelligenceAnalytics.strongestProductMonth.productName} in ${businessIntelligenceAnalytics.strongestProductMonth.month}` : "Not enough data"}</span></div>
                 </div>
               </div>
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="mb-3 text-lg font-medium text-gray-900">Monthly Sales</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Monthly Sales</h3>
                 <div className="space-y-3">
                   {businessIntelligenceAnalytics.monthlySales.map((month) => {
                     const maxValue = Math.max(...businessIntelligenceAnalytics.monthlySales.map((item) => item.value), 0);
                     return (
                       <div key={month.label}>
-                        <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                        <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                           <span>{month.label}</span>
                           <span>{formatPKR(month.value)}</span>
                         </div>
-                        <div className="h-2 rounded bg-gray-100">
-                          <div className="h-2 rounded bg-purple-500" style={{ width: getBiBarWidth(month.value, maxValue) }} />
+                        <div className="h-2 rounded bg-muted">
+                          <div className="h-2 rounded bg-primary/80" style={{ width: getBiBarWidth(month.value, maxValue) }} />
                         </div>
                       </div>
                     );
                   })}
-                  {businessIntelligenceAnalytics.monthlySales.length === 0 && <p className="text-sm text-gray-600">No monthly sales data.</p>}
+                  {businessIntelligenceAnalytics.monthlySales.length === 0 && <p className="text-sm text-muted-foreground">No monthly sales data.</p>}
                 </div>
               </div>
             </div>
@@ -12567,9 +12567,9 @@ export default function Home() {
               ["Market signal note", businessIntelligenceAnalytics.insights.marketSignalNote],
               ["AI analytics note", "AI explanation for analytics will be added next, so the owner can ask why sales increased or dropped."],
             ].map(([title, body]) => (
-              <div key={String(title)} className="rounded border border-gray-200 bg-white p-4">
-                <div className="text-sm font-medium text-gray-900">{title}</div>
-                <p className="mt-2 text-sm text-gray-600">{body}</p>
+              <div key={String(title)} className="rounded border border-border bg-card p-4">
+                <div className="text-sm font-medium text-foreground">{title}</div>
+                <p className="mt-2 text-sm text-muted-foreground">{body}</p>
               </div>
             ))}
           </div>
@@ -12577,36 +12577,36 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "profit-loss" && (
-        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-gray-900">Profit Dashboard</h2>
+            <h2 className="text-xl font-medium text-foreground">Profit Dashboard</h2>
             <button
               type="button"
               onClick={handleExportProfitLossCsv}
-              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+              className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
               Export P&amp;L CSV
             </button>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Start Date</span>
               <input
                 type="date"
                 value={profitLossStartDate}
                 onChange={(e) => handleProfitLossStartDateChange(e.target.value)}
-                className="rounded border border-gray-300 px-3 py-2"
+                className="rounded border border-border px-3 py-2"
               />
             </label>
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>End Date</span>
               <input
                 type="date"
                 value={profitLossEndDate}
                 min={profitLossStartDate || undefined}
                 onChange={(e) => handleProfitLossEndDateChange(e.target.value)}
-                className="rounded border border-gray-300 px-3 py-2"
+                className="rounded border border-border px-3 py-2"
               />
             </label>
           </div>
@@ -12615,98 +12615,98 @@ export default function Home() {
             <button
               type="button"
               onClick={() => applyProfitLossMonthRange(0)}
-              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+              className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
               This Month
             </button>
             <button
               type="button"
               onClick={() => applyProfitLossMonthRange(-1)}
-              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+              className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
               Last Month
             </button>
             <button
               type="button"
               onClick={applyProfitLossAllTime}
-              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+              className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
               All Time
             </button>
           </div>
 
           {profitLossDateError && (
-            <p className="mt-3 text-sm text-red-700">{profitLossDateError}</p>
+            <p className="mt-3 text-sm text-destructive">{profitLossDateError}</p>
           )}
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Total Revenue</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Total Revenue</div>
+              <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(profitLossTotals.totalRevenue)}
               </div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Known Cost of Goods Sold</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Known Cost of Goods Sold</div>
+              <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(profitLossTotals.knownCostOfGoodsSold)}
               </div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Gross Profit on Costed Sales</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Gross Profit on Costed Sales</div>
+              <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(grossProfitOnCostedSales)}
               </div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Purchase-Linked Expenses</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Purchase-Linked Expenses</div>
+              <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(purchaseLinkedExpenses)}
               </div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Operating Expenses</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Operating Expenses</div>
+              <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(operatingExpenses)}
               </div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Total Recorded Expenses</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Total Recorded Expenses</div>
+              <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(totalRecordedExpenses)}
               </div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">{netProfitLabel}</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">{netProfitLabel}</div>
+              <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(mvpNetProfit)}
               </div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Cost Coverage</div>
-              <div className="mt-2 text-xl font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Cost Coverage</div>
+              <div className="mt-2 text-xl font-semibold text-foreground">
                 {costCoverage.toFixed(2)}%
               </div>
             </div>
           </div>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Sales invoices in period</div>
-              <div className="mt-2 text-2xl font-semibold text-gray-900">{salesTransactionsInPeriod.length}</div>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Sales invoices in period</div>
+              <div className="mt-2 text-2xl font-semibold text-foreground">{salesTransactionsInPeriod.length}</div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Sales lines in period</div>
-              <div className="mt-2 text-2xl font-semibold text-gray-900">{salesItemsInPeriod.length}</div>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Sales lines in period</div>
+              <div className="mt-2 text-2xl font-semibold text-foreground">{salesItemsInPeriod.length}</div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">Expense entries in period</div>
-              <div className="mt-2 text-2xl font-semibold text-gray-900">{expensesInPeriod.length}</div>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <div className="text-sm text-muted-foreground/80">Expense entries in period</div>
+              <div className="mt-2 text-2xl font-semibold text-foreground">{expensesInPeriod.length}</div>
             </div>
           </div>
 
           {costCoverage < 100 && (
-            <div className="mt-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <div className="mt-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/80">
               <p className="font-medium">
                 Some sales do not contain a purchase-cost snapshot. Profit is estimated and may be overstated.
               </p>
@@ -12720,14 +12720,14 @@ export default function Home() {
           )}
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Expense Category Breakdown</h3>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Expense Category Breakdown</h3>
               {expenseCategoryBreakdown.length === 0 ? (
-                <p className="text-sm text-gray-600">No expenses in this period.</p>
+                <p className="text-sm text-muted-foreground">No expenses in this period.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
-                    <thead className="text-xs uppercase text-gray-500">
+                    <thead className="text-xs uppercase text-muted-foreground/80">
                       <tr>
                         <th className="py-2 pr-3">Expense Type</th>
                         <th className="py-2 pr-3">Entries</th>
@@ -12737,9 +12737,9 @@ export default function Home() {
                     <tbody className="divide-y divide-gray-200">
                       {expenseCategoryBreakdown.map((category) => (
                         <tr key={category.expenseType}>
-                          <td className="py-2 pr-3 font-medium text-gray-900">{category.expenseType}</td>
-                          <td className="py-2 pr-3 text-gray-700">{category.entryCount}</td>
-                          <td className="py-2 text-right font-medium text-gray-900">
+                          <td className="py-2 pr-3 font-medium text-foreground">{category.expenseType}</td>
+                          <td className="py-2 pr-3 text-foreground/80">{category.entryCount}</td>
+                          <td className="py-2 text-right font-medium text-foreground">
                             {pkrFormatter.format(category.totalAmount)}
                           </td>
                         </tr>
@@ -12750,14 +12750,14 @@ export default function Home() {
               )}
             </div>
 
-            <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Top Product Profitability</h3>
+            <div className="rounded border border-border bg-card p-4 shadow-sm">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Top Product Profitability</h3>
               {productProfitability.length === 0 ? (
-                <p className="text-sm text-gray-600">No costed product sales in this period.</p>
+                <p className="text-sm text-muted-foreground">No costed product sales in this period.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
-                    <thead className="text-xs uppercase text-gray-500">
+                    <thead className="text-xs uppercase text-muted-foreground/80">
                       <tr>
                         <th className="py-2 pr-3">Product</th>
                         <th className="py-2 pr-3">Qty</th>
@@ -12771,18 +12771,18 @@ export default function Home() {
                       {productProfitability.map((product) => (
                         <tr key={product.productId}>
                           <td className="py-2 pr-3">
-                            <div className="font-medium text-gray-900">{product.productName}</div>
+                            <div className="font-medium text-foreground">{product.productName}</div>
                             {product.hasUnknownCostLines && (
-                              <div className="text-xs text-amber-700">Partial cost data</div>
+                              <div className="text-xs text-warning">Partial cost data</div>
                             )}
                           </td>
-                          <td className="py-2 pr-3 text-gray-700">{product.quantitySold}</td>
-                          <td className="py-2 pr-3 text-gray-700">{pkrFormatter.format(product.revenue)}</td>
-                          <td className="py-2 pr-3 text-gray-700">{pkrFormatter.format(product.cost)}</td>
-                          <td className="py-2 pr-3 font-medium text-gray-900">
+                          <td className="py-2 pr-3 text-foreground/80">{product.quantitySold}</td>
+                          <td className="py-2 pr-3 text-foreground/80">{pkrFormatter.format(product.revenue)}</td>
+                          <td className="py-2 pr-3 text-foreground/80">{pkrFormatter.format(product.cost)}</td>
+                          <td className="py-2 pr-3 font-medium text-foreground">
                             {pkrFormatter.format(product.grossProfit)}
                           </td>
-                          <td className="py-2 text-right font-medium text-gray-900">
+                          <td className="py-2 text-right font-medium text-foreground">
                             {product.marginPercentage.toFixed(2)}%
                           </td>
                         </tr>
@@ -12797,49 +12797,49 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "brands" && (
-        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Brand Management</h2>
+        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Brand Management</h2>
           <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Brand Name</span>
               <input
                 type="text"
                 value={brandName}
                 onChange={(e) => setBrandName(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               />
             </label>
             <button
               type="button"
               onClick={handleAddBrand}
               disabled={brandsLoading}
-              className="h-12 rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              className="h-12 rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
             >
               Add Brand
             </button>
           </div>
 
-          {brandMessage && <p className="mt-4 text-sm text-green-700">{brandMessage}</p>}
-          {brandError && <p className="mt-4 text-sm text-red-700">{brandError}</p>}
+          {brandMessage && <p className="mt-4 text-sm text-success">{brandMessage}</p>}
+          {brandError && <p className="mt-4 text-sm text-destructive">{brandError}</p>}
 
           <div className="mt-6">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Existing Brands</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">Existing Brands</h3>
             {brandsLoading ? (
-              <p className="text-sm text-gray-600">Loading brands...</p>
+              <p className="text-sm text-muted-foreground">Loading brands...</p>
             ) : brands.length === 0 ? (
-              <p className="text-sm text-gray-600">No brands found.</p>
+              <p className="text-sm text-muted-foreground">No brands found.</p>
             ) : (
               <ul className="space-y-2">
                 {brands.map((brand) => (
                   <li
                     key={brand.id}
-                    className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2"
+                    className="flex items-center justify-between rounded border border-border bg-card px-3 py-2"
                   >
                     <span>{brand.name}</span>
                     <button
                       type="button"
                       onClick={() => handleDeleteBrand(brand.id)}
-                      className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                      className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
                     >
                       Delete
                     </button>
@@ -12852,36 +12852,36 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "inventory" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-gray-900">Inventory Dashboard</h2>
+            <h2 className="text-xl font-medium text-foreground">Inventory Dashboard</h2>
             <button
               type="button"
               onClick={handleExportInventoryCsv}
-              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+              className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
               Export Inventory CSV
             </button>
           </div>
           {products.length === 0 ? (
-            <p className="text-sm text-gray-600">No products to show.</p>
+            <p className="text-sm text-muted-foreground">No products to show.</p>
           ) : (
             <ul className="space-y-2">
               {inventoryStats.map((s) => (
                 <li
                   key={s.productId}
-                  className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2"
+                  className="flex items-center justify-between rounded border border-border bg-card px-3 py-2"
                 >
                   <div>
-                    <div className="font-medium text-gray-900">{s.productName}</div>
-                    <div className="text-xs text-gray-600">Default Price: {s.defaultSellingPrice ?? "-"}</div>
+                    <div className="font-medium text-foreground">{s.productName}</div>
+                    <div className="text-xs text-muted-foreground">Default Price: {s.defaultSellingPrice ?? "-"}</div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-700">
+                  <div className="flex items-center gap-4 text-sm text-foreground/80">
                     <div>Purchased: {s.purchasedQty}</div>
                     <div>Sold: {s.soldQty}</div>
                     <div>Stock: {s.currentStock}</div>
                     {s.currentStock <= 10 && (
-                      <span className="rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">LOW STOCK</span>
+                      <span className="rounded bg-destructive/10 px-2 py-1 text-xs font-semibold text-destructive">LOW STOCK</span>
                     )}
                   </div>
                 </li>
@@ -12889,14 +12889,14 @@ export default function Home() {
             </ul>
           )}
 
-          <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+          <div className="mt-6 rounded border border-border bg-card p-4">
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <h3 className="text-lg font-medium text-gray-900">Inventory Reorder Recommendations</h3>
+              <h3 className="text-lg font-medium text-foreground">Inventory Reorder Recommendations</h3>
               <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
                 <select
                   value={reorderRecommendationFilter}
                   onChange={(e) => setReorderRecommendationFilter(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2 text-sm"
+                  className="rounded border border-border px-3 py-2 text-sm"
                 >
                   <option value="all">All</option>
                   <option value="Out of Stock">Out of Stock</option>
@@ -12910,17 +12910,17 @@ export default function Home() {
                   value={reorderRecommendationSearch}
                   onChange={(e) => setReorderRecommendationSearch(e.target.value)}
                   placeholder="Search product, brand, category"
-                  className="rounded border border-gray-300 px-3 py-2 text-sm"
+                  className="rounded border border-border px-3 py-2 text-sm"
                 />
               </div>
             </div>
 
             {filteredReorderRecommendations.length === 0 ? (
-              <p className="text-sm text-gray-600">No reorder recommendations match the current filters.</p>
+              <p className="text-sm text-muted-foreground">No reorder recommendations match the current filters.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                  <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
                       <th className="px-3 py-2">Product</th>
                       <th className="px-3 py-2">Current Stock</th>
@@ -12936,8 +12936,8 @@ export default function Home() {
                     {filteredReorderRecommendations.map((recommendation) => (
                       <tr key={recommendation.productId}>
                         <td className="px-3 py-3">
-                          <div className="font-medium text-gray-900">{recommendation.productName}</div>
-                          <div className="text-xs text-gray-500">
+                          <div className="font-medium text-foreground">{recommendation.productName}</div>
+                          <div className="text-xs text-muted-foreground/80">
                             {recommendation.brandName || "No brand"} · {recommendation.categoryName || "No category"}
                           </div>
                         </td>
@@ -12971,12 +12971,12 @@ export default function Home() {
                           <span
                             className={`inline-flex rounded px-2 py-1 text-xs font-medium ${
                               recommendation.status === "Out of Stock"
-                                ? "bg-red-100 text-red-700"
+                                ? "bg-destructive/10 text-destructive"
                                 : recommendation.status === "Urgent Reorder"
                                   ? "bg-orange-100 text-orange-700"
                                   : recommendation.status === "Low Stock Soon"
-                                    ? "bg-amber-100 text-amber-800"
-                                    : "bg-green-100 text-green-700"
+                                    ? "bg-warning/10 text-warning"
+                                    : "bg-success/10 text-success"
                             }`}
                           >
                             {recommendation.status}
@@ -12994,16 +12994,16 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "sales" && (
         <>
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Sales Invoice</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Sales Invoice</h2>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Customer</span>
                 <select
                   value={selectedCustomerIdForSale ?? ""}
                   onChange={(e) => handleSalesCustomerChange(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="">Select Customer</option>
                   {customers.map((c) => (
@@ -13012,35 +13012,35 @@ export default function Home() {
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Invoice Number</span>
                 <input
                   type="text"
                   value={salesInvoiceNumber}
                   onChange={(e) => setSalesInvoiceNumber(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Sale Date</span>
                 <input
                   type="date"
                   value={salesInvoiceDate}
                   onChange={(e) => handleSalesInvoiceDateChange(e.target.value)}
                   required
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Payment Type</span>
                 <select
                   value={salesPaymentType}
                   onChange={(e) => handleSalesPaymentTypeChange(e.target.value as "cash" | "credit")}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="cash">Cash</option>
                   <option value="credit">Credit</option>
@@ -13049,8 +13049,8 @@ export default function Home() {
             </div>
 
             {salesPaymentType === "credit" && selectedSalesCustomer && (
-              <div className="rounded border border-blue-100 bg-blue-50 p-4 text-sm text-blue-950">
-                <h3 className="mb-2 text-base font-medium text-blue-950">Credit Summary</h3>
+              <div className="rounded border border-primary/10 bg-primary/5 p-4 text-sm text-primary/90">
+                <h3 className="mb-2 text-base font-medium text-primary/90">Credit Summary</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>Customer credit policy: {creditPolicyLabels[selectedCustomerCreditPolicy] ?? "Cash Only"}</div>
                   <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
@@ -13068,13 +13068,13 @@ export default function Home() {
             )}
 
             {creditWarning && (
-              <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <p className="rounded border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
                 {creditWarning}
               </p>
             )}
 
             {creditOverrideConfirmation && salesPaymentType === "credit" && (
-              <div className="rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+              <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/80">
                 <h3 className="mb-2 text-base font-medium">Owner Override Required</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
@@ -13101,7 +13101,7 @@ export default function Home() {
                     type="button"
                     onClick={() => handleCreateSalesInvoice(true)}
                     disabled={salesInvoiceLoading}
-                    className="rounded bg-amber-600 px-3 py-2 text-sm text-white hover:bg-amber-700 disabled:bg-amber-300"
+                    className="rounded bg-warning px-3 py-2 text-sm text-white hover:bg-warning/90 disabled:bg-warning/30"
                   >
                     Confirm and Save Credit Sale
                   </button>
@@ -13109,7 +13109,7 @@ export default function Home() {
                     type="button"
                     onClick={clearCreditOverrideState}
                     disabled={salesInvoiceLoading}
-                    className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:text-gray-400"
+                    className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30 disabled:text-muted-foreground"
                   >
                     Cancel
                   </button>
@@ -13118,32 +13118,32 @@ export default function Home() {
             )}
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Product Lines</h3>
+              <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
 
               {salesLines.length === 0 ? (
-                <p className="mb-4 text-sm text-gray-500">No product lines added yet.</p>
+                <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
               ) : (
                 <div className="mb-4 space-y-3">
                   {salesLines.map((line, index) => (
-                    <div key={index} className="rounded border border-gray-300 bg-white p-3">
+                    <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-700">Line {index + 1}</span>
+                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveSalesLine(index)}
-                          className="text-xs text-red-600 hover:text-red-800"
+                          className="text-xs text-destructive hover:text-destructive/90"
                         >
                           Remove
                         </button>
                       </div>
 
                       <div className="grid gap-2 sm:grid-cols-3">
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
                             value={line.product_id ?? ""}
                             onChange={(e) => handleSalesLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)}
-                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
                             <option value="">Select Product</option>
                             {products.map((product) => (
@@ -13152,23 +13152,23 @@ export default function Home() {
                           </select>
                         </label>
 
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Quantity</span>
                           <input
                             type="number"
                             value={line.quantity}
                             onChange={(e) => handleSalesLineChange(index, "quantity", e.target.value)}
-                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
                         </label>
 
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Selling Price</span>
                           <input
                             type="number"
                             value={line.selling_price}
                             onChange={(e) => handleSalesLineChange(index, "selling_price", e.target.value)}
-                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
                         </label>
                       </div>
@@ -13180,7 +13180,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleAddSalesLine}
-                className="mb-4 rounded border border-blue-600 px-4 py-2 text-sm text-blue-600 transition hover:bg-blue-50"
+                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
                 + Add Product Line
               </button>
@@ -13190,25 +13190,25 @@ export default function Home() {
               type="button"
               onClick={() => handleCreateSalesInvoice()}
               disabled={salesInvoiceLoading}
-              className="w-full rounded bg-green-600 px-4 py-2 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
+              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
               {salesInvoiceLoading ? "Saving..." : "Save Sales Invoice"}
             </button>
 
-            {salesMessage && <p className="mt-4 text-sm text-green-700">{salesMessage}</p>}
-            {salesError && <p className="mt-4 text-sm text-red-700">{salesError}</p>}
+            {salesMessage && <p className="mt-4 text-sm text-success">{salesMessage}</p>}
+            {salesError && <p className="mt-4 text-sm text-destructive">{salesError}</p>}
           </div>
         </section>
 
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Sales History</h2>
-          <p className="mb-3 text-xs text-gray-500">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Sales History</h2>
+          <p className="mb-3 text-xs text-muted-foreground/80">
             Older unallocated customer payments are applied to the oldest credit invoices first.
           </p>
           {salesLoading ? (
-            <p className="text-sm text-gray-600">Loading sales history...</p>
+            <p className="text-sm text-muted-foreground">Loading sales history...</p>
           ) : salesTransactions.length === 0 ? (
-            <p className="text-sm text-gray-600">No sales invoices found.</p>
+            <p className="text-sm text-muted-foreground">No sales invoices found.</p>
           ) : (
             <ul className="space-y-2">
               {salesTransactions.map((tx) => {
@@ -13227,19 +13227,19 @@ export default function Home() {
                         ? "Overdue"
                         : "Credit outstanding";
                 return (
-                  <li key={tx.id} className="flex flex-col gap-1 rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700">
+                  <li key={tx.id} className="flex flex-col gap-1 rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="font-medium text-gray-900">Invoice: {tx.invoice_number}</div>
+                      <div className="font-medium text-foreground">Invoice: {tx.invoice_number}</div>
                       <button
                         type="button"
                         onClick={() => handlePrintSalesInvoice(tx)}
-                        className="rounded border border-blue-600 px-3 py-1 text-xs text-blue-600 hover:bg-blue-50"
+                        className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
                       >
                         Print Invoice
                       </button>
                     </div>
                     <div>Customer: {customer?.customer_name ?? "Unknown"}</div>
-                    <div className="text-xs text-gray-500">Date: {date}</div>
+                    <div className="text-xs text-muted-foreground/80">Date: {date}</div>
                     <div>Payment Type: {paymentType === "credit" ? "Credit" : "Cash"}</div>
                     <div>Status: {creditStatus}</div>
                     {paymentType === "credit" && (
@@ -13266,14 +13266,14 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "customer-payments" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <h2 className="text-xl font-medium text-gray-900">Customer Payments</h2>
+            <h2 className="text-xl font-medium text-foreground">Customer Payments</h2>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleExportCustomerBalancesCsv}
-                className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
               >
                 Export Customer Balances CSV
               </button>
@@ -13281,7 +13281,7 @@ export default function Home() {
                 type="button"
                 onClick={() => handlePrintCustomerStatement(selectedCustomerPaymentId)}
                 disabled={!selectedCustomerPaymentId}
-                className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
               >
                 Print Customer Statement
               </button>
@@ -13291,7 +13291,7 @@ export default function Home() {
             <select
               value={selectedCustomerPaymentId ?? ""}
               onChange={(e) => handleCustomerPaymentCustomerChange(e.target.value)}
-              className="rounded border border-gray-300 px-2 py-2"
+              className="rounded border border-border px-2 py-2"
             >
               <option value="">Select Customer</option>
               {customers.map((c) => (
@@ -13304,7 +13304,7 @@ export default function Home() {
               value={customerPaymentAmount}
               onChange={(e) => handleCustomerPaymentAmountChange(e.target.value)}
               placeholder="Amount"
-              className="rounded border border-gray-300 px-2 py-2"
+              className="rounded border border-border px-2 py-2"
             />
 
             <input
@@ -13312,88 +13312,88 @@ export default function Home() {
               value={customerPaymentNotes}
               onChange={(e) => setCustomerPaymentNotes(e.target.value)}
               placeholder="Notes (optional)"
-              className="rounded border border-gray-300 px-2 py-2"
+              className="rounded border border-border px-2 py-2"
             />
           </div>
 
           {selectedCustomerPaymentId && (
-            <div className="mt-4 rounded border border-gray-200 bg-white p-4">
+            <div className="mt-4 rounded border border-border bg-card p-4">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-lg font-medium text-gray-900">Allocate to Credit Invoices</h3>
+                <h3 className="text-lg font-medium text-foreground">Allocate to Credit Invoices</h3>
                 <button
                   type="button"
                   onClick={handleAutoAllocateCustomerPayment}
-                  className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                  className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
                 >
                   Auto Allocate Oldest First
                 </button>
               </div>
-              <p className="mb-3 text-xs text-gray-500">
+              <p className="mb-3 text-xs text-muted-foreground/80">
                 Older unallocated customer payments are applied to the oldest credit invoices first.
               </p>
 
               <div className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <div className="text-gray-500">Payment amount</div>
-                  <div className="font-medium text-gray-900">
+                <div className="rounded border border-border bg-muted/30 p-3">
+                  <div className="text-muted-foreground/80">Payment amount</div>
+                  <div className="font-medium text-foreground">
                     {pkrFormatter.format(Number.isFinite(customerPaymentAmountValue) ? customerPaymentAmountValue : 0)}
                   </div>
                 </div>
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <div className="text-gray-500">Total allocated</div>
-                  <div className="font-medium text-gray-900">
+                <div className="rounded border border-border bg-muted/30 p-3">
+                  <div className="text-muted-foreground/80">Total allocated</div>
+                  <div className="font-medium text-foreground">
                     {pkrFormatter.format(customerPaymentAllocationTotal)}
                   </div>
                 </div>
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <div className="text-gray-500">Unallocated amount</div>
-                  <div className="font-medium text-gray-900">
+                <div className="rounded border border-border bg-muted/30 p-3">
+                  <div className="text-muted-foreground/80">Unallocated amount</div>
+                  <div className="font-medium text-foreground">
                     {pkrFormatter.format(customerPaymentUnallocatedAmount)}
                   </div>
                 </div>
               </div>
 
               {unpaidCreditInvoicesForSelectedPaymentCustomer.length === 0 ? (
-                <p className="text-sm text-gray-600">No unpaid credit invoices for this customer.</p>
+                <p className="text-sm text-muted-foreground">No unpaid credit invoices for this customer.</p>
               ) : (
                 <div className="space-y-3">
                   {unpaidCreditInvoicesForSelectedPaymentCustomer.map((invoice) => (
-                    <div key={invoice.transaction.id} className="rounded border border-gray-200 bg-gray-50 p-3">
+                    <div key={invoice.transaction.id} className="rounded border border-border bg-muted/30 p-3">
                       <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Invoice</div>
-                          <div className="font-medium text-gray-900">{invoice.transaction.invoice_number}</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Invoice</div>
+                          <div className="font-medium text-foreground">{invoice.transaction.invoice_number}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Sale Date</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Sale Date</div>
                           <div>{getDateOnly(invoice.transaction.sale_date) ?? "-"}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Invoice Total</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Invoice Total</div>
                           <div>{pkrFormatter.format(invoice.invoiceTotal)}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Allocated</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Allocated</div>
                           <div>{pkrFormatter.format(invoice.allocatedAmount)}</div>
                           {invoice.fallbackAllocatedAmount > 0 && (
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs text-muted-foreground/80">
                               Includes {pkrFormatter.format(invoice.fallbackAllocatedAmount)} older unallocated payment
                             </div>
                           )}
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Remaining</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Remaining</div>
                           <div>{pkrFormatter.format(invoice.remainingUnpaidAmount)}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Due Date</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Due Date</div>
                           <div>{invoice.creditDueDate ?? "-"}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Status</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Status</div>
                           <div>{invoice.status}</div>
                         </div>
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Allocation Amount</span>
                           <input
                             type="number"
@@ -13403,7 +13403,7 @@ export default function Home() {
                             onChange={(e) =>
                               handleCustomerPaymentAllocationChange(invoice.transaction.id, e.target.value)
                             }
-                            className="rounded border border-gray-300 px-2 py-1"
+                            className="rounded border border-border px-2 py-1"
                           />
                         </label>
                       </div>
@@ -13419,68 +13419,68 @@ export default function Home() {
               type="button"
               onClick={handleSaveCustomerPayment}
               disabled={customerPaymentLoading}
-              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300"
+              className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
               {customerPaymentLoading ? "Saving..." : "Save Customer Payment"}
             </button>
-            {customerPaymentMessage && <p className="mt-2 text-sm text-green-700">{customerPaymentMessage}</p>}
-            {customerPaymentError && <p className="mt-2 text-sm text-red-700">{customerPaymentError}</p>}
+            {customerPaymentMessage && <p className="mt-2 text-sm text-success">{customerPaymentMessage}</p>}
+            {customerPaymentError && <p className="mt-2 text-sm text-destructive">{customerPaymentError}</p>}
           </div>
 
-          <div className="mt-6 border-t border-gray-200 pt-4">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Customer Payment History</h3>
+          <div className="mt-6 border-t border-border pt-4">
+            <h3 className="mb-3 text-lg font-medium text-foreground">Customer Payment History</h3>
             {customerPaymentHistory.length === 0 ? (
-              <p className="text-sm text-gray-600">No customer payments recorded yet.</p>
+              <p className="text-sm text-muted-foreground">No customer payments recorded yet.</p>
             ) : (
               <ul className="space-y-3">
                 {customerPaymentHistory.map((historyItem) => (
                   <li
                     key={historyItem.payment.id}
-                    className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-700"
+                    className="rounded border border-border bg-card p-3 text-sm text-foreground/80"
                   >
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Customer</div>
-                        <div className="font-medium text-gray-900">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Customer</div>
+                        <div className="font-medium text-foreground">
                           {historyItem.customer?.customer_name ?? "Unknown"}
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Payment Date</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Payment Date</div>
                         <div>{getDateOnly(historyItem.payment.created_at) ?? "-"}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Total Payment</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Total Payment</div>
                         <div>{pkrFormatter.format(historyItem.paymentAmount)}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Explicitly Allocated</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Explicitly Allocated</div>
                         <div>{pkrFormatter.format(historyItem.explicitlyAllocatedAmount)}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Unallocated</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Unallocated</div>
                         <div>{pkrFormatter.format(historyItem.unallocatedAmount)}</div>
                       </div>
                     </div>
 
                     {historyItem.payment.notes && (
-                      <p className="mt-2 text-sm text-gray-600">Notes: {historyItem.payment.notes}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">Notes: {historyItem.payment.notes}</p>
                     )}
 
                     {historyItem.unallocatedAmount > 0 && (
-                      <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      <p className="mt-2 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
                         Unallocated payment balance
                       </p>
                     )}
                     {historyItem.allocationExceedsPayment && (
-                      <p className="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                      <p className="mt-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                         Allocation data exceeds payment amount
                       </p>
                     )}
 
                     {historyItem.allocations.length > 0 && (
-                      <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3">
-                        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                      <div className="mt-3 rounded border border-border bg-muted/30 p-3">
+                        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
                           Allocations
                         </div>
                         <ul className="space-y-1">
@@ -13507,13 +13507,13 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "supplier-payments" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-gray-900">Supplier Payments</h2>
+            <h2 className="text-xl font-medium text-foreground">Supplier Payments</h2>
             <button
               type="button"
               onClick={handleExportSupplierBalancesCsv}
-              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+              className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
               Export Supplier Balances CSV
             </button>
@@ -13522,7 +13522,7 @@ export default function Home() {
             <select
               value={selectedSupplierPaymentId ?? ""}
               onChange={(e) => handleSupplierPaymentSupplierChange(e.target.value)}
-              className="rounded border border-gray-300 px-2 py-2"
+              className="rounded border border-border px-2 py-2"
             >
               <option value="">Select Supplier</option>
               {suppliers.map((s) => (
@@ -13535,7 +13535,7 @@ export default function Home() {
               value={supplierPaymentAmount}
               onChange={(e) => handleSupplierPaymentAmountChange(e.target.value)}
               placeholder="Amount"
-              className="rounded border border-gray-300 px-2 py-2"
+              className="rounded border border-border px-2 py-2"
             />
 
             <input
@@ -13543,84 +13543,84 @@ export default function Home() {
               value={supplierPaymentNotes}
               onChange={(e) => setSupplierPaymentNotes(e.target.value)}
               placeholder="Notes (optional)"
-              className="rounded border border-gray-300 px-2 py-2"
+              className="rounded border border-border px-2 py-2"
             />
           </div>
 
           {selectedSupplierPaymentId && (
-            <div className="mt-4 rounded border border-gray-200 bg-white p-4">
+            <div className="mt-4 rounded border border-border bg-card p-4">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-lg font-medium text-gray-900">Allocate to Purchase Invoices</h3>
+                <h3 className="text-lg font-medium text-foreground">Allocate to Purchase Invoices</h3>
                 <button
                   type="button"
                   onClick={handleAutoAllocateSupplierPayment}
-                  className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                  className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
                 >
                   Auto Allocate Oldest First
                 </button>
               </div>
-              <p className="mb-3 text-xs text-gray-500">
+              <p className="mb-3 text-xs text-muted-foreground/80">
                 Older supplier payments without invoice allocations are applied to the oldest unpaid purchase invoices first.
               </p>
 
               <div className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <div className="text-gray-500">Payment Amount</div>
-                  <div className="font-medium text-gray-900">
+                <div className="rounded border border-border bg-muted/30 p-3">
+                  <div className="text-muted-foreground/80">Payment Amount</div>
+                  <div className="font-medium text-foreground">
                     {pkrFormatter.format(Number.isFinite(supplierPaymentAmountValue) ? supplierPaymentAmountValue : 0)}
                   </div>
                 </div>
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <div className="text-gray-500">Total Allocated</div>
-                  <div className="font-medium text-gray-900">
+                <div className="rounded border border-border bg-muted/30 p-3">
+                  <div className="text-muted-foreground/80">Total Allocated</div>
+                  <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierPaymentAllocationTotal)}
                   </div>
                 </div>
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <div className="text-gray-500">Unallocated Amount</div>
-                  <div className="font-medium text-gray-900">
+                <div className="rounded border border-border bg-muted/30 p-3">
+                  <div className="text-muted-foreground/80">Unallocated Amount</div>
+                  <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierPaymentUnallocatedAmount)}
                   </div>
                 </div>
               </div>
 
               {unpaidPurchaseInvoicesForSelectedPaymentSupplier.length === 0 ? (
-                <p className="text-sm text-gray-600">No unpaid purchase invoices for this supplier.</p>
+                <p className="text-sm text-muted-foreground">No unpaid purchase invoices for this supplier.</p>
               ) : (
                 <div className="space-y-3">
                   {unpaidPurchaseInvoicesForSelectedPaymentSupplier.map((invoice) => (
-                    <div key={invoice.transaction.id} className="rounded border border-gray-200 bg-gray-50 p-3">
+                    <div key={invoice.transaction.id} className="rounded border border-border bg-muted/30 p-3">
                       <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Invoice</div>
-                          <div className="font-medium text-gray-900">{invoice.transaction.invoice_number}</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Invoice</div>
+                          <div className="font-medium text-foreground">{invoice.transaction.invoice_number}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Purchase Date</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Purchase Date</div>
                           <div>{invoice.purchaseDate ?? "-"}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Supplier</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Supplier</div>
                           <div>{invoice.supplier?.supplier_name ?? "Unknown"}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Purchase Total</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Purchase Total</div>
                           <div>{pkrFormatter.format(invoice.purchaseTotal)}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Already Allocated</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Already Allocated</div>
                           <div>{pkrFormatter.format(invoice.explicitAllocatedAmount)}</div>
                           {invoice.fallbackAllocatedAmount > 0 && (
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs text-muted-foreground/80">
                               Remaining also reflects {pkrFormatter.format(invoice.fallbackAllocatedAmount)} older unallocated payment
                             </div>
                           )}
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-gray-500">Remaining Payable</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Remaining Payable</div>
                           <div>{pkrFormatter.format(invoice.remainingPayableAmount)}</div>
                         </div>
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Allocation Amount</span>
                           <input
                             type="number"
@@ -13630,7 +13630,7 @@ export default function Home() {
                             onChange={(e) =>
                               handleSupplierPaymentAllocationChange(invoice.transaction.id, e.target.value)
                             }
-                            className="rounded border border-gray-300 px-2 py-1"
+                            className="rounded border border-border px-2 py-1"
                           />
                         </label>
                       </div>
@@ -13646,63 +13646,63 @@ export default function Home() {
               type="button"
               onClick={handleSaveSupplierPayment}
               disabled={supplierPaymentLoading}
-              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300"
+              className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
               {supplierPaymentLoading ? "Saving..." : "Save Supplier Payment"}
             </button>
-            {supplierPaymentMessage && <p className="mt-2 text-sm text-green-700">{supplierPaymentMessage}</p>}
-            {supplierPaymentError && <p className="mt-2 text-sm text-red-700">{supplierPaymentError}</p>}
+            {supplierPaymentMessage && <p className="mt-2 text-sm text-success">{supplierPaymentMessage}</p>}
+            {supplierPaymentError && <p className="mt-2 text-sm text-destructive">{supplierPaymentError}</p>}
           </div>
 
-          <div className="mt-6 border-t border-gray-200 pt-4">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Supplier Payment History</h3>
+          <div className="mt-6 border-t border-border pt-4">
+            <h3 className="mb-3 text-lg font-medium text-foreground">Supplier Payment History</h3>
             {supplierPaymentHistory.length === 0 ? (
-              <p className="text-sm text-gray-600">No supplier payments recorded yet.</p>
+              <p className="text-sm text-muted-foreground">No supplier payments recorded yet.</p>
             ) : (
               <ul className="space-y-3">
                 {supplierPaymentHistory.map((historyItem) => (
                   <li
                     key={historyItem.payment.id}
-                    className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-700"
+                    className="rounded border border-border bg-card p-3 text-sm text-foreground/80"
                   >
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Supplier</div>
-                        <div className="font-medium text-gray-900">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Supplier</div>
+                        <div className="font-medium text-foreground">
                           {historyItem.supplier?.supplier_name ?? "Unknown"}
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Payment Date</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Payment Date</div>
                         <div>{getDateOnly(historyItem.payment.created_at) ?? "-"}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Total Payment</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Total Payment</div>
                         <div>{pkrFormatter.format(historyItem.paymentAmount)}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Explicitly Allocated</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Explicitly Allocated</div>
                         <div>{pkrFormatter.format(historyItem.explicitlyAllocatedAmount)}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Unallocated</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Unallocated</div>
                         <div>{pkrFormatter.format(historyItem.unallocatedAmount)}</div>
                       </div>
                     </div>
 
                     {historyItem.payment.notes && (
-                      <p className="mt-2 text-sm text-gray-600">Notes: {historyItem.payment.notes}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">Notes: {historyItem.payment.notes}</p>
                     )}
 
                     {historyItem.allocationExceedsPayment && (
-                      <p className="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                      <p className="mt-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                         Allocation data exceeds payment amount
                       </p>
                     )}
 
                     {historyItem.allocations.length > 0 && (
-                      <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3">
-                        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                      <div className="mt-3 rounded border border-border bg-muted/30 p-3">
+                        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
                           Allocations
                         </div>
                         <ul className="space-y-1">
@@ -13729,14 +13729,14 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "supplier-ledger" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-gray-900">Supplier Ledger</h2>
+            <h2 className="text-xl font-medium text-foreground">Supplier Ledger</h2>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleExportSupplierBalancesCsv}
-                className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
               >
                 Export Supplier Balances CSV
               </button>
@@ -13744,23 +13744,23 @@ export default function Home() {
                 type="button"
                 onClick={handlePrintSupplierLedger}
                 disabled={!selectedSupplierLedgerId}
-                className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
               >
                 Print Supplier Ledger
               </button>
             </div>
           </div>
-          <p className="mb-4 text-xs text-gray-500">
+          <p className="mb-4 text-xs text-muted-foreground/80">
             Older supplier payments without invoice allocations are applied to the oldest unpaid purchase invoices first.
           </p>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Supplier</span>
               <select
                 value={selectedSupplierLedgerId}
                 onChange={(e) => setSelectedSupplierLedgerId(e.target.value)}
-                className="rounded border border-gray-300 px-2 py-2"
+                className="rounded border border-border px-2 py-2"
               >
                 <option value="">Select Supplier</option>
                 {suppliers.map((supplier) => (
@@ -13769,23 +13769,23 @@ export default function Home() {
               </select>
             </label>
 
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Start Date</span>
               <input
                 type="date"
                 value={supplierLedgerStartDate}
                 onChange={(e) => handleSupplierLedgerStartDateChange(e.target.value)}
-                className="rounded border border-gray-300 px-2 py-2"
+                className="rounded border border-border px-2 py-2"
               />
             </label>
 
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>End Date</span>
               <input
                 type="date"
                 value={supplierLedgerEndDate}
                 onChange={(e) => handleSupplierLedgerEndDateChange(e.target.value)}
-                className="rounded border border-gray-300 px-2 py-2"
+                className="rounded border border-border px-2 py-2"
               />
             </label>
           </div>
@@ -13794,64 +13794,64 @@ export default function Home() {
             <button
               type="button"
               onClick={() => applySupplierLedgerMonthRange(0)}
-              className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-white"
+              className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
             >
               This Month
             </button>
             <button
               type="button"
               onClick={() => applySupplierLedgerMonthRange(-1)}
-              className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-white"
+              className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
             >
               Last Month
             </button>
             <button
               type="button"
               onClick={applySupplierLedgerAllTime}
-              className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-white"
+              className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
             >
               All Time
             </button>
           </div>
 
           {supplierLedgerDateError && (
-            <p className="mt-2 text-sm text-red-700">{supplierLedgerDateError}</p>
+            <p className="mt-2 text-sm text-destructive">{supplierLedgerDateError}</p>
           )}
 
           {!selectedSupplierLedgerId ? (
-            <p className="mt-4 text-sm text-gray-600">Select a supplier to view the ledger.</p>
+            <p className="mt-4 text-sm text-muted-foreground">Select a supplier to view the ledger.</p>
           ) : (
             <div className="mt-4 space-y-4">
               <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded border border-gray-200 bg-white p-3">
-                  <div className="text-gray-500">Total Purchases</div>
-                  <div className="font-medium text-gray-900">
+                <div className="rounded border border-border bg-card p-3">
+                  <div className="text-muted-foreground/80">Total Purchases</div>
+                  <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierLedgerTotalPurchases)}
                   </div>
                 </div>
-                <div className="rounded border border-gray-200 bg-white p-3">
-                  <div className="text-gray-500">Total Payments</div>
-                  <div className="font-medium text-gray-900">
+                <div className="rounded border border-border bg-card p-3">
+                  <div className="text-muted-foreground/80">Total Payments</div>
+                  <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierLedgerTotalPayments)}
                   </div>
                 </div>
-                <div className="rounded border border-gray-200 bg-white p-3">
-                  <div className="text-gray-500">Current Ledger Balance</div>
-                  <div className="font-medium text-gray-900">
+                <div className="rounded border border-border bg-card p-3">
+                  <div className="text-muted-foreground/80">Current Ledger Balance</div>
+                  <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierLedgerCurrentBalance)}
                   </div>
                 </div>
-                <div className="rounded border border-gray-200 bg-white p-3">
-                  <div className="text-gray-500">Unallocated Payments</div>
-                  <div className="font-medium text-gray-900">
+                <div className="rounded border border-border bg-card p-3">
+                  <div className="text-muted-foreground/80">Unallocated Payments</div>
+                  <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierLedgerUnallocatedPayments)}
                   </div>
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded border border-gray-200 bg-white">
+              <div className="overflow-x-auto rounded border border-border bg-card">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                  <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
                       <th className="px-3 py-2">Date</th>
                       <th className="px-3 py-2">Reference</th>
@@ -13864,15 +13864,15 @@ export default function Home() {
                   <tbody className="divide-y divide-gray-200">
                     <tr>
                       <td className="px-3 py-2">-</td>
-                      <td className="px-3 py-2 font-medium text-gray-900">Opening balance</td>
+                      <td className="px-3 py-2 font-medium text-foreground">Opening balance</td>
                       <td className="px-3 py-2">MVP opening balance</td>
                       <td className="px-3 py-2">{pkrFormatter.format(0)}</td>
                       <td className="px-3 py-2">{pkrFormatter.format(0)}</td>
-                      <td className="px-3 py-2 font-medium text-gray-900">{pkrFormatter.format(0)}</td>
+                      <td className="px-3 py-2 font-medium text-foreground">{pkrFormatter.format(0)}</td>
                     </tr>
                     {supplierLedgerEntries.length === 0 ? (
                       <tr>
-                        <td className="px-3 py-3 text-gray-600" colSpan={6}>
+                        <td className="px-3 py-3 text-muted-foreground" colSpan={6}>
                           No supplier ledger entries in this date range.
                         </td>
                       </tr>
@@ -13880,11 +13880,11 @@ export default function Home() {
                       supplierLedgerEntries.map((entry) => (
                         <tr key={entry.id}>
                           <td className="px-3 py-2">{entry.date ?? "-"}</td>
-                          <td className="px-3 py-2 font-medium text-gray-900">{entry.reference}</td>
+                          <td className="px-3 py-2 font-medium text-foreground">{entry.reference}</td>
                           <td className="px-3 py-2">{entry.notes || "-"}</td>
                           <td className="px-3 py-2">{pkrFormatter.format(entry.debit)}</td>
                           <td className="px-3 py-2">{pkrFormatter.format(entry.credit)}</td>
-                          <td className="px-3 py-2 font-medium text-gray-900">
+                          <td className="px-3 py-2 font-medium text-foreground">
                             {pkrFormatter.format(entry.runningBalance)}
                           </td>
                         </tr>
@@ -13899,17 +13899,17 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "expenses" && (
-        <section id="expense-management" className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Expense Management</h2>
+        <section id="expense-management" className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Expense Management</h2>
           <form onSubmit={saveExpense} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Expense Type</span>
                 <select
                   value={expenseType}
                   onChange={(e) => setExpenseType(e.target.value)}
                   required
-                  className="rounded border border-gray-300 px-2 py-2"
+                  className="rounded border border-border px-2 py-2"
                 >
                   <option value="">Select Expense Type</option>
                   {expenseTypes.map((type) => (
@@ -13918,7 +13918,7 @@ export default function Home() {
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Amount</span>
                 <input
                   type="number"
@@ -13927,28 +13927,28 @@ export default function Home() {
                   min="0.01"
                   step="0.01"
                   required
-                  className="rounded border border-gray-300 px-2 py-2"
+                  className="rounded border border-border px-2 py-2"
                 />
               </label>
             </div>
 
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Notes</span>
               <textarea
                 value={expenseNotes}
                 onChange={(e) => setExpenseNotes(e.target.value)}
                 rows={3}
-                className="rounded border border-gray-300 px-2 py-2"
+                className="rounded border border-border px-2 py-2"
               />
             </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Supplier</span>
                 <select
                   value={selectedExpenseSupplierId}
                   onChange={(e) => setSelectedExpenseSupplierId(e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-2"
+                  className="rounded border border-border px-2 py-2"
                 >
                   <option value="">No Supplier</option>
                   {suppliers.map((supplier) => (
@@ -13957,12 +13957,12 @@ export default function Home() {
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Customer</span>
                 <select
                   value={selectedExpenseCustomerId}
                   onChange={(e) => setSelectedExpenseCustomerId(e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-2"
+                  className="rounded border border-border px-2 py-2"
                 >
                   <option value="">No Customer</option>
                   {customers.map((customer) => (
@@ -13973,12 +13973,12 @@ export default function Home() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Purchase Invoice</span>
                 <select
                   value={selectedExpensePurchaseId}
                   onChange={(e) => setSelectedExpensePurchaseId(e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-2"
+                  className="rounded border border-border px-2 py-2"
                 >
                   <option value="">No Purchase Invoice</option>
                   {purchaseTransactions.map((transaction) => (
@@ -13987,12 +13987,12 @@ export default function Home() {
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Sales Invoice</span>
                 <select
                   value={selectedExpenseSaleId}
                   onChange={(e) => setSelectedExpenseSaleId(e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-2"
+                  className="rounded border border-border px-2 py-2"
                 >
                   <option value="">No Sales Invoice</option>
                   {salesTransactions.map((transaction) => (
@@ -14005,7 +14005,7 @@ export default function Home() {
             <button
               type="submit"
               disabled={expenseLoading}
-              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300"
+              className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
               {expenseLoading ? "Saving..." : "Save Expense"}
             </button>
@@ -14014,10 +14014,10 @@ export default function Home() {
               <p
                 className={`text-sm ${
                   expenseMessage.startsWith("Error")
-                    ? "text-red-700"
+                    ? "text-destructive"
                     : expenseMessage.startsWith("Expense saved, but")
-                      ? "text-amber-700"
-                      : "text-green-700"
+                      ? "text-warning"
+                      : "text-success"
                 }`}
               >
                 {expenseMessage}
@@ -14026,9 +14026,9 @@ export default function Home() {
           </form>
 
           <div className="mt-6">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Recent Expenses</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">Recent Expenses</h3>
             {expenses.length === 0 ? (
-              <p className="text-sm text-gray-600">No expenses recorded yet.</p>
+              <p className="text-sm text-muted-foreground">No expenses recorded yet.</p>
             ) : (
               <ul className="space-y-2">
                 {expenses.map((expense) => {
@@ -14049,16 +14049,16 @@ export default function Home() {
                   }).format(Number(expense.amount || 0));
 
                   return (
-                    <li key={expense.id} className="rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700">
+                    <li key={expense.id} className="rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <div className="font-medium text-gray-900">{expense.expense_type}</div>
-                          <div className="text-xs text-gray-500">Date: {expenseDate}</div>
+                          <div className="font-medium text-foreground">{expense.expense_type}</div>
+                          <div className="text-xs text-muted-foreground/80">Date: {expenseDate}</div>
                         </div>
-                        <div className="font-medium text-gray-900">{formattedAmount}</div>
+                        <div className="font-medium text-foreground">{formattedAmount}</div>
                       </div>
                       {expense.notes && <div className="mt-2">Notes: {expense.notes}</div>}
-                      <div className="mt-2 grid gap-1 text-xs text-gray-600 sm:grid-cols-2">
+                      <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
                         {expense.supplier_id && <div>Supplier: {supplier?.supplier_name ?? "Unknown"}</div>}
                         {expense.customer_id && <div>Customer: {customer?.customer_name ?? "Unknown"}</div>}
                         {expense.purchase_transaction_id && (
@@ -14078,19 +14078,19 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "customer-credit" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Receivables Dashboard</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Receivables Dashboard</h2>
           {customers.length === 0 ? (
-            <p className="text-sm text-gray-600">No customers.</p>
+            <p className="text-sm text-muted-foreground">No customers.</p>
           ) : (
             <ul className="space-y-2">
               {receivablesStats.map((r) => (
-                <li key={r.customerId} className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2">
+                <li key={r.customerId} className="flex items-center justify-between rounded border border-border bg-card px-3 py-2">
                   <div>
-                    <div className="font-medium text-gray-900">{r.customerName}</div>
-                    <div className="text-xs text-gray-600">{r.shopName ?? ""}</div>
+                    <div className="font-medium text-foreground">{r.customerName}</div>
+                    <div className="text-xs text-muted-foreground">{r.shopName ?? ""}</div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-700">
+                  <div className="flex items-center gap-4 text-sm text-foreground/80">
                     <div>Total Sales: {r.totalSales}</div>
                     <div>Payments: {r.paymentsReceived}</div>
                     <div>Outstanding: {r.outstanding}</div>
@@ -14103,18 +14103,18 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "supplier-ledger" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Payables Dashboard</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Payables Dashboard</h2>
           {suppliers.length === 0 ? (
-            <p className="text-sm text-gray-600">No suppliers.</p>
+            <p className="text-sm text-muted-foreground">No suppliers.</p>
           ) : (
             <ul className="space-y-2">
               {payablesStats.map((p) => (
-                <li key={p.supplierId} className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2">
+                <li key={p.supplierId} className="flex items-center justify-between rounded border border-border bg-card px-3 py-2">
                   <div>
-                    <div className="font-medium text-gray-900">{p.supplierName}</div>
+                    <div className="font-medium text-foreground">{p.supplierName}</div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-700">
+                  <div className="flex items-center gap-4 text-sm text-foreground/80">
                     <div>Total Purchases: {p.totalPurchases}</div>
                     <div>Payments: {p.paymentsMade}</div>
                     <div>Remaining Payable: {p.remainingPayable}</div>
@@ -14127,25 +14127,25 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "categories" && (
-        <section className="mb-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Category Management</h2>
+        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Category Management</h2>
           <div className="space-y-4">
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Category Name</span>
               <input
                 type="text"
                 value={categoryName}
                 onChange={(e) => setCategoryName(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               />
             </label>
 
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Parent Category (Optional)</span>
               <select
                 value={parentCategoryId ?? ""}
                 onChange={(e) => setParentCategoryId(e.target.value === "" ? null : e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               >
                 <option value="">None</option>
                 {categories.map((category) => (
@@ -14160,21 +14160,21 @@ export default function Home() {
               type="button"
               onClick={handleAddCategory}
               disabled={categoriesLoading}
-              className="w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
             >
               Add Category
             </button>
           </div>
 
-          {categoryMessage && <p className="mt-4 text-sm text-green-700">{categoryMessage}</p>}
-          {categoryError && <p className="mt-4 text-sm text-red-700">{categoryError}</p>}
+          {categoryMessage && <p className="mt-4 text-sm text-success">{categoryMessage}</p>}
+          {categoryError && <p className="mt-4 text-sm text-destructive">{categoryError}</p>}
 
           <div className="mt-6">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Existing Categories</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">Existing Categories</h3>
             {categoriesLoading ? (
-              <p className="text-sm text-gray-600">Loading categories...</p>
+              <p className="text-sm text-muted-foreground">Loading categories...</p>
             ) : categories.length === 0 ? (
-              <p className="text-sm text-gray-600">No categories found.</p>
+              <p className="text-sm text-muted-foreground">No categories found.</p>
             ) : (
               <ul className="space-y-2">
                 {categories.map((category) => {
@@ -14182,18 +14182,18 @@ export default function Home() {
                   return (
                     <li
                       key={category.id}
-                      className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2"
+                      className="flex items-center justify-between rounded border border-border bg-card px-3 py-2"
                     >
                       <div className="flex flex-col">
                         <span>{category.name}</span>
                         {parentCategory && (
-                          <span className="text-xs text-gray-500">Parent: {parentCategory.name}</span>
+                          <span className="text-xs text-muted-foreground/80">Parent: {parentCategory.name}</span>
                         )}
                       </div>
                       <button
                         type="button"
                         onClick={() => handleDeleteCategory(category.id)}
-                        className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                        className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
                       >
                         Delete
                       </button>
@@ -14210,7 +14210,7 @@ export default function Home() {
         <>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-foreground/80">
               Product Name
             </label>
             <input
@@ -14218,18 +14218,18 @@ export default function Home() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-foreground/80">
               Brand
             </label>
             <select
               value={selectedBrandId ?? ""}
               onChange={(e) => setSelectedBrandId(e.target.value === "" ? null : e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             >
               <option value="">None</option>
               {brands.map((brand) => (
@@ -14241,13 +14241,13 @@ export default function Home() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-foreground/80">
               Category
             </label>
             <select
               value={selectedCategoryId ?? ""}
               onChange={(e) => setSelectedCategoryId(e.target.value === "" ? null : e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             >
               <option value="">None</option>
               {categories.map((category) => (
@@ -14259,7 +14259,7 @@ export default function Home() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-foreground/80">
               Unit Type
             </label>
             <input
@@ -14267,63 +14267,63 @@ export default function Home() {
               value={unitType}
               onChange={(e) => setUnitType(e.target.value)}
               required
-              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-foreground/80">
               Units Per Pack
             </label>
             <input
               type="number"
               value={unitsPerPack}
               onChange={(e) => setUnitsPerPack(e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-foreground/80">
               Minimum Stock Level
             </label>
             <input
               type="number"
               value={minimumStockLevel}
               onChange={(e) => setMinimumStockLevel(e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-foreground/80">
               Reorder Level
             </label>
             <input
               type="number"
               value={reorderLevel}
               onChange={(e) => setReorderLevel(e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             />
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <label className="flex items-center gap-2 text-sm text-gray-700">
+            <label className="flex items-center gap-2 text-sm text-foreground/80">
               <input
                 type="checkbox"
                 checked={trackBatch}
                 onChange={(e) => setTrackBatch(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 rounded border-border text-primary focus:ring-blue-500"
               />
               Track Batch
             </label>
 
-            <label className="flex items-center gap-2 text-sm text-gray-700">
+            <label className="flex items-center gap-2 text-sm text-foreground/80">
               <input
                 type="checkbox"
                 checked={trackExpiry}
                 onChange={(e) => setTrackExpiry(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 rounded border-border text-primary focus:ring-blue-500"
               />
               Track Expiry
             </label>
@@ -14332,18 +14332,18 @@ export default function Home() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
           >
             {loading ? "Saving..." : "Save Product"}
           </button>
         </form>
 
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Existing Products</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Existing Products</h2>
           {productsLoading ? (
-            <p className="text-sm text-gray-600">Loading products...</p>
+            <p className="text-sm text-muted-foreground">Loading products...</p>
           ) : products.length === 0 ? (
-            <p className="text-sm text-gray-600">No products found.</p>
+            <p className="text-sm text-muted-foreground">No products found.</p>
           ) : (
             <ul className="space-y-2">
               {products.map((product) => {
@@ -14352,21 +14352,21 @@ export default function Home() {
                 return (
                   <li
                     key={product.id}
-                    className="flex flex-col gap-2 rounded border border-gray-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-2 rounded border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="space-y-1">
-                      <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                      <div className="text-xs text-gray-500">Brand: {brand?.name ?? "None"}</div>
-                      <div className="text-xs text-gray-500">Category: {category?.name ?? "None"}</div>
-                      <div className="text-xs text-gray-500">Unit Type: {product.unit_type ?? "None"}</div>
-                      <div className="text-xs text-gray-500">Track Batch: {product.track_batch ? "Yes" : "No"}</div>
-                      <div className="text-xs text-gray-500">Track Expiry: {product.track_expiry ? "Yes" : "No"}</div>
-                      <div className="text-xs text-gray-500">Reorder Level: {product.reorder_level ?? 0}</div>
+                      <div className="text-sm font-medium text-foreground">{product.name}</div>
+                      <div className="text-xs text-muted-foreground/80">Brand: {brand?.name ?? "None"}</div>
+                      <div className="text-xs text-muted-foreground/80">Category: {category?.name ?? "None"}</div>
+                      <div className="text-xs text-muted-foreground/80">Unit Type: {product.unit_type ?? "None"}</div>
+                      <div className="text-xs text-muted-foreground/80">Track Batch: {product.track_batch ? "Yes" : "No"}</div>
+                      <div className="text-xs text-muted-foreground/80">Track Expiry: {product.track_expiry ? "Yes" : "No"}</div>
+                      <div className="text-xs text-muted-foreground/80">Reorder Level: {product.reorder_level ?? 0}</div>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleDeleteProduct(product.id)}
-                      className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                      className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
                     >
                       Delete
                     </button>
@@ -14380,93 +14380,93 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "customers" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Customer Management</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Customer Management</h2>
           <div className="space-y-4">
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Customer Name</span>
               <input
                 type="text"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 required
-                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               />
             </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Shop Name</span>
                 <input
                   type="text"
                   value={shopName}
                   onChange={(e) => setShopName(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Phone</span>
                 <input
                   type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>WhatsApp</span>
                 <input
                   type="text"
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>City</span>
                 <input
                   type="text"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Area</span>
                 <input
                   type="text"
                   value={area}
                   onChange={(e) => setArea(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Customer Type</span>
                 <select
                   value={customerType}
                   onChange={(e) => setCustomerType(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="Retailer">Retailer</option>
                   <option value="Wholesaler">Wholesaler</option>
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Credit Policy</span>
                 <select
                   value={creditPolicy}
                   onChange={(e) => handleCreditPolicyChange(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="cash_only">Cash Only</option>
                   <option value="limit_only">Credit Limit Only</option>
@@ -14480,7 +14480,7 @@ export default function Home() {
             {(policyUsesCreditLimit(creditPolicy) || policyUsesCreditDays(creditPolicy)) && (
               <div className="grid gap-4 sm:grid-cols-2">
                 {policyUsesCreditLimit(creditPolicy) && (
-                  <label className="flex flex-col gap-2 text-sm text-gray-700">
+                  <label className="flex flex-col gap-2 text-sm text-foreground/80">
                     <span>Credit Limit</span>
                     <input
                       type="number"
@@ -14489,13 +14489,13 @@ export default function Home() {
                       min="0"
                       step="0.01"
                       required
-                      className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                      className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                     />
                   </label>
                 )}
 
                 {policyUsesCreditDays(creditPolicy) && (
-                  <label className="flex flex-col gap-2 text-sm text-gray-700">
+                  <label className="flex flex-col gap-2 text-sm text-foreground/80">
                     <span>Credit Days</span>
                     <input
                       type="number"
@@ -14504,7 +14504,7 @@ export default function Home() {
                       min="0"
                       step="1"
                       required
-                      className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                      className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                     />
                   </label>
                 )}
@@ -14514,24 +14514,24 @@ export default function Home() {
             {(policyUsesCreditLimit(creditPolicy) || policyUsesCreditDays(creditPolicy)) && (
               <div className="grid gap-3 sm:grid-cols-2">
                 {policyUsesCreditLimit(creditPolicy) && (
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <label className="flex items-center gap-2 text-sm text-foreground/80">
                     <input
                       type="checkbox"
                       checked={allowOverLimit}
                       onChange={(e) => setAllowOverLimit(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300"
+                      className="h-4 w-4 rounded border-border"
                     />
                     <span>Allow Sale Above Credit Limit</span>
                   </label>
                 )}
 
                 {policyUsesCreditDays(creditPolicy) && (
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <label className="flex items-center gap-2 text-sm text-foreground/80">
                     <input
                       type="checkbox"
                       checked={allowOverdueSales}
                       onChange={(e) => setAllowOverdueSales(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300"
+                      className="h-4 w-4 rounded border-border"
                     />
                     <span>Allow Sale When Previous Credit Is Overdue</span>
                   </label>
@@ -14543,33 +14543,33 @@ export default function Home() {
               type="button"
               onClick={handleAddCustomer}
               disabled={customersLoading}
-              className="w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
             >
               Save Customer
             </button>
           </div>
 
-          {customerMessage && <p className="mt-4 text-sm text-green-700">{customerMessage}</p>}
-          {customerError && <p className="mt-4 text-sm text-red-700">{customerError}</p>}
+          {customerMessage && <p className="mt-4 text-sm text-success">{customerMessage}</p>}
+          {customerError && <p className="mt-4 text-sm text-destructive">{customerError}</p>}
 
           <div className="mt-6 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">Search Customers</label>
+              <label className="mb-2 block text-sm font-medium text-foreground/80">Search Customers</label>
               <input
                 type="text"
                 value={customerSearch}
                 onChange={(e) => setCustomerSearch(e.target.value)}
                 placeholder="Search by name, shop, or phone"
-                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               />
             </div>
 
             <div>
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Existing Customers</h3>
+              <h3 className="mb-3 text-lg font-medium text-foreground">Existing Customers</h3>
               {customersLoading ? (
-                <p className="text-sm text-gray-600">Loading customers...</p>
+                <p className="text-sm text-muted-foreground">Loading customers...</p>
               ) : filteredCustomers.length === 0 ? (
-                <p className="text-sm text-gray-600">No customers found.</p>
+                <p className="text-sm text-muted-foreground">No customers found.</p>
               ) : (
                 <ul className="space-y-2">
                   {filteredCustomers.map((customer) => {
@@ -14589,10 +14589,10 @@ export default function Home() {
                     return (
                       <li
                         key={customer.id}
-                        className="flex flex-col gap-2 rounded border border-gray-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                        className="flex flex-col gap-2 rounded border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div className="space-y-1 text-sm text-gray-700">
-                          <div className="font-medium text-gray-900">{customer.customer_name}</div>
+                        <div className="space-y-1 text-sm text-foreground/80">
+                          <div className="font-medium text-foreground">{customer.customer_name}</div>
                           <div>Shop: {customer.shop_name ?? "None"}</div>
                           <div>Type: {customer.customer_type ?? "None"}</div>
                           <div>Phone: {customer.phone ?? "None"}</div>
@@ -14600,12 +14600,12 @@ export default function Home() {
                           <div>Credit Policy: {creditSummary}</div>
                           <div className="flex flex-wrap gap-2 text-xs">
                             {customer.allow_over_limit && (
-                              <span className="rounded bg-amber-100 px-2 py-1 text-amber-800">
+                              <span className="rounded bg-warning/10 px-2 py-1 text-warning">
                                 Above-limit sales allowed
                               </span>
                             )}
                             {customer.allow_overdue_sales && (
-                              <span className="rounded bg-amber-100 px-2 py-1 text-amber-800">
+                              <span className="rounded bg-warning/10 px-2 py-1 text-warning">
                                 Overdue sales allowed
                               </span>
                             )}
@@ -14614,7 +14614,7 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => handleDeleteCustomer(customer.id)}
-                          className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                          className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
                         >
                           Delete
                         </button>
@@ -14629,70 +14629,70 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "suppliers" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Supplier Management</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Supplier Management</h2>
           <div className="space-y-4">
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Supplier Name</span>
               <input
                 type="text"
                 value={supplierName}
                 onChange={(e) => setSupplierName(e.target.value)}
                 required
-                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               />
             </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Contact Person</span>
                 <input
                   type="text"
                   value={contactPerson}
                   onChange={(e) => setContactPerson(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Phone</span>
                 <input
                   type="text"
                   value={supplierPhone}
                   onChange={(e) => setSupplierPhone(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>WhatsApp</span>
                 <input
                   type="text"
                   value={supplierWhatsapp}
                   onChange={(e) => setSupplierWhatsapp(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>City</span>
                 <input
                   type="text"
                   value={supplierCity}
                   onChange={(e) => setSupplierCity(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
             </div>
 
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Notes</span>
               <textarea
                 value={supplierNotes}
                 onChange={(e) => setSupplierNotes(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 rows={3}
               />
             </label>
@@ -14701,42 +14701,42 @@ export default function Home() {
               type="button"
               onClick={handleAddSupplier}
               disabled={suppliersLoading}
-              className="w-full rounded bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
             >
               Save Supplier
             </button>
           </div>
 
-          {supplierMessage && <p className="mt-4 text-sm text-green-700">{supplierMessage}</p>}
-          {supplierError && <p className="mt-4 text-sm text-red-700">{supplierError}</p>}
+          {supplierMessage && <p className="mt-4 text-sm text-success">{supplierMessage}</p>}
+          {supplierError && <p className="mt-4 text-sm text-destructive">{supplierError}</p>}
 
           <div className="mt-6 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">Search Suppliers</label>
+              <label className="mb-2 block text-sm font-medium text-foreground/80">Search Suppliers</label>
               <input
                 type="text"
                 value={supplierSearch}
                 onChange={(e) => setSupplierSearch(e.target.value)}
                 placeholder="Search by name, contact, or phone"
-                className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               />
             </div>
 
             <div>
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Existing Suppliers</h3>
+              <h3 className="mb-3 text-lg font-medium text-foreground">Existing Suppliers</h3>
               {suppliersLoading ? (
-                <p className="text-sm text-gray-600">Loading suppliers...</p>
+                <p className="text-sm text-muted-foreground">Loading suppliers...</p>
               ) : filteredSuppliers.length === 0 ? (
-                <p className="text-sm text-gray-600">No suppliers found.</p>
+                <p className="text-sm text-muted-foreground">No suppliers found.</p>
               ) : (
                 <ul className="space-y-2">
                   {filteredSuppliers.map((supplier) => (
                     <li
                       key={supplier.id}
-                      className="flex flex-col gap-2 rounded border border-gray-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-2 rounded border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div className="space-y-1 text-sm text-gray-700">
-                        <div className="font-medium text-gray-900">{supplier.supplier_name}</div>
+                      <div className="space-y-1 text-sm text-foreground/80">
+                        <div className="font-medium text-foreground">{supplier.supplier_name}</div>
                         <div>Contact: {supplier.contact_person ?? "None"}</div>
                         <div>Phone: {supplier.phone ?? "None"}</div>
                         <div>City: {supplier.city ?? "None"}</div>
@@ -14744,7 +14744,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => handleDeleteSupplier(supplier.id)}
-                        className="rounded bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-700"
+                        className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
                       >
                         Delete
                       </button>
@@ -14759,16 +14759,16 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "purchases" && (
         <>
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Purchase Invoice</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Purchase Invoice</h2>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Supplier</span>
                 <select
                   value={selectedSupplierId ?? ""}
                   onChange={(e) => setSelectedSupplierId(e.target.value === "" ? null : e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="">Select Supplier</option>
                   {suppliers.map((supplier) => (
@@ -14779,46 +14779,46 @@ export default function Home() {
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Invoice Number</span>
                 <input
                   type="text"
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
             </div>
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Product Lines</h3>
+              <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
 
               {purchaseLines.length === 0 ? (
-                <p className="mb-4 text-sm text-gray-500">No product lines added yet.</p>
+                <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
               ) : (
                 <div className="mb-4 space-y-3">
                   {purchaseLines.map((line, index) => (
-                    <div key={index} className="rounded border border-gray-300 bg-white p-3">
+                    <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-700">Line {index + 1}</span>
+                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => handleRemovePurchaseLine(index)}
-                          className="text-xs text-red-600 hover:text-red-800"
+                          className="text-xs text-destructive hover:text-destructive/90"
                         >
                           Remove
                         </button>
                       </div>
 
                       <div className="grid gap-2 sm:grid-cols-3">
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
                             value={line.product_id ?? ""}
                             onChange={(e) =>
                               handlePurchaseLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)
                             }
-                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
                             <option value="">Select Product</option>
                             {products.map((product) => (
@@ -14829,55 +14829,55 @@ export default function Home() {
                           </select>
                         </label>
 
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Quantity</span>
                           <input
                             type="number"
                             value={line.quantity}
                             onChange={(e) => handlePurchaseLineChange(index, "quantity", e.target.value)}
-                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
                         </label>
 
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Purchase Price</span>
                           <input
                             type="number"
                             value={line.purchase_price}
                             onChange={(e) => handlePurchaseLineChange(index, "purchase_price", e.target.value)}
-                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
                         </label>
                       </div>
 
                       <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Selling Price</span>
                           <input
                             type="number"
                             value={line.selling_price}
                             onChange={(e) => handlePurchaseLineChange(index, "selling_price", e.target.value)}
-                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
                         </label>
 
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Batch Number</span>
                           <input
                             type="text"
                             value={line.batch_number}
                             onChange={(e) => handlePurchaseLineChange(index, "batch_number", e.target.value)}
-                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
                         </label>
 
-                        <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Expiry Date</span>
                           <input
                             type="date"
                             value={line.expiry_date}
                             onChange={(e) => handlePurchaseLineChange(index, "expiry_date", e.target.value)}
-                            className="rounded border border-gray-300 px-2 py-1 focus:border-blue-500 focus:outline-none"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
                         </label>
                       </div>
@@ -14889,7 +14889,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleAddPurchaseLine}
-                className="mb-4 rounded border border-blue-600 px-4 py-2 text-sm text-blue-600 transition hover:bg-blue-50"
+                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
                 + Add Product Line
               </button>
@@ -14899,20 +14899,20 @@ export default function Home() {
               type="button"
               onClick={handleCreatePurchaseInvoice}
               disabled={invoiceLoading}
-              className="w-full rounded bg-green-600 px-4 py-2 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
+              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
               {invoiceLoading ? "Creating..." : "Save Purchase Invoice"}
             </button>
           </div>
 
-          {invoiceMessage && <p className="mt-4 text-sm text-green-700">{invoiceMessage}</p>}
-          {invoiceError && <p className="mt-4 text-sm text-red-700">{invoiceError}</p>}
+          {invoiceMessage && <p className="mt-4 text-sm text-success">{invoiceMessage}</p>}
+          {invoiceError && <p className="mt-4 text-sm text-destructive">{invoiceError}</p>}
           {newPurchaseExpenseReminder && (
-            <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-medium text-amber-950">
+            <div className="mt-4 rounded border border-warning/20 bg-warning/5 p-4">
+              <p className="text-sm font-medium text-warning/80">
                 Did you pay any transport, fuel, vehicle rent, loading, travel, or other expense to bring this stock to your warehouse?
               </p>
-              <p className="mt-1 text-xs text-amber-800">
+              <p className="mt-1 text-xs text-warning">
                 Invoice: {newPurchaseExpenseReminder.invoiceNumber}
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -14924,7 +14924,7 @@ export default function Home() {
                       newPurchaseExpenseReminder.supplierId
                     )
                   }
-                  className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                  className="rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90"
                 >
                   Add Purchase Expense
                 </button>
@@ -14936,7 +14936,7 @@ export default function Home() {
                       "no_additional_expense"
                     )
                   }
-                  className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                 >
                   No Additional Expense
                 </button>
@@ -14945,7 +14945,7 @@ export default function Home() {
                   onClick={() =>
                     updatePurchaseExpenseStatus(newPurchaseExpenseReminder.id, "review_later")
                   }
-                  className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                 >
                   Review Later
                 </button>
@@ -14953,16 +14953,16 @@ export default function Home() {
             </div>
           )}
           {purchaseExpenseStatusMessage && (
-            <p className="mt-4 text-sm text-green-700">{purchaseExpenseStatusMessage}</p>
+            <p className="mt-4 text-sm text-success">{purchaseExpenseStatusMessage}</p>
           )}
         </section>
 
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Purchase History</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Purchase History</h2>
           {purchaseLoading ? (
-            <p className="text-sm text-gray-600">Loading purchase history...</p>
+            <p className="text-sm text-muted-foreground">Loading purchase history...</p>
           ) : purchaseTransactions.length === 0 ? (
-            <p className="text-sm text-gray-600">No purchase invoices found.</p>
+            <p className="text-sm text-muted-foreground">No purchase invoices found.</p>
           ) : (
             <ul className="space-y-3">
               {purchaseTransactions.map((transaction) => {
@@ -15037,46 +15037,46 @@ export default function Home() {
                 return (
                   <li
                     key={transaction.id}
-                    className="rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-700"
+                    className="rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80"
                   >
                     <div className="mb-3 grid gap-2 sm:grid-cols-4">
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Invoice</div>
-                        <div className="font-medium text-gray-900">{transaction.invoice_number}</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Invoice</div>
+                        <div className="font-medium text-foreground">{transaction.invoice_number}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Supplier</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Supplier</div>
                         <div>{supplier?.supplier_name ?? "Unknown"}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Date</div>
-                        <div className="text-gray-500">{date}</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Date</div>
+                        <div className="text-muted-foreground/80">{date}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-gray-500">Expense Review</div>
-                        <span className="inline-flex rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Expense Review</div>
+                        <span className="inline-flex rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
                           {expenseReviewLabel}
                         </span>
                       </div>
                     </div>
 
-                    <div className="mb-3 rounded border border-emerald-100 bg-emerald-50 p-3">
-                      <h3 className="mb-2 text-sm font-medium text-emerald-950">Payment Summary</h3>
-                      <div className="grid gap-2 text-xs text-emerald-950 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="mb-3 rounded border border-success/10 bg-success/5 p-3">
+                      <h3 className="mb-2 text-sm font-medium text-success/90">Payment Summary</h3>
+                      <div className="grid gap-2 text-xs text-success/90 sm:grid-cols-2 lg:grid-cols-4">
                         <div>
-                          <div className="uppercase tracking-wide text-emerald-700">Purchase Total</div>
+                          <div className="uppercase tracking-wide text-success">Purchase Total</div>
                           <div className="font-medium">{pkrFormatter.format(purchasePaymentTotal)}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-emerald-700">Paid Amount</div>
+                          <div className="uppercase tracking-wide text-success">Paid Amount</div>
                           <div className="font-medium">{pkrFormatter.format(purchasePaidAmount)}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-emerald-700">Remaining Payable</div>
+                          <div className="uppercase tracking-wide text-success">Remaining Payable</div>
                           <div className="font-medium">{pkrFormatter.format(Math.max(0, purchaseRemainingPayable))}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-emerald-700">Payment Status</div>
+                          <div className="uppercase tracking-wide text-success">Payment Status</div>
                           <div className="font-medium">{purchasePaymentStatus}</div>
                         </div>
                       </div>
@@ -15086,7 +15086,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => handlePrintPurchaseInvoice(transaction)}
-                        className="rounded border border-blue-600 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50"
+                        className="rounded border border-primary px-3 py-2 text-xs text-primary hover:bg-primary/5"
                       >
                         Print Purchase
                       </button>
@@ -15095,14 +15095,14 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
-                            className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700"
+                            className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                           >
                             Add Purchase Expense
                           </button>
                           <button
                             type="button"
                             onClick={() => updatePurchaseExpenseStatus(transaction.id, "no_additional_expense")}
-                            className="rounded border border-gray-300 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+                            className="rounded border border-border px-3 py-2 text-xs text-foreground/80 hover:bg-muted/30"
                           >
                             No Additional Expense
                           </button>
@@ -15112,7 +15112,7 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
-                          className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700"
+                          className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                         >
                           Add Another Expense
                         </button>
@@ -15121,36 +15121,36 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
-                          className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700"
+                          className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                         >
                           Add Expense
                         </button>
                       )}
                     </div>
 
-                    <div className="mb-3 rounded border border-blue-100 bg-blue-50 p-3">
-                      <h3 className="mb-2 text-sm font-medium text-blue-950">Cost Summary</h3>
-                      <div className="grid gap-2 text-xs text-blue-950 sm:grid-cols-2 lg:grid-cols-5">
+                    <div className="mb-3 rounded border border-primary/10 bg-primary/5 p-3">
+                      <h3 className="mb-2 text-sm font-medium text-primary/90">Cost Summary</h3>
+                      <div className="grid gap-2 text-xs text-primary/90 sm:grid-cols-2 lg:grid-cols-5">
                         <div>
-                          <div className="uppercase tracking-wide text-blue-700">Purchase Value</div>
+                          <div className="uppercase tracking-wide text-primary">Purchase Value</div>
                           <div className="font-medium">{pkrFormatter.format(purchaseValue)}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-blue-700">Linked Expenses</div>
+                          <div className="uppercase tracking-wide text-primary">Linked Expenses</div>
                           <div className="font-medium">{pkrFormatter.format(linkedExpenseTotal)}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-blue-700">Landed Invoice Cost</div>
+                          <div className="uppercase tracking-wide text-primary">Landed Invoice Cost</div>
                           <div className="font-medium">{pkrFormatter.format(landedInvoiceCost)}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-blue-700">Total Purchased Quantity</div>
+                          <div className="uppercase tracking-wide text-primary">Total Purchased Quantity</div>
                           <div className="font-medium">
                             {totalPurchasedQuantity} {quantityUnitLabel}
                           </div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-blue-700">{averageLandedCostLabel}</div>
+                          <div className="uppercase tracking-wide text-primary">{averageLandedCostLabel}</div>
                           <div className="font-medium">
                             {averageLandedCost === null ? "-" : pkrFormatter.format(averageLandedCost)}
                           </div>
@@ -15158,10 +15158,10 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="mb-3 rounded border border-gray-200 bg-gray-50 p-3">
-                      <h3 className="mb-2 text-sm font-medium text-gray-900">Linked Purchase Expenses</h3>
+                    <div className="mb-3 rounded border border-border bg-muted/30 p-3">
+                      <h3 className="mb-2 text-sm font-medium text-foreground">Linked Purchase Expenses</h3>
                       {linkedPurchaseExpenses.length === 0 ? (
-                        <p className="text-xs text-gray-500">No purchase-linked expenses recorded.</p>
+                        <p className="text-xs text-muted-foreground/80">No purchase-linked expenses recorded.</p>
                       ) : (
                         <ul className="space-y-2">
                           {linkedPurchaseExpenses.map((expense) => {
@@ -15171,14 +15171,14 @@ export default function Home() {
                             return (
                               <li
                                 key={expense.id}
-                                className="rounded border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700"
+                                className="rounded border border-border bg-card px-3 py-2 text-xs text-foreground/80"
                               >
                                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                   <div>
-                                    <div className="font-medium text-gray-900">{expense.expense_type}</div>
-                                    <div className="text-gray-500">Date: {expenseDate}</div>
+                                    <div className="font-medium text-foreground">{expense.expense_type}</div>
+                                    <div className="text-muted-foreground/80">Date: {expenseDate}</div>
                                   </div>
-                                  <div className="font-medium text-gray-900">
+                                  <div className="font-medium text-foreground">
                                     {pkrFormatter.format(Number(expense.amount || 0))}
                                   </div>
                                 </div>
@@ -15191,7 +15191,7 @@ export default function Home() {
                     </div>
 
                     {lineItems.length === 0 ? (
-                      <div className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500">
+                      <div className="rounded border border-border bg-muted/30 p-3 text-xs text-muted-foreground/80">
                         No purchase lines recorded for this invoice.
                       </div>
                     ) : (
@@ -15202,39 +15202,39 @@ export default function Home() {
                           return (
                             <div
                               key={item.id ?? index}
-                              className="rounded border border-gray-200 bg-gray-50 p-3"
+                              className="rounded border border-border bg-muted/30 p-3"
                             >
                               <div className="grid gap-2 sm:grid-cols-2">
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-gray-500">Product</div>
-                                  <div className="font-medium text-gray-900">{product?.name ?? "Unknown"}</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Product</div>
+                                  <div className="font-medium text-foreground">{product?.name ?? "Unknown"}</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-gray-500">Quantity</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Quantity</div>
                                   <div>{item.quantity}</div>
                                 </div>
                               </div>
                               <div className="mt-2 grid gap-2 sm:grid-cols-3">
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-gray-500">Purchase Price</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Purchase Price</div>
                                   <div>{item.purchase_price}</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-gray-500">Selling Price</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Selling Price</div>
                                   <div>{item.selling_price ?? "-"}</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-gray-500">Line Total</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Line Total</div>
                                   <div>{lineTotal}</div>
                                 </div>
                               </div>
                               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-gray-500">Batch Number</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Batch Number</div>
                                   <div>{item.batch_number ?? "-"}</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-gray-500">Expiry Date</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Expiry Date</div>
                                   <div>{item.expiry_date ?? "-"}</div>
                                 </div>
                               </div>
@@ -15253,104 +15253,104 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "staff-permissions" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">Staff & Permissions</h2>
-              <p className="mt-1 text-sm text-gray-600">Manage staff roles, account status, and module access.</p>
+              <h2 className="text-xl font-medium text-foreground">Staff & Permissions</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Manage staff roles, account status, and module access.</p>
             </div>
             <button
               type="button"
               onClick={() => fetchStaffProfilesAndPermissions(currentOrganizationId)}
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
             >
               Refresh Staff
             </button>
           </div>
 
-          <div className="mb-5 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <div className="mb-5 rounded border border-primary/20 bg-primary/5 p-4 text-sm text-primary">
             Staff invite by email will be added later. For now, staff accounts can be managed after they sign up under this organization.
           </div>
 
-          <div className="mb-5 rounded border border-emerald-200 bg-emerald-50 p-4">
-            <h3 className="text-lg font-medium text-emerald-950">Security Readiness</h3>
-            <div className="mt-3 grid gap-2 text-sm text-emerald-900 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+          <div className="mb-5 rounded border border-success/20 bg-success/5 p-4">
+            <h3 className="text-lg font-medium text-success/90">Security Readiness</h3>
+            <div className="mt-3 grid gap-2 text-sm text-success/80 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 Organization ID loaded: {currentOrganizationId ? "Yes" : "No"}
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 Current profile loaded: {currentProfile ? "Yes" : "No"}
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 Staff permissions loaded: {Array.isArray(staffPermissions) ? "Yes" : "No"}
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 RLS Phase 1 app guards active: Yes
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 Auth user linked to profile: {currentProfile?.auth_user_id ? "Pass" : "Needs link"}
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 Security policy backup table: Manual SQL completed
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 Security helper functions: Created in Supabase
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 RLS Phase 2B direct table policies applied: Yes
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 Direct organization-owned tables protected: Yes
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 RLS Phase 2C child table policies applied: Yes
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 Purchase items protected through purchase invoice organization: Yes
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 Sales items protected through sales invoice organization: Yes
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2 lg:col-span-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2 lg:col-span-2">
                 Payment allocation rows protected through parent payment/invoice organization: Yes
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 PWA/mobile readiness added: Yes
               </div>
-              <div className="rounded border border-emerald-200 bg-white px-3 py-2">
+              <div className="rounded border border-success/20 bg-card px-3 py-2">
                 Staff duty location tracking V1 added: Yes
               </div>
-              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 lg:col-span-3">
+              <div className="rounded border border-warning/20 bg-warning/5 px-3 py-2 text-warning/90 lg:col-span-3">
                 Remaining security task: final cross-organization testing.
               </div>
-              <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-blue-900 lg:col-span-3">
+              <div className="rounded border border-primary/20 bg-primary/5 px-3 py-2 text-primary lg:col-span-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <span>Final Security Test Mode available.</span>
                   <button
                     type="button"
                     onClick={() => handleSectionChange("security-check")}
-                    className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                    className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/10"
                   >
                     Open Security Check
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSectionChange("deployment")}
-                    className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                    className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/10"
                   >
                     Open Deployment Readiness
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSectionChange("mobile-app")}
-                    className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                    className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/10"
                   >
                     Open Mobile App
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSectionChange("staff-duty")}
-                    className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                    className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/10"
                   >
                     Open Staff Duty
                   </button>
@@ -15359,17 +15359,17 @@ export default function Home() {
             </div>
           </div>
 
-          {staffPermissionMessage && <p className="mb-4 text-sm text-green-700">{staffPermissionMessage}</p>}
-          {staffPermissionError && <p className="mb-4 whitespace-pre-wrap text-sm text-red-700">{staffPermissionError}</p>}
+          {staffPermissionMessage && <p className="mb-4 text-sm text-success">{staffPermissionMessage}</p>}
+          {staffPermissionError && <p className="mb-4 whitespace-pre-wrap text-sm text-destructive">{staffPermissionError}</p>}
 
-          <div className="rounded border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Staff Profiles</h3>
+          <div className="rounded border border-border bg-card p-4">
+            <h3 className="mb-3 text-lg font-medium text-foreground">Staff Profiles</h3>
             {staffProfiles.length === 0 ? (
-              <p className="text-sm text-gray-600">No staff profiles found for this organization.</p>
+              <p className="text-sm text-muted-foreground">No staff profiles found for this organization.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                  <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
                       <th className="px-3 py-2">Staff</th>
                       <th className="px-3 py-2">Role</th>
@@ -15401,25 +15401,25 @@ export default function Home() {
                               value={draft.display_name}
                               onChange={(e) => updateStaffProfileDraft(profile.id, "display_name", e.target.value)}
                               placeholder="Display name"
-                              className="w-full rounded border border-gray-300 px-3 py-2"
+                              className="w-full rounded border border-border px-3 py-2"
                             />
-                            <div className="mt-1 text-xs text-gray-500">{profile.email ?? "No email"}</div>
+                            <div className="mt-1 text-xs text-muted-foreground/80">{profile.email ?? "No email"}</div>
                             {currentProfile?.id === profile.id && (
-                              <div className="mt-1 text-xs font-medium text-blue-700">Current user</div>
+                              <div className="mt-1 text-xs font-medium text-primary">Current user</div>
                             )}
                           </td>
                           <td className="px-3 py-3">
                             <select
                               value={draft.role}
                               onChange={(e) => updateStaffProfileDraft(profile.id, "role", e.target.value)}
-                              className="rounded border border-gray-300 px-3 py-2"
+                              className="rounded border border-border px-3 py-2"
                             >
                               {staffRoles.map((role) => (
                                 <option key={role} value={role}>{role}</option>
                               ))}
                             </select>
                             {profileIsOwnerOrAdmin && (
-                              <div className="mt-2 inline-flex rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-800">
+                              <div className="mt-2 inline-flex rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
                                 Owner/Admin
                               </div>
                             )}
@@ -15434,7 +15434,7 @@ export default function Home() {
                               <span>{draft.is_active ? "Active" : "Inactive"}</span>
                             </label>
                           </td>
-                          <td className="min-w-[260px] px-3 py-3 text-xs text-gray-600">
+                          <td className="min-w-[260px] px-3 py-3 text-xs text-muted-foreground">
                             {profileIsOwnerOrAdmin ? (
                               <span>Full access</span>
                             ) : activePermissionLabels.length > 0 ? (
@@ -15448,14 +15448,14 @@ export default function Home() {
                               <button
                                 type="button"
                                 onClick={() => setSelectedStaffProfileId(profile.id)}
-                                className="rounded border border-blue-600 px-3 py-2 text-xs text-blue-700 hover:bg-blue-50"
+                                className="rounded border border-primary px-3 py-2 text-xs text-primary hover:bg-primary/5"
                               >
                                 Edit Permissions
                               </button>
                               <button
                                 type="button"
                                 onClick={() => saveStaffProfile(profile.id)}
-                                className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700"
+                                className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                               >
                                 Save Profile
                               </button>
@@ -15470,14 +15470,14 @@ export default function Home() {
             )}
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Permissions</h3>
-            <label className="flex max-w-xl flex-col gap-2 text-sm text-gray-700">
+          <div className="mt-5 rounded border border-border bg-card p-4">
+            <h3 className="mb-3 text-lg font-medium text-foreground">Permissions</h3>
+            <label className="flex max-w-xl flex-col gap-2 text-sm text-foreground/80">
               <span>Select Staff Member</span>
               <select
                 value={selectedStaffProfileId}
                 onChange={(e) => setSelectedStaffProfileId(e.target.value)}
-                className="rounded border border-gray-300 px-3 py-2"
+                className="rounded border border-border px-3 py-2"
               >
                 <option value="">Select staff</option>
                 {staffProfiles.map((profile) => (
@@ -15493,19 +15493,19 @@ export default function Home() {
               const selectedProfileIsOwner = selectedProfile?.role === "owner" || !selectedProfile?.role;
 
               if (!selectedProfile) {
-                return <p className="mt-4 text-sm text-gray-600">Select a staff member to edit permissions.</p>;
+                return <p className="mt-4 text-sm text-muted-foreground">Select a staff member to edit permissions.</p>;
               }
 
               return (
                 <div className="mt-4">
                   {selectedProfileIsOwner && (
-                    <div className="mb-4 rounded border border-purple-200 bg-purple-50 p-3 text-sm text-purple-900">
+                    <div className="mb-4 rounded border border-primary/20 bg-primary/5 p-3 text-sm text-primary">
                       Owners have full access. Permission checkboxes are mainly for non-owner staff.
                     </div>
                   )}
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {staffPermissionLabels.map((permission) => (
-                      <label key={permission.key} className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                      <label key={permission.key} className="flex items-center gap-2 rounded border border-border bg-muted/30 px-3 py-2 text-sm text-foreground/80">
                         <input
                           type="checkbox"
                           checked={Boolean(staffPermissionDraft[permission.key])}
@@ -15523,7 +15523,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={saveStaffPermissions}
-                    className="mt-4 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                    className="mt-4 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90"
                   >
                     Save Permissions
                   </button>
@@ -15535,11 +15535,11 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "market-intelligence" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">Market Intelligence</h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <h2 className="text-xl font-medium text-foreground">Market Intelligence</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
                 Market Intelligence converts owner-reviewed business signals into advisory summaries, risk and opportunity scores, urgency, and practical owner actions.
               </p>
             </div>
@@ -15551,67 +15551,67 @@ export default function Home() {
                 fetchMarketImportQueueItems(currentOrganizationId);
                 fetchMarketAiAnalyses(currentOrganizationId);
               }}
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
             >
               Refresh Market Data
             </button>
           </div>
 
-          <div className="mb-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="mb-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
             This is an owner-reviewed advisory dashboard. TradeOS does not fetch live news or scrape websites automatically.
             AI analysis can be wrong. Use it as advisory support, not automatic decision-making.
           </div>
 
           {marketIntelligenceMessage && (
-            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p className="mb-4 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">
               {marketIntelligenceMessage}
             </p>
           )}
           {marketIntelligenceError && (
-            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            <p className="mb-4 whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">
               {marketIntelligenceError}
             </p>
           )}
           {marketAiAnalysisMessage && (
-            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p className="mb-4 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">
               {marketAiAnalysisMessage}
             </p>
           )}
           {marketAiAnalysisError && (
-            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            <p className="mb-4 whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">
               {marketAiAnalysisError}
             </p>
           )}
 
-          <div className="rounded border border-emerald-200 bg-emerald-50 p-4">
+          <div className="rounded border border-success/20 bg-success/5 p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-emerald-950">Market Intelligence Summary</h3>
-                <p className="mt-1 text-sm text-emerald-900">
+                <h3 className="text-lg font-medium text-success/90">Market Intelligence Summary</h3>
+                <p className="mt-1 text-sm text-success/80">
                   Professional advisory output for executive summary, business impact, risk, opportunity, owner actions, and health impact.
                 </p>
               </div>
-              <div className="rounded border border-emerald-200 bg-white p-3 text-sm text-emerald-900">
+              <div className="rounded border border-success/20 bg-card p-3 text-sm text-success/80">
                 <div className="font-medium">High Risk Alerts</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.highRisk}</div>
+                <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.highRisk}</div>
               </div>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">Active Items</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.active}</div>
+              <div className="rounded border border-success/20 bg-card p-3">
+                <div className="text-sm text-success">Active Items</div>
+                <div className="mt-1 text-2xl font-semibold text-success/90">{marketIntelligenceSummary.active}</div>
               </div>
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">High/Critical</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketIntelligenceSummary.highCritical}</div>
+              <div className="rounded border border-success/20 bg-card p-3">
+                <div className="text-sm text-success">High/Critical</div>
+                <div className="mt-1 text-2xl font-semibold text-success/90">{marketIntelligenceSummary.highCritical}</div>
               </div>
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">High Opportunity Alerts</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.highOpportunity}</div>
+              <div className="rounded border border-success/20 bg-card p-3">
+                <div className="text-sm text-success">High Opportunity Alerts</div>
+                <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.highOpportunity}</div>
               </div>
-              <div className="rounded border border-emerald-200 bg-white p-3">
-                <div className="text-sm text-emerald-700">Items Requiring Attention</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{marketV2Summary.requiringAttention}</div>
+              <div className="rounded border border-success/20 bg-card p-3">
+                <div className="text-sm text-success">Items Requiring Attention</div>
+                <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.requiringAttention}</div>
               </div>
             </div>
           </div>
@@ -15624,8 +15624,8 @@ export default function Home() {
                 onClick={() => setMarketIntelligenceTab(tab.value)}
                 className={`rounded-full border px-3 py-1.5 text-sm ${
                   marketIntelligenceTab === tab.value
-                    ? "border-emerald-600 bg-emerald-600 text-white"
-                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                    ? "border-success bg-success text-white"
+                    : "border-border bg-card text-foreground/80 hover:bg-muted/30"
                 }`}
               >
                 {tab.label}
@@ -15639,31 +15639,31 @@ export default function Home() {
               value={marketIntelligenceSearch}
               onChange={(e) => setMarketIntelligenceSearch(e.target.value)}
               placeholder="Search advisory items"
-              className="rounded border border-gray-300 px-3 py-2 text-sm"
+              className="rounded border border-border px-3 py-2 text-sm"
             />
-            <select value={marketIntelligenceRiskFilter} onChange={(e) => setMarketIntelligenceRiskFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+            <select value={marketIntelligenceRiskFilter} onChange={(e) => setMarketIntelligenceRiskFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
               <option value="all">All risk levels</option>
               <option value="70">70+ risk</option>
               <option value="50">50+ risk</option>
             </select>
-            <select value={marketIntelligenceOpportunityFilter} onChange={(e) => setMarketIntelligenceOpportunityFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+            <select value={marketIntelligenceOpportunityFilter} onChange={(e) => setMarketIntelligenceOpportunityFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
               <option value="all">All opportunity levels</option>
               <option value="70">70+ opportunity</option>
               <option value="50">50+ opportunity</option>
             </select>
-            <select value={marketIntelligenceUrgencyFilter} onChange={(e) => setMarketIntelligenceUrgencyFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+            <select value={marketIntelligenceUrgencyFilter} onChange={(e) => setMarketIntelligenceUrgencyFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
               <option value="all">All urgencies</option>
               {marketUrgencyOptions.map((option) => (
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>
-            <select value={marketIntelligenceAreaFilter} onChange={(e) => setMarketIntelligenceAreaFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+            <select value={marketIntelligenceAreaFilter} onChange={(e) => setMarketIntelligenceAreaFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
               <option value="all">All business areas</option>
               {marketBusinessAreaOptions.map((option) => (
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>
-            <select value={marketIntelligenceSourceFilter} onChange={(e) => setMarketIntelligenceSourceFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+            <select value={marketIntelligenceSourceFilter} onChange={(e) => setMarketIntelligenceSourceFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
               <option value="all">All sources</option>
               {marketSourceOptions.map((option) => (
                 <option key={option} value={option}>{option}</option>
@@ -15671,139 +15671,139 @@ export default function Home() {
             </select>
           </div>
 
-          <div className="mt-5 rounded border border-indigo-200 bg-white p-4">
+          <div className="mt-5 rounded border border-primary/20 bg-card p-4">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">Import Queue</h3>
-                <p className="mt-1 text-sm text-gray-600">
+                <h3 className="text-lg font-medium text-foreground">Import Queue</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Paste market news links, supplier updates, policy notes, or raw market observations here. Review them before converting into intelligence items.
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs sm:min-w-[260px]">
-                <div className="rounded border border-indigo-200 bg-indigo-50 p-2">
-                  <div className="text-indigo-700">Pending</div>
-                  <div className="text-lg font-semibold text-indigo-950">{marketImportQueueSummary.pending}</div>
+                <div className="rounded border border-primary/20 bg-primary/5 p-2">
+                  <div className="text-primary">Pending</div>
+                  <div className="text-lg font-semibold text-primary/90">{marketImportQueueSummary.pending}</div>
                 </div>
-                <div className="rounded border border-indigo-200 bg-indigo-50 p-2">
-                  <div className="text-indigo-700">Reviewing</div>
-                  <div className="text-lg font-semibold text-indigo-950">{marketImportQueueSummary.reviewing}</div>
+                <div className="rounded border border-primary/20 bg-primary/5 p-2">
+                  <div className="text-primary">Reviewing</div>
+                  <div className="text-lg font-semibold text-primary/90">{marketImportQueueSummary.reviewing}</div>
                 </div>
               </div>
             </div>
-            <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <div className="mt-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning/90">
               This queue is owner-controlled. TradeOS does not fetch websites, scrape pages, or save intelligence items automatically.
             </div>
 
             {marketImportQueueMessage && (
-              <p className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              <p className="mt-3 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">
                 {marketImportQueueMessage}
               </p>
             )}
             {marketImportQueueError && (
-              <p className="mt-3 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              <p className="mt-3 whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">
                 {marketImportQueueError}
               </p>
             )}
 
-            <form onSubmit={createMarketImportQueueItem} className="mt-4 rounded border border-gray-200 bg-gray-50 p-4">
-              <h4 className="text-base font-medium text-gray-900">Add Import Queue Item</h4>
+            <form onSubmit={createMarketImportQueueItem} className="mt-4 rounded border border-border bg-muted/30 p-4">
+              <h4 className="text-base font-medium text-foreground">Add Import Queue Item</h4>
               <div className="mt-3 flex flex-wrap gap-2">
                 {marketImportQueueExampleChips.map((example) => (
                   <button
                     key={example.raw_title}
                     type="button"
                     onClick={() => fillMarketImportExample(example)}
-                    className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs text-indigo-800 hover:bg-indigo-100"
+                    className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs text-primary hover:bg-primary/10"
                   >
                     {example.raw_title}
                   </button>
                 ))}
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Source Name</span>
-                  <input value={marketImportSourceName} onChange={(e) => setMarketImportSourceName(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                  <input value={marketImportSourceName} onChange={(e) => setMarketImportSourceName(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Source URL</span>
-                  <input value={marketImportSourceUrl} onChange={(e) => setMarketImportSourceUrl(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                  <input value={marketImportSourceUrl} onChange={(e) => setMarketImportSourceUrl(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Raw Title</span>
-                  <input value={marketImportRawTitle} onChange={(e) => setMarketImportRawTitle(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                  <input value={marketImportRawTitle} onChange={(e) => setMarketImportRawTitle(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Suggested Market Category</span>
-                  <select value={marketImportSuggestedCategory} onChange={(e) => setMarketImportSuggestedCategory(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <select value={marketImportSuggestedCategory} onChange={(e) => setMarketImportSuggestedCategory(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">Not suggested</option>
                     {marketCategoryOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
                   <span>Raw Summary</span>
-                  <textarea value={marketImportRawSummary} onChange={(e) => setMarketImportRawSummary(e.target.value)} rows={2} className="rounded border border-gray-300 px-3 py-2" />
+                  <textarea value={marketImportRawSummary} onChange={(e) => setMarketImportRawSummary(e.target.value)} rows={2} className="rounded border border-border px-3 py-2" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
                   <span>Raw Text / Notes</span>
-                  <textarea value={marketImportRawText} onChange={(e) => setMarketImportRawText(e.target.value)} rows={3} className="rounded border border-gray-300 px-3 py-2" />
+                  <textarea value={marketImportRawText} onChange={(e) => setMarketImportRawText(e.target.value)} rows={3} className="rounded border border-border px-3 py-2" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Suggested Impact Direction</span>
-                  <select value={marketImportSuggestedImpactDirection} onChange={(e) => setMarketImportSuggestedImpactDirection(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <select value={marketImportSuggestedImpactDirection} onChange={(e) => setMarketImportSuggestedImpactDirection(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">Not suggested</option>
                     {marketImpactDirectionOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Suggested Impact Level</span>
-                  <select value={marketImportSuggestedImpactLevel} onChange={(e) => setMarketImportSuggestedImpactLevel(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <select value={marketImportSuggestedImpactLevel} onChange={(e) => setMarketImportSuggestedImpactLevel(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">Not suggested</option>
                     {marketImpactLevelOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Suggested Confidence</span>
-                  <select value={marketImportSuggestedConfidenceLevel} onChange={(e) => setMarketImportSuggestedConfidenceLevel(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <select value={marketImportSuggestedConfidenceLevel} onChange={(e) => setMarketImportSuggestedConfidenceLevel(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">Not suggested</option>
                     {marketConfidenceOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Suggested Affected Area</span>
-                  <select value={marketImportSuggestedAffectedArea} onChange={(e) => setMarketImportSuggestedAffectedArea(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <select value={marketImportSuggestedAffectedArea} onChange={(e) => setMarketImportSuggestedAffectedArea(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">Not suggested</option>
                     {marketAffectedAreaOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
                   <span>Suggested Action</span>
-                  <textarea value={marketImportSuggestedAction} onChange={(e) => setMarketImportSuggestedAction(e.target.value)} rows={2} className="rounded border border-gray-300 px-3 py-2" />
+                  <textarea value={marketImportSuggestedAction} onChange={(e) => setMarketImportSuggestedAction(e.target.value)} rows={2} className="rounded border border-border px-3 py-2" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
                   <span>Internal Notes</span>
-                  <textarea value={marketImportNotes} onChange={(e) => setMarketImportNotes(e.target.value)} rows={2} className="rounded border border-gray-300 px-3 py-2" />
+                  <textarea value={marketImportNotes} onChange={(e) => setMarketImportNotes(e.target.value)} rows={2} className="rounded border border-border px-3 py-2" />
                 </label>
               </div>
-              <button type="submit" className="mt-4 rounded bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700">
+              <button type="submit" className="mt-4 rounded bg-primary px-4 py-2 text-sm text-white hover:bg-primary/90">
                 Add to Import Queue
               </button>
             </form>
 
-            <div className="mt-5 rounded border border-gray-200 bg-gray-50 p-4">
+            <div className="mt-5 rounded border border-border bg-muted/30 p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <h4 className="text-base font-medium text-gray-900">Queued Imports</h4>
-                  <p className="mt-1 text-sm text-gray-600">
+                  <h4 className="text-base font-medium text-foreground">Queued Imports</h4>
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Showing {filteredMarketImportQueueItems.length} of {marketImportQueueItems.length} queued imports.
                   </p>
                 </div>
@@ -15813,9 +15813,9 @@ export default function Home() {
                     value={marketImportQueueSearch}
                     onChange={(e) => setMarketImportQueueSearch(e.target.value)}
                     placeholder="Search queue"
-                    className="rounded border border-gray-300 px-3 py-2 text-sm"
+                    className="rounded border border-border px-3 py-2 text-sm"
                   />
-                  <select value={marketImportQueueStatusFilter} onChange={(e) => setMarketImportQueueStatusFilter(e.target.value)} className="rounded border border-gray-300 px-3 py-2 text-sm">
+                  <select value={marketImportQueueStatusFilter} onChange={(e) => setMarketImportQueueStatusFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
                     <option value="all">All statuses</option>
                     <option value="pending">Pending</option>
                     <option value="reviewing">Reviewing</option>
@@ -15826,41 +15826,41 @@ export default function Home() {
               </div>
               <div className="mt-4 space-y-3">
                 {filteredMarketImportQueueItems.length === 0 ? (
-                  <p className="rounded border border-gray-200 bg-white px-3 py-3 text-sm text-gray-600">
+                  <p className="rounded border border-border bg-card px-3 py-3 text-sm text-muted-foreground">
                     No import queue items match the current filters.
                   </p>
                 ) : (
                   filteredMarketImportQueueItems.map((item) => (
-                    <div key={item.id} className="rounded border border-gray-200 bg-white p-4">
+                    <div key={item.id} className="rounded border border-border bg-card p-4">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <div className="flex flex-wrap gap-2">
-                            <span className="rounded bg-indigo-100 px-2 py-1 text-xs font-medium text-indigo-800">
+                            <span className="rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
                               {item.review_status}
                             </span>
                             {item.suggested_market_category && (
-                              <span className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                              <span className="rounded bg-muted px-2 py-1 text-xs font-medium text-foreground/80">
                                 {getMarketLabel(marketCategoryOptions, item.suggested_market_category)}
                               </span>
                             )}
                             {item.suggested_impact_direction && (
-                              <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                              <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
                                 {getMarketLabel(marketImpactDirectionOptions, item.suggested_impact_direction)}
                               </span>
                             )}
                           </div>
-                          <h5 className="mt-2 text-sm font-semibold text-gray-900">{item.raw_title || "Untitled import"}</h5>
-                          <div className="mt-1 text-xs text-gray-600">
+                          <h5 className="mt-2 text-sm font-semibold text-foreground">{item.raw_title || "Untitled import"}</h5>
+                          <div className="mt-1 text-xs text-muted-foreground">
                             Source: {item.source_name || "Manual note"} · Created: {formatDateTime(item.created_at)}
                           </div>
-                          {item.source_url && <div className="mt-1 break-all text-xs text-blue-700">{item.source_url}</div>}
-                          {item.raw_summary && <p className="mt-2 text-sm text-gray-700">{item.raw_summary}</p>}
+                          {item.source_url && <div className="mt-1 break-all text-xs text-primary">{item.source_url}</div>}
+                          {item.raw_summary && <p className="mt-2 text-sm text-foreground/80">{item.raw_summary}</p>}
                           {item.raw_text && (
-                            <p className="mt-2 text-xs text-gray-600">
+                            <p className="mt-2 text-xs text-muted-foreground">
                               {item.raw_text.length > 220 ? `${item.raw_text.slice(0, 220)}...` : item.raw_text}
                             </p>
                           )}
-                          <div className="mt-2 grid gap-1 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
+                          <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
                             <div>Impact: {getMarketLabel(marketImpactLevelOptions, item.suggested_impact_level)}</div>
                             <div>Confidence: {getMarketLabel(marketConfidenceOptions, item.suggested_confidence_level)}</div>
                             <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, item.suggested_affected_area)}</div>
@@ -15869,18 +15869,18 @@ export default function Home() {
                             <div>Updated: {formatDateTime(item.updated_at)}</div>
                           </div>
                           {item.suggested_action && (
-                            <div className="mt-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                            <div className="mt-2 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success/80">
                               Suggested action: {item.suggested_action}
                             </div>
                           )}
-                          {item.notes && <div className="mt-2 text-xs text-gray-600">Notes: {item.notes}</div>}
+                          {item.notes && <div className="mt-2 text-xs text-muted-foreground">Notes: {item.notes}</div>}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
                             onClick={() => analyzeMarketImportQueueItem(item)}
                             disabled={marketAiAnalysisLoadingId === `queue-${item.id}` || item.review_status === "converted"}
-                            className="rounded border border-purple-500 bg-white px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                            className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
                             {marketAiAnalysisLoadingId === `queue-${item.id}` ? "Analyzing..." : "Analyze with AI"}
                           </button>
@@ -15888,7 +15888,7 @@ export default function Home() {
                             type="button"
                             onClick={() => updateMarketImportQueueStatus(item, "reviewing")}
                             disabled={item.review_status === "reviewing" || item.review_status === "converted"}
-                            className="rounded border border-indigo-500 bg-white px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                            className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
                             Mark Reviewing
                           </button>
@@ -15896,7 +15896,7 @@ export default function Home() {
                             type="button"
                             onClick={() => updateMarketImportQueueStatus(item, "ignored")}
                             disabled={item.review_status === "ignored" || item.review_status === "converted"}
-                            className="rounded border border-gray-500 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                            className="rounded border border-muted-foreground bg-card px-3 py-2 text-xs text-foreground/80 hover:bg-muted disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
                             Ignore
                           </button>
@@ -15904,7 +15904,7 @@ export default function Home() {
                             type="button"
                             onClick={() => updateMarketImportQueueStatus(item, "pending")}
                             disabled={item.review_status === "pending" || item.review_status === "converted"}
-                            className="rounded border border-amber-500 bg-white px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                            className="rounded border border-warning bg-card px-3 py-2 text-xs text-warning hover:bg-warning/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
                             Reopen Pending
                           </button>
@@ -15912,7 +15912,7 @@ export default function Home() {
                             type="button"
                             onClick={() => convertMarketImportQueueItem(item)}
                             disabled={item.review_status === "converted"}
-                            className="rounded bg-emerald-600 px-3 py-2 text-xs text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                            className="rounded bg-success px-3 py-2 text-xs text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-muted"
                           >
                             Convert to Intelligence Item
                           </button>
@@ -15925,70 +15925,70 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-purple-200 bg-white p-4">
+          <div className="mt-5 rounded border border-primary/20 bg-card p-4">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">AI Analysis Reviews</h3>
-                <p className="mt-1 text-sm text-gray-600">
+                <h3 className="text-lg font-medium text-foreground">AI Analysis Reviews</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
                   AI analysis is advisory. Owner should review before taking action.
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs sm:min-w-[300px]">
-                <div className="rounded border border-purple-200 bg-purple-50 p-2">
-                  <div className="text-purple-700">Draft</div>
-                  <div className="text-lg font-semibold text-purple-950">{marketAiAnalysisSummary.draft}</div>
+                <div className="rounded border border-primary/20 bg-primary/5 p-2">
+                  <div className="text-primary">Draft</div>
+                  <div className="text-lg font-semibold text-primary/90">{marketAiAnalysisSummary.draft}</div>
                 </div>
-                <div className="rounded border border-purple-200 bg-purple-50 p-2">
-                  <div className="text-purple-700">High</div>
-                  <div className="text-lg font-semibold text-purple-950">{marketAiAnalysisSummary.high}</div>
+                <div className="rounded border border-primary/20 bg-primary/5 p-2">
+                  <div className="text-primary">High</div>
+                  <div className="text-lg font-semibold text-primary/90">{marketAiAnalysisSummary.high}</div>
                 </div>
-                <div className="rounded border border-purple-200 bg-purple-50 p-2">
-                  <div className="text-purple-700">Critical</div>
-                  <div className="text-lg font-semibold text-purple-950">{marketAiAnalysisSummary.critical}</div>
+                <div className="rounded border border-primary/20 bg-primary/5 p-2">
+                  <div className="text-primary">Critical</div>
+                  <div className="text-lg font-semibold text-primary/90">{marketAiAnalysisSummary.critical}</div>
                 </div>
               </div>
             </div>
-            <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <div className="mt-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning/90">
               AI analysis can be wrong. Use it as advisory support, not automatic decision-making.
             </div>
             <div className="mt-4 space-y-3">
               {marketAiAnalyses.length === 0 ? (
-                <p className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+                <p className="rounded border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
                   No AI analyses created yet. Use Analyze with AI on an import queue item or market intelligence item.
                 </p>
               ) : (
                 marketAiAnalyses.map((analysis) => (
-                  <div key={analysis.id} className="rounded border border-purple-100 bg-purple-50 p-4">
+                  <div key={analysis.id} className="rounded border border-primary/10 bg-primary/5 p-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <div className="flex flex-wrap gap-2">
-                          <span className="rounded bg-purple-700 px-2 py-1 text-xs font-medium text-white">
+                          <span className="rounded bg-primary px-2 py-1 text-xs font-medium text-white">
                             {analysis.review_status}
                           </span>
-                          <span className="rounded bg-white px-2 py-1 text-xs font-medium text-purple-800">
+                          <span className="rounded bg-card px-2 py-1 text-xs font-medium text-primary">
                             {getMarketLabel(marketCategoryOptions, analysis.ai_market_category)}
                           </span>
-                          <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                          <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
                             {getMarketLabel(marketImpactDirectionOptions, analysis.ai_impact_direction)}
                           </span>
-                          <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
+                          <span className="rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
                             {getMarketLabel(marketImpactLevelOptions, analysis.ai_impact_level)}
                           </span>
                         </div>
-                        <h4 className="mt-2 text-base font-semibold text-gray-900">
+                        <h4 className="mt-2 text-base font-semibold text-foreground">
                           {analysis.input_title || analysis.ai_summary || "AI market analysis"}
                         </h4>
-                        <div className="mt-1 text-xs text-gray-600">
+                        <div className="mt-1 text-xs text-muted-foreground">
                           Source: {analysis.input_source_name || "Manual note"} - Created: {formatDateTime(analysis.created_at)}
                         </div>
-                        {analysis.input_source_url && <div className="mt-1 break-all text-xs text-blue-700">{analysis.input_source_url}</div>}
-                        {analysis.ai_summary && <p className="mt-2 text-sm text-gray-800">{analysis.ai_summary}</p>}
+                        {analysis.input_source_url && <div className="mt-1 break-all text-xs text-primary">{analysis.input_source_url}</div>}
+                        {analysis.ai_summary && <p className="mt-2 text-sm text-foreground">{analysis.ai_summary}</p>}
                         {analysis.ai_reasoning && (
-                          <div className="mt-2 rounded border border-purple-100 bg-white px-3 py-2 text-sm text-gray-700">
+                          <div className="mt-2 rounded border border-primary/10 bg-card px-3 py-2 text-sm text-foreground/80">
                             Reasoning: {analysis.ai_reasoning}
                           </div>
                         )}
-                        <div className="mt-2 grid gap-1 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
                           <div>Confidence: {getMarketLabel(marketConfidenceOptions, analysis.ai_confidence_level)}</div>
                           <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, analysis.ai_affected_area)}</div>
                           <div>Reviewed: {formatDateTime(analysis.reviewed_at)}</div>
@@ -15997,19 +15997,19 @@ export default function Home() {
                           <div>Converted item: {analysis.converted_intelligence_item_id ?? "-"}</div>
                         </div>
                         {analysis.ai_suggested_action && (
-                          <div className="mt-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                          <div className="mt-2 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success/80">
                             Suggested action: {analysis.ai_suggested_action}
                           </div>
                         )}
-                        {analysis.ai_risks && <div className="mt-2 text-xs text-red-700">Risks: {analysis.ai_risks}</div>}
-                        {analysis.ai_owner_questions && <div className="mt-1 text-xs text-gray-700">Owner questions: {analysis.ai_owner_questions}</div>}
+                        {analysis.ai_risks && <div className="mt-2 text-xs text-destructive">Risks: {analysis.ai_risks}</div>}
+                        {analysis.ai_owner_questions && <div className="mt-1 text-xs text-foreground/80">Owner questions: {analysis.ai_owner_questions}</div>}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => convertMarketAiAnalysisToIntelligenceItem(analysis)}
                           disabled={analysis.review_status === "converted"}
-                          className="rounded bg-emerald-600 px-3 py-2 text-xs text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                          className="rounded bg-success px-3 py-2 text-xs text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-muted"
                         >
                           Use as Intelligence Item
                         </button>
@@ -16017,7 +16017,7 @@ export default function Home() {
                           type="button"
                           onClick={() => updateMarketAiAnalysisStatus(analysis, "reviewed")}
                           disabled={analysis.review_status === "reviewed" || analysis.review_status === "converted"}
-                          className="rounded border border-blue-500 bg-white px-3 py-2 text-xs text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          className="rounded border border-ring bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                         >
                           Mark Reviewed
                         </button>
@@ -16025,7 +16025,7 @@ export default function Home() {
                           type="button"
                           onClick={() => updateMarketAiAnalysisStatus(analysis, "ignored")}
                           disabled={analysis.review_status === "ignored" || analysis.review_status === "converted"}
-                          className="rounded border border-gray-500 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          className="rounded border border-muted-foreground bg-card px-3 py-2 text-xs text-foreground/80 hover:bg-muted disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                         >
                           Ignore
                         </button>
@@ -16033,7 +16033,7 @@ export default function Home() {
                           type="button"
                           onClick={() => updateMarketAiAnalysisStatus(analysis, "draft")}
                           disabled={analysis.review_status === "draft" || analysis.review_status === "converted"}
-                          className="rounded border border-purple-500 bg-white px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                          className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                         >
                           Reopen Draft
                         </button>
@@ -16046,10 +16046,10 @@ export default function Home() {
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-[2fr_1fr]">
-            <form id="market-intelligence-item-form" onSubmit={createMarketIntelligenceItem} className="rounded border border-gray-200 bg-white p-4">
-              <h3 className="text-lg font-medium text-gray-900">Add Intelligence Item</h3>
+            <form id="market-intelligence-item-form" onSubmit={createMarketIntelligenceItem} className="rounded border border-border bg-card p-4">
+              <h3 className="text-lg font-medium text-foreground">Add Intelligence Item</h3>
               {selectedAiAnalysisId && (
-                <p className="mt-2 rounded border border-purple-200 bg-purple-50 px-3 py-2 text-sm text-purple-900">
+                <p className="mt-2 rounded border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
                   This form is prefilled from an AI analysis. Review details before saving.
                 </p>
               )}
@@ -16059,159 +16059,159 @@ export default function Home() {
                     key={example.title}
                     type="button"
                     onClick={() => fillMarketExample(example)}
-                    className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-800 hover:bg-emerald-100"
+                    className="rounded-full border border-success/20 bg-success/5 px-3 py-1 text-xs text-success/90 hover:bg-success/10"
                   >
                     {example.title}
                   </button>
                 ))}
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Title</span>
-                  <input value={marketTitle} onChange={(e) => setMarketTitle(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required />
+                  <input value={marketTitle} onChange={(e) => setMarketTitle(e.target.value)} className="rounded border border-border px-3 py-2" required />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Source Name</span>
-                  <input value={marketSourceName} onChange={(e) => setMarketSourceName(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                  <input value={marketSourceName} onChange={(e) => setMarketSourceName(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
                   <span>Summary</span>
-                  <textarea value={marketSummary} onChange={(e) => setMarketSummary(e.target.value)} rows={3} className="rounded border border-gray-300 px-3 py-2" />
+                  <textarea value={marketSummary} onChange={(e) => setMarketSummary(e.target.value)} rows={3} className="rounded border border-border px-3 py-2" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Source URL</span>
-                  <input value={marketSourceUrl} onChange={(e) => setMarketSourceUrl(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                  <input value={marketSourceUrl} onChange={(e) => setMarketSourceUrl(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Market Category</span>
-                  <select value={marketCategory} onChange={(e) => setMarketCategory(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required>
+                  <select value={marketCategory} onChange={(e) => setMarketCategory(e.target.value)} className="rounded border border-border px-3 py-2" required>
                     <option value="">Select category</option>
                     {marketCategoryOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Related Product Category</span>
-                  <select value={marketRelatedProductCategory} onChange={(e) => setMarketRelatedProductCategory(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <select value={marketRelatedProductCategory} onChange={(e) => setMarketRelatedProductCategory(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">None</option>
                     {categories.map((category) => (
                       <option key={category.id} value={category.name}>{category.name}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Related Product</span>
-                  <select value={marketRelatedProductId} onChange={(e) => setMarketRelatedProductId(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <select value={marketRelatedProductId} onChange={(e) => setMarketRelatedProductId(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">None</option>
                     {products.map((product) => (
                       <option key={product.id} value={product.id}>{product.name}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Impact Direction</span>
-                  <select value={marketImpactDirection} onChange={(e) => setMarketImpactDirection(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required>
+                  <select value={marketImpactDirection} onChange={(e) => setMarketImpactDirection(e.target.value)} className="rounded border border-border px-3 py-2" required>
                     <option value="">Select direction</option>
                     {marketImpactDirectionOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Impact Level</span>
-                  <select value={marketImpactLevel} onChange={(e) => setMarketImpactLevel(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required>
+                  <select value={marketImpactLevel} onChange={(e) => setMarketImpactLevel(e.target.value)} className="rounded border border-border px-3 py-2" required>
                     <option value="">Select level</option>
                     {marketImpactLevelOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Confidence Level</span>
-                  <select value={marketConfidenceLevel} onChange={(e) => setMarketConfidenceLevel(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required>
+                  <select value={marketConfidenceLevel} onChange={(e) => setMarketConfidenceLevel(e.target.value)} className="rounded border border-border px-3 py-2" required>
                     <option value="">Select confidence</option>
                     {marketConfidenceOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Affected Area</span>
-                  <select value={marketAffectedArea} onChange={(e) => setMarketAffectedArea(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required>
+                  <select value={marketAffectedArea} onChange={(e) => setMarketAffectedArea(e.target.value)} className="rounded border border-border px-3 py-2" required>
                     <option value="">Select area</option>
                     {marketAffectedAreaOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>News Date</span>
-                  <input type="date" value={marketNewsDate} onChange={(e) => setMarketNewsDate(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                  <input type="date" value={marketNewsDate} onChange={(e) => setMarketNewsDate(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Status</span>
-                  <select value={marketStatus} onChange={(e) => setMarketStatus(e.target.value)} className="rounded border border-gray-300 px-3 py-2">
+                  <select value={marketStatus} onChange={(e) => setMarketStatus(e.target.value)} className="rounded border border-border px-3 py-2">
                     {marketIntelligenceStatusOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700 sm:col-span-2">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
                   <span>Suggested Action</span>
-                  <textarea value={marketSuggestedAction} onChange={(e) => setMarketSuggestedAction(e.target.value)} rows={2} className="rounded border border-gray-300 px-3 py-2" />
+                  <textarea value={marketSuggestedAction} onChange={(e) => setMarketSuggestedAction(e.target.value)} rows={2} className="rounded border border-border px-3 py-2" />
                 </label>
               </div>
-              <button type="submit" className="mt-4 rounded bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700">
+              <button type="submit" className="mt-4 rounded bg-success px-4 py-2 text-sm text-white hover:bg-success/90">
                 Save Intelligence Item
               </button>
             </form>
 
             <div className="space-y-5">
-              <form onSubmit={createMarketNewsSource} className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="text-lg font-medium text-gray-900">Add News Source</h3>
+              <form onSubmit={createMarketNewsSource} className="rounded border border-border bg-card p-4">
+                <h3 className="text-lg font-medium text-foreground">Add News Source</h3>
                 <div className="mt-4 space-y-3">
-                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <label className="flex flex-col gap-1 text-sm text-foreground/80">
                     <span>Source Name</span>
-                    <input value={marketNewsSourceName} onChange={(e) => setMarketNewsSourceName(e.target.value)} className="rounded border border-gray-300 px-3 py-2" required />
+                    <input value={marketNewsSourceName} onChange={(e) => setMarketNewsSourceName(e.target.value)} className="rounded border border-border px-3 py-2" required />
                   </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <label className="flex flex-col gap-1 text-sm text-foreground/80">
                     <span>Source Type</span>
-                    <input value={marketNewsSourceType} onChange={(e) => setMarketNewsSourceType(e.target.value)} placeholder="newspaper, government, market, supplier" className="rounded border border-gray-300 px-3 py-2" required />
+                    <input value={marketNewsSourceType} onChange={(e) => setMarketNewsSourceType(e.target.value)} placeholder="newspaper, government, market, supplier" className="rounded border border-border px-3 py-2" required />
                   </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <label className="flex flex-col gap-1 text-sm text-foreground/80">
                     <span>Source URL</span>
-                    <input value={marketNewsSourceUrl} onChange={(e) => setMarketNewsSourceUrl(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                    <input value={marketNewsSourceUrl} onChange={(e) => setMarketNewsSourceUrl(e.target.value)} className="rounded border border-border px-3 py-2" />
                   </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  <label className="flex flex-col gap-1 text-sm text-foreground/80">
                     <span>Country</span>
-                    <input value={marketNewsSourceCountry} onChange={(e) => setMarketNewsSourceCountry(e.target.value)} className="rounded border border-gray-300 px-3 py-2" />
+                    <input value={marketNewsSourceCountry} onChange={(e) => setMarketNewsSourceCountry(e.target.value)} className="rounded border border-border px-3 py-2" />
                   </label>
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <label className="flex items-center gap-2 text-sm text-foreground/80">
                     <input type="checkbox" checked={marketNewsSourceIsActive} onChange={(e) => setMarketNewsSourceIsActive(e.target.checked)} />
                     Active
                   </label>
                 </div>
-                <button type="submit" className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800">
+                <button type="submit" className="mt-4 rounded bg-foreground px-4 py-2 text-sm text-white hover:bg-foreground/80">
                   Save News Source
                 </button>
               </form>
 
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="text-lg font-medium text-gray-900">News Sources</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="text-lg font-medium text-foreground">News Sources</h3>
                 <div className="mt-3 space-y-2">
                   {marketNewsSources.length === 0 ? (
-                    <p className="text-sm text-gray-600">No manual news sources added yet.</p>
+                    <p className="text-sm text-muted-foreground">No manual news sources added yet.</p>
                   ) : (
                     marketNewsSources.map((source) => (
-                      <div key={source.id} className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
-                        <div className="font-medium text-gray-900">{source.source_name}</div>
-                        <div className="text-gray-600">{source.source_type} · {source.country ?? "Pakistan"} · {source.is_active ? "Active" : "Inactive"}</div>
-                        {source.source_url && <div className="break-all text-xs text-blue-700">{source.source_url}</div>}
+                      <div key={source.id} className="rounded border border-border bg-muted/30 p-3 text-sm">
+                        <div className="font-medium text-foreground">{source.source_name}</div>
+                        <div className="text-muted-foreground">{source.source_type} · {source.country ?? "Pakistan"} · {source.is_active ? "Active" : "Inactive"}</div>
+                        {source.source_url && <div className="break-all text-xs text-primary">{source.source_url}</div>}
                         <button
                           type="button"
                           onClick={() => deleteMarketNewsSource(source)}
-                          className="mt-2 rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                          className="mt-2 rounded border border-destructive/30 bg-card px-2 py-1 text-xs text-destructive hover:bg-destructive/5"
                         >
                           Delete Source
                         </button>
@@ -16223,11 +16223,11 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+          <div className="mt-5 rounded border border-border bg-card p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">Intelligence Feed</h3>
-                <p className="mt-1 text-sm text-gray-600">
+                <h3 className="text-lg font-medium text-foreground">Intelligence Feed</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Showing {filteredMarketAdvisoryItems.length} of {marketAdvisoryItems.length} advisory items.
                 </p>
               </div>
@@ -16235,7 +16235,7 @@ export default function Home() {
 
             <div className="mt-4 space-y-3">
               {filteredMarketAdvisoryItems.length === 0 ? (
-                <p className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+                <p className="rounded border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
                   No market intelligence items match the current filters.
                 </p>
               ) : (
@@ -16243,86 +16243,86 @@ export default function Home() {
                   const item = advisory.item;
                   const relatedProduct = products.find((product) => String(product.id) === String(item.related_product_id));
                   return (
-                    <div key={item.id} className="rounded border border-gray-200 bg-gray-50 p-4">
+                    <div key={item.id} className="rounded border border-border bg-muted/30 p-4">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div className="flex-1">
                           <div className="flex flex-wrap gap-2">
-                            <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">
+                            <span className="rounded bg-foreground px-2 py-1 text-xs font-medium text-white">
                               {getMarketLabel(marketCategoryOptions, item.market_category)}
                             </span>
-                            <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                            <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
                               {advisory.urgency}
                             </span>
-                            <span className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700">
+                            <span className="rounded bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
                               Risk {advisory.riskScore}
                             </span>
-                            <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">
+                            <span className="rounded bg-success/10 px-2 py-1 text-xs font-medium text-success">
                               Opportunity {advisory.opportunityScore}
                             </span>
                             <span className="rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
                               {advisory.businessHealthImpact}
                             </span>
                           </div>
-                          <h4 className="mt-2 text-base font-semibold text-gray-900">{item.title}</h4>
+                          <h4 className="mt-2 text-base font-semibold text-foreground">{item.title}</h4>
                           {advisory.executiveSummary && (
-                            <div className="mt-3 rounded border border-slate-200 bg-white p-3">
+                            <div className="mt-3 rounded border border-slate-200 bg-card p-3">
                               <div className="text-xs uppercase tracking-wide text-slate-500">Executive Summary</div>
-                              <p className="mt-1 text-sm text-gray-700">{advisory.executiveSummary}</p>
+                              <p className="mt-1 text-sm text-foreground/80">{advisory.executiveSummary}</p>
                             </div>
                           )}
                           <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                            <div className="rounded border border-gray-200 bg-white p-3">
-                              <div className="text-xs uppercase tracking-wide text-gray-500">Business Impact</div>
-                              <p className="mt-1 text-sm text-gray-700">{advisory.businessImpact}</p>
+                            <div className="rounded border border-border bg-card p-3">
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Business Impact</div>
+                              <p className="mt-1 text-sm text-foreground/80">{advisory.businessImpact}</p>
                             </div>
-                            <div className="rounded border border-gray-200 bg-white p-3">
-                              <div className="text-xs uppercase tracking-wide text-gray-500">Why This Matters</div>
-                              <p className="mt-1 text-sm text-gray-700">{advisory.whyItMatters}</p>
+                            <div className="rounded border border-border bg-card p-3">
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Why This Matters</div>
+                              <p className="mt-1 text-sm text-foreground/80">{advisory.whyItMatters}</p>
                             </div>
                           </div>
                           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                            <div className="rounded border border-gray-200 bg-white p-3">
-                              <div className="text-xs uppercase tracking-wide text-gray-500">Risk Score</div>
-                              <div className="mt-1 text-lg font-semibold text-gray-900">{advisory.riskScore}</div>
+                            <div className="rounded border border-border bg-card p-3">
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Risk Score</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">{advisory.riskScore}</div>
                             </div>
-                            <div className="rounded border border-gray-200 bg-white p-3">
-                              <div className="text-xs uppercase tracking-wide text-gray-500">Opportunity Score</div>
-                              <div className="mt-1 text-lg font-semibold text-gray-900">{advisory.opportunityScore}</div>
+                            <div className="rounded border border-border bg-card p-3">
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Opportunity Score</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">{advisory.opportunityScore}</div>
                             </div>
-                            <div className="rounded border border-gray-200 bg-white p-3">
-                              <div className="text-xs uppercase tracking-wide text-gray-500">Confidence</div>
-                              <div className="mt-1 text-lg font-semibold text-gray-900">{advisory.confidence}</div>
+                            <div className="rounded border border-border bg-card p-3">
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Confidence</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">{advisory.confidence}</div>
                             </div>
-                            <div className="rounded border border-gray-200 bg-white p-3">
-                              <div className="text-xs uppercase tracking-wide text-gray-500">Urgency</div>
-                              <div className="mt-1 text-lg font-semibold text-gray-900">{advisory.urgency}</div>
+                            <div className="rounded border border-border bg-card p-3">
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Urgency</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">{advisory.urgency}</div>
                             </div>
                           </div>
                           <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                            <div className="rounded border border-gray-200 bg-white p-3">
-                              <div className="text-xs uppercase tracking-wide text-gray-500">Affected Business Areas</div>
+                            <div className="rounded border border-border bg-card p-3">
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Affected Business Areas</div>
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {advisory.affectedBusinessAreas.map((area) => (
-                                  <span key={area} className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700">{area}</span>
+                                  <span key={area} className="rounded border border-border bg-muted/30 px-2 py-1 text-xs text-foreground/80">{area}</span>
                                 ))}
                               </div>
                             </div>
-                            <div className="rounded border border-gray-200 bg-white p-3">
-                              <div className="text-xs uppercase tracking-wide text-gray-500">Affected Products & Categories</div>
+                            <div className="rounded border border-border bg-card p-3">
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Affected Products & Categories</div>
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {advisory.affectedProducts.map((product) => (
-                                  <span key={product} className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">{product}</span>
+                                  <span key={product} className="rounded border border-success/20 bg-success/5 px-2 py-1 text-xs text-success/90">{product}</span>
                                 ))}
                                 {advisory.affectedCategories.map((category) => (
-                                  <span key={category} className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-800">{category}</span>
+                                  <span key={category} className="rounded border border-primary/20 bg-primary/5 px-2 py-1 text-xs text-primary">{category}</span>
                                 ))}
                               </div>
                             </div>
                           </div>
                           <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                            <div className="rounded border border-red-100 bg-red-50 p-3">
-                              <div className="text-xs uppercase tracking-wide text-red-600">Threat Detection</div>
-                              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-red-800">
+                            <div className="rounded border border-destructive/10 bg-destructive/5 p-3">
+                              <div className="text-xs uppercase tracking-wide text-destructive">Threat Detection</div>
+                              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-destructive/90">
                                 {advisory.threatDetection.length > 0 ? (
                                   advisory.threatDetection.map((threat) => <li key={threat}>{threat}</li>)
                                 ) : (
@@ -16330,9 +16330,9 @@ export default function Home() {
                                 )}
                               </ul>
                             </div>
-                            <div className="rounded border border-emerald-100 bg-emerald-50 p-3">
-                              <div className="text-xs uppercase tracking-wide text-emerald-700">Opportunity Detection</div>
-                              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-emerald-800">
+                            <div className="rounded border border-success/10 bg-success/5 p-3">
+                              <div className="text-xs uppercase tracking-wide text-success">Opportunity Detection</div>
+                              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-success/90">
                                 {advisory.opportunityDetection.length > 0 ? (
                                   advisory.opportunityDetection.map((opportunity) => <li key={opportunity}>{opportunity}</li>)
                                 ) : (
@@ -16341,9 +16341,9 @@ export default function Home() {
                               </ul>
                             </div>
                           </div>
-                          <div className="mt-3 rounded border border-gray-200 bg-white p-3">
-                            <div className="text-xs uppercase tracking-wide text-gray-500">Suggested Owner Actions</div>
-                            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                          <div className="mt-3 rounded border border-border bg-card p-3">
+                            <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Suggested Owner Actions</div>
+                            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-foreground/80">
                               {advisory.suggestedOwnerActions.map((action) => (
                                 <li key={action}>{action}</li>
                               ))}
@@ -16352,14 +16352,14 @@ export default function Home() {
                           <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3">
                             <div className="text-xs uppercase tracking-wide text-slate-600">Business Health Impact</div>
                             <div className="mt-1 flex flex-wrap items-center gap-2">
-                              <span className="rounded bg-white px-2 py-1 text-sm font-medium text-slate-800">{advisory.businessHealthImpact}</span>
+                              <span className="rounded bg-card px-2 py-1 text-sm font-medium text-slate-800">{advisory.businessHealthImpact}</span>
                               <span className="text-sm text-slate-700">{advisory.businessHealthReason}</span>
                             </div>
                           </div>
                           <div className="mt-3 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                             Future versions will combine Business Intelligence, Inventory, Sales, Purchases, Customer demand, and Supplier history to generate personalized recommendations.
                           </div>
-                          <div className="mt-3 grid gap-1 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
+                          <div className="mt-3 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
                             <div>Source: {item.source_name || "Manual note"}</div>
                             <div>Related product: {relatedProduct?.name ?? item.related_product_category ?? "-"}</div>
                             <div>News date: {formatDate(item.news_date)}</div>
@@ -16367,14 +16367,14 @@ export default function Home() {
                             <div>Status: {getMarketLabel(marketIntelligenceStatusOptions, item.status)}</div>
                             <div>Impact: {getMarketLabel(marketImpactDirectionOptions, item.impact_direction)}</div>
                           </div>
-                          {item.source_url && <div className="mt-1 break-all text-xs text-blue-700">{item.source_url}</div>}
+                          {item.source_url && <div className="mt-1 break-all text-xs text-primary">{item.source_url}</div>}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
                             onClick={() => analyzeMarketIntelligenceItem(item)}
                             disabled={marketAiAnalysisLoadingId === `item-${item.id}`}
-                            className="rounded border border-purple-500 bg-white px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                            className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
                             {marketAiAnalysisLoadingId === `item-${item.id}` ? "Analyzing..." : "Analyze with AI"}
                           </button>
@@ -16382,7 +16382,7 @@ export default function Home() {
                             type="button"
                             onClick={() => updateMarketIntelligenceStatus(item, "watching")}
                             disabled={item.status === "watching"}
-                            className="rounded border border-amber-500 bg-white px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                            className="rounded border border-warning bg-card px-3 py-2 text-xs text-warning hover:bg-warning/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
                             Mark Watching
                           </button>
@@ -16390,7 +16390,7 @@ export default function Home() {
                             type="button"
                             onClick={() => updateMarketIntelligenceStatus(item, "archived")}
                             disabled={item.status === "archived"}
-                            className="rounded border border-gray-500 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                            className="rounded border border-muted-foreground bg-card px-3 py-2 text-xs text-foreground/80 hover:bg-muted disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
                             Archive
                           </button>
@@ -16398,14 +16398,14 @@ export default function Home() {
                             type="button"
                             onClick={() => updateMarketIntelligenceStatus(item, "active")}
                             disabled={item.status === "active"}
-                            className="rounded border border-emerald-500 bg-white px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                            className="rounded border border-success bg-card px-3 py-2 text-xs text-success hover:bg-success/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
                             Reactivate
                           </button>
                           <button
                             type="button"
                             onClick={() => deleteMarketIntelligenceItem(item)}
-                            className="rounded border border-red-500 bg-white px-3 py-2 text-xs text-red-700 hover:bg-red-50"
+                            className="rounded border border-destructive bg-card px-3 py-2 text-xs text-destructive hover:bg-destructive/5"
                           >
                             Delete
                           </button>
@@ -16421,11 +16421,11 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "ai-voice-operator" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">AI Voice Business Operator</h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <h2 className="text-xl font-medium text-foreground">AI Voice Business Operator</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
                 Speak or type business questions and commands. TradeOS will answer questions, prepare actions as drafts, and require confirmation before saving records.
               </p>
             </div>
@@ -16433,7 +16433,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={startAiVoiceOperatorSession}
-                className="rounded bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-800"
+                className="rounded bg-foreground px-3 py-2 text-sm text-white hover:bg-foreground/80"
               >
                 Start New Session
               </button>
@@ -16441,33 +16441,33 @@ export default function Home() {
                 type="button"
                 onClick={endAiVoiceOperatorSession}
                 disabled={!selectedAiVoiceSessionId}
-                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30 disabled:cursor-not-allowed disabled:text-muted-foreground"
               >
                 End Session
               </button>
             </div>
           </div>
 
-          <div className="mb-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="mb-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
             Voice operator does not delete records or perform sensitive changes automatically. Action commands become drafts and still require owner confirmation.
           </div>
 
           {aiVoiceOperatorMessage && (
-            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p className="mb-4 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">
               {aiVoiceOperatorMessage}
             </p>
           )}
           {aiVoiceOperatorError && (
-            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            <p className="mb-4 whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">
               {aiVoiceOperatorError}
             </p>
           )}
 
-          <div className="mb-5 rounded border border-purple-200 bg-purple-50 p-4">
+          <div className="mb-5 rounded border border-primary/20 bg-primary/5 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-purple-950">Daily Briefing & Alerts</h3>
-                <p className="mt-1 text-sm text-purple-900">
+                <h3 className="text-lg font-medium text-primary/90">Daily Briefing & Alerts</h3>
+                <p className="mt-1 text-sm text-primary">
                   Alerts and briefings are advisory. Owner should review before making business decisions.
                 </p>
               </div>
@@ -16476,7 +16476,7 @@ export default function Home() {
                   type="button"
                   onClick={generateDailyBriefing}
                   disabled={aiBriefingLoading}
-                  className="rounded bg-purple-700 px-3 py-2 text-sm text-white hover:bg-purple-800 disabled:cursor-not-allowed disabled:bg-purple-300"
+                  className="rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
                 >
                   {aiBriefingLoading ? "Generating..." : "Generate Today's Briefing"}
                 </button>
@@ -16484,7 +16484,7 @@ export default function Home() {
                   type="button"
                   onClick={generateAiBusinessAlerts}
                   disabled={aiBriefingLoading}
-                  className="rounded border border-purple-300 bg-white px-3 py-2 text-sm text-purple-800 hover:bg-purple-100 disabled:cursor-not-allowed disabled:text-purple-300"
+                  className="rounded border border-primary/30 bg-card px-3 py-2 text-sm text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:text-primary/30"
                 >
                   Generate Alerts
                 </button>
@@ -16492,7 +16492,7 @@ export default function Home() {
                   type="button"
                   onClick={readLatestDailyBriefing}
                   disabled={!latestAiDailyBriefing?.summary}
-                  className="rounded border border-sky-300 bg-white px-3 py-2 text-sm text-sky-800 hover:bg-sky-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                  className="rounded border border-primary/30 bg-card px-3 py-2 text-sm text-primary hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground"
                 >
                   Read Latest Briefing
                 </button>
@@ -16500,7 +16500,7 @@ export default function Home() {
                   type="button"
                   onClick={stopAiVoiceOperatorReply}
                   disabled={!isAiVoiceSpeaking}
-                  className="rounded border border-red-300 bg-white px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                  className="rounded border border-destructive/30 bg-card px-3 py-2 text-sm text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:text-muted-foreground"
                 >
                   Stop Voice
                 </button>
@@ -16508,53 +16508,53 @@ export default function Home() {
             </div>
 
             {aiBriefingMessage && (
-              <p className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              <p className="mt-3 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">
                 {aiBriefingMessage}
               </p>
             )}
             {aiBriefingError && (
-              <p className="mt-3 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              <p className="mt-3 whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">
                 {aiBriefingError}
               </p>
             )}
 
             <div className="mt-4 grid gap-3 sm:grid-cols-4">
-              <div className="rounded border border-purple-100 bg-white p-3">
-                <div className="text-xs text-purple-700">Active Alerts</div>
-                <div className="mt-1 text-2xl font-semibold text-purple-950">{aiAlertSummary.active}</div>
+              <div className="rounded border border-primary/10 bg-card p-3">
+                <div className="text-xs text-primary">Active Alerts</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">{aiAlertSummary.active}</div>
               </div>
-              <div className="rounded border border-purple-100 bg-white p-3">
-                <div className="text-xs text-purple-700">Critical</div>
-                <div className="mt-1 text-2xl font-semibold text-purple-950">{aiAlertSummary.critical}</div>
+              <div className="rounded border border-primary/10 bg-card p-3">
+                <div className="text-xs text-primary">Critical</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">{aiAlertSummary.critical}</div>
               </div>
-              <div className="rounded border border-purple-100 bg-white p-3">
-                <div className="text-xs text-purple-700">High</div>
-                <div className="mt-1 text-2xl font-semibold text-purple-950">{aiAlertSummary.high}</div>
+              <div className="rounded border border-primary/10 bg-card p-3">
+                <div className="text-xs text-primary">High</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">{aiAlertSummary.high}</div>
               </div>
-              <div className="rounded border border-purple-100 bg-white p-3">
-                <div className="text-xs text-purple-700">Briefings</div>
-                <div className="mt-1 text-2xl font-semibold text-purple-950">{aiDailyBriefings.length}</div>
+              <div className="rounded border border-primary/10 bg-card p-3">
+                <div className="text-xs text-primary">Briefings</div>
+                <div className="mt-1 text-2xl font-semibold text-primary/90">{aiDailyBriefings.length}</div>
               </div>
             </div>
 
             {latestAiDailyBriefing ? (
-              <div className="mt-4 rounded border border-purple-100 bg-white p-4">
+              <div className="mt-4 rounded border border-primary/10 bg-card p-4">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h4 className="font-medium text-gray-900">{latestAiDailyBriefing.title}</h4>
-                    <p className="text-xs text-gray-500">
+                    <h4 className="font-medium text-foreground">{latestAiDailyBriefing.title}</h4>
+                    <p className="text-xs text-muted-foreground/80">
                       {formatDate(latestAiDailyBriefing.briefing_date)} - created {formatDateTime(latestAiDailyBriefing.created_at)}
                     </p>
                   </div>
-                  <span className="w-fit rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-800">
+                  <span className="w-fit rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
                     {latestAiDailyBriefing.status}
                   </span>
                 </div>
-                <p className="mt-3 whitespace-pre-wrap text-sm text-gray-800">{latestAiDailyBriefing.summary}</p>
+                <p className="mt-3 whitespace-pre-wrap text-sm text-foreground">{latestAiDailyBriefing.summary}</p>
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
                   <div>
-                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Top signals</div>
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">Top signals</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-foreground/80">
                       {getArrayValue(latestAiDailyBriefing.top_signals).slice(0, 8).map((signal, index) => (
                         <li key={`${String(signal)}-${index}`}>{String(signal)}</li>
                       ))}
@@ -16562,8 +16562,8 @@ export default function Home() {
                     </ul>
                   </div>
                   <div>
-                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Recommended actions</div>
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">Recommended actions</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-foreground/80">
                       {getArrayValue(latestAiDailyBriefing.recommended_actions).slice(0, 8).map((action, index) => (
                         <li key={`${String(action)}-${index}`}>{String(action)}</li>
                       ))}
@@ -16573,7 +16573,7 @@ export default function Home() {
                 </div>
               </div>
             ) : (
-              <p className="mt-4 rounded border border-purple-100 bg-white px-3 py-3 text-sm text-gray-600">
+              <p className="mt-4 rounded border border-primary/10 bg-card px-3 py-3 text-sm text-muted-foreground">
                 No daily briefing generated yet.
               </p>
             )}
@@ -16582,7 +16582,7 @@ export default function Home() {
               <select
                 value={aiAlertStatusFilter}
                 onChange={(event) => setAiAlertStatusFilter(event.target.value)}
-                className="rounded border border-purple-200 bg-white px-3 py-2 text-sm"
+                className="rounded border border-primary/20 bg-card px-3 py-2 text-sm"
               >
                 <option value="all">All statuses</option>
                 <option value="active">Active</option>
@@ -16592,7 +16592,7 @@ export default function Home() {
               <select
                 value={aiAlertSeverityFilter}
                 onChange={(event) => setAiAlertSeverityFilter(event.target.value)}
-                className="rounded border border-purple-200 bg-white px-3 py-2 text-sm"
+                className="rounded border border-primary/20 bg-card px-3 py-2 text-sm"
               >
                 <option value="all">All severities</option>
                 <option value="critical">Critical</option>
@@ -16604,44 +16604,44 @@ export default function Home() {
 
             <div className="mt-3 space-y-3">
               {filteredAiAlerts.length === 0 ? (
-                <p className="rounded border border-purple-100 bg-white px-3 py-3 text-sm text-gray-600">
+                <p className="rounded border border-primary/10 bg-card px-3 py-3 text-sm text-muted-foreground">
                   No alerts match the current filters.
                 </p>
               ) : (
                 filteredAiAlerts.slice(0, 25).map((alert) => (
-                  <div key={alert.id} className="rounded border border-purple-100 bg-white p-4">
+                  <div key={alert.id} className="rounded border border-primary/10 bg-card p-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <div className="flex flex-wrap gap-2">
-                          <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">{alert.alert_type}</span>
+                          <span className="rounded bg-foreground px-2 py-1 text-xs font-medium text-white">{alert.alert_type}</span>
                           <span
                             className={`rounded px-2 py-1 text-xs font-medium ${
                               alert.severity === "critical"
-                                ? "bg-red-100 text-red-800"
+                                ? "bg-destructive/10 text-destructive/90"
                                 : alert.severity === "high"
                                   ? "bg-orange-100 text-orange-800"
                                   : alert.severity === "medium"
-                                    ? "bg-amber-100 text-amber-800"
-                                    : "bg-gray-100 text-gray-700"
+                                    ? "bg-warning/10 text-warning"
+                                    : "bg-muted text-foreground/80"
                             }`}
                           >
                             {alert.severity}
                           </span>
-                          <span className="rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-800">{alert.status}</span>
+                          <span className="rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">{alert.status}</span>
                         </div>
-                        <h4 className="mt-2 font-medium text-gray-900">{alert.title}</h4>
-                        {alert.summary && <p className="mt-1 text-sm text-gray-700">{alert.summary}</p>}
+                        <h4 className="mt-2 font-medium text-foreground">{alert.title}</h4>
+                        {alert.summary && <p className="mt-1 text-sm text-foreground/80">{alert.summary}</p>}
                         {alert.recommended_action && (
-                          <p className="mt-2 text-sm text-purple-900">Recommended: {alert.recommended_action}</p>
+                          <p className="mt-2 text-sm text-primary">Recommended: {alert.recommended_action}</p>
                         )}
-                        <p className="mt-2 text-xs text-gray-500">Created {formatDateTime(alert.created_at)}</p>
+                        <p className="mt-2 text-xs text-muted-foreground/80">Created {formatDateTime(alert.created_at)}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {alert.status !== "resolved" && (
                           <button
                             type="button"
                             onClick={() => updateAiAlertStatus(alert, "resolved")}
-                            className="rounded border border-green-400 bg-white px-2 py-1 text-xs text-green-700 hover:bg-green-50"
+                            className="rounded border border-success/40 bg-card px-2 py-1 text-xs text-success hover:bg-success/5"
                           >
                             Mark Resolved
                           </button>
@@ -16650,7 +16650,7 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={() => updateAiAlertStatus(alert, "active")}
-                            className="rounded border border-blue-400 bg-white px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
+                            className="rounded border border-primary/40 bg-card px-2 py-1 text-xs text-primary hover:bg-primary/5"
                           >
                             Reopen
                           </button>
@@ -16659,7 +16659,7 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={() => updateAiAlertStatus(alert, "archived")}
-                            className="rounded border border-gray-400 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                            className="rounded border border-muted-foreground bg-card px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30"
                           >
                             Archive
                           </button>
@@ -16673,14 +16673,14 @@ export default function Home() {
           </div>
 
           <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
-            <div className="rounded border border-gray-200 bg-white p-4">
+            <div className="rounded border border-border bg-card p-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Language</span>
                   <select
                     value={aiVoiceLanguage}
                     onChange={(event) => setAiVoiceLanguage(event.target.value)}
-                    className="rounded border border-gray-300 px-3 py-2"
+                    className="rounded border border-border px-3 py-2"
                   >
                     <option value="auto">Auto</option>
                     <option value="english">English</option>
@@ -16688,7 +16688,7 @@ export default function Home() {
                     <option value="roman_urdu">Roman Urdu</option>
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Session</span>
                   <select
                     value={selectedAiVoiceSessionId}
@@ -16696,7 +16696,7 @@ export default function Home() {
                       setSelectedAiVoiceSessionId(event.target.value);
                       fetchAiVoiceOperatorMessages(event.target.value, currentOrganizationId);
                     }}
-                    className="rounded border border-gray-300 px-3 py-2"
+                    className="rounded border border-border px-3 py-2"
                   >
                     <option value="">No active session</option>
                     {aiVoiceSessions.map((session) => (
@@ -16708,18 +16708,18 @@ export default function Home() {
                 </label>
               </div>
 
-              <div className="mt-4 rounded border border-sky-200 bg-sky-50 p-4">
+              <div className="mt-4 rounded border border-primary/20 bg-muted p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <h3 className="text-base font-medium text-sky-950">Hands-Free Mode</h3>
-                    <p className="mt-1 text-sm text-sky-900">
+                    <h3 className="text-base font-medium text-primary/90">Hands-Free Mode</h3>
+                    <p className="mt-1 text-sm text-primary">
                       Auto-send only sends your spoken text to the operator. Write actions still require confirmation before saving.
                     </p>
-                    <p className="mt-1 text-xs text-sky-800">
+                    <p className="mt-1 text-xs text-primary">
                       Browser voices may not pronounce Urdu/Punjabi perfectly. Premium AI voice support will be added later.
                     </p>
                   </div>
-                  <label className="flex items-center gap-2 text-sm text-sky-950">
+                  <label className="flex items-center gap-2 text-sm text-primary/90">
                     <input
                       type="checkbox"
                       checked={aiVoiceAutoSendEnabled}
@@ -16732,13 +16732,13 @@ export default function Home() {
                   </label>
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_2fr]">
-                  <label className="flex flex-col gap-1 text-sm text-sky-950">
+                  <label className="flex flex-col gap-1 text-sm text-primary/90">
                     <span>Auto-send delay</span>
                     <select
                       value={aiVoiceAutoSendDelayMs}
                       onChange={(event) => setAiVoiceAutoSendDelayMs(Number(event.target.value))}
                       disabled={!aiVoiceAutoSendEnabled}
-                      className="rounded border border-sky-200 bg-white px-3 py-2 disabled:cursor-not-allowed disabled:bg-gray-100"
+                      className="rounded border border-primary/20 bg-card px-3 py-2 disabled:cursor-not-allowed disabled:bg-muted"
                     >
                       <option value={1000}>1 second</option>
                       <option value={1500}>1.5 seconds</option>
@@ -16746,7 +16746,7 @@ export default function Home() {
                       <option value={3000}>3 seconds</option>
                     </select>
                   </label>
-                  <div className="rounded border border-sky-100 bg-white px-3 py-2 text-sm text-sky-950">
+                  <div className="rounded border border-primary/10 bg-card px-3 py-2 text-sm text-primary/90">
                     <div className="font-medium">Status</div>
                     <div className="mt-1">
                       {isAiVoiceListening
@@ -16755,18 +16755,18 @@ export default function Home() {
                           ? `Waiting to auto-send (${(aiVoiceAutoSendCountdown / 1000).toFixed(1)}s)`
                           : aiVoiceHandsFreeMessage ?? "Ready"}
                     </div>
-                    {aiVoiceHandsFreeError && <div className="mt-1 text-red-700">{aiVoiceHandsFreeError}</div>}
+                    {aiVoiceHandsFreeError && <div className="mt-1 text-destructive">{aiVoiceHandsFreeError}</div>}
                   </div>
                 </div>
                 {(aiVoiceAutoSendTimerActive || aiVoicePendingAutoSendText) && (
-                  <div className="mt-3 rounded border border-sky-100 bg-white p-3">
-                    <div className="text-xs font-medium uppercase tracking-wide text-sky-700">Pending voice text</div>
-                    <p className="mt-1 text-sm text-gray-800">{aiVoicePendingAutoSendText || aiVoiceInput}</p>
+                  <div className="mt-3 rounded border border-primary/10 bg-card p-3">
+                    <div className="text-xs font-medium uppercase tracking-wide text-primary">Pending voice text</div>
+                    <p className="mt-1 text-sm text-foreground">{aiVoicePendingAutoSendText || aiVoiceInput}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => cancelAiVoiceAutoSend()}
-                        className="rounded border border-red-300 bg-white px-3 py-2 text-xs text-red-700 hover:bg-red-50"
+                        className="rounded border border-destructive/30 bg-card px-3 py-2 text-xs text-destructive hover:bg-destructive/5"
                       >
                         Cancel Auto-Send
                       </button>
@@ -16774,14 +16774,14 @@ export default function Home() {
                         type="button"
                         onClick={sendAiVoicePendingNow}
                         disabled={aiVoiceOperatorLoading}
-                        className="rounded bg-sky-700 px-3 py-2 text-xs text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-300"
+                        className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
                       >
                         Send Now
                       </button>
                       <button
                         type="button"
                         onClick={editAiVoiceBeforeSending}
-                        className="rounded border border-sky-300 bg-white px-3 py-2 text-xs text-sky-800 hover:bg-sky-50"
+                        className="rounded border border-primary/30 bg-card px-3 py-2 text-xs text-primary hover:bg-muted"
                       >
                         Edit Before Sending
                       </button>
@@ -16790,7 +16790,7 @@ export default function Home() {
                 )}
               </div>
 
-              <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="ai-voice-operator-input">
+              <label className="mt-4 block text-sm font-medium text-foreground/80" htmlFor="ai-voice-operator-input">
                 Speak or type your command
               </label>
               <textarea
@@ -16804,7 +16804,7 @@ export default function Home() {
                   setAiVoiceInput(event.target.value);
                 }}
                 rows={4}
-                className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                className="mt-2 w-full rounded border border-border px-3 py-2 text-sm"
                 placeholder={
                   aiVoiceAwaitingConfirmation
                     ? "Say yes/proceed/haan to save, or cancel to stop."
@@ -16814,17 +16814,17 @@ export default function Home() {
                 }
               />
               {aiVoiceTranscriptPreview && (
-                <div className="mt-2 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+                <div className="mt-2 rounded border border-primary/20 bg-muted px-3 py-2 text-sm text-primary/90">
                   Transcript preview: {aiVoiceTranscriptPreview}
                 </div>
               )}
               {aiVoiceActionConversationMessage && (
-                <div className="mt-3 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-950">
+                <div className="mt-3 rounded border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary/90">
                   {aiVoiceActionConversationMessage}
                 </div>
               )}
               {aiVoiceActionConversationError && (
-                <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                <div className="mt-3 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">
                   {aiVoiceActionConversationError}
                 </div>
               )}
@@ -16843,11 +16843,11 @@ export default function Home() {
                     : activeEvaluation?.missingFields ?? [];
                 const readyToExecute = Boolean(activeDraft?.ready_to_execute || activeEvaluation?.readyToExecute);
                 return (
-                  <div className="mt-4 rounded border border-indigo-200 bg-white p-4">
+                  <div className="mt-4 rounded border border-primary/20 bg-card p-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="text-base font-medium text-gray-900">Active Action Draft</h3>
-                        <p className="mt-1 text-sm text-gray-600">
+                        <h3 className="text-base font-medium text-foreground">Active Action Draft</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">
                           {activeDraft?.action_type ?? "Linked draft"} - {activeDraft?.status ?? "loading"}
                         </p>
                       </div>
@@ -16859,7 +16859,7 @@ export default function Home() {
                             setSelectedConversationDraftId(aiVoiceActiveActionDraftId);
                             handleSectionChange("ai-assistant");
                           }}
-                          className="rounded border border-indigo-500 bg-white px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
+                          className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5"
                         >
                           Open in AI Assistant
                         </button>
@@ -16869,7 +16869,7 @@ export default function Home() {
                             const sessionId = await ensureAiVoiceSession();
                             if (sessionId) await cancelAiVoiceActionConversation(sessionId);
                           }}
-                          className="rounded border border-red-400 bg-white px-3 py-2 text-xs text-red-700 hover:bg-red-50"
+                          className="rounded border border-destructive/40 bg-card px-3 py-2 text-xs text-destructive hover:bg-destructive/5"
                         >
                           Cancel Draft
                         </button>
@@ -16880,7 +16880,7 @@ export default function Home() {
                               const sessionId = await ensureAiVoiceSession();
                               if (sessionId) await executeAiVoiceActionDraft(sessionId);
                             }}
-                            className="rounded bg-gray-900 px-3 py-2 text-xs text-white hover:bg-gray-800"
+                            className="rounded bg-foreground px-3 py-2 text-xs text-white hover:bg-foreground/80"
                           >
                             Execute Now
                           </button>
@@ -16888,8 +16888,8 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-                        <div className="font-medium text-gray-900">Current question</div>
+                      <div className="rounded border border-border bg-muted/30 p-3 text-sm text-foreground/80">
+                        <div className="font-medium text-foreground">Current question</div>
                         <div className="mt-1">
                           {aiVoiceActiveMissingField
                             ? getAiVoiceActionQuestionText(aiVoiceActiveMissingField)
@@ -16898,21 +16898,21 @@ export default function Home() {
                               : "No question pending."}
                         </div>
                       </div>
-                      <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-                        <div className="font-medium text-gray-900">Readiness</div>
+                      <div className="rounded border border-border bg-muted/30 p-3 text-sm text-foreground/80">
+                        <div className="font-medium text-foreground">Readiness</div>
                         <div className="mt-1">{readyToExecute ? "Ready to execute" : "Needs more information"}</div>
                         <div className="mt-1">Missing: {missingFields.length > 0 ? missingFields.join(", ") : "None"}</div>
                       </div>
                     </div>
                     {activeEvaluation?.confirmationSummary && (
-                      <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-                        <div className="font-medium text-gray-900">Confirmation summary</div>
+                      <div className="mt-3 rounded border border-border bg-muted/30 p-3 text-sm text-foreground/80">
+                        <div className="font-medium text-foreground">Confirmation summary</div>
                         <p className="mt-1">{activeEvaluation.confirmationSummary}</p>
                       </div>
                     )}
                     {activeEvaluation?.executionPreview && (
-                      <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-                        <div className="font-medium text-gray-900">Execution preview</div>
+                      <div className="mt-3 rounded border border-border bg-muted/30 p-3 text-sm text-foreground/80">
+                        <div className="font-medium text-foreground">Execution preview</div>
                         <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs">
                           {JSON.stringify(activeEvaluation.executionPreview, null, 2)}
                         </pre>
@@ -16927,7 +16927,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={startAiVoiceListening}
-                    className="rounded bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700"
+                    className="rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary"
                   >
                     Start Listening
                   </button>
@@ -16935,7 +16935,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={stopAiVoiceListening}
-                    className="rounded bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700"
+                    className="rounded bg-destructive px-3 py-2 text-sm text-white hover:bg-destructive/90"
                   >
                     Stop Listening
                   </button>
@@ -16944,7 +16944,7 @@ export default function Home() {
                   type="button"
                   onClick={() => sendToAiVoiceOperator()}
                   disabled={aiVoiceOperatorLoading}
-                  className="rounded bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                  className="rounded bg-foreground px-3 py-2 text-sm text-white hover:bg-foreground/80 disabled:cursor-not-allowed disabled:bg-muted"
                 >
                   {aiVoiceOperatorLoading ? "Sending..." : "Send to Operator"}
                 </button>
@@ -16952,12 +16952,12 @@ export default function Home() {
                   type="button"
                   onClick={stopAiVoiceOperatorReply}
                   disabled={!isAiVoiceSpeaking}
-                  className="rounded border border-red-400 bg-white px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                  className="rounded border border-destructive/40 bg-card px-3 py-2 text-sm text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                 >
                   Stop Voice Reply
                 </button>
               </div>
-              <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
+              <label className="mt-3 flex items-center gap-2 text-sm text-foreground/80">
                 <input
                   type="checkbox"
                   checked={aiVoiceAutoSpeak}
@@ -16966,24 +16966,24 @@ export default function Home() {
                 Auto-speak replies
               </label>
               {typeof window !== "undefined" && !getSpeechRecognitionConstructor() && (
-                <p className="mt-3 text-sm text-amber-800">Voice input is not supported in this browser. You can still type commands.</p>
+                <p className="mt-3 text-sm text-warning">Voice input is not supported in this browser. You can still type commands.</p>
               )}
               {typeof window !== "undefined" && !window.speechSynthesis && (
-                <p className="mt-2 text-sm text-amber-800">Voice reply is not supported in this browser.</p>
+                <p className="mt-2 text-sm text-warning">Voice reply is not supported in this browser.</p>
               )}
             </div>
 
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <h3 className="text-lg font-medium text-gray-900">Last Operator Reply</h3>
+            <div className="rounded border border-border bg-card p-4">
+              <h3 className="text-lg font-medium text-foreground">Last Operator Reply</h3>
               {aiVoiceLastResponse ? (
-                <p className="mt-3 whitespace-pre-wrap text-sm text-gray-800">{aiVoiceLastResponse}</p>
+                <p className="mt-3 whitespace-pre-wrap text-sm text-foreground">{aiVoiceLastResponse}</p>
               ) : (
-                <p className="mt-3 text-sm text-gray-600">No reply yet.</p>
+                <p className="mt-3 text-sm text-muted-foreground">No reply yet.</p>
               )}
               {aiVoiceSpeechCleanPreview && (
-                <div className="mt-3 rounded border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                <div className="mt-3 rounded border border-primary/10 bg-muted px-3 py-2 text-xs text-primary">
                   Voice will read a cleaned version of this answer:
-                  <div className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-gray-700">
+                  <div className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-foreground/80">
                     {aiVoiceSpeechCleanPreview}
                   </div>
                 </div>
@@ -16992,21 +16992,21 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => handleSectionChange("ai-business-query")}
-                  className="rounded border border-blue-500 bg-white px-3 py-2 text-xs text-blue-700 hover:bg-blue-50"
+                  className="rounded border border-ring bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5"
                 >
                   Open AI Business Query
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSectionChange("ai-assistant")}
-                  className="rounded border border-indigo-500 bg-white px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
+                  className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5"
                 >
                   Open AI Assistant
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSectionChange("market-intelligence")}
-                  className="rounded border border-emerald-500 bg-white px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50"
+                  className="rounded border border-success bg-card px-3 py-2 text-xs text-success hover:bg-success/5"
                 >
                   Open Market Intelligence
                 </button>
@@ -17014,40 +17014,40 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+          <div className="mt-5 rounded border border-border bg-card p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">Conversation History</h3>
-                <p className="mt-1 text-sm text-gray-600">Owner commands, assistant replies, detected intent, and routed module.</p>
+                <h3 className="text-lg font-medium text-foreground">Conversation History</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Owner commands, assistant replies, detected intent, and routed module.</p>
               </div>
               <button
                 type="button"
                 onClick={() => fetchAiVoiceOperatorMessages(selectedAiVoiceSessionId, currentOrganizationId)}
                 disabled={!selectedAiVoiceSessionId}
-                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+                className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30 disabled:cursor-not-allowed disabled:text-muted-foreground"
               >
                 Refresh Messages
               </button>
             </div>
             <div className="mt-4 space-y-3">
               {aiVoiceMessages.length === 0 ? (
-                <p className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+                <p className="rounded border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
                   No voice operator messages yet.
                 </p>
               ) : (
                 aiVoiceMessages.map((message) => (
-                  <div key={message.id} className="rounded border border-gray-200 bg-gray-50 p-4">
+                  <div key={message.id} className="rounded border border-border bg-muted/30 p-4">
                     <div className="flex flex-wrap gap-2">
-                      <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">{message.role}</span>
-                      <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">{message.message_type}</span>
+                      <span className="rounded bg-foreground px-2 py-1 text-xs font-medium text-white">{message.role}</span>
+                      <span className="rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">{message.message_type}</span>
                       {message.detected_intent && (
-                        <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">{message.detected_intent}</span>
+                        <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">{message.detected_intent}</span>
                       )}
                       {message.routed_to && (
-                        <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">{message.routed_to}</span>
+                        <span className="rounded bg-success/10 px-2 py-1 text-xs font-medium text-success/90">{message.routed_to}</span>
                       )}
                     </div>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{message.message_text}</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{message.message_text}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {message.related_ai_action_draft_id && (
                         <button
@@ -17057,7 +17057,7 @@ export default function Home() {
                             setSelectedConversationDraftId(message.related_ai_action_draft_id ?? "");
                             handleSectionChange("ai-assistant");
                           }}
-                          className="rounded border border-indigo-500 bg-white px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50"
+                          className="rounded border border-primary bg-card px-2 py-1 text-xs text-primary hover:bg-primary/5"
                         >
                           Open AI Assistant Draft
                         </button>
@@ -17066,7 +17066,7 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => handleSectionChange("ai-business-query")}
-                          className="rounded border border-blue-500 bg-white px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
+                          className="rounded border border-ring bg-card px-2 py-1 text-xs text-primary hover:bg-primary/5"
                         >
                           Open AI Business Query
                         </button>
@@ -17075,13 +17075,13 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => handleSectionChange("market-intelligence")}
-                          className="rounded border border-emerald-500 bg-white px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50"
+                          className="rounded border border-success bg-card px-2 py-1 text-xs text-success hover:bg-success/5"
                         >
                           Open Market Intelligence
                         </button>
                       )}
                     </div>
-                    <div className="mt-2 text-xs text-gray-500">{formatDateTime(message.created_at)}</div>
+                    <div className="mt-2 text-xs text-muted-foreground/80">{formatDateTime(message.created_at)}</div>
                   </div>
                 ))
               )}
@@ -17091,52 +17091,52 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "ai-analytics" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">AI Analytics Explainer</h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <h2 className="text-xl font-medium text-foreground">AI Analytics Explainer</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
                 Ask why performance changed, what is strongest, and what to focus on next. Answers use only current OP OWNER analytics data.
               </p>
             </div>
             <button
               type="button"
               onClick={() => handleSectionChange("business-intelligence")}
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
             >
               Open Business Intelligence
             </button>
           </div>
 
-          <div className="mb-5 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <div className="mb-5 rounded border border-primary/20 bg-primary/5 p-4 text-sm text-primary">
             AI Analytics does not create or update records. It explains the analytics context already loaded in OP OWNER and must say when data is not enough.
           </div>
 
           {aiAnalyticsMessage && (
-            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{aiAnalyticsMessage}</p>
+            <p className="mb-4 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">{aiAnalyticsMessage}</p>
           )}
           {aiAnalyticsError && (
-            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{aiAnalyticsError}</p>
+            <p className="mb-4 whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">{aiAnalyticsError}</p>
           )}
 
           <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
-            <div className="rounded border border-gray-200 bg-white p-4">
+            <div className="rounded border border-border bg-card p-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Reply language</span>
                   <select
                     value={aiAnalyticsLanguage}
                     onChange={(event) => setAiAnalyticsLanguage(event.target.value)}
-                    className="rounded border border-gray-300 px-3 py-2"
+                    className="rounded border border-border px-3 py-2"
                   >
                     <option value="english">English</option>
                     <option value="urdu">Urdu</option>
                     <option value="roman_urdu">Roman Urdu</option>
                   </select>
                 </label>
-                <div className="flex flex-col gap-1 text-sm text-gray-700">
+                <div className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Analytics range</span>
-                  <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  <div className="rounded border border-border bg-muted/30 px-3 py-2 text-sm text-foreground/80">
                     {businessIntelligenceAnalytics.range.label}
                     {businessIntelligenceAnalytics.range.start || businessIntelligenceAnalytics.range.end
                       ? ` (${businessIntelligenceAnalytics.range.start || "start"} to ${businessIntelligenceAnalytics.range.end || "today"})`
@@ -17145,7 +17145,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="ai-analytics-question">
+              <label className="mt-4 block text-sm font-medium text-foreground/80" htmlFor="ai-analytics-question">
                 Analytics Question
               </label>
               <textarea
@@ -17153,7 +17153,7 @@ export default function Home() {
                 value={aiAnalyticsQuestion}
                 onChange={(event) => setAiAnalyticsQuestion(event.target.value)}
                 rows={4}
-                className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                className="mt-2 w-full rounded border border-border px-3 py-2 text-sm"
                 placeholder="Why did sales drop?"
               />
 
@@ -17174,7 +17174,7 @@ export default function Home() {
                     key={question}
                     type="button"
                     onClick={() => fillAiAnalyticsQuestion(question)}
-                    className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs text-indigo-800 hover:bg-indigo-100"
+                    className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs text-primary hover:bg-primary/10"
                   >
                     {question}
                   </button>
@@ -17185,32 +17185,32 @@ export default function Home() {
                 type="button"
                 onClick={askAiAnalyticsQuestion}
                 disabled={aiAnalyticsLoading}
-                className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                className="mt-4 rounded bg-foreground px-4 py-2 text-sm text-white hover:bg-foreground/80 disabled:cursor-not-allowed disabled:bg-muted"
               >
                 {aiAnalyticsLoading ? "Explaining..." : "Ask AI Analytics"}
               </button>
             </div>
 
             <div className="space-y-4">
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="text-lg font-medium text-gray-900">Business Health Score</h3>
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="text-lg font-medium text-foreground">Business Health Score</h3>
                 <div className="mt-3 flex items-end gap-3">
-                  <div className="text-4xl font-semibold text-gray-900">{businessHealthScore.score}</div>
-                  <div className="pb-1 text-lg font-medium text-gray-700">{businessHealthScore.label}</div>
+                  <div className="text-4xl font-semibold text-foreground">{businessHealthScore.score}</div>
+                  <div className="pb-1 text-lg font-medium text-foreground/80">{businessHealthScore.label}</div>
                 </div>
-                <div className="mt-3 h-2 rounded bg-gray-100">
-                  <div className="h-2 rounded bg-indigo-600" style={{ width: `${businessHealthScore.score}%` }} />
+                <div className="mt-3 h-2 rounded bg-muted">
+                  <div className="h-2 rounded bg-primary" style={{ width: `${businessHealthScore.score}%` }} />
                 </div>
-                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-600">
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                   {businessHealthScore.reasons.map((reason) => (
                     <li key={reason}>{reason}</li>
                   ))}
                 </ul>
               </div>
 
-              <div className="rounded border border-gray-200 bg-white p-4">
-                <h3 className="text-lg font-medium text-gray-900">Top Priorities</h3>
-                <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-gray-700">
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="text-lg font-medium text-foreground">Top Priorities</h3>
+                <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-foreground/80">
                   {analyticsTopPriorities.map((priority) => (
                     <li key={priority}>{priority}</li>
                   ))}
@@ -17219,20 +17219,20 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
-            <h3 className="text-lg font-medium text-gray-900">AI Explanation</h3>
+          <div className="mt-5 rounded border border-border bg-card p-4">
+            <h3 className="text-lg font-medium text-foreground">AI Explanation</h3>
             {!aiAnalyticsResult ? (
-              <p className="mt-3 text-sm text-gray-600">Ask a question to see a grounded analytics explanation.</p>
+              <p className="mt-3 text-sm text-muted-foreground">Ask a question to see a grounded analytics explanation.</p>
             ) : (
               <div className="mt-3 space-y-4">
                 <div>
-                  <div className="text-sm font-medium text-gray-900">Summary</div>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{aiAnalyticsResult.answer}</p>
+                  <div className="text-sm font-medium text-foreground">Summary</div>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{aiAnalyticsResult.answer}</p>
                 </div>
                 {aiAnalyticsResult.key_points.length > 0 && (
                   <div>
-                    <div className="text-sm font-medium text-gray-900">Evidence</div>
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                    <div className="text-sm font-medium text-foreground">Evidence</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-foreground/80">
                       {aiAnalyticsResult.key_points.map((point) => (
                         <li key={point}>{point}</li>
                       ))}
@@ -17240,16 +17240,16 @@ export default function Home() {
                   </div>
                 )}
                 {aiAnalyticsResult.warnings.length > 0 && (
-                  <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2">
-                    <div className="text-sm font-medium text-amber-900">Recommendations and Confidence Notes</div>
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-amber-800">
+                  <div className="rounded border border-warning/20 bg-warning/5 px-3 py-2">
+                    <div className="text-sm font-medium text-warning/90">Recommendations and Confidence Notes</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-warning">
                       {aiAnalyticsResult.warnings.map((warning) => (
                         <li key={warning}>{warning}</li>
                       ))}
                     </ul>
                   </div>
                 )}
-                <div className="grid gap-2 text-xs text-gray-600 sm:grid-cols-2">
+                <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
                   <div>Type: {aiAnalyticsResult.query_type}</div>
                   <div>Language: {aiAnalyticsResult.language}</div>
                 </div>
@@ -17260,47 +17260,47 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "ai-business-query" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">AI Business Query</h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <h2 className="text-xl font-medium text-foreground">AI Business Query</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
                 Ask read-only business questions. AI uses your TradeOS data summary and does not change records.
               </p>
             </div>
             <button
               type="button"
               onClick={() => fetchAiBusinessQueryLogs(currentOrganizationId)}
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
             >
               Refresh History
             </button>
           </div>
 
-          <div className="mb-5 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <div className="mb-5 rounded border border-primary/20 bg-primary/5 p-4 text-sm text-primary">
             AI can summarize and advise from available data. It cannot guarantee accuracy and does not perform write actions from this screen.
           </div>
 
           {aiBusinessQueryMessage && (
-            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p className="mb-4 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">
               {aiBusinessQueryMessage}
             </p>
           )}
           {aiBusinessQueryError && (
-            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            <p className="mb-4 whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">
               {aiBusinessQueryError}
             </p>
           )}
 
           <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
-            <div className="rounded border border-gray-200 bg-white p-4">
+            <div className="rounded border border-border bg-card p-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Language</span>
                   <select
                     value={aiBusinessLanguage}
                     onChange={(event) => setAiBusinessLanguage(event.target.value)}
-                    className="rounded border border-gray-300 px-3 py-2"
+                    className="rounded border border-border px-3 py-2"
                   >
                     <option value="auto">Auto</option>
                     <option value="english">English</option>
@@ -17308,9 +17308,9 @@ export default function Home() {
                     <option value="roman_urdu">Roman Urdu</option>
                   </select>
                 </label>
-                <div className="flex flex-col gap-1 text-sm text-gray-700">
+                <div className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Date range hint</span>
-                  <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  <div className="rounded border border-border bg-muted/30 px-3 py-2 text-sm text-foreground/80">
                     {aiBusinessDateRange.label}: {formatDate(aiBusinessDateRange.start)} - {formatDate(aiBusinessDateRange.end)}
                   </div>
                 </div>
@@ -17327,14 +17327,14 @@ export default function Home() {
                     key={preset}
                     type="button"
                     onClick={() => setAiBusinessPresetRange(preset)}
-                    className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-800 hover:bg-blue-100"
+                    className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs text-primary hover:bg-primary/10"
                   >
                     {label}
                   </button>
                 ))}
               </div>
 
-              <label className="mt-4 block text-sm font-medium text-gray-700" htmlFor="ai-business-question">
+              <label className="mt-4 block text-sm font-medium text-foreground/80" htmlFor="ai-business-question">
                 Business Question
               </label>
               <textarea
@@ -17342,7 +17342,7 @@ export default function Home() {
                 value={aiBusinessQuestion}
                 onChange={(event) => setAiBusinessQuestion(event.target.value)}
                 rows={4}
-                className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                className="mt-2 w-full rounded border border-border px-3 py-2 text-sm"
                 placeholder="What happened yesterday?"
               />
               <div className="mt-3 flex flex-wrap gap-2">
@@ -17359,7 +17359,7 @@ export default function Home() {
                     key={question}
                     type="button"
                     onClick={() => setAiBusinessQuestion(question)}
-                    className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs text-indigo-800 hover:bg-indigo-100"
+                    className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs text-primary hover:bg-primary/10"
                   >
                     {question}
                   </button>
@@ -17369,23 +17369,23 @@ export default function Home() {
                 type="button"
                 onClick={askAiBusinessQuestion}
                 disabled={aiBusinessQueryLoading}
-                className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                className="mt-4 rounded bg-foreground px-4 py-2 text-sm text-white hover:bg-foreground/80 disabled:cursor-not-allowed disabled:bg-muted"
               >
                 {aiBusinessQueryLoading ? "Asking AI..." : "Ask AI"}
               </button>
             </div>
 
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <h3 className="text-lg font-medium text-gray-900">Current Answer</h3>
+            <div className="rounded border border-border bg-card p-4">
+              <h3 className="text-lg font-medium text-foreground">Current Answer</h3>
               {!aiBusinessQueryResult ? (
-                <p className="mt-3 text-sm text-gray-600">Ask a question to see the answer here.</p>
+                <p className="mt-3 text-sm text-muted-foreground">Ask a question to see the answer here.</p>
               ) : (
                 <div className="mt-3 space-y-3">
-                  <p className="whitespace-pre-wrap text-sm text-gray-800">{aiBusinessQueryResult.answer}</p>
+                  <p className="whitespace-pre-wrap text-sm text-foreground">{aiBusinessQueryResult.answer}</p>
                   {aiBusinessQueryResult.key_points.length > 0 && (
                     <div>
-                      <div className="text-sm font-medium text-gray-900">Key Points</div>
-                      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                      <div className="text-sm font-medium text-foreground">Key Points</div>
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-foreground/80">
                         {aiBusinessQueryResult.key_points.map((point) => (
                           <li key={point}>{point}</li>
                         ))}
@@ -17393,35 +17393,35 @@ export default function Home() {
                     </div>
                   )}
                   {aiBusinessQueryResult.warnings.length > 0 && (
-                    <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2">
-                      <div className="text-sm font-medium text-amber-900">Warnings</div>
-                      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-amber-800">
+                    <div className="rounded border border-warning/20 bg-warning/5 px-3 py-2">
+                      <div className="text-sm font-medium text-warning/90">Warnings</div>
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-warning">
                         {aiBusinessQueryResult.warnings.map((warning) => (
                           <li key={warning}>{warning}</li>
                         ))}
                       </ul>
                     </div>
                   )}
-                  <div className="grid gap-2 text-xs text-gray-600 sm:grid-cols-2">
+                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
                     <div>Type: {aiBusinessQueryResult.query_type}</div>
                     <div>Language: {aiBusinessQueryResult.language}</div>
                   </div>
                 </div>
               )}
-              <div className="mt-5 rounded border border-sky-200 bg-sky-50 p-3">
-                <h4 className="text-sm font-medium text-sky-950">Voice Reply</h4>
-                <p className="mt-1 text-xs text-sky-900">
+              <div className="mt-5 rounded border border-primary/20 bg-muted p-3">
+                <h4 className="text-sm font-medium text-primary/90">Voice Reply</h4>
+                <p className="mt-1 text-xs text-primary">
                   Voice reply reads the AI answer aloud. It does not execute business actions.
                 </p>
                 {typeof window !== "undefined" && !window.speechSynthesis && (
-                  <p className="mt-2 text-sm text-amber-800">Voice reply is not supported in this browser.</p>
+                  <p className="mt-2 text-sm text-warning">Voice reply is not supported in this browser.</p>
                 )}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => speakAiBusinessAnswer()}
                     disabled={!aiBusinessQueryResult?.answer}
-                    className="rounded bg-sky-600 px-3 py-2 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary disabled:cursor-not-allowed disabled:bg-muted"
                   >
                     {isAiBusinessSpeaking ? "Playing..." : "Play Voice Reply"}
                   </button>
@@ -17429,7 +17429,7 @@ export default function Home() {
                     type="button"
                     onClick={stopAiBusinessVoice}
                     disabled={!isAiBusinessSpeaking}
-                    className="rounded border border-red-400 bg-white px-3 py-2 text-xs text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                    className="rounded border border-destructive/40 bg-card px-3 py-2 text-xs text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                   >
                     Stop Voice
                   </button>
@@ -17437,12 +17437,12 @@ export default function Home() {
                     type="button"
                     onClick={() => speakAiBusinessAnswer(aiBusinessQueryResult?.answer)}
                     disabled={!aiBusinessQueryResult?.answer}
-                    className="rounded border border-sky-500 bg-white px-3 py-2 text-xs text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                    className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-muted disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                   >
                     Replay Last Answer
                   </button>
                 </div>
-                <label className="mt-3 flex items-center gap-2 text-xs text-sky-950">
+                <label className="mt-3 flex items-center gap-2 text-xs text-primary/90">
                   <input
                     type="checkbox"
                     checked={autoReadAiBusinessAnswer}
@@ -17451,12 +17451,12 @@ export default function Home() {
                   Auto-read AI answer
                 </label>
                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  <label className="flex flex-col gap-1 text-xs text-sky-950 sm:col-span-3">
+                  <label className="flex flex-col gap-1 text-xs text-primary/90 sm:col-span-3">
                     <span>Voice</span>
                     <select
                       value={selectedAiBusinessVoiceName}
                       onChange={(event) => setSelectedAiBusinessVoiceName(event.target.value)}
-                      className="rounded border border-sky-200 px-2 py-2 text-xs"
+                      className="rounded border border-primary/20 px-2 py-2 text-xs"
                     >
                       <option value="">Auto voice</option>
                       {availableSpeechVoices.map((voice) => (
@@ -17466,24 +17466,24 @@ export default function Home() {
                       ))}
                     </select>
                   </label>
-                  <label className="flex flex-col gap-1 text-xs text-sky-950">
+                  <label className="flex flex-col gap-1 text-xs text-primary/90">
                     <span>Rate</span>
                     <select
                       value={aiBusinessVoiceRate}
                       onChange={(event) => setAiBusinessVoiceRate(event.target.value)}
-                      className="rounded border border-sky-200 px-2 py-2 text-xs"
+                      className="rounded border border-primary/20 px-2 py-2 text-xs"
                     >
                       <option value="0.8">0.8</option>
                       <option value="1.0">1.0</option>
                       <option value="1.2">1.2</option>
                     </select>
                   </label>
-                  <label className="flex flex-col gap-1 text-xs text-sky-950">
+                  <label className="flex flex-col gap-1 text-xs text-primary/90">
                     <span>Pitch</span>
                     <select
                       value={aiBusinessVoicePitch}
                       onChange={(event) => setAiBusinessVoicePitch(event.target.value)}
-                      className="rounded border border-sky-200 px-2 py-2 text-xs"
+                      className="rounded border border-primary/20 px-2 py-2 text-xs"
                     >
                       <option value="0.9">0.9</option>
                       <option value="1.0">1.0</option>
@@ -17491,52 +17491,52 @@ export default function Home() {
                     </select>
                   </label>
                 </div>
-                {aiBusinessVoiceMessage && <p className="mt-2 text-xs text-sky-900">{aiBusinessVoiceMessage}</p>}
-                {aiBusinessVoiceError && <p className="mt-2 text-xs text-red-700">{aiBusinessVoiceError}</p>}
+                {aiBusinessVoiceMessage && <p className="mt-2 text-xs text-primary">{aiBusinessVoiceMessage}</p>}
+                {aiBusinessVoiceError && <p className="mt-2 text-xs text-destructive">{aiBusinessVoiceError}</p>}
               </div>
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+          <div className="mt-5 rounded border border-border bg-card p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">Recent Query History</h3>
-                <p className="mt-1 text-sm text-gray-600">Recent answered and failed read-only AI business questions.</p>
+                <h3 className="text-lg font-medium text-foreground">Recent Query History</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Recent answered and failed read-only AI business questions.</p>
               </div>
-              <div className="text-sm text-gray-500">{aiBusinessQueryLogs.length} logs</div>
+              <div className="text-sm text-muted-foreground/80">{aiBusinessQueryLogs.length} logs</div>
             </div>
             <div className="mt-4 space-y-3">
               {aiBusinessQueryLogs.length === 0 ? (
-                <p className="rounded border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+                <p className="rounded border border-border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
                   No AI business query logs yet.
                 </p>
               ) : (
                 aiBusinessQueryLogs.map((log) => (
-                  <div key={log.id} className="rounded border border-gray-200 bg-gray-50 p-4">
+                  <div key={log.id} className="rounded border border-border bg-muted/30 p-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <div className="flex flex-wrap gap-2">
-                          <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">{log.status}</span>
-                          <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">{log.query_type ?? "general"}</span>
-                          <span className="rounded bg-white px-2 py-1 text-xs font-medium text-gray-700">{log.language ?? "auto"}</span>
+                          <span className="rounded bg-foreground px-2 py-1 text-xs font-medium text-white">{log.status}</span>
+                          <span className="rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">{log.query_type ?? "general"}</span>
+                          <span className="rounded bg-card px-2 py-1 text-xs font-medium text-foreground/80">{log.language ?? "auto"}</span>
                         </div>
-                        <h4 className="mt-2 text-sm font-semibold text-gray-900">{log.question}</h4>
-                        <div className="mt-1 text-xs text-gray-600">
+                        <h4 className="mt-2 text-sm font-semibold text-foreground">{log.question}</h4>
+                        <div className="mt-1 text-xs text-muted-foreground">
                           {formatDate(log.date_range_start)} - {formatDate(log.date_range_end)} - {formatDateTime(log.created_at)}
                         </div>
                         {log.answer && (
-                          <p className="mt-2 text-sm text-gray-700">
+                          <p className="mt-2 text-sm text-foreground/80">
                             {log.answer.length > 280 ? `${log.answer.slice(0, 280)}...` : log.answer}
                           </p>
                         )}
-                        {log.error_message && <p className="mt-2 text-sm text-red-700">{log.error_message}</p>}
+                        {log.error_message && <p className="mt-2 text-sm text-destructive">{log.error_message}</p>}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {log.answer && (
                           <button
                             type="button"
                             onClick={() => speakAiBusinessAnswer(log.answer)}
-                            className="rounded border border-sky-500 bg-white px-3 py-2 text-xs text-sky-700 hover:bg-sky-50"
+                            className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-muted"
                           >
                             Read Answer
                           </button>
@@ -17544,14 +17544,14 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => reuseAiBusinessQuestion(log.question, true)}
-                          className="rounded border border-blue-500 bg-white px-3 py-2 text-xs text-blue-700 hover:bg-blue-50"
+                          className="rounded border border-ring bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5"
                         >
                           Re-ask
                         </button>
                         <button
                           type="button"
                           onClick={() => reuseAiBusinessQuestion(log.question)}
-                          className="rounded border border-gray-300 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+                          className="rounded border border-border bg-card px-3 py-2 text-xs text-foreground/80 hover:bg-muted/30"
                         >
                           Use Question
                         </button>
@@ -17566,41 +17566,41 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "ai-assistant" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">AI Action Assistant</h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <h2 className="text-xl font-medium text-foreground">AI Action Assistant</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
                 This is a safe action-draft assistant. It prepares actions for owner review before saving.
               </p>
             </div>
             <button
               type="button"
               onClick={() => fetchAiActionDrafts(currentOrganizationId)}
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
             >
               Refresh Drafts
             </button>
           </div>
 
-          <div className="mb-5 rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <div className="mb-5 rounded border border-primary/20 bg-primary/5 p-4 text-sm text-primary">
             No external AI API is connected in this phase. Commands are parsed locally into safe review drafts.
             Staff access to AI Assistant can be enabled later by owner.
           </div>
 
           {aiAssistantMessage && (
-            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p className="mb-4 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">
               {aiAssistantMessage}
             </p>
           )}
           {aiAssistantError && (
-            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            <p className="mb-4 whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">
               {aiAssistantError}
             </p>
           )}
 
-          <div className="rounded border border-gray-200 bg-white p-4">
-            <label className="block text-sm font-medium text-gray-700" htmlFor="ai-command-text">
+          <div className="rounded border border-border bg-card p-4">
+            <label className="block text-sm font-medium text-foreground/80" htmlFor="ai-command-text">
               Business Command
             </label>
             <textarea
@@ -17608,16 +17608,16 @@ export default function Home() {
               value={aiCommandText}
               onChange={(e) => setAiCommandText(e.target.value)}
               rows={4}
-              className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              className="mt-2 w-full rounded border border-border px-3 py-2 text-sm"
               placeholder="Type a command like: Add task: Call supplier tomorrow about Pepsi rates."
             />
-            <div className="mt-3 rounded border border-sky-200 bg-sky-50 p-3">
+            <div className="mt-3 rounded border border-primary/20 bg-muted p-3">
               <div className="flex flex-wrap gap-2">
                 {!isVoiceListening ? (
                   <button
                     type="button"
                     onClick={startVoiceInput}
-                    className="rounded bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700"
+                    className="rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary"
                   >
                     Start Voice Input
                   </button>
@@ -17625,7 +17625,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={stopVoiceInput}
-                    className="rounded bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700"
+                    className="rounded bg-destructive px-3 py-2 text-sm text-white hover:bg-destructive/90"
                   >
                     Stop Listening
                   </button>
@@ -17633,24 +17633,24 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={clearVoiceCommand}
-                  className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                 >
                   Clear Command
                 </button>
               </div>
               {typeof window !== "undefined" && !getSpeechRecognitionConstructor() && (
-                <p className="mt-3 text-sm text-amber-800">
+                <p className="mt-3 text-sm text-warning">
                   Browser speech recognition is not available here. You can still type commands manually.
                 </p>
               )}
-              {voiceInputMessage && <p className="mt-3 text-sm text-sky-900">{voiceInputMessage}</p>}
-              {voiceInputError && <p className="mt-3 text-sm text-red-700">{voiceInputError}</p>}
+              {voiceInputMessage && <p className="mt-3 text-sm text-primary">{voiceInputMessage}</p>}
+              {voiceInputError && <p className="mt-3 text-sm text-destructive">{voiceInputError}</p>}
               {voiceTranscriptPreview && (
-                <div className="mt-3 rounded border border-sky-200 bg-white px-3 py-2 text-sm text-sky-950">
+                <div className="mt-3 rounded border border-primary/20 bg-card px-3 py-2 text-sm text-primary/90">
                   <span className="font-medium">Transcript preview:</span> {voiceTranscriptPreview}
                 </div>
               )}
-              <p className="mt-3 text-xs text-sky-900">
+              <p className="mt-3 text-xs text-primary">
                 Voice input converts speech to text only. You must still review and confirm before TradeOS saves any record.
               </p>
             </div>
@@ -17660,7 +17660,7 @@ export default function Home() {
                   key={example}
                   type="button"
                   onClick={() => setAiCommandText(example)}
-                  className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-800 hover:bg-blue-100"
+                  className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs text-primary hover:bg-primary/10"
                 >
                   {example}
                 </button>
@@ -17669,68 +17669,68 @@ export default function Home() {
             <button
               type="button"
               onClick={createAiActionDraft}
-              className="mt-4 rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+              className="mt-4 rounded bg-primary px-4 py-2 text-sm text-white hover:bg-primary/90"
             >
               Create Draft Action
             </button>
           </div>
 
-          <div className="mt-5 rounded border border-indigo-200 bg-white p-4">
+          <div className="mt-5 rounded border border-primary/20 bg-card p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">Conversation Panel</h3>
-                <p className="mt-1 text-sm text-gray-600">
+                <h3 className="text-lg font-medium text-foreground">Conversation Panel</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Continue a draft one question at a time. Voice answers become text first and never execute automatically.
                 </p>
               </div>
               {selectedConversationDraft && (
-                <span className="rounded bg-indigo-100 px-2 py-1 text-xs font-medium text-indigo-800">
+                <span className="rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
                   {selectedConversationDraft.action_type}
                 </span>
               )}
             </div>
 
             {!selectedConversationDraft ? (
-              <p className="mt-4 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+              <p className="mt-4 rounded border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                 Select Continue Conversation on a draft to start.
               </p>
             ) : (
               <div className="mt-4 space-y-4">
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Draft summary</div>
-                  <p className="mt-1 text-sm font-medium text-gray-900">{selectedConversationDraft.command_text}</p>
-                  <p className="mt-1 text-sm text-gray-700">{selectedConversationDraft.confirmation_summary}</p>
+                <div className="rounded border border-border bg-muted/30 p-3">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Draft summary</div>
+                  <p className="mt-1 text-sm font-medium text-foreground">{selectedConversationDraft.command_text}</p>
+                  <p className="mt-1 text-sm text-foreground/80">{selectedConversationDraft.confirmation_summary}</p>
                   {selectedConversationMissingFields.length > 0 && (
-                    <p className="mt-2 text-xs text-amber-800">
+                    <p className="mt-2 text-xs text-warning">
                       Missing: {selectedConversationMissingFields.join(", ")}
                     </p>
                   )}
                 </div>
 
                 {aiConversationMessage && (
-                  <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                  <p className="rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">
                     {aiConversationMessage}
                   </p>
                 )}
                 {aiConversationError && (
-                  <p className="whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  <p className="whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">
                     {aiConversationError}
                   </p>
                 )}
 
-                <div className="max-h-80 space-y-2 overflow-y-auto rounded border border-gray-200 bg-gray-50 p-3">
+                <div className="max-h-80 space-y-2 overflow-y-auto rounded border border-border bg-muted/30 p-3">
                   {aiConversationMessages.length === 0 ? (
-                    <p className="text-sm text-gray-600">No conversation messages yet.</p>
+                    <p className="text-sm text-muted-foreground">No conversation messages yet.</p>
                   ) : (
                     aiConversationMessages.map((message) => (
                       <div
                         key={message.id}
                         className={`rounded px-3 py-2 text-sm ${
                           message.role === "owner"
-                            ? "ml-auto bg-blue-600 text-white"
+                            ? "ml-auto bg-primary text-white"
                             : message.role === "assistant"
-                              ? "mr-auto bg-white text-gray-900"
-                              : "mx-auto bg-gray-200 text-gray-700"
+                              ? "mr-auto bg-card text-foreground"
+                              : "mx-auto bg-muted text-foreground/80"
                         } max-w-[92%]`}
                       >
                         <div className="text-[11px] opacity-75">
@@ -17744,11 +17744,11 @@ export default function Home() {
                 </div>
 
                 {selectedConversationReady && (
-                  <div className="rounded border border-green-200 bg-green-50 p-3">
-                    <div className="text-sm font-medium text-green-950">Final Confirmation</div>
-                    <p className="mt-1 text-sm text-green-900">{selectedConversationEvaluation?.confirmationSummary}</p>
+                  <div className="rounded border border-success/20 bg-success/5 p-3">
+                    <div className="text-sm font-medium text-success/80">Final Confirmation</div>
+                    <p className="mt-1 text-sm text-success/90">{selectedConversationEvaluation?.confirmationSummary}</p>
                     {selectedConversationEvaluation?.executionPreview && (
-                      <div className="mt-2 grid gap-2 text-xs text-green-900 sm:grid-cols-2">
+                      <div className="mt-2 grid gap-2 text-xs text-success/90 sm:grid-cols-2">
                         {Object.entries(selectedConversationEvaluation.executionPreview).map(([key, value]) => {
                           if (value === null || value === undefined || value === "") return null;
                           const displayValue =
@@ -17756,7 +17756,7 @@ export default function Home() {
                               ? formatPKR(value)
                               : String(value);
                           return (
-                            <div key={key} className="rounded border border-green-200 bg-white px-2 py-1">
+                            <div key={key} className="rounded border border-success/20 bg-card px-2 py-1">
                               <span className="font-medium">{key.replace(/_/g, " ")}:</span> {displayValue}
                             </div>
                           );
@@ -17768,7 +17768,7 @@ export default function Home() {
                         type="button"
                         onClick={() => executeAiActionDraft(selectedConversationDraft)}
                         disabled={selectedConversationDraft.status === "executed" || selectedConversationDraft.status === "cancelled"}
-                        className="rounded bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                        className="rounded bg-success px-3 py-2 text-sm text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-muted"
                       >
                         Execute Now
                       </button>
@@ -17776,7 +17776,7 @@ export default function Home() {
                         type="button"
                         onClick={() => updateAiDraftStatus(selectedConversationDraft, "cancelled")}
                         disabled={selectedConversationDraft.status === "executed" || selectedConversationDraft.status === "cancelled"}
-                        className="rounded border border-red-500 bg-white px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                        className="rounded border border-destructive bg-card px-3 py-2 text-sm text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                       >
                         Cancel Draft
                       </button>
@@ -17784,8 +17784,8 @@ export default function Home() {
                   </div>
                 )}
 
-                <div className="rounded border border-indigo-200 bg-indigo-50 p-3">
-                  <label className="block text-sm font-medium text-indigo-950" htmlFor="ai-conversation-answer">
+                <div className="rounded border border-primary/20 bg-primary/5 p-3">
+                  <label className="block text-sm font-medium text-primary/90" htmlFor="ai-conversation-answer">
                     Owner Answer
                   </label>
                   <textarea
@@ -17793,7 +17793,7 @@ export default function Home() {
                     value={aiConversationInput}
                     onChange={(e) => setAiConversationInput(e.target.value)}
                     rows={3}
-                    className="mt-2 w-full rounded border border-indigo-200 px-3 py-2 text-sm"
+                    className="mt-2 w-full rounded border border-primary/20 px-3 py-2 text-sm"
                     placeholder={
                       selectedConversationReady
                         ? "Type yes, confirm, proceed, or no/cancel."
@@ -17807,7 +17807,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={startVoiceAnswerInput}
-                        className="rounded bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700"
+                        className="rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90"
                       >
                         Start Voice Answer
                       </button>
@@ -17815,7 +17815,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={stopVoiceAnswerInput}
-                        className="rounded bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700"
+                        className="rounded bg-destructive px-3 py-2 text-sm text-white hover:bg-destructive/90"
                       >
                         Stop Listening
                       </button>
@@ -17823,40 +17823,40 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={clearVoiceAnswerInput}
-                      className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                     >
                       Clear Answer
                     </button>
                     <button
                       type="button"
                       onClick={sendAiConversationAnswer}
-                      className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                      className="rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90"
                     >
                       Send Answer
                     </button>
                   </div>
-                  {voiceAnswerMessage && <p className="mt-2 text-sm text-indigo-900">{voiceAnswerMessage}</p>}
-                  {voiceAnswerError && <p className="mt-2 text-sm text-red-700">{voiceAnswerError}</p>}
+                  {voiceAnswerMessage && <p className="mt-2 text-sm text-primary">{voiceAnswerMessage}</p>}
+                  {voiceAnswerError && <p className="mt-2 text-sm text-destructive">{voiceAnswerError}</p>}
                 </div>
               </div>
             )}
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+          <div className="mt-5 rounded border border-border bg-card p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">Recent Drafts</h3>
-                <p className="mt-1 text-sm text-gray-600">
+                <h3 className="text-lg font-medium text-foreground">Recent Drafts</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Showing {filteredAiActionDrafts.length} of {aiActionDrafts.length} draft actions.
                 </p>
               </div>
               <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[560px]">
-                <label className="flex flex-col gap-1 text-xs text-gray-700">
+                <label className="flex flex-col gap-1 text-xs text-foreground/80">
                   <span>Status</span>
                   <select
                     value={aiDraftStatusFilter}
                     onChange={(e) => setAiDraftStatusFilter(e.target.value)}
-                    className="rounded border border-gray-300 px-2 py-2"
+                    className="rounded border border-border px-2 py-2"
                   >
                     <option value="all">All</option>
                     <option value="draft">Draft</option>
@@ -17867,12 +17867,12 @@ export default function Home() {
                     <option value="cancelled">Cancelled</option>
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-xs text-gray-700">
+                <label className="flex flex-col gap-1 text-xs text-foreground/80">
                   <span>Action type</span>
                   <select
                     value={aiDraftActionTypeFilter}
                     onChange={(e) => setAiDraftActionTypeFilter(e.target.value)}
-                    className="rounded border border-gray-300 px-2 py-2"
+                    className="rounded border border-border px-2 py-2"
                   >
                     <option value="all">All action types</option>
                     <option value="task">Task</option>
@@ -17882,22 +17882,22 @@ export default function Home() {
                     <option value="unknown">Unknown</option>
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-xs text-gray-700">
+                <label className="flex flex-col gap-1 text-xs text-foreground/80">
                   <span>Search</span>
                   <input
                     type="search"
                     value={aiDraftSearch}
                     onChange={(e) => setAiDraftSearch(e.target.value)}
                     placeholder="Search drafts"
-                    className="rounded border border-gray-300 px-2 py-2"
+                    className="rounded border border-border px-2 py-2"
                   />
                 </label>
               </div>
             </div>
             {aiActionDrafts.length === 0 ? (
-              <p className="mt-3 text-sm text-gray-600">No AI action drafts yet.</p>
+              <p className="mt-3 text-sm text-muted-foreground">No AI action drafts yet.</p>
             ) : filteredAiActionDrafts.length === 0 ? (
-              <p className="mt-3 text-sm text-gray-600">No drafts match the selected filters.</p>
+              <p className="mt-3 text-sm text-muted-foreground">No drafts match the selected filters.</p>
             ) : (
               <div className="mt-3 space-y-3">
                 {filteredAiActionDrafts.map((draft) => {
@@ -17960,48 +17960,48 @@ export default function Home() {
                   return (
                     <div
                       key={draft.id}
-                      className={`rounded border p-4 ${isSelectedDraft ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-gray-50"}`}
+                      className={`rounded border p-4 ${isSelectedDraft ? "border-primary/30 bg-primary/5" : "border-border bg-muted/30"}`}
                     >
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white">
+                            <span className="rounded bg-foreground px-2 py-1 text-xs font-medium text-white">
                               {draft.action_type}
                             </span>
                             <span className={`rounded px-2 py-1 text-xs font-medium ${
                               draft.status === "executed"
-                                ? "bg-green-100 text-green-800"
+                                ? "bg-success/10 text-success"
                                 : draft.status === "cancelled" || draft.status === "failed"
-                                  ? "bg-red-100 text-red-800"
+                                  ? "bg-destructive/10 text-destructive/90"
                                   : draft.status === "needs_info"
-                                    ? "bg-amber-100 text-amber-800"
-                                    : "bg-blue-100 text-blue-800"
+                                    ? "bg-warning/10 text-warning"
+                                    : "bg-primary/10 text-primary"
                             }`}>
                               {draft.status}
                             </span>
                             <span className={`rounded px-2 py-1 text-xs font-medium ${
-                              readyToExecute ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"
+                              readyToExecute ? "bg-success/10 text-success" : "bg-muted text-foreground/80"
                             }`}>
                               {readyToExecute ? "Ready to execute" : "Not ready"}
                             </span>
                           </div>
-                          <p className="mt-2 text-sm font-medium text-gray-900">{draft.command_text}</p>
-                          <p className="mt-1 text-sm text-gray-700">{draft.confirmation_summary}</p>
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
+                          <p className="mt-2 text-sm font-medium text-foreground">{draft.command_text}</p>
+                          <p className="mt-1 text-sm text-foreground/80">{draft.confirmation_summary}</p>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                             <span>Created: {formatDateTime(draft.created_at)}</span>
                             {relatedCustomer && <span>Customer: {relatedCustomer.customer_name}</span>}
                             {relatedSupplier && <span>Supplier: {relatedSupplier.supplier_name}</span>}
                             {relatedProduct && <span>Product: {relatedProduct.name}</span>}
                           </div>
                           {missingFields.length > 0 && (
-                            <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            <div className="mt-2 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning/90">
                               Missing fields: {missingFields.join(", ")}
                             </div>
                           )}
                           {executionPreview && (
-                            <div className="mt-3 rounded border border-gray-200 bg-white p-3">
-                              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Execution Preview</div>
-                              <div className="mt-2 grid gap-2 text-xs text-gray-700 sm:grid-cols-2">
+                            <div className="mt-3 rounded border border-border bg-card p-3">
+                              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/80">Execution Preview</div>
+                              <div className="mt-2 grid gap-2 text-xs text-foreground/80 sm:grid-cols-2">
                                 {Object.entries(executionPreview).map(([key, value]) => {
                                   if (value === null || value === undefined || value === "") return null;
                                   const displayValue =
@@ -18011,7 +18011,7 @@ export default function Home() {
                                       ? formatPKR(value)
                                       : String(value);
                                   return (
-                                    <div key={key} className="rounded border border-gray-100 bg-gray-50 px-2 py-1">
+                                    <div key={key} className="rounded border border-muted bg-muted/30 px-2 py-1">
                                       <span className="font-medium">{key.replace(/_/g, " ")}:</span> {displayValue}
                                     </div>
                                   );
@@ -18020,9 +18020,9 @@ export default function Home() {
                             </div>
                           )}
                           {displayedFollowUpQuestions.length > 0 && draft.status !== "executed" && draft.status !== "cancelled" && (
-                            <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3">
-                              <div className="text-sm font-medium text-blue-950">Manual draft fields</div>
-                              <p className="mt-1 text-xs text-blue-900">
+                            <div className="mt-3 rounded border border-primary/20 bg-primary/5 p-3">
+                              <div className="text-sm font-medium text-primary/90">Manual draft fields</div>
+                              <p className="mt-1 text-xs text-primary">
                                 Backup form for directly editing draft fields if conversation is not enough.
                               </p>
                               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -18041,9 +18041,9 @@ export default function Home() {
 
                                   if (question.field === "supplier_id") {
                                     return (
-                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-primary/90">
                                         <span>{question.question}</span>
-                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-primary/20 px-2 py-2">
                                           <option value="">Select supplier</option>
                                           {suppliers.map((supplier) => (
                                             <option key={supplier.id} value={supplier.id}>{supplier.supplier_name}</option>
@@ -18054,9 +18054,9 @@ export default function Home() {
                                   }
                                   if (question.field === "customer_id") {
                                     return (
-                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-primary/90">
                                         <span>{question.question}</span>
-                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-primary/20 px-2 py-2">
                                           <option value="">Select customer</option>
                                           {customers.map((customer) => (
                                             <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
@@ -18067,9 +18067,9 @@ export default function Home() {
                                   }
                                   if (question.field === "product_id") {
                                     return (
-                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-primary/90">
                                         <span>{question.question}</span>
-                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-primary/20 px-2 py-2">
                                           <option value="">Select product</option>
                                           {products.map((product) => (
                                             <option key={product.id} value={product.id}>{product.name}</option>
@@ -18080,9 +18080,9 @@ export default function Home() {
                                   }
                                   if (question.field === "payment_type") {
                                     return (
-                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-primary/90">
                                         <span>{question.question}</span>
-                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-primary/20 px-2 py-2">
                                           <option value="">Select payment type</option>
                                           <option value="cash">Cash</option>
                                           <option value="credit">Credit</option>
@@ -18092,9 +18092,9 @@ export default function Home() {
                                   }
                                   if (question.field === "expense_type") {
                                     return (
-                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-primary/90">
                                         <span>{question.question}</span>
-                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-primary/20 px-2 py-2">
                                           <option value="">Select expense type</option>
                                           {expenseTypes.map((type) => (
                                             <option key={type} value={type}>{type}</option>
@@ -18105,9 +18105,9 @@ export default function Home() {
                                   }
                                   if (question.field === "purchase_transaction_id") {
                                     return (
-                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-primary/90">
                                         <span>{question.question}</span>
-                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-primary/20 px-2 py-2">
                                           <option value="">Select purchase invoice</option>
                                           {purchaseTransactions.map((transaction) => (
                                             <option key={transaction.id} value={transaction.id}>
@@ -18120,9 +18120,9 @@ export default function Home() {
                                   }
                                   if (question.field === "sales_transaction_id") {
                                     return (
-                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                      <label key={question.field} className="flex flex-col gap-1 text-xs text-primary/90">
                                         <span>{question.question}</span>
-                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-blue-200 px-2 py-2">
+                                        <select value={currentAnswer} onChange={(e) => updateAnswer(e.target.value)} className="rounded border border-primary/20 px-2 py-2">
                                           <option value="">Select sales invoice</option>
                                           {salesTransactions.map((transaction) => (
                                             <option key={transaction.id} value={transaction.id}>
@@ -18134,7 +18134,7 @@ export default function Home() {
                                     );
                                   }
                                   return (
-                                    <label key={question.field} className="flex flex-col gap-1 text-xs text-blue-950">
+                                    <label key={question.field} className="flex flex-col gap-1 text-xs text-primary/90">
                                       <span>{question.question}</span>
                                       <input
                                         type={question.input_type === "number" ? "number" : "text"}
@@ -18142,7 +18142,7 @@ export default function Home() {
                                         step={question.input_type === "number" ? "0.01" : undefined}
                                         value={currentAnswer}
                                         onChange={(e) => updateAnswer(e.target.value)}
-                                        className="rounded border border-blue-200 px-2 py-2"
+                                        className="rounded border border-primary/20 px-2 py-2"
                                       />
                                     </label>
                                   );
@@ -18154,26 +18154,26 @@ export default function Home() {
                                   setSelectedAiDraftId(draft.id);
                                   saveAiDraftAnswers(draft);
                                 }}
-                                className="mt-3 rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700"
+                                className="mt-3 rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                               >
                                 Save Answers
                               </button>
                             </div>
                           )}
                           {readyToExecute && draft.status !== "executed" && draft.status !== "cancelled" && (
-                            <div className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
+                            <div className="mt-3 rounded border border-success/20 bg-success/5 px-3 py-2 text-xs text-success/90">
                               You are about to create a real {executionRecordName} record. Please confirm details before executing.
                             </div>
                           )}
                           {draft.status === "executed" && (
-                            <div className="mt-3 flex flex-wrap items-center gap-2 rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
+                            <div className="mt-3 flex flex-wrap items-center gap-2 rounded border border-success/20 bg-success/5 px-3 py-2 text-xs text-success/90">
                               {draft.executed_entity_type === "task" && (
                                 <>
                                   <span>Created Task{executedTask?.title ? `: ${executedTask.title}` : ""}</span>
                                   <button
                                     type="button"
                                     onClick={() => handleSectionChange("task-manager")}
-                                    className="rounded border border-green-300 bg-white px-2 py-1 text-green-800 hover:bg-green-100"
+                                    className="rounded border border-success/30 bg-card px-2 py-1 text-success hover:bg-success/10"
                                   >
                                     Open Tasks
                                   </button>
@@ -18185,7 +18185,7 @@ export default function Home() {
                                   <button
                                     type="button"
                                     onClick={() => handleSectionChange("purchases")}
-                                    className="rounded border border-green-300 bg-white px-2 py-1 text-green-800 hover:bg-green-100"
+                                    className="rounded border border-success/30 bg-card px-2 py-1 text-success hover:bg-success/10"
                                   >
                                     Open Purchases
                                   </button>
@@ -18197,7 +18197,7 @@ export default function Home() {
                                   <button
                                     type="button"
                                     onClick={() => handleSectionChange("sales")}
-                                    className="rounded border border-green-300 bg-white px-2 py-1 text-green-800 hover:bg-green-100"
+                                    className="rounded border border-success/30 bg-card px-2 py-1 text-success hover:bg-success/10"
                                   >
                                     Open Sales
                                   </button>
@@ -18209,7 +18209,7 @@ export default function Home() {
                                   <button
                                     type="button"
                                     onClick={() => handleSectionChange("expenses")}
-                                    className="rounded border border-green-300 bg-white px-2 py-1 text-green-800 hover:bg-green-100"
+                                    className="rounded border border-success/30 bg-card px-2 py-1 text-success hover:bg-success/10"
                                   >
                                     Open Expenses
                                   </button>
@@ -18218,7 +18218,7 @@ export default function Home() {
                             </div>
                           )}
                           {draft.error_message && (
-                            <div className="mt-2 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                            <div className="mt-2 whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive/90">
                               {draft.error_message}
                             </div>
                           )}
@@ -18227,7 +18227,7 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={() => continueAiConversation(draft)}
-                            className="rounded border border-indigo-500 bg-white px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50"
+                            className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5"
                           >
                             Continue Conversation
                           </button>
@@ -18238,7 +18238,7 @@ export default function Home() {
                               updateAiDraftStatus(draft, "needs_info");
                             }}
                             disabled={draft.status === "executed" || draft.status === "cancelled"}
-                            className="rounded border border-amber-500 bg-white px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                            className="rounded border border-warning bg-card px-3 py-2 text-xs text-warning hover:bg-warning/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
                             Mark Needs Info
                           </button>
@@ -18249,7 +18249,7 @@ export default function Home() {
                               updateAiDraftStatus(draft, "cancelled");
                             }}
                             disabled={draft.status === "executed" || draft.status === "cancelled"}
-                            className="rounded border border-red-500 bg-white px-3 py-2 text-xs text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                            className="rounded border border-destructive bg-card px-3 py-2 text-xs text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
                             Cancel Draft
                           </button>
@@ -18266,7 +18266,7 @@ export default function Home() {
                               !readyToExecute ||
                               missingFields.length > 0
                             }
-                            className="rounded bg-blue-600 px-3 py-2 text-xs text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                            className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted"
                           >
                             {executeLabel}
                           </button>
@@ -18279,14 +18279,14 @@ export default function Home() {
             )}
           </div>
 
-          <div className="mt-5 rounded border border-purple-200 bg-purple-50 p-4">
-            <h3 className="text-lg font-medium text-purple-950">Future AI Assistant Roadmap</h3>
-            <p className="mt-1 text-sm text-purple-900">
+          <div className="mt-5 rounded border border-primary/20 bg-primary/5 p-4">
+            <h3 className="text-lg font-medium text-primary/90">Future AI Assistant Roadmap</h3>
+            <p className="mt-1 text-sm text-primary">
               These capabilities are planned for later and are not active in this foundation phase.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {aiAssistantRoadmapItems.map((item) => (
-                <div key={item} className="rounded border border-purple-200 bg-white px-3 py-2 text-sm text-purple-900">
+                <div key={item} className="rounded border border-primary/20 bg-card px-3 py-2 text-sm text-primary">
                   {item}
                 </div>
               ))}
@@ -18296,11 +18296,11 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "staff-duty" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">Staff Duty</h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <h2 className="text-xl font-medium text-foreground">Staff Duty</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
                 Start duty, save browser location points, and monitor staff location while TradeOS is open.
               </p>
             </div>
@@ -18310,34 +18310,34 @@ export default function Home() {
                 fetchDutySessions(currentOrganizationId, currentProfile?.id);
                 fetchLocationPoints(currentOrganizationId);
               }}
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
             >
               Refresh Duty Data
             </button>
           </div>
 
-          <div className="mb-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="mb-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
             Location tracking works while the app is open/active. True background tracking may require a native mobile app later.
           </div>
 
           {locationTrackingMessage && (
-            <p className="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p className="mb-4 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">
               {locationTrackingMessage}
             </p>
           )}
           {locationTrackingError && (
-            <p className="mb-4 whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            <p className="mb-4 whitespace-pre-wrap rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive/90">
               {locationTrackingError}
             </p>
           )}
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">Current Duty Status</div>
-              <div className={`mt-2 text-2xl font-semibold ${activeDutySession ? "text-green-700" : "text-gray-900"}`}>
+            <div className="rounded border border-border bg-card p-4">
+              <div className="text-sm text-muted-foreground/80">Current Duty Status</div>
+              <div className={`mt-2 text-2xl font-semibold ${activeDutySession ? "text-success" : "text-foreground"}`}>
                 {activeDutySession ? "On Duty" : "Off Duty"}
               </div>
-              <p className="mt-2 text-sm text-gray-600">
+              <p className="mt-2 text-sm text-muted-foreground">
                 {isTrackingLocation ? "Live tracking is active." : "Live tracking is not active."}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -18345,7 +18345,7 @@ export default function Home() {
                   type="button"
                   onClick={handleStartDuty}
                   disabled={Boolean(activeDutySession)}
-                  className="rounded bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                  className="rounded bg-success px-4 py-2 text-sm text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-muted"
                 >
                   Start Duty
                 </button>
@@ -18353,46 +18353,46 @@ export default function Home() {
                   type="button"
                   onClick={handleEndDuty}
                   disabled={!activeDutySession}
-                  className="rounded bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                  className="rounded bg-destructive px-4 py-2 text-sm text-white hover:bg-destructive/90 disabled:cursor-not-allowed disabled:bg-muted"
                 >
                   End Duty
                 </button>
               </div>
             </div>
 
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">Last Location Update</div>
-              <div className="mt-2 text-lg font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4">
+              <div className="text-sm text-muted-foreground/80">Last Location Update</div>
+              <div className="mt-2 text-lg font-semibold text-foreground">
                 {latestOwnLocation ? formatDateTime(latestOwnLocation.captured_at) : "No location yet"}
               </div>
-              <div className="mt-3 space-y-1 text-sm text-gray-700">
+              <div className="mt-3 space-y-1 text-sm text-foreground/80">
                 <div>Latitude: {latestOwnLocation ? formatCoordinate(latestOwnLocation.latitude) : "-"}</div>
                 <div>Longitude: {latestOwnLocation ? formatCoordinate(latestOwnLocation.longitude) : "-"}</div>
                 <div>Accuracy: {latestOwnLocation?.accuracy ? `${Math.round(latestOwnLocation.accuracy)} m` : "-"}</div>
               </div>
             </div>
 
-            <div className="rounded border border-blue-200 bg-blue-50 p-4">
-              <div className="text-sm font-medium text-blue-950">Browser Permission</div>
-              <p className="mt-2 text-sm text-blue-900">
+            <div className="rounded border border-primary/20 bg-primary/5 p-4">
+              <div className="text-sm font-medium text-primary/90">Browser Permission</div>
+              <p className="mt-2 text-sm text-primary">
                 Your browser will ask for location permission when duty starts. Allow location access and keep TradeOS open for live updates.
               </p>
             </div>
           </div>
 
           {isOwnerOrAdmin() && (
-            <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+            <div className="mt-6 rounded border border-border bg-card p-4">
               <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900">Owner Staff Location Monitor</h3>
-                  <p className="mt-1 text-sm text-gray-600">Monitor staff duty sessions and recent location history.</p>
+                  <h3 className="text-lg font-medium text-foreground">Owner Staff Location Monitor</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Monitor staff duty sessions and recent location history.</p>
                 </div>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Select Staff</span>
                   <select
                     value={selectedStaffForLocation}
                     onChange={(e) => setSelectedStaffForLocation(e.target.value)}
-                    className="rounded border border-gray-300 px-3 py-2"
+                    className="rounded border border-border px-3 py-2"
                   >
                     <option value="">Current user</option>
                     {staffProfiles.map((profile) => (
@@ -18405,17 +18405,17 @@ export default function Home() {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <div className="text-sm text-gray-500">On-duty staff</div>
-                  <div className="mt-1 text-2xl font-semibold text-gray-900">{ownerOnDutyCount}</div>
+                <div className="rounded border border-border bg-muted/30 p-3">
+                  <div className="text-sm text-muted-foreground/80">On-duty staff</div>
+                  <div className="mt-1 text-2xl font-semibold text-foreground">{ownerOnDutyCount}</div>
                 </div>
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <div className="text-sm text-gray-500">Off-duty/recent sessions</div>
-                  <div className="mt-1 text-2xl font-semibold text-gray-900">{ownerRecentOffDutyCount}</div>
+                <div className="rounded border border-border bg-muted/30 p-3">
+                  <div className="text-sm text-muted-foreground/80">Off-duty/recent sessions</div>
+                  <div className="mt-1 text-2xl font-semibold text-foreground">{ownerRecentOffDutyCount}</div>
                 </div>
-                <div className="rounded border border-gray-200 bg-gray-50 p-3">
-                  <div className="text-sm text-gray-500">Last organization update</div>
-                  <div className="mt-1 text-sm font-semibold text-gray-900">
+                <div className="rounded border border-border bg-muted/30 p-3">
+                  <div className="text-sm text-muted-foreground/80">Last organization update</div>
+                  <div className="mt-1 text-sm font-semibold text-foreground">
                     {visibleLocationPoints[0] ? formatDateTime(visibleLocationPoints[0].captured_at) : "No points yet"}
                   </div>
                 </div>
@@ -18423,7 +18423,7 @@ export default function Home() {
 
               <div className="mt-5 overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                  <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
                       <th className="px-3 py-2">Staff</th>
                       <th className="px-3 py-2">Role</th>
@@ -18437,7 +18437,7 @@ export default function Home() {
                   <tbody className="divide-y divide-gray-200">
                     {staffProfiles.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-3 py-4 text-gray-600">No staff profiles loaded.</td>
+                        <td colSpan={7} className="px-3 py-4 text-muted-foreground">No staff profiles loaded.</td>
                       </tr>
                     ) : (
                       staffProfiles.map((profile) => {
@@ -18450,16 +18450,16 @@ export default function Home() {
                               <button
                                 type="button"
                                 onClick={() => setSelectedStaffForLocation(profile.id)}
-                                className="text-left font-medium text-blue-700 hover:underline"
+                                className="text-left font-medium text-primary hover:underline"
                               >
                                 {profile.display_name || profile.email || profile.id}
                               </button>
-                              <div className="text-xs text-gray-500">{profile.email ?? "No email"}</div>
+                              <div className="text-xs text-muted-foreground/80">{profile.email ?? "No email"}</div>
                             </td>
                             <td className="px-3 py-3">{profile.role ?? "owner"}</td>
                             <td className="px-3 py-3">
                               <span className={`rounded px-2 py-1 text-xs font-medium ${
-                                isOnDuty ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"
+                                isOnDuty ? "bg-success/10 text-success" : "bg-muted text-foreground/80"
                               }`}>
                                 {isOnDuty ? "On Duty" : "Off Duty"}
                               </span>
@@ -18478,13 +18478,13 @@ export default function Home() {
                 </table>
               </div>
 
-              <div className="mt-6 rounded border border-gray-200 bg-gray-50 p-4">
-                <h4 className="text-base font-medium text-gray-900">
+              <div className="mt-6 rounded border border-border bg-muted/30 p-4">
+                <h4 className="text-base font-medium text-foreground">
                   Recent Location History{selectedLocationProfile ? `: ${selectedLocationProfile.display_name || selectedLocationProfile.email || selectedLocationProfile.id}` : ""}
                 </h4>
                 <div className="mt-3 overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="bg-white text-left text-xs uppercase tracking-wide text-gray-500">
+                    <thead className="bg-card text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                       <tr>
                         <th className="px-3 py-2">Captured At</th>
                         <th className="px-3 py-2">Latitude</th>
@@ -18494,10 +18494,10 @@ export default function Home() {
                         <th className="px-3 py-2">Map</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
+                    <tbody className="divide-y divide-gray-200 bg-card">
                       {selectedStaffLocationPoints.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-3 py-4 text-gray-600">No recent location points for this staff member.</td>
+                          <td colSpan={6} className="px-3 py-4 text-muted-foreground">No recent location points for this staff member.</td>
                         </tr>
                       ) : (
                         selectedStaffLocationPoints.slice(0, 50).map((point) => (
@@ -18512,7 +18512,7 @@ export default function Home() {
                                 href={`https://www.google.com/maps?q=${point.latitude},${point.longitude}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-blue-700 hover:underline"
+                                className="text-primary hover:underline"
                               >
                                 Open Map
                               </a>
@@ -18525,19 +18525,19 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="mt-5 rounded border border-purple-200 bg-purple-50 p-4">
-                <h4 className="text-base font-medium text-purple-950">Possible Stops</h4>
-                <p className="mt-1 text-sm text-purple-900">
+              <div className="mt-5 rounded border border-primary/20 bg-primary/5 p-4">
+                <h4 className="text-base font-medium text-primary/90">Possible Stops</h4>
+                <p className="mt-1 text-sm text-primary">
                   V1 stop detection checks for two consecutive points within roughly 50 meters over 5 minutes or more.
                 </p>
                 {selectedStaffChronologicalPoints.length < 2 ? (
-                  <p className="mt-3 text-sm text-purple-900">Not enough location history to detect stops yet.</p>
+                  <p className="mt-3 text-sm text-primary">Not enough location history to detect stops yet.</p>
                 ) : possibleStops.length === 0 ? (
-                  <p className="mt-3 text-sm text-purple-900">No possible stops detected from the recent location history.</p>
+                  <p className="mt-3 text-sm text-primary">No possible stops detected from the recent location history.</p>
                 ) : (
                   <div className="mt-3 overflow-x-auto">
                     <table className="min-w-full divide-y divide-purple-200 text-sm">
-                      <thead className="bg-white text-left text-xs uppercase tracking-wide text-purple-700">
+                      <thead className="bg-card text-left text-xs uppercase tracking-wide text-primary">
                         <tr>
                           <th className="px-3 py-2">Start</th>
                           <th className="px-3 py-2">End</th>
@@ -18546,7 +18546,7 @@ export default function Home() {
                           <th className="px-3 py-2">Map</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-purple-200 bg-white">
+                      <tbody className="divide-y divide-purple-200 bg-card">
                         {possibleStops.map((stop) => (
                           <tr key={`${stop.startTime}-${stop.endTime}`}>
                             <td className="px-3 py-3">{formatDateTime(stop.startTime)}</td>
@@ -18558,7 +18558,7 @@ export default function Home() {
                                 href={`https://www.google.com/maps?q=${stop.latitude},${stop.longitude}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-blue-700 hover:underline"
+                                className="text-primary hover:underline"
                               >
                                 Open Map
                               </a>
@@ -18576,18 +18576,18 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "mobile-app" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">Mobile App Readiness</h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <h2 className="text-xl font-medium text-foreground">Mobile App Readiness</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
                 Install TradeOS from a mobile browser and prepare for future mobile workflows.
               </p>
             </div>
             <button
               type="button"
               onClick={() => handleSectionChange("deployment")}
-              className="rounded border border-blue-600 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
+              className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
               Open Deployment Readiness
             </button>
@@ -18597,10 +18597,10 @@ export default function Home() {
             {mobileReadinessItems.map((item) => {
               const ready = item.status === "Ready";
               return (
-                <div key={item.label} className="rounded border border-gray-200 bg-white p-4">
-                  <div className="text-sm font-medium text-gray-900">{item.label}</div>
+                <div key={item.label} className="rounded border border-border bg-card p-4">
+                  <div className="text-sm font-medium text-foreground">{item.label}</div>
                   <span className={`mt-3 inline-flex rounded px-2 py-1 text-xs font-medium ${
-                    ready ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                    ready ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
                   }`}>
                     {item.status}
                   </span>
@@ -18610,9 +18610,9 @@ export default function Home() {
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <h3 className="mb-3 text-lg font-medium text-gray-900">Android Chrome</h3>
-              <ol className="list-decimal space-y-2 pl-5 text-sm text-gray-700">
+            <div className="rounded border border-border bg-card p-4">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Android Chrome</h3>
+              <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground/80">
                 <li>Open TradeOS in Chrome.</li>
                 <li>Tap three-dot menu.</li>
                 <li>Tap Add to Home screen or Install app.</li>
@@ -18620,9 +18620,9 @@ export default function Home() {
               </ol>
             </div>
 
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <h3 className="mb-3 text-lg font-medium text-gray-900">iPhone Safari</h3>
-              <ol className="list-decimal space-y-2 pl-5 text-sm text-gray-700">
+            <div className="rounded border border-border bg-card p-4">
+              <h3 className="mb-3 text-lg font-medium text-foreground">iPhone Safari</h3>
+              <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground/80">
                 <li>Open TradeOS in Safari.</li>
                 <li>Tap Share.</li>
                 <li>Tap Add to Home Screen.</li>
@@ -18631,20 +18631,20 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-blue-200 bg-blue-50 p-4">
-            <h3 className="text-lg font-medium text-blue-950">Future Mobile Roadmap</h3>
-            <p className="mt-1 text-sm text-blue-900">
+          <div className="mt-5 rounded border border-primary/20 bg-primary/5 p-4">
+            <h3 className="text-lg font-medium text-primary/90">Future Mobile Roadmap</h3>
+            <p className="mt-1 text-sm text-primary">
               These mobile capabilities are planned for later and are not active yet.
             </p>
-            <p className="mt-2 text-sm text-blue-900">
+            <p className="mt-2 text-sm text-primary">
               Staff Duty Mode uses browser location permission and works best when TradeOS is installed on the phone home screen.
             </p>
-            <p className="mt-2 text-sm text-blue-900">
+            <p className="mt-2 text-sm text-primary">
               AI voice input works best in supported mobile browsers. Full home-screen voice shortcut will be added later.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {mobileRoadmapItems.map((item) => (
-                <div key={item} className="rounded border border-blue-200 bg-white px-3 py-2 text-sm text-blue-900">
+                <div key={item} className="rounded border border-primary/20 bg-card px-3 py-2 text-sm text-primary">
                   {item}
                 </div>
               ))}
@@ -18654,99 +18654,99 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "deployment" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5">
-            <h2 className="text-xl font-medium text-gray-900">Deployment Readiness</h2>
-            <p className="mt-1 text-sm text-gray-600">
+            <h2 className="text-xl font-medium text-foreground">Deployment Readiness</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               Vercel deployment preparation and environment checks for TradeOS.
             </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">App Build Status</div>
-              <div className="mt-2 text-lg font-semibold text-gray-900">Manual build required</div>
-              <p className="mt-1 text-xs text-gray-500">Run the local production build before deployment.</p>
+            <div className="rounded border border-border bg-card p-4">
+              <div className="text-sm text-muted-foreground/80">App Build Status</div>
+              <div className="mt-2 text-lg font-semibold text-foreground">Manual build required</div>
+              <p className="mt-1 text-xs text-muted-foreground/80">Run the local production build before deployment.</p>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">Environment Status</div>
-              <div className="mt-2 text-lg font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4">
+              <div className="text-sm text-muted-foreground/80">Environment Status</div>
+              <div className="mt-2 text-lg font-semibold text-foreground">
                 {deploymentWarningCount === 0 ? "Ready locally" : "Needs review"}
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-muted-foreground/80">
                 {deploymentPassedCount} passing, {deploymentManualCount} manual.
               </p>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">Security Status</div>
-              <div className="mt-2 text-lg font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4">
+              <div className="text-sm text-muted-foreground/80">Security Status</div>
+              <div className="mt-2 text-lg font-semibold text-foreground">
                 {allSecurityChecksPassed ? "Security checks passed" : "Final checks pending"}
               </div>
-              <p className="mt-1 text-xs text-gray-500">Use Security Check before launch.</p>
+              <p className="mt-1 text-xs text-muted-foreground/80">Use Security Check before launch.</p>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-4">
-              <div className="text-sm text-gray-500">Business Setup Status</div>
-              <div className="mt-2 text-lg font-semibold text-gray-900">
+            <div className="rounded border border-border bg-card p-4">
+              <div className="text-sm text-muted-foreground/80">Business Setup Status</div>
+              <div className="mt-2 text-lg font-semibold text-foreground">
                 {businessSettingsComplete ? "Business details ready" : "Business details needed"}
               </div>
-              <p className="mt-1 text-xs text-gray-500">Business name plus phone or address recommended.</p>
+              <p className="mt-1 text-xs text-muted-foreground/80">Business name plus phone or address recommended.</p>
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Environment Checklist</h3>
+          <div className="mt-5 rounded border border-border bg-card p-4">
+            <h3 className="mb-3 text-lg font-medium text-foreground">Environment Checklist</h3>
             <div className="grid gap-3 lg:grid-cols-2">
               {deploymentEnvironmentChecks.map((check) => {
                 const statusClass =
                   check.status === "pass"
-                    ? "bg-green-100 text-green-800"
+                    ? "bg-success/10 text-success"
                     : check.status === "manual"
-                      ? "bg-blue-100 text-blue-800"
+                      ? "bg-primary/10 text-primary"
                       : check.status === "info"
-                        ? "bg-gray-100 text-gray-800"
-                        : "bg-amber-100 text-amber-800";
+                        ? "bg-muted text-foreground"
+                        : "bg-warning/10 text-warning";
                 return (
-                  <div key={check.key} className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div key={check.key} className="rounded border border-border bg-muted/30 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="font-medium text-gray-900">{check.label}</div>
+                      <div className="font-medium text-foreground">{check.label}</div>
                       <span className={`rounded px-2 py-1 text-xs font-medium ${statusClass}`}>
                         {check.status}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-gray-600">{check.detail}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{check.detail}</p>
                   </div>
                 );
               })}
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Deployment Commands</h3>
+          <div className="mt-5 rounded border border-border bg-card p-4">
+            <h3 className="mb-3 text-lg font-medium text-foreground">Deployment Commands</h3>
             <div className="grid gap-4 lg:grid-cols-3">
               <div>
-                <h4 className="mb-2 text-sm font-medium text-gray-800">Build locally</h4>
-                <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-gray-100">{`taskkill /F /IM node.exe
+                <h4 className="mb-2 text-sm font-medium text-foreground">Build locally</h4>
+                <pre className="overflow-x-auto rounded bg-foreground p-3 text-xs text-background">{`taskkill /F /IM node.exe
 rmdir /s /q .next
 set NODE_OPTIONS=--max-old-space-size=4096
 npm.cmd run build`}</pre>
               </div>
               <div>
-                <h4 className="mb-2 text-sm font-medium text-gray-800">Push latest main</h4>
-                <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-gray-100">{`git status
+                <h4 className="mb-2 text-sm font-medium text-foreground">Push latest main</h4>
+                <pre className="overflow-x-auto rounded bg-foreground p-3 text-xs text-background">{`git status
 git push origin main`}</pre>
               </div>
               <div>
-                <h4 className="mb-2 text-sm font-medium text-gray-800">Vercel setup reminder</h4>
-                <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-gray-100">{`Add these variables in Vercel:
+                <h4 className="mb-2 text-sm font-medium text-foreground">Vercel setup reminder</h4>
+                <pre className="overflow-x-auto rounded bg-foreground p-3 text-xs text-background">{`Add these variables in Vercel:
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </div>
             </div>
-            <p className="mt-3 text-xs text-gray-500">Secret values are never displayed here.</p>
+            <p className="mt-3 text-xs text-muted-foreground/80">Secret values are never displayed here.</p>
           </div>
 
-          <div className="mt-5 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <h3 className="mb-2 text-lg font-medium text-amber-950">Before Public Launch</h3>
+          <div className="mt-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
+            <h3 className="mb-2 text-lg font-medium text-warning/80">Before Public Launch</h3>
             <ul className="list-disc space-y-1 pl-5">
               <li>Do not expose service role key.</li>
               <li>Confirm RLS policies are enabled.</li>
@@ -18756,16 +18756,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             </ul>
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+          <div className="mt-5 rounded border border-border bg-card p-4">
             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-medium text-gray-900">Deployment Test Checklist</h3>
-              <span className="text-sm text-gray-500">
+              <h3 className="text-lg font-medium text-foreground">Deployment Test Checklist</h3>
+              <span className="text-sm text-muted-foreground/80">
                 {deploymentManualCompletedCount} / {deploymentManualChecklistItems.length} complete
               </span>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               {deploymentManualChecklistItems.map((item) => (
-                <label key={item} className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                <label key={item} className="flex items-center gap-2 rounded border border-border bg-muted/30 px-3 py-2 text-sm text-foreground/80">
                   <input
                     type="checkbox"
                     checked={Boolean(deploymentChecklistState[item])}
@@ -18785,73 +18785,73 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "security-check" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">Security Check</h2>
-              <p className="mt-1 text-sm text-gray-600">Final security test mode and production readiness checklist.</p>
+              <h2 className="text-xl font-medium text-foreground">Security Check</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Final security test mode and production readiness checklist.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={seedSecurityChecklist}
-                className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                className="rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90"
               >
                 Seed Security Checklist
               </button>
               <button
                 type="button"
                 onClick={() => fetchSecurityChecks(currentOrganizationId)}
-                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
               >
                 Refresh
               </button>
             </div>
           </div>
 
-          {securityCheckMessage && <p className="mb-4 text-sm text-green-700">{securityCheckMessage}</p>}
-          {securityCheckError && <p className="mb-4 whitespace-pre-wrap text-sm text-red-700">{securityCheckError}</p>}
+          {securityCheckMessage && <p className="mb-4 text-sm text-success">{securityCheckMessage}</p>}
+          {securityCheckError && <p className="mb-4 whitespace-pre-wrap text-sm text-destructive">{securityCheckError}</p>}
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded border border-gray-200 bg-white p-3">
-              <div className="text-sm text-gray-500">Total Checks</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{securityCheckSummary.total}</div>
+            <div className="rounded border border-border bg-card p-3">
+              <div className="text-sm text-muted-foreground/80">Total Checks</div>
+              <div className="mt-1 text-2xl font-semibold text-foreground">{securityCheckSummary.total}</div>
             </div>
-            <div className="rounded border border-green-200 bg-white p-3">
-              <div className="text-sm text-green-700">Passed</div>
-              <div className="mt-1 text-2xl font-semibold text-green-800">{securityCheckSummary.passed}</div>
+            <div className="rounded border border-success/20 bg-card p-3">
+              <div className="text-sm text-success">Passed</div>
+              <div className="mt-1 text-2xl font-semibold text-success">{securityCheckSummary.passed}</div>
             </div>
-            <div className="rounded border border-amber-200 bg-white p-3">
-              <div className="text-sm text-amber-700">Pending</div>
-              <div className="mt-1 text-2xl font-semibold text-amber-800">{securityCheckSummary.pending}</div>
+            <div className="rounded border border-warning/20 bg-card p-3">
+              <div className="text-sm text-warning">Pending</div>
+              <div className="mt-1 text-2xl font-semibold text-warning">{securityCheckSummary.pending}</div>
             </div>
-            <div className="rounded border border-red-200 bg-white p-3">
-              <div className="text-sm text-red-700">Failed</div>
-              <div className="mt-1 text-2xl font-semibold text-red-800">{securityCheckSummary.failed}</div>
+            <div className="rounded border border-destructive/20 bg-card p-3">
+              <div className="text-sm text-destructive">Failed</div>
+              <div className="mt-1 text-2xl font-semibold text-destructive/90">{securityCheckSummary.failed}</div>
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Production Readiness Checklist</h3>
+          <div className="mt-5 rounded border border-border bg-card p-4">
+            <h3 className="mb-3 text-lg font-medium text-foreground">Production Readiness Checklist</h3>
             <div className="space-y-3">
               {displayedSecurityChecks.map((check) => {
                 const statusClass =
                   check.status === "pass"
-                    ? "bg-green-100 text-green-800"
+                    ? "bg-success/10 text-success"
                     : check.status === "fail"
-                      ? "bg-red-100 text-red-800"
-                      : "bg-amber-100 text-amber-800";
+                      ? "bg-destructive/10 text-destructive/90"
+                      : "bg-warning/10 text-warning";
                 return (
-                  <div key={check.check_key} className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div key={check.check_key} className="rounded border border-border bg-muted/30 p-3">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="font-medium text-gray-900">{check.check_label}</h4>
+                          <h4 className="font-medium text-foreground">{check.check_label}</h4>
                           <span className={`rounded px-2 py-1 text-xs font-medium ${statusClass}`}>
                             {check.status}
                           </span>
                         </div>
-                        <div className="mt-1 text-xs text-gray-500">
+                        <div className="mt-1 text-xs text-muted-foreground/80">
                           Checked at: {check.checked_at ? formatDate(check.checked_at) : "Not checked yet"}
                         </div>
                       </div>
@@ -18859,27 +18859,27 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                         <button
                           type="button"
                           onClick={() => updateSecurityCheckStatus(check, "pass")}
-                          className="rounded border border-green-600 px-3 py-2 text-xs text-green-700 hover:bg-green-50"
+                          className="rounded border border-success px-3 py-2 text-xs text-success hover:bg-success/5"
                         >
                           Mark Pass
                         </button>
                         <button
                           type="button"
                           onClick={() => updateSecurityCheckStatus(check, "fail")}
-                          className="rounded border border-red-600 px-3 py-2 text-xs text-red-700 hover:bg-red-50"
+                          className="rounded border border-destructive px-3 py-2 text-xs text-destructive hover:bg-destructive/5"
                         >
                           Mark Fail
                         </button>
                         <button
                           type="button"
                           onClick={() => updateSecurityCheckStatus(check, "pending")}
-                          className="rounded border border-gray-400 px-3 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                          className="rounded border border-muted-foreground px-3 py-2 text-xs text-foreground/80 hover:bg-muted"
                         >
                           Reset Pending
                         </button>
                       </div>
                     </div>
-                    <label className="mt-3 flex flex-col gap-2 text-sm text-gray-700">
+                    <label className="mt-3 flex flex-col gap-2 text-sm text-foreground/80">
                       <span>Notes</span>
                       <textarea
                         value={securityCheckNotes[check.check_key] ?? ""}
@@ -18890,7 +18890,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                           }))
                         }
                         rows={2}
-                        className="rounded border border-gray-300 px-3 py-2"
+                        className="rounded border border-border px-3 py-2"
                         placeholder="Add notes before marking status"
                       />
                     </label>
@@ -18902,8 +18902,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
 
           <div className={`mt-5 rounded border p-4 text-sm ${
             allSecurityChecksPassed
-              ? "border-green-200 bg-green-50 text-green-900"
-              : "border-amber-200 bg-amber-50 text-amber-900"
+              ? "border-success/20 bg-success/5 text-success/90"
+              : "border-warning/20 bg-warning/5 text-warning/90"
           }`}>
             {allSecurityChecksPassed
               ? "TradeOS is ready for deployment preparation."
@@ -18913,60 +18913,60 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "activity-logs" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-gray-900">Activity Logs</h2>
-              <p className="mt-1 text-sm text-gray-600">Owner activity history for important TradeOS actions.</p>
+              <h2 className="text-xl font-medium text-foreground">Activity Logs</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Owner activity history for important TradeOS actions.</p>
             </div>
             <button
               type="button"
               onClick={() => fetchAuditLogs(currentOrganizationId)}
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
             >
               Refresh Logs
             </button>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded border border-gray-200 bg-white p-3">
-              <div className="text-sm text-gray-500">Total Logs</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{auditLogSummary.total}</div>
+            <div className="rounded border border-border bg-card p-3">
+              <div className="text-sm text-muted-foreground/80">Total Logs</div>
+              <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.total}</div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-3">
-              <div className="text-sm text-gray-500">Today's Activity</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{auditLogSummary.today}</div>
+            <div className="rounded border border-border bg-card p-3">
+              <div className="text-sm text-muted-foreground/80">Today's Activity</div>
+              <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.today}</div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-3">
-              <div className="text-sm text-gray-500">Creates</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{auditLogSummary.creates}</div>
+            <div className="rounded border border-border bg-card p-3">
+              <div className="text-sm text-muted-foreground/80">Creates</div>
+              <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.creates}</div>
             </div>
-            <div className="rounded border border-gray-200 bg-white p-3">
-              <div className="text-sm text-gray-500">Updates / Deletes</div>
-              <div className="mt-1 text-2xl font-semibold text-gray-900">{auditLogSummary.updatesDeletes}</div>
+            <div className="rounded border border-border bg-card p-3">
+              <div className="text-sm text-muted-foreground/80">Updates / Deletes</div>
+              <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.updatesDeletes}</div>
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Filters</h3>
+          <div className="mt-5 rounded border border-border bg-card p-4">
+            <h3 className="mb-3 text-lg font-medium text-foreground">Filters</h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <label className="flex flex-col gap-2 text-sm text-gray-700 lg:col-span-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80 lg:col-span-2">
                 <span>Search</span>
                 <input
                   type="search"
                   value={auditLogSearch}
                   onChange={(e) => setAuditLogSearch(e.target.value)}
                   placeholder="Search action, entity, label, description, actor"
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Entity Type</span>
                 <select
                   value={auditLogEntityFilter}
                   onChange={(e) => setAuditLogEntityFilter(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   <option value="all">All entity types</option>
                   {auditLogEntityTypes.map((entityType) => (
@@ -18975,12 +18975,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Action</span>
                 <select
                   value={auditLogActionFilter}
                   onChange={(e) => setAuditLogActionFilter(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   <option value="all">All actions</option>
                   {auditLogActions.map((action) => (
@@ -18989,40 +18989,40 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Date From</span>
                 <input
                   type="date"
                   value={auditLogDateFrom}
                   onChange={(e) => setAuditLogDateFrom(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Date To</span>
                 <input
                   type="date"
                   value={auditLogDateTo}
                   onChange={(e) => setAuditLogDateTo(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 />
               </label>
             </div>
           </div>
 
-          <div className="mt-5 rounded border border-gray-200 bg-white p-4">
+          <div className="mt-5 rounded border border-border bg-card p-4">
             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-medium text-gray-900">Log Entries</h3>
-              <div className="text-sm text-gray-500">{filteredAuditLogs.length} shown</div>
+              <h3 className="text-lg font-medium text-foreground">Log Entries</h3>
+              <div className="text-sm text-muted-foreground/80">{filteredAuditLogs.length} shown</div>
             </div>
 
             {filteredAuditLogs.length === 0 ? (
-              <p className="text-sm text-gray-600">No activity logs match the current filters.</p>
+              <p className="text-sm text-muted-foreground">No activity logs match the current filters.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                  <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
                       <th className="px-3 py-2">Time</th>
                       <th className="px-3 py-2">Action</th>
@@ -19039,7 +19039,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                       return (
                         <tr key={log.id} className="align-top">
                           <td className="px-3 py-3 whitespace-nowrap">{formatDate(log.created_at)}</td>
-                          <td className="px-3 py-3 font-medium capitalize text-gray-900">{log.action}</td>
+                          <td className="px-3 py-3 font-medium capitalize text-foreground">{log.action}</td>
                           <td className="px-3 py-3">{log.entity_type.replace(/_/g, " ")}</td>
                           <td className="px-3 py-3">{log.entity_label ?? "-"}</td>
                           <td className="px-3 py-3 min-w-[240px]">{log.description ?? "-"}</td>
@@ -19053,21 +19053,21 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                                   [log.id]: !current[log.id],
                                 }))
                               }
-                              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                              className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30"
                             >
                               {isExpanded ? "Hide" : "Show"}
                             </button>
                             {isExpanded && (
                               <div className="mt-3 grid min-w-[320px] gap-3 lg:grid-cols-2">
                                 <div>
-                                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">Old Values</div>
-                                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-900 p-3 text-xs text-gray-100">
+                                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">Old Values</div>
+                                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-foreground p-3 text-xs text-background">
                                     {JSON.stringify(log.old_values ?? null, null, 2)}
                                   </pre>
                                 </div>
                                 <div>
-                                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">New Values</div>
-                                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-900 p-3 text-xs text-gray-100">
+                                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">New Values</div>
+                                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-foreground p-3 text-xs text-background">
                                     {JSON.stringify(log.new_values ?? null, null, 2)}
                                   </pre>
                                 </div>
@@ -19086,28 +19086,28 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "task-manager" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Task Manager</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Task Manager</h2>
 
-          <div className="rounded border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 text-lg font-medium text-gray-900">Create Task</h3>
+          <div className="rounded border border-border bg-card p-4">
+            <h3 className="mb-3 text-lg font-medium text-foreground">Create Task</h3>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Title</span>
                 <input
                   type="text"
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Task Type</span>
                 <select
                   value={taskType}
                   onChange={(e) => setTaskType(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   {taskTypes.map((type) => (
                     <option key={type} value={type}>{taskTypeLabels[type]}</option>
@@ -19115,12 +19115,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Priority</span>
                 <select
                   value={taskPriority}
                   onChange={(e) => setTaskPriority(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   {taskPriorities.map((priority) => (
                     <option key={priority} value={priority}>{taskPriorityLabels[priority]}</option>
@@ -19128,12 +19128,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Status</span>
                 <select
                   value={taskStatus}
                   onChange={(e) => setTaskStatus(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   {taskStatuses.map((status) => (
                     <option key={status} value={status}>{taskStatusLabels[status]}</option>
@@ -19141,22 +19141,22 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Due Date</span>
                 <input
                   type="date"
                   value={taskDueDate}
                   onChange={(e) => setTaskDueDate(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Related Customer</span>
                 <select
                   value={selectedTaskCustomerId}
                   onChange={(e) => setSelectedTaskCustomerId(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   <option value="">No customer</option>
                   {customers.map((customer) => (
@@ -19165,12 +19165,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Related Supplier</span>
                 <select
                   value={selectedTaskSupplierId}
                   onChange={(e) => setSelectedTaskSupplierId(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   <option value="">No supplier</option>
                   {suppliers.map((supplier) => (
@@ -19179,12 +19179,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Related Product</span>
                 <select
                   value={selectedTaskProductId}
                   onChange={(e) => setSelectedTaskProductId(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   <option value="">No product</option>
                   {products.map((product) => (
@@ -19193,12 +19193,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Related Purchase Invoice</span>
                 <select
                   value={selectedTaskPurchaseId}
                   onChange={(e) => setSelectedTaskPurchaseId(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   <option value="">No purchase invoice</option>
                   {purchaseTransactions.map((transaction) => (
@@ -19207,12 +19207,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Related Sales Invoice</span>
                 <select
                   value={selectedTaskSaleId}
                   onChange={(e) => setSelectedTaskSaleId(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 >
                   <option value="">No sales invoice</option>
                   {salesTransactions.map((transaction) => (
@@ -19222,13 +19222,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
             </div>
 
-            <label className="mt-4 flex flex-col gap-2 text-sm text-gray-700">
+            <label className="mt-4 flex flex-col gap-2 text-sm text-foreground/80">
               <span>Notes</span>
               <textarea
                 value={taskNotes}
                 onChange={(e) => setTaskNotes(e.target.value)}
                 rows={3}
-                className="rounded border border-gray-300 px-3 py-2"
+                className="rounded border border-border px-3 py-2"
               />
             </label>
 
@@ -19236,25 +19236,25 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               type="button"
               onClick={saveTask}
               disabled={taskLoading}
-              className="mt-4 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300"
+              className="mt-4 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
               {taskLoading ? "Saving..." : "Save Task"}
             </button>
-            {taskMessage && <p className="mt-3 text-sm text-green-700">{taskMessage}</p>}
-            {taskError && <p className="mt-3 whitespace-pre-wrap text-sm text-red-700">{taskError}</p>}
+            {taskMessage && <p className="mt-3 text-sm text-success">{taskMessage}</p>}
+            {taskError && <p className="mt-3 whitespace-pre-wrap text-sm text-destructive">{taskError}</p>}
           </div>
 
-          <div className="mt-6 rounded border border-amber-200 bg-amber-50 p-4">
-            <h3 className="mb-3 text-lg font-medium text-amber-950">Suggested Tasks</h3>
+          <div className="mt-6 rounded border border-warning/20 bg-warning/5 p-4">
+            <h3 className="mb-3 text-lg font-medium text-warning/80">Suggested Tasks</h3>
             {taskSuggestions.length === 0 ? (
-              <p className="text-sm text-amber-900">No suggestions right now.</p>
+              <p className="text-sm text-warning/90">No suggestions right now.</p>
             ) : (
               <div className="grid gap-3 lg:grid-cols-2">
                 {taskSuggestions.map((suggestion) => (
-                  <div key={suggestion.key} className="rounded border border-amber-200 bg-white p-3 text-sm">
-                    <div className="font-medium text-gray-900">{suggestion.title}</div>
-                    <div className="mt-1 text-gray-600">{suggestion.reason}</div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+                  <div key={suggestion.key} className="rounded border border-warning/20 bg-card p-3 text-sm">
+                    <div className="font-medium text-foreground">{suggestion.title}</div>
+                    <div className="mt-1 text-muted-foreground">{suggestion.reason}</div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground/80">
                       <span>{taskTypeLabels[suggestion.task_type]}</span>
                       <span>{taskPriorityLabels[suggestion.priority]}</span>
                     </div>
@@ -19262,7 +19262,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                       type="button"
                       onClick={() => createTaskFromSuggestion(suggestion)}
                       disabled={taskLoading}
-                      className="mt-3 rounded border border-blue-600 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 disabled:border-gray-300 disabled:text-gray-400"
+                      className="mt-3 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:border-border disabled:text-muted-foreground"
                     >
                       Create Task
                     </button>
@@ -19272,14 +19272,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             )}
           </div>
 
-          <div className="mt-6 rounded border border-gray-200 bg-white p-4">
+          <div className="mt-6 rounded border border-border bg-card p-4">
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <h3 className="text-lg font-medium text-gray-900">Tasks</h3>
+              <h3 className="text-lg font-medium text-foreground">Tasks</h3>
               <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
                 <select
                   value={taskFilter}
                   onChange={(e) => setTaskFilter(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2 text-sm"
+                  className="rounded border border-border px-3 py-2 text-sm"
                 >
                   <option value="all">All</option>
                   <option value="pending">Pending</option>
@@ -19295,17 +19295,17 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   value={taskSearch}
                   onChange={(e) => setTaskSearch(e.target.value)}
                   placeholder="Search title, notes, customer, supplier, product"
-                  className="rounded border border-gray-300 px-3 py-2 text-sm"
+                  className="rounded border border-border px-3 py-2 text-sm"
                 />
               </div>
             </div>
 
             {filteredTasks.length === 0 ? (
-              <p className="text-sm text-gray-600">No tasks match the current filters.</p>
+              <p className="text-sm text-muted-foreground">No tasks match the current filters.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                  <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
                       <th className="px-3 py-2">Task</th>
                       <th className="px-3 py-2">Type</th>
@@ -19332,26 +19332,26 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                       return (
                         <tr key={task.id}>
                           <td className="px-3 py-3">
-                            <div className="font-medium text-gray-900">{task.title}</div>
-                            {task.notes && <div className="mt-1 text-xs text-gray-500">{task.notes}</div>}
+                            <div className="font-medium text-foreground">{task.title}</div>
+                            {task.notes && <div className="mt-1 text-xs text-muted-foreground/80">{task.notes}</div>}
                           </td>
                           <td className="px-3 py-3">{taskTypeLabels[task.task_type] ?? task.task_type}</td>
                           <td className="px-3 py-3">{taskPriorityLabels[task.priority] ?? task.priority}</td>
                           <td className="px-3 py-3">
                             <span className={`rounded px-2 py-1 text-xs font-medium ${
                               task.status === "completed"
-                                ? "bg-green-100 text-green-700"
+                                ? "bg-success/10 text-success"
                                 : task.status === "cancelled"
-                                  ? "bg-gray-100 text-gray-700"
+                                  ? "bg-muted text-foreground/80"
                                   : isOverdue
-                                    ? "bg-red-100 text-red-700"
-                                    : "bg-blue-100 text-blue-700"
+                                    ? "bg-destructive/10 text-destructive"
+                                    : "bg-primary/10 text-primary"
                             }`}>
                               {isOverdue ? "Overdue" : taskStatusLabels[task.status] ?? task.status}
                             </span>
                           </td>
                           <td className="px-3 py-3">{dueDate ?? "No due date"}</td>
-                          <td className="px-3 py-3 text-xs text-gray-600">
+                          <td className="px-3 py-3 text-xs text-muted-foreground">
                             {customer && <div>Customer: {customer.customer_name}</div>}
                             {supplier && <div>Supplier: {supplier.supplier_name}</div>}
                             {product && <div>Product: {product.name}</div>}
@@ -19365,7 +19365,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                                 <button
                                   type="button"
                                   onClick={() => updateTaskStatus(task.id, "in_progress")}
-                                  className="rounded border border-blue-600 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50"
+                                  className="rounded border border-primary px-2 py-1 text-xs text-primary hover:bg-primary/5"
                                 >
                                   Mark In Progress
                                 </button>
@@ -19374,7 +19374,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                                 <button
                                   type="button"
                                   onClick={() => updateTaskStatus(task.id, "completed")}
-                                  className="rounded border border-green-600 px-2 py-1 text-xs text-green-700 hover:bg-green-50"
+                                  className="rounded border border-success px-2 py-1 text-xs text-success hover:bg-success/5"
                                 >
                                   Mark Completed
                                 </button>
@@ -19383,7 +19383,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                                 <button
                                   type="button"
                                   onClick={() => updateTaskStatus(task.id, "cancelled")}
-                                  className="rounded border border-gray-400 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                                  className="rounded border border-muted-foreground px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30"
                                 >
                                   Cancel Task
                                 </button>
@@ -19402,70 +19402,70 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "business-settings" && (
-        <section className="mt-8 rounded border border-gray-200 bg-gray-50 p-5">
-          <h2 className="mb-4 text-xl font-medium text-gray-900">Business Settings</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Business Settings</h2>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Business Name</span>
                 <input
                   type="text"
                   value={businessSettingsName}
                   onChange={(e) => setBusinessSettingsName(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Phone</span>
                 <input
                   type="text"
                   value={businessSettingsPhone}
                   onChange={(e) => setBusinessSettingsPhone(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 />
               </label>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Address</span>
                 <input
                   type="text"
                   value={businessSettingsAddress}
                   onChange={(e) => setBusinessSettingsAddress(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm text-gray-700">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>City</span>
                 <input
                   type="text"
                   value={businessSettingsCity}
                   onChange={(e) => setBusinessSettingsCity(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-2"
+                  className="rounded border border-border px-3 py-2"
                 />
               </label>
             </div>
 
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Invoice Footer Note</span>
               <textarea
                 value={businessSettingsInvoiceFooterNote}
                 onChange={(e) => setBusinessSettingsInvoiceFooterNote(e.target.value)}
                 rows={3}
-                className="rounded border border-gray-300 px-3 py-2"
+                className="rounded border border-border px-3 py-2"
               />
             </label>
 
-            <label className="flex flex-col gap-2 text-sm text-gray-700">
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Default Payment Terms</span>
               <textarea
                 value={businessSettingsDefaultPaymentTerms}
                 onChange={(e) => setBusinessSettingsDefaultPaymentTerms(e.target.value)}
                 rows={2}
-                className="rounded border border-gray-300 px-3 py-2"
+                className="rounded border border-border px-3 py-2"
               />
             </label>
 
@@ -19473,25 +19473,25 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               type="button"
               onClick={handleSaveBusinessSettings}
               disabled={businessSettingsLoading}
-              className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300"
+              className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
               {businessSettingsLoading ? "Saving..." : "Save Business Settings"}
             </button>
           </div>
 
           {businessSettingsMessage && (
-            <p className="mt-4 text-sm text-green-700">{businessSettingsMessage}</p>
+            <p className="mt-4 text-sm text-success">{businessSettingsMessage}</p>
           )}
           {businessSettingsError && (
-            <p className="mt-4 whitespace-pre-wrap text-sm text-red-700">{businessSettingsError}</p>
+            <p className="mt-4 whitespace-pre-wrap text-sm text-destructive">{businessSettingsError}</p>
           )}
         </section>
         )}
 
         {activeSectionAllowed && activeSection === "products" && (
           <>
-            {message && <p className="mt-4 text-sm text-green-700">{message}</p>}
-            {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+            {message && <p className="mt-4 text-sm text-success">{message}</p>}
+            {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
           </>
         )}
             </div>

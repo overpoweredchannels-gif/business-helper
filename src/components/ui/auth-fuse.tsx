@@ -212,7 +212,7 @@ function SignInForm({ onToggleMode }: { onToggleMode: () => void }) {
           <Input id="email" name="email" type="email" placeholder="m@example.com" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <PasswordInput name="password" label="Password" required autoComplete="current-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <Button type="submit" disabled={loading} className="mt-2">
           {loading ? "Signing in..." : "Sign In"}
         </Button>
@@ -275,7 +275,7 @@ function SignUpForm({ onToggleMode }: { onToggleMode: () => void }) {
           <Input id="email" name="email" type="email" placeholder="m@example.com" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <PasswordInput name="password" label="Password" required autoComplete="new-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <Button type="submit" disabled={loading} className="mt-2">
           {loading ? "Creating account..." : "Sign Up"}
         </Button>
@@ -323,7 +323,7 @@ function GoogleButton() {
         )}
         {loading ? "Connecting..." : "Continue with Google"}
       </Button>
-      {error && <p className="text-center text-sm text-red-600">{error}</p>}
+      {error && <p className="text-center text-sm text-destructive">{error}</p>}
     </div>
   );
 }
