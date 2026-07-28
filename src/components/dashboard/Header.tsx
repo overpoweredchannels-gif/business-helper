@@ -155,7 +155,7 @@ export function Header({
             onClick={() => setSearchOpen(!searchOpen)}
             className="sm:hidden size-9 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
           >
-            <Search className="size-4" />
+            {searchOpen ? <X className="size-4" /> : <Search className="size-4" />}
           </button>
 
           {/* AI Assistant */}
@@ -250,6 +250,44 @@ export function Header({
           </div>
         </div>
       </div>
+      {searchOpen && (
+        <div ref={searchRef} className="sm:hidden border-t border-border bg-card px-4 py-3 animate-slideUp">
+          <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-ring">
+            <Search className="size-4 shrink-0" />
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setShowSuggestions(true); }}
+              onFocus={() => setShowSuggestions(true)}
+              onKeyDown={handleKeyDown}
+              autoFocus
+              className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
+            />
+          </div>
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="mt-1 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
+              {suggestions.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setSearchQuery(s.label);
+                    setShowSuggestions(false);
+                    setSearchOpen(false);
+                    if (s.section) onSearchSubmit?.(s.section);
+                  }}
+                  className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left"
+                >
+                  {s.type === "product" && <Package className="size-3.5 text-primary" />}
+                  {s.type === "customer" && <User className="size-3.5 text-primary" />}
+                  {s.type === "action" && <Sparkles className="size-3.5 text-primary" />}
+                  <span>{s.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </header>
   );
 }

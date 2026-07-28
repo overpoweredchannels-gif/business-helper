@@ -67,6 +67,7 @@ interface DashboardViewProps {
   topCustomers?: Array<{ name: string; value: string; trend?: "up" | "down" | "flat" }>;
   onQuickAction?: (label: string) => void;
   onKPIClick?: (title: string) => void;
+  onViewAllActivity?: () => void;
 }
 
 export function DashboardView({
@@ -96,6 +97,7 @@ export function DashboardView({
   topCustomers,
   onQuickAction,
   onKPIClick,
+  onViewAllActivity,
 }: DashboardViewProps) {
   const now = new Date();
   const hour = now.getHours();
@@ -270,7 +272,7 @@ export function DashboardView({
 
       {/* Recent Activity */}
       {recentActivities.length > 0 && (
-        <RecentActivity activities={recentActivities} />
+        <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} />
       )}
     </div>
   );

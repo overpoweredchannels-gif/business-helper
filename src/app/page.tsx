@@ -11549,7 +11549,7 @@ export default function Home() {
           const productMatches = products
             .filter((p) => p.name.toLowerCase().includes(q))
             .slice(0, 3)
-            .map((p) => ({ label: p.name, type: "product" as const }));
+            .map((p) => ({ label: p.name, section: "products", type: "product" as const }));
           return [...sectionMatches, ...productMatches];
         }}
         notificationCount={aiAlerts.filter((a) => a.status === "active" || a.status === "new").length}
@@ -11571,7 +11571,7 @@ export default function Home() {
           }] : []),
         ]}
         onNotificationClick={(n) => {
-          if (n.section === "inventory") handleSectionChange("inventory");
+          if (n.section) handleSectionChange(n.section as SectionId);
         }}
       >
       <style>{`
@@ -11772,6 +11772,26 @@ export default function Home() {
                 ) : undefined,
               },
             ]}
+            aiInsight={(() => {
+              const latestAlert = aiAlerts.filter((a) => a.status === "active" || a.status === "new").sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+              return latestAlert ? {
+                insight: latestAlert.summary || latestAlert.title,
+                confidence: 85,
+                action: latestAlert.recommended_action ?? undefined,
+                reason: `Based on ${latestAlert.source_type || "recent data"}`,
+                onLearnMore: () => handleSectionChange("ai-analytics"),
+              } : businessIntelligenceAnalytics.insights.lowStockWarning ? {
+                insight: businessIntelligenceAnalytics.insights.lowStockWarning,
+                confidence: 90,
+                action: "Review inventory",
+                reason: "Automated stock level analysis",
+                onLearnMore: () => handleSectionChange("inventory"),
+              } : undefined;
+            })()}
+            revenueData={businessIntelligenceAnalytics.monthlySales.slice(-6)}
+            profitData={businessIntelligenceAnalytics.dailyTrends.slice(-14).map((d) => ({ label: d.date.slice(5), value: d.profit }))}
+            topCustomers={businessIntelligenceAnalytics.topCustomersBySales.slice(0, 5).map((c) => ({ name: c.customerName, value: formatPKR(c.totalSales) }))}
+            onViewAllActivity={() => handleSectionChange("activity-logs")}
             topProducts={topSellingProducts.slice(0, 5).map((p) => ({ name: p.productName, value: String(p.quantitySold) }))}
             onQuickAction={(label) => {
               if (label === "New Sale") handleSectionChange("sales");
