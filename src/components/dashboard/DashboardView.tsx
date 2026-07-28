@@ -9,8 +9,24 @@ import {
   RecentActivity,
   ChartsSection,
 } from "./widgets";
-import { TrendingUp, TrendingDown, DollarSign, Package, Users, Receipt, AlertTriangle } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Package, Users, Receipt, AlertTriangle, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface SmartModuleConfig {
+  id: string;
+  title: string;
+  summary: string;
+  badge?: string;
+  badgeColor?: "default" | "warning" | "success" | "danger";
+  onOpen?: () => void;
+  children?: React.ReactNode;
+}
+
+interface LowStockItem {
+  productName: string;
+  currentStock: number;
+  reorderLevel: number;
+}
 
 interface DashboardViewProps {
   userName: string;
@@ -38,30 +54,19 @@ interface DashboardViewProps {
     time: string;
     amount?: string;
   }>;
-  pendingTasks?: Array<{
-    id: string;
-    title: string;
-    priority: string;
-    dueDate?: string;
-  }>;
+  pendingTasks?: Array<{ id: string; title: string; priority: string; dueDate?: string }>;
   invoicesDue?: number;
   paymentsDue?: number;
   lowStockItems?: number;
   customersToFollowUp?: number;
   expiringProducts?: number;
-  smartModules?: Array<{
-    id: string;
-    title: string;
-    summary: string;
-    badge?: string;
-    badgeColor?: "default" | "warning" | "success" | "danger";
-    onOpen?: () => void;
-  }>;
+  smartModules?: SmartModuleConfig[];
   revenueData?: Array<{ label: string; value: number }>;
   profitData?: Array<{ label: string; value: number }>;
   topProducts?: Array<{ name: string; value: string; trend?: "up" | "down" | "flat" }>;
   topCustomers?: Array<{ name: string; value: string; trend?: "up" | "down" | "flat" }>;
   onQuickAction?: (label: string) => void;
+  onKPIClick?: (title: string) => void;
 }
 
 export function DashboardView({
@@ -90,6 +95,7 @@ export function DashboardView({
   topProducts,
   topCustomers,
   onQuickAction,
+  onKPIClick,
 }: DashboardViewProps) {
   const now = new Date();
   const hour = now.getHours();
@@ -135,6 +141,7 @@ export function DashboardView({
             trend={todaySales.trend}
             icon={<TrendingUp className="size-4" />}
             sparklineData={todaySales.sparkline}
+            onClick={() => onKPIClick?.("Today's Sales")}
           />
         )}
         {todayProfit && (
@@ -144,6 +151,7 @@ export function DashboardView({
             trend={todayProfit.trend}
             icon={<TrendingDown className="size-4" />}
             sparklineData={todayProfit.sparkline}
+            onClick={() => onKPIClick?.("Today's Profit")}
           />
         )}
         {inventoryValue && (
@@ -152,6 +160,7 @@ export function DashboardView({
             value={safeInventoryValue}
             trend={inventoryValue.trend}
             icon={<Package className="size-4" />}
+            onClick={() => onKPIClick?.("Inventory Value")}
           />
         )}
         {outstandingReceivables && (
@@ -159,6 +168,7 @@ export function DashboardView({
             title="Outstanding Receivables"
             value={safeReceivables}
             icon={<Users className="size-4" />}
+            onClick={() => onKPIClick?.("Outstanding Receivables")}
           />
         )}
         {outstandingPayables && (
@@ -166,6 +176,7 @@ export function DashboardView({
             title="Outstanding Payables"
             value={safePayables}
             icon={<DollarSign className="size-4" />}
+            onClick={() => onKPIClick?.("Outstanding Payables")}
           />
         )}
         {lowStockAlerts && (
@@ -173,10 +184,25 @@ export function DashboardView({
             title="Low Stock Alerts"
             value={safeLowStock}
             icon={<AlertTriangle className="size-4" />}
+            onClick={() => onKPIClick?.("Low Stock Alerts")}
           />
         )}
-        {ordersToday && <KPICard title="Orders Today" value={ordersToday.value} icon={<Receipt className="size-4" />} />}
-        {customersToday && <KPICard title="Customers Today" value={customersToday.value} icon={<Users className="size-4" />} />}
+        {ordersToday && (
+          <KPICard
+            title="Orders Today"
+            value={ordersToday.value}
+            icon={<Receipt className="size-4" />}
+            onClick={() => onKPIClick?.("Orders Today")}
+          />
+        )}
+        {customersToday && (
+          <KPICard
+            title="Customers Today"
+            value={customersToday.value}
+            icon={<Users className="size-4" />}
+            onClick={() => onKPIClick?.("Customers Today")}
+          />
+        )}
       </div>
 
       {/* AI Insight */}
@@ -206,7 +232,9 @@ export function DashboardView({
           <h2 className="text-sm font-semibold text-foreground">Business Overview</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {smartModules.map((m) => (
-              <SmartModule key={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen} />
+              <SmartModule key={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen}>
+                {m.children}
+              </SmartModule>
             ))}
           </div>
         </div>

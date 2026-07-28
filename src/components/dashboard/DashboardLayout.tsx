@@ -7,6 +7,15 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
 
+interface Notification {
+  id: string;
+  title: string;
+  description?: string;
+  severity?: "info" | "warning" | "critical";
+  section?: string;
+  time?: string;
+}
+
 interface DashboardLayoutProps {
   children: React.ReactNode;
   navigationItems: Array<{ id: SectionId; label: string }>;
@@ -19,6 +28,10 @@ interface DashboardLayoutProps {
   onAiVoice?: () => void;
   onAiChat?: () => void;
   notificationCount?: number;
+  notifications?: Notification[];
+  onNotificationClick?: (notification: Notification) => void;
+  onSearchSubmit?: (query: string) => void;
+  onSearchChange?: (query: string) => Array<{ label: string; section?: string; type?: "product" | "customer" | "task" | "action" }>;
 }
 
 export function DashboardLayout({
@@ -33,6 +46,10 @@ export function DashboardLayout({
   onAiVoice,
   onAiChat,
   notificationCount,
+  notifications,
+  onNotificationClick,
+  onSearchSubmit,
+  onSearchChange,
 }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -75,6 +92,10 @@ export function DashboardLayout({
           onLogout={onLogout}
           onOpenAiAssistant={onOpenAiAssistant}
           notificationCount={notificationCount}
+          notifications={notifications}
+          onNotificationClick={onNotificationClick}
+          onSearchSubmit={onSearchSubmit}
+          onSearchChange={onSearchChange}
         />
         <main className="flex-1">
           {children}

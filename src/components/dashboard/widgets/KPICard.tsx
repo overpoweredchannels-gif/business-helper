@@ -42,12 +42,20 @@ interface KPICardProps {
   icon?: React.ReactNode;
   sparklineData?: number[];
   format?: "number" | "currency";
+  onClick?: () => void;
 }
 
-export function KPICard({ title, value, trend, icon, sparklineData }: KPICardProps) {
+export function KPICard({ title, value, trend, icon, sparklineData, onClick }: KPICardProps) {
   const isUp = (trend?.value ?? 0) >= 0;
+  const Component = onClick ? "button" : "div";
   return (
-    <div className="group rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
+    <Component
+      onClick={onClick}
+      className={cn(
+        "group rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]",
+        onClick && "cursor-pointer text-left w-full",
+      )}
+    >
       <div className="flex items-start justify-between mb-3">
         <span className="text-xs font-medium text-light-text uppercase tracking-wider">{title}</span>
         {icon && <div className="size-8 rounded-lg bg-primary-light flex items-center justify-center text-primary">{icon}</div>}
@@ -64,6 +72,6 @@ export function KPICard({ title, value, trend, icon, sparklineData }: KPICardPro
         </div>
         {sparklineData && <Sparkline data={sparklineData} />}
       </div>
-    </div>
+    </Component>
   );
 }

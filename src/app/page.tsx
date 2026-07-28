@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { DashboardLayout, DashboardView } from "@/components/dashboard";
+import { cn } from "@/lib/utils";
 import {
   aiAssistantExampleCommands,
   aiAssistantRoadmapItems,
@@ -6238,6 +6239,11 @@ export default function Home() {
   const lowStockProducts = inventoryStats.filter(
     (item) => typeof item.reorderLevel === "number" && item.currentStock <= item.reorderLevel
   );
+  const pendingTasks = tasks.filter((t) => t.status === "pending");
+  const invoicesDue = pendingTasks.filter((t) => t.task_type === "payment_collection").length || 0;
+  const paymentsDue = pendingTasks.filter((t) => t.task_type === "payment_collection").length || 0;
+  const customersToFollowUp = pendingTasks.filter((t) => t.task_type === "customer_follow_up" || t.task_type === "sales_follow_up").length || 0;
+  const expiringProducts = pendingTasks.filter((t) => t.task_type === "stock_check" && t.title.toLowerCase().includes("expir")).length || 0;
   const topSellingProducts = products
     .map((product) => {
       const quantitySold = filteredSalesItems
@@ -11522,6 +11528,46 @@ export default function Home() {
         onOpenAiAssistant={() => handleSectionChange("ai-assistant")}
         onAiVoice={() => handleSectionChange("ai-voice-operator")}
         onAiChat={() => handleSectionChange("ai-assistant")}
+        onSearchSubmit={(query) => {
+          const match = visibleNavigationItems.find((item) =>
+            item.label.toLowerCase().includes(query.toLowerCase())
+          );
+          if (match) handleSectionChange(match.id);
+        }}
+        onSearchChange={(query) => {
+          if (!query.trim()) return [];
+          const q = query.toLowerCase();
+          const sectionMatches = visibleNavigationItems
+            .filter((item) => item.label.toLowerCase().includes(q))
+            .slice(0, 5)
+            .map((item) => ({ label: item.label, section: item.id, type: "action" as const }));
+          const productMatches = products
+            .filter((p) => p.name.toLowerCase().includes(q))
+            .slice(0, 3)
+            .map((p) => ({ label: p.name, type: "product" as const }));
+          return [...sectionMatches, ...productMatches];
+        }}
+        notificationCount={aiAlerts.filter((a) => a.status === "active" || a.status === "new").length}
+        notifications={[
+          ...aiAlerts.filter((a) => a.status === "active" || a.status === "new").slice(0, 5).map((a) => ({
+            id: a.id,
+            title: a.title,
+            description: a.summary ?? undefined,
+            severity: (a.severity === "critical" || a.severity === "warning" ? a.severity : "info") as "info" | "warning" | "critical",
+            time: formatDateTime(a.created_at),
+          })),
+          ...(lowStockProducts.length > 0 ? [{
+            id: "low-stock",
+            title: `${lowStockProducts.length} products low on stock`,
+            description: `Reorder level reached for ${lowStockProducts.length} products`,
+            severity: lowStockProducts.length > 5 ? "critical" as const : "warning" as const,
+            section: "inventory" as const,
+            time: "Today",
+          }] : []),
+        ]}
+        onNotificationClick={(n) => {
+          if (n.section === "inventory") handleSectionChange("inventory");
+        }}
       >
       <style>{`
         .tradeos-print-document {
@@ -11642,13 +11688,84 @@ export default function Home() {
               { label: "Stock Health", value: `${reorderRecommendationSummary.outOfStockCount} out of stock`, status: reorderRecommendationSummary.outOfStockCount > 3 ? "critical" as const : "good" as const },
             ]}
             lowStockItems={reorderRecommendationSummary.urgentReorderCount}
+            pendingTasks={pendingTasks.map((t) => ({ id: t.id, title: t.title, priority: t.priority, dueDate: t.due_date ?? undefined }))}
+            invoicesDue={invoicesDue}
+            paymentsDue={paymentsDue}
+            customersToFollowUp={customersToFollowUp}
+            expiringProducts={expiringProducts}
+            recentActivities={[
+              ...recentSalesInvoices.slice(0, 5).map((inv) => ({
+                id: `sale-${inv.id}`,
+                type: "sale" as const,
+                description: `Sale #${inv.invoice_number}`,
+                time: formatDateTime(inv.created_at),
+              })),
+              ...recentPurchaseInvoices.slice(0, 3).map((inv) => ({
+                id: `purchase-${inv.id}`,
+                type: "purchase" as const,
+                description: `Purchase #${inv.invoice_number}`,
+                time: formatDateTime(inv.created_at),
+              })),
+            ]}
             smartModules={[
               { id: "products", title: "Products", summary: `${totalProducts} products in catalog`, onOpen: () => handleSectionChange("products") },
               { id: "customers", title: "Customers", summary: `${totalCustomers} registered customers`, onOpen: () => handleSectionChange("customers") },
               { id: "suppliers", title: "Suppliers", summary: `${totalSuppliers} suppliers`, onOpen: () => handleSectionChange("suppliers") },
-              { id: "sales", title: "Sales", summary: `${recentSalesInvoices.length} recent sales transactions`, onOpen: () => handleSectionChange("sales") },
-              { id: "purchases", title: "Purchases", summary: `${recentPurchaseInvoices.length} recent purchases`, onOpen: () => handleSectionChange("purchases") },
-              { id: "inventory", title: "Inventory", summary: `${reorderRecommendationSummary.urgentReorderCount} items need reorder`, badge: reorderRecommendationSummary.urgentReorderCount > 0 ? "Action needed" : undefined, badgeColor: "warning" as const, onOpen: () => handleSectionChange("inventory") },
+              {
+                id: "sales",
+                title: "Sales",
+                summary: `${recentSalesInvoices.length} recent sales transactions`,
+                onOpen: () => handleSectionChange("sales"),
+                children: recentSalesInvoices.length > 0 ? (
+                  <div className="space-y-1 mt-1">
+                    {recentSalesInvoices.slice(0, 5).map((inv) => (
+                      <div key={inv.id} className="flex items-center justify-between text-xs">
+                        <span className="text-foreground/80 truncate">#{inv.invoice_number}</span>
+                        <span className="text-light-text shrink-0">{formatDateTime(inv.created_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : undefined,
+              },
+              {
+                id: "purchases",
+                title: "Purchases",
+                summary: `${recentPurchaseInvoices.length} recent purchases`,
+                onOpen: () => handleSectionChange("purchases"),
+                children: recentPurchaseInvoices.length > 0 ? (
+                  <div className="space-y-1 mt-1">
+                    {recentPurchaseInvoices.slice(0, 5).map((inv) => (
+                      <div key={inv.id} className="flex items-center justify-between text-xs">
+                        <span className="text-foreground/80 truncate">#{inv.invoice_number}</span>
+                        <span className="text-light-text shrink-0">{formatDateTime(inv.created_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : undefined,
+              },
+              {
+                id: "inventory",
+                title: "Inventory",
+                summary: `${reorderRecommendationSummary.urgentReorderCount} items need reorder`,
+                badge: reorderRecommendationSummary.urgentReorderCount > 0 ? "Action needed" : undefined,
+                badgeColor: "warning" as const,
+                onOpen: () => handleSectionChange("inventory"),
+                children: lowStockProducts.length > 0 ? (
+                  <div className="space-y-1 mt-1">
+                    {lowStockProducts.slice(0, 10).map((item) => (
+                      <div key={item.productId} className="flex items-center justify-between text-xs">
+                        <span className="text-foreground/80 truncate">{item.productName}</span>
+                        <span className={cn(
+                          "shrink-0 font-medium",
+                          item.currentStock === 0 ? "text-destructive" : "text-warning",
+                        )}>
+                          {item.currentStock} in stock
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : undefined,
+              },
             ]}
             topProducts={topSellingProducts.slice(0, 5).map((p) => ({ name: p.productName, value: String(p.quantitySold) }))}
             onQuickAction={(label) => {
@@ -11658,6 +11775,13 @@ export default function Home() {
               else if (label === "Record Payment") handleSectionChange("customer-payments");
               else if (label === "Add Customer") handleSectionChange("customers");
               else if (label === "View Inventory") handleSectionChange("inventory");
+            }}
+            onKPIClick={(title) => {
+              if (title === "Today's Sales" || title === "Orders Today") handleSectionChange("sales");
+              else if (title === "Today's Profit" || title === "Profit Margin") handleSectionChange("profit-loss");
+              else if (title === "Inventory Value" || title === "Low Stock Alerts") handleSectionChange("inventory");
+              else if (title === "Outstanding Receivables" || title === "Customers Today") handleSectionChange("customers");
+              else if (title === "Outstanding Payables") handleSectionChange("supplier-payments");
             }}
           />
         )}
