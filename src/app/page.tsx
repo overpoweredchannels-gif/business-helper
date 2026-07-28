@@ -11529,16 +11529,21 @@ export default function Home() {
         onAiVoice={() => handleSectionChange("ai-voice-operator")}
         onAiChat={() => handleSectionChange("ai-assistant")}
         onSearchSubmit={(query) => {
-          const match = visibleNavigationItems.find((item) =>
-            item.label.toLowerCase().includes(query.toLowerCase())
-          );
+          const q = query.toLowerCase().replace(/&/g, " and ");
+          const match = visibleNavigationItems.find((item) => {
+            const label = item.label.toLowerCase().replace(/&/g, " and ");
+            return label.includes(q) || label.replace(/ and /g, " & ").includes(q) || item.id.replace(/-/g, " ").includes(q);
+          });
           if (match) handleSectionChange(match.id);
         }}
         onSearchChange={(query) => {
           if (!query.trim()) return [];
-          const q = query.toLowerCase();
+          const q = query.toLowerCase().replace(/&/g, " and ");
           const sectionMatches = visibleNavigationItems
-            .filter((item) => item.label.toLowerCase().includes(q))
+            .filter((item) => {
+              const label = item.label.toLowerCase().replace(/&/g, " and ");
+              return label.includes(q) || label.replace(/ and /g, " & ").includes(q) || item.id.replace(/-/g, " ").includes(q);
+            })
             .slice(0, 5)
             .map((item) => ({ label: item.label, section: item.id, type: "action" as const }));
           const productMatches = products

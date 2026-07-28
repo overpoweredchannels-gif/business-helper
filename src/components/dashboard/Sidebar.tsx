@@ -48,15 +48,17 @@ interface SidebarProps {
   onSectionChange: (id: SectionId) => void;
   organizationName?: string;
   userName?: string;
+  forceVisible?: boolean;
 }
 
-export function Sidebar({ items, activeSection, onSectionChange, organizationName }: SidebarProps) {
+export function Sidebar({ items, activeSection, onSectionChange, organizationName, forceVisible }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
     <aside
       className={cn(
-        "hidden lg:flex flex-col bg-card border-r border-border transition-all duration-300 h-screen sticky top-0",
+        forceVisible ? "flex" : "hidden lg:flex",
+        "flex-col bg-card border-r border-border transition-all duration-300 h-screen sticky top-0",
         collapsed ? "w-[68px]" : "w-64",
       )}
     >

@@ -78,6 +78,7 @@ export function DashboardLayout({
                 setMobileMenuOpen(false);
               }}
               organizationName={organizationName}
+              forceVisible
             />
           </div>
         </>

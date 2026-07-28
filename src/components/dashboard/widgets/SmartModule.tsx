@@ -26,16 +26,24 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
   return (
     <div className="rounded-xl border border-border bg-card transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.08)]">
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => {
+          if (children) {
+            setExpanded(!expanded);
+          } else if (onOpen) {
+            onOpen();
+          }
+        }}
         className="w-full flex items-center justify-between p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
       >
         <div className="flex items-center gap-3 min-w-0">
-          <ChevronRight
-            className={cn(
-              "size-4 text-light-text transition-transform duration-200 shrink-0",
-              expanded && "rotate-90",
-            )}
-          />
+          {children && (
+            <ChevronRight
+              className={cn(
+                "size-4 text-light-text transition-transform duration-200 shrink-0",
+                expanded && "rotate-90",
+              )}
+            />
+          )}
           <div className="text-left min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-foreground">{title}</span>
