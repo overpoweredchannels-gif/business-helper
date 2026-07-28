@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { DashboardLayout, DashboardView } from "@/components/dashboard";
 import {
   aiAssistantExampleCommands,
   aiAssistantRoadmapItems,
@@ -11511,7 +11512,17 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-muted">
+    <DashboardLayout
+        navigationItems={visibleNavigationItems}
+        activeSection={activeSection}
+        onSectionChange={handleSectionChange}
+        organizationName={organizationDisplayName}
+        userName={currentProfile?.full_name ?? currentUser.email}
+        onLogout={handleLogout}
+        onOpenAiAssistant={() => handleSectionChange("ai-assistant")}
+        onAiVoice={() => handleSectionChange("ai-voice-operator")}
+        onAiChat={() => handleSectionChange("ai-assistant")}
+      >
       <style>{`
         .tradeos-print-document {
           color: var(--color-foreground);
@@ -11558,13 +11569,9 @@ export default function Home() {
           padding-top: 12px;
         }
         @media print {
-          body * {
-            visibility: hidden;
-          }
+          body * { visibility: hidden; }
           .print-preview-content,
-          .print-preview-content * {
-            visibility: visible;
-          }
+          .print-preview-content * { visibility: visible; }
           .print-preview-content {
             background: white;
             left: 0;
@@ -11574,12 +11581,8 @@ export default function Home() {
             width: 100%;
           }
           .print-preview-shell,
-          .print-preview-actions {
-            display: none !important;
-          }
-          .tradeos-print-document {
-            font-size: 12px;
-          }
+          .print-preview-actions { display: none !important; }
+          .tradeos-print-document { font-size: 12px; }
         }
       `}</style>
       {isPrintPreviewOpen && (
@@ -11611,91 +11614,7 @@ export default function Home() {
           </div>
         </div>
       )}
-      <div className="min-h-screen md:flex">
-        <aside className="hidden w-64 shrink-0 border-r border-border bg-card md:sticky md:top-0 md:block md:h-screen">
-          <div className="border-b border-border p-5">
-            <div className="text-2xl font-semibold text-foreground">TradeOS</div>
-            <div className="text-sm text-muted-foreground/80">Business Management</div>
-          </div>
-          <nav className="h-[calc(100vh-89px)] overflow-y-auto p-3">
-            {visibleNavigationItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleSectionChange(item.id)}
-                className={`mb-1 w-full rounded px-3 py-2 text-left text-sm transition ${
-                  activeSection === item.id
-                    ? "bg-primary font-medium text-white"
-                    : "text-foreground/80 hover:bg-muted"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        </aside>
-
-        <div className="min-w-0 flex-1">
-          <header className="sticky top-0 z-20 border-b border-border bg-card">
-            <div className="flex items-center justify-between gap-3 px-4 py-3 md:hidden">
-              <div>
-                <div className="text-lg font-semibold text-foreground">TradeOS</div>
-                <div className="text-xs text-muted-foreground/80">Business Management</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen((open) => !open)}
-                className="rounded border border-border px-3 py-2 text-sm text-foreground/80"
-              >
-                Menu
-              </button>
-            </div>
-
-            {mobileMenuOpen && (
-              <nav className="border-t border-border bg-card p-3 md:hidden">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {visibleNavigationItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleSectionChange(item.id)}
-                      className={`rounded px-3 py-2 text-left text-sm ${
-                        activeSection === item.id
-                          ? "bg-primary font-medium text-white"
-                          : "bg-muted/30 text-foreground/80"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </nav>
-            )}
-
-            <div className="flex flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
-              <div>
-                <h1 className="text-2xl font-semibold text-foreground">{activeSectionLabel}</h1>
-                <div className="mt-1 text-sm text-muted-foreground/80">
-                  {organizationDisplayName} · {currentProfile?.full_name ?? currentUser.email}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {authMessage && <span className="text-sm text-success">{authMessage}</span>}
-                {authError && <span className="text-sm text-destructive">{authError}</span>}
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  disabled={authLoading}
-                  className="rounded bg-destructive px-4 py-2 text-sm text-white transition hover:bg-destructive/90 disabled:bg-destructive/30"
-                >
-                  {authLoading ? "Processing..." : "Logout"}
-                </button>
-              </div>
-            </div>
-          </header>
-
-          <div id="tradeos-main-content" className="h-[calc(100vh-129px)] overflow-y-auto px-4 py-6 md:h-[calc(100vh-97px)] md:px-6">
-            <div className="mx-auto max-w-7xl">
+          <div>
 
         {!activeSectionAllowed && (
         <section className="rounded border border-destructive/20 bg-destructive/5 p-5">
@@ -11707,326 +11626,40 @@ export default function Home() {
         )}
 
         {activeSection === "dashboard" && (
-        <>
-        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Management Dashboard</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Total Products</div>
-              <div className="mt-2 text-2xl font-semibold text-foreground">{totalProducts}</div>
-            </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Total Customers</div>
-              <div className="mt-2 text-2xl font-semibold text-foreground">{totalCustomers}</div>
-            </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Total Suppliers</div>
-              <div className="mt-2 text-2xl font-semibold text-foreground">{totalSuppliers}</div>
-            </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Total Receivables</div>
-              <div className="mt-2 text-2xl font-semibold text-foreground">{totalReceivables.toFixed(2)}</div>
-            </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Total Payables</div>
-              <div className="mt-2 text-2xl font-semibold text-foreground">{totalPayables.toFixed(2)}</div>
-            </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Inventory Value</div>
-              <div className="mt-2 text-2xl font-semibold text-foreground">{inventoryValue.toFixed(2)}</div>
-            </div>
-          </div>
-
-          {isOwnerOrAdmin() && (
-          <div className="mt-6 rounded border border-primary/20 bg-primary/5 p-4">
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-lg font-medium text-primary/90">Business Intelligence</h3>
-                <p className="mt-1 text-sm text-primary">
-                  Deep analytics for sales, profit, customers, staff, expenses, inventory, and trends.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleSectionChange("business-intelligence")}
-                className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5"
-              >
-                Open Business Intelligence
-              </button>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-primary/20 bg-card p-3">
-                <div className="text-sm text-primary">Sales This Period</div>
-                <div className="mt-1 text-2xl font-semibold text-primary/90">
-                  {formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount)}
-                </div>
-              </div>
-              <div className="rounded border border-primary/20 bg-card p-3">
-                <div className="text-sm text-primary">Profit Estimate</div>
-                <div className="mt-1 text-2xl font-semibold text-primary/90">
-                  {formatPKR(businessIntelligenceAnalytics.overview.estimatedNetProfit)}
-                </div>
-              </div>
-              <div className="rounded border border-primary/20 bg-card p-3">
-                <div className="text-sm text-primary">Low Stock Products</div>
-                <div className="mt-1 text-2xl font-semibold text-primary/90">
-                  {businessIntelligenceAnalytics.overview.lowStockCount}
-                </div>
-              </div>
-              <div className="rounded border border-primary/20 bg-card p-3">
-                <div className="text-sm text-primary">Out of Stock</div>
-                <div className="mt-1 text-2xl font-semibold text-primary/90">
-                  {businessIntelligenceAnalytics.overview.outOfStockCount}
-                </div>
-              </div>
-            </div>
-          </div>
-          )}
-
-          <div className="mt-6 rounded border border-warning/20 bg-warning/5 p-4">
-            <h3 className="mb-3 text-lg font-medium text-warning/80">Reorder Summary</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-warning/20 bg-card p-3">
-                <div className="text-sm text-warning">Out of Stock</div>
-                <div className="mt-1 text-2xl font-semibold text-warning/80">
-                  {reorderRecommendationSummary.outOfStockCount}
-                </div>
-              </div>
-              <div className="rounded border border-warning/20 bg-card p-3">
-                <div className="text-sm text-warning">Urgent Reorder</div>
-                <div className="mt-1 text-2xl font-semibold text-warning/80">
-                  {reorderRecommendationSummary.urgentReorderCount}
-                </div>
-              </div>
-              <div className="rounded border border-warning/20 bg-card p-3">
-                <div className="text-sm text-warning">Low Stock Soon</div>
-                <div className="mt-1 text-2xl font-semibold text-warning/80">
-                  {reorderRecommendationSummary.lowStockSoonCount}
-                </div>
-              </div>
-              <div className="rounded border border-warning/20 bg-card p-3">
-                <div className="text-sm text-warning">No Reorder Level</div>
-                <div className="mt-1 text-2xl font-semibold text-warning/80">
-                  {reorderRecommendationSummary.missingReorderLevelCount}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {isOwnerOrAdmin() && (
-          <div className="mt-6 rounded border border-success/20 bg-success/5 p-4">
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-lg font-medium text-success/90">Market Intelligence Summary</h3>
-                <p className="mt-1 text-sm text-success/80">
-                  AI-powered advisory view for threats, opportunities, urgency, and owner actions.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleSectionChange("market-intelligence")}
-                className="rounded border border-success bg-card px-3 py-2 text-sm text-success hover:bg-success/5"
-              >
-                Open Market Intelligence
-              </button>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-success/20 bg-card p-3">
-                <div className="text-sm text-success">High Risk Alerts</div>
-                <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.highRisk}</div>
-              </div>
-              <div className="rounded border border-success/20 bg-card p-3">
-                <div className="text-sm text-success">High Opportunity Alerts</div>
-                <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.highOpportunity}</div>
-              </div>
-              <div className="rounded border border-success/20 bg-card p-3">
-                <div className="text-sm text-success">Items Requiring Attention</div>
-                <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.requiringAttention}</div>
-              </div>
-              <div className="rounded border border-success/20 bg-card p-3">
-                <div className="text-sm text-success">Newest Important Update</div>
-                <div className="mt-1 text-sm font-semibold text-success/90">
-                  {marketV2Summary.newestImportantUpdate
-                    ? marketV2Summary.newestImportantUpdate.item.title
-                    : "No urgent update"}
-                </div>
-              </div>
-            </div>
-          </div>
-          )}
-
-          {hasPermission("can_manage_tasks") && (
-          <div className="mt-6 rounded border border-primary/20 bg-primary/5 p-4">
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-medium text-primary/90">Task Manager Summary</h3>
-              <button
-                type="button"
-                onClick={() => handleSectionChange("task-manager")}
-                className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5"
-              >
-                Open Task Manager
-              </button>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-primary/20 bg-card p-3">
-                <div className="text-sm text-primary">Pending Tasks</div>
-                <div className="mt-1 text-2xl font-semibold text-primary/90">{taskDashboardSummary.pending}</div>
-              </div>
-              <div className="rounded border border-primary/20 bg-card p-3">
-                <div className="text-sm text-primary">Overdue Tasks</div>
-                <div className="mt-1 text-2xl font-semibold text-primary/90">{taskDashboardSummary.overdue}</div>
-              </div>
-              <div className="rounded border border-primary/20 bg-card p-3">
-                <div className="text-sm text-primary">Due Today</div>
-                <div className="mt-1 text-2xl font-semibold text-primary/90">{taskDashboardSummary.dueToday}</div>
-              </div>
-              <div className="rounded border border-primary/20 bg-card p-3">
-                <div className="text-sm text-primary">Urgent Tasks</div>
-                <div className="mt-1 text-2xl font-semibold text-primary/90">{taskDashboardSummary.urgent}</div>
-              </div>
-            </div>
-            <div className="mt-4 rounded border border-primary/20 bg-card p-3">
-              <h4 className="mb-2 text-sm font-medium text-primary/90">Next Tasks</h4>
-              {nextDashboardTasks.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No pending or in-progress tasks.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {nextDashboardTasks.map((task) => (
-                    <li key={task.id} className="flex flex-col gap-1 rounded border border-border bg-muted/30 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="font-medium text-foreground">{task.title}</div>
-                        <div className="text-xs text-muted-foreground/80">
-                          {taskStatusLabels[task.status] ?? task.status} · Due {getDateOnly(task.due_date) ?? "No due date"}
-                        </div>
-                      </div>
-                      <span className="text-xs font-medium text-primary">
-                        {taskPriorityLabels[task.priority] ?? task.priority}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-          )}
-
-          {isOwnerOrAdmin() && (
-          <div className="mt-6 rounded border border-slate-200 bg-slate-50 p-4">
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-medium text-slate-950">Recent Activity</h3>
-              <button
-                type="button"
-                onClick={() => handleSectionChange("activity-logs")}
-                className="rounded border border-slate-600 bg-card px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-              >
-                View All Activity
-              </button>
-            </div>
-            {recentAuditLogs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No activity logs recorded yet.</p>
-            ) : (
-              <ul className="space-y-2">
-                {recentAuditLogs.map((log) => (
-                  <li key={log.id} className="rounded border border-slate-200 bg-card px-3 py-2 text-sm">
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <span className="font-medium capitalize text-slate-900">{log.action}</span>
-                        <span className="text-slate-500"> {log.entity_type.replace(/_/g, " ")}</span>
-                        {log.entity_label && <span className="text-slate-700"> - {log.entity_label}</span>}
-                      </div>
-                      <span className="text-xs text-slate-500">{formatDate(log.created_at)}</span>
-                    </div>
-                    {log.description && <p className="mt-1 text-xs text-slate-600">{log.description}</p>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          )}
-
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Low Stock Products</h3>
-              {lowStockProducts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No low stock products.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {lowStockProducts.map((item) => (
-                    <li key={item.productId} className="rounded border border-border bg-muted/30 px-3 py-2">
-                      <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <div className="text-sm font-medium text-foreground">{item.productName}</div>
-                          <div className="text-xs text-muted-foreground/80">Reorder Level: {item.reorderLevel}</div>
-                        </div>
-                        <span className="rounded-full bg-destructive/10 px-2 py-1 text-xs font-semibold text-destructive">REORDER REQUIRED</span>
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">Current Stock: {item.currentStock}</div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Top Selling Products</h3>
-              {topSellingProducts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No sales yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {topSellingProducts.map((item) => (
-                    <li key={item.productId} className="flex items-center justify-between rounded border border-border bg-muted/30 px-3 py-2">
-                      <span className="text-sm text-foreground">{item.productName}</span>
-                      <span className="text-sm font-semibold text-foreground/80">{item.quantitySold}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Recent Sales</h3>
-              {recentSalesInvoices.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No recent sales.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {recentSalesInvoices.map((tx) => {
-                    const customer = customers.find((c) => c.id === tx.customer_id);
-                    return (
-                      <li key={tx.id} className="rounded border border-border bg-muted/30 px-3 py-2">
-                        <div className="text-sm font-medium text-foreground">{tx.invoice_number}</div>
-                        <div className="text-xs text-muted-foreground/80">{customer?.customer_name ?? "Unknown Customer"}</div>
-                        <div className="text-xs text-muted-foreground/80">{new Date(tx.created_at).toLocaleDateString()}</div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Recent Purchases</h3>
-              {recentPurchaseInvoices.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No recent purchases.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {recentPurchaseInvoices.map((tx) => {
-                    const supplier = suppliers.find((s) => s.id === tx.supplier_id);
-                    return (
-                      <li key={tx.id} className="rounded border border-border bg-muted/30 px-3 py-2">
-                        <div className="text-sm font-medium text-foreground">{tx.invoice_number}</div>
-                        <div className="text-xs text-muted-foreground/80">{supplier?.supplier_name ?? "Unknown Supplier"}</div>
-                        <div className="text-xs text-muted-foreground/80">{new Date(tx.created_at).toLocaleDateString()}</div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </div>
-        </section>
-        </>
+          <DashboardView
+            userName={currentProfile?.full_name ?? currentUser.email}
+            todaySales={{ value: formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount) }}
+            todayProfit={{ value: formatPKR(businessIntelligenceAnalytics.overview.estimatedNetProfit) }}
+            inventoryValue={{ value: formatPKR(inventoryValue) }}
+            outstandingReceivables={{ value: formatPKR(totalReceivables) }}
+            outstandingPayables={{ value: formatPKR(totalPayables) }}
+            lowStockAlerts={{ value: String(reorderRecommendationSummary.urgentReorderCount), count: reorderRecommendationSummary.urgentReorderCount }}
+            healthScore={75}
+            healthMetrics={[
+              { label: "Cash Flow", value: formatPKR(totalReceivables - totalPayables), status: totalReceivables > totalPayables ? "good" as const : "warning" as const },
+              { label: "Inventory Health", value: `${lowStockProducts.length} low stock`, status: lowStockProducts.length > 5 ? "critical" as const : lowStockProducts.length > 2 ? "warning" as const : "good" as const },
+              { label: "Profit Margin", value: businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? `${((businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100).toFixed(1)}%` : "0%", status: "good" as const },
+              { label: "Stock Health", value: `${reorderRecommendationSummary.outOfStockCount} out of stock`, status: reorderRecommendationSummary.outOfStockCount > 3 ? "critical" as const : "good" as const },
+            ]}
+            lowStockItems={reorderRecommendationSummary.urgentReorderCount}
+            smartModules={[
+              { id: "products", title: "Products", summary: `${totalProducts} products in catalog`, onOpen: () => handleSectionChange("products") },
+              { id: "customers", title: "Customers", summary: `${totalCustomers} registered customers`, onOpen: () => handleSectionChange("customers") },
+              { id: "suppliers", title: "Suppliers", summary: `${totalSuppliers} suppliers`, onOpen: () => handleSectionChange("suppliers") },
+              { id: "sales", title: "Sales", summary: `${recentSalesInvoices.length} recent sales transactions`, onOpen: () => handleSectionChange("sales") },
+              { id: "purchases", title: "Purchases", summary: `${recentPurchaseInvoices.length} recent purchases`, onOpen: () => handleSectionChange("purchases") },
+              { id: "inventory", title: "Inventory", summary: `${reorderRecommendationSummary.urgentReorderCount} items need reorder`, badge: reorderRecommendationSummary.urgentReorderCount > 0 ? "Action needed" : undefined, badgeColor: "warning" as const, onOpen: () => handleSectionChange("inventory") },
+            ]}
+            topProducts={topSellingProducts.slice(0, 5).map((p) => ({ name: p.productName, value: String(p.quantitySold) }))}
+            onQuickAction={(label) => {
+              if (label === "New Sale") handleSectionChange("sales");
+              else if (label === "New Purchase") handleSectionChange("purchases");
+              else if (label === "Add Product") handleSectionChange("products");
+              else if (label === "Record Payment") handleSectionChange("customer-payments");
+              else if (label === "Add Customer") handleSectionChange("customers");
+              else if (label === "View Inventory") handleSectionChange("inventory");
+            }}
+          />
         )}
 
         {activeSectionAllowed && activeSection === "business-intelligence" && (
@@ -19494,11 +19127,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
           </>
         )}
-            </div>
           </div>
-        </div>
-      </div>
-    </main>
+    </DashboardLayout>
   );
 }
 
