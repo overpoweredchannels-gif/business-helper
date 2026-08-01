@@ -29,6 +29,7 @@ export const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "ai-business-query", label: "AI Business Query" },
   { id: "ai-voice-operator", label: "AI Voice Operator" },
   { id: "market-intelligence", label: "Market Intelligence" },
+  { id: "live-tracking", label: "Live Tracking" },
   { id: "mobile-app", label: "Mobile App" },
 ];
 

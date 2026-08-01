@@ -390,7 +390,8 @@ export type SectionId =
   | "ai-business-query"
   | "ai-voice-operator"
   | "market-intelligence"
-  | "mobile-app";
+  | "mobile-app"
+  | "live-tracking";
 
 export type StaffPermissionKey =
   | "can_manage_products"
