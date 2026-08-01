@@ -58,6 +58,15 @@ export interface PurchaseTransaction {
   purchase_date?: string | null;
   expense_review_status: string | null;
   expense_reviewed_at: string | null;
+  // Invoice Management Foundation (ERP V2 Sprint 1) — additive metadata.
+  organization_id?: string;
+  total_amount?: number | null;
+  notes?: string | null;
+  status?: string | null;
+  invoice_type?: string | null;
+  created_by_profile_id?: string | null;
+  /** Supplier's own paper invoice reference, distinct from invoice_number. */
+  supplier_invoice_number?: string | null;
 }
 
 export interface SalesTransaction {
@@ -70,6 +79,13 @@ export interface SalesTransaction {
   credit_due_date: string | null;
   credit_limit_snapshot: number | null;
   credit_days_snapshot: number | null;
+  // Invoice Management Foundation (ERP V2 Sprint 1) — additive metadata.
+  organization_id?: string;
+  total_amount?: number | null;
+  notes?: string | null;
+  status?: string | null;
+  invoice_type?: string | null;
+  created_by_profile_id?: string | null;
 }
 
 export interface Task {

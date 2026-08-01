@@ -1,0 +1,401 @@
+openapi: "3.1.0"
+info:
+  title: TradeOS Conversation Gateway Protocol (TCGP) v1.0
+  version: "1.0.0"
+  description: |
+    The Conversation Gateway is the single public interface for every
+    conversational client of TradeOS. No client may call the Business Brain
+    directly. All channels (Web, Voice, WhatsApp, Phone, MCP, Desktop, Mobile)
+    communicate exclusively through this API.
+  contact:
+    name: TradeOS Platform
+    url: https://tradeos.app
+
+servers:
+  - url: https://api.tradeos.app
+    description: Production
+  - url: http://localhost:3000
+    description: Local development
+
+paths:
+  /api/conversation/chat:
+    post:
+      summary: Send a chat message
+      description: |
+        The primary endpoint for conversational interaction. Accepts a
+        ChatRequest and returns a ChatResponse. Every message is tracked
+        with a conversationId, sessionId, correlationId, and requestId.
+      operationId: chat
+      tags: [Conversation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+        "422":
+          description: Validation error (missing or invalid fields)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+        "503":
+          description: Business Brain not initialized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+        "400":
+          description: Other client error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+
+  /api/conversation/chat/stream:
+    post:
+      summary: Stream a chat response (SSE)
+      description: |
+        Identical to POST /api/conversation/chat but returns a Server-Sent
+        Events stream. Each event is a StreamEvent JSON object.
+
+        Currently emits a single text event followed by done. When the
+        Business Brain supports streaming, multiple text events will be
+        emitted as response fragments arrive.
+
+        Media type: text/event-stream
+      operationId: chatStream
+      tags: [Conversation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+      responses:
+        "200":
+          description: SSE stream of StreamEvent objects
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/StreamEvent"
+
+  /api/conversation/status:
+    get:
+      summary: Gateway health and metrics
+      description: |
+        Returns the current status of the Conversation Gateway, including
+        readiness, active sessions, active conversations, and performance
+        metrics.
+      operationId: gatewayStatus
+      tags: [Monitoring]
+      responses:
+        "200":
+          description: Gateway status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayStatus"
+
+components:
+  schemas:
+    # ─── Enums ────────────────────────────────────────────────────────
+
+    Channel:
+      type: string
+      enum: [web, voice, whatsapp, phone, mcp, desktop, mobile]
+      description: Originating client channel
+
+    ErrorCode:
+      type: string
+      enum:
+        - BRAIN_NOT_INITIALIZED
+        - RATE_LIMITED
+        - VALIDATION_ERROR
+        - INTERNAL_ERROR
+        - CONVERSATION_NOT_FOUND
+        - UNSUPPORTED_VERSION
+
+    StreamEventType:
+      type: string
+      enum: [start, text, done, error]
+      description: |
+        start  — Signals the beginning of a streaming response
+        text   — A fragment of the response text
+        done   — Signals completion, includes provider/model metadata
+        error  — Signals a failure
+
+    # ─── Request / Response ───────────────────────────────────────────
+
+    ChatRequest:
+      type: object
+      required: [message, channel]
+      properties:
+        version:
+          type: string
+          description: TCGP protocol version. Defaults to "1.0".
+          example: "1.0"
+        correlationId:
+          type: string
+          description: Client-provided correlation ID for tracing. Generated if absent.
+          example: "corr_1700000000_abc123"
+        timestamp:
+          type: string
+          format: date-time
+          description: Client-side ISO 8601 timestamp.
+        message:
+          type: string
+          description: The user's message. Must be non-empty after trimming.
+          example: "How is my business performing?"
+        conversationId:
+          type: string
+          description: |
+            Conversation thread ID. Generated if absent or unknown to the
+            gateway. Clients should store and re-send this for thread continuity.
+          example: "conv_1700000000_def456"
+        sessionId:
+          type: string
+          description: Client session identifier. Generated if absent.
+          example: "sess_1700000000_ghi789"
+        userId:
+          type: string
+          description: End-user identifier (human or system).
+        organizationId:
+          type: string
+          description: Business organization context.
+        channel:
+          $ref: "#/components/schemas/Channel"
+        metadata:
+          $ref: "#/components/schemas/ChannelMetadata"
+
+    ChatResponse:
+      type: object
+      required: [version, correlationId, requestId, timestamp, ok, message, conversationId]
+      properties:
+        version:
+          type: string
+          description: Protocol version used.
+          example: "1.0"
+        correlationId:
+          type: string
+          description: Echo of the request correlationId, or gateway-generated.
+        requestId:
+          type: string
+          description: Unique per-request tracing ID.
+          example: "req_1700000000_42"
+        timestamp:
+          type: string
+          format: date-time
+          description: Server-side ISO 8601 timestamp.
+        ok:
+          type: boolean
+          description: Whether the request succeeded.
+        message:
+          type: string
+          description: Assistant response text (empty on error).
+        conversationId:
+          type: string
+          description: Resolved conversation ID for tracing.
+        provider:
+          type: string
+          description: AI provider (passthrough from brain).
+          example: "gemini"
+        model:
+          type: string
+          description: AI model (passthrough from brain).
+          example: "gemini-flash-latest"
+        error:
+          type: string
+          description: |
+            Error description. When ok is false, follows format
+            "{ErrorCode}: {message}" for gateway-detected errors.
+
+    # ─── Streaming ────────────────────────────────────────────────────
+
+    StreamEvent:
+      type: object
+      required: [type, requestId, conversationId, correlationId, version, timestamp]
+      properties:
+        type:
+          $ref: "#/components/schemas/StreamEventType"
+        requestId:
+          type: string
+          description: Matches the requestId from ChatResponse for continuity.
+        conversationId:
+          type: string
+          description: Matches the conversationId from ChatResponse.
+        correlationId:
+          type: string
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        text:
+          type: string
+          description: Response text fragment (present when type = "text").
+        error:
+          type: string
+          description: Error message (present when type = "error").
+        provider:
+          type: string
+          description: AI provider (present when type = "done").
+        model:
+          type: string
+          description: AI model (present when type = "done").
+
+    # ─── Status / Monitoring ──────────────────────────────────────────
+
+    GatewayStatus:
+      type: object
+      required: [ready, brainAttached, conversationCount, sessionCount, uptimeMs, metrics]
+      properties:
+        ready:
+          type: boolean
+          description: Gateway is ready to accept requests.
+        brainAttached:
+          type: boolean
+          description: Business Brain singleton is initialized.
+        conversationCount:
+          type: integer
+          description: Active tracked conversations.
+        sessionCount:
+          type: integer
+          description: Active tracked sessions.
+        uptimeMs:
+          type: integer
+          description: Milliseconds since gateway started.
+        metrics:
+          $ref: "#/components/schemas/GatewayMetrics"
+
+    GatewayMetrics:
+      type: object
+      required:
+        [startedAt, uptimeMs, requestCount, errorCount, validationErrorCount,
+         brainErrorCount, totalDurationMs, minDurationMs, maxDurationMs,
+         avgDurationMs, conversationsCreated, sessionsCreated,
+         activeConversations, activeSessions]
+      properties:
+        startedAt:
+          type: integer
+          description: Unix timestamp (ms) when the gateway was created.
+        uptimeMs:
+          type: integer
+        requestCount:
+          type: integer
+          description: Total chat requests processed.
+        errorCount:
+          type: integer
+          description: Unexpected exceptions.
+        validationErrorCount:
+          type: integer
+          description: Requests rejected by validation.
+        brainErrorCount:
+          type: integer
+          description: Brain returned error or was unavailable.
+        totalDurationMs:
+          type: integer
+          description: Cumulative processing time.
+        minDurationMs:
+          type: integer
+          description: Fastest request (ms).
+        maxDurationMs:
+          type: integer
+          description: Slowest request (ms).
+        avgDurationMs:
+          type: integer
+          description: Average request duration (ms).
+        conversationsCreated:
+          type: integer
+        sessionsCreated:
+          type: integer
+        activeConversations:
+          type: integer
+        activeSessions:
+          type: integer
+
+    # ─── Supporting ───────────────────────────────────────────────────
+
+    ChannelMetadata:
+      type: object
+      properties:
+        userAgent:
+          type: string
+        platform:
+          type: string
+        locale:
+          type: string
+        timezone:
+          type: string
+        ipAddress:
+          type: string
+          format: ipv4
+
+    GatewayError:
+      type: object
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+        details:
+          type: object
+        requestId:
+          type: string
+        correlationId:
+          type: string
+
+    # ─── Future contracts ─────────────────────────────────────────────
+
+    ConfirmationRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [confirmation]
+        conversationId:
+          type: string
+        summary:
+          type: string
+        requiredFields:
+          type: array
+          items:
+            type: string
+        timeoutMs:
+          type: integer
+
+    ConfirmationResponse:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [confirmation]
+        conversationId:
+          type: string
+        confirmed:
+          type: boolean
+        amendments:
+          type: object
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authenticated clients (Voice, WhatsApp, MCP).
+
+security:
+  - ApiKeyAuth: []

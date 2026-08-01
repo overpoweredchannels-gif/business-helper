@@ -22,13 +22,16 @@
     "test:financial-demo": "npx tsx scripts/demo-financial-acceptance.ts",
     "test:business-intelligence": "npx tsx scripts/test-business-intelligence.ts",
     "test:business-intelligence-demo": "npx tsx scripts/demo-business-intelligence.ts",
-    "test": "npm run test:brain && npm run test:gateway && npm run test:financial && npm run test:business-intelligence",
+    "test:invoice-number": "npx tsx scripts/test-invoice-number-service.ts",
+    "test:invoice-ledger": "npx tsx scripts/test-invoice-flow.ts",
+    "test": "npm run test:brain && npm run test:gateway && npm run test:financial && npm run test:business-intelligence && npm run test:invoice-number && npm run test:invoice-ledger",
     "test:startup": "npx tsx scripts/validate-startup.ts",
     "validate": "npm run typecheck && npm run test && npm run test:startup && npm run test:financial-demo",
     "validate:voice": "npm run typecheck && npm run test:voice && npm run test:voice-demo",
     "validate:assistant": "npm run typecheck && npm run test:assistant && npm run test:assistant-demo",
     "validate:customer": "npm run typecheck && npm run test:customer && npm run test:customer-demo",
-    "validate:supplier": "npm run typecheck && npm run test:supplier && npm run test:supplier-demo"
+    "validate:supplier": "npm run typecheck && npm run test:supplier && npm run test:supplier-demo",
+    "validate:invoice": "npm run typecheck && npm run test:invoice-number && npm run test:invoice-ledger"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.15",
