@@ -6,6 +6,7 @@ import type { MemoryWriterRawData } from "@/lib/brain/contracts/memory";
 import { generateExecutiveReport } from "@/lib/ai/executive-ai";
 
 export interface ExecutiveSessionContext extends ConversationContext {
+  currentFocus?: "briefing" | "alerts" | "kpi" | "recommendations" | "general";
   executiveProfile: {
     name: string;
     role: "ceo" | "cfo" | "coo" | "operations_head" | "sales_head" | "admin";
@@ -73,7 +74,7 @@ export async function getExecutiveAIResponse(
   executiveName?: string,
   language: "english" | "urdu" | "roman_urdu" = detectQueryLanguage(message),
   reportType?: "morning" | "daily" | "weekly" | "monthly",
-  intent?: { module: string; queryType?: string },
+  intent?: { module: string; queryType?: string | null },
   store?: MemoryStore,
   data?: MemoryWriterRawData
 ): Promise<any> {
@@ -100,7 +101,7 @@ export async function getExecutiveAIResponse(
     context.executiveFocus.currentReportType = reportType;
   }
 
-  const updatedContext = addConversationMessage(context, "user", "text", message);
+  const updatedContext = addConversationMessage(context, "user", "text", message) as ExecutiveSessionContext;
 
   const response = await processExecutiveQuery(updatedContext, language, store, data, intent);
 
@@ -199,49 +200,49 @@ export function getExecutiveConversationHistory(
       ctx.organizationId === organizationId && 
       (executiveName ? ctx.executiveProfile.name === executiveName : true)
     )
-    .sort((a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime())
+    .sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime())
     .slice(0, 10);
 }
 
 function generateExecutiveAlerts(data: MemoryWriterRawData): any[] {
   const alerts: any[] = [];
 
-  if (data.products?.some(p => p.currentStock <= 0)) {
+  if ((data.products as any[])?.some(p => p.currentStock <= 0)) {
     alerts.push({
       type: "critical",
       title: "Critical Inventory Shortage",
       message: "Several products are out of stock",
-      count: data.products?.filter(p => p.currentStock <= 0).length || 0,
+      count: (data.products as any[])?.filter(p => p.currentStock <= 0).length || 0,
       action: "Immediate procurement required",
     });
   }
 
-  if (data.customers?.some(c => c.creditDays > 90 && c.outstandingBalance > c.creditLimit * 0.9)) {
+  if ((data.customers as any[])?.some(c => c.creditDays > 90 && c.outstandingBalance > c.creditLimit * 0.9)) {
     alerts.push({
       type: "high",
       title: "Customer Credit Risk",
       message: "Customers with high credit risk detected",
-      count: data.customers?.filter(c => c.creditDays > 90 && c.outstandingBalance > c.creditLimit * 0.9).length || 0,
+      count: (data.customers as any[])?.filter(c => c.creditDays > 90 && c.outstandingBalance > c.creditLimit * 0.9).length || 0,
       action: "Review credit terms",
     });
   }
 
-  if (data.suppliers?.some(s => s.deliveryDays > 10)) {
+  if ((data.suppliers as any[])?.some(s => s.deliveryDays > 10)) {
     alerts.push({
       type: "medium",
       title: "Supplier Delays",
       message: "Supplier delivery delays affecting operations",
-      count: data.suppliers?.filter(s => s.deliveryDays > 10).length || 0,
+      count: (data.suppliers as any[])?.filter(s => s.deliveryDays > 10).length || 0,
       action: "Alternative suppliers needed",
     });
   }
 
-  if (data.expenses?.some(e => e.severity === "high")) {
+  if ((data.expenses as any[])?.some(e => e.severity === "high")) {
     alerts.push({
       type: "warning",
       title: "Expense Anomalies",
       message: "Unusual expense patterns detected",
-      count: data.expenses?.filter(e => e.severity === "high").length || 0,
+      count: (data.expenses as any[])?.filter(e => e.severity === "high").length || 0,
       action: "Review expense reports",
     });
   }
@@ -252,8 +253,8 @@ function generateExecutiveAlerts(data: MemoryWriterRawData): any[] {
 function prioritizeExecutiveRecommendations(data: MemoryWriterRawData): any[] {
   const recommendations: any[] = [];
 
-  if (data.recommendations?.length > 0) {
-    recommendations.push(...data.recommendations.map((rec, index) => ({
+  if ((data as any).recommendations?.length > 0) {
+    recommendations.push(...(data as any).recommendations.map((rec: any, index: number) => ({
       id: `rec-${index}`, ...rec,
       priority: rec.priority || "medium",
       businessImpact: calculateExecutiveImpact(rec, data),
@@ -262,7 +263,7 @@ function prioritizeExecutiveRecommendations(data: MemoryWriterRawData): any[] {
 
   recommendations.sort((a, b) => {
     const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-    return priorityOrder[a.priority] - priorityOrder[b.priority];
+    return (priorityOrder as Record<string, number>)[a.priority] - (priorityOrder as Record<string, number>)[b.priority];
   });
 
   return recommendations.slice(0, 10);
@@ -274,28 +275,28 @@ function calculateExecutiveImpact(recommendation: any, data: MemoryWriterRawData
 
   switch (recommendation.category) {
     case "inventory_optimization":
-      revenueImpact = data.products?.reduce((sum, p) => sum + p.currentStock * 100, 0) || 0;
-      costSavings = data.products?.reduce((sum, p) => sum + (p.reorderLevel * 50), 0) || 0;
+      revenueImpact = (data.products as any[])?.reduce((sum, p) => sum + p.currentStock * 100, 0) || 0;
+      costSavings = (data.products as any[])?.reduce((sum, p) => sum + (p.reorderLevel * 50), 0) || 0;
       break;
 
     case "revenue_growth":
-      revenueImpact = data.salesTransactions?.reduce((sum, s) => sum + s.amount * 0.05, 0) || 0;
+      revenueImpact = (data.salesTransactions as any[])?.reduce((sum, s) => sum + s.amount * 0.05, 0) || 0;
       costSavings = 0;
       break;
 
     case "customer_relationship":
-      revenueImpact = data.customers?.reduce((sum, c) => sum + c.outstandingBalance * 0.02, 0) || 0;
+      revenueImpact = (data.customers as any[])?.reduce((sum, c) => sum + c.outstandingBalance * 0.02, 0) || 0;
       costSavings = 0;
       break;
 
     case "supplier_management":
       revenueImpact = 0;
-      costSavings = data.suppliers?.reduce((sum, s) => sum + s.creditLimit * 0.03, 0) || 0;
+      costSavings = (data.suppliers as any[])?.reduce((sum, s) => sum + s.creditLimit * 0.03, 0) || 0;
       break;
 
     case "expense_control":
       revenueImpact = 0;
-      costSavings = data.expenses?.reduce((sum, e) => sum + e.amount * 0.1, 0) || 0;
+      costSavings = (data.expenses as any[])?.reduce((sum, e) => sum + e.amount * 0.1, 0) || 0;
       break;
 
     default:
@@ -311,7 +312,7 @@ async function processExecutiveQuery(
   language: string,
   store?: MemoryStore,
   data?: MemoryWriterRawData,
-  intent?: { module: string; queryType?: string }
+  intent?: { module: string; queryType?: string | null }
 ): Promise<any> {
   const now = new Date().toISOString();
 

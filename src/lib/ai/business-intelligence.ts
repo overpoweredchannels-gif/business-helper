@@ -21,7 +21,7 @@ export interface BusinessIntelligenceResult {
 }
 
 // Helper to format rupees
-function formatRs(amount: number): string {
+export function formatRs(amount: number): string {
   return `Rs ${Math.round(amount).toLocaleString("en-PK")}`;
 }
 

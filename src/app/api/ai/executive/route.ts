@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
     const assistant = new UnifiedAssistant(rawData);
     const dashboard = await getExecutiveDashboardData(
       organization_id,
-      executive_name,
+      executive_name ?? undefined,
       language || "english",
       report_type || "morning",
       assistant.store.store,

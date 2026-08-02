@@ -136,7 +136,7 @@ export function analyzeProactiveAlerts(
 
   const payload = calculateBusinessIntelligence(store, data);
 
-  payload.smartReorder.forEach((reorder, index) => {
+  payload.smartReorder.forEach((reorder: any, index: number) => {
     if (reorder.urgency === "critical") {
       alerts.push({
         alertId: `critical-reorder-${index}`,
@@ -154,7 +154,7 @@ export function analyzeProactiveAlerts(
     }
   });
 
-  payload.customerIntelligence.churnRisk.forEach((customer, index) => {
+  payload.customerIntelligence.churnRisk.forEach((customer: any, index: number) => {
     if (customer.riskScore > 0.8) {
       alerts.push({
         alertId: `churn-risk-${index}`,
@@ -172,7 +172,7 @@ export function analyzeProactiveAlerts(
     }
   });
 
-  payload.supplierIntelligence.delayed.forEach((supplier, index) => {
+  payload.supplierIntelligence.delayed.forEach((supplier: any, index: number) => {
     if (supplier.deliveryDays > 7) {
       alerts.push({
         alertId: `supplier-delay-${index}`,
@@ -190,7 +190,7 @@ export function analyzeProactiveAlerts(
     }
   });
 
-  payload.expenses?.forEach?.((expense, index) => {
+  payload.expenses?.forEach?.((expense: any, index: number) => {
     if (expense.severity === "high") {
       alerts.push({
         alertId: `expense-anomaly-${index}`,
@@ -227,7 +227,7 @@ export function explainKPI(
   switch (kpiType) {
     case "health_score":
       value = payload.businessHealth.score;
-      previousValue = data.analytics?.previousHealthScore || value - 5;
+      previousValue = (data as any).analytics?.previousHealthScore || value - 5;
       trend = value > previousValue ? "up" : value < previousValue ? "down" : "stable";
       break;
 
@@ -305,13 +305,18 @@ export function explainKPI(
           ? "یہ برآمدات میں اضافے کی جانب اشارہ کرتا ہے اور آمدنی میں بہتری لے کر آتا ہے۔"
           : language === "roman_urdu"
             ? "It indicates growth in exports and brings revenue improvement."
-            : "This indicates revenue growth and brings income improvement.";
+            : "This indicates revenue growth and brings income improvement."
         : trend === "down"
           ? language === "urdu"
             ? "اس سے برآمدات میں کمی آئے گی اور منافع متاثر ہوں گے۔"
-          : language === "roman_urdu"
-            ? "It will reduce exports and affect profits."
-          : "This will reduce revenue and affect profits.";
+            : language === "roman_urdu"
+              ? "It will reduce exports and affect profits."
+              : "This will reduce revenue and affect profits."
+          : language === "urdu"
+            ? "آمدنی مستحکم ہے، گزشتہ دورانیہ کے برابر ہے۔"
+            : language === "roman_urdu"
+              ? "Revenue stable hai, previous period ke barabar hai."
+              : "Revenue is stable, consistent with the previous period.";
       break;
 
     default:
@@ -336,12 +341,12 @@ export function prioritizeAIRecommendations(
   data: MemoryWriterRawData,
   organizationId: string
 ): PrioritizedRecommendation[] {
-  const allRecommendations = data.recommendations || [];
+  const allRecommendations = (data as any).recommendations || [];
   const payload = calculateBusinessIntelligence(store, data);
 
   const prioritized: PrioritizedRecommendation[] = [];
 
-  allRecommendations.forEach((rec, index) => {
+  allRecommendations.forEach((rec: any, index: number) => {
     let priority: PrioritizedRecommendation["priority"] = "low";
     let category: PrioritizedRecommendation["category"] = "expense_control";
 
@@ -363,7 +368,7 @@ export function prioritizeAIRecommendations(
     switch (rec.category) {
       case "inventory_optimization":
         impact = {
-          costSavings: Math.round(data.products?.reduce((sum, p) => sum + (p.reorderLevel * 100), 0) || 0),
+          costSavings: Math.round((data.products as any[])?.reduce((sum, p) => sum + (p.reorderLevel * 100), 0) || 0),
           timeToImplement: "1-3 days",
         };
         complexity = "simple";
@@ -372,7 +377,7 @@ export function prioritizeAIRecommendations(
 
       case "revenue_growth":
         impact = {
-          revenueImpact: Math.round(data.salesTransactions?.reduce((sum, s) => sum + s.amount, 0) * 0.05),
+          revenueImpact: Math.round((data.salesTransactions as any[])?.reduce((sum, s) => sum + s.amount, 0) * 0.05),
           timeToImplement: "2-4 weeks",
         };
         complexity = "moderate";
@@ -381,7 +386,7 @@ export function prioritizeAIRecommendations(
 
       case "customer_relationship":
         impact = {
-          revenueImpact: Math.round(data.customers?.reduce((sum, c) => sum + (c.outstandingBalance * 0.1), 0) || 0),
+          revenueImpact: Math.round((data.customers as any[])?.reduce((sum, c) => sum + (c.outstandingBalance * 0.1), 0) || 0),
           timeToImplement: "1-2 weeks",
         };
         complexity = "moderate";
@@ -390,7 +395,7 @@ export function prioritizeAIRecommendations(
 
       case "supplier_management":
         impact = {
-          costSavings: Math.round(data.suppliers?.reduce((sum, s) => sum + (s.creditLimit * 0.05), 0) || 0),
+          costSavings: Math.round((data.suppliers as any[])?.reduce((sum, s) => sum + (s.creditLimit * 0.05), 0) || 0),
           timeToImplement: "3-5 days",
         };
         complexity = "simple";
@@ -399,7 +404,7 @@ export function prioritizeAIRecommendations(
 
       case "expense_control":
         impact = {
-          costSavings: Math.round(data.expenses?.reduce((sum, e) => sum + (e.amount * 0.15), 0) || 0),
+          costSavings: Math.round((data.expenses as any[])?.reduce((sum, e) => sum + (e.amount * 0.15), 0) || 0),
           timeToImplement: "1 week",
         };
         complexity = "simple";
@@ -424,7 +429,7 @@ export function prioritizeAIRecommendations(
     });
   });
 
-  payload.recommendations.forEach((rec, index) => {
+  payload.recommendations.forEach((rec: any, index: number) => {
     if (!prioritized.find(p => p.title === rec.title)) {
       prioritized.push({
         recommendationId: `rec-dashboard-${index}`,
@@ -433,7 +438,7 @@ export function prioritizeAIRecommendations(
         title: rec.title,
         description: rec.description,
         potentialImpact: {
-          revenueImpact: Math.round(data.salesTransactions?.reduce((sum, s) => sum + s.amount, 0) * 0.03),
+          revenueImpact: Math.round((data.salesTransactions as any[])?.reduce((sum, s) => sum + s.amount, 0) * 0.03),
           timeToImplement: "2-3 weeks",
         },
         implementationComplexity: "moderate",
@@ -460,19 +465,19 @@ function calculateBusinessIntelligence(
 function generateExecutiveAlerts(data: MemoryWriterRawData): string[] {
   const alerts: string[] = [];
 
-  if (data.products?.some(p => p.currentStock <= 0)) {
+  if ((data.products as any[])?.some(p => p.currentStock <= 0)) {
     alerts.push("Critical inventory shortage detected");
   }
 
-  if (data.customers?.some(c => c.creditDays > 90 && c.outstandingBalance > c.creditLimit * 0.8)) {
+  if ((data.customers as any[])?.some(c => c.creditDays > 90 && c.outstandingBalance > c.creditLimit * 0.8)) {
     alerts.push("High-risk customers with overdue balances");
   }
 
-  if (data.suppliers?.some(s => s.deliveryDays > 10)) {
+  if ((data.suppliers as any[])?.some(s => s.deliveryDays > 10)) {
     alerts.push("Supplier delivery delays affecting operations");
   }
 
-  if (data.expenses?.some(e => e.severity === "high")) {
+  if ((data.expenses as any[])?.some(e => e.severity === "high")) {
     alerts.push("Unusual expense patterns detected");
   }
 
@@ -583,8 +588,8 @@ function generateMonthlyForecast(
 }
 
 function calculateInventoryTurnover(data: MemoryWriterRawData): number {
-  const totalCost = data.products?.reduce((sum, p) => sum + (p.lastPurchasePrice * p.currentStock), 0) || 0;
-  const averageInventory = data.products?.reduce((sum, p) => sum + p.currentStock, 0) / (data.products?.length || 1);
+  const totalCost = (data.products as any[])?.reduce((sum, p) => sum + (p.lastPurchasePrice * p.currentStock), 0) || 0;
+  const averageInventory = (data.products as any[])?.reduce((sum, p) => sum + p.currentStock, 0) / (data.products?.length || 1);
   return averageInventory > 0 ? totalCost / averageInventory : 0;
 }
 
