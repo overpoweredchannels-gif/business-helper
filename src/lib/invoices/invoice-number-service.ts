@@ -21,15 +21,30 @@ import type { InvoiceType } from "./types";
 
 /** Prefix used for each invoice family. */
 export const INVOICE_PREFIXES: Record<InvoiceType, string> = {
-  sales: "SAL",
-  purchase: "PUR",
+  sales: "S",
+  purchase: "P",
   sales_return: "SRN",
   purchase_return: "PRN",
   purchase_order: "PO",
 };
 
-/** Number of zero-padded digits in the sequence portion, e.g. SAL-000001. */
-export const INVOICE_SEQUENCE_PAD_LENGTH = 6;
+/** Number of zero-padded digits in the sequence portion per invoice type. */
+export const INVOICE_SEQUENCE_PAD_LENGTH: Record<InvoiceType, number> = {
+  sales: 6,
+  purchase: 5,
+  sales_return: 6,
+  purchase_return: 6,
+  purchase_order: 6,
+};
+
+/** Starting offset for sequence numbers per invoice type (added to DB counter). */
+export const INVOICE_SEQUENCE_OFFSET: Record<InvoiceType, number> = {
+  sales: 100000,
+  purchase: 50000,
+  sales_return: 0,
+  purchase_return: 0,
+  purchase_order: 0,
+};
 
 /**
  * Pure formatting helper — no I/O. Kept separate from the service class so it
@@ -43,7 +58,10 @@ export function formatInvoiceNumber(invoiceType: InvoiceType, sequenceNumber: nu
   if (!Number.isInteger(sequenceNumber) || sequenceNumber <= 0) {
     throw new Error(`formatInvoiceNumber: sequence number must be a positive integer, got "${sequenceNumber}"`);
   }
-  return `${prefix}-${String(sequenceNumber).padStart(INVOICE_SEQUENCE_PAD_LENGTH, "0")}`;
+  const offset = INVOICE_SEQUENCE_OFFSET[invoiceType] ?? 0;
+  const padLength = INVOICE_SEQUENCE_PAD_LENGTH[invoiceType] ?? 6;
+  const displayNumber = sequenceNumber + offset;
+  return `${prefix}-${String(displayNumber).padStart(padLength, "0")}`;
 }
 
 /**

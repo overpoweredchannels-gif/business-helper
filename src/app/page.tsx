@@ -118,6 +118,7 @@ import {
 import {
   generatePurchaseInvoice,
   generatePurchaseOrder,
+  generateSalesInvoice,
 } from "@/lib/invoices/invoice-number-service";
 import type { InventoryTransaction } from "@/lib/inventory/types";
 
@@ -3450,12 +3451,6 @@ export default function Home() {
       return;
     }
 
-    if (!salesInvoiceNumber.trim()) {
-      setSalesError("Invoice number is required");
-      setSalesMessage(null);
-      return;
-    }
-
     if (salesLines.length === 0 || salesLines.some((line) => !line.product_id)) {
       setSalesError("Please add at least one product line");
       setSalesMessage(null);
@@ -3600,11 +3595,26 @@ export default function Home() {
         return;
       }
 
+      // Generate invoice number server-side (S-100001, S-100002, ...)
+      let systemInvoiceNumber: string;
+      try {
+        if (!currentOrganizationId) {
+          throw new Error("Organization not loaded");
+        }
+        systemInvoiceNumber = await generateSalesInvoice(currentOrganizationId);
+      } catch (numberErr) {
+        setSalesError(
+          numberErr instanceof Error ? numberErr.message : "Failed to generate invoice number"
+        );
+        setSalesInvoiceLoading(false);
+        return;
+      }
+
       const tx = await supabase
         .from("sales_transactions")
         .insert({
           customer_id: selectedCustomerIdForSale,
-          invoice_number: salesInvoiceNumber,
+          invoice_number: systemInvoiceNumber,
           sale_date: salesInvoiceDate,
           payment_type: salesPaymentType,
           credit_due_date: salesPaymentType === "credit" ? creditDueDate : null,
@@ -3675,17 +3685,17 @@ export default function Home() {
         action: "created",
         entity_type: "sales_invoice",
         entity_id: salesTransactionId,
-        entity_label: salesInvoiceNumber,
-        description: `Created sales invoice ${salesInvoiceNumber} for ${selectedSalesCustomer?.customer_name ?? "Unknown Customer"}`,
+        entity_label: systemInvoiceNumber,
+        description: `Created sales invoice ${systemInvoiceNumber} for ${selectedSalesCustomer?.customer_name ?? "Unknown Customer"}`,
         new_values: {
           customer_id: selectedCustomerIdForSale,
-          invoice_number: salesInvoiceNumber,
+          invoice_number: systemInvoiceNumber,
           sale_date: salesInvoiceDate,
           payment_type: salesPaymentType,
         },
       });
 
-      setSalesMessage("Sales invoice saved successfully");
+      setSalesMessage(`Sales invoice ${systemInvoiceNumber} saved successfully`);
       setSelectedCustomerIdForSale(null);
       setSalesInvoiceNumber("");
       setSalesInvoiceDate(toDateInputValue(new Date()));
@@ -14961,10 +14971,13 @@ export default function Home() {
                 <span>Invoice Number</span>
                 <input
                   type="text"
-                  value={salesInvoiceNumber}
-                  onChange={(e) => setSalesInvoiceNumber(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  value="Auto-generated on submit (S-xxxxxx)"
+                  readOnly
+                  className="w-full rounded border border-border px-3 py-2 bg-muted text-muted-foreground"
                 />
+                <span className="text-xs text-muted-foreground/80">
+                  TradeOS generates the system invoice number (S-xxxxxx) automatically.
+                </span>
               </label>
             </div>
 

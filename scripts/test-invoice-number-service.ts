@@ -16,6 +16,8 @@ import {
   formatInvoiceNumber,
   extractSequenceDigits,
   INVOICE_PREFIXES,
+  INVOICE_SEQUENCE_PAD_LENGTH,
+  INVOICE_SEQUENCE_OFFSET,
 } from "../src/lib/invoices/invoice-number-service";
 
 let passed = 0;
@@ -75,15 +77,22 @@ function createMockSupabaseRpc(responses: Array<{ data?: unknown; error?: { mess
 console.log("\n=== formatInvoiceNumber ===\n");
 
 function testFormatInvoiceNumber() {
-  assertEqual(formatInvoiceNumber("sales", 1), "SAL-000001", "Sales #1 formats as SAL-000001");
-  assertEqual(formatInvoiceNumber("sales", 2), "SAL-000002", "Sales #2 formats as SAL-000002");
-  assertEqual(formatInvoiceNumber("sales", 125), "SAL-000125", "Sales #125 formats as SAL-000125");
-  assertEqual(formatInvoiceNumber("purchase", 1), "PUR-000001", "Purchase #1 formats as PUR-000001");
-  assertEqual(formatInvoiceNumber("purchase", 2), "PUR-000002", "Purchase #2 formats as PUR-000002");
+  // Sales: S-100001, S-100002, ... (6 digits, offset 100000)
+  assertEqual(formatInvoiceNumber("sales", 1), "S-100001", "Sales #1 formats as S-100001");
+  assertEqual(formatInvoiceNumber("sales", 2), "S-100002", "Sales #2 formats as S-100002");
+  assertEqual(formatInvoiceNumber("sales", 125), "S-100125", "Sales #125 formats as S-100125");
+  assertEqual(formatInvoiceNumber("sales", 999999), "S-1099999", "Large sales sequence numbers pad correctly");
+
+  // Purchase: P-50001, P-50002, ... (5 digits, offset 50000)
+  assertEqual(formatInvoiceNumber("purchase", 1), "P-50001", "Purchase #1 formats as P-50001");
+  assertEqual(formatInvoiceNumber("purchase", 2), "P-50002", "Purchase #2 formats as P-50002");
+  assertEqual(formatInvoiceNumber("purchase", 125), "P-50125", "Purchase #125 formats as P-50125");
+  assertEqual(formatInvoiceNumber("purchase", 99999), "P-149999", "Large purchase sequence numbers pad correctly");
+
+  // Other types (no offset)
   assertEqual(formatInvoiceNumber("sales_return", 1), "SRN-000001", "Sales return #1 formats as SRN-000001");
   assertEqual(formatInvoiceNumber("purchase_return", 1), "PRN-000001", "Purchase return #1 formats as PRN-000001");
-  assertEqual(formatInvoiceNumber("sales", 999999), "SAL-999999", "Large sequence numbers pad correctly");
-  assertEqual(formatInvoiceNumber("sales", 1000000), "SAL-1000000", "Overflowing sequence numbers are not truncated");
+  assertEqual(formatInvoiceNumber("purchase_order", 1), "PO-000001", "Purchase order #1 formats as PO-000001");
 
   let threw = false;
   try {
@@ -109,11 +118,22 @@ function testFormatInvoiceNumber() {
   }
   assert(threw, "Unknown invoice type throws");
 
-  assertEqual(Object.keys(INVOICE_PREFIXES).length, 4, "Exactly 4 invoice type prefixes defined");
-  assertEqual(INVOICE_PREFIXES.sales, "SAL", "sales prefix is SAL");
-  assertEqual(INVOICE_PREFIXES.purchase, "PUR", "purchase prefix is PUR");
+  assertEqual(Object.keys(INVOICE_PREFIXES).length, 5, "Exactly 5 invoice type prefixes defined");
+  assertEqual(INVOICE_PREFIXES.sales, "S", "sales prefix is S");
+  assertEqual(INVOICE_PREFIXES.purchase, "P", "purchase prefix is P");
   assertEqual(INVOICE_PREFIXES.sales_return, "SRN", "sales_return prefix is SRN");
   assertEqual(INVOICE_PREFIXES.purchase_return, "PRN", "purchase_return prefix is PRN");
+  assertEqual(INVOICE_PREFIXES.purchase_order, "PO", "purchase_order prefix is PO");
+
+  // Test pad lengths
+  assertEqual(INVOICE_SEQUENCE_PAD_LENGTH.sales, 6, "Sales pad length is 6");
+  assertEqual(INVOICE_SEQUENCE_PAD_LENGTH.purchase, 5, "Purchase pad length is 5");
+  assertEqual(INVOICE_SEQUENCE_PAD_LENGTH.sales_return, 6, "Sales return pad length is 6");
+
+  // Test offsets
+  assertEqual(INVOICE_SEQUENCE_OFFSET.sales, 100000, "Sales offset is 100000");
+  assertEqual(INVOICE_SEQUENCE_OFFSET.purchase, 50000, "Purchase offset is 50000");
+  assertEqual(INVOICE_SEQUENCE_OFFSET.sales_return, 0, "Sales return offset is 0");
 }
 
 testFormatInvoiceNumber();
@@ -121,10 +141,12 @@ testFormatInvoiceNumber();
 console.log("\n=== extractSequenceDigits ===\n");
 
 function testExtractSequenceDigits() {
-  assertEqual(extractSequenceDigits("SAL-000125"), "000125", "Extracts digits from full invoice number");
-  assertEqual(extractSequenceDigits("PUR-000002"), "000002", "Extracts digits from purchase invoice number");
+  assertEqual(extractSequenceDigits("S-100125"), "100125", "Extracts digits from new sales invoice number");
+  assertEqual(extractSequenceDigits("P-50125"), "50125", "Extracts digits from new purchase invoice number");
+  assertEqual(extractSequenceDigits("SAL-000125"), "000125", "Extracts digits from legacy sales invoice number");
+  assertEqual(extractSequenceDigits("PUR-000002"), "000002", "Extracts digits from legacy purchase invoice number");
   assertEqual(extractSequenceDigits("125"), "125", "Extracts digits from bare numeric string");
-  assertEqual(extractSequenceDigits("SAL-"), null, "Returns null when no digits present");
+  assertEqual(extractSequenceDigits("S-"), null, "Returns null when no digits present");
 }
 
 testExtractSequenceDigits();
@@ -138,13 +160,13 @@ async function testGenerateSalesInvoice() {
   const service = new InvoiceNumberService(mock);
 
   const first = await service.generateSalesInvoice("org_1");
-  assertEqual(first, "SAL-000001", "First sales invoice is SAL-000001");
+  assertEqual(first, "S-100001", "First sales invoice is S-100001");
 
   const second = await service.generateSalesInvoice("org_1");
-  assertEqual(second, "SAL-000002", "Second sales invoice is SAL-000002");
+  assertEqual(second, "S-100002", "Second sales invoice is S-100002");
 
   const later = await service.generateSalesInvoice("org_1");
-  assertEqual(later, "SAL-000125", "Later sales invoice reflects RPC sequence value");
+  assertEqual(later, "S-100125", "Later sales invoice reflects RPC sequence value");
 
   assertEqual(mock.calls.length, 3, "RPC called once per generated invoice");
   assertEqual(mock.calls[0].fnName, "next_invoice_number", "Calls the next_invoice_number RPC function");
@@ -159,15 +181,15 @@ async function testGeneratePurchaseInvoice() {
   const service = new InvoiceNumberService(mock);
 
   const invoiceNumber = await service.generatePurchaseInvoice("org_2");
-  assertEqual(invoiceNumber, "PUR-000001", "First purchase invoice is PUR-000001");
+  assertEqual(invoiceNumber, "P-50001", "First purchase invoice is P-50001");
   assertEqual(mock.calls[0].params.p_invoice_type, "purchase", "Passes invoice_type=purchase to RPC");
   assertEqual(mock.calls[0].params.p_organization_id, "org_2", "Passes correct organizationId to RPC");
 }
 
-console.log("\n=== InvoiceNumberService — Sales Return / Purchase Return (future-proofing) ===\n");
+console.log("\n=== InvoiceNumberService — Sales Return / Purchase Return / Purchase Order (future-proofing) ===\n");
 
 async function testReturnInvoiceTypes() {
-  const mock = createMockSupabaseRpc([{ data: 1 }, { data: 1 }]);
+  const mock = createMockSupabaseRpc([{ data: 1 }, { data: 1 }, { data: 1 }]);
   const service = new InvoiceNumberService(mock);
 
   const salesReturn = await service.generateSalesReturnInvoice("org_1");
@@ -177,6 +199,10 @@ async function testReturnInvoiceTypes() {
   const purchaseReturn = await service.generatePurchaseReturnInvoice("org_1");
   assertEqual(purchaseReturn, "PRN-000001", "Purchase return invoice formats as PRN-000001");
   assertEqual(mock.calls[1].params.p_invoice_type, "purchase_return", "Passes invoice_type=purchase_return to RPC");
+
+  const purchaseOrder = await service.generatePurchaseOrder("org_1");
+  assertEqual(purchaseOrder, "PO-000001", "Purchase order invoice formats as PO-000001");
+  assertEqual(mock.calls[2].params.p_invoice_type, "purchase_order", "Passes invoice_type=purchase_order to RPC");
 }
 
 console.log("\n=== InvoiceNumberService — organizations are independent sequences ===\n");
@@ -197,6 +223,38 @@ async function testIndependentOrgSequences() {
   assertEqual(mock.calls[0].params.p_organization_id, "org_a", "Call 1 scoped to org_a");
   assertEqual(mock.calls[1].params.p_organization_id, "org_b", "Call 2 scoped to org_b");
   assertEqual(mock.calls[2].params.p_organization_id, "org_a", "Call 3 scoped to org_a again");
+}
+
+console.log("\n=== InvoiceNumberService — sequence ordering (simulated concurrency) ===\n");
+
+async function testSequenceOrdering() {
+  // Simulate 100 concurrent-like requests by making rapid sequential calls
+  // The mock returns incrementing sequence numbers to simulate the DB behavior
+  const responses = Array.from({ length: 100 }, (_, i) => ({ data: i + 1 }));
+  const mock = createMockSupabaseRpc(responses);
+  const service = new InvoiceNumberService(mock);
+
+  const results: string[] = [];
+  for (let i = 0; i < 100; i++) {
+    results.push(await service.generateSalesInvoice("org_test"));
+  }
+
+  // Verify strict ordering: each number should be exactly 1 more than the previous
+  for (let i = 1; i < results.length; i++) {
+    const prev = parseInt(results[i - 1].split("-")[1], 10);
+    const curr = parseInt(results[i].split("-")[1], 10);
+    assertEqual(curr, prev + 1, `Sequence order maintained at position ${i}: ${results[i - 1]} -> ${results[i]}`);
+  }
+
+  // Verify no duplicates
+  const unique = new Set(results);
+  assertEqual(unique.size, results.length, "No duplicate invoice numbers in 100 generations");
+
+  // Verify expected format
+  assertEqual(results[0], "S-100001", "First invoice is S-100001");
+  assertEqual(results[99], "S-100100", "100th invoice is S-100100");
+
+  assertEqual(mock.calls.length, 100, "RPC called exactly 100 times");
 }
 
 console.log("\n=== InvoiceNumberService — error handling ===\n");

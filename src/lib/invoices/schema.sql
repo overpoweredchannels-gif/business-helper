@@ -172,10 +172,12 @@ create index if not exists purchase_transactions_invoice_number_idx
 -- ---------------------------------------------------------------------------
 create index if not exists sales_transactions_sale_date_idx on public.sales_transactions (sale_date);
 create index if not exists sales_transactions_customer_idx on public.sales_transactions (customer_id);
+create index if not exists sales_transactions_created_at_idx on public.sales_transactions (created_at);
 create index if not exists sales_transactions_created_by_idx on public.sales_transactions (created_by_profile_id);
 create index if not exists sales_transactions_payment_type_idx on public.sales_transactions (payment_type);
 create index if not exists sales_transactions_status_idx on public.sales_transactions (status);
 
 create index if not exists purchase_transactions_purchase_date_idx on public.purchase_transactions (purchase_date);
 create index if not exists purchase_transactions_supplier_idx on public.purchase_transactions (supplier_id);
+create index if not exists purchase_transactions_created_at_idx on public.purchase_transactions (created_at);
 create index if not exists purchase_transactions_status_idx on public.purchase_transactions (status);
