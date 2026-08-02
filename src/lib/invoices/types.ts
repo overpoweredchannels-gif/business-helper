@@ -4,12 +4,12 @@
 // System, Business Brain, Identity, or Conversation Gateway types.
 
 /**
- * The four invoice families the numbering engine must support today, and be
- * ready to support tomorrow (Sales Return / Purchase Return have no CRUD
- * module yet in this sprint, but the numbering engine is generic per Part 1's
- * "future-proof the numbering engine" requirement).
+ * The invoice families the numbering engine must support today, and be ready
+ * to support tomorrow. Sales Return / Purchase Return had no CRUD module when
+ * the engine was first built (Part 1's "future-proof the numbering engine");
+ * Purchase Management Phase 1 adds Purchase Orders to the same engine.
  */
-export type InvoiceType = "sales" | "purchase" | "sales_return" | "purchase_return";
+export type InvoiceType = "sales" | "purchase" | "sales_return" | "purchase_return" | "purchase_order";
 
 /**
  * Invoice lifecycle status. Defaults to "confirmed" for backward

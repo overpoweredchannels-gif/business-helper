@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { DashboardLayout, DashboardView } from "@/components/dashboard";
@@ -14,6 +14,7 @@ import PermissionMatrix from "@/components/identity/PermissionMatrix";
 import InvitationPanel from "@/components/identity/InvitationPanel";
 import SessionManagement from "@/components/identity/SessionManagement";
 import AuditLogPanel from "@/components/identity/AuditLogPanel";
+import ImportWizard from "@/components/inventory/ImportWizard";
 import {
   aiAssistantExampleCommands,
   aiAssistantRoadmapItems,
@@ -73,6 +74,10 @@ import type {
   NewPurchaseExpenseReminder,
   Product,
   PurchaseLine,
+  PurchaseOrder,
+  PurchaseOrderItem,
+  PurchaseReturn,
+  PurchaseReturnItem,
   PurchaseTransaction,
   SalesTransaction,
   SectionId,
@@ -91,6 +96,30 @@ import type {
   TaskSuggestion,
 } from "@/lib/tradeos/types";
 import { isValidUuid, normalizeOptionalUuid, safeNumber, safeTextOrNull } from "@/lib/tradeos/validators";
+import {
+  validateProductInput,
+  validateBrandName,
+  validateCategoryName,
+} from "@/lib/products/validation";
+import { validateAdjustmentInput } from "@/lib/inventory/validation";
+import {
+  buildInventorySnapshots,
+  formatMovementChange,
+  getBatchBreakdown,
+  isAdjustmentType,
+  movementLabel,
+  queryLedger,
+} from "@/lib/inventory/service";
+import {
+  validatePurchaseOrderInput,
+  validateReceiveQuantities,
+  validatePurchaseReturnInput,
+} from "@/lib/purchases/validation";
+import {
+  generatePurchaseInvoice,
+  generatePurchaseOrder,
+} from "@/lib/invoices/invoice-number-service";
+import type { InventoryTransaction } from "@/lib/inventory/types";
 
 type TradeOsSpeechRecognitionEvent = {
   resultIndex: number;
@@ -124,6 +153,63 @@ type TradeOsSpeechWindow = Window & {
   webkitSpeechRecognition?: TradeOsSpeechRecognitionConstructor;
 };
 
+type PurchaseListSort = "date_desc" | "date_asc" | "number" | "supplier" | "status";
+
+interface PurchaseListFilters {
+  search: string;
+  supplierId: string;
+  dateFrom: string;
+  dateTo: string;
+  status: string;
+  productId: string;
+  batch: string;
+  sort: PurchaseListSort;
+}
+
+const DEFAULT_PURCHASE_LIST_FILTERS: PurchaseListFilters = {
+  search: "",
+  supplierId: "all",
+  dateFrom: "",
+  dateTo: "",
+  status: "all",
+  productId: "all",
+  batch: "",
+  sort: "date_desc",
+};
+
+const PURCHASE_INVOICE_STATUS_OPTIONS = [
+  { value: "pending", label: "Expense review pending" },
+  { value: "no_additional_expense", label: "No additional expense" },
+  { value: "expenses_added", label: "Expenses added" },
+  { value: "review_later", label: "Review later" },
+];
+
+const PURCHASE_INVOICE_PAYMENT_OPTIONS = [
+  { value: "paid", label: "Paid" },
+  { value: "partially_paid", label: "Partially paid" },
+  { value: "unpaid", label: "Unpaid" },
+];
+
+const PURCHASE_ORDER_STATUS_OPTIONS = [
+  { value: "ordered", label: "Ordered" },
+  { value: "partial", label: "Partially received" },
+  { value: "received", label: "Received" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+const PURCHASE_RETURN_STATUS_OPTIONS = [
+  { value: "confirmed", label: "Confirmed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+const PURCHASE_LIST_SORT_OPTIONS: { value: PurchaseListSort; label: string }[] = [
+  { value: "date_desc", label: "Newest first" },
+  { value: "date_asc", label: "Oldest first" },
+  { value: "number", label: "Number (A-Z)" },
+  { value: "supplier", label: "Supplier (A-Z)" },
+  { value: "status", label: "Status (A-Z)" },
+];
+
 export default function Home() {
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
@@ -152,6 +238,7 @@ export default function Home() {
 
   const [categoryName, setCategoryName] = useState("");
   const [parentCategoryId, setParentCategoryId] = useState<string | null>(null);
+  const [categoryOversellingPolicy, setCategoryOversellingPolicy] = useState("inherit");
   const [categoryMessage, setCategoryMessage] = useState<string | null>(null);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -161,6 +248,32 @@ export default function Home() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [productToView, setProductToView] = useState<Product | null>(null);
+  const [productSku, setProductSku] = useState("");
+  const [productBarcode, setProductBarcode] = useState("");
+  const [productLastPurchasePrice, setProductLastPurchasePrice] = useState("");
+  const [productDefaultPurchasePrice, setProductDefaultPurchasePrice] = useState("");
+  const [productSellingPrice, setProductSellingPrice] = useState("");
+  const [productIsActive, setProductIsActive] = useState(true);
+  const [productOversellingPolicy, setProductOversellingPolicy] = useState("inherit");
+
+  const filteredProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+    if (!query) return products;
+    return products.filter((product) => {
+      const brand = brands.find((b) => b.id === product.brand_id);
+      const category = categories.find((c) => c.id === product.category_id);
+      return (
+        product.name.toLowerCase().includes(query) ||
+        (product.sku ?? "").toLowerCase().includes(query) ||
+        (product.barcode ?? "").toLowerCase().includes(query) ||
+        (brand?.name ?? "").toLowerCase().includes(query) ||
+        (category?.name ?? "").toLowerCase().includes(query)
+      );
+    });
+  }, [productSearch, products, brands, categories]);
 
   const [customerName, setCustomerName] = useState("");
   const [shopName, setShopName] = useState("");
@@ -215,6 +328,7 @@ export default function Home() {
   const [businessSettingsCity, setBusinessSettingsCity] = useState("");
   const [businessSettingsInvoiceFooterNote, setBusinessSettingsInvoiceFooterNote] = useState("");
   const [businessSettingsDefaultPaymentTerms, setBusinessSettingsDefaultPaymentTerms] = useState("");
+  const [businessSettingsOversellingPolicy, setBusinessSettingsOversellingPolicy] = useState("allow");
   const [businessSettingsLoading, setBusinessSettingsLoading] = useState(false);
   const [businessSettingsMessage, setBusinessSettingsMessage] = useState<string | null>(null);
   const [businessSettingsError, setBusinessSettingsError] = useState<string | null>(null);
@@ -263,6 +377,21 @@ export default function Home() {
         return draft;
       }, {} as Record<StaffPermissionKey, boolean>)
   );
+  const [inventoryTransactions, setInventoryTransactions] = useState<InventoryTransaction[]>([]);
+  const [inventoryTransactionsLoading, setInventoryTransactionsLoading] = useState(false);
+  const [inventoryTab, setInventoryTab] = useState<"dashboard" | "adjustments" | "ledger" | "import">("dashboard");
+  const [adjustmentProductId, setAdjustmentProductId] = useState("");
+  const [adjustmentDirection, setAdjustmentDirection] = useState<"in" | "out">("in");
+  const [adjustmentQuantity, setAdjustmentQuantity] = useState("");
+  const [adjustmentReason, setAdjustmentReason] = useState("");
+  const [adjustmentBatchNumber, setAdjustmentBatchNumber] = useState("");
+  const [adjustmentExpiryDate, setAdjustmentExpiryDate] = useState("");
+  const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
+  const [adjustmentMessage, setAdjustmentMessage] = useState<string | null>(null);
+  const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
+  const [ledgerMovementFilter, setLedgerMovementFilter] = useState("all");
+  const [ledgerProductFilter, setLedgerProductFilter] = useState("all");
+  const [ledgerSearch, setLedgerSearch] = useState("");
   const [securityChecks, setSecurityChecks] = useState<SecurityCheck[]>([]);
   const [securityCheckNotes, setSecurityCheckNotes] = useState<Record<string, string>>({});
   const [securityCheckMessage, setSecurityCheckMessage] = useState<string | null>(null);
@@ -963,6 +1092,7 @@ export default function Home() {
     setBusinessSettingsCity(organization?.city ?? "");
     setBusinessSettingsInvoiceFooterNote(organization?.invoice_footer_note ?? "");
     setBusinessSettingsDefaultPaymentTerms(organization?.default_payment_terms ?? "");
+    setBusinessSettingsOversellingPolicy(organization?.overselling_policy ?? "allow");
   };
 
   const fetchCurrentOrganization = async (organizationId?: string | null) => {
@@ -974,7 +1104,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("organizations")
-      .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms")
+      .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy")
       .eq("id", orgId)
       .maybeSingle();
 
@@ -1058,6 +1188,12 @@ export default function Home() {
     fetchCustomers(resolvedProfile.organization_id);
     fetchSuppliers(resolvedProfile.organization_id);
     fetchPurchaseTransactions(resolvedProfile.organization_id);
+    fetchPurchaseOrders(resolvedProfile.organization_id).then(() =>
+      fetchPurchaseOrderItems(resolvedProfile.organization_id)
+    );
+    fetchPurchaseReturns(resolvedProfile.organization_id).then(() =>
+      fetchPurchaseReturnItems(resolvedProfile.organization_id)
+    );
     fetchSalesTransactions(resolvedProfile.organization_id);
     fetchCustomerPayments(resolvedProfile.organization_id);
     fetchCustomerPaymentAllocations(resolvedProfile.organization_id);
@@ -1079,8 +1215,9 @@ export default function Home() {
     fetchSecurityChecks(resolvedProfile.organization_id);
     fetchDutySessions(resolvedProfile.organization_id, resolvedProfile.id);
     fetchLocationPoints(resolvedProfile.organization_id);
-    fetchPurchaseItems();
-    fetchSalesItems();
+    fetchPurchaseItems(resolvedProfile.organization_id);
+    fetchSalesItems(resolvedProfile.organization_id);
+    fetchInventoryTransactions(resolvedProfile.organization_id);
   };
 
   const checkAuthUser = async () => {
@@ -1741,6 +1878,10 @@ export default function Home() {
         : null;
   };
   const getAvailableStockForProduct = (productId: string | number) => {
+    const product = products.find((item) => String(item.id) === String(productId));
+    if (product && product.current_stock != null) {
+      return safeNumber(product.current_stock);
+    }
     const purchasedQty = (purchaseItems ?? [])
       .filter((item) => String(item.product_id) === String(productId))
       .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
@@ -1748,6 +1889,31 @@ export default function Home() {
       .filter((item) => String(item.product_id) === String(productId))
       .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
     return purchasedQty - soldQty;
+  };
+  const getEffectiveOversellingPolicy = (product: Product): "allow" | "block" => {
+    if (product.overselling_policy === "allow" || product.overselling_policy === "block") {
+      return product.overselling_policy;
+    }
+    let categoryId = product.category_id;
+    let hops = 0;
+    while (categoryId && hops < 20) {
+      const category = categories.find((c) => String(c.id) === String(categoryId));
+      if (!category) break;
+      if (category.overselling_policy === "allow" || category.overselling_policy === "block") {
+        return category.overselling_policy;
+      }
+      categoryId = category.parent_category_id;
+      hops += 1;
+    }
+    return currentOrganization?.overselling_policy === "block" ? "block" : "allow";
+  };
+  const getOversellingViolationMessage = (product: Product, quantity: number): string | null => {
+    if (getEffectiveOversellingPolicy(product) !== "block") return null;
+    const available = getAvailableStockForProduct(product.id);
+    if (quantity > available) {
+      return `Cannot sell ${quantity} of ${product.name}: only ${available} in stock (overselling is blocked for this product).`;
+    }
+    return null;
   };
   const evaluateAiDraftData = (actionType: string, parsedData: Record<string, unknown>) => {
     const product = products.find((item) => String(item.id) === String(parsedData.product_id));
@@ -2727,8 +2893,12 @@ export default function Home() {
         return;
       }
 
+      const draftProduct = products.find((p) => String(p.id) === String(productId));
       const availableStock = getAvailableStockForProduct(productId);
-      if (availableStock < quantity) {
+      if (
+        availableStock < quantity &&
+        (!draftProduct || getEffectiveOversellingPolicy(draftProduct) === "block")
+      ) {
         await markDraftFailed(`Not enough stock. Available stock is ${availableStock}, requested quantity is ${quantity}.`);
         return;
       }
@@ -3297,6 +3467,24 @@ export default function Home() {
       setSalesError("Please add at least one product line");
       setSalesMessage(null);
       return;
+    }
+
+    for (const line of salesLines) {
+      if (!line.product_id) continue;
+      const product = products.find((p) => String(p.id) === String(line.product_id));
+      if (!product) continue;
+      const quantity = Number(line.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        setSalesError(`Invalid quantity for ${product.name}.`);
+        setSalesMessage(null);
+        return;
+      }
+      const violation = getOversellingViolationMessage(product, quantity);
+      if (violation) {
+        setSalesError(violation);
+        setSalesMessage(null);
+        return;
+      }
     }
 
     if (!salesInvoiceDate || Number.isNaN(new Date(`${salesInvoiceDate}T00:00:00`).getTime())) {
@@ -3996,7 +4184,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("categories")
-      .select("id, name, parent_category_id")
+      .select("id, name, parent_category_id, overselling_policy")
       .eq("organization_id", orgId)
       .order("name", { ascending: true });
 
@@ -4021,7 +4209,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, brand_id, category_id, unit_type, last_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry")
+      .select("id, name, brand_id, category_id, unit_type, units_per_pack, sku, barcode, last_purchase_price, default_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, current_stock, overselling_policy, is_active, created_at, updated_at")
       .eq("organization_id", orgId)
       .order("name", { ascending: true });
 
@@ -4112,9 +4300,164 @@ export default function Home() {
     setPurchaseTransactions(data ?? []);
   };
 
+  const fetchPurchaseOrders = async (organizationId?: string | null) => {
+    setPurchaseOrdersLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setPurchaseOrders([]);
+      setPurchaseOrdersLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("purchase_orders")
+      .select("id, organization_id, po_number, supplier_id, order_date, expected_date, notes, status, created_by_profile_id, created_at, updated_at")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false });
+
+    setPurchaseOrdersLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch purchase orders error:", error);
+      return;
+    }
+
+    setPurchaseOrders(data ?? []);
+  };
+
+  const fetchPurchaseOrderItems = async (
+    organizationId?: string | null,
+    orderIds?: string[]
+  ) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    const ids = orderIds ?? purchaseOrders.map((po) => po.id);
+    if (!orgId || ids.length === 0) {
+      setPurchaseOrderItems([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("purchase_order_items")
+      .select("id, purchase_order_id, product_id, quantity_ordered, quantity_received, unit_price, batch_number, expiry_date, created_at")
+      .in("purchase_order_id", ids)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch purchase order items error:", error);
+      return;
+    }
+
+    setPurchaseOrderItems(data ?? []);
+  };
+
+  const fetchPurchaseReturns = async (organizationId?: string | null) => {
+    setPurchaseReturnsLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setPurchaseReturns([]);
+      setPurchaseReturnsLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("purchase_returns")
+      .select("id, organization_id, return_number, supplier_id, purchase_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false });
+
+    setPurchaseReturnsLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch purchase returns error:", error);
+      return;
+    }
+
+    setPurchaseReturns(data ?? []);
+  };
+
+  const fetchPurchaseReturnItems = async (
+    organizationId?: string | null,
+    returnIds?: string[]
+  ) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    const ids = returnIds ?? purchaseReturns.map((ret) => ret.id);
+    if (!orgId || ids.length === 0) {
+      setPurchaseReturnItems([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("purchase_return_items")
+      .select("id, purchase_return_id, product_id, quantity, unit_price, batch_number, expiry_date, created_at")
+      .in("purchase_return_id", ids)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch purchase return items error:", error);
+      return;
+    }
+
+    setPurchaseReturnItems(data ?? []);
+  };
+
   // Purchase & Sales items + Sales transactions (for dashboard & history)
   const [purchaseItems, setPurchaseItems] = useState<any[]>([]);
   const [salesItems, setSalesItems] = useState<any[]>([]);
+
+  // Purchase Management (Phase 1) — orders + returns
+  const [purchaseTab, setPurchaseTab] = useState<"invoice" | "orders" | "returns">("invoice");
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
+
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(false);
+  const [purchaseOrderItems, setPurchaseOrderItems] = useState<PurchaseOrderItem[]>([]);
+  const [poSupplierId, setPoSupplierId] = useState("");
+  const [poOrderDate, setPoOrderDate] = useState(toDateInputValue(new Date()));
+  const [poExpectedDate, setPoExpectedDate] = useState("");
+  const [poNotes, setPoNotes] = useState("");
+  const [poLines, setPoLines] = useState<PurchaseLine[]>([]);
+  const [poMessage, setPoMessage] = useState<string | null>(null);
+  const [poError, setPoError] = useState<string | null>(null);
+  const [poLoading, setPoLoading] = useState(false);
+
+  const [receivePoId, setReceivePoId] = useState<string | null>(null);
+  const [receiveLines, setReceiveLines] = useState<{
+    itemId: string;
+    productId: number;
+    quantityOrdered: number;
+    quantityReceived: number;
+    receiveQuantity: string;
+    unitPrice: string;
+    batchNumber: string;
+    expiryDate: string;
+  }[]>([]);
+  const [receiveLoading, setReceiveLoading] = useState(false);
+  const [receiveMessage, setReceiveMessage] = useState<string | null>(null);
+  const [receiveError, setReceiveError] = useState<string | null>(null);
+
+  const [purchaseReturns, setPurchaseReturns] = useState<PurchaseReturn[]>([]);
+  const [purchaseReturnsLoading, setPurchaseReturnsLoading] = useState(false);
+  const [purchaseReturnItems, setPurchaseReturnItems] = useState<PurchaseReturnItem[]>([]);
+  const [returnSupplierId, setReturnSupplierId] = useState("");
+  const [returnDate, setReturnDate] = useState(toDateInputValue(new Date()));
+  const [returnReason, setReturnReason] = useState("");
+  const [returnPurchaseTransactionId, setReturnPurchaseTransactionId] = useState("");
+  const [returnLines, setReturnLines] = useState<PurchaseLine[]>([]);
+  const [returnMessage, setReturnMessage] = useState<string | null>(null);
+  const [returnError, setReturnError] = useState<string | null>(null);
+  const [returnLoading, setReturnLoading] = useState(false);
+
+  // Purchase list search / filter / sort state
+  const [purchaseInvoiceFilters, setPurchaseInvoiceFilters] = useState<PurchaseListFilters>(
+    DEFAULT_PURCHASE_LIST_FILTERS
+  );
+  const [purchaseOrderFilters, setPurchaseOrderFilters] = useState<PurchaseListFilters>(
+    DEFAULT_PURCHASE_LIST_FILTERS
+  );
+  const [purchaseReturnFilters, setPurchaseReturnFilters] = useState<PurchaseListFilters>(
+    DEFAULT_PURCHASE_LIST_FILTERS
+  );
+  const [purchaseInvoicePaymentFilter, setPurchaseInvoicePaymentFilter] = useState("all");
 
   const [salesTransactions, setSalesTransactions] = useState<SalesTransaction[]>([]);
   const [salesLoading, setSalesLoading] = useState(false);
@@ -4209,6 +4552,7 @@ export default function Home() {
     if (isOwnerOrAdmin()) return true;
     return Boolean(currentStaffPermission?.[permissionKey]);
   };
+  const canManageInventory = hasPermission("can_manage_inventory");
   const sectionPermissionMap: Partial<Record<SectionId, StaffPermissionKey | "owner_admin">> = {
     products: "can_manage_products",
     brands: "can_manage_products",
@@ -4764,10 +5108,17 @@ export default function Home() {
     }
   };
 
-  const fetchPurchaseItems = async () => {
+  const fetchPurchaseItems = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setPurchaseItems([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("purchase_items")
       .select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, batch_number, expiry_date")
+      .eq("organization_id", orgId)
       .order("id", { ascending: true });
 
     if (error) {
@@ -4862,10 +5213,17 @@ export default function Home() {
     setSupplierPaymentAllocations(data ?? []);
   };
 
-  const fetchSalesItems = async () => {
+  const fetchSalesItems = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setSalesItems([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("sales_items")
       .select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot")
+      .eq("organization_id", orgId)
       .order("id", { ascending: true });
 
     if (error) {
@@ -4874,6 +5232,113 @@ export default function Home() {
     }
 
     setSalesItems(data ?? []);
+  };
+
+  const fetchInventoryTransactions = async (organizationId?: string | null) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setInventoryTransactions([]);
+      return;
+    }
+
+    setInventoryTransactionsLoading(true);
+    const { data, error } = await supabase
+      .from("inventory_transactions")
+      .select("id, organization_id, product_id, movement_type, quantity_delta, reason, batch_number, expiry_date, reference_type, reference_id, created_by, created_at")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: true });
+
+    setInventoryTransactionsLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch inventory transactions error:", error);
+      return;
+    }
+
+    setInventoryTransactions(data ?? []);
+  };
+
+  const handleAdjustStock = async () => {
+    setAdjustmentError(null);
+    setAdjustmentMessage(null);
+
+    if (!requireOrganization("adjust stock")) {
+      setAdjustmentError("Organization not loaded. Please login again.");
+      return;
+    }
+
+    if (!canManageInventory) {
+      setAdjustmentError("You need the Manage Inventory permission to adjust stock.");
+      return;
+    }
+
+    const productId = Number(adjustmentProductId);
+    const quantity = Number(adjustmentQuantity);
+    const quantityDelta = adjustmentDirection === "in" ? quantity : -quantity;
+
+    const validation = validateAdjustmentInput({
+      product_id: adjustmentProductId,
+      quantity_delta: quantityDelta,
+      reason: adjustmentReason,
+      batch_number: adjustmentBatchNumber,
+      expiry_date: adjustmentExpiryDate,
+    });
+    if (!validation.ok) {
+      setAdjustmentError(validation.errors.join(". "));
+      return;
+    }
+
+    setAdjustmentSubmitting(true);
+    try {
+      const response = await fetch("/api/inventory/adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          productId,
+          quantityDelta,
+          reason: adjustmentReason.trim(),
+          batchNumber: adjustmentBatchNumber.trim() || null,
+          expiryDate: adjustmentExpiryDate || null,
+          createdByProfileId: currentProfile?.id ?? null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        setAdjustmentError(result.error ?? "Failed to adjust stock");
+        return;
+      }
+
+      const product = products.find((item) => String(item.id) === String(productId));
+      await createAuditLog({
+        action: "adjusted",
+        entity_type: "inventory_transaction",
+        entity_id: result.transactionId,
+        entity_label: product?.name ?? `Product ${productId}`,
+        description: `Stock adjustment ${adjustmentDirection === "in" ? "in" : "out"} of ${quantity} on ${product?.name ?? `Product ${productId}`} — ${adjustmentReason.trim()}`,
+        new_values: {
+          product_id: productId,
+          quantity_delta: quantityDelta,
+          reason: adjustmentReason.trim(),
+          batch_number: adjustmentBatchNumber.trim() || null,
+          expiry_date: adjustmentExpiryDate || null,
+        },
+      });
+
+      setAdjustmentMessage(`Stock adjusted successfully (${formatMovementChange(quantityDelta)}).`);
+      setAdjustmentProductId("");
+      setAdjustmentDirection("in");
+      setAdjustmentQuantity("");
+      setAdjustmentReason("");
+      setAdjustmentBatchNumber("");
+      setAdjustmentExpiryDate("");
+      await fetchInventoryTransactions();
+      await fetchProducts();
+    } catch (err) {
+      setAdjustmentError(err instanceof Error ? err.message : "Failed to adjust stock");
+    } finally {
+      setAdjustmentSubmitting(false);
+    }
   };
 
   const fetchSalesTransactions = async (organizationId?: string | null) => {
@@ -4902,8 +5367,16 @@ export default function Home() {
   };
 
   const handleAddBrand = async () => {
-    if (!brandName.trim()) {
-      setBrandError("Brand name is required");
+    const validation = validateBrandName(brandName);
+    if (!validation.ok) {
+      setBrandError(validation.errors.join(". "));
+      setBrandMessage(null);
+      return;
+    }
+
+    const duplicateBrand = brands.find((b) => b.name.trim().toLowerCase() === brandName.trim().toLowerCase());
+    if (duplicateBrand) {
+      setBrandError("A brand with this name already exists.");
       setBrandMessage(null);
       return;
     }
@@ -4919,7 +5392,7 @@ export default function Home() {
     setBrandsLoading(true);
 
     const { data, error } = await supabase.from("brands").insert({
-      name: brandName,
+      name: brandName.trim(),
       organization_id: currentOrganizationId,
     }).select("id").single();
 
@@ -4981,8 +5454,18 @@ export default function Home() {
   };
 
   const handleAddCategory = async () => {
-    if (!categoryName.trim()) {
-      setCategoryError("Category name is required");
+    const validation = validateCategoryName(categoryName);
+    if (!validation.ok) {
+      setCategoryError(validation.errors.join(". "));
+      setCategoryMessage(null);
+      return;
+    }
+
+    const duplicateCategory = categories.find(
+      (c) => c.name.trim().toLowerCase() === categoryName.trim().toLowerCase()
+    );
+    if (duplicateCategory) {
+      setCategoryError("A category with this name already exists.");
       setCategoryMessage(null);
       return;
     }
@@ -4998,8 +5481,12 @@ export default function Home() {
     setCategoriesLoading(true);
 
     const { data, error } = await supabase.from("categories").insert({
-      name: categoryName,
+      name: categoryName.trim(),
       parent_category_id: parentCategoryId,
+      overselling_policy:
+        categoryOversellingPolicy === "allow" || categoryOversellingPolicy === "block"
+          ? categoryOversellingPolicy
+          : null,
       organization_id: currentOrganizationId,
     }).select("id").single();
 
@@ -5022,7 +5509,38 @@ export default function Home() {
     setCategoryMessage("Category added successfully");
     setCategoryName("");
     setParentCategoryId(null);
+    setCategoryOversellingPolicy("inherit");
     fetchCategories();
+  };
+
+  const handleCategoryPolicyChange = async (categoryId: string, policy: string) => {
+    const nextPolicy =
+      policy === "allow" || policy === "block" ? policy : null;
+    const previousCategories = categories;
+    setCategories((prev) =>
+      prev.map((c) => (c.id === categoryId ? { ...c, overselling_policy: nextPolicy } : c))
+    );
+    const { error } = await supabase
+      .from("categories")
+      .update({ overselling_policy: nextPolicy })
+      .eq("id", categoryId)
+      .eq("organization_id", currentOrganizationId);
+    if (error) {
+      setCategories(previousCategories);
+      setCategoryError("Failed to update category overselling policy");
+      console.error("Supabase category policy update error:", error);
+      return;
+    }
+    const category = previousCategories.find((c) => c.id === categoryId);
+    await createAuditLog({
+      action: "updated",
+      entity_type: "category",
+      entity_id: categoryId,
+      entity_label: category?.name ?? categoryId,
+      description: `Updated overselling policy for category ${category?.name ?? categoryId} to ${nextPolicy ?? "inherit"}`,
+      old_values: { overselling_policy: category?.overselling_policy ?? null },
+      new_values: { overselling_policy: nextPolicy },
+    });
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
@@ -5391,12 +5909,6 @@ export default function Home() {
       return;
     }
 
-    if (!invoiceNumber.trim()) {
-      setInvoiceError("Invoice number is required");
-      setInvoiceMessage(null);
-      return;
-    }
-
     if (purchaseLines.length === 0 || purchaseLines.some((line) => !line.product_id)) {
       setInvoiceError("Please add at least one product line");
       setInvoiceMessage(null);
@@ -5408,30 +5920,42 @@ export default function Home() {
     setInvoiceLoading(true);
 
     try {
-      console.log("Purchase Invoice Debug", {
-        selectedSupplierId,
-        invoiceNumber,
-        purchaseLines,
-      });
-
       if (!requireOrganization("create purchase invoice")) {
         setInvoiceError("Organization not loaded. Please login again.");
         setInvoiceLoading(false);
         return;
       }
 
+      if (!currentOrganizationId) {
+        setInvoiceError("Organization not loaded. Please login again.");
+        setInvoiceLoading(false);
+        return;
+      }
+
+      let systemInvoiceNumber: string;
+      try {
+        systemInvoiceNumber = await generatePurchaseInvoice(currentOrganizationId);
+      } catch (numberErr) {
+        setInvoiceError(
+          numberErr instanceof Error ? numberErr.message : "Failed to generate invoice number"
+        );
+        setInvoiceLoading(false);
+        return;
+      }
+
+      const supplierRef = supplierInvoiceNumber.trim() || null;
+
       const transactionResult = await supabase
         .from("purchase_transactions")
         .insert({
           supplier_id: selectedSupplierId,
-          invoice_number: invoiceNumber,
+          invoice_number: systemInvoiceNumber,
+          supplier_invoice_number: supplierRef,
           notes: null,
           organization_id: currentOrganizationId,
         })
         .select()
         .single();
-
-      console.log("transactionResult", transactionResult);
 
       if (transactionResult.error) {
         console.error(
@@ -5485,11 +6009,12 @@ export default function Home() {
         action: "created",
         entity_type: "purchase_invoice",
         entity_id: transactionId,
-        entity_label: invoiceNumber,
-        description: `Created purchase invoice ${invoiceNumber} for ${purchaseSupplier?.supplier_name ?? "Unknown Supplier"}`,
+        entity_label: systemInvoiceNumber,
+        description: `Created purchase invoice ${systemInvoiceNumber}${supplierRef ? ` (supplier ref ${supplierRef})` : ""} for ${purchaseSupplier?.supplier_name ?? "Unknown Supplier"}`,
         new_values: {
           supplier_id: selectedSupplierId,
-          invoice_number: invoiceNumber,
+          invoice_number: systemInvoiceNumber,
+          supplier_invoice_number: supplierRef,
           line_count: purchaseLines.length,
         },
       });
@@ -5497,12 +6022,12 @@ export default function Home() {
       setInvoiceMessage("Purchase invoice created successfully");
       setNewPurchaseExpenseReminder({
         id: transactionId,
-        invoiceNumber,
+        invoiceNumber: systemInvoiceNumber,
         supplierId: selectedSupplierId,
       });
       setPurchaseExpenseStatusMessage(null);
       setSelectedSupplierId(null);
-      setInvoiceNumber("");
+      setSupplierInvoiceNumber("");
       setPurchaseLines([]);
       fetchPurchaseTransactions();
       fetchPurchaseItems();
@@ -5513,6 +6038,565 @@ export default function Home() {
     } finally {
       setInvoiceLoading(false);
     }
+  };
+
+  // ── Purchase Orders ────────────────────────────────────────────────────────
+
+  const handleAddPoLine = () => {
+    setPoLines([
+      ...poLines,
+      {
+        product_id: null,
+        quantity: "",
+        purchase_price: "",
+        selling_price: "",
+        batch_number: "",
+        expiry_date: "",
+      },
+    ]);
+  };
+
+  const handleRemovePoLine = (index: number) => {
+    setPoLines(poLines.filter((_, i) => i !== index));
+  };
+
+  const handlePoLineChange = (index: number, field: keyof PurchaseLine, value: string | null) => {
+    const newLines = [...poLines];
+    newLines[index] = { ...newLines[index], [field]: value };
+    setPoLines(newLines);
+  };
+
+  const handleCreatePurchaseOrder = async () => {
+    const validation = validatePurchaseOrderInput({
+      supplier_id: poSupplierId || null,
+      order_date: poOrderDate,
+      expected_date: poExpectedDate,
+      notes: poNotes,
+      lines: poLines,
+    });
+    if (!validation.ok) {
+      setPoError(validation.errors.join(" "));
+      setPoMessage(null);
+      return;
+    }
+
+    if (!requireOrganization("create purchase order")) {
+      setPoError("Organization not loaded. Please login again.");
+      setPoMessage(null);
+      return;
+    }
+
+    setPoError(null);
+    setPoMessage(null);
+    setPoLoading(true);
+
+    if (!currentOrganizationId) {
+      setPoError("Organization not loaded. Please login again.");
+      setPoMessage(null);
+      setPoLoading(false);
+      return;
+    }
+
+    try {
+      const poNumber = await generatePurchaseOrder(currentOrganizationId);
+
+      const { data: poData, error: poErrorResult } = await supabase
+        .from("purchase_orders")
+        .insert({
+          organization_id: currentOrganizationId,
+          po_number: poNumber,
+          supplier_id: poSupplierId,
+          order_date: poOrderDate || null,
+          expected_date: poExpectedDate || null,
+          notes: poNotes.trim() || null,
+          status: "ordered",
+          created_by_profile_id: currentProfile?.id ?? null,
+        })
+        .select("id")
+        .single();
+
+      if (poErrorResult) throw poErrorResult;
+      const poId = poData?.id;
+      if (!poId) throw new Error("Failed to create purchase order");
+
+      for (const line of poLines) {
+        if (!line.product_id) continue;
+        const { error: itemError } = await supabase.from("purchase_order_items").insert({
+          purchase_order_id: poId,
+          product_id: line.product_id,
+          quantity_ordered: Number(line.quantity),
+          unit_price: line.purchase_price ? Number(line.purchase_price) : null,
+          batch_number: line.batch_number || null,
+          expiry_date: line.expiry_date || null,
+        });
+        if (itemError) throw itemError;
+      }
+
+      const poSupplier = suppliers.find((supplier) => supplier.id === poSupplierId);
+      await createAuditLog({
+        action: "created",
+        entity_type: "purchase_order",
+        entity_id: poId,
+        entity_label: poNumber,
+        description: `Created purchase order ${poNumber} for ${poSupplier?.supplier_name ?? "Unknown Supplier"}`,
+        new_values: {
+          supplier_id: poSupplierId,
+          po_number: poNumber,
+          line_count: poLines.length,
+        },
+      });
+
+      setPoMessage("Purchase order created successfully");
+      setPoSupplierId("");
+      setPoOrderDate(toDateInputValue(new Date()));
+      setPoExpectedDate("");
+      setPoNotes("");
+      setPoLines([]);
+      await fetchPurchaseOrders();
+      await fetchPurchaseOrderItems();
+    } catch (err) {
+      setPoError(err instanceof Error ? err.message : "Failed to create purchase order");
+      console.error("Error creating purchase order:", err);
+    } finally {
+      setPoLoading(false);
+    }
+  };
+
+  const handleCancelPurchaseOrder = async (poId: string) => {
+    const po = purchaseOrders.find((item) => item.id === poId);
+    if (!po || po.status === "received" || po.status === "cancelled") return;
+
+    if (!window.confirm(`Cancel purchase order ${po.po_number}? This cannot be undone.`)) return;
+
+    const { error } = await supabase
+      .from("purchase_orders")
+      .update({ status: "cancelled", updated_at: new Date().toISOString() })
+      .eq("id", poId)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      setPoError("Failed to cancel purchase order");
+      console.error("Supabase cancel purchase order error:", error);
+      return;
+    }
+
+    await createAuditLog({
+      action: "updated",
+      entity_type: "purchase_order",
+      entity_id: poId,
+      entity_label: po.po_number,
+      description: `Cancelled purchase order ${po.po_number}`,
+      old_values: { status: po.status },
+      new_values: { status: "cancelled" },
+    });
+
+    setPoMessage("Purchase order cancelled");
+    fetchPurchaseOrders();
+  };
+
+  const handleStartReceive = (poId: string) => {
+    const items = purchaseOrderItems.filter((item) => item.purchase_order_id === poId);
+    setReceivePoId(poId);
+    setReceiveLines(
+      items.map((item) => ({
+        itemId: item.id,
+        productId: item.product_id,
+        quantityOrdered: Number(item.quantity_ordered),
+        quantityReceived: Number(item.quantity_received),
+        receiveQuantity: String(Math.max(Number(item.quantity_ordered) - Number(item.quantity_received), 0)),
+        unitPrice: item.unit_price != null ? String(item.unit_price) : "",
+        batchNumber: item.batch_number ?? "",
+        expiryDate: item.expiry_date ?? "",
+      }))
+    );
+    setReceiveMessage(null);
+    setReceiveError(null);
+  };
+
+  const handleReceiveLineChange = (itemId: string, field: keyof typeof receiveLines[number], value: string) => {
+    setReceiveLines((prev) =>
+      prev.map((line) => (line.itemId === itemId ? { ...line, [field]: value } : line))
+    );
+  };
+
+  const handleConfirmReceive = async () => {
+    if (!receivePoId) return;
+
+    const validation = validateReceiveQuantities(
+      receiveLines.map((line) => ({
+        product_id: line.productId,
+        remaining: line.quantityOrdered - line.quantityReceived,
+        receive_quantity: line.receiveQuantity,
+        unit_price: line.unitPrice,
+      }))
+    );
+    if (!validation.ok) {
+      setReceiveError(validation.errors.join(" "));
+      setReceiveMessage(null);
+      return;
+    }
+
+    if (!requireOrganization("receive purchase order")) {
+      setReceiveError("Organization not loaded. Please login again.");
+      setReceiveMessage(null);
+      return;
+    }
+
+    if (!currentOrganizationId) {
+      setReceiveError("Organization not loaded. Please login again.");
+      setReceiveMessage(null);
+      return;
+    }
+
+    const po = purchaseOrders.find((item) => item.id === receivePoId);
+    if (!po) {
+      setReceiveError("Purchase order not found.");
+      return;
+    }
+
+    setReceiveError(null);
+    setReceiveMessage(null);
+    setReceiveLoading(true);
+
+    try {
+      const invoiceNumber = await generatePurchaseInvoice(currentOrganizationId);
+
+      const { data: txData, error: txError } = await supabase
+        .from("purchase_transactions")
+        .insert({
+          supplier_id: po.supplier_id,
+          invoice_number: invoiceNumber,
+          supplier_invoice_number: null,
+          purchase_date: toDateInputValue(new Date()),
+          notes: `Received from purchase order ${po.po_number}`,
+          expense_review_status: "pending",
+          organization_id: currentOrganizationId,
+          created_by_profile_id: currentProfile?.id ?? null,
+        })
+        .select("id")
+        .single();
+
+      if (txError) throw txError;
+      const transactionId = txData?.id;
+      if (!transactionId) throw new Error("Failed to create purchase invoice from PO");
+
+      let allReceived = true;
+      for (const line of receiveLines) {
+        const receiveQuantity = Number(line.receiveQuantity);
+        if (!Number.isFinite(receiveQuantity) || receiveQuantity <= 0) continue;
+        allReceived = false;
+
+        const { error: itemError } = await supabase.from("purchase_items").insert({
+          purchase_transaction_id: transactionId,
+          product_id: line.productId,
+          quantity: receiveQuantity,
+          purchase_price: line.unitPrice ? Number(line.unitPrice) : null,
+          selling_price: null,
+          batch_number: line.batchNumber || null,
+          expiry_date: line.expiryDate || null,
+        });
+        if (itemError) throw itemError;
+
+        const { error: updateError } = await supabase
+          .from("purchase_order_items")
+          .update({
+            quantity_received: line.quantityReceived + receiveQuantity,
+            unit_price: line.unitPrice ? Number(line.unitPrice) : null,
+            batch_number: line.batchNumber || null,
+            expiry_date: line.expiryDate || null,
+          })
+          .eq("id", line.itemId);
+        if (updateError) throw updateError;
+      }
+
+      allReceived = receiveLines.every(
+        (line) => line.quantityReceived + Number(line.receiveQuantity) >= line.quantityOrdered
+      );
+      const nextStatus = allReceived ? "received" : "partial";
+
+      const { error: statusError } = await supabase
+        .from("purchase_orders")
+        .update({ status: nextStatus, updated_at: new Date().toISOString() })
+        .eq("id", receivePoId)
+        .eq("organization_id", currentOrganizationId);
+      if (statusError) throw statusError;
+
+      await createAuditLog({
+        action: "created",
+        entity_type: "purchase_invoice",
+        entity_id: transactionId,
+        entity_label: invoiceNumber,
+        description: `Received purchase order ${po.po_number} into purchase invoice ${invoiceNumber}`,
+        old_values: { purchase_order_id: po.id },
+        new_values: { purchase_order_id: po.id, invoice_number: invoiceNumber, status: nextStatus },
+      });
+
+      setReceiveMessage(`Purchase order received (${nextStatus === "received" ? "fully" : "partially"}). Invoice ${invoiceNumber} created and stock updated.`);
+      setReceivePoId(null);
+      setReceiveLines([]);
+      await fetchPurchaseOrders();
+      await fetchPurchaseOrderItems();
+      fetchPurchaseTransactions();
+      fetchPurchaseItems();
+      fetchProducts();
+    } catch (err) {
+      setReceiveError(err instanceof Error ? err.message : "Failed to receive purchase order");
+      console.error("Error receiving purchase order:", err);
+    } finally {
+      setReceiveLoading(false);
+    }
+  };
+
+  const handlePrintPurchaseOrder = (poId: string) => {
+    const po = purchaseOrders.find((item) => item.id === poId);
+    if (!po) return;
+    const supplier = suppliers.find((item) => item.id === po.supplier_id);
+    const lineItems = purchaseOrderItems.filter((item) => item.purchase_order_id === poId);
+    const lineRows =
+      lineItems.length === 0
+        ? [["No line items found", "-", "-", "-"]]
+        : lineItems.map((item) => {
+            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+            return [
+              product?.name ?? "Unknown Product",
+              String(item.quantity_ordered),
+              formatPKR(safeNumber(item.unit_price)),
+              formatPKR(safeNumber(item.quantity_ordered) * safeNumber(item.unit_price)),
+            ];
+          });
+
+    openPrintPreview(
+      `Purchase Order ${po.po_number}`,
+      `${businessBrandingHtml()}
+      <h2>Purchase Order</h2>
+      <div class="grid">
+        <div><strong>PO Number:</strong> ${escapeHtml(po.po_number)}</div>
+        <div><strong>Order Date:</strong> ${escapeHtml(formatDate(po.order_date ?? po.created_at))}</div>
+        <div><strong>Expected Date:</strong> ${po.expected_date ? escapeHtml(formatDate(po.expected_date)) : "-"}</div>
+        <div><strong>Supplier:</strong> ${escapeHtml(supplier?.supplier_name ?? "Unknown Supplier")}</div>
+        <div><strong>Status:</strong> ${escapeHtml(po.status)}</div>
+      </div>
+      <table>
+        <thead>${renderHeaderRows(["Product", "Quantity", "Unit Price", "Line Total"])}</thead>
+        <tbody>${renderRows(lineRows)}</tbody>
+      </table>
+      ${po.notes ? `<div class="summary"><p><strong>Notes:</strong> ${escapeHtml(po.notes)}</p></div>` : ""}
+      ${businessPrintFooterHtml()}`
+    );
+  };
+
+  // ── Purchase Returns ───────────────────────────────────────────────────────
+
+  const handleAddReturnLine = () => {
+    setReturnLines([
+      ...returnLines,
+      {
+        product_id: null,
+        quantity: "",
+        purchase_price: "",
+        selling_price: "",
+        batch_number: "",
+        expiry_date: "",
+      },
+    ]);
+  };
+
+  const handleRemoveReturnLine = (index: number) => {
+    setReturnLines(returnLines.filter((_, i) => i !== index));
+  };
+
+  const handleReturnLineChange = (index: number, field: keyof PurchaseLine, value: string | null) => {
+    const newLines = [...returnLines];
+    newLines[index] = { ...newLines[index], [field]: value };
+    setReturnLines(newLines);
+  };
+
+  const handleCreatePurchaseReturn = async () => {
+    const validation = validatePurchaseReturnInput({
+      supplier_id: returnSupplierId || null,
+      return_date: returnDate,
+      reason: returnReason,
+      lines: returnLines,
+    });
+    if (!validation.ok) {
+      setReturnError(validation.errors.join(" "));
+      setReturnMessage(null);
+      return;
+    }
+
+    const stockErrors: string[] = [];
+    for (const line of returnLines) {
+      if (!line.product_id) continue;
+      const product = products.find((p) => String(p.id) === String(line.product_id));
+      const quantity = Number(line.quantity || 0);
+      const available = getAvailableStockForProduct(line.product_id);
+      if (
+        product &&
+        Number.isFinite(quantity) &&
+        quantity > 0 &&
+        Number.isFinite(available) &&
+        quantity > available
+      ) {
+        stockErrors.push(
+          `${product.name}: cannot return ${quantity} — only ${available} in stock.`
+        );
+      }
+    }
+    if (stockErrors.length > 0) {
+      setReturnError(`Stock validation failed: ${stockErrors.join(" ")}`);
+      setReturnMessage(null);
+      return;
+    }
+
+    if (!requireOrganization("create purchase return")) {
+      setReturnError("Organization not loaded. Please login again.");
+      setReturnMessage(null);
+      return;
+    }
+
+    setReturnError(null);
+    setReturnMessage(null);
+    setReturnLoading(true);
+
+    if (!currentOrganizationId) {
+      setReturnError("Organization not loaded. Please login again.");
+      setReturnMessage(null);
+      setReturnLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/purchases/returns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          supplierId: returnSupplierId,
+          purchaseTransactionId: returnPurchaseTransactionId || null,
+          returnDate: returnDate || null,
+          reason: returnReason,
+          lines: returnLines.map((line) => ({
+            productId: line.product_id,
+            quantity: line.quantity,
+            unitPrice: line.purchase_price,
+            batchNumber: line.batch_number || null,
+            expiryDate: line.expiry_date || null,
+          })),
+          createdByProfileId: currentProfile?.id ?? null,
+        }),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error ?? "Failed to create purchase return");
+      }
+      const returnId: string = result.returnId;
+      const returnNumber: string = result.returnNumber;
+
+      const returnSupplier = suppliers.find((supplier) => supplier.id === returnSupplierId);
+      await createAuditLog({
+        action: "created",
+        entity_type: "purchase_return",
+        entity_id: returnId,
+        entity_label: returnNumber,
+        description: `Created purchase return ${returnNumber} for ${returnSupplier?.supplier_name ?? "Unknown Supplier"}`,
+        new_values: {
+          supplier_id: returnSupplierId,
+          return_number: returnNumber,
+          line_count: returnLines.length,
+        },
+      });
+
+      setReturnMessage("Purchase return created successfully. Stock updated.");
+      setReturnSupplierId("");
+      setReturnDate(toDateInputValue(new Date()));
+      setReturnReason("");
+      setReturnPurchaseTransactionId("");
+      setReturnLines([]);
+      await fetchPurchaseReturns();
+      await fetchPurchaseReturnItems();
+      fetchProducts();
+    } catch (err) {
+      setReturnError(err instanceof Error ? err.message : "Failed to create purchase return");
+      console.error("Error creating purchase return:", err);
+    } finally {
+      setReturnLoading(false);
+    }
+  };
+
+  const handleDeletePurchaseReturn = async (returnId: string) => {
+    const purchaseReturn = purchaseReturns.find((item) => item.id === returnId);
+    if (!purchaseReturn) return;
+
+    if (
+      !window.confirm(
+        `Delete purchase return ${purchaseReturn.return_number}? Its stock will be restored to inventory.`
+      )
+    ) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from("purchase_returns")
+      .delete()
+      .eq("id", returnId)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      setReturnError("Failed to delete purchase return");
+      console.error("Supabase delete purchase return error:", error);
+      return;
+    }
+
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "purchase_return",
+      entity_id: returnId,
+      entity_label: purchaseReturn.return_number,
+      description: `Deleted purchase return ${purchaseReturn.return_number}`,
+      old_values: { return_number: purchaseReturn.return_number },
+    });
+
+    setReturnMessage("Purchase return deleted. Stock restored.");
+    await fetchPurchaseReturns();
+    await fetchPurchaseReturnItems();
+    fetchProducts();
+  };
+
+  const handlePrintPurchaseReturn = (returnId: string) => {
+    const purchaseReturn = purchaseReturns.find((item) => item.id === returnId);
+    if (!purchaseReturn) return;
+    const supplier = suppliers.find((item) => item.id === purchaseReturn.supplier_id);
+    const lineItems = purchaseReturnItems.filter((item) => item.purchase_return_id === returnId);
+    const lineRows =
+      lineItems.length === 0
+        ? [["No line items found", "-", "-", "-"]]
+        : lineItems.map((item) => {
+            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+            return [
+              product?.name ?? "Unknown Product",
+              String(item.quantity),
+              formatPKR(safeNumber(item.unit_price)),
+              formatPKR(safeNumber(item.quantity) * safeNumber(item.unit_price)),
+            ];
+          });
+
+    openPrintPreview(
+      `Purchase Return ${purchaseReturn.return_number}`,
+      `${businessBrandingHtml()}
+      <h2>Purchase Return</h2>
+      <div class="grid">
+        <div><strong>Return Number:</strong> ${escapeHtml(purchaseReturn.return_number)}</div>
+        <div><strong>Return Date:</strong> ${escapeHtml(formatDate(purchaseReturn.return_date ?? purchaseReturn.created_at))}</div>
+        <div><strong>Supplier:</strong> ${escapeHtml(supplier?.supplier_name ?? "Unknown Supplier")}</div>
+      </div>
+      <table>
+        <thead>${renderHeaderRows(["Product", "Quantity", "Unit Price", "Line Total"])}</thead>
+        <tbody>${renderRows(lineRows)}</tbody>
+      </table>
+      ${purchaseReturn.reason ? `<div class="summary"><p><strong>Reason:</strong> ${escapeHtml(purchaseReturn.reason)}</p></div>` : ""}
+      ${businessPrintFooterHtml()}`
+    );
   };
 
   const filteredCustomers = customers.filter((customer) => {
@@ -5865,6 +6949,382 @@ export default function Home() {
       return allocations;
     }, {});
   const remainingLegacySupplierPaymentPoolBySupplier = { ...legacySupplierPaymentPoolBySupplier };
+
+  // ----- Purchase list search / filter / sort -----
+  const getPurchaseTransactionPaymentStatus = (
+    transaction: PurchaseTransaction
+  ): "paid" | "partially_paid" | "unpaid" => {
+    const transactionLineItems = purchaseItems.filter(
+      (item) => item.purchase_transaction_id === transaction.id
+    );
+    const purchaseValue = transactionLineItems.reduce(
+      (sum, item) => sum + Number(item.quantity || 0) * Number(item.purchase_price || 0),
+      0
+    );
+    const summary = supplierPaymentAllocationByPurchaseTransaction[transaction.id];
+    const purchasePaymentTotal = summary?.purchaseTotal ?? purchaseValue;
+    const purchasePaidAmount = summary?.paidAmount ?? 0;
+    const purchaseRemainingPayable = summary?.remainingPayableAmount ?? purchasePaymentTotal;
+    if (purchaseRemainingPayable <= 0) return "paid";
+    if (purchasePaidAmount > 0) return "partially_paid";
+    return "unpaid";
+  };
+
+  const hasActivePurchaseFilters = (filters: PurchaseListFilters) =>
+    filters.search.trim() !== "" ||
+    filters.supplierId !== "all" ||
+    filters.dateFrom !== "" ||
+    filters.dateTo !== "" ||
+    filters.status !== "all" ||
+    filters.productId !== "all" ||
+    filters.batch.trim() !== "";
+
+  const matchesPurchaseListLineFilters = (
+    filters: PurchaseListFilters,
+    lineItems: Array<{ product_id?: number | null; batch_number?: string | null }>
+  ) => {
+    if (filters.productId !== "all" && !lineItems.some((item) => String(item.product_id) === filters.productId)) {
+      return false;
+    }
+    if (filters.batch.trim()) {
+      const batchTerm = filters.batch.trim().toLowerCase();
+      if (!lineItems.some((item) => (item.batch_number ?? "").toLowerCase().includes(batchTerm))) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const filteredPurchaseTransactions = (() => {
+    const f = purchaseInvoiceFilters;
+    const list = purchaseTransactions.filter((transaction) => {
+      const supplier = suppliers.find((s) => s.id === transaction.supplier_id);
+      const lineItems = purchaseItems.filter(
+        (item) => item.purchase_transaction_id === transaction.id
+      );
+      const searchTerm = f.search.trim().toLowerCase();
+      if (searchTerm) {
+        const haystack = [
+          transaction.invoice_number ?? "",
+          supplier?.supplier_name ?? "",
+          ...lineItems.map(
+            (item) =>
+              products.find((p) => String(p.id) === String(item.product_id))?.name ?? ""
+          ),
+          ...lineItems.map((item) => item.batch_number ?? ""),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(searchTerm)) return false;
+      }
+      if (f.supplierId !== "all" && transaction.supplier_id !== f.supplierId) return false;
+      const dateStr = getDateOnly(transaction.created_at) ?? "";
+      if (f.dateFrom && dateStr && dateStr < f.dateFrom) return false;
+      if (f.dateTo && dateStr && dateStr > f.dateTo) return false;
+      if (f.status !== "all" && (transaction.expense_review_status ?? "pending") !== f.status) {
+        return false;
+      }
+      if (
+        purchaseInvoicePaymentFilter !== "all" &&
+        getPurchaseTransactionPaymentStatus(transaction) !== purchaseInvoicePaymentFilter
+      ) {
+        return false;
+      }
+      return matchesPurchaseListLineFilters(f, lineItems);
+    });
+    return [...list].sort((a, b) => {
+      const aDate = getDateOnly(a.created_at) ?? "";
+      const bDate = getDateOnly(b.created_at) ?? "";
+      const aSupplier = (suppliers.find((s) => s.id === a.supplier_id)?.supplier_name ?? "").toLowerCase();
+      const bSupplier = (suppliers.find((s) => s.id === b.supplier_id)?.supplier_name ?? "").toLowerCase();
+      switch (f.sort) {
+        case "date_asc":
+          return (
+            aDate.localeCompare(bDate) ||
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+        case "number":
+          return (a.invoice_number ?? "").localeCompare(b.invoice_number ?? "");
+        case "supplier":
+          return (
+            aSupplier.localeCompare(bSupplier) || bDate.localeCompare(aDate)
+          );
+        case "status":
+          return (
+            (a.expense_review_status ?? "pending").localeCompare(b.expense_review_status ?? "pending") ||
+            bDate.localeCompare(aDate)
+          );
+        case "date_desc":
+        default:
+          return (
+            bDate.localeCompare(aDate) ||
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+      }
+    });
+  })();
+
+  const filteredPurchaseOrders = (() => {
+    const f = purchaseOrderFilters;
+    const list = purchaseOrders.filter((po) => {
+      const supplier = suppliers.find((s) => s.id === po.supplier_id);
+      const lineItems = purchaseOrderItems.filter((item) => item.purchase_order_id === po.id);
+      const searchTerm = f.search.trim().toLowerCase();
+      if (searchTerm) {
+        const haystack = [
+          po.po_number ?? "",
+          supplier?.supplier_name ?? "",
+          ...lineItems.map(
+            (item) =>
+              products.find((p) => String(p.id) === String(item.product_id))?.name ?? ""
+          ),
+          ...lineItems.map((item) => item.batch_number ?? ""),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(searchTerm)) return false;
+      }
+      if (f.supplierId !== "all" && po.supplier_id !== f.supplierId) return false;
+      const dateStr = getDateOnly(po.order_date ?? po.created_at) ?? "";
+      if (f.dateFrom && dateStr && dateStr < f.dateFrom) return false;
+      if (f.dateTo && dateStr && dateStr > f.dateTo) return false;
+      if (f.status !== "all" && po.status !== f.status) return false;
+      return matchesPurchaseListLineFilters(f, lineItems);
+    });
+    return [...list].sort((a, b) => {
+      const aDate = getDateOnly(a.order_date ?? a.created_at) ?? "";
+      const bDate = getDateOnly(b.order_date ?? b.created_at) ?? "";
+      const aSupplier = (suppliers.find((s) => s.id === a.supplier_id)?.supplier_name ?? "").toLowerCase();
+      const bSupplier = (suppliers.find((s) => s.id === b.supplier_id)?.supplier_name ?? "").toLowerCase();
+      switch (f.sort) {
+        case "date_asc":
+          return (
+            aDate.localeCompare(bDate) ||
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+        case "number":
+          return (a.po_number ?? "").localeCompare(b.po_number ?? "");
+        case "supplier":
+          return aSupplier.localeCompare(bSupplier) || bDate.localeCompare(aDate);
+        case "status":
+          return a.status.localeCompare(b.status) || bDate.localeCompare(aDate);
+        case "date_desc":
+        default:
+          return (
+            bDate.localeCompare(aDate) ||
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+      }
+    });
+  })();
+
+  const filteredPurchaseReturns = (() => {
+    const f = purchaseReturnFilters;
+    const list = purchaseReturns.filter((purchaseReturn) => {
+      const supplier = suppliers.find((s) => s.id === purchaseReturn.supplier_id);
+      const lineItems = purchaseReturnItems.filter(
+        (item) => item.purchase_return_id === purchaseReturn.id
+      );
+      const searchTerm = f.search.trim().toLowerCase();
+      if (searchTerm) {
+        const haystack = [
+          purchaseReturn.return_number ?? "",
+          supplier?.supplier_name ?? "",
+          ...lineItems.map(
+            (item) =>
+              products.find((p) => String(p.id) === String(item.product_id))?.name ?? ""
+          ),
+          ...lineItems.map((item) => item.batch_number ?? ""),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(searchTerm)) return false;
+      }
+      if (f.supplierId !== "all" && purchaseReturn.supplier_id !== f.supplierId) return false;
+      const dateStr = getDateOnly(purchaseReturn.return_date ?? purchaseReturn.created_at) ?? "";
+      if (f.dateFrom && dateStr && dateStr < f.dateFrom) return false;
+      if (f.dateTo && dateStr && dateStr > f.dateTo) return false;
+      if (f.status !== "all" && purchaseReturn.status !== f.status) return false;
+      return matchesPurchaseListLineFilters(f, lineItems);
+    });
+    return [...list].sort((a, b) => {
+      const aDate = getDateOnly(a.return_date ?? a.created_at) ?? "";
+      const bDate = getDateOnly(b.return_date ?? b.created_at) ?? "";
+      const aSupplier = (suppliers.find((s) => s.id === a.supplier_id)?.supplier_name ?? "").toLowerCase();
+      const bSupplier = (suppliers.find((s) => s.id === b.supplier_id)?.supplier_name ?? "").toLowerCase();
+      switch (f.sort) {
+        case "date_asc":
+          return (
+            aDate.localeCompare(bDate) ||
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+        case "number":
+          return (a.return_number ?? "").localeCompare(b.return_number ?? "");
+        case "supplier":
+          return aSupplier.localeCompare(bSupplier) || bDate.localeCompare(aDate);
+        case "status":
+          return a.status.localeCompare(b.status) || bDate.localeCompare(aDate);
+        case "date_desc":
+        default:
+          return (
+            bDate.localeCompare(aDate) ||
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+      }
+    });
+  })();
+
+  const renderPurchaseListFilterBar = (
+    filters: PurchaseListFilters,
+    setFilters: (update: (prev: PurchaseListFilters) => PurchaseListFilters) => void,
+    statusOptions: { value: string; label: string }[],
+    resultCount: number,
+    paymentFilter?: { value: string; onChange: (value: string) => void }
+  ) => {
+    const set = (key: keyof PurchaseListFilters, value: string) => {
+      setFilters((prev) => {
+        const next: PurchaseListFilters = { ...prev };
+        (next as unknown as Record<string, string>)[key] = value;
+        return next;
+      });
+    };
+    const isFiltered =
+      hasActivePurchaseFilters(filters) ||
+      (paymentFilter !== undefined && paymentFilter.value !== "all");
+    const activeFilterCount =
+      Number(filters.search.trim() !== "") +
+      Number(filters.supplierId !== "all") +
+      Number(filters.dateFrom !== "") +
+      Number(filters.dateTo !== "") +
+      Number(filters.status !== "all") +
+      Number(filters.productId !== "all") +
+      Number(filters.batch.trim() !== "") +
+      (paymentFilter !== undefined ? Number(paymentFilter.value !== "all") : 0);
+    return (
+      <div className="mb-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={filters.search}
+            onChange={(e) => set("search", e.target.value)}
+            placeholder="Search number, supplier, product, batch..."
+            aria-label="Search purchase records"
+            className="min-w-[200px] flex-1 rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 placeholder:text-muted-foreground/50 focus:border-primary/40 focus:outline-none"
+          />
+          <select
+            value={filters.supplierId}
+            onChange={(e) => set("supplierId", e.target.value)}
+            aria-label="Filter by supplier"
+            className="max-w-[180px] rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
+          >
+            <option value="all">All suppliers</option>
+            {suppliers.map((supplier) => (
+              <option key={supplier.id} value={supplier.id}>
+                {supplier.supplier_name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filters.status}
+            onChange={(e) => set("status", e.target.value)}
+            aria-label="Filter by status"
+            className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
+          >
+            <option value="all">All statuses</option>
+            {statusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          {paymentFilter && (
+            <select
+              value={paymentFilter.value}
+              onChange={(e) => paymentFilter.onChange(e.target.value)}
+              aria-label="Filter by payment status"
+              className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
+            >
+              <option value="all">All payment statuses</option>
+              {PURCHASE_INVOICE_PAYMENT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
+          <select
+            value={filters.sort}
+            onChange={(e) => set("sort", e.target.value as PurchaseListSort)}
+            aria-label="Sort purchase records"
+            className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
+          >
+            {PURCHASE_LIST_SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="date"
+            value={filters.dateFrom}
+            onChange={(e) => set("dateFrom", e.target.value)}
+            aria-label="Filter from date"
+            className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
+          />
+          <span className="text-xs text-muted-foreground">to</span>
+          <input
+            type="date"
+            value={filters.dateTo}
+            onChange={(e) => set("dateTo", e.target.value)}
+            aria-label="Filter to date"
+            className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
+          />
+          <select
+            value={filters.productId}
+            onChange={(e) => set("productId", e.target.value)}
+            aria-label="Filter by product"
+            className="max-w-[180px] rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
+          >
+            <option value="all">All products</option>
+            {products.map((product) => (
+              <option key={String(product.id)} value={String(product.id)}>
+                {product.name}
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={filters.batch}
+            onChange={(e) => set("batch", e.target.value)}
+            placeholder="Batch no."
+            aria-label="Filter by batch number"
+            className="w-[140px] rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 placeholder:text-muted-foreground/50"
+          />
+          {isFiltered && (
+            <button
+              type="button"
+              onClick={() => {
+                setFilters(() => DEFAULT_PURCHASE_LIST_FILTERS);
+                if (paymentFilter) paymentFilter.onChange("all");
+              }}
+              className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {resultCount} result{resultCount === 1 ? "" : "s"}
+          {isFiltered
+            ? ` (${activeFilterCount} active filter${activeFilterCount === 1 ? "" : "s"})`
+            : ""}
+        </p>
+      </div>
+    );
+  };
+
   const unpaidPurchaseInvoicesForSelectedPaymentSupplier: Array<{
     transaction: PurchaseTransaction;
     supplier: Supplier | undefined;
@@ -5981,7 +7441,8 @@ export default function Home() {
       .filter((si) => String(si.product_id) === String(product.id))
       .reduce((sum, si) => sum + Number(si.quantity || 0), 0);
 
-    const currentStock = purchasedQty - soldQty;
+    const currentStock =
+      product.current_stock != null ? safeNumber(product.current_stock) : purchasedQty - soldQty;
 
     return {
       productId: product.id,
@@ -6020,7 +7481,8 @@ export default function Home() {
       const soldQty = filteredSalesItems
         .filter((item) => String(item.product_id) === productId)
         .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
-      const currentStock = purchasedQty - soldQty;
+      const currentStock =
+        product.current_stock != null ? safeNumber(product.current_stock) : purchasedQty - soldQty;
       const reorderLevel = safeNumber(product.reorder_level ?? product.minimum_stock_level ?? 0);
       const recentSalesQuantity = filteredSalesItems
         .filter((item) => {
@@ -6096,6 +7558,72 @@ export default function Home() {
       );
     return matchesFilter && matchesSearch;
   });
+
+  const inventorySnapshots = useMemo(
+    () =>
+      buildInventorySnapshots(
+        products.map((product) => ({
+          id: product.id,
+          name: product.name,
+          brandName: brands.find((brand) => brand.id === product.brand_id)?.name ?? "",
+          categoryName: categories.find((category) => category.id === product.category_id)?.name ?? "",
+          unitType: product.unit_type,
+          reorderLevel: product.reorder_level ?? product.minimum_stock_level,
+        })),
+        inventoryTransactions
+      ),
+    [products, brands, categories, inventoryTransactions]
+  );
+  const inventorySummaryCounts = useMemo(
+    () =>
+      inventorySnapshots.reduce(
+        (summary, snapshot) => {
+          if (snapshot.status === "out_of_stock") summary.outOfStock += 1;
+          if (snapshot.status === "urgent_reorder") summary.urgentReorder += 1;
+          if (snapshot.status === "missing_reorder_level") summary.missingReorderLevel += 1;
+          if (snapshot.status === "healthy") summary.healthy += 1;
+          return summary;
+        },
+        { outOfStock: 0, urgentReorder: 0, missingReorderLevel: 0, healthy: 0 }
+      ),
+    [inventorySnapshots]
+  );
+  const productNameById = useMemo(
+    () => new Map(products.map((product) => [String(product.id), product.name])),
+    [products]
+  );
+  const invoiceNumbersByReferenceId = new Map<string, string>();
+  for (const transaction of purchaseTransactions) {
+    invoiceNumbersByReferenceId.set(transaction.id, `Purchase ${transaction.invoice_number}`);
+  }
+  for (const transaction of salesTransactions) {
+    invoiceNumbersByReferenceId.set(transaction.id, `Sale ${transaction.invoice_number}`);
+  }
+  const ledgerQuery = useMemo(
+    () =>
+      queryLedger(inventoryTransactions, {
+        movementType: ledgerMovementFilter === "all" ? null : ledgerMovementFilter,
+        productId: ledgerProductFilter === "all" ? null : Number(ledgerProductFilter),
+        searchText: ledgerSearch,
+        productNames: productNameById,
+      }),
+    [inventoryTransactions, ledgerMovementFilter, ledgerProductFilter, ledgerSearch, productNameById]
+  );
+  const recentAdjustments = useMemo(
+    () =>
+      inventoryTransactions
+        .filter((transaction) => isAdjustmentType(transaction.movement_type))
+        .slice(-10)
+        .reverse(),
+    [inventoryTransactions]
+  );
+  const selectedLedgerProductBatches = useMemo(
+    () =>
+      ledgerProductFilter === "all"
+        ? []
+        : getBatchBreakdown(inventoryTransactions, Number(ledgerProductFilter)),
+    [inventoryTransactions, ledgerProductFilter]
+  );
 
   // Receivables per customer
   const receivablesStats = customers.map((customer) => {
@@ -10320,35 +11848,213 @@ export default function Home() {
     );
   };
 
+  const resetProductForm = () => {
+    setName("");
+    setUnitType("");
+    setUnitsPerPack("");
+    setMinimumStockLevel("");
+    setReorderLevel("");
+    setProductSku("");
+    setProductBarcode("");
+    setProductLastPurchasePrice("");
+    setProductDefaultPurchasePrice("");
+    setProductSellingPrice("");
+    setTrackBatch(false);
+    setTrackExpiry(false);
+    setProductIsActive(true);
+    setProductOversellingPolicy("inherit");
+    setSelectedBrandId(null);
+    setSelectedCategoryId(null);
+    setEditingProductId(null);
+  };
+
+  const startEditProduct = (product: Product) => {
+    setName(product.name ?? "");
+    setUnitType(product.unit_type ?? "");
+    setUnitsPerPack(product.units_per_pack != null ? String(product.units_per_pack) : "");
+    setMinimumStockLevel(product.minimum_stock_level != null ? String(product.minimum_stock_level) : "");
+    setReorderLevel(product.reorder_level != null ? String(product.reorder_level) : "");
+    setProductSku(product.sku ?? "");
+    setProductBarcode(product.barcode ?? "");
+    setProductLastPurchasePrice(product.last_purchase_price != null ? String(product.last_purchase_price) : "");
+    setProductDefaultPurchasePrice(product.default_purchase_price != null ? String(product.default_purchase_price) : "");
+    setProductSellingPrice(product.default_selling_price != null ? String(product.default_selling_price) : "");
+    setTrackBatch(Boolean(product.track_batch));
+    setTrackExpiry(Boolean(product.track_expiry));
+    setProductIsActive(product.is_active !== false);
+    setProductOversellingPolicy(product.overselling_policy ?? "inherit");
+    setSelectedBrandId(product.brand_id);
+    setSelectedCategoryId(product.category_id);
+    setEditingProductId(product.id);
+    setProductToView(null);
+    setMessage(null);
+    setError(null);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage(null);
     setError(null);
-    setLoading(true);
-
-    console.log({
-      brand_id: selectedBrandId,
-      category_id: selectedCategoryId,
-    });
 
     if (!requireOrganization("save product")) {
       setError("Organization not loaded. Please login again.");
-      setLoading(false);
       return;
     }
 
-    const { data: productData, error: insertError } = await supabase.from("products").insert({
+    const validation = validateProductInput({
       name,
+      sku: productSku,
+      barcode: productBarcode,
+      unitType,
+      unitsPerPack,
+      minimumStockLevel,
+      reorderLevel,
+      lastPurchasePrice: productLastPurchasePrice,
+      defaultPurchasePrice: productDefaultPurchasePrice,
+      defaultSellingPrice: productSellingPrice,
+    });
+
+    if (!validation.ok) {
+      setError(validation.errors.join(". "));
+      return;
+    }
+
+    const trimmedName = name.trim();
+    const duplicateProduct = products.find(
+      (p) =>
+        p.id !== editingProductId &&
+        p.name.trim().toLowerCase() === trimmedName.toLowerCase() &&
+        (p.brand_id ?? null) === selectedBrandId
+    );
+    if (duplicateProduct) {
+      setError(`A product named "${trimmedName}" with this brand already exists.`);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const validateResponse = await fetch("/api/products/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          name: trimmedName,
+          sku: productSku.trim() || null,
+          barcode: productBarcode.trim() || null,
+          brandId: selectedBrandId,
+          excludeProductId: editingProductId,
+          unitType,
+          unitsPerPack,
+          minimumStockLevel,
+          reorderLevel,
+          lastPurchasePrice: productLastPurchasePrice,
+          defaultPurchasePrice: productDefaultPurchasePrice,
+          defaultSellingPrice: productSellingPrice,
+        }),
+      });
+      const validateData = await validateResponse.json().catch(() => null);
+      if (!validateResponse.ok || !validateData?.ok) {
+        setError(validateData?.error ?? "Product validation failed.");
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Server validation unavailable — DB unique indexes still enforce the rules.
+    }
+
+    const payload = {
+      name: trimmedName,
       brand_id: selectedBrandId,
       category_id: selectedCategoryId,
-      unit_type: unitType,
+      unit_type: unitType.trim(),
       units_per_pack: unitsPerPack ? Number(unitsPerPack) : null,
+      sku: productSku.trim() || null,
+      barcode: productBarcode.trim() || null,
+      last_purchase_price: productLastPurchasePrice ? Number(productLastPurchasePrice) : null,
+      default_purchase_price: productDefaultPurchasePrice ? Number(productDefaultPurchasePrice) : null,
+      default_selling_price: productSellingPrice ? Number(productSellingPrice) : null,
       minimum_stock_level: minimumStockLevel ? Number(minimumStockLevel) : null,
       reorder_level: reorderLevel ? Number(reorderLevel) : 0,
       track_batch: trackBatch,
       track_expiry: trackExpiry,
+      overselling_policy: (
+        productOversellingPolicy === "allow" || productOversellingPolicy === "block"
+          ? productOversellingPolicy
+          : null
+      ) as "allow" | "block" | null,
+      is_active: productIsActive,
       organization_id: currentOrganizationId,
-    }).select("id").single();
+      updated_at: new Date().toISOString(),
+    };
+
+    if (editingProductId) {
+      const previousProducts = products;
+      const optimisticProduct = {
+        ...(previousProducts.find((p) => p.id === editingProductId) ?? ({} as Product)),
+        ...payload,
+        id: editingProductId,
+      };
+      setProducts((prev) => prev.map((p) => (p.id === editingProductId ? optimisticProduct : p)));
+
+      const { error: updateError } = await supabase
+        .from("products")
+        .update(payload)
+        .eq("id", editingProductId)
+        .eq("organization_id", currentOrganizationId);
+
+      setLoading(false);
+
+      if (updateError) {
+        setProducts(previousProducts);
+        setError("Failed to update product");
+        console.error("Supabase update error:", updateError);
+        return;
+      }
+
+      const originalProduct = previousProducts.find((p) => p.id === editingProductId);
+      await createAuditLog({
+        action: "updated",
+        entity_type: "product",
+        entity_id: editingProductId,
+        entity_label: trimmedName,
+        description: `Updated product ${trimmedName}`,
+        old_values: originalProduct
+          ? {
+              name: originalProduct.name,
+              brand_id: originalProduct.brand_id,
+              category_id: originalProduct.category_id,
+              unit_type: originalProduct.unit_type,
+              sku: originalProduct.sku ?? null,
+              barcode: originalProduct.barcode ?? null,
+              default_selling_price: originalProduct.default_selling_price ?? null,
+              minimum_stock_level: originalProduct.minimum_stock_level ?? null,
+              reorder_level: originalProduct.reorder_level ?? null,
+              overselling_policy: originalProduct.overselling_policy ?? null,
+              is_active: originalProduct.is_active ?? null,
+            }
+          : null,
+        new_values: {
+          name: payload.name,
+          brand_id: payload.brand_id,
+          category_id: payload.category_id,
+          unit_type: payload.unit_type,
+          sku: payload.sku,
+          barcode: payload.barcode,
+          default_selling_price: payload.default_selling_price,
+          minimum_stock_level: payload.minimum_stock_level,
+          reorder_level: payload.reorder_level,
+          overselling_policy: payload.overselling_policy,
+          is_active: payload.is_active,
+        },
+      });
+      setMessage("Product updated successfully");
+      resetProductForm();
+      fetchProducts();
+      return;
+    }
+
+    const { data: productData, error: insertError } = await supabase.from("products").insert(payload).select("id").single();
 
     setLoading(false);
 
@@ -10362,27 +12068,23 @@ export default function Home() {
       action: "created",
       entity_type: "product",
       entity_id: productData?.id ?? null,
-      entity_label: name,
-      description: `Created product ${name}`,
+      entity_label: trimmedName,
+      description: `Created product ${trimmedName}`,
       new_values: {
-        name,
-        brand_id: selectedBrandId,
-        category_id: selectedCategoryId,
-        unit_type: unitType,
-        minimum_stock_level: minimumStockLevel ? Number(minimumStockLevel) : null,
-        reorder_level: reorderLevel ? Number(reorderLevel) : 0,
+        name: payload.name,
+        brand_id: payload.brand_id,
+        category_id: payload.category_id,
+        unit_type: payload.unit_type,
+        sku: payload.sku,
+        barcode: payload.barcode,
+        default_selling_price: payload.default_selling_price,
+        minimum_stock_level: payload.minimum_stock_level,
+        reorder_level: payload.reorder_level,
+        is_active: payload.is_active,
       },
     });
     setMessage("Product saved successfully");
-    setName("");
-    setUnitType("");
-    setUnitsPerPack("");
-    setMinimumStockLevel("");
-    setTrackBatch(false);
-    setTrackExpiry(false);
-    setReorderLevel("");
-    setSelectedBrandId(null);
-    setSelectedCategoryId(null);
+    resetProductForm();
     fetchProducts();
   };
 
@@ -11207,6 +12909,7 @@ export default function Home() {
             city: currentOrganization.city ?? null,
             invoice_footer_note: currentOrganization.invoice_footer_note ?? null,
             default_payment_terms: currentOrganization.default_payment_terms ?? null,
+            overselling_policy: currentOrganization.overselling_policy ?? "allow",
           }
         : null;
       const newBusinessSettings = {
@@ -11216,6 +12919,7 @@ export default function Home() {
         city: optionalValue(businessSettingsCity),
         invoice_footer_note: optionalValue(businessSettingsInvoiceFooterNote),
         default_payment_terms: optionalValue(businessSettingsDefaultPaymentTerms),
+        overselling_policy: businessSettingsOversellingPolicy === "block" ? "block" : "allow",
       };
       const { error } = await supabase
         .from("organizations")
@@ -11374,6 +13078,7 @@ export default function Home() {
       can_view_reports: Boolean(staffPermissionDraft.can_view_reports),
       can_manage_tasks: Boolean(staffPermissionDraft.can_manage_tasks),
       can_manage_settings: Boolean(staffPermissionDraft.can_manage_settings),
+      can_manage_inventory: Boolean(staffPermissionDraft.can_manage_inventory),
       updated_at: now,
     };
     const previousPermissions = staffPermissions.find(
@@ -12654,7 +14359,13 @@ export default function Home() {
         {activeSectionAllowed && activeSection === "inventory" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Inventory Dashboard</h2>
+            <div>
+              <h2 className="text-xl font-medium text-foreground">Inventory</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Stock ledger, adjustments, and reorder recommendations. Viewing requires the View Reports
+                permission; recording adjustments requires Manage Inventory.
+              </p>
+            </div>
             <button
               type="button"
               onClick={handleExportInventoryCsv}
@@ -12663,132 +14374,575 @@ export default function Home() {
               Export Inventory CSV
             </button>
           </div>
-          {products.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No products to show.</p>
-          ) : (
-            <ul className="space-y-2">
-              {inventoryStats.map((s) => (
-                <li
-                  key={s.productId}
-                  className="flex items-center justify-between rounded border border-border bg-card px-3 py-2"
-                >
-                  <div>
-                    <div className="font-medium text-foreground">{s.productName}</div>
-                    <div className="text-xs text-muted-foreground">Default Price: {s.defaultSellingPrice ?? "-"}</div>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-foreground/80">
-                    <div>Purchased: {s.purchasedQty}</div>
-                    <div>Sold: {s.soldQty}</div>
-                    <div>Stock: {s.currentStock}</div>
-                    {s.currentStock <= 10 && (
-                      <span className="rounded bg-destructive/10 px-2 py-1 text-xs font-semibold text-destructive">LOW STOCK</span>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
 
-          <div className="mt-6 rounded border border-border bg-card p-4">
-            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <h3 className="text-lg font-medium text-foreground">Inventory Reorder Recommendations</h3>
-              <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
-                <select
-                  value={reorderRecommendationFilter}
-                  onChange={(e) => setReorderRecommendationFilter(e.target.value)}
-                  className="rounded border border-border px-3 py-2 text-sm"
-                >
-                  <option value="all">All</option>
-                  <option value="Out of Stock">Out of Stock</option>
-                  <option value="Urgent Reorder">Urgent Reorder</option>
-                  <option value="Low Stock Soon">Low Stock Soon</option>
-                  <option value="Healthy">Healthy</option>
-                  <option value="missing-reorder-level">Missing Reorder Level</option>
-                </select>
-                <input
-                  type="search"
-                  value={reorderRecommendationSearch}
-                  onChange={(e) => setReorderRecommendationSearch(e.target.value)}
-                  placeholder="Search product, brand, category"
-                  className="rounded border border-border px-3 py-2 text-sm"
-                />
+          <div className="mb-5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setInventoryTab("dashboard")}
+              className={`rounded px-4 py-2 text-sm font-medium ${
+                inventoryTab === "dashboard"
+                  ? "bg-primary text-white"
+                  : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+              }`}
+            >
+              Inventory Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={() => setInventoryTab("adjustments")}
+              className={`rounded px-4 py-2 text-sm font-medium ${
+                inventoryTab === "adjustments"
+                  ? "bg-primary text-white"
+                  : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+              }`}
+            >
+              Stock Adjustment
+            </button>
+            <button
+              type="button"
+              onClick={() => setInventoryTab("ledger")}
+              className={`rounded px-4 py-2 text-sm font-medium ${
+                inventoryTab === "ledger"
+                  ? "bg-primary text-white"
+                  : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+              }`}
+            >
+              Stock Ledger
+            </button>
+            <button
+              type="button"
+              onClick={() => setInventoryTab("import")}
+              className={`rounded px-4 py-2 text-sm font-medium ${
+                inventoryTab === "import"
+                  ? "bg-primary text-white"
+                  : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+              }`}
+            >
+              Import Products
+            </button>
+          </div>
+
+          {inventoryTab === "dashboard" && (
+          <div className="space-y-6">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
+                <div className="text-2xl font-semibold text-destructive">{inventorySummaryCounts.outOfStock}</div>
+                <div className="text-sm text-destructive/80">Out of Stock</div>
+              </div>
+              <div className="rounded border border-orange-200 bg-orange-50 p-4">
+                <div className="text-2xl font-semibold text-orange-700">{inventorySummaryCounts.urgentReorder}</div>
+                <div className="text-sm text-orange-700/80">Urgent Reorder</div>
+              </div>
+              <div className="rounded border border-border bg-card p-4">
+                <div className="text-2xl font-semibold text-foreground">{inventorySummaryCounts.missingReorderLevel}</div>
+                <div className="text-sm text-muted-foreground">Missing Reorder Level</div>
+              </div>
+              <div className="rounded border border-success/20 bg-success/5 p-4">
+                <div className="text-2xl font-semibold text-success">{inventorySummaryCounts.healthy}</div>
+                <div className="text-sm text-success/80">Healthy</div>
               </div>
             </div>
 
-            {filteredReorderRecommendations.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No reorder recommendations match the current filters.</p>
+            {products.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No products to show.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
-                    <tr>
-                      <th className="px-3 py-2">Product</th>
-                      <th className="px-3 py-2">Current Stock</th>
-                      <th className="px-3 py-2">Reorder Level</th>
-                      <th className="px-3 py-2">Recent 30-day Sales</th>
-                      <th className="px-3 py-2">Daily Avg</th>
-                      <th className="px-3 py-2">Days Left</th>
-                      <th className="px-3 py-2">Suggested Reorder</th>
-                      <th className="px-3 py-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredReorderRecommendations.map((recommendation) => (
-                      <tr key={recommendation.productId}>
-                        <td className="px-3 py-3">
-                          <div className="font-medium text-foreground">{recommendation.productName}</div>
-                          <div className="text-xs text-muted-foreground/80">
-                            {recommendation.brandName || "No brand"} · {recommendation.categoryName || "No category"}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3">
-                          {recommendation.currentStock} {recommendation.unitType}
-                        </td>
-                        <td className="px-3 py-3">
-                          {recommendation.reorderLevel > 0
-                            ? `${recommendation.reorderLevel} ${recommendation.unitType}`
-                            : "Set reorder level first"}
-                        </td>
-                        <td className="px-3 py-3">
-                          {recommendation.recentSalesQuantity} {recommendation.unitType}
-                        </td>
-                        <td className="px-3 py-3">
-                          {recommendation.dailyAverageSales > 0
-                            ? `${recommendation.dailyAverageSales.toFixed(2)} ${recommendation.unitType}/day`
-                            : "No recent sales"}
-                        </td>
-                        <td className="px-3 py-3">
-                          {recommendation.estimatedDaysLeft === null
-                            ? "No recent sales"
-                            : `${Math.max(0, recommendation.estimatedDaysLeft).toFixed(1)} days`}
-                        </td>
-                        <td className="px-3 py-3">
-                          {recommendation.reorderLevel > 0
-                            ? `${recommendation.suggestedReorderQuantity} ${recommendation.unitType}`
-                            : "Set reorder level first"}
-                        </td>
-                        <td className="px-3 py-3">
-                          <span
-                            className={`inline-flex rounded px-2 py-1 text-xs font-medium ${
-                              recommendation.status === "Out of Stock"
-                                ? "bg-destructive/10 text-destructive"
-                                : recommendation.status === "Urgent Reorder"
-                                  ? "bg-orange-100 text-orange-700"
-                                  : recommendation.status === "Low Stock Soon"
-                                    ? "bg-warning/10 text-warning"
-                                    : "bg-success/10 text-success"
+              <ul className="space-y-2">
+                {inventoryStats.map((s) => (
+                  <li
+                    key={s.productId}
+                    className="flex items-center justify-between rounded border border-border bg-card px-3 py-2"
+                  >
+                    <div>
+                      <div className="font-medium text-foreground">{s.productName}</div>
+                      <div className="text-xs text-muted-foreground">Default Price: {s.defaultSellingPrice ?? "-"}</div>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-foreground/80">
+                      <div>Purchased: {s.purchasedQty}</div>
+                      <div>Sold: {s.soldQty}</div>
+                      <div>Stock: {s.currentStock}</div>
+                      {(() => {
+                        const snapshot = inventorySnapshots.find(
+                          (item) => String(item.productId) === String(s.productId)
+                        );
+                        if (!snapshot || snapshot.status === "healthy") return null;
+                        const label =
+                          snapshot.status === "out_of_stock"
+                            ? "OUT OF STOCK"
+                            : snapshot.status === "urgent_reorder"
+                              ? "LOW STOCK"
+                              : "SET REORDER LEVEL";
+                        const badgeClass =
+                          snapshot.status === "out_of_stock"
+                            ? "bg-destructive/10 text-destructive"
+                            : snapshot.status === "urgent_reorder"
+                              ? "bg-orange-100 text-orange-700"
+                              : "bg-muted/50 text-muted-foreground";
+                        return (
+                          <span className={`rounded px-2 py-1 text-xs font-semibold ${badgeClass}`}>{label}</span>
+                        );
+                      })()}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="rounded border border-border bg-card p-4">
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <h3 className="text-lg font-medium text-foreground">Inventory Reorder Recommendations</h3>
+                <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
+                  <select
+                    value={reorderRecommendationFilter}
+                    onChange={(e) => setReorderRecommendationFilter(e.target.value)}
+                    className="rounded border border-border px-3 py-2 text-sm"
+                  >
+                    <option value="all">All</option>
+                    <option value="Out of Stock">Out of Stock</option>
+                    <option value="Urgent Reorder">Urgent Reorder</option>
+                    <option value="Low Stock Soon">Low Stock Soon</option>
+                    <option value="Healthy">Healthy</option>
+                    <option value="missing-reorder-level">Missing Reorder Level</option>
+                  </select>
+                  <input
+                    type="search"
+                    value={reorderRecommendationSearch}
+                    onChange={(e) => setReorderRecommendationSearch(e.target.value)}
+                    placeholder="Search product, brand, category"
+                    className="rounded border border-border px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              {filteredReorderRecommendations.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No reorder recommendations match the current filters.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
+                      <tr>
+                        <th className="px-3 py-2">Product</th>
+                        <th className="px-3 py-2">Current Stock</th>
+                        <th className="px-3 py-2">Reorder Level</th>
+                        <th className="px-3 py-2">Recent 30-day Sales</th>
+                        <th className="px-3 py-2">Daily Avg</th>
+                        <th className="px-3 py-2">Days Left</th>
+                        <th className="px-3 py-2">Suggested Reorder</th>
+                        <th className="px-3 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {filteredReorderRecommendations.map((recommendation) => (
+                        <tr key={recommendation.productId}>
+                          <td className="px-3 py-3">
+                            <div className="font-medium text-foreground">{recommendation.productName}</div>
+                            <div className="text-xs text-muted-foreground/80">
+                              {recommendation.brandName || "No brand"} · {recommendation.categoryName || "No category"}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            {recommendation.currentStock} {recommendation.unitType}
+                          </td>
+                          <td className="px-3 py-3">
+                            {recommendation.reorderLevel > 0
+                              ? `${recommendation.reorderLevel} ${recommendation.unitType}`
+                              : "Set reorder level first"}
+                          </td>
+                          <td className="px-3 py-3">
+                            {recommendation.recentSalesQuantity} {recommendation.unitType}
+                          </td>
+                          <td className="px-3 py-3">
+                            {recommendation.dailyAverageSales > 0
+                              ? `${recommendation.dailyAverageSales.toFixed(2)} ${recommendation.unitType}/day`
+                              : "No recent sales"}
+                          </td>
+                          <td className="px-3 py-3">
+                            {recommendation.estimatedDaysLeft === null
+                              ? "No recent sales"
+                              : `${Math.max(0, recommendation.estimatedDaysLeft).toFixed(1)} days`}
+                          </td>
+                          <td className="px-3 py-3">
+                            {recommendation.reorderLevel > 0
+                              ? `${recommendation.suggestedReorderQuantity} ${recommendation.unitType}`
+                              : "Set reorder level first"}
+                          </td>
+                          <td className="px-3 py-3">
+                            <span
+                              className={`inline-flex rounded px-2 py-1 text-xs font-medium ${
+                                recommendation.status === "Out of Stock"
+                                  ? "bg-destructive/10 text-destructive"
+                                  : recommendation.status === "Urgent Reorder"
+                                    ? "bg-orange-100 text-orange-700"
+                                    : recommendation.status === "Low Stock Soon"
+                                      ? "bg-warning/10 text-warning"
+                                      : "bg-success/10 text-success"
+                              }`}
+                            >
+                              {recommendation.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+          )}
+
+          {inventoryTab === "adjustments" && (
+          <div className="space-y-6">
+            {!canManageInventory && (
+              <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
+                You have view access to this section, but only staff with the Manage Inventory permission can record
+                stock adjustments. Owners and admins can always adjust stock.
+              </div>
+            )}
+
+            <div className="rounded border border-border bg-card p-4">
+              <h3 className="mb-1 text-lg font-medium text-foreground">Record Stock Adjustment</h3>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Use adjustments for stock counts, damages, expired goods, and corrections. Adjustments never drive
+                stock below zero, and each one is written to the stock ledger with the reason below.
+              </p>
+
+              {adjustmentMessage && <p className="mb-4 text-sm text-success">{adjustmentMessage}</p>}
+              {adjustmentError && <p className="mb-4 whitespace-pre-wrap text-sm text-destructive">{adjustmentError}</p>}
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAdjustStock();
+                }}
+                className="grid gap-3 lg:grid-cols-2"
+              >
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm text-foreground/80">Product *</label>
+                  <select
+                    value={adjustmentProductId}
+                    onChange={(e) => setAdjustmentProductId(e.target.value)}
+                    className="rounded border border-border px-3 py-2 text-sm"
+                    disabled={adjustmentSubmitting}
+                  >
+                    <option value="">Select product</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm text-foreground/80">Direction *</label>
+                    <select
+                      value={adjustmentDirection}
+                      onChange={(e) => setAdjustmentDirection(e.target.value as "in" | "out")}
+                      className="rounded border border-border px-3 py-2 text-sm"
+                      disabled={adjustmentSubmitting}
+                    >
+                      <option value="in">Increase stock (+)</option>
+                      <option value="out">Decrease stock (-)</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm text-foreground/80">Quantity *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={adjustmentQuantity}
+                      onChange={(e) => setAdjustmentQuantity(e.target.value)}
+                      className="rounded border border-border px-3 py-2 text-sm"
+                      disabled={adjustmentSubmitting}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm text-foreground/80">Reason *</label>
+                  <input
+                    type="text"
+                    value={adjustmentReason}
+                    onChange={(e) => setAdjustmentReason(e.target.value)}
+                    className="rounded border border-border px-3 py-2 text-sm"
+                    disabled={adjustmentSubmitting}
+                    placeholder="e.g. Damage found during stock count"
+                    maxLength={500}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm text-foreground/80">Batch number (optional)</label>
+                    <input
+                      type="text"
+                      value={adjustmentBatchNumber}
+                      onChange={(e) => setAdjustmentBatchNumber(e.target.value)}
+                      className="rounded border border-border px-3 py-2 text-sm"
+                      disabled={adjustmentSubmitting}
+                      placeholder="e.g. LOT-2401"
+                      maxLength={100}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm text-foreground/80">Expiry date (optional)</label>
+                    <input
+                      type="date"
+                      value={adjustmentExpiryDate}
+                      onChange={(e) => setAdjustmentExpiryDate(e.target.value)}
+                      className="rounded border border-border px-3 py-2 text-sm"
+                      disabled={adjustmentSubmitting}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 lg:col-span-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdjustmentProductId("");
+                      setAdjustmentDirection("in");
+                      setAdjustmentQuantity("");
+                      setAdjustmentReason("");
+                      setAdjustmentBatchNumber("");
+                      setAdjustmentExpiryDate("");
+                      setAdjustmentMessage(null);
+                      setAdjustmentError(null);
+                    }}
+                    className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={adjustmentSubmitting || !canManageInventory}
+                    className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {adjustmentSubmitting ? "Adjusting..." : "Record Adjustment"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="rounded border border-border bg-card p-4">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Recent Adjustments</h3>
+              {recentAdjustments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No adjustments recorded yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
+                      <tr>
+                        <th className="px-3 py-2">Date</th>
+                        <th className="px-3 py-2">Product</th>
+                        <th className="px-3 py-2">Change</th>
+                        <th className="px-3 py-2">Reason</th>
+                        <th className="px-3 py-2">Batch</th>
+                        <th className="px-3 py-2">Expiry</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {recentAdjustments.map((transaction) => (
+                        <tr key={transaction.id}>
+                          <td className="px-3 py-3">{formatDateTime(transaction.created_at)}</td>
+                          <td className="px-3 py-3">
+                            {productNameById.get(String(transaction.product_id)) ?? `Product ${transaction.product_id}`}
+                          </td>
+                          <td
+                            className={`px-3 py-3 font-medium ${
+                              Number(transaction.quantity_delta) > 0 ? "text-success" : "text-destructive"
                             }`}
                           >
-                            {recommendation.status}
-                          </span>
-                        </td>
-                      </tr>
+                            {formatMovementChange(Number(transaction.quantity_delta))}
+                          </td>
+                          <td className="px-3 py-3">{transaction.reason ?? "-"}</td>
+                          <td className="px-3 py-3">{transaction.batch_number ?? "-"}</td>
+                          <td className="px-3 py-3">{transaction.expiry_date ?? "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+          )}
+
+          {inventoryTab === "ledger" && (
+          <div className="space-y-6">
+            <div className="rounded border border-border bg-card p-4">
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h3 className="text-lg font-medium text-foreground">Stock Ledger</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Every stock movement in and out of the business, with running balances per product.
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-3 lg:w-[640px]">
+                  <select
+                    value={ledgerMovementFilter}
+                    onChange={(e) => setLedgerMovementFilter(e.target.value)}
+                    className="rounded border border-border px-3 py-2 text-sm"
+                  >
+                    <option value="all">All movements</option>
+                    <option value="purchase_in">Purchase Receipts</option>
+                    <option value="sale_out">Sales Issues</option>
+                    <option value="adjustment_in">Adjustments In</option>
+                    <option value="adjustment_out">Adjustments Out</option>
+                  </select>
+                  <select
+                    value={ledgerProductFilter}
+                    onChange={(e) => setLedgerProductFilter(e.target.value)}
+                    className="rounded border border-border px-3 py-2 text-sm"
+                  >
+                    <option value="all">All products</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name}
+                      </option>
                     ))}
-                  </tbody>
-                </table>
+                  </select>
+                  <input
+                    type="search"
+                    value={ledgerSearch}
+                    onChange={(e) => setLedgerSearch(e.target.value)}
+                    placeholder="Search product or batch"
+                    className="rounded border border-border px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              {inventoryTransactionsLoading && (
+                <p className="mb-3 text-sm text-muted-foreground">Loading ledger...</p>
+              )}
+
+              {ledgerQuery.rows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No ledger movements match the current filters.</p>
+              ) : (
+                <>
+                  {ledgerProductFilter !== "all" && (
+                    <p className="mb-3 text-sm text-muted-foreground">
+                      Opening balance:{" "}
+                      {formatMovementChange(ledgerQuery.openingBalances.get(Number(ledgerProductFilter)) ?? 0)}
+                    </p>
+                  )}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 text-sm">
+                      <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
+                        <tr>
+                          <th className="px-3 py-2">Date</th>
+                          <th className="px-3 py-2">Product</th>
+                          <th className="px-3 py-2">Movement</th>
+                          <th className="px-3 py-2">Change</th>
+                          <th className="px-3 py-2">Batch</th>
+                          <th className="px-3 py-2">Expiry</th>
+                          <th className="px-3 py-2">Reason / Reference</th>
+                          <th className="px-3 py-2">Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {ledgerQuery.rows.map((transaction) => (
+                          <tr key={transaction.id}>
+                            <td className="px-3 py-3">{formatDateTime(transaction.created_at)}</td>
+                            <td className="px-3 py-3">
+                              {productNameById.get(String(transaction.product_id)) ?? `Product ${transaction.product_id}`}
+                            </td>
+                            <td className="px-3 py-3">{movementLabel(transaction.movement_type)}</td>
+                            <td
+                              className={`px-3 py-3 font-medium ${
+                                Number(transaction.quantity_delta) > 0 ? "text-success" : "text-destructive"
+                              }`}
+                            >
+                              {formatMovementChange(Number(transaction.quantity_delta))}
+                            </td>
+                            <td className="px-3 py-3">{transaction.batch_number ?? "-"}</td>
+                            <td className="px-3 py-3">{transaction.expiry_date ?? "-"}</td>
+                            <td className="px-3 py-3">
+                              {(() => {
+                                if (transaction.reference_type === "purchase_transaction") {
+                                  const label = invoiceNumbersByReferenceId.get(transaction.reference_id ?? "");
+                                  return label || "Purchase";
+                                }
+                                if (transaction.reference_type === "sales_transaction") {
+                                  const label = invoiceNumbersByReferenceId.get(transaction.reference_id ?? "");
+                                  return label || "Sale";
+                                }
+                                return transaction.reason ?? "-";
+                              })()}
+                            </td>
+                            <td className="px-3 py-3 font-medium">{formatMovementChange(transaction.runningBalance)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {selectedLedgerProductBatches.length > 0 && (
+              <div className="rounded border border-border bg-card p-4">
+                <h3 className="mb-1 text-lg font-medium text-foreground">Batch Availability</h3>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Per-batch balance for the selected product — the structure FIFO costing will consume in a later
+                  phase. Batches with an expiry date are ordered earliest first.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
+                      <tr>
+                        <th className="px-3 py-2">Batch</th>
+                        <th className="px-3 py-2">Expiry</th>
+                        <th className="px-3 py-2">Received</th>
+                        <th className="px-3 py-2">Issued</th>
+                        <th className="px-3 py-2">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {selectedLedgerProductBatches.map((batch) => (
+                        <tr key={batch.batchNumber}>
+                          <td className="px-3 py-3">{batch.batchNumber}</td>
+                          <td className="px-3 py-3">{batch.expiryDate ?? "-"}</td>
+                          <td className="px-3 py-3">{formatMovementChange(batch.received)}</td>
+                          <td className="px-3 py-3">{formatMovementChange(-batch.issued)}</td>
+                          <td className="px-3 py-3 font-medium">{formatMovementChange(batch.balance)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
+          )}
+
+          {inventoryTab === "import" && (
+          <div className="space-y-6">
+            {!canManageInventory && (
+              <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
+                You have view access to this section, but only staff with the Manage Inventory permission can
+                import products. Owners and admins can always import.
+              </div>
+            )}
+            <ImportWizard
+              supabase={supabase}
+              organizationId={currentOrganizationId}
+              categories={categories}
+              brands={brands}
+              products={products}
+              actorProfileId={currentProfile?.id ?? null}
+              createAuditLog={createAuditLog}
+              onImported={() => {
+                fetchProducts();
+                fetchCategories();
+                fetchBrands();
+              }}
+            />
+          </div>
+          )}
         </section>
         )}
 
@@ -13956,6 +16110,19 @@ export default function Home() {
               </select>
             </label>
 
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
+              <span>Overselling Policy</span>
+              <select
+                value={categoryOversellingPolicy}
+                onChange={(e) => setCategoryOversellingPolicy(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              >
+                <option value="inherit">Inherit (organization default)</option>
+                <option value="allow">Allow overselling</option>
+                <option value="block">Block overselling</option>
+              </select>
+            </label>
+
             <button
               type="button"
               onClick={handleAddCategory}
@@ -13989,14 +16156,28 @@ export default function Home() {
                         {parentCategory && (
                           <span className="text-xs text-muted-foreground/80">Parent: {parentCategory.name}</span>
                         )}
+                        <span className="text-xs text-muted-foreground/80">
+                          Overselling: {category.overselling_policy === "block" ? "Blocked" : category.overselling_policy === "allow" ? "Allowed" : "Inherit"}
+                        </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCategory(category.id)}
-                        className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={category.overselling_policy ?? "inherit"}
+                          onChange={(e) => handleCategoryPolicyChange(category.id, e.target.value)}
+                          className="rounded border border-border px-2 py-1 text-sm focus:border-ring focus:outline-none"
+                        >
+                          <option value="inherit">Inherit</option>
+                          <option value="allow">Allow</option>
+                          <option value="block">Block</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCategory(category.id)}
+                          className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -14008,6 +16189,24 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "products" && (
         <>
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-xl font-medium text-foreground">
+            {editingProductId ? `Edit Product: ${name}` : "Add Product"}
+          </h2>
+          {editingProductId && (
+            <button
+              type="button"
+              onClick={resetProductForm}
+              className="rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted"
+            >
+              Cancel Edit
+            </button>
+          )}
+        </div>
+
+        {message && <p className="mb-4 text-sm text-success">{message}</p>}
+        {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground/80">
@@ -14022,89 +16221,171 @@ export default function Home() {
             />
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-foreground/80">
-              Brand
-            </label>
-            <select
-              value={selectedBrandId ?? ""}
-              onChange={(e) => setSelectedBrandId(e.target.value === "" ? null : e.target.value)}
-              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-            >
-              <option value="">None</option>
-              {brands.map((brand) => (
-                <option key={brand.id} value={String(brand.id)}>
-                  {brand.name}
-                </option>
-              ))}
-            </select>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Brand
+              </label>
+              <select
+                value={selectedBrandId ?? ""}
+                onChange={(e) => setSelectedBrandId(e.target.value === "" ? null : e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              >
+                <option value="">None</option>
+                {brands.map((brand) => (
+                  <option key={brand.id} value={String(brand.id)}>
+                    {brand.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Category
+              </label>
+              <select
+                value={selectedCategoryId ?? ""}
+                onChange={(e) => setSelectedCategoryId(e.target.value === "" ? null : e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              >
+                <option value="">None</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-foreground/80">
-              Category
-            </label>
-            <select
-              value={selectedCategoryId ?? ""}
-              onChange={(e) => setSelectedCategoryId(e.target.value === "" ? null : e.target.value)}
-              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-            >
-              <option value="">None</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                SKU
+              </label>
+              <input
+                type="text"
+                value={productSku}
+                onChange={(e) => setProductSku(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Barcode
+              </label>
+              <input
+                type="text"
+                value={productBarcode}
+                onChange={(e) => setProductBarcode(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-foreground/80">
-              Unit Type
-            </label>
-            <input
-              type="text"
-              value={unitType}
-              onChange={(e) => setUnitType(e.target.value)}
-              required
-              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-            />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Unit Type
+              </label>
+              <input
+                type="text"
+                value={unitType}
+                onChange={(e) => setUnitType(e.target.value)}
+                required
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Units Per Pack
+              </label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={unitsPerPack}
+                onChange={(e) => setUnitsPerPack(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-foreground/80">
-              Units Per Pack
-            </label>
-            <input
-              type="number"
-              value={unitsPerPack}
-              onChange={(e) => setUnitsPerPack(e.target.value)}
-              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-            />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Purchase Price
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={productLastPurchasePrice}
+                onChange={(e) => setProductLastPurchasePrice(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Default Purchase Price
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={productDefaultPurchasePrice}
+                onChange={(e) => setProductDefaultPurchasePrice(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Selling Price
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={productSellingPrice}
+                onChange={(e) => setProductSellingPrice(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-foreground/80">
-              Minimum Stock Level
-            </label>
-            <input
-              type="number"
-              value={minimumStockLevel}
-              onChange={(e) => setMinimumStockLevel(e.target.value)}
-              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-            />
-          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Minimum Stock Level
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={minimumStockLevel}
+                onChange={(e) => setMinimumStockLevel(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-foreground/80">
-              Reorder Level
-            </label>
-            <input
-              type="number"
-              value={reorderLevel}
-              onChange={(e) => setReorderLevel(e.target.value)}
-              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-            />
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Reorder Level
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={reorderLevel}
+                onChange={(e) => setReorderLevel(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </div>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -14127,6 +16408,31 @@ export default function Home() {
               />
               Track Expiry
             </label>
+
+            <label className="flex items-center gap-2 text-sm text-foreground/80">
+              <input
+                type="checkbox"
+                checked={productIsActive}
+                onChange={(e) => setProductIsActive(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-blue-500"
+              />
+              Active
+            </label>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-foreground/80">
+              Overselling Policy
+            </label>
+            <select
+              value={productOversellingPolicy}
+              onChange={(e) => setProductOversellingPolicy(e.target.value)}
+              className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+            >
+              <option value="inherit">Inherit (category / organization default)</option>
+              <option value="allow">Allow overselling</option>
+              <option value="block">Block overselling</option>
+            </select>
           </div>
 
           <button
@@ -14134,19 +16440,159 @@ export default function Home() {
             disabled={loading}
             className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
           >
-            {loading ? "Saving..." : "Save Product"}
+            {loading ? "Saving..." : editingProductId ? "Update Product" : "Save Product"}
           </button>
         </form>
 
+        {productToView && (
+          <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-medium text-foreground">Product Details</h2>
+              <button
+                type="button"
+                onClick={() => setProductToView(null)}
+                className="rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted"
+              >
+                Close
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <div className="text-xs text-muted-foreground/80">Name</div>
+                <div className="text-sm font-medium text-foreground">{productToView.name}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Status</div>
+                <div className="text-sm font-medium text-foreground">{productToView.is_active === false ? "Inactive" : "Active"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Brand</div>
+                <div className="text-sm font-medium text-foreground">{brands.find((b) => b.id === productToView.brand_id)?.name ?? "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Category</div>
+                <div className="text-sm font-medium text-foreground">{categories.find((c) => c.id === productToView.category_id)?.name ?? "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Unit Type</div>
+                <div className="text-sm font-medium text-foreground">{productToView.unit_type ?? "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Units Per Pack</div>
+                <div className="text-sm font-medium text-foreground">{productToView.units_per_pack ?? "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">SKU</div>
+                <div className="text-sm font-medium text-foreground">{productToView.sku ?? "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Barcode</div>
+                <div className="text-sm font-medium text-foreground">{productToView.barcode ?? "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Purchase Price</div>
+                <div className="text-sm font-medium text-foreground">{productToView.last_purchase_price != null ? formatPKR(Number(productToView.last_purchase_price)) : "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Default Purchase Price</div>
+                <div className="text-sm font-medium text-foreground">{productToView.default_purchase_price != null ? formatPKR(Number(productToView.default_purchase_price)) : "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Selling Price</div>
+                <div className="text-sm font-medium text-foreground">{productToView.default_selling_price != null ? formatPKR(Number(productToView.default_selling_price)) : "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Available Stock</div>
+                <div className="text-sm font-medium text-foreground">{getAvailableStockForProduct(productToView.id)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Minimum Stock Level</div>
+                <div className="text-sm font-medium text-foreground">{productToView.minimum_stock_level ?? "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Reorder Level</div>
+                <div className="text-sm font-medium text-foreground">{productToView.reorder_level ?? 0}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Track Batch</div>
+                <div className="text-sm font-medium text-foreground">{productToView.track_batch ? "Yes" : "No"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Track Expiry</div>
+                <div className="text-sm font-medium text-foreground">{productToView.track_expiry ? "Yes" : "No"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Overselling Policy</div>
+                <div className="text-sm font-medium text-foreground">
+                  {productToView.overselling_policy === "block"
+                    ? "Blocked"
+                    : productToView.overselling_policy === "allow"
+                      ? "Allowed"
+                      : `Inherit (${getEffectiveOversellingPolicy(productToView) === "block" ? "blocked" : "allowed"} effective)`}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Creation Date</div>
+                <div className="text-sm font-medium text-foreground">{productToView.created_at ? formatDateTime(productToView.created_at) : "Unknown"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Last Update</div>
+                <div className="text-sm font-medium text-foreground">{productToView.updated_at ? formatDateTime(productToView.updated_at) : "Unknown"}</div>
+              </div>
+              {(() => {
+                const latestPurchaseItem = [...purchaseItems]
+                  .filter((item) => String(item.product_id) === String(productToView.id))
+                  .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))[0];
+                return (
+                  <>
+                    <div>
+                      <div className="text-xs text-muted-foreground/80">Latest Batch Number</div>
+                      <div className="text-sm font-medium text-foreground">{latestPurchaseItem?.batch_number ?? "None"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground/80">Latest Expiry Date</div>
+                      <div className="text-sm font-medium text-foreground">{latestPurchaseItem?.expiry_date ? formatDate(String(latestPurchaseItem.expiry_date)) : "None"}</div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </section>
+        )}
+
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Existing Products</h2>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">Existing Products</h2>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                placeholder="Search by name, SKU, barcode, brand, category..."
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none sm:w-72"
+              />
+              {productSearch && (
+                <button
+                  type="button"
+                  onClick={() => setProductSearch("")}
+                  className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-muted"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
           {productsLoading ? (
             <p className="text-sm text-muted-foreground">Loading products...</p>
-          ) : products.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No products found.</p>
+          ) : filteredProducts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {products.length === 0
+                ? "No products found."
+                : `No products match "${productSearch.trim()}".`}
+            </p>
           ) : (
             <ul className="space-y-2">
-              {products.map((product) => {
+              {filteredProducts.map((product) => {
                 const brand = brands.find((b) => b.id === product.brand_id);
                 const category = categories.find((c) => c.id === product.category_id);
                 return (
@@ -14155,21 +16601,45 @@ export default function Home() {
                     className="flex flex-col gap-2 rounded border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="space-y-1">
-                      <div className="text-sm font-medium text-foreground">{product.name}</div>
+                      <div className="text-sm font-medium text-foreground">
+                        {product.name}
+                        {product.is_active === false && (
+                          <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Inactive</span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground/80">Brand: {brand?.name ?? "None"}</div>
                       <div className="text-xs text-muted-foreground/80">Category: {category?.name ?? "None"}</div>
                       <div className="text-xs text-muted-foreground/80">Unit Type: {product.unit_type ?? "None"}</div>
+                      {product.sku && <div className="text-xs text-muted-foreground/80">SKU: {product.sku}</div>}
+                      {product.barcode && <div className="text-xs text-muted-foreground/80">Barcode: {product.barcode}</div>}
+                      <div className="text-xs text-muted-foreground/80">Stock: {getAvailableStockForProduct(product.id)}</div>
                       <div className="text-xs text-muted-foreground/80">Track Batch: {product.track_batch ? "Yes" : "No"}</div>
                       <div className="text-xs text-muted-foreground/80">Track Expiry: {product.track_expiry ? "Yes" : "No"}</div>
                       <div className="text-xs text-muted-foreground/80">Reorder Level: {product.reorder_level ?? 0}</div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteProduct(product.id)}
-                      className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setProductToView(product)}
+                        className="rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => startEditProduct(product)}
+                        className="rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProduct(product.id)}
+                        className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </li>
                 );
               })}
@@ -14559,6 +17029,44 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "purchases" && (
         <>
+        <div className="mb-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setPurchaseTab("invoice")}
+            className={`rounded px-4 py-2 text-sm font-medium ${
+              purchaseTab === "invoice"
+                ? "bg-primary text-white"
+                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+            }`}
+          >
+            Purchase Invoice
+          </button>
+          <button
+            type="button"
+            onClick={() => setPurchaseTab("orders")}
+            className={`rounded px-4 py-2 text-sm font-medium ${
+              purchaseTab === "orders"
+                ? "bg-primary text-white"
+                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+            }`}
+          >
+            Purchase Orders
+          </button>
+          <button
+            type="button"
+            onClick={() => setPurchaseTab("returns")}
+            className={`rounded px-4 py-2 text-sm font-medium ${
+              purchaseTab === "returns"
+                ? "bg-primary text-white"
+                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+            }`}
+          >
+            Returns
+          </button>
+        </div>
+
+        {purchaseTab === "invoice" && (
+        <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">Purchase Invoice</h2>
           <div className="space-y-4">
@@ -14580,13 +17088,17 @@ export default function Home() {
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Invoice Number</span>
+                <span>Supplier Invoice Number (Optional)</span>
                 <input
                   type="text"
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  value={supplierInvoiceNumber}
+                  onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+                  placeholder="e.g. supplier's own paper invoice reference"
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
+                <span className="text-xs text-muted-foreground/80">
+                  TradeOS generates the system invoice number (PUR-xxxxxx) automatically.
+                </span>
               </label>
             </div>
 
@@ -14764,8 +17276,24 @@ export default function Home() {
           ) : purchaseTransactions.length === 0 ? (
             <p className="text-sm text-muted-foreground">No purchase invoices found.</p>
           ) : (
+            <>
+              {renderPurchaseListFilterBar(
+                purchaseInvoiceFilters,
+                setPurchaseInvoiceFilters,
+                PURCHASE_INVOICE_STATUS_OPTIONS,
+                filteredPurchaseTransactions.length,
+                {
+                  value: purchaseInvoicePaymentFilter,
+                  onChange: setPurchaseInvoicePaymentFilter,
+                }
+              )}
+              {filteredPurchaseTransactions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No purchase invoices match your filters.
+                </p>
+              ) : (
             <ul className="space-y-3">
-              {purchaseTransactions.map((transaction) => {
+              {filteredPurchaseTransactions.map((transaction) => {
                 const supplier = suppliers.find((s) => s.id === transaction.supplier_id);
                 const date = new Date(transaction.created_at).toLocaleDateString();
                 const expenseReviewStatus = transaction.expense_review_status ?? "pending";
@@ -14827,10 +17355,11 @@ export default function Home() {
                 const purchasePaidAmount = supplierPaymentSummary?.paidAmount ?? 0;
                 const purchaseRemainingPayable =
                   supplierPaymentSummary?.remainingPayableAmount ?? purchasePaymentTotal;
+                const rawPurchasePaymentStatus = getPurchaseTransactionPaymentStatus(transaction);
                 const purchasePaymentStatus =
-                  purchaseRemainingPayable <= 0
+                  rawPurchasePaymentStatus === "paid"
                     ? "Paid"
-                    : purchasePaidAmount > 0
+                    : rawPurchasePaymentStatus === "partially_paid"
                       ? "Partially Paid"
                       : "Unpaid";
 
@@ -15047,11 +17576,612 @@ export default function Home() {
                 );
               })}
             </ul>
+              )}
+            </>
           )}
         </section>
         </>
         )}
 
+        {purchaseTab === "orders" && (
+        <>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Create Purchase Order</h2>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Supplier</span>
+                <select
+                  value={poSupplierId}
+                  onChange={(e) => setPoSupplierId(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                >
+                  <option value="">Select Supplier</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.supplier_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Order Date</span>
+                <input
+                  type="date"
+                  value={poOrderDate}
+                  onChange={(e) => setPoOrderDate(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Expected Date (Optional)</span>
+                <input
+                  type="date"
+                  value={poExpectedDate}
+                  onChange={(e) => setPoExpectedDate(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
+              <span>Notes (Optional)</span>
+              <textarea
+                value={poNotes}
+                onChange={(e) => setPoNotes(e.target.value)}
+                rows={2}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </label>
+
+            <div className="border-t pt-4">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
+
+              {poLines.length === 0 ? (
+                <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
+              ) : (
+                <div className="mb-4 space-y-3">
+                  {poLines.map((line, index) => (
+                    <div key={index} className="rounded border border-border bg-card p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePoLine(index)}
+                          className="text-xs text-destructive hover:text-destructive/90"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Product</span>
+                          <select
+                            value={line.product_id ?? ""}
+                            onChange={(e) =>
+                              handlePoLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)
+                            }
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          >
+                            <option value="">Select Product</option>
+                            {products.map((product) => (
+                              <option key={product.id} value={product.id}>
+                                {product.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Quantity</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={line.quantity}
+                            onChange={(e) => handlePoLineChange(index, "quantity", e.target.value)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Unit Price</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={line.purchase_price}
+                            onChange={(e) => handlePoLineChange(index, "purchase_price", e.target.value)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Batch Number</span>
+                          <input
+                            type="text"
+                            value={line.batch_number}
+                            onChange={(e) => handlePoLineChange(index, "batch_number", e.target.value)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleAddPoLine}
+                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
+              >
+                + Add Product Line
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCreatePurchaseOrder}
+              disabled={poLoading}
+              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+            >
+              {poLoading ? "Creating..." : "Save Purchase Order"}
+            </button>
+          </div>
+
+          {poMessage && <p className="mt-4 text-sm text-success">{poMessage}</p>}
+          {poError && <p className="mt-4 text-sm text-destructive">{poError}</p>}
+        </section>
+
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Purchase Orders</h2>
+          {purchaseOrdersLoading ? (
+            <p className="text-sm text-muted-foreground">Loading purchase orders...</p>
+          ) : purchaseOrders.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No purchase orders found.</p>
+          ) : (
+            <>
+              {renderPurchaseListFilterBar(
+                purchaseOrderFilters,
+                setPurchaseOrderFilters,
+                PURCHASE_ORDER_STATUS_OPTIONS,
+                filteredPurchaseOrders.length
+              )}
+              {filteredPurchaseOrders.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No purchase orders match your filters.
+                </p>
+              ) : (
+            <ul className="space-y-3">
+              {filteredPurchaseOrders.map((po) => {
+                const supplier = suppliers.find((s) => s.id === po.supplier_id);
+                const lineItems = purchaseOrderItems.filter((item) => item.purchase_order_id === po.id);
+                const received = lineItems.reduce(
+                  (sum, item) => sum + safeNumber(item.quantity_received),
+                  0
+                );
+                const ordered = lineItems.reduce(
+                  (sum, item) => sum + safeNumber(item.quantity_ordered),
+                  0
+                );
+                return (
+                  <li key={po.id} className="rounded border border-border bg-card p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-foreground">{po.po_number}</span>
+                          <span
+                            className={`rounded px-2 py-0.5 text-xs ${
+                              po.status === "received"
+                                ? "bg-success/10 text-success"
+                                : po.status === "partial"
+                                  ? "bg-primary/10 text-primary"
+                                  : po.status === "cancelled"
+                                    ? "bg-destructive/10 text-destructive"
+                                    : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground/80">
+                          Supplier: {supplier?.supplier_name ?? "Unknown"} · Ordered{" "}
+                          {formatDate(po.order_date ?? po.created_at)}
+                          {po.expected_date ? ` · Expected ${formatDate(po.expected_date)}` : ""}
+                        </div>
+                        <div className="text-xs text-muted-foreground/80">
+                          {lineItems.length} line(s) · {received} of {ordered} units received
+                        </div>
+                        {po.notes && <div className="text-xs text-muted-foreground/80">Notes: {po.notes}</div>}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        {(po.status === "ordered" || po.status === "partial") && (
+                          <button
+                            type="button"
+                            onClick={() => handleStartReceive(po.id)}
+                            className="rounded bg-success px-3 py-1.5 text-sm text-white transition hover:bg-success/90"
+                          >
+                            Receive
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handlePrintPurchaseOrder(po.id)}
+                          className="rounded border border-primary px-3 py-1.5 text-sm text-primary hover:bg-primary/5"
+                        >
+                          Print
+                        </button>
+                        {(po.status === "ordered" || po.status === "partial") && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelPurchaseOrder(po.id)}
+                            className="rounded border border-destructive px-3 py-1.5 text-sm text-destructive hover:bg-destructive/5"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+              )}
+            </>
+          )}
+        </section>
+
+        {receivePoId && (() => {
+          const po = purchaseOrders.find((item) => item.id === receivePoId);
+          const supplier = suppliers.find((s) => s.id === po?.supplier_id);
+          return (
+            <section className="mt-8 rounded border border-success/20 bg-success/5 p-5">
+              <h2 className="mb-1 text-lg font-medium text-foreground">
+                Receive Purchase Order {po?.po_number ?? ""}
+              </h2>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Receiving creates a purchase invoice (PUR-xxxxxx) and adds the received quantities to stock
+                through the inventory ledger. Supplier: {supplier?.supplier_name ?? "Unknown"}.
+              </p>
+
+              {receiveMessage && <p className="mb-4 text-sm text-success">{receiveMessage}</p>}
+              {receiveError && <p className="mb-4 text-sm text-destructive">{receiveError}</p>}
+
+              {receiveLines.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No lines on this purchase order.</p>
+              ) : (
+                <div className="space-y-3">
+                  {receiveLines.map((line) => {
+                    const product = products.find((p) => String(p.id) === String(line.productId));
+                    const remaining = Math.max(line.quantityOrdered - line.quantityReceived, 0);
+                    return (
+                      <div key={line.itemId} className="rounded border border-border bg-card p-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-foreground">{product?.name ?? "Unknown Product"}</span>
+                          <span className="text-xs text-muted-foreground/80">
+                            Ordered {line.quantityOrdered} · Already received {line.quantityReceived} · Remaining {remaining}
+                          </span>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-4">
+                          <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                            <span>Receive Quantity</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max={remaining}
+                              value={line.receiveQuantity}
+                              onChange={(e) => handleReceiveLineChange(line.itemId, "receiveQuantity", e.target.value)}
+                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                            <span>Unit Price</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={line.unitPrice}
+                              onChange={(e) => handleReceiveLineChange(line.itemId, "unitPrice", e.target.value)}
+                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                            <span>Batch Number</span>
+                            <input
+                              type="text"
+                              value={line.batchNumber}
+                              onChange={(e) => handleReceiveLineChange(line.itemId, "batchNumber", e.target.value)}
+                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                            <span>Expiry Date</span>
+                            <input
+                              type="date"
+                              value={line.expiryDate}
+                              onChange={(e) => handleReceiveLineChange(line.itemId, "expiryDate", e.target.value)}
+                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleConfirmReceive}
+                  disabled={receiveLoading}
+                  className="rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+                >
+                  {receiveLoading ? "Receiving..." : "Confirm Receive"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReceivePoId(null);
+                    setReceiveLines([]);
+                    setReceiveMessage(null);
+                    setReceiveError(null);
+                  }}
+                  disabled={receiveLoading}
+                  className="rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30"
+                >
+                  Close
+                </button>
+              </div>
+            </section>
+          );
+        })()}
+        </>
+        )}
+
+        {purchaseTab === "returns" && (
+        <>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Create Purchase Return</h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Record goods returned to a supplier. Returned quantities are removed from stock through the
+            inventory ledger.
+          </p>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Supplier</span>
+                <select
+                  value={returnSupplierId}
+                  onChange={(e) => setReturnSupplierId(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                >
+                  <option value="">Select Supplier</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.supplier_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Return Date</span>
+                <input
+                  type="date"
+                  value={returnDate}
+                  onChange={(e) => setReturnDate(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Linked Purchase Invoice (Optional)</span>
+                <select
+                  value={returnPurchaseTransactionId}
+                  onChange={(e) => setReturnPurchaseTransactionId(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                >
+                  <option value="">None</option>
+                  {purchaseTransactions.map((transaction) => (
+                    <option key={transaction.id} value={transaction.id}>
+                      {transaction.invoice_number}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
+              <span>Reason (Optional)</span>
+              <textarea
+                value={returnReason}
+                onChange={(e) => setReturnReason(e.target.value)}
+                rows={2}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </label>
+
+            <div className="border-t pt-4">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
+
+              {returnLines.length === 0 ? (
+                <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
+              ) : (
+                <div className="mb-4 space-y-3">
+                  {returnLines.map((line, index) => (
+                    <div key={index} className="rounded border border-border bg-card p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveReturnLine(index)}
+                          className="text-xs text-destructive hover:text-destructive/90"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Product</span>
+                          <select
+                            value={line.product_id ?? ""}
+                            onChange={(e) =>
+                              handleReturnLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)
+                            }
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          >
+                            <option value="">Select Product</option>
+                            {products.map((product) => (
+                              <option key={product.id} value={product.id}>
+                                {product.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Quantity</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={line.quantity}
+                            onChange={(e) => handleReturnLineChange(index, "quantity", e.target.value)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Unit Price</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={line.purchase_price}
+                            onChange={(e) => handleReturnLineChange(index, "purchase_price", e.target.value)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Batch Number</span>
+                          <input
+                            type="text"
+                            value={line.batch_number}
+                            onChange={(e) => handleReturnLineChange(index, "batch_number", e.target.value)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleAddReturnLine}
+                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
+              >
+                + Add Product Line
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCreatePurchaseReturn}
+              disabled={returnLoading}
+              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+            >
+              {returnLoading ? "Saving..." : "Save Purchase Return"}
+            </button>
+          </div>
+
+          {returnMessage && <p className="mt-4 text-sm text-success">{returnMessage}</p>}
+          {returnError && <p className="mt-4 text-sm text-destructive">{returnError}</p>}
+        </section>
+
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Purchase Return History</h2>
+          {purchaseReturnsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading purchase returns...</p>
+          ) : purchaseReturns.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No purchase returns found.</p>
+          ) : (
+            <>
+              {renderPurchaseListFilterBar(
+                purchaseReturnFilters,
+                setPurchaseReturnFilters,
+                PURCHASE_RETURN_STATUS_OPTIONS,
+                filteredPurchaseReturns.length
+              )}
+              {filteredPurchaseReturns.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No purchase returns match your filters.
+                </p>
+              ) : (
+            <ul className="space-y-3">
+              {filteredPurchaseReturns.map((purchaseReturn) => {
+                const supplier = suppliers.find((s) => s.id === purchaseReturn.supplier_id);
+                const lineItems = purchaseReturnItems.filter(
+                  (item) => item.purchase_return_id === purchaseReturn.id
+                );
+                const totalQuantity = lineItems.reduce(
+                  (sum, item) => sum + safeNumber(item.quantity),
+                  0
+                );
+                const totalValue = lineItems.reduce(
+                  (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.unit_price),
+                  0
+                );
+                return (
+                  <li key={purchaseReturn.id} className="rounded border border-border bg-card p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-foreground">{purchaseReturn.return_number}</span>
+                          <span
+                            className={`rounded px-2 py-0.5 text-xs ${
+                              purchaseReturn.status === "confirmed"
+                                ? "bg-success/10 text-success"
+                                : "bg-destructive/10 text-destructive"
+                            }`}
+                          >
+                            {purchaseReturn.status.charAt(0).toUpperCase() + purchaseReturn.status.slice(1)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground/80">
+                          Supplier: {supplier?.supplier_name ?? "Unknown"} · Returned{" "}
+                          {formatDate(purchaseReturn.return_date ?? purchaseReturn.created_at)}
+                        </div>
+                        <div className="text-xs text-muted-foreground/80">
+                          {lineItems.length} line(s) · {totalQuantity} units · {pkrFormatter.format(totalValue)}
+                        </div>
+                        {purchaseReturn.reason && (
+                          <div className="text-xs text-muted-foreground/80">Reason: {purchaseReturn.reason}</div>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handlePrintPurchaseReturn(purchaseReturn.id)}
+                          className="rounded border border-primary px-3 py-1.5 text-sm text-primary hover:bg-primary/5"
+                        >
+                          Print
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePurchaseReturn(purchaseReturn.id)}
+                          className="rounded border border-destructive px-3 py-1.5 text-sm text-destructive hover:bg-destructive/5"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+              )}
+            </>
+          )}
+        </section>
+        </>
+        )}
+        </>)}
         {activeSectionAllowed && activeSection === "staff-permissions" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -17422,6 +20552,21 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               />
             </label>
 
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
+              <span>Overselling Policy</span>
+              <select
+                value={businessSettingsOversellingPolicy}
+                onChange={(e) => setBusinessSettingsOversellingPolicy(e.target.value)}
+                className="rounded border border-border px-3 py-2"
+              >
+                <option value="allow">Allow overselling (stock can go below zero)</option>
+                <option value="block">Block overselling (refuse sales above available stock)</option>
+              </select>
+              <span className="text-xs text-muted-foreground/80">
+                Organization-wide default. Categories and products can override this.
+              </span>
+            </label>
+
             <button
               type="button"
               onClick={handleSaveBusinessSettings}
@@ -17441,12 +20586,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         </section>
         )}
 
-        {activeSectionAllowed && activeSection === "products" && (
-          <>
-            {message && <p className="mt-4 text-sm text-success">{message}</p>}
-            {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
-          </>
-        )}
           </div>
     </DashboardLayout>
   );

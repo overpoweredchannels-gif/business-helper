@@ -134,24 +134,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const newStock = Number(product.current_stock ?? 0) + Number(quantity);
-    const stockRes = await supabase
-      .from("products")
-      .update({
-        current_stock: newStock,
-        updated_at: now,
-      })
-      .eq("id", product_id);
-
-    if (stockRes.error) {
-      await supabase.from("purchase_items").delete().eq("id", purchaseItemRes.data.id);
-      await supabase.from("purchase_transactions").delete().eq("id", purchaseTxId);
-      return NextResponse.json(
-        { ok: false, error: `Failed to update stock: ${stockRes.error.message}` },
-        { status: 500 }
-      );
-    }
-
     const totalAmount = Number(quantity) * Number(purchase_price);
 
     const supplierUpdateRes = await supabase

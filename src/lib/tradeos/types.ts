@@ -7,6 +7,7 @@ export interface Category {
   id: string;
   name: string;
   parent_category_id: string | null;
+  overselling_policy?: "allow" | "block" | null;
 }
 
 export interface Product {
@@ -15,12 +16,21 @@ export interface Product {
   brand_id: string | null;
   category_id: string | null;
   unit_type: string | null;
+  units_per_pack?: number | null;
+  sku?: string | null;
+  barcode?: string | null;
   last_purchase_price?: number | null;
+  default_purchase_price?: number | null;
   default_selling_price?: number | null;
   minimum_stock_level?: number | null;
   reorder_level?: number | null;
   track_batch?: boolean | null;
   track_expiry?: boolean | null;
+  current_stock?: number | null;
+  overselling_policy?: "allow" | "block" | null;
+  is_active?: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface Customer {
@@ -86,6 +96,59 @@ export interface SalesTransaction {
   status?: string | null;
   invoice_type?: string | null;
   created_by_profile_id?: string | null;
+}
+
+// Purchase Management (Phase 1) — purchase orders, their line items, returns.
+
+export interface PurchaseOrder {
+  id: string;
+  organization_id: string;
+  po_number: string;
+  supplier_id: string | null;
+  order_date: string | null;
+  expected_date: string | null;
+  notes: string | null;
+  status: "ordered" | "partial" | "received" | "cancelled";
+  created_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PurchaseOrderItem {
+  id: string;
+  purchase_order_id: string;
+  product_id: number;
+  quantity_ordered: number;
+  quantity_received: number;
+  unit_price: number | null;
+  batch_number: string | null;
+  expiry_date: string | null;
+  created_at: string;
+}
+
+export interface PurchaseReturn {
+  id: string;
+  organization_id: string;
+  return_number: string;
+  supplier_id: string | null;
+  purchase_transaction_id: string | null;
+  return_date: string | null;
+  reason: string | null;
+  status: "confirmed" | "cancelled";
+  created_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PurchaseReturnItem {
+  id: string;
+  purchase_return_id: string;
+  product_id: number;
+  quantity: number;
+  unit_price: number | null;
+  batch_number: string | null;
+  expiry_date: string | null;
+  created_at: string;
 }
 
 export interface Task {
@@ -159,6 +222,7 @@ export interface StaffPermission {
   can_view_reports: boolean | null;
   can_manage_tasks: boolean | null;
   can_manage_settings: boolean | null;
+  can_manage_inventory: boolean | null;
 }
 
 export interface SecurityCheck {
@@ -420,7 +484,8 @@ export type StaffPermissionKey =
   | "can_view_profit"
   | "can_view_reports"
   | "can_manage_tasks"
-  | "can_manage_settings";
+  | "can_manage_settings"
+  | "can_manage_inventory";
 
 export interface PurchaseLine {
   id?: string;

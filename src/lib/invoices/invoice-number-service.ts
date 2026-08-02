@@ -25,6 +25,7 @@ export const INVOICE_PREFIXES: Record<InvoiceType, string> = {
   purchase: "PUR",
   sales_return: "SRN",
   purchase_return: "PRN",
+  purchase_order: "PO",
 };
 
 /** Number of zero-padded digits in the sequence portion, e.g. SAL-000001. */
@@ -116,6 +117,10 @@ export class InvoiceNumberService {
   generatePurchaseReturnInvoice(organizationId: string): Promise<string> {
     return this.generateInvoiceNumber(organizationId, "purchase_return");
   }
+
+  generatePurchaseOrder(organizationId: string): Promise<string> {
+    return this.generateInvoiceNumber(organizationId, "purchase_order");
+  }
 }
 
 let sharedInstance: InvoiceNumberService | null = null;
@@ -142,4 +147,8 @@ export async function generateSalesReturnInvoice(organizationId: string): Promis
 
 export async function generatePurchaseReturnInvoice(organizationId: string): Promise<string> {
   return getInvoiceNumberService().generatePurchaseReturnInvoice(organizationId);
+}
+
+export async function generatePurchaseOrder(organizationId: string): Promise<string> {
+  return getInvoiceNumberService().generatePurchaseOrder(organizationId);
 }

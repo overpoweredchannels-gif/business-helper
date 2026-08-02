@@ -64,7 +64,18 @@ export async function POST(req: NextRequest) {
     }
 
     const product = productRes.data;
-    if (Number(product.current_stock ?? 0) < Number(quantity)) {
+    const { data: effectivePolicy, error: policyError } = await supabase.rpc(
+      "resolve_overselling_policy",
+      { p_organization_id: organizationId, p_product_id: product_id }
+    );
+    if (policyError) {
+      return NextResponse.json(
+        { ok: false, error: `Failed to resolve overselling policy: ${policyError.message}` },
+        { status: 500 }
+      );
+    }
+    const oversellingAllowed = String(effectivePolicy ?? "allow") !== "block";
+    if (!oversellingAllowed && Number(product.current_stock ?? 0) < Number(quantity)) {
       return NextResponse.json(
         { ok: false, error: `Insufficient stock: ${product.current_stock} available, ${quantity} requested` },
         { status: 400 }
@@ -128,24 +139,6 @@ export async function POST(req: NextRequest) {
       await supabase.from("sales_transactions").delete().eq("id", saleTxId);
       return NextResponse.json(
         { ok: false, error: `Failed to create sale item: ${saleItemRes.error.message}` },
-        { status: 500 }
-      );
-    }
-
-    const newStock = Math.max(0, Number(product.current_stock ?? 0) - Number(quantity));
-    const stockRes = await supabase
-      .from("products")
-      .update({
-        current_stock: newStock,
-        updated_at: now,
-      })
-      .eq("id", product_id);
-
-    if (stockRes.error) {
-      await supabase.from("sales_items").delete().eq("id", saleItemRes.data.id);
-      await supabase.from("sales_transactions").delete().eq("id", saleTxId);
-      return NextResponse.json(
-        { ok: false, error: `Failed to update stock: ${stockRes.error.message}` },
         { status: 500 }
       );
     }

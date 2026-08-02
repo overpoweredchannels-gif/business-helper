@@ -45,6 +45,7 @@ export const staffPermissionLabels: Array<{ key: StaffPermissionKey; label: stri
   { key: "can_view_reports", label: "View Reports" },
   { key: "can_manage_tasks", label: "Manage Tasks" },
   { key: "can_manage_settings", label: "Manage Settings" },
+  { key: "can_manage_inventory", label: "Manage Inventory" },
 ];
 
 export const staffRoles = ["owner", "admin", "manager", "staff", "accountant", "sales"];

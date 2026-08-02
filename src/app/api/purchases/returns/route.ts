@@ -1,0 +1,143 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createSupabaseService } from "@/lib/supabase/server";
+import { validatePurchaseReturnInput } from "@/lib/purchases/validation";
+import { generatePurchaseReturnInvoice } from "@/lib/invoices/invoice-number-service";
+
+export const runtime = "nodejs";
+
+// Server-side purchase return endpoint. Mirrors the client-side rules
+// (src/lib/purchases/validation.ts) and adds the stock-availability guard:
+//   - the return can never drive a product's current_stock below zero
+// The same rule is enforced atomically (and race-safely) inside the
+// inventory_sync_purchase_return_item trigger in src/lib/purchases/schema.sql;
+// this route validates up front so the caller gets a clean error before any
+// row is written.
+
+interface ReturnLinePayload {
+  productId: string | number;
+  quantity: string | number;
+  unitPrice?: string | number | null;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const organizationId = body?.organizationId;
+
+    if (!organizationId || typeof organizationId !== "string") {
+      return NextResponse.json({ ok: false, error: "organizationId is required" }, { status: 400 });
+    }
+
+    const rawLines: ReturnLinePayload[] = Array.isArray(body?.lines) ? body.lines : [];
+    const lines = rawLines.map((line) => ({
+      product_id: line?.productId,
+      quantity: line?.quantity,
+      unit_price: line?.unitPrice,
+      batch_number: line?.batchNumber,
+      expiry_date: line?.expiryDate,
+    }));
+
+    const validation = validatePurchaseReturnInput({
+      supplier_id: body?.supplierId,
+      return_date: body?.returnDate,
+      reason: body?.reason,
+      lines,
+    });
+
+    if (!validation.ok) {
+      return NextResponse.json({ ok: false, error: validation.errors.join(" ") }, { status: 400 });
+    }
+
+    const productIds = Array.from(
+      new Set(lines.map((line) => String(line.product_id)).filter(Boolean))
+    );
+
+    const supabase = createSupabaseService();
+
+    const { data: products, error: productsError } = await supabase
+      .from("products")
+      .select("id, name, current_stock")
+      .eq("organization_id", organizationId)
+      .in("id", productIds);
+
+    if (productsError) {
+      return NextResponse.json({ ok: false, error: productsError.message }, { status: 500 });
+    }
+
+    const productsById = new Map<string, { name: string; current_stock: number | null }>();
+    for (const product of products ?? []) {
+      productsById.set(String(product.id), product);
+    }
+
+    const stockErrors: string[] = [];
+    for (const line of lines) {
+      const productId = String(line.product_id);
+      const product = productsById.get(productId);
+      if (!product) {
+        stockErrors.push(`Product not found in this organization.`);
+        continue;
+      }
+      const quantity = Number(line.quantity || 0);
+      const available = Number(product.current_stock ?? 0);
+      if (quantity > available) {
+        stockErrors.push(
+          `${product.name}: cannot return ${quantity} — only ${available} in stock.`
+        );
+      }
+    }
+    if (stockErrors.length > 0) {
+      return NextResponse.json(
+        { ok: false, error: `Stock validation failed: ${stockErrors.join(" ")}` },
+        { status: 400 }
+      );
+    }
+
+    const returnNumber = await generatePurchaseReturnInvoice(organizationId);
+
+    const { data: returnData, error: returnError } = await supabase
+      .from("purchase_returns")
+      .insert({
+        organization_id: organizationId,
+        return_number: returnNumber,
+        supplier_id: body?.supplierId,
+        purchase_transaction_id: body?.purchaseTransactionId || null,
+        return_date: body?.returnDate || null,
+        reason: typeof body?.reason === "string" ? body.reason.trim() || null : null,
+        status: "confirmed",
+        created_by_profile_id:
+          typeof body?.createdByProfileId === "string" ? body.createdByProfileId : null,
+      })
+      .select("id")
+      .single();
+
+    if (returnError) {
+      return NextResponse.json({ ok: false, error: returnError.message }, { status: 400 });
+    }
+
+    const returnId = returnData?.id;
+    if (!returnId) {
+      return NextResponse.json({ ok: false, error: "Failed to create purchase return" }, { status: 500 });
+    }
+
+    for (const line of lines) {
+      const { error: itemError } = await supabase.from("purchase_return_items").insert({
+        purchase_return_id: returnId,
+        product_id: line.product_id,
+        quantity: Number(line.quantity),
+        unit_price: line.unit_price != null ? Number(line.unit_price) : null,
+        batch_number: line.batch_number || null,
+        expiry_date: line.expiry_date || null,
+      });
+      if (itemError) {
+        return NextResponse.json({ ok: false, error: itemError.message }, { status: 400 });
+      }
+    }
+
+    return NextResponse.json({ ok: true, returnId, returnNumber });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to create purchase return";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
