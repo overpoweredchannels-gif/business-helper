@@ -1879,16 +1879,9 @@ export default function Home() {
   };
   const getAvailableStockForProduct = (productId: string | number) => {
     const product = products.find((item) => String(item.id) === String(productId));
-    if (product && product.current_stock != null) {
-      return safeNumber(product.current_stock);
-    }
-    const purchasedQty = (purchaseItems ?? [])
-      .filter((item) => String(item.product_id) === String(productId))
-      .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
-    const soldQty = (salesItems ?? [])
-      .filter((item) => String(item.product_id) === String(productId))
-      .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
-    return purchasedQty - soldQty;
+    return product && product.current_stock != null
+      ? safeNumber(product.current_stock)
+      : 0;
   };
   const getEffectiveOversellingPolicy = (product: Product): "allow" | "block" => {
     if (product.overselling_policy === "allow" || product.overselling_policy === "block") {
@@ -7441,8 +7434,7 @@ export default function Home() {
       .filter((si) => String(si.product_id) === String(product.id))
       .reduce((sum, si) => sum + Number(si.quantity || 0), 0);
 
-    const currentStock =
-      product.current_stock != null ? safeNumber(product.current_stock) : purchasedQty - soldQty;
+    const currentStock = safeNumber(product.current_stock ?? 0);
 
     return {
       productId: product.id,
@@ -7481,8 +7473,7 @@ export default function Home() {
       const soldQty = filteredSalesItems
         .filter((item) => String(item.product_id) === productId)
         .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
-      const currentStock =
-        product.current_stock != null ? safeNumber(product.current_stock) : purchasedQty - soldQty;
+      const currentStock = safeNumber(product.current_stock ?? 0);
       const reorderLevel = safeNumber(product.reorder_level ?? product.minimum_stock_level ?? 0);
       const recentSalesQuantity = filteredSalesItems
         .filter((item) => {
