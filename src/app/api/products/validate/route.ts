@@ -49,12 +49,17 @@ export async function POST(request: NextRequest) {
 
     // Duplicate name within (organization, brand) — mirrors
     // products_org_brand_name_uidx / products_org_nullbrand_name_uidx.
-    const nameQuery = supabase
+    // The exclusion filter is only applied when editing an existing product
+    // (excludeProductId is null for new records — never send a placeholder
+    // id, as "-1" is not a valid uuid and PostgREST would reject the query).
+    let nameQuery = supabase
       .from("products")
       .select("id")
       .eq("organization_id", organizationId)
-      .ilike("name", name)
-      .neq("id", excludeProductId ?? -1);
+      .ilike("name", name);
+    if (excludeProductId) {
+      nameQuery = nameQuery.neq("id", excludeProductId);
+    }
 
     const scopedNameQuery = brandId
       ? nameQuery.eq("brand_id", brandId)
@@ -78,13 +83,15 @@ export async function POST(request: NextRequest) {
     // Duplicate SKU / barcode within the organization — mirrors
     // products_org_sku_uidx / products_org_barcode_uidx.
     if (sku) {
-      const { data: skuMatches, error: skuError } = await supabase
+      let skuQuery = supabase
         .from("products")
         .select("id")
         .eq("organization_id", organizationId)
-        .eq("sku", sku)
-        .neq("id", excludeProductId ?? -1)
-        .maybeSingle();
+        .eq("sku", sku);
+      if (excludeProductId) {
+        skuQuery = skuQuery.neq("id", excludeProductId);
+      }
+      const { data: skuMatches, error: skuError } = await skuQuery.maybeSingle();
 
       if (skuError) {
         return NextResponse.json(
@@ -101,13 +108,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (barcode) {
-      const { data: barcodeMatches, error: barcodeError } = await supabase
+      let barcodeQuery = supabase
         .from("products")
         .select("id")
         .eq("organization_id", organizationId)
-        .eq("barcode", barcode)
-        .neq("id", excludeProductId ?? -1)
-        .maybeSingle();
+        .eq("barcode", barcode);
+      if (excludeProductId) {
+        barcodeQuery = barcodeQuery.neq("id", excludeProductId);
+      }
+      const { data: barcodeMatches, error: barcodeError } = await barcodeQuery.maybeSingle();
 
       if (barcodeError) {
         return NextResponse.json(
