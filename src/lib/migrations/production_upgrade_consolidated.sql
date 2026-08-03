@@ -493,7 +493,7 @@ end $$;
 
 create or replace function public.resolve_overselling_policy(
   p_organization_id uuid,
-  p_product_id integer
+  p_product_id uuid
 ) returns text
 language plpgsql security definer set search_path = public as $$
 declare
@@ -542,9 +542,9 @@ begin
 end;
 $$;
 
-revoke execute on function public.resolve_overselling_policy(uuid, integer) from public;
-grant execute on function public.resolve_overselling_policy(uuid, integer) to authenticated;
-grant execute on function public.resolve_overselling_policy(uuid, integer) to service_role;
+revoke execute on function public.resolve_overselling_policy(uuid, uuid) from public;
+grant execute on function public.resolve_overselling_policy(uuid, uuid) to authenticated;
+grant execute on function public.resolve_overselling_policy(uuid, uuid) to service_role;
 
 -- ===========================================================================
 -- PART 4 — INVENTORY PHASE 1 (ledger, permission, triggers, RPC, backfill)
@@ -581,7 +581,7 @@ $$;
 create table if not exists public.inventory_transactions (
   id uuid not null default gen_random_uuid() primary key,
   organization_id uuid not null references public.organizations(id) on delete cascade,
-  product_id integer not null references public.products(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
   movement_type text not null check (
     movement_type in ('purchase_in', 'sale_out', 'adjustment_in', 'adjustment_out', 'return_in', 'return_out')
   ),
@@ -627,7 +627,7 @@ create or replace function public.inventory_sync_purchase_item()
 returns trigger language plpgsql security definer as $$
 declare
   v_org uuid;
-  v_product_id integer;
+  v_product_id uuid;
   v_delta numeric;
   v_batch text;
   v_expiry date;
@@ -680,7 +680,7 @@ create or replace function public.inventory_sync_sale_item()
 returns trigger language plpgsql security definer as $$
 declare
   v_org uuid;
-  v_product_id integer;
+  v_product_id uuid;
   v_delta numeric;
   v_ref uuid;
   v_created_at timestamptz;
@@ -755,7 +755,7 @@ end $$;
 -- 4.5 adjust_inventory() RPC — atomic, permission-checked manual adjustment
 create or replace function public.adjust_inventory(
   p_organization_id uuid,
-  p_product_id integer,
+  p_product_id uuid,
   p_quantity_delta numeric,
   p_reason text,
   p_batch_number text default null,
@@ -820,8 +820,8 @@ begin
 end;
 $$;
 
-revoke execute on function public.adjust_inventory(uuid, integer, numeric, text, text, date, uuid) from public;
-grant execute on function public.adjust_inventory(uuid, integer, numeric, text, text, date, uuid) to authenticated;
+revoke execute on function public.adjust_inventory(uuid, uuid, numeric, text, text, date, uuid) from public;
+grant execute on function public.adjust_inventory(uuid, uuid, numeric, text, text, date, uuid) to authenticated;
 
 -- 4.6 Relax products.current_stock >= 0 so truthful negative balances remain
 -- representable (overselling via the UI). Adjustments stay guarded (4.5).
@@ -964,7 +964,7 @@ create index if not exists purchase_orders_org_order_date_idx on public.purchase
 create table if not exists public.purchase_order_items (
   id uuid not null default gen_random_uuid() primary key,
   purchase_order_id uuid not null references public.purchase_orders(id) on delete cascade,
-  product_id integer not null references public.products(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
   quantity_ordered numeric(14, 2) not null check (quantity_ordered > 0),
   quantity_received numeric(14, 2) not null default 0 check (quantity_received >= 0),
   unit_price numeric(14, 2) check (unit_price is null or unit_price >= 0),
@@ -1000,7 +1000,7 @@ create index if not exists purchase_returns_org_supplier_idx on public.purchase_
 create table if not exists public.purchase_return_items (
   id uuid not null default gen_random_uuid() primary key,
   purchase_return_id uuid not null references public.purchase_returns(id) on delete cascade,
-  product_id integer not null references public.products(id) on delete cascade,
+  product_id uuid not null references public.products(id) on delete cascade,
   quantity numeric(14, 2) not null check (quantity > 0),
   unit_price numeric(14, 2) check (unit_price is null or unit_price >= 0),
   batch_number text,
@@ -1125,7 +1125,7 @@ create or replace function public.inventory_sync_purchase_return_item()
 returns trigger language plpgsql security definer as $$
 declare
   v_org uuid;
-  v_product_id integer;
+  v_product_id uuid;
   v_delta numeric;
   v_batch text;
   v_expiry date;
@@ -1242,8 +1242,8 @@ begin
   if to_regprocedure('public.has_product_permission(uuid)') is null then v_missing := v_missing || 'function has_product_permission'; end if;
   if to_regprocedure('public.has_inventory_permission(uuid)') is null then v_missing := v_missing || 'function has_inventory_permission'; end if;
   if to_regprocedure('public.next_invoice_number(uuid, text)') is null then v_missing := v_missing || 'function next_invoice_number'; end if;
-  if to_regprocedure('public.resolve_overselling_policy(uuid, integer)') is null then v_missing := v_missing || 'function resolve_overselling_policy'; end if;
-  if to_regprocedure('public.adjust_inventory(uuid, integer, numeric, text, text, date, uuid)') is null then v_missing := v_missing || 'function adjust_inventory'; end if;
+  if to_regprocedure('public.resolve_overselling_policy(uuid, uuid)') is null then v_missing := v_missing || 'function resolve_overselling_policy'; end if;
+  if to_regprocedure('public.adjust_inventory(uuid, uuid, numeric, text, text, date, uuid)') is null then v_missing := v_missing || 'function adjust_inventory'; end if;
   if to_regprocedure('public.inventory_sync_purchase_item()') is null then v_missing := v_missing || 'function inventory_sync_purchase_item'; end if;
   if to_regprocedure('public.inventory_sync_sale_item()') is null then v_missing := v_missing || 'function inventory_sync_sale_item'; end if;
   if to_regprocedure('public.inventory_sync_purchase_return_item()') is null then v_missing := v_missing || 'function inventory_sync_purchase_return_item'; end if;
