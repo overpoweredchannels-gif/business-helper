@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -33,6 +34,12 @@ export default function AuthCallbackPage() {
         }
 
         const provisionBody = await provisionRes.json();
+
+        // The token minted during the OAuth exchange predates provisioning.
+        // Force a refresh so the browser session immediately carries the
+        // organization_id claim required by RLS.
+        await ensureOrganizationClaimInSession();
+
         if (provisionBody.needsOnboarding) {
           router.push("/onboarding");
         } else {

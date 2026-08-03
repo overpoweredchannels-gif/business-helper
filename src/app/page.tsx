@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 import { DashboardLayout, DashboardView } from "@/components/dashboard";
 import { cn } from "@/lib/utils";
 import { getGateway } from "@/lib/conversation";
@@ -1391,6 +1392,12 @@ export default function Home() {
     } catch {
       console.log(`${logTag} WARN: success response body not parseable as JSON`);
     }
+
+    // The current access token was minted before the organization_id claim
+    // was written. Force a refresh so every RLS-gated request immediately
+    // carries the claim (best-effort; the app still loads on failure).
+    await ensureOrganizationClaimInSession();
+
     console.log(`${logTag} ===== CLIENT PROVISION COMPLETE =====`);
     return provisionBody as { alreadyProvisioned?: boolean };
   };

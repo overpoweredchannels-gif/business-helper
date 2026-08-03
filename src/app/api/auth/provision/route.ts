@@ -62,12 +62,27 @@ const ensureOrgClaim = async (
       });
       if (error) {
         console.warn(`[PROVISION] failed to set organization_id claim for ${user.id}: ${error.message}`);
-      } else {
-        console.log(`[PROVISION] organization_id claim set for ${user.id} -> ${organizationId}`);
+        return false;
       }
+      console.log(`[PROVISION] organization_id claim set for ${user.id} -> ${organizationId}`);
     }
+    const { data: verifiedUser, error: verifyError } = await supabaseService.auth.admin.getUserById(
+      user.id
+    );
+    if (verifyError) {
+      console.warn(`[PROVISION] could not verify claim on auth.users for ${user.id}: ${verifyError.message}`);
+      return false;
+    }
+    const verifiedClaim = verifiedUser.user?.app_metadata?.organization_id;
+    console.log(
+      `[PROVISION] verified auth.users app_metadata.organization_id for ${user.id}: ${
+        verifiedClaim ?? "(missing)"
+      }`
+    );
+    return String(verifiedClaim ?? "") === organizationId;
   } catch (claimErr) {
     console.warn("[PROVISION] unexpected error while setting organization_id claim:", claimErr);
+    return false;
   }
 };
 
