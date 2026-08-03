@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseService } from "@/lib/supabase/server";
+import { createSupabaseUserClient } from "@/lib/supabase/server";
 import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 import {
   validateProductInput,
@@ -7,6 +7,11 @@ import {
 } from "@/lib/products/validation";
 
 export const runtime = "nodejs";
+
+const getAccessToken = (request: NextRequest): string => {
+  const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
+  return (authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+};
 
 // Server-side validation for the product form. Mirrors the client-side rules
 // (src/lib/products/validation.ts) and the database constraints
@@ -49,7 +54,7 @@ export async function POST(request: NextRequest) {
     const barcode = normalizeOptionalText(body?.barcode);
     const brandId = typeof body?.brandId === "string" && body.brandId ? body.brandId : null;
 
-    const supabase = createSupabaseService();
+    const supabase = createSupabaseUserClient(getAccessToken(request));
 
     // Duplicate name within (organization, brand) — mirrors
     // products_org_brand_name_uidx / products_org_nullbrand_name_uidx.

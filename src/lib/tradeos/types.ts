@@ -58,6 +58,7 @@ export interface Supplier {
   whatsapp: string | null;
   city: string | null;
   notes: string | null;
+  is_active?: boolean | null;
 }
 
 export interface PurchaseTransaction {

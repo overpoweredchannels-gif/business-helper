@@ -116,8 +116,8 @@ import {
   validatePurchaseReturnInput,
 } from "@/lib/purchases/validation";
 import {
-  generatePurchaseInvoice,
-  generatePurchaseOrder,
+  generatePurchaseInvoiceWithClient,
+  generatePurchaseOrderWithClient,
   generateSalesInvoice,
 } from "@/lib/invoices/invoice-number-service";
 import type { InventoryTransaction } from "@/lib/inventory/types";
@@ -284,6 +284,11 @@ export default function Home() {
     });
   }, [productSearch, products, brands, categories]);
 
+  const activeProducts = useMemo(
+    () => products.filter((product) => product.is_active !== false),
+    [products]
+  );
+
   const [customerName, setCustomerName] = useState("");
   const [shopName, setShopName] = useState("");
   const [phone, setPhone] = useState("");
@@ -312,6 +317,7 @@ export default function Home() {
   const [supplierError, setSupplierError] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const [supplierEditingId, setSupplierEditingId] = useState<string | null>(null);
   const [supplierSearch, setSupplierSearch] = useState("");
 
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
@@ -4272,7 +4278,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("suppliers")
-      .select("id, supplier_name, contact_person, phone, whatsapp, city, notes")
+      .select("id, supplier_name, contact_person, phone, whatsapp, city, notes, is_active")
       .eq("organization_id", orgId)
       .order("supplier_name", { ascending: true });
 
@@ -5592,46 +5598,48 @@ export default function Home() {
     fetchCategories();
   };
 
-  const handleDeleteProduct = async (productId: number) => {
+  const handleArchiveProduct = async (productId: number) => {
     setMessage(null);
     setError(null);
-    if (!requireOrganization("delete product")) {
+    if (!requireOrganization("archive product")) {
       setError("Organization not loaded. Please login again.");
       return;
     }
     setProductsLoading(true);
 
-    const productToDelete = products.find((product) => product.id === productId);
+    const productToArchive = products.find((product) => product.id === productId);
     const { error } = await supabase
       .from("products")
-      .delete()
+      .update({ is_active: false })
       .eq("id", productId)
       .eq("organization_id", currentOrganizationId);
 
     setProductsLoading(false);
 
     if (error) {
-      setError("Failed to delete product");
-      console.error("Supabase delete product error:", JSON.stringify(error, null, 2));
+      setError("Failed to archive product");
+      console.error("Supabase archive product error:", JSON.stringify(error, null, 2));
       return;
     }
 
     await createAuditLog({
-      action: "deleted",
+      action: "archived",
       entity_type: "product",
       entity_id: productId,
-      entity_label: productToDelete?.name ?? String(productId),
-      description: `Deleted product ${productToDelete?.name ?? productId}`,
-      old_values: productToDelete
+      entity_label: productToArchive?.name ?? String(productId),
+      description: `Archived product ${productToArchive?.name ?? productId}`,
+      old_values: productToArchive
         ? {
-            name: productToDelete.name,
-            brand_id: productToDelete.brand_id,
-            category_id: productToDelete.category_id,
-            unit_type: productToDelete.unit_type,
+            name: productToArchive.name,
+            brand_id: productToArchive.brand_id,
+            category_id: productToArchive.category_id,
+            unit_type: productToArchive.unit_type,
+            is_active: productToArchive.is_active ?? true,
           }
         : null,
+      new_values: { is_active: false },
     });
-    setMessage("Product deleted successfully");
+    setMessage("Product archived successfully");
     fetchProducts();
   };
 
@@ -5776,14 +5784,14 @@ export default function Home() {
     fetchCustomers();
   };
 
-  const handleAddSupplier = async () => {
+  const handleSaveSupplier = async () => {
     if (!supplierName.trim()) {
       setSupplierError("Supplier name is required");
       setSupplierMessage(null);
       return;
     }
 
-    if (!requireOrganization("add supplier")) {
+    if (!requireOrganization("save supplier")) {
       setSupplierError("Organization not loaded. Please login again.");
       setSupplierMessage(null);
       return;
@@ -5793,38 +5801,67 @@ export default function Home() {
     setSupplierMessage(null);
     setSuppliersLoading(true);
 
-    const { data, error } = await supabase.from("suppliers").insert({
+    const payload = {
       supplier_name: supplierName,
       contact_person: contactPerson || null,
       phone: supplierPhone || null,
       whatsapp: supplierWhatsapp || null,
       city: supplierCity || null,
       notes: supplierNotes || null,
-      organization_id: currentOrganizationId,
-    }).select("id").single();
+    };
 
-    setSuppliersLoading(false);
+    if (supplierEditingId) {
+      const { data, error } = await supabase
+        .from("suppliers")
+        .update(payload)
+        .eq("id", supplierEditingId)
+        .eq("organization_id", currentOrganizationId)
+        .select("id")
+        .single();
 
-    if (error) {
-      setSupplierError("Failed to save supplier");
-      console.error("Supabase add supplier error:", error);
-      return;
+      setSuppliersLoading(false);
+
+      if (error) {
+        setSupplierError("Failed to update supplier");
+        console.error("Supabase update supplier error:", error);
+        return;
+      }
+
+      await createAuditLog({
+        action: "updated",
+        entity_type: "supplier",
+        entity_id: data?.id ?? supplierEditingId,
+        entity_label: supplierName,
+        description: `Updated supplier ${supplierName}`,
+        new_values: payload,
+      });
+      setSupplierMessage("Supplier updated successfully");
+    } else {
+      const { data, error } = await supabase.from("suppliers").insert({
+        ...payload,
+        organization_id: currentOrganizationId,
+      }).select("id").single();
+
+      setSuppliersLoading(false);
+
+      if (error) {
+        setSupplierError("Failed to save supplier");
+        console.error("Supabase add supplier error:", error);
+        return;
+      }
+
+      await createAuditLog({
+        action: "created",
+        entity_type: "supplier",
+        entity_id: data?.id ?? null,
+        entity_label: supplierName,
+        description: `Created supplier ${supplierName}`,
+        new_values: payload,
+      });
+      setSupplierMessage("Supplier saved successfully");
     }
 
-    await createAuditLog({
-      action: "created",
-      entity_type: "supplier",
-      entity_id: data?.id ?? null,
-      entity_label: supplierName,
-      description: `Created supplier ${supplierName}`,
-      new_values: {
-        supplier_name: supplierName,
-        contact_person: contactPerson || null,
-        phone: supplierPhone || null,
-        city: supplierCity || null,
-      },
-    });
-    setSupplierMessage("Supplier saved successfully");
+    setSupplierEditingId(null);
     setSupplierName("");
     setContactPerson("");
     setSupplierPhone("");
@@ -5834,46 +5871,72 @@ export default function Home() {
     fetchSuppliers();
   };
 
-  const handleDeleteSupplier = async (supplierId: string) => {
+  const handleEditSupplier = (supplier: Supplier) => {
     setSupplierError(null);
     setSupplierMessage(null);
-    if (!requireOrganization("delete supplier")) {
+    setSupplierEditingId(supplier.id);
+    setSupplierName(supplier.supplier_name);
+    setContactPerson(supplier.contact_person ?? "");
+    setSupplierPhone(supplier.phone ?? "");
+    setSupplierWhatsapp(supplier.whatsapp ?? "");
+    setSupplierCity(supplier.city ?? "");
+    setSupplierNotes(supplier.notes ?? "");
+  };
+
+  const handleCancelSupplierEdit = () => {
+    setSupplierEditingId(null);
+    setSupplierName("");
+    setContactPerson("");
+    setSupplierPhone("");
+    setSupplierWhatsapp("");
+    setSupplierCity("");
+    setSupplierNotes("");
+    setSupplierError(null);
+    setSupplierMessage(null);
+  };
+
+  const handleArchiveSupplier = async (supplierId: string) => {
+    setSupplierError(null);
+    setSupplierMessage(null);
+    if (!requireOrganization("archive supplier")) {
       setSupplierError("Organization not loaded. Please login again.");
       return;
     }
     setSuppliersLoading(true);
 
-    const supplierToDelete = suppliers.find((supplier) => supplier.id === supplierId);
+    const supplierToArchive = suppliers.find((supplier) => supplier.id === supplierId);
+    const isActive = supplierToArchive?.is_active !== false;
     const { error } = await supabase
       .from("suppliers")
-      .delete()
+      .update({ is_active: !isActive })
       .eq("id", supplierId)
       .eq("organization_id", currentOrganizationId);
 
     setSuppliersLoading(false);
 
     if (error) {
-      setSupplierError("Failed to delete supplier");
-      console.error("Supabase delete supplier error:", JSON.stringify(error, null, 2));
+      setSupplierError("Failed to archive supplier");
+      console.error("Supabase archive supplier error:", JSON.stringify(error, null, 2));
       return;
     }
 
     await createAuditLog({
-      action: "deleted",
+      action: isActive ? "archived" : "restored",
       entity_type: "supplier",
       entity_id: supplierId,
-      entity_label: supplierToDelete?.supplier_name ?? supplierId,
-      description: `Deleted supplier ${supplierToDelete?.supplier_name ?? supplierId}`,
-      old_values: supplierToDelete
+      entity_label: supplierToArchive?.supplier_name ?? supplierId,
+      description: `${isActive ? "Archived" : "Restored"} supplier ${supplierToArchive?.supplier_name ?? supplierId}`,
+      old_values: supplierToArchive
         ? {
-            supplier_name: supplierToDelete.supplier_name,
-            contact_person: supplierToDelete.contact_person,
-            phone: supplierToDelete.phone,
-            city: supplierToDelete.city,
+            supplier_name: supplierToArchive.supplier_name,
+            is_active: isActive,
           }
         : null,
+      new_values: { is_active: !isActive },
     });
-    setSupplierMessage("Supplier deleted successfully");
+    setSupplierMessage(
+      isActive ? "Supplier archived successfully" : "Supplier restored successfully"
+    );
     fetchSuppliers();
   };
 
@@ -5884,6 +5947,11 @@ export default function Home() {
       (value) => value?.toLowerCase().includes(searchTerm)
     );
   });
+
+  const activeSuppliers = useMemo(
+    () => suppliers.filter((supplier) => supplier.is_active !== false),
+    [suppliers]
+  );
 
   const handleAddPurchaseLine = () => {
     setPurchaseLines([
@@ -5945,7 +6013,7 @@ export default function Home() {
 
       let systemInvoiceNumber: string;
       try {
-        systemInvoiceNumber = await generatePurchaseInvoice(currentOrganizationId);
+        systemInvoiceNumber = await generatePurchaseInvoiceWithClient(supabase, currentOrganizationId);
       } catch (numberErr) {
         setInvoiceError(
           numberErr instanceof Error ? numberErr.message : "Failed to generate invoice number"
@@ -6109,7 +6177,7 @@ export default function Home() {
     }
 
     try {
-      const poNumber = await generatePurchaseOrder(currentOrganizationId);
+      const poNumber = await generatePurchaseOrderWithClient(supabase, currentOrganizationId);
 
       const { data: poData, error: poErrorResult } = await supabase
         .from("purchase_orders")
@@ -6270,7 +6338,7 @@ export default function Home() {
     setReceiveLoading(true);
 
     try {
-      const invoiceNumber = await generatePurchaseInvoice(currentOrganizationId);
+      const invoiceNumber = await generatePurchaseInvoiceWithClient(supabase, currentOrganizationId);
 
       const { data: txData, error: txError } = await supabase
         .from("purchase_transactions")
@@ -14634,7 +14702,7 @@ export default function Home() {
                     disabled={adjustmentSubmitting}
                   >
                     <option value="">Select product</option>
-                    {products.map((product) => (
+                    {activeProducts.map((product) => (
                       <option key={product.id} value={product.id}>
                         {product.name}
                       </option>
@@ -15112,7 +15180,7 @@ export default function Home() {
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
                             <option value="">Select Product</option>
-                            {products.map((product) => (
+                            {activeProducts.map((product) => (
                               <option key={product.id} value={String(product.id)}>{product.name}</option>
                             ))}
                           </select>
@@ -15491,7 +15559,7 @@ export default function Home() {
               className="rounded border border-border px-2 py-2"
             >
               <option value="">Select Supplier</option>
-              {suppliers.map((s) => (
+              {activeSuppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.supplier_name}</option>
               ))}
             </select>
@@ -15917,7 +15985,7 @@ export default function Home() {
                   className="rounded border border-border px-2 py-2"
                 >
                   <option value="">No Supplier</option>
-                  {suppliers.map((supplier) => (
+                  {activeSuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>{supplier.supplier_name}</option>
                   ))}
                 </select>
@@ -16646,10 +16714,11 @@ export default function Home() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDeleteProduct(product.id)}
-                        className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
+                        onClick={() => handleArchiveProduct(product.id)}
+                        disabled={product.is_active === false}
+                        className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90 disabled:cursor-not-allowed disabled:bg-muted"
                       >
-                        Delete
+                        Archive
                       </button>
                     </div>
                   </li>
@@ -16912,7 +16981,9 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "suppliers" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Supplier Management</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">
+            {supplierEditingId ? "Edit Supplier" : "Supplier Management"}
+          </h2>
           <div className="space-y-4">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Supplier Name</span>
@@ -16979,14 +17050,26 @@ export default function Home() {
               />
             </label>
 
-            <button
-              type="button"
-              onClick={handleAddSupplier}
-              disabled={suppliersLoading}
-              className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
-            >
-              Save Supplier
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSaveSupplier}
+                disabled={suppliersLoading}
+                className="flex-1 rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
+              >
+                {supplierEditingId ? "Update Supplier" : "Save Supplier"}
+              </button>
+              {supplierEditingId && (
+                <button
+                  type="button"
+                  onClick={handleCancelSupplierEdit}
+                  disabled={suppliersLoading}
+                  className="rounded border border-border px-4 py-2 text-foreground/80 transition hover:bg-muted/30"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </div>
 
           {supplierMessage && <p className="mt-4 text-sm text-success">{supplierMessage}</p>}
@@ -17018,18 +17101,36 @@ export default function Home() {
                       className="flex flex-col gap-2 rounded border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="space-y-1 text-sm text-foreground/80">
-                        <div className="font-medium text-foreground">{supplier.supplier_name}</div>
+                        <div className="font-medium text-foreground">
+                          {supplier.supplier_name}
+                          {supplier.is_active === false && (
+                            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Archived</span>
+                          )}
+                        </div>
                         <div>Contact: {supplier.contact_person ?? "None"}</div>
                         <div>Phone: {supplier.phone ?? "None"}</div>
                         <div>City: {supplier.city ?? "None"}</div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSupplier(supplier.id)}
-                        className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditSupplier(supplier)}
+                          className="rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleArchiveSupplier(supplier.id)}
+                          className={`rounded px-3 py-1 text-sm text-white transition hover:opacity-90 ${
+                            supplier.is_active === false
+                              ? "bg-primary"
+                              : "bg-destructive"
+                          }`}
+                        >
+                          {supplier.is_active === false ? "Restore" : "Archive"}
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -17091,7 +17192,7 @@ export default function Home() {
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="">Select Supplier</option>
-                  {suppliers.map((supplier) => (
+                  {activeSuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.supplier_name}
                     </option>
@@ -17145,7 +17246,7 @@ export default function Home() {
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
                             <option value="">Select Product</option>
-                            {products.map((product) => (
+                            {activeProducts.map((product) => (
                               <option key={product.id} value={product.id}>
                                 {product.name}
                               </option>
@@ -17609,7 +17710,7 @@ export default function Home() {
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="">Select Supplier</option>
-                  {suppliers.map((supplier) => (
+                  {activeSuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.supplier_name}
                     </option>
@@ -17678,7 +17779,7 @@ export default function Home() {
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
                             <option value="">Select Product</option>
-                            {products.map((product) => (
+                            {activeProducts.map((product) => (
                               <option key={product.id} value={product.id}>
                                 {product.name}
                               </option>
@@ -17966,7 +18067,7 @@ export default function Home() {
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="">Select Supplier</option>
-                  {suppliers.map((supplier) => (
+                  {activeSuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.supplier_name}
                     </option>
@@ -18041,7 +18142,7 @@ export default function Home() {
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
                             <option value="">Select Product</option>
-                            {products.map((product) => (
+                            {activeProducts.map((product) => (
                               <option key={product.id} value={product.id}>
                                 {product.name}
                               </option>
@@ -19046,7 +19147,7 @@ export default function Home() {
                   <span>Related Product</span>
                   <select value={marketRelatedProductId} onChange={(e) => setMarketRelatedProductId(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">None</option>
-                    {products.map((product) => (
+                    {activeProducts.map((product) => (
                       <option key={product.id} value={product.id}>{product.name}</option>
                     ))}
                   </select>
@@ -20268,7 +20369,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   className="rounded border border-border px-3 py-2"
                 >
                   <option value="">No supplier</option>
-                  {suppliers.map((supplier) => (
+                  {activeSuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>{supplier.supplier_name}</option>
                   ))}
                 </select>
@@ -20282,7 +20383,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   className="rounded border border-border px-3 py-2"
                 >
                   <option value="">No product</option>
-                  {products.map((product) => (
+                  {activeProducts.map((product) => (
                     <option key={product.id} value={String(product.id)}>{product.name}</option>
                   ))}
                 </select>

@@ -22,7 +22,7 @@ export type PurchaseTransactionRecord = {
 export type PurchaseItemRecord = {
   id: string;
   purchase_transaction_id: string;
-  product_id: number;
+  product_id: string | number;
   quantity: number;
   purchase_price: number;
   selling_price?: number | null;
@@ -34,7 +34,7 @@ export type PurchaseItemRecord = {
 export type NewPurchaseItem = {
   purchase_transaction_id: string;
   organization_id: string;
-  product_id: number;
+  product_id: string | number;
   quantity: number;
   purchase_price: number;
   selling_price?: number | null;
@@ -154,7 +154,7 @@ export class PurchaseRepository {
     return data as { id: string; supplier_name: string; outstanding_balance: number | null } | null;
   }
 
-  async findProductById(organizationId: string, productId: number) {
+  async findProductById(organizationId: string, productId: string | number) {
     const { data, error } = await this.supabase
       .from("products")
       .select("id, name")
@@ -166,7 +166,7 @@ export class PurchaseRepository {
       throw error;
     }
 
-    return data as { id: number; name: string } | null;
+    return data as { id: string | number; name: string } | null;
   }
 
   async updateSupplierBalance(supplierId: string, newBalance: number) {

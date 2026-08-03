@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseService } from "@/lib/supabase/server";
+import { createSupabaseUserClient } from "@/lib/supabase/server";
 import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 import { validatePurchaseReturnInput } from "@/lib/purchases/validation";
-import { generatePurchaseReturnInvoice } from "@/lib/invoices/invoice-number-service";
+import { generateInvoiceNumberWithClient } from "@/lib/invoices/invoice-number-service";
 
 export const runtime = "nodejs";
+
+const getAccessToken = (request: NextRequest): string => {
+  const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
+  return (authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+};
 
 // Server-side purchase return endpoint. Mirrors the client-side rules
 // (src/lib/purchases/validation.ts) and adds the stock-availability guard:
@@ -57,7 +62,7 @@ export async function POST(request: NextRequest) {
       new Set(lines.map((line) => String(line.product_id)).filter(Boolean))
     );
 
-    const supabase = createSupabaseService();
+    const supabase = createSupabaseUserClient(getAccessToken(request));
 
     const { data: products, error: productsError } = await supabase
       .from("products")
@@ -97,7 +102,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const returnNumber = await generatePurchaseReturnInvoice(organizationId);
+    const returnNumber = await generateInvoiceNumberWithClient(supabase, organizationId, "purchase_return");
 
     const { data: returnData, error: returnError } = await supabase
       .from("purchase_returns")

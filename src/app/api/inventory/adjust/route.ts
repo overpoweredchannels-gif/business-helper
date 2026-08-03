@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseService } from "@/lib/supabase/server";
+import { createSupabaseUserClient } from "@/lib/supabase/server";
 import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 import {
   validateAdjustmentInput,
@@ -8,6 +8,11 @@ import {
 } from "@/lib/inventory/validation";
 
 export const runtime = "nodejs";
+
+const getAccessToken = (request: NextRequest): string => {
+  const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
+  return (authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+};
 
 // Server-side stock adjustment endpoint. Mirrors the client-side rules
 // (src/lib/inventory/validation.ts) and the database guards inside
@@ -43,11 +48,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: validation.errors.join(". ") }, { status: 400 });
     }
 
-    const supabase = createSupabaseService();
+    const supabase = createSupabaseUserClient(getAccessToken(request));
 
     const { data, error: rpcError } = await supabase.rpc("adjust_inventory", {
       p_organization_id: organizationId,
-      p_product_id: Number(body?.productId),
+      p_product_id: String(body?.productId),
       p_quantity_delta: Number(body?.quantityDelta),
       p_reason: normalizeOptionalText(body?.reason) ?? "",
       p_batch_number: normalizeOptionalText(body?.batchNumber),

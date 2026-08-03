@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createSupabaseService } from "../supabase/server";
+import { createSupabaseUserClient } from "../supabase/server";
 import { normalizeRole } from "./permissions";
 import { getRolePermissions } from "./roles";
 import type { ActorContext } from "./types";
@@ -36,7 +36,7 @@ export async function resolveActor(
 
   let supabase;
   try {
-    supabase = createSupabaseService();
+    supabase = createSupabaseUserClient(token);
   } catch (err) {
     return {
       error: `Supabase is not configured: ${err instanceof Error ? err.message : String(err)}`,

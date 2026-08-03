@@ -1198,6 +1198,14 @@ begin
   end if;
 end $$;
 
+-- 5.6 Supplier archive support (stabilization release): suppliers referenced
+-- by purchase history are archived (is_active = false), never deleted.
+alter table public.suppliers
+  add column if not exists is_active boolean not null default true;
+
+create index if not exists suppliers_org_is_active_idx
+  on public.suppliers (organization_id, is_active);
+
 -- ===========================================================================
 -- PART 6 — LOCATION INDEXES (from src/lib/location/schema.sql; the tables
 -- staff_duty_sessions / staff_location_points already exist in Supabase)
@@ -1267,6 +1275,7 @@ begin
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'purchase_transactions' and column_name = 'total_amount') then v_missing := v_missing || 'purchase_transactions.total_amount'; end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'purchase_items' and column_name = 'organization_id') then v_missing := v_missing || 'purchase_items.organization_id'; end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'sales_items' and column_name = 'organization_id') then v_missing := v_missing || 'sales_items.organization_id'; end if;
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'suppliers' and column_name = 'is_active') then v_missing := v_missing || 'suppliers.is_active'; end if;
 
   -- triggers
   if not exists (select 1 from pg_trigger where tgname = 'products_set_updated_at' and tgrelid = 'public.products'::regclass) then v_missing := v_missing || 'trigger products_set_updated_at'; end if;

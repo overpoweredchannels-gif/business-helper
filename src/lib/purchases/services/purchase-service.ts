@@ -87,7 +87,7 @@ export class PurchaseService {
       throw new Error("Supplier not found");
     }
 
-    const productIds = lines.map((line) => Number(line.product_id));
+    const productIds = lines.map((line) => line.product_id as string);
     for (const productId of productIds) {
       const product = await this.repository.findProductById(actor.organizationId, productId);
       if (!product) {
@@ -127,7 +127,7 @@ export class PurchaseService {
     const items: NewPurchaseItem[] = lines.map((line) => ({
       purchase_transaction_id: transaction.id,
       organization_id: actor.organizationId,
-      product_id: Number(line.product_id),
+      product_id: line.product_id as string,
       quantity: Number(line.quantity),
       purchase_price: Number(line.purchase_price),
       selling_price: normalizeOptionalNumber(line.selling_price),

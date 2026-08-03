@@ -92,32 +92,7 @@ export class InvoiceNumberService {
    * in the codebase allowed to decide what an invoice's number is.
    */
   async generateInvoiceNumber(organizationId: string, invoiceType: InvoiceType): Promise<string> {
-    if (!organizationId || !String(organizationId).trim()) {
-      throw new Error("InvoiceNumberService: organizationId is required to generate an invoice number");
-    }
-    if (!INVOICE_PREFIXES[invoiceType]) {
-      throw new Error(`InvoiceNumberService: unknown invoice type "${invoiceType}"`);
-    }
-
-    const { data, error } = await this.supabase.rpc("next_invoice_number", {
-      p_organization_id: organizationId,
-      p_invoice_type: invoiceType,
-    });
-
-    if (error) {
-      throw new Error(
-        `InvoiceNumberService: failed to generate ${invoiceType} invoice number: ${error.message}`
-      );
-    }
-
-    const sequenceNumber = Number(data);
-    if (!Number.isInteger(sequenceNumber) || sequenceNumber <= 0) {
-      throw new Error(
-        `InvoiceNumberService: next_invoice_number RPC returned an invalid value for ${invoiceType}: ${String(data)}`
-      );
-    }
-
-    return formatInvoiceNumber(invoiceType, sequenceNumber);
+    return generateInvoiceNumberWithClient(this.supabase, organizationId, invoiceType);
   }
 
   generateSalesInvoice(organizationId: string): Promise<string> {
@@ -169,4 +144,60 @@ export async function generatePurchaseReturnInvoice(organizationId: string): Pro
 
 export async function generatePurchaseOrder(organizationId: string): Promise<string> {
   return getInvoiceNumberService().generatePurchaseOrder(organizationId);
+}
+
+/**
+ * Client-safe variants: take an explicit Supabase client (the browser client
+ * in page-level flows) so invoice numbering works from the browser via the
+ * authenticated user's session. The next_invoice_number RPC is granted to
+ * authenticated and invoice_sequences has no RLS, so no service-role key is
+ * required. The server-only singleton variants above must never be called
+ * from a "use client" component — the browser bundle has no
+ * SUPABASE_SERVICE_ROLE_KEY.
+ */
+export async function generateInvoiceNumberWithClient(
+  supabase: SupabaseClient,
+  organizationId: string,
+  invoiceType: InvoiceType,
+): Promise<string> {
+  if (!organizationId || !String(organizationId).trim()) {
+    throw new Error("InvoiceNumberService: organizationId is required to generate an invoice number");
+  }
+  if (!INVOICE_PREFIXES[invoiceType]) {
+    throw new Error(`InvoiceNumberService: unknown invoice type "${invoiceType}"`);
+  }
+
+  const { data, error } = await supabase.rpc("next_invoice_number", {
+    p_organization_id: organizationId,
+    p_invoice_type: invoiceType,
+  });
+
+  if (error) {
+    throw new Error(
+      `InvoiceNumberService: failed to generate ${invoiceType} invoice number: ${error.message}`
+    );
+  }
+
+  const sequenceNumber = Number(data);
+  if (!Number.isInteger(sequenceNumber) || sequenceNumber <= 0) {
+    throw new Error(
+      `InvoiceNumberService: next_invoice_number RPC returned an invalid value for ${invoiceType}: ${String(data)}`
+    );
+  }
+
+  return formatInvoiceNumber(invoiceType, sequenceNumber);
+}
+
+export function generatePurchaseInvoiceWithClient(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string> {
+  return generateInvoiceNumberWithClient(supabase, organizationId, "purchase");
+}
+
+export function generatePurchaseOrderWithClient(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string> {
+  return generateInvoiceNumberWithClient(supabase, organizationId, "purchase_order");
 }

@@ -17,6 +17,7 @@ export type SupplierRecord = {
   preferred_payment_method?: string | null;
   allow_over_limit?: boolean | null;
   allow_overdue_sales?: boolean | null;
+  is_active?: boolean | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -98,5 +99,21 @@ export class SupplierRepository {
     if (error) {
       throw error;
     }
+  }
+
+  async setActive(organizationId: string, id: string, isActive: boolean) {
+    const { data, error } = await this.supabase
+      .from("suppliers")
+      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("organization_id", organizationId)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return data as SupplierRecord;
   }
 }

@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { SupplierService } from "@/lib/purchases/services/supplier-service";
+import { createSupabaseUserClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+
+const getAccessToken = (request: Request): string => {
+  const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
+  return (authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+};
+
+const getService = (request: Request) =>
+  SupplierService.withSupabase(createSupabaseUserClient(getAccessToken(request)));
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requirePermission(request, "suppliers_view");
@@ -11,7 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 
   const { id } = await params;
-  const service = new SupplierService();
+  const service = getService(request);
 
   try {
     const supplier = await service.getSupplier(auth.actor, id);
@@ -30,7 +39,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
-  const service = new SupplierService();
+  const service = getService(request);
 
   try {
     const supplier = await service.updateSupplier(auth.actor, id, body);
@@ -48,7 +57,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   const { id } = await params;
-  const service = new SupplierService();
+  const service = getService(request);
 
   try {
     await service.deleteSupplier(auth.actor, id);

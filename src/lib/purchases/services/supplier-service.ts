@@ -150,18 +150,45 @@ export class SupplierService {
       throw new Error("Supplier not found");
     }
 
-    await this.repository.remove(actor.organizationId, supplierId);
+    await this.repository.setActive(actor.organizationId, supplierId, false);
 
     await this.audit.create({
       organization_id: actor.organizationId,
       actor_profile_id: actor.profileId,
       actor_email: actor.email,
-      action: "supplier_deleted",
+      action: "supplier_archived",
       entity_type: "supplier",
       entity_id: supplierId,
       entity_label: existing.supplier_name,
-      description: `Deleted supplier ${existing.supplier_name}`,
-      old_values: { supplier_name: existing.supplier_name },
+      description: `Archived supplier ${existing.supplier_name}`,
+      old_values: { supplier_name: existing.supplier_name, is_active: true },
+      new_values: { is_active: false },
+    });
+  }
+
+  async restoreSupplier(actor: ActorContext, supplierId: string) {
+    if (!actor.organizationId) {
+      throw new Error("Organization context required");
+    }
+
+    const existing = await this.repository.findById(actor.organizationId, supplierId);
+    if (!existing) {
+      throw new Error("Supplier not found");
+    }
+
+    await this.repository.setActive(actor.organizationId, supplierId, true);
+
+    await this.audit.create({
+      organization_id: actor.organizationId,
+      actor_profile_id: actor.profileId,
+      actor_email: actor.email,
+      action: "supplier_restored",
+      entity_type: "supplier",
+      entity_id: supplierId,
+      entity_label: existing.supplier_name,
+      description: `Restored supplier ${existing.supplier_name}`,
+      old_values: { is_active: false },
+      new_values: { is_active: true },
     });
   }
 }

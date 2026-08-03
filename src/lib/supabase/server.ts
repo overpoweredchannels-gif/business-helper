@@ -23,4 +23,28 @@ const createSupabaseService = (): SupabaseClient => {
   });
 };
 
-export { createSupabaseService };
+const createSupabaseUserClient = (accessToken: string): SupabaseClient => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY for server-side user-context Supabase access."
+    );
+  }
+
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "x-client-info": "tradeos-server-user-context",
+      },
+    },
+  });
+};
+
+export { createSupabaseService, createSupabaseUserClient };
