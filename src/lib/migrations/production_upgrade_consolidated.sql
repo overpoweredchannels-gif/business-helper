@@ -1,7 +1,8 @@
 -- TradeOS ERP — CONSOLIDATED PRODUCTION UPGRADE
 --
--- Product Foundation  +  Invoice Numbering Foundation  +  Inventory Phase 1
--- Inventory Improvements (overselling policy)  +  Purchase Management Phase 1
+-- Identity Foundation  +  Product Foundation  +  Invoice Numbering Foundation
+-- +  Inventory Phase 1  +  Inventory Improvements (overselling policy)
+-- +  Purchase Management Phase 1  +  Location indexes
 --
 -- WHY THIS FILE EXISTS
 --   A read-only verification against the production database (2026-08-02)
@@ -48,6 +49,60 @@
 --   still missing.
 
 set check_function_bodies = off;
+
+-- ===========================================================================
+-- PART 0 — IDENTITY FOUNDATION (role library, invitations, sessions, resets)
+-- ===========================================================================
+-- From src/lib/identity/schema.sql. Safe no-ops when already applied.
+
+create table if not exists public.role_definitions (
+  id text primary key,
+  name text not null,
+  description text,
+  permissions jsonb not null default '[]'::jsonb,
+  is_built_in boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.role_invitations (
+  code text primary key,
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  email text not null,
+  role text not null,
+  created_by text not null references public.profiles(id),
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  accepted_at timestamptz,
+  accepted_by text
+);
+
+create index if not exists role_invitations_org_idx on public.role_invitations(organization_id);
+create index if not exists role_invitations_email_idx on public.role_invitations(email);
+
+create table if not exists public.device_sessions (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  device_token text not null unique,
+  device_name text not null,
+  remember_device boolean not null default false,
+  created_at timestamptz not null default now(),
+  last_active_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  revoked_at timestamptz
+);
+
+create index if not exists device_sessions_profile_idx on public.device_sessions(profile_id);
+create index if not exists device_sessions_org_idx on public.device_sessions(organization_id);
+create index if not exists device_sessions_token_idx on public.device_sessions(device_token);
+
+create table if not exists public.password_reset_tokens (
+  token text primary key,
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  used_at timestamptz
+);
 
 -- ===========================================================================
 -- PART 1 — PRODUCT FOUNDATION (tables, columns, indexes, triggers, RLS)
@@ -369,6 +424,8 @@ create index if not exists sales_transactions_invoice_number_idx
   on public.sales_transactions (invoice_number);
 create index if not exists purchase_transactions_invoice_number_idx
   on public.purchase_transactions (invoice_number);
+create index if not exists sales_transactions_created_at_idx on public.sales_transactions (created_at);
+create index if not exists purchase_transactions_created_at_idx on public.purchase_transactions (created_at);
 create index if not exists sales_transactions_sale_date_idx on public.sales_transactions (sale_date);
 create index if not exists sales_transactions_customer_idx on public.sales_transactions (customer_id);
 create index if not exists sales_transactions_created_by_idx on public.sales_transactions (created_by_profile_id);
@@ -1142,7 +1199,20 @@ begin
 end $$;
 
 -- ===========================================================================
--- PART 6 — POST-APPLY VERIFICATION
+-- PART 6 — LOCATION INDEXES (from src/lib/location/schema.sql; the tables
+-- staff_duty_sessions / staff_location_points already exist in Supabase)
+-- ===========================================================================
+
+create index if not exists idx_location_points_org_captured
+  on public.staff_location_points (organization_id, captured_at desc);
+create index if not exists idx_location_points_profile
+  on public.staff_location_points (profile_id, captured_at desc);
+create index if not exists idx_duty_sessions_active
+  on public.staff_duty_sessions (organization_id, status)
+  where status = 'on_duty';
+
+-- ===========================================================================
+-- PART 7 — POST-APPLY VERIFICATION
 -- ===========================================================================
 -- Prints a NOTICE per missing object and raises at the end if anything is
 -- missing, so the SQL editor shows a definitive PASS/FAIL result.
@@ -1161,6 +1231,10 @@ begin
   if to_regclass('public.purchase_order_items') is null then v_missing := v_missing || 'table purchase_order_items'; end if;
   if to_regclass('public.purchase_returns') is null then v_missing := v_missing || 'table purchase_returns'; end if;
   if to_regclass('public.purchase_return_items') is null then v_missing := v_missing || 'table purchase_return_items'; end if;
+  if to_regclass('public.role_definitions') is null then v_missing := v_missing || 'table role_definitions'; end if;
+  if to_regclass('public.role_invitations') is null then v_missing := v_missing || 'table role_invitations'; end if;
+  if to_regclass('public.device_sessions') is null then v_missing := v_missing || 'table device_sessions'; end if;
+  if to_regclass('public.password_reset_tokens') is null then v_missing := v_missing || 'table password_reset_tokens'; end if;
 
   -- functions / RPCs
   if to_regprocedure('public.set_updated_at()') is null then v_missing := v_missing || 'function set_updated_at'; end if;
@@ -1211,6 +1285,9 @@ begin
   if not exists (select 1 from pg_indexes where schemaname = 'public' and tablename = 'inventory_transactions' and indexname = 'inv_tx_org_product_created_idx') then v_missing := v_missing || 'index inv_tx_org_product_created_idx'; end if;
   if not exists (select 1 from pg_indexes where schemaname = 'public' and tablename = 'purchase_orders' and indexname = 'purchase_orders_org_created_idx') then v_missing := v_missing || 'index purchase_orders_org_created_idx'; end if;
   if not exists (select 1 from pg_indexes where schemaname = 'public' and tablename = 'purchase_returns' and indexname = 'purchase_returns_org_created_idx') then v_missing := v_missing || 'index purchase_returns_org_created_idx'; end if;
+  if not exists (select 1 from pg_indexes where schemaname = 'public' and tablename = 'staff_location_points' and indexname = 'idx_location_points_org_captured') then v_missing := v_missing || 'index idx_location_points_org_captured'; end if;
+  if not exists (select 1 from pg_indexes where schemaname = 'public' and tablename = 'sales_transactions' and indexname = 'sales_transactions_created_at_idx') then v_missing := v_missing || 'index sales_transactions_created_at_idx'; end if;
+  if not exists (select 1 from pg_indexes where schemaname = 'public' and tablename = 'purchase_transactions' and indexname = 'purchase_transactions_created_at_idx') then v_missing := v_missing || 'index purchase_transactions_created_at_idx'; end if;
 
   if array_length(v_missing, 1) is not null then
     raise exception 'MIGRATION INCOMPLETE — missing objects: %', array_to_string(v_missing, ', ');

@@ -141,7 +141,7 @@ const BUILT_IN_ROLES: Record<BuiltInRole, RoleDefinition> = {
   },
 };
 
-let customRoles: RoleDefinition[] = [];
+const customRoles: RoleDefinition[] = [];
 
 export function getRoleDefinitions(): RoleDefinition[] {
   return [...Object.values(BUILT_IN_ROLES), ...customRoles];

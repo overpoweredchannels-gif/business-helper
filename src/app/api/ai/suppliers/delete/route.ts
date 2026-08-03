@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { organizationId, supplier_id } = body;
+    const { actor, error, status } = await resolveActor(req);
+    if (error || !actor) {
+      return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+    }
+
+    const organizationContext = buildOrganizationContext(actor);
+    const organizationId = organizationContext.actor.organizationId;
+    const { supplier_id } = body;
 
     const errors: string[] = [];
-    if (!organizationId) errors.push("organizationId is required");
     if (!supplier_id) errors.push("supplier_id is required");
     if (errors.length > 0) {
       return NextResponse.json({ ok: false, error: errors.join("; ") }, { status: 400 });

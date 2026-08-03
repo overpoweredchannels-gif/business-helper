@@ -1,18 +1,33 @@
 import { NextRequest } from "next/server";
 import { createSupabaseService } from "../supabase/server";
 import { normalizeRole } from "./permissions";
-import { RoleType } from "./types";
+import { getRolePermissions } from "./roles";
+import type { ActorContext } from "./types";
+import type { PermissionContext } from "./permissions";
 
-export interface ApiActor {
-  profileId: string;
-  organizationId: string;
-  email: string | null;
-  role: RoleType | null;
-  isOwner: boolean;
-  isActive: boolean;
+export type ApiActor = ActorContext;
+
+export interface OrganizationContext {
+  actor: ApiActor;
+  permissionContext: PermissionContext;
 }
 
-export async function resolveActor(request: NextRequest): Promise<{ actor?: ApiActor; error?: string; status?: number }> {
+export function buildOrganizationContext(actor: ApiActor): OrganizationContext {
+  return {
+    actor,
+    permissionContext: {
+      role: actor.role,
+      organizationId: actor.organizationId,
+      profileId: actor.profileId,
+      email: actor.email,
+      isOwner: actor.isOwner,
+    },
+  };
+}
+
+export async function resolveActor(
+  request: NextRequest | Request,
+): Promise<{ actor?: ApiActor; error?: string; status?: number }> {
   const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
   if (!authorization?.toLowerCase().startsWith("bearer ")) {
     return { error: "Missing authorization token.", status: 401 };
@@ -60,6 +75,7 @@ export async function resolveActor(request: NextRequest): Promise<{ actor?: ApiA
       role,
       isOwner: role === "owner",
       isActive: profile.is_active !== false,
+      permissions: role ? getRolePermissions(role) : [],
     },
   };
 }

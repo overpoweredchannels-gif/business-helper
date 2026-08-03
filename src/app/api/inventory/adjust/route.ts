@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 import {
   validateAdjustmentInput,
   normalizeOptionalText,
@@ -22,11 +23,13 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const organizationId = body?.organizationId;
-
-    if (!organizationId || typeof organizationId !== "string") {
-      return NextResponse.json({ ok: false, error: "organizationId is required" }, { status: 400 });
+    const { actor, error, status } = await resolveActor(request);
+    if (error || !actor) {
+      return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
     }
+
+    const organizationContext = buildOrganizationContext(actor);
+    const organizationId = organizationContext.actor.organizationId;
 
     const validation = validateAdjustmentInput({
       product_id: body?.productId,
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = createSupabaseService();
 
-    const { data, error } = await supabase.rpc("adjust_inventory", {
+    const { data, error: rpcError } = await supabase.rpc("adjust_inventory", {
       p_organization_id: organizationId,
       p_product_id: Number(body?.productId),
       p_quantity_delta: Number(body?.quantityDelta),
@@ -53,15 +56,15 @@ export async function POST(request: NextRequest) {
         typeof body?.createdByProfileId === "string" ? body.createdByProfileId : null,
     });
 
-    if (error) {
+    if (rpcError) {
       // The RPC raises exceptions for permission/product/negative-stock
       // failures — surface the message as a client error.
-      return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      return NextResponse.json({ ok: false, error: rpcError.message }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true, transactionId: data });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Stock adjustment failed";
+  } catch (caughtError) {
+    const message = caughtError instanceof Error ? caughtError.message : "Stock adjustment failed";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

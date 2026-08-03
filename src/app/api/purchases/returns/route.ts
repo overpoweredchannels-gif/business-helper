@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 import { validatePurchaseReturnInput } from "@/lib/purchases/validation";
 import { generatePurchaseReturnInvoice } from "@/lib/invoices/invoice-number-service";
 
@@ -24,11 +25,13 @@ interface ReturnLinePayload {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const organizationId = body?.organizationId;
-
-    if (!organizationId || typeof organizationId !== "string") {
-      return NextResponse.json({ ok: false, error: "organizationId is required" }, { status: 400 });
+    const { actor, error, status } = await resolveActor(request);
+    if (error || !actor) {
+      return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
     }
+
+    const organizationContext = buildOrganizationContext(actor);
+    const organizationId = organizationContext.actor.organizationId;
 
     const rawLines: ReturnLinePayload[] = Array.isArray(body?.lines) ? body.lines : [];
     const lines = rawLines.map((line) => ({

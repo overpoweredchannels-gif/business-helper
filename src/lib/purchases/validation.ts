@@ -9,6 +9,8 @@
 export const MAX_NOTES_LENGTH = 500;
 export const MAX_REASON_LENGTH = 500;
 export const MAX_BATCH_NUMBER_LENGTH = 100;
+export const MAX_SUPPLIER_NAME_LENGTH = 150;
+export const MAX_TEXT_FIELD_LENGTH = 100;
 
 export interface ValidationResult {
   ok: boolean;
@@ -153,7 +155,145 @@ export function validateReceiveQuantities(lines: ReceiveLineLike[]): ValidationR
   return { ok: errors.length === 0, errors };
 }
 
-// ─── Purchase returns ───────────────────────────────────────────────────────
+// ─── Suppliers ──────────────────────────────────────────────────────────────
+
+export interface SupplierInputLike {
+  supplier_name?: string | null;
+  contact_person?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  city?: string | null;
+  area?: string | null;
+  notes?: string | null;
+  credit_limit?: string | number | null;
+  credit_days?: string | number | null;
+  credit_policy?: string | null;
+  preferred_payment_method?: string | null;
+  allow_over_limit?: boolean | null;
+  allow_overdue_sales?: boolean | null;
+}
+
+export function validateSupplierInput(input: SupplierInputLike): ValidationResult {
+  const errors: string[] = [];
+
+  const name = normalizeOptionalText(input.supplier_name);
+  if (!name) {
+    errors.push("Supplier name is required.");
+  } else if (name.length > MAX_SUPPLIER_NAME_LENGTH) {
+    errors.push(`Supplier name must be ${MAX_SUPPLIER_NAME_LENGTH} characters or fewer.`);
+  }
+
+  const optionalFields: Array<[keyof SupplierInputLike, string]> = [
+    ["contact_person", "Contact person"],
+    ["phone", "Phone"],
+    ["whatsapp", "WhatsApp"],
+    ["city", "City"],
+    ["area", "Area"],
+  ];
+  optionalFields.forEach(([field, label]) => {
+    const value = normalizeOptionalText(input[field]);
+    if (value && value.length > MAX_TEXT_FIELD_LENGTH) {
+      errors.push(`${label} must be ${MAX_TEXT_FIELD_LENGTH} characters or fewer.`);
+    }
+  });
+
+  const notes = normalizeOptionalText(input.notes);
+  if (notes && notes.length > MAX_NOTES_LENGTH) {
+    errors.push(`Notes must be ${MAX_NOTES_LENGTH} characters or fewer.`);
+  }
+
+  const creditLimit = normalizeOptionalNumber(input.credit_limit);
+  if (creditLimit !== null && creditLimit < 0) {
+    errors.push("Credit limit cannot be negative.");
+  }
+
+  const creditDays = normalizeOptionalNumber(input.credit_days);
+  if (creditDays !== null && creditDays < 0) {
+    errors.push("Credit days cannot be negative.");
+  }
+
+  const creditPolicy = normalizeOptionalText(input.credit_policy);
+  if (creditPolicy && !["cash_only", "unrestricted"].includes(creditPolicy)) {
+    errors.push("Credit policy must be 'cash_only' or 'unrestricted'.");
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+// ─── Purchase transactions ──────────────────────────────────────────────────
+
+export interface PurchaseTransactionLineLike {
+  product_id?: string | number | null;
+  quantity?: string | number | null;
+  purchase_price?: string | number | null;
+  selling_price?: string | number | null;
+  batch_number?: string | null;
+  expiry_date?: string | null;
+}
+
+export interface PurchaseTransactionInputLike {
+  supplier_id: string | null | undefined;
+  purchase_date?: string | null;
+  payment_type?: string | null;
+  supplier_invoice_number?: string | null;
+  notes?: string | null;
+  lines: PurchaseTransactionLineLike[];
+}
+
+export function validatePurchaseTransactionInput(input: PurchaseTransactionInputLike): ValidationResult {
+  const errors: string[] = [];
+
+  if (!input.supplier_id) {
+    errors.push("A supplier is required.");
+  }
+
+  const paymentType = normalizeOptionalText(input.payment_type);
+  if (paymentType && !["cash", "credit"].includes(paymentType.toLowerCase())) {
+    errors.push("Payment type must be 'cash' or 'credit'.");
+  }
+
+  const purchaseDate = normalizeOptionalDate(input.purchase_date);
+  if (input.purchase_date && !purchaseDate) {
+    errors.push("Purchase date is not a valid date.");
+  }
+
+  const notes = normalizeOptionalText(input.notes);
+  if (notes && notes.length > MAX_NOTES_LENGTH) {
+    errors.push(`Notes must be ${MAX_NOTES_LENGTH} characters or fewer.`);
+  }
+
+  if (!Array.isArray(input.lines) || input.lines.length === 0) {
+    errors.push("Add at least one product line.");
+  } else {
+    input.lines.forEach((line, index) => {
+      const label = `Line ${index + 1}`;
+      if (!line.product_id) {
+        errors.push(`${label}: select a product.`);
+      }
+      const quantity = normalizeOptionalNumber(line.quantity);
+      if (quantity === null || quantity <= 0) {
+        errors.push(`${label}: quantity must be greater than zero.`);
+      }
+      const purchasePrice = normalizeOptionalNumber(line.purchase_price);
+      if (purchasePrice === null || purchasePrice < 0) {
+        errors.push(`${label}: purchase price is required and cannot be negative.`);
+      }
+      const sellingPrice = normalizeOptionalNumber(line.selling_price);
+      if (sellingPrice !== null && sellingPrice < 0) {
+        errors.push(`${label}: selling price cannot be negative.`);
+      }
+      const batch = normalizeOptionalText(line.batch_number);
+      if (batch && batch.length > MAX_BATCH_NUMBER_LENGTH) {
+        errors.push(`${label}: batch number is too long.`);
+      }
+      if (line.expiry_date && !normalizeOptionalDate(line.expiry_date)) {
+        errors.push(`${label}: expiry date is not a valid date.`);
+      }
+    });
+  }
+
+  return { ok: errors.length === 0, errors };
+}
 
 export interface PurchaseReturnLineLike {
   product_id?: string | number | null;
