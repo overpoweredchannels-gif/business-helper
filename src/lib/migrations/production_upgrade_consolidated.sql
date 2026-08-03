@@ -69,7 +69,7 @@ create table if not exists public.role_invitations (
   organization_id uuid not null references public.organizations(id) on delete cascade,
   email text not null,
   role text not null,
-  created_by text not null references public.profiles(id),
+  created_by uuid not null references public.profiles(id),
   created_at timestamptz not null default now(),
   expires_at timestamptz not null,
   accepted_at timestamptz,
