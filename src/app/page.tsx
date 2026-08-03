@@ -211,6 +211,14 @@ const PURCHASE_LIST_SORT_OPTIONS: { value: PurchaseListSort; label: string }[] =
   { value: "status", label: "Status (A-Z)" },
 ];
 
+async function authorizedFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  const headers = new Headers(init.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return fetch(input, { ...init, headers });
+}
+
 export default function Home() {
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
@@ -5293,7 +5301,7 @@ export default function Home() {
 
     setAdjustmentSubmitting(true);
     try {
-      const response = await fetch("/api/inventory/adjust", {
+      const response = await authorizedFetch("/api/inventory/adjust", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -6469,7 +6477,7 @@ export default function Home() {
     }
 
     try {
-      const response = await fetch("/api/purchases/returns", {
+      const response = await authorizedFetch("/api/purchases/returns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -11935,7 +11943,7 @@ export default function Home() {
     setLoading(true);
 
     try {
-      const validateResponse = await fetch("/api/products/validate", {
+      const validateResponse = await authorizedFetch("/api/products/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
