@@ -233,9 +233,17 @@ create trigger categories_set_updated_at before update on public.categories
   for each row execute function public.set_updated_at();
 
 -- 1.6 Row Level Security helpers + policies
+-- current_org_id() resolves the tenant from the access token. GoTrue embeds
+-- admin-set custom claims under "app_metadata" (top-level custom claims require
+-- a custom token hook), so we read the claim from app_metadata first, with
+-- fallbacks to user_metadata and a top-level claim for legacy setups.
 create or replace function public.current_org_id()
 returns uuid language sql stable as $$
-  select nullif(auth.jwt() ->> 'organization_id', '')::uuid;
+  select coalesce(
+    nullif(auth.jwt() -> 'app_metadata' ->> 'organization_id', ''),
+    nullif(auth.jwt() -> 'user_metadata' ->> 'organization_id', ''),
+    nullif(auth.jwt() ->> 'organization_id', '')
+  )::uuid;
 $$;
 
 create or replace function public.has_product_permission(uid uuid)
@@ -894,6 +902,39 @@ begin
             0
           ),
           updated_at = now();
+  end if;
+end $$;
+
+-- 4.8 Re-runnable persistence repair (stabilization): backfills
+-- purchase_items.organization_id and purchase_transactions.total_amount for
+-- rows written before the client save paths persisted them. Idempotent —
+-- safe to run on every migration execution.
+do $$
+begin
+  if to_regclass('public.purchase_items') is not null
+     and to_regclass('public.purchase_transactions') is not null then
+
+    update public.purchase_items pi
+    set organization_id = pt.organization_id
+    from public.purchase_transactions pt
+    where pi.organization_id is null
+      and pt.id = pi.purchase_transaction_id
+      and pt.organization_id is not null;
+
+    if exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'purchase_transactions'
+        and column_name = 'total_amount'
+    ) then
+      update public.purchase_transactions pt
+      set total_amount = coalesce((
+        select sum(pi.quantity * pi.purchase_price)
+        from public.purchase_items pi
+        where pi.purchase_transaction_id = pt.id
+      ), 0)
+      where pt.total_amount is null;
+    end if;
   end if;
 end $$;
 

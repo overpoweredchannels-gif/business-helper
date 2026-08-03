@@ -45,6 +45,32 @@ const buildOwnerPermissionPayload = (organizationId: string, userId: string) => 
   can_manage_settings: true,
 });
 
+// Ensures the authenticated user's access token carries the organization_id
+// custom claim that current_org_id() reads for RLS. GoTrue stores admin-set
+// claims in app_metadata (embedded in every new/refreshed token). Best-effort:
+// a claim-write failure must never block login/provisioning.
+const ensureOrgClaim = async (
+  supabaseService: ReturnType<typeof getSupabaseService>,
+  user: { id: string; app_metadata?: Record<string, unknown> | null },
+  organizationId: string
+) => {
+  try {
+    const currentClaim = user.app_metadata?.organization_id;
+    if (String(currentClaim ?? "") !== organizationId) {
+      const { error } = await supabaseService.auth.admin.updateUserById(user.id, {
+        app_metadata: { ...(user.app_metadata ?? {}), organization_id: organizationId },
+      });
+      if (error) {
+        console.warn(`[PROVISION] failed to set organization_id claim for ${user.id}: ${error.message}`);
+      } else {
+        console.log(`[PROVISION] organization_id claim set for ${user.id} -> ${organizationId}`);
+      }
+    }
+  } catch (claimErr) {
+    console.warn("[PROVISION] unexpected error while setting organization_id claim:", claimErr);
+  }
+};
+
 export async function POST(request: NextRequest) {
   const logTag = `[PROVISION ${Date.now()}]`;
   console.log(`${logTag} ===== PROVISION REQUEST RECEIVED =====`);
@@ -242,6 +268,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`${logTag} CHECKPOINT 5z: returning alreadyProvisioned=true`);
+    await ensureOrgClaim(supabaseService, user, existingProfile.organization_id);
     return NextResponse.json({ ok: true, alreadyProvisioned: true, organization_id: existingProfile.organization_id });
   }
 
@@ -391,6 +418,7 @@ export async function POST(request: NextRequest) {
 
   // ── 10. Final return ──
   const needsOnboarding = !rawOrgName;
+  await ensureOrgClaim(supabaseService, user, organizationId);
   console.log(`${logTag} CHECKPOINT 10: SUCCESS — returning alreadyProvisioned=false, org_id=${organizationId}, needsOnboarding=${needsOnboarding}`);
   console.log(`${logTag} ===== PROVISION COMPLETE =====`);
   return NextResponse.json({ ok: true, alreadyProvisioned: false, organization_id: organizationId, needsOnboarding });

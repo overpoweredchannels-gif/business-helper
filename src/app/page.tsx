@@ -2813,6 +2813,7 @@ export default function Home() {
           notes: "Created from AI Assistant draft",
           expense_review_status: "pending",
           organization_id: currentOrganizationId,
+          total_amount: quantity * purchasePrice,
         })
         .select()
         .single();
@@ -2831,6 +2832,7 @@ export default function Home() {
 
       const { error: itemError } = await supabase.from("purchase_items").insert({
         purchase_transaction_id: purchaseTransactionId,
+        organization_id: currentOrganizationId,
         product_id: productId,
         quantity,
         purchase_price: purchasePrice,
@@ -6024,6 +6026,11 @@ export default function Home() {
 
       const supplierRef = supplierInvoiceNumber.trim() || null;
 
+      const purchaseTotal = purchaseLines.reduce(
+        (sum, line) => sum + Number(line.quantity || 0) * Number(line.purchase_price || 0),
+        0
+      );
+
       const transactionResult = await supabase
         .from("purchase_transactions")
         .insert({
@@ -6032,6 +6039,7 @@ export default function Home() {
           supplier_invoice_number: supplierRef,
           notes: null,
           organization_id: currentOrganizationId,
+          total_amount: purchaseTotal,
         })
         .select()
         .single();
@@ -6054,6 +6062,7 @@ export default function Home() {
         // Insert purchase item
         const { error: itemError } = await supabase.from("purchase_items").insert({
           purchase_transaction_id: transactionId,
+          organization_id: currentOrganizationId,
           product_id: line.product_id,
           quantity: Number(line.quantity),
           purchase_price: Number(line.purchase_price),
@@ -6340,6 +6349,13 @@ export default function Home() {
     try {
       const invoiceNumber = await generatePurchaseInvoiceWithClient(supabase, currentOrganizationId);
 
+      const receiveTotal = receiveLines.reduce((sum, line) => {
+        const receiveQuantity = Number(line.receiveQuantity);
+        if (!Number.isFinite(receiveQuantity) || receiveQuantity <= 0) return sum;
+        const unitPrice = Number(line.unitPrice || 0);
+        return sum + receiveQuantity * (Number.isFinite(unitPrice) ? unitPrice : 0);
+      }, 0);
+
       const { data: txData, error: txError } = await supabase
         .from("purchase_transactions")
         .insert({
@@ -6351,6 +6367,7 @@ export default function Home() {
           expense_review_status: "pending",
           organization_id: currentOrganizationId,
           created_by_profile_id: currentProfile?.id ?? null,
+          total_amount: receiveTotal,
         })
         .select("id")
         .single();
@@ -6367,6 +6384,7 @@ export default function Home() {
 
         const { error: itemError } = await supabase.from("purchase_items").insert({
           purchase_transaction_id: transactionId,
+          organization_id: currentOrganizationId,
           product_id: line.productId,
           quantity: receiveQuantity,
           purchase_price: line.unitPrice ? Number(line.unitPrice) : null,

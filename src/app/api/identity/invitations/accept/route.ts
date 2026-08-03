@@ -59,6 +59,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Account creation failed." }, { status: 500 });
   }
 
+  // Ensure the new staff member's access token carries the organization_id
+  // claim that current_org_id() reads for RLS. Best-effort: a claim-write
+  // failure must not block account creation.
+  try {
+    await supabase.auth.admin.updateUserById(createdUser.user.id, {
+      app_metadata: {
+        ...(createdUser.user.app_metadata ?? {}),
+        organization_id: invitation.organizationId,
+      },
+    });
+  } catch (claimErr) {
+    console.warn("Invitation accept: failed to set organization_id claim:", claimErr);
+  }
+
   const profilePayload = {
     id: createdUser.user.id,
     organization_id: invitation.organizationId,

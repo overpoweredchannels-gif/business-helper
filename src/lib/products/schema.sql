@@ -137,7 +137,11 @@ create trigger categories_set_updated_at before update on public.categories
 -- ---------------------------------------------------------------------------
 create or replace function public.current_org_id()
 returns uuid language sql stable as $$
-  select nullif(auth.jwt() ->> 'organization_id', '')::uuid;
+  select coalesce(
+    nullif(auth.jwt() -> 'app_metadata' ->> 'organization_id', ''),
+    nullif(auth.jwt() -> 'user_metadata' ->> 'organization_id', ''),
+    nullif(auth.jwt() ->> 'organization_id', '')
+  )::uuid;
 $$;
 
 -- SECURITY DEFINER: bypasses RLS on profiles/staff_permissions so the
