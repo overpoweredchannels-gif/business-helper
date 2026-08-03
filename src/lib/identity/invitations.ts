@@ -12,10 +12,6 @@ function generateCode(): string {
   return code;
 }
 
-function generateId(): string {
-  return `inv_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
-}
-
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export function validateEmail(email: string): string | null {

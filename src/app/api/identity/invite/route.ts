@@ -4,7 +4,6 @@ import { createInvitation, listInvitations } from "@/lib/identity/invitations";
 import { validateEmail } from "@/lib/identity/invitations";
 import { normalizeRole, roleExists } from "@/lib/identity/permissions";
 import { logAuditEvent } from "@/lib/identity/audit";
-import { RoleType } from "@/lib/identity/types";
 
 export const runtime = "nodejs";
 

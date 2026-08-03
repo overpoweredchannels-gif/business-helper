@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 import { loadRawBusinessData } from "@/lib/brain/supabase-loader";
 import { UnifiedAssistant } from "@/lib/assistant/assistant";
 import { processBusinessIntelligenceQuery, type BusinessIntelligenceQueryKind } from "@/lib/ai/business-intelligence";
@@ -17,16 +18,18 @@ const VALID_QUERY_TYPES: BusinessIntelligenceQueryKind[] = [
 
 export async function POST(req: NextRequest) {
   try {
+    const { actor, error, status } = await resolveActor(req);
+    if (error || !actor) {
+      return NextResponse.json({ error }, { status: status ?? 401 });
+    }
+
+    const organizationContext = buildOrganizationContext(actor);
+    const organization_id = organizationContext.actor.organizationId;
     const body = await req.json();
-    const { query_type, message, organization_id } = body as {
+    const { query_type, message } = body as {
       query_type?: string;
       message?: string;
-      organization_id?: string;
     };
-
-    if (!organization_id) {
-      return NextResponse.json({ error: "organization_id is required" }, { status: 400 });
-    }
 
     // Validate query type
     const resolvedQueryType: BusinessIntelligenceQueryKind =

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 
 export const runtime = "nodejs";
 
@@ -19,10 +20,16 @@ const NUMERIC_FIELDS = ["credit_limit", "credit_days"] as const;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { organizationId, customer_id } = body;
+    const { actor, error, status } = await resolveActor(req);
+    if (error || !actor) {
+      return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+    }
+
+    const organizationContext = buildOrganizationContext(actor);
+    const organizationId = organizationContext.actor.organizationId;
+    const { customer_id } = body;
 
     const errors: string[] = [];
-    if (!organizationId) errors.push("organizationId is required");
     if (!customer_id) errors.push("customer_id is required");
     if (errors.length > 0) {
       return NextResponse.json({ ok: false, error: errors.join("; ") }, { status: 400 });

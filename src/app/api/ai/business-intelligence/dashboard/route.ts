@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 import { loadRawBusinessData } from "@/lib/brain/supabase-loader";
 import { UnifiedAssistant } from "@/lib/assistant/assistant";
 import { calculateBusinessIntelligence } from "@/lib/ai/business-intelligence";
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const organization_id = searchParams.get("organization_id");
-
-    if (!organization_id) {
-      return NextResponse.json({ error: "organization_id is required" }, { status: 400 });
+    const { actor, error, status } = await resolveActor(req);
+    if (error || !actor) {
+      return NextResponse.json({ error }, { status: status ?? 401 });
     }
+
+    const organizationContext = buildOrganizationContext(actor);
+    const organization_id = organizationContext.actor.organizationId;
 
     const supabase = createSupabaseService();
     const rawData = await loadRawBusinessData(supabase, organization_id);

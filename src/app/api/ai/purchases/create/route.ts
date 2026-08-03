@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 import { InvoiceNumberService } from "@/lib/invoices/invoice-number-service";
 
 export const runtime = "nodejs";
@@ -7,8 +8,15 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const { actor, error, status } = await resolveActor(req);
+    if (error || !actor) {
+      return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+    }
+
+    const organizationContext = buildOrganizationContext(actor);
+    const organizationId = organizationContext.actor.organizationId;
+
     const {
-      organizationId,
       supplier_id,
       product_id,
       quantity,
@@ -30,7 +38,6 @@ export async function POST(req: NextRequest) {
     } = body;
 
     const errors: string[] = [];
-    if (!organizationId) errors.push("organizationId is required");
     if (!supplier_id) errors.push("supplier_id is required");
     if (!product_id) errors.push("product_id is required");
     if (!quantity || Number(quantity) <= 0) errors.push("quantity must be a positive number");

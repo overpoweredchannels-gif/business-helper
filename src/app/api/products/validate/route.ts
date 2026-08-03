@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 import {
   validateProductInput,
   normalizeOptionalText,
@@ -15,12 +16,15 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const organizationId = body?.organizationId;
     const excludeProductId = body?.excludeProductId ?? null;
 
-    if (!organizationId || typeof organizationId !== "string") {
-      return NextResponse.json({ ok: false, error: "organizationId is required" }, { status: 400 });
+    const { actor, error, status } = await resolveActor(request);
+    if (error || !actor) {
+      return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
     }
+
+    const organizationContext = buildOrganizationContext(actor);
+    const organizationId = organizationContext.actor.organizationId;
 
     const input = {
       name: body?.name,

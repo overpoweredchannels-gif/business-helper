@@ -30,6 +30,18 @@ export type BuiltInRole =
 
 export type RoleType = BuiltInRole | string;
 
+export type PermissionAction = ModulePermission;
+
+export interface ActorContext {
+  profileId: string;
+  organizationId: string;
+  email: string | null;
+  role: RoleType | null;
+  isOwner: boolean;
+  isActive: boolean;
+  permissions?: ModulePermission[];
+}
+
 export interface RoleDefinition {
   id: string;
   name: string;
