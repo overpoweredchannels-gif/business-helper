@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
     for (const line of lines) {
       const { error: itemError } = await supabase.from("purchase_return_items").insert({
         purchase_return_id: returnId,
+        organization_id: organizationId,
         product_id: line.product_id,
         quantity: Number(line.quantity),
         unit_price: line.unit_price != null ? Number(line.unit_price) : null,

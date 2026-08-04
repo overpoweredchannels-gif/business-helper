@@ -133,6 +133,7 @@ create index if not exists purchase_returns_org_supplier_idx on public.purchase_
 create table if not exists public.purchase_return_items (
   id uuid not null default gen_random_uuid() primary key,
   purchase_return_id uuid not null references public.purchase_returns(id) on delete cascade,
+  organization_id uuid references public.organizations(id) on delete cascade,
   product_id integer not null references public.products(id) on delete cascade,
   quantity numeric(14, 2) not null check (quantity > 0),
   unit_price numeric(14, 2) check (unit_price is null or unit_price >= 0),

@@ -1052,6 +1052,27 @@ create table if not exists public.purchase_return_items (
 create index if not exists purchase_return_items_return_idx on public.purchase_return_items (purchase_return_id);
 create index if not exists purchase_return_items_product_idx on public.purchase_return_items (product_id);
 
+-- 5.3b Item-side organization column for purchase returns. The stock sync
+-- trigger inventory_sync_purchase_return_item reads NEW/OLD.organization_id,
+-- so the column must exist on the table (the parent-only reference failed at
+-- runtime with: record "new" has no field "organization_id"). Nullable by
+-- design, mirroring purchase_items / sales_items: inserts that omit it are
+-- resolved from the parent purchase_returns row inside the trigger.
+alter table public.purchase_return_items
+  add column if not exists organization_id uuid references public.organizations(id) on delete cascade;
+
+do $$
+begin
+  update public.purchase_return_items pri
+    set organization_id = pr.organization_id
+    from public.purchase_returns pr
+    where pri.purchase_return_id = pr.id
+      and pri.organization_id is null;
+end $$;
+
+create index if not exists purchase_return_items_org_idx
+  on public.purchase_return_items (organization_id);
+
 -- 5.4 RLS on the four purchase tables
 alter table public.purchase_orders enable row level security;
 alter table public.purchase_order_items enable row level security;
@@ -1316,6 +1337,7 @@ begin
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'purchase_transactions' and column_name = 'total_amount') then v_missing := v_missing || 'purchase_transactions.total_amount'; end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'purchase_items' and column_name = 'organization_id') then v_missing := v_missing || 'purchase_items.organization_id'; end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'sales_items' and column_name = 'organization_id') then v_missing := v_missing || 'sales_items.organization_id'; end if;
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'purchase_return_items' and column_name = 'organization_id') then v_missing := v_missing || 'purchase_return_items.organization_id'; end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'suppliers' and column_name = 'is_active') then v_missing := v_missing || 'suppliers.is_active'; end if;
 
   -- triggers

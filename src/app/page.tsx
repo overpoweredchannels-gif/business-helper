@@ -4356,8 +4356,29 @@ export default function Home() {
     orderIds?: string[]
   ) => {
     const orgId = organizationId ?? currentOrganizationId;
-    const ids = orderIds ?? purchaseOrders.map((po) => po.id);
-    if (!orgId || ids.length === 0) {
+    if (!orgId) {
+      setPurchaseOrderItems([]);
+      return;
+    }
+
+    let ids = orderIds;
+    if (!ids || ids.length === 0) {
+      if (orderIds !== undefined) {
+        setPurchaseOrderItems([]);
+        return;
+      }
+      const { data: poRows, error: poError } = await supabase
+        .from("purchase_orders")
+        .select("id")
+        .eq("organization_id", orgId);
+      if (poError) {
+        console.error("Supabase fetch purchase order ids error:", poError);
+        return;
+      }
+      ids = (poRows ?? []).map((row) => row.id);
+    }
+
+    if (ids.length === 0) {
       setPurchaseOrderItems([]);
       return;
     }
@@ -4406,8 +4427,29 @@ export default function Home() {
     returnIds?: string[]
   ) => {
     const orgId = organizationId ?? currentOrganizationId;
-    const ids = returnIds ?? purchaseReturns.map((ret) => ret.id);
-    if (!orgId || ids.length === 0) {
+    if (!orgId) {
+      setPurchaseReturnItems([]);
+      return;
+    }
+
+    let ids = returnIds;
+    if (!ids || ids.length === 0) {
+      if (returnIds !== undefined) {
+        setPurchaseReturnItems([]);
+        return;
+      }
+      const { data: returnRows, error: returnsError } = await supabase
+        .from("purchase_returns")
+        .select("id")
+        .eq("organization_id", orgId);
+      if (returnsError) {
+        console.error("Supabase fetch purchase return ids error:", returnsError);
+        return;
+      }
+      ids = (returnRows ?? []).map((row) => row.id);
+    }
+
+    if (ids.length === 0) {
       setPurchaseReturnItems([]);
       return;
     }
