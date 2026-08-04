@@ -127,8 +127,13 @@ import {
 import {
   generatePurchaseInvoiceWithClient,
   generatePurchaseOrderWithClient,
-  generateSalesInvoice,
+  generateSalesInvoiceWithClient,
   generateSalesOrderWithClient,
+  generateSalesReturnInvoiceWithClient,
+  generatePurchaseReturnInvoiceWithClient,
+  generateSalesInvoice,
+  generateSalesReturnInvoice,
+  generatePurchaseReturnInvoice,
 } from "@/lib/invoices/invoice-number-service";
 import type { InventoryTransaction } from "@/lib/inventory/types";
 
@@ -3668,7 +3673,7 @@ export default function Home() {
         if (!currentOrganizationId) {
           throw new Error("Organization not loaded");
         }
-        systemInvoiceNumber = await generateSalesInvoice(currentOrganizationId);
+        systemInvoiceNumber = await generateSalesInvoiceWithClient(supabase, currentOrganizationId);
       } catch (numberErr) {
         setSalesError(
           numberErr instanceof Error ? numberErr.message : "Failed to generate invoice number"
@@ -6939,6 +6944,50 @@ export default function Home() {
     const newLines = [...returnLines];
     newLines[index] = { ...newLines[index], [field]: value };
     setReturnLines(newLines);
+  };
+
+  const handlePurchaseReturnInvoiceChange = (transactionId: string) => {
+    setReturnPurchaseTransactionId(transactionId);
+    if (!transactionId) {
+      setReturnSupplierId("");
+      setReturnLines([]);
+      return;
+    }
+    const transaction = purchaseTransactions.find((item) => item.id === transactionId);
+    if (!transaction) {
+      setReturnSupplierId("");
+      setReturnLines([]);
+      return;
+    }
+    setReturnSupplierId(transaction.supplier_id);
+
+    const invoiceItems = purchaseItems.filter(
+      (item) => item.purchase_transaction_id === transactionId && item.quantity > 0
+    );
+    const invoiceReturnItems = purchaseReturnItems.filter(
+      (item) => purchaseReturns.find((r) => r.id === item.purchase_return_id)?.purchase_transaction_id === transactionId
+    );
+    const returnedByProduct = new Map<string, number>();
+    for (const item of invoiceReturnItems) {
+      const key = String(item.product_id);
+      returnedByProduct.set(key, (returnedByProduct.get(key) ?? 0) + safeNumber(item.quantity));
+    }
+
+    setReturnLines(
+      invoiceItems.map((item) => {
+        const key = String(item.product_id);
+        const alreadyReturned = returnedByProduct.get(key) ?? 0;
+        const remaining = Math.max(0, safeNumber(item.quantity) - alreadyReturned);
+        return {
+          product_id: String(item.product_id),
+          quantity: String(remaining),
+          purchase_price: item.purchase_price != null ? String(item.purchase_price) : "",
+          selling_price: item.selling_price != null ? String(item.selling_price) : "",
+          batch_number: item.batch_number ?? "",
+          expiry_date: item.expiry_date ?? "",
+        };
+      })
+    );
   };
 
   const handleCreatePurchaseReturn = async () => {
@@ -20111,7 +20160,7 @@ export default function Home() {
                 <span>Linked Purchase Invoice (Optional)</span>
                 <select
                   value={returnPurchaseTransactionId}
-                  onChange={(e) => setReturnPurchaseTransactionId(e.target.value)}
+                  onChange={(e) => handlePurchaseReturnInvoiceChange(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="">None</option>

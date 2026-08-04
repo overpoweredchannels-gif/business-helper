@@ -219,3 +219,24 @@ export function generateSalesOrderWithClient(
 ): Promise<string> {
   return generateInvoiceNumberWithClient(supabase, organizationId, "sales_order");
 }
+
+export function generateSalesInvoiceWithClient(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string> {
+  return generateInvoiceNumberWithClient(supabase, organizationId, "sales");
+}
+
+export function generateSalesReturnInvoiceWithClient(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string> {
+  return generateInvoiceNumberWithClient(supabase, organizationId, "sales_return");
+}
+
+export function generatePurchaseReturnInvoiceWithClient(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string> {
+  return generateInvoiceNumberWithClient(supabase, organizationId, "purchase_return");
+}

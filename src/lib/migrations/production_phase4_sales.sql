@@ -32,6 +32,9 @@ alter table public.customers
 alter table public.customers
   add column if not exists notes text;
 
+alter table public.customers
+  add column if not exists updated_at timestamptz not null default now();
+
 create index if not exists customers_org_is_active_idx
   on public.customers (organization_id, is_active);
 
