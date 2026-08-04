@@ -351,40 +351,48 @@ create policy notifications_delete_org on public.notifications
   );
 
 -- ===========================================================================
--- PART F — POST-APPLY VERIFICATION
+-- PART F — POST-APPLY VERIFICATION (plain SQL, no dollar-quoting)
 -- ===========================================================================
 
-do $$
-declare
-  v_missing text[] := '{}';
-begin
-  if to_regclass('public.employees') is null then v_missing := v_missing || 'table employees'; end if;
-  if to_regclass('public.territories') is null then v_missing := v_missing || 'table territories'; end if;
-  if to_regclass('public.sales_routes') is null then v_missing := v_missing || 'table sales_routes'; end if;
-  if to_regclass('public.sales_route_stops') is null then v_missing := v_missing || 'table sales_route_stops'; end if;
-  if to_regclass('public.notifications') is null then v_missing := v_missing || 'table notifications'; end if;
-
-  if not exists (
+with missing_items as (
+  select 'table employees' as item
+  where to_regclass('public.employees') is null
+  union all
+  select 'table territories'
+  where to_regclass('public.territories') is null
+  union all
+  select 'table sales_routes'
+  where to_regclass('public.sales_routes') is null
+  union all
+  select 'table sales_route_stops'
+  where to_regclass('public.sales_route_stops') is null
+  union all
+  select 'table notifications'
+  where to_regclass('public.notifications') is null
+  union all
+  select 'customers.assigned_salesman_id'
+  where not exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'customers'
       and column_name = 'assigned_salesman_id'
-  ) then v_missing := v_missing || 'customers.assigned_salesman_id'; end if;
-
-  if not exists (
+  )
+  union all
+  select 'customers.visit_frequency'
+  where not exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'customers'
       and column_name = 'visit_frequency'
-  ) then v_missing := v_missing || 'customers.visit_frequency'; end if;
-
-  if not exists (
+  )
+  union all
+  select 'role_invitations.employee_id'
+  where not exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'role_invitations'
       and column_name = 'employee_id'
-  ) then v_missing := v_missing || 'role_invitations.employee_id'; end if;
-
-  if array_length(v_missing, 1) is not null then
-    raise exception 'PHASE 5 FSM FAILED — missing: %', array_to_string(v_missing, ', ');
-  else
-    raise notice 'PHASE 5 FSM OK — employees, territories, routes, notifications, customer FSM columns all present';
-  end if;
-end $$;
+  )
+)
+select case
+  when count(*) = 0 then 'PHASE 5 FSM OK — employees, territories, routes, notifications, customer FSM columns all present'
+  else 'PHASE 5 FSM FAILED — missing: ' || string_agg(item, ', ')
+end as result
+from missing_items;
