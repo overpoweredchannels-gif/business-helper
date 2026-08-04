@@ -18,7 +18,9 @@ export type ModulePermission =
   | "location_view"
   | "ai_assistant"
   | "administration"
-  | "settings_manage";
+  | "settings_manage"
+  | "field_sales"
+  | "draft_approval";
 
 export type BuiltInRole =
   | "owner"
@@ -26,7 +28,11 @@ export type BuiltInRole =
   | "salesman"
   | "purchase_officer"
   | "warehouse_staff"
-  | "viewer";
+  | "viewer"
+  | "delivery_rider"
+  | "field_officer"
+  | "collection_officer"
+  | "supervisor";
 
 export type RoleType = BuiltInRole | string;
 
@@ -87,4 +93,8 @@ export interface Invitation {
   expiresAt: string;
   acceptedAt: string | null;
   acceptedBy: string | null;
+  employeeId?: string | null;
+  fullName?: string | null;
+  phone?: string | null;
+  designation?: string | null;
 }

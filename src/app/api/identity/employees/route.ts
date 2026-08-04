@@ -1,28 +1,36 @@
-import { NextResponse } from "next/server";
-import { resolveActor } from "@/lib/identity/api-context";
+import { NextRequest, NextResponse } from "next/server";
+import { requireOwner, requirePermission } from "@/lib/identity/authorization";
 import { EmployeeService } from "@/lib/identity/services/employee-service";
 
-export async function GET(request: Request) {
-  const context = await resolveActor(request);
-  if (!context.actor?.organizationId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function GET(request: NextRequest) {
+  const permission = await requirePermission(request, "administration");
+  if (!permission.allowed || !permission.actor) {
+    return NextResponse.json({ error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
 
-  const service = new EmployeeService();
-  const employees = await service.listEmployees(context.actor);
-
-  return NextResponse.json({ employees });
+  try {
+    const service = new EmployeeService();
+    const employees = await service.listEmployees(permission.actor);
+    return NextResponse.json({ employees });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load employees";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
-export async function POST(request: Request) {
-  const context = await resolveActor(request);
-  if (!context.actor?.organizationId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function POST(request: NextRequest) {
+  const permission = await requireOwner(request);
+  if (!permission.allowed || !permission.actor) {
+    return NextResponse.json({ error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({}));
   const service = new EmployeeService();
-  const employee = await service.createEmployee(context.actor, body);
+  const result = await service.createEmployee(permission.actor, body);
 
-  return NextResponse.json({ employee });
+  if (result.error || !result.employee) {
+    return NextResponse.json({ error: result.error ?? "Failed to create employee" }, { status: 400 });
+  }
+
+  return NextResponse.json({ employee: result.employee });
 }

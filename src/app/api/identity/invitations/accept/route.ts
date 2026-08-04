@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
-import { getInvitationByCode, acceptInvitation, validatePassword } from "@/lib/identity/invitations";
+import { validatePassword } from "@/lib/identity/invitations";
+import { InvitationService } from "@/lib/identity/repositories/invitation-repository";
 import { buildLegacyPermissionRow } from "@/lib/identity/legacy";
 import { logAuditEvent } from "@/lib/identity/audit";
 
@@ -21,7 +22,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: passwordError }, { status: 400 });
   }
 
-  const invitationResult = getInvitationByCode(code);
+  const invitationService = new InvitationService();
+  const invitationResult = await invitationService.getByCode(code);
   if (invitationResult.error || !invitationResult.invitation) {
     return NextResponse.json(
       { ok: false, error: invitationResult.error ?? "Invitation not found." },
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const accepted = acceptInvitation(code, createdUser.user.id);
+  const accepted = await invitationService.acceptInvitation(code, createdUser.user.id);
   if (accepted.error || !accepted.invitation) {
     return NextResponse.json({ ok: false, error: accepted.error ?? "Invitation acceptance failed." }, { status: 500 });
   }

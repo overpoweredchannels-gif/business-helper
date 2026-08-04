@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveActor } from "@/lib/identity/api-context";
-import { createInvitation, listInvitations } from "@/lib/identity/invitations";
 import { validateEmail } from "@/lib/identity/invitations";
+import { InvitationService } from "@/lib/identity/repositories/invitation-repository";
 import { normalizeRole, roleExists } from "@/lib/identity/permissions";
 import { logAuditEvent } from "@/lib/identity/audit";
 
@@ -33,11 +33,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unknown role. Please pick a role from the role library." }, { status: 400 });
   }
 
-  const result = createInvitation({
+  const invitationService = new InvitationService();
+  const result = await invitationService.createInvitation({
     organizationId: actor.organizationId,
     email,
     role,
     createdBy: actor.profileId,
+    employeeId: (body as { employeeId?: string }).employeeId,
+    fullName: (body as { fullName?: string }).fullName,
+    phone: (body as { phone?: string }).phone,
+    designation: (body as { designation?: string }).designation,
   });
   if (result.error || !result.invitation) {
     return NextResponse.json({ ok: false, error: result.error ?? "Invitation failed." }, { status: 400 });
@@ -70,7 +75,8 @@ export async function GET(request: NextRequest) {
   if (error || !actor) {
     return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
   }
-  const invitations = listInvitations(actor.organizationId);
+  const invitationService = new InvitationService();
+  const invitations = await invitationService.listForOrganization(actor.organizationId);
   return NextResponse.json({
     ok: true,
     invitations: invitations.map((i) => ({

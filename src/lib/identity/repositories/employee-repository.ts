@@ -1,22 +1,21 @@
 import { createSupabaseService } from "@/lib/supabase/server";
+import { Employee, EmployeeDesignation } from "@/lib/tradeos/types";
 
-export type EmployeeRecord = {
-  id: string;
-  organization_id: string;
-  profile_id: string;
-  role?: string | null;
-  is_active?: boolean | null;
-  metadata?: Record<string, unknown> | null;
-  created_at?: string;
-  updated_at?: string;
-};
+export type EmployeeInput = Partial<Employee>;
+
+const EMPLOYEE_COLUMNS = `
+  id, organization_id, profile_id, employee_id, full_name, phone, cnic, email,
+  designation, department, joining_date, status, assigned_supervisor_id,
+  assigned_territory_id, assigned_route_id, photo_url, emergency_contact,
+  is_active, created_at, updated_at
+`;
 
 export class EmployeeRepository {
-  async findByOrganization(organizationId: string) {
+  async findByOrganization(organizationId: string): Promise<Employee[]> {
     const supabase = createSupabaseService();
     const { data, error } = await supabase
       .from("employees")
-      .select("*")
+      .select(EMPLOYEE_COLUMNS)
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false });
 
@@ -24,42 +23,74 @@ export class EmployeeRepository {
       throw error;
     }
 
-    return data as EmployeeRecord[];
+    return (data ?? []) as Employee[];
   }
 
-  async create(input: Omit<EmployeeRecord, "id" | "created_at" | "updated_at">) {
+  async findById(id: string): Promise<Employee | null> {
     const supabase = createSupabaseService();
-    const { data, error } = await supabase.from("employees").insert(input).select("*").single();
+    const { data, error } = await supabase
+      .from("employees")
+      .select(EMPLOYEE_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
 
     if (error) {
       throw error;
     }
 
-    return data as EmployeeRecord;
+    return (data as Employee | null) ?? null;
   }
 
-  async update(id: string, updates: Partial<EmployeeRecord>) {
+  async create(input: EmployeeInput): Promise<Employee> {
     const supabase = createSupabaseService();
     const { data, error } = await supabase
       .from("employees")
-      .update(updates)
-      .eq("id", id)
-      .select("*")
+      .insert(input)
+      .select(EMPLOYEE_COLUMNS)
       .single();
 
     if (error) {
       throw error;
     }
 
-    return data as EmployeeRecord;
+    return data as Employee;
   }
 
-  async remove(id: string) {
+  async update(id: string, updates: EmployeeInput): Promise<Employee> {
     const supabase = createSupabaseService();
-    const { error } = await supabase.from("employees").delete().eq("id", id);
+    const { data, error } = await supabase
+      .from("employees")
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select(EMPLOYEE_COLUMNS)
+      .single();
 
     if (error) {
       throw error;
     }
+
+    return data as Employee;
   }
+
+  async remove(id: string): Promise<void> {
+    const supabase = createSupabaseService();
+    const { error } = await supabase.from("employees").delete().eq("id", id);
+    if (error) {
+      throw error;
+    }
+  }
+}
+
+export const EMPLOYEE_DESIGNATIONS: EmployeeDesignation[] = [
+  "salesman",
+  "delivery_rider",
+  "field_officer",
+  "collection_officer",
+  "supervisor",
+  "manager",
+  "owner",
+];
+
+export function isEmployeeDesignation(value: string): value is EmployeeDesignation {
+  return (EMPLOYEE_DESIGNATIONS as string[]).includes(value);
 }

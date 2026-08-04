@@ -16,6 +16,10 @@ import InvitationPanel from "@/components/identity/InvitationPanel";
 import SessionManagement from "@/components/identity/SessionManagement";
 import AuditLogPanel from "@/components/identity/AuditLogPanel";
 import ImportWizard from "@/components/inventory/ImportWizard";
+import EmployeeManagement from "@/components/fsm/EmployeeManagement";
+import NotificationCenter from "@/components/fsm/NotificationCenter";
+import TerritoriesManager from "@/components/fsm/TerritoriesManager";
+import RoutesManager from "@/components/fsm/RoutesManager";
 import {
   aiAssistantExampleCommands,
   aiAssistantRoadmapItems,
@@ -4972,6 +4976,10 @@ export default function Home() {
     "ai-business-query": "owner_admin",
     "ai-voice-operator": "owner_admin",
     "market-intelligence": "owner_admin",
+    employees: "owner_admin",
+    territories: "owner_admin",
+    routes: "owner_admin",
+    notifications: "owner_admin",
   };
   const canAccessSection = (sectionId: SectionId) => {
     if (sectionId === "dashboard") return true;
@@ -22164,6 +22172,30 @@ export default function Home() {
               ))}
             </div>
           </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "employees" && (
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <EmployeeManagement />
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "territories" && (
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <TerritoriesManager />
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "routes" && (
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <RoutesManager />
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "notifications" && (
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <NotificationCenter />
         </section>
         )}
 

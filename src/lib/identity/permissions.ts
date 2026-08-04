@@ -17,6 +17,13 @@ export const ACTION_PERMISSION_MAP: Record<string, ModulePermission[]> = {
   location_query: ["location_view"],
   business_query: ["reports_view"],
   market_intelligence: ["ai_assistant"],
+  create_draft_sale: ["sales_create", "field_sales"],
+  approve_draft_sale: ["draft_approval"],
+  manage_employees: ["administration"],
+  manage_territories: ["administration"],
+  manage_routes: ["administration"],
+  record_visit: ["field_sales"],
+  view_own_reports: ["reports_view"],
 };
 
 export interface PermissionContext {

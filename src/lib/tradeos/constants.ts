@@ -31,6 +31,10 @@ export const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "market-intelligence", label: "Market Intelligence" },
   { id: "live-tracking", label: "Live Tracking" },
   { id: "mobile-app", label: "Mobile App" },
+  { id: "employees", label: "Employees" },
+  { id: "territories", label: "Territories" },
+  { id: "routes", label: "Routes" },
+  { id: "notifications", label: "Notifications" },
 ];
 
 export const staffPermissionLabels: Array<{ key: StaffPermissionKey; label: string }> = [

@@ -532,7 +532,11 @@ export type SectionId =
   | "ai-voice-operator"
   | "market-intelligence"
   | "mobile-app"
-  | "live-tracking";
+  | "live-tracking"
+  | "employees"
+  | "territories"
+  | "routes"
+  | "notifications";
 
 export type StaffPermissionKey =
   | "can_manage_products"
@@ -599,6 +603,103 @@ export interface CurrentLocationSnapshot {
   heading: number | null;
   altitude: number | null;
   captured_at: string;
+}
+
+export type EmployeeDesignation =
+  | "salesman"
+  | "delivery_rider"
+  | "field_officer"
+  | "collection_officer"
+  | "supervisor"
+  | "manager"
+  | "owner";
+
+export interface Employee {
+  id: string;
+  organization_id: string;
+  profile_id: string | null;
+  employee_id: string | null;
+  full_name: string;
+  phone: string | null;
+  cnic: string | null;
+  email: string | null;
+  designation: EmployeeDesignation;
+  department: string | null;
+  joining_date: string | null;
+  status: "active" | "inactive" | "archived";
+  assigned_supervisor_id: string | null;
+  assigned_territory_id: string | null;
+  assigned_route_id: string | null;
+  photo_url: string | null;
+  emergency_contact: {
+    name?: string | null;
+    phone?: string | null;
+    relation?: string | null;
+  } | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Territory {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SalesRoute {
+  id: string;
+  organization_id: string;
+  name: string;
+  territory_id: string | null;
+  description: string | null;
+  route_frequency: "daily" | "weekly" | "monthly";
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SalesRouteStop {
+  id: string;
+  organization_id: string;
+  route_id: string;
+  customer_id: string;
+  stop_order: number;
+  created_at: string;
+}
+
+export type NotificationCategory =
+  | "draft_sale"
+  | "approval"
+  | "target"
+  | "route"
+  | "duty"
+  | "off_route"
+  | "missed_customer"
+  | "inventory"
+  | "attendance"
+  | "leave"
+  | "collection"
+  | "general";
+
+export interface NotificationItem {
+  id: string;
+  organization_id: string;
+  recipient_profile_id: string;
+  category: NotificationCategory;
+  title: string;
+  body: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  channel: string;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+  payload: Record<string, unknown> | null;
 }
 
 export interface AiActionDraft {
