@@ -48,6 +48,9 @@ export interface Customer {
   allow_over_limit: boolean | null;
   allow_overdue_sales: boolean | null;
   preferred_payment_method: string | null;
+  // Sales Management (Phase 4) — additive metadata.
+  is_active?: boolean | null;
+  notes?: string | null;
 }
 
 export interface Supplier {
@@ -97,6 +100,63 @@ export interface SalesTransaction {
   status?: string | null;
   invoice_type?: string | null;
   created_by_profile_id?: string | null;
+  // Sales Management (Phase 4) — additive metadata.
+  discount_amount?: number | null;
+  tax_rate?: number | null;
+  tax_amount?: number | null;
+}
+
+// Sales Management (Phase 4) — sales orders, their line items, returns.
+
+export interface SalesOrder {
+  id: string;
+  organization_id: string;
+  so_number: string;
+  customer_id: string | null;
+  order_date: string | null;
+  expected_date: string | null;
+  notes: string | null;
+  status: "draft" | "confirmed" | "delivered" | "cancelled";
+  created_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SalesOrderItem {
+  id: string;
+  sales_order_id: string;
+  product_id: number;
+  quantity_ordered: number;
+  quantity_delivered: number;
+  unit_price: number | null;
+  discount: number | null;
+  created_at: string;
+}
+
+export interface SalesReturn {
+  id: string;
+  organization_id: string;
+  return_number: string;
+  customer_id: string | null;
+  sales_transaction_id: string | null;
+  return_date: string | null;
+  reason: string | null;
+  status: "confirmed" | "cancelled";
+  created_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SalesReturnItem {
+  id: string;
+  sales_return_id: string;
+  product_id: number;
+  quantity: number;
+  unit_price: number | null;
+  discount: number | null;
+  batch_number: string | null;
+  expiry_date: string | null;
+  created_at: string;
 }
 
 // Purchase Management (Phase 1) — purchase orders, their line items, returns.

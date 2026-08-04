@@ -26,6 +26,7 @@ export const INVOICE_PREFIXES: Record<InvoiceType, string> = {
   sales_return: "SRN",
   purchase_return: "PRN",
   purchase_order: "PO",
+  sales_order: "SO",
 };
 
 /** Number of zero-padded digits in the sequence portion per invoice type. */
@@ -35,6 +36,7 @@ export const INVOICE_SEQUENCE_PAD_LENGTH: Record<InvoiceType, number> = {
   sales_return: 6,
   purchase_return: 6,
   purchase_order: 6,
+  sales_order: 6,
 };
 
 /** Starting offset for sequence numbers per invoice type (added to DB counter). */
@@ -44,6 +46,7 @@ export const INVOICE_SEQUENCE_OFFSET: Record<InvoiceType, number> = {
   sales_return: 0,
   purchase_return: 0,
   purchase_order: 0,
+  sales_order: 0,
 };
 
 /**
@@ -114,6 +117,10 @@ export class InvoiceNumberService {
   generatePurchaseOrder(organizationId: string): Promise<string> {
     return this.generateInvoiceNumber(organizationId, "purchase_order");
   }
+
+  generateSalesOrder(organizationId: string): Promise<string> {
+    return this.generateInvoiceNumber(organizationId, "sales_order");
+  }
 }
 
 let sharedInstance: InvoiceNumberService | null = null;
@@ -144,6 +151,10 @@ export async function generatePurchaseReturnInvoice(organizationId: string): Pro
 
 export async function generatePurchaseOrder(organizationId: string): Promise<string> {
   return getInvoiceNumberService().generatePurchaseOrder(organizationId);
+}
+
+export async function generateSalesOrder(organizationId: string): Promise<string> {
+  return getInvoiceNumberService().generateSalesOrder(organizationId);
 }
 
 /**
@@ -200,4 +211,11 @@ export function generatePurchaseOrderWithClient(
   organizationId: string,
 ): Promise<string> {
   return generateInvoiceNumberWithClient(supabase, organizationId, "purchase_order");
+}
+
+export function generateSalesOrderWithClient(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string> {
+  return generateInvoiceNumberWithClient(supabase, organizationId, "sales_order");
 }

@@ -9,7 +9,7 @@
  * the engine was first built (Part 1's "future-proof the numbering engine");
  * Purchase Management Phase 1 adds Purchase Orders to the same engine.
  */
-export type InvoiceType = "sales" | "purchase" | "sales_return" | "purchase_return" | "purchase_order";
+export type InvoiceType = "sales" | "purchase" | "sales_return" | "purchase_return" | "purchase_order" | "sales_order";
 
 /**
  * Invoice lifecycle status. Defaults to "confirmed" for backward

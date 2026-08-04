@@ -80,6 +80,10 @@ import type {
   PurchaseReturn,
   PurchaseReturnItem,
   PurchaseTransaction,
+  SalesOrder,
+  SalesOrderItem,
+  SalesReturn,
+  SalesReturnItem,
   SalesTransaction,
   SectionId,
   SecurityCheck,
@@ -117,9 +121,14 @@ import {
   validatePurchaseReturnInput,
 } from "@/lib/purchases/validation";
 import {
+  validateSalesOrderInput,
+  validateSalesReturnInput,
+} from "@/lib/sales/validation";
+import {
   generatePurchaseInvoiceWithClient,
   generatePurchaseOrderWithClient,
   generateSalesInvoice,
+  generateSalesOrderWithClient,
 } from "@/lib/invoices/invoice-number-service";
 import type { InventoryTransaction } from "@/lib/inventory/types";
 
@@ -307,6 +316,8 @@ export default function Home() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+  const [customerEditingId, setCustomerEditingId] = useState<string | null>(null);
+  const [customerNotes, setCustomerNotes] = useState("");
 
   const [supplierName, setSupplierName] = useState("");
   const [contactPerson, setContactPerson] = useState("");
@@ -1509,7 +1520,7 @@ export default function Home() {
     clearCreditOverrideState();
     setSalesLines([
       ...salesLines,
-      { product_id: null, quantity: "", selling_price: "" },
+      { product_id: null, quantity: "", selling_price: "", discount: "" },
     ]);
   };
 
@@ -3504,6 +3515,33 @@ export default function Home() {
       return;
     }
 
+    const parsedInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
+    if (
+      salesDiscountAmount.trim() !== "" &&
+      (!Number.isFinite(parsedInvoiceDiscount) || parsedInvoiceDiscount < 0)
+    ) {
+      setSalesError("Invoice discount must be a valid amount greater than or equal to zero");
+      setSalesMessage(null);
+      return;
+    }
+
+    const parsedTaxRate = salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate);
+    if (salesTaxRate.trim() !== "" && (!Number.isFinite(parsedTaxRate) || parsedTaxRate < 0)) {
+      setSalesError("Tax rate must be a valid percentage greater than or equal to zero");
+      setSalesMessage(null);
+      return;
+    }
+
+    for (const line of salesLines) {
+      if (!line.product_id) continue;
+      const lineDiscount = line.discount.trim() === "" ? 0 : Number(line.discount);
+      if (line.discount.trim() !== "" && (!Number.isFinite(lineDiscount) || lineDiscount < 0)) {
+        setSalesError("Line discount must be a valid amount greater than or equal to zero");
+        setSalesMessage(null);
+        return;
+      }
+    }
+
     let creditDueDate: string | null = null;
     let creditLimitSnapshot: number | null = null;
     let creditDaysSnapshot: number | null = null;
@@ -3633,6 +3671,14 @@ export default function Home() {
         return;
       }
 
+      const lineSubtotal = salesLines.reduce((sum, line) => {
+        if (!line.product_id) return sum;
+        const lineDiscount = line.discount.trim() === "" ? 0 : safeNumber(line.discount);
+        return sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - lineDiscount;
+      }, 0);
+      const taxableBase = Math.max(0, lineSubtotal - parsedInvoiceDiscount);
+      const computedTaxAmount = (taxableBase * parsedTaxRate) / 100;
+
       const tx = await supabase
         .from("sales_transactions")
         .insert({
@@ -3645,6 +3691,13 @@ export default function Home() {
           credit_days_snapshot: salesPaymentType === "credit" ? creditDaysSnapshot : null,
           notes: null,
           organization_id: currentOrganizationId,
+          total_amount: taxableBase + computedTaxAmount,
+          discount_amount: parsedInvoiceDiscount,
+          tax_rate: parsedTaxRate,
+          tax_amount: computedTaxAmount,
+          status: salesPaymentType === "cash" ? "paid" : "unpaid",
+          invoice_type: "sales",
+          created_by_profile_id: currentProfile?.id ?? null,
         })
         .select()
         .single();
@@ -3699,6 +3752,8 @@ export default function Home() {
           quantity: Number(line.quantity),
           selling_price: Number(line.selling_price),
           purchase_price_snapshot: purchasePriceSnapshot,
+          discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
+          organization_id: currentOrganizationId,
         });
 
         if (itemError) throw itemError;
@@ -3723,6 +3778,8 @@ export default function Home() {
       setSalesInvoiceNumber("");
       setSalesInvoiceDate(toDateInputValue(new Date()));
       setSalesPaymentType("cash");
+      setSalesDiscountAmount("");
+      setSalesTaxRate("");
       clearCreditOverrideState();
       setSalesLines([]);
 
@@ -3804,6 +3861,8 @@ export default function Home() {
           amount: paymentAmount,
         notes: customerPaymentNotes || null,
         organization_id: currentOrganizationId,
+        payment_date: customerPaymentDate || null,
+        payment_method: customerPaymentMethod,
         })
         .select("id")
         .single();
@@ -3867,9 +3926,12 @@ export default function Home() {
       setSelectedCustomerPaymentId(null);
       setCustomerPaymentAmount("");
       setCustomerPaymentNotes("");
+      setCustomerPaymentDate(toDateInputValue(new Date()));
+      setCustomerPaymentMethod("cash");
       setCustomerPaymentAllocationsByInvoice({});
       await fetchCustomerPayments(currentOrganizationId);
       await fetchCustomerPaymentAllocations(currentOrganizationId);
+      await fetchSalesTransactions(currentOrganizationId);
     } catch (err) {
       setCustomerPaymentError(err instanceof Error ? err.message : "Failed to save payment");
       console.error("Error saving customer payment:", err);
@@ -3947,6 +4009,8 @@ export default function Home() {
           amount: paymentAmount,
           notes: supplierPaymentNotes || null,
           organization_id: currentOrganizationId,
+          payment_date: supplierPaymentDate || null,
+          payment_method: supplierPaymentMethod,
         })
         .select("id")
         .single();
@@ -4010,6 +4074,8 @@ export default function Home() {
       setSelectedSupplierPaymentId(null);
       setSupplierPaymentAmount("");
       setSupplierPaymentNotes("");
+      setSupplierPaymentDate(toDateInputValue(new Date()));
+      setSupplierPaymentMethod("cash");
       setSupplierPaymentAllocationsByInvoice({});
       await fetchSupplierPayments(currentOrganizationId);
       await fetchSupplierPaymentAllocations(currentOrganizationId);
@@ -4261,7 +4327,7 @@ export default function Home() {
     const { data, error } = await supabase
       .from("customers")
       .select(
-        "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method"
+        "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes"
       )
       .eq("organization_id", orgId)
       .order("customer_name", { ascending: true });
@@ -4468,6 +4534,148 @@ export default function Home() {
     setPurchaseReturnItems(data ?? []);
   };
 
+  const fetchSalesOrders = async (organizationId?: string | null) => {
+    setSalesOrdersLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setSalesOrders([]);
+      setSalesOrdersLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("sales_orders")
+      .select("id, organization_id, so_number, customer_id, order_date, expected_date, notes, status, created_by_profile_id, created_at, updated_at")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false });
+
+    setSalesOrdersLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch sales orders error:", error);
+      return;
+    }
+
+    setSalesOrders(data ?? []);
+  };
+
+  const fetchSalesOrderItems = async (
+    organizationId?: string | null,
+    orderIds?: string[]
+  ) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setSalesOrderItems([]);
+      return;
+    }
+
+    let ids = orderIds;
+    if (!ids || ids.length === 0) {
+      if (orderIds !== undefined) {
+        setSalesOrderItems([]);
+        return;
+      }
+      const { data: soRows, error: soError } = await supabase
+        .from("sales_orders")
+        .select("id")
+        .eq("organization_id", orgId);
+      if (soError) {
+        console.error("Supabase fetch sales order ids error:", soError);
+        return;
+      }
+      ids = (soRows ?? []).map((row) => row.id);
+    }
+
+    if (ids.length === 0) {
+      setSalesOrderItems([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("sales_order_items")
+      .select("id, sales_order_id, product_id, quantity_ordered, quantity_delivered, unit_price, discount, created_at")
+      .in("sales_order_id", ids)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch sales order items error:", error);
+      return;
+    }
+
+    setSalesOrderItems(data ?? []);
+  };
+
+  const fetchSalesReturns = async (organizationId?: string | null) => {
+    setSalesReturnsLoading(true);
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setSalesReturns([]);
+      setSalesReturnsLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("sales_returns")
+      .select("id, organization_id, return_number, customer_id, sales_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false });
+
+    setSalesReturnsLoading(false);
+
+    if (error) {
+      console.error("Supabase fetch sales returns error:", error);
+      return;
+    }
+
+    setSalesReturns(data ?? []);
+  };
+
+  const fetchSalesReturnItems = async (
+    organizationId?: string | null,
+    returnIds?: string[]
+  ) => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) {
+      setSalesReturnItems([]);
+      return;
+    }
+
+    let ids = returnIds;
+    if (!ids || ids.length === 0) {
+      if (returnIds !== undefined) {
+        setSalesReturnItems([]);
+        return;
+      }
+      const { data: returnRows, error: returnsError } = await supabase
+        .from("sales_returns")
+        .select("id")
+        .eq("organization_id", orgId);
+      if (returnsError) {
+        console.error("Supabase fetch sales return ids error:", returnsError);
+        return;
+      }
+      ids = (returnRows ?? []).map((row) => row.id);
+    }
+
+    if (ids.length === 0) {
+      setSalesReturnItems([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("sales_return_items")
+      .select("id, sales_return_id, product_id, quantity, unit_price, discount, batch_number, expiry_date, created_at")
+      .in("sales_return_id", ids)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Supabase fetch sales return items error:", error);
+      return;
+    }
+
+    setSalesReturnItems(data ?? []);
+  };
+
   // Purchase & Sales items + Sales transactions (for dashboard & history)
   const [purchaseItems, setPurchaseItems] = useState<any[]>([]);
   const [salesItems, setSalesItems] = useState<any[]>([]);
@@ -4549,6 +4757,8 @@ export default function Home() {
   const [selectedCustomerPaymentId, setSelectedCustomerPaymentId] = useState<string | null>(null);
   const [customerPaymentAmount, setCustomerPaymentAmount] = useState("");
   const [customerPaymentNotes, setCustomerPaymentNotes] = useState("");
+  const [customerPaymentDate, setCustomerPaymentDate] = useState(toDateInputValue(new Date()));
+  const [customerPaymentMethod, setCustomerPaymentMethod] = useState<"cash" | "bank">("cash");
   const [customerPaymentLoading, setCustomerPaymentLoading] = useState(false);
   const [customerPaymentMessage, setCustomerPaymentMessage] = useState<string | null>(null);
   const [customerPaymentError, setCustomerPaymentError] = useState<string | null>(null);
@@ -4558,6 +4768,8 @@ export default function Home() {
   const [selectedSupplierPaymentId, setSelectedSupplierPaymentId] = useState<string | null>(null);
   const [supplierPaymentAmount, setSupplierPaymentAmount] = useState("");
   const [supplierPaymentNotes, setSupplierPaymentNotes] = useState("");
+  const [supplierPaymentDate, setSupplierPaymentDate] = useState(toDateInputValue(new Date()));
+  const [supplierPaymentMethod, setSupplierPaymentMethod] = useState<"cash" | "bank">("cash");
   const [supplierPaymentLoading, setSupplierPaymentLoading] = useState(false);
   const [supplierPaymentMessage, setSupplierPaymentMessage] = useState<string | null>(null);
   const [supplierPaymentError, setSupplierPaymentError] = useState<string | null>(null);
@@ -4573,16 +4785,55 @@ export default function Home() {
   const [salesInvoiceNumber, setSalesInvoiceNumber] = useState("");
   const [salesInvoiceDate, setSalesInvoiceDate] = useState(toDateInputValue(new Date()));
   const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "credit">("cash");
+  const [salesDiscountAmount, setSalesDiscountAmount] = useState("");
+  const [salesTaxRate, setSalesTaxRate] = useState("");
   const [creditWarning, setCreditWarning] = useState<string | null>(null);
   const [creditOverrideConfirmation, setCreditOverrideConfirmation] = useState<{
     overLimit: boolean;
     overdue: boolean;
   } | null>(null);
-  interface SalesLine { product_id: string | null; quantity: string; selling_price: string; }
+  interface SalesLine {
+    product_id: string | null;
+    quantity: string;
+    selling_price: string;
+    discount: string;
+    batch_number?: string;
+    expiry_date?: string;
+  }
   const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
   const [salesError, setSalesError] = useState<string | null>(null);
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
+
+  // Sales Management (Phase 4) — sales orders + returns + reporting
+  const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report">("invoice");
+
+  const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
+  const [salesOrdersLoading, setSalesOrdersLoading] = useState(false);
+  const [salesOrderItems, setSalesOrderItems] = useState<SalesOrderItem[]>([]);
+  const [soCustomerId, setSoCustomerId] = useState("");
+  const [soOrderDate, setSoOrderDate] = useState(toDateInputValue(new Date()));
+  const [soExpectedDate, setSoExpectedDate] = useState("");
+  const [soNotes, setSoNotes] = useState("");
+  const [soLines, setSoLines] = useState<SalesLine[]>([]);
+  const [soMessage, setSoMessage] = useState<string | null>(null);
+  const [soError, setSoError] = useState<string | null>(null);
+  const [soLoading, setSoLoading] = useState(false);
+  const [soEditingId, setSoEditingId] = useState<string | null>(null);
+
+  const [salesReturns, setSalesReturns] = useState<SalesReturn[]>([]);
+  const [salesReturnsLoading, setSalesReturnsLoading] = useState(false);
+  const [salesReturnItems, setSalesReturnItems] = useState<SalesReturnItem[]>([]);
+  const [srCustomerId, setSrCustomerId] = useState("");
+  const [srReturnDate, setSrReturnDate] = useState(toDateInputValue(new Date()));
+  const [srReturnReason, setSrReturnReason] = useState("");
+  const [srSalesTransactionId, setSrSalesTransactionId] = useState("");
+  const [srLines, setSrLines] = useState<SalesLine[]>([]);
+  const [srMessage, setSrMessage] = useState<string | null>(null);
+  const [srError, setSrError] = useState<string | null>(null);
+  const [srLoading, setSrLoading] = useState(false);
+
+  const [salesReportRange, setSalesReportRange] = useState("this_month");
   const [profitLossStartDate, setProfitLossStartDate] = useState(currentMonthRange.start);
   const [profitLossEndDate, setProfitLossEndDate] = useState(currentMonthRange.end);
   const [profitLossDateError, setProfitLossDateError] = useState<string | null>(null);
@@ -5290,7 +5541,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("sales_items")
-      .select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot")
+      .select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot, discount")
       .eq("organization_id", orgId)
       .order("id", { ascending: true });
 
@@ -5420,7 +5671,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("sales_transactions")
-      .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot")
+      .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -5737,8 +5988,8 @@ export default function Home() {
     setCustomerMessage(null);
     setCustomersLoading(true);
 
-    const { data, error } = await supabase.from("customers").insert({
-      customer_name: customerName,
+    const customerPayload = {
+      customer_name: customerName.trim(),
       shop_name: shopName || null,
       phone: phone || null,
       whatsapp: whatsapp || null,
@@ -5750,33 +6001,73 @@ export default function Home() {
       credit_days: requiresCreditDays ? parsedCreditDays : 0,
       allow_over_limit: requiresCreditLimit ? allowOverLimit : false,
       allow_overdue_sales: requiresCreditDays ? allowOverdueSales : false,
-      organization_id: currentOrganizationId,
-    }).select("id").single();
+      notes: customerNotes.trim() || null,
+    };
 
-    setCustomersLoading(false);
+    if (customerEditingId) {
+      const response = await authorizedFetch(`/api/customers/${customerEditingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(customerPayload),
+      });
+      const result = await response.json();
 
-    if (error) {
-      setCustomerError("Failed to save customer");
-      console.error("Supabase add customer error:", error);
-      return;
+      setCustomersLoading(false);
+
+      if (!response.ok || !result.ok) {
+        setCustomerError(result.error ?? "Failed to update customer");
+        return;
+      }
+
+      await createAuditLog({
+        action: "updated",
+        entity_type: "customer",
+        entity_id: customerEditingId,
+        entity_label: customerName.trim(),
+        description: `Updated customer ${customerName.trim()}`,
+        new_values: {
+          customer_name: customerName.trim(),
+          shop_name: shopName || null,
+          phone: phone || null,
+          city: city || null,
+          customer_type: customerType,
+          credit_policy: creditPolicy,
+        },
+      });
+      setCustomerMessage("Customer updated successfully");
+    } else {
+      const { data, error } = await supabase.from("customers").insert({
+        ...customerPayload,
+        organization_id: currentOrganizationId,
+      }).select("id").single();
+
+      setCustomersLoading(false);
+
+      if (error) {
+        setCustomerError("Failed to save customer");
+        console.error("Supabase add customer error:", error);
+        return;
+      }
+
+      await createAuditLog({
+        action: "created",
+        entity_type: "customer",
+        entity_id: data?.id ?? null,
+        entity_label: customerName,
+        description: `Created customer ${customerName}`,
+        new_values: {
+          customer_name: customerName,
+          shop_name: shopName || null,
+          phone: phone || null,
+          city: city || null,
+          customer_type: customerType,
+          credit_policy: creditPolicy,
+        },
+      });
+      setCustomerMessage("Customer saved successfully");
     }
 
-    await createAuditLog({
-      action: "created",
-      entity_type: "customer",
-      entity_id: data?.id ?? null,
-      entity_label: customerName,
-      description: `Created customer ${customerName}`,
-      new_values: {
-        customer_name: customerName,
-        shop_name: shopName || null,
-        phone: phone || null,
-        city: city || null,
-        customer_type: customerType,
-        credit_policy: creditPolicy,
-      },
-    });
-    setCustomerMessage("Customer saved successfully");
+    setCustomerEditingId(null);
     setCustomerName("");
     setShopName("");
     setPhone("");
@@ -5789,30 +6080,73 @@ export default function Home() {
     setCreditDays("");
     setAllowOverLimit(false);
     setAllowOverdueSales(false);
+    setCustomerNotes("");
     fetchCustomers();
   };
 
-  const handleDeleteCustomer = async (customerId: string) => {
+  const handleStartCustomerEdit = (customerId: string) => {
+    const customer = customers.find((c) => c.id === customerId);
+    if (!customer) return;
+
+    setCustomerEditingId(customerId);
+    setCustomerName(customer.customer_name ?? "");
+    setShopName(customer.shop_name ?? "");
+    setPhone(customer.phone ?? "");
+    setWhatsapp(customer.whatsapp ?? "");
+    setCity(customer.city ?? "");
+    setArea(customer.area ?? "");
+    setCustomerType(customer.customer_type ?? "Retailer");
+    setCreditPolicy(customer.credit_policy ?? "cash_only");
+    setCreditLimit(customer.credit_limit != null ? String(customer.credit_limit) : "");
+    setCreditDays(customer.credit_days != null ? String(customer.credit_days) : "");
+    setAllowOverLimit(!!customer.allow_over_limit);
+    setAllowOverdueSales(!!customer.allow_overdue_sales);
+    setCustomerNotes(customer.notes ?? "");
     setCustomerError(null);
     setCustomerMessage(null);
-    if (!requireOrganization("delete customer")) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleCancelCustomerEdit = () => {
+    setCustomerEditingId(null);
+    setCustomerName("");
+    setShopName("");
+    setPhone("");
+    setWhatsapp("");
+    setCity("");
+    setArea("");
+    setCustomerType("Retailer");
+    setCreditPolicy("cash_only");
+    setCreditLimit("");
+    setCreditDays("");
+    setAllowOverLimit(false);
+    setAllowOverdueSales(false);
+    setCustomerNotes("");
+    setCustomerError(null);
+    setCustomerMessage(null);
+  };
+
+  const handleArchiveCustomer = async (customerId: string) => {
+    setCustomerError(null);
+    setCustomerMessage(null);
+    if (!requireOrganization("archive customer")) {
       setCustomerError("Organization not loaded. Please login again.");
       return;
     }
     setCustomersLoading(true);
 
-    const customerToDelete = customers.find((customer) => customer.id === customerId);
-    const { error } = await supabase
-      .from("customers")
-      .delete()
-      .eq("id", customerId)
-      .eq("organization_id", currentOrganizationId);
+    const customerToArchive = customers.find((c) => c.id === customerId);
+    const response = await authorizedFetch(`/api/customers/${customerId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "archive" }),
+    });
+    const result = await response.json();
 
     setCustomersLoading(false);
 
-    if (error) {
-      setCustomerError("Failed to delete customer");
-      console.error("Supabase delete customer error:", JSON.stringify(error, null, 2));
+    if (!response.ok || !result.ok) {
+      setCustomerError(result.error ?? "Failed to archive customer");
       return;
     }
 
@@ -5820,19 +6154,58 @@ export default function Home() {
       action: "deleted",
       entity_type: "customer",
       entity_id: customerId,
-      entity_label: customerToDelete?.customer_name ?? customerId,
-      description: `Deleted customer ${customerToDelete?.customer_name ?? customerId}`,
-      old_values: customerToDelete
+      entity_label: customerToArchive?.customer_name ?? customerId,
+      description: `Archived customer ${customerToArchive?.customer_name ?? customerId}`,
+      old_values: customerToArchive
         ? {
-            customer_name: customerToDelete.customer_name,
-            shop_name: customerToDelete.shop_name,
-            phone: customerToDelete.phone,
-            city: customerToDelete.city,
+            customer_name: customerToArchive.customer_name,
+            shop_name: customerToArchive.shop_name,
+            phone: customerToArchive.phone,
+            city: customerToArchive.city,
           }
         : null,
     });
-    setCustomerMessage("Customer deleted successfully");
+    setCustomerMessage("Customer archived successfully");
     fetchCustomers();
+  };
+
+  const handleRestoreCustomer = async (customerId: string) => {
+    setCustomerError(null);
+    setCustomerMessage(null);
+    if (!requireOrganization("restore customer")) {
+      setCustomerError("Organization not loaded. Please login again.");
+      return;
+    }
+    setCustomersLoading(true);
+
+    const customerToRestore = customers.find((c) => c.id === customerId);
+    const response = await authorizedFetch(`/api/customers/${customerId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "restore" }),
+    });
+    const result = await response.json();
+
+    setCustomersLoading(false);
+
+    if (!response.ok || !result.ok) {
+      setCustomerError(result.error ?? "Failed to restore customer");
+      return;
+    }
+
+    await createAuditLog({
+      action: "restored",
+      entity_type: "customer",
+      entity_id: customerId,
+      entity_label: customerToRestore?.customer_name ?? customerId,
+      description: `Restored customer ${customerToRestore?.customer_name ?? customerId}`,
+    });
+    setCustomerMessage("Customer restored successfully");
+    fetchCustomers();
+  };
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    await handleArchiveCustomer(customerId);
   };
 
   const handleSaveSupplier = async () => {
@@ -6002,6 +6375,11 @@ export default function Home() {
   const activeSuppliers = useMemo(
     () => suppliers.filter((supplier) => supplier.is_active !== false),
     [suppliers]
+  );
+
+  const activeCustomers = useMemo(
+    () => customers.filter((customer) => customer.is_active !== false),
+    [customers]
   );
 
   const handleAddPurchaseLine = () => {
@@ -6745,6 +7123,528 @@ export default function Home() {
     );
   };
 
+  // ── Sales Orders (Phase 4) ────────────────────────────────────────────────
+
+  const handleSaveSalesOrder = async () => {
+    const validation = validateSalesOrderInput({
+      customer_id: soCustomerId || null,
+      order_date: soOrderDate,
+      expected_date: soExpectedDate,
+      notes: soNotes,
+      lines: soLines.map((line) => ({
+        product_id: line.product_id,
+        quantity: line.quantity,
+        unit_price: line.selling_price,
+        discount: line.discount,
+      })),
+    });
+    if (!validation.ok) {
+      setSoError(validation.errors.join(" "));
+      setSoMessage(null);
+      return;
+    }
+
+    if (!requireOrganization("save sales order")) {
+      setSoError("Organization not loaded. Please login again.");
+      setSoMessage(null);
+      return;
+    }
+
+    if (!currentOrganizationId) {
+      setSoError("Organization not loaded. Please login again.");
+      setSoMessage(null);
+      return;
+    }
+
+    setSoError(null);
+    setSoMessage(null);
+    setSoLoading(true);
+
+    try {
+      let soNumber: string;
+      let soId: string;
+
+      if (soEditingId) {
+        const existing = salesOrders.find((order) => order.id === soEditingId);
+        if (!existing) {
+          throw new Error("Sales order not found");
+        }
+        if (existing.status !== "draft") {
+          throw new Error("Only draft sales orders can be edited");
+        }
+        soNumber = existing.so_number;
+
+        const { data: updated, error: updateError } = await supabase
+          .from("sales_orders")
+          .update({
+            customer_id: soCustomerId,
+            order_date: soOrderDate || null,
+            expected_date: soExpectedDate || null,
+            notes: soNotes.trim() || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", soEditingId)
+          .eq("organization_id", currentOrganizationId)
+          .select("id")
+          .single();
+        if (updateError) throw updateError;
+        soId = updated?.id ?? soEditingId;
+
+        const { error: clearError } = await supabase
+          .from("sales_order_items")
+          .delete()
+          .eq("sales_order_id", soEditingId);
+        if (clearError) throw clearError;
+      } else {
+        soNumber = await generateSalesOrderWithClient(supabase, currentOrganizationId);
+
+        const { data: soData, error: soErrorResult } = await supabase
+          .from("sales_orders")
+          .insert({
+            organization_id: currentOrganizationId,
+            so_number: soNumber,
+            customer_id: soCustomerId,
+            order_date: soOrderDate || null,
+            expected_date: soExpectedDate || null,
+            notes: soNotes.trim() || null,
+            status: "draft",
+            created_by_profile_id: currentProfile?.id ?? null,
+          })
+          .select("id")
+          .single();
+
+        if (soErrorResult) throw soErrorResult;
+        soId = soData?.id;
+        if (!soId) throw new Error("Failed to create sales order");
+      }
+
+      for (const line of soLines) {
+        if (!line.product_id) continue;
+        const { error: itemError } = await supabase.from("sales_order_items").insert({
+          sales_order_id: soId,
+          product_id: line.product_id,
+          quantity_ordered: Number(line.quantity),
+          quantity_delivered: 0,
+          unit_price: line.selling_price ? Number(line.selling_price) : null,
+          discount: line.discount ? Number(line.discount) : 0,
+        });
+        if (itemError) throw itemError;
+      }
+
+      const soCustomer = customers.find((customer) => customer.id === soCustomerId);
+      await createAuditLog({
+        action: soEditingId ? "updated" : "created",
+        entity_type: "sales_order",
+        entity_id: soId,
+        entity_label: soNumber,
+        description: `${soEditingId ? "Updated" : "Created"} sales order ${soNumber} for ${soCustomer?.customer_name ?? "Unknown Customer"}`,
+        new_values: {
+          customer_id: soCustomerId,
+          so_number: soNumber,
+          line_count: soLines.length,
+        },
+      });
+
+      setSoMessage(soEditingId ? "Sales order updated successfully" : "Sales order created successfully");
+      setSoEditingId(null);
+      setSoCustomerId("");
+      setSoOrderDate(toDateInputValue(new Date()));
+      setSoExpectedDate("");
+      setSoNotes("");
+      setSoLines([]);
+      await fetchSalesOrders();
+      await fetchSalesOrderItems();
+    } catch (err) {
+      setSoError(err instanceof Error ? err.message : "Failed to save sales order");
+      console.error("Error saving sales order:", err);
+    } finally {
+      setSoLoading(false);
+    }
+  };
+
+  const handleUpdateSalesOrderStatus = async (soId: string, nextStatus: SalesOrder["status"]) => {
+    const order = salesOrders.find((item) => item.id === soId);
+    if (!order) return;
+
+    if (order.status === "cancelled" || order.status === "delivered") return;
+
+    if (nextStatus === "cancelled") {
+      if (!window.confirm(`Cancel sales order ${order.so_number}? This cannot be undone.`)) return;
+    }
+
+    const { error } = await supabase
+      .from("sales_orders")
+      .update({ status: nextStatus, updated_at: new Date().toISOString() })
+      .eq("id", soId)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      setSoError("Failed to update sales order status");
+      console.error("Supabase update sales order status error:", error);
+      return;
+    }
+
+    await createAuditLog({
+      action: "updated",
+      entity_type: "sales_order",
+      entity_id: soId,
+      entity_label: order.so_number,
+      description: `Sales order ${order.so_number} marked ${nextStatus}`,
+      old_values: { status: order.status },
+      new_values: { status: nextStatus },
+    });
+
+    setSoMessage(`Sales order ${order.so_number} marked ${nextStatus}`);
+    fetchSalesOrders();
+  };
+
+  const handleDeleteSalesOrder = async (soId: string) => {
+    const order = salesOrders.find((item) => item.id === soId);
+    if (!order) return;
+
+    if (order.status !== "draft") {
+      setSoError("Only draft sales orders can be deleted");
+      setSoMessage(null);
+      return;
+    }
+
+    if (!window.confirm(`Delete draft sales order ${order.so_number}? This cannot be undone.`)) return;
+
+    const { error: itemError } = await supabase
+      .from("sales_order_items")
+      .delete()
+      .eq("sales_order_id", soId);
+    if (itemError) {
+      setSoError("Failed to delete sales order items");
+      console.error("Supabase delete sales order items error:", itemError);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("sales_orders")
+      .delete()
+      .eq("id", soId)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      setSoError("Failed to delete sales order");
+      console.error("Supabase delete sales order error:", error);
+      return;
+    }
+
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "sales_order",
+      entity_id: soId,
+      entity_label: order.so_number,
+      description: `Deleted sales order ${order.so_number}`,
+      old_values: { status: order.status },
+    });
+
+    setSoMessage("Sales order deleted");
+    if (soEditingId === soId) setSoEditingId(null);
+    fetchSalesOrders();
+    fetchSalesOrderItems();
+  };
+
+  const handleStartSalesOrderEdit = (soId: string) => {
+    const order = salesOrders.find((item) => item.id === soId);
+    if (!order) return;
+    if (order.status !== "draft") {
+      setSoError("Only draft sales orders can be edited");
+      setSoMessage(null);
+      return;
+    }
+
+    const items = salesOrderItems.filter((item) => item.sales_order_id === soId);
+    setSoEditingId(soId);
+    setSoCustomerId(order.customer_id ?? "");
+    setSoOrderDate(order.order_date ?? toDateInputValue(new Date()));
+    setSoExpectedDate(order.expected_date ?? "");
+    setSoNotes(order.notes ?? "");
+    setSoLines(
+      items.map((item) => ({
+        product_id: String(item.product_id),
+        quantity: String(item.quantity_ordered),
+        selling_price: item.unit_price != null ? String(item.unit_price) : "",
+        discount: item.discount != null ? String(item.discount) : "",
+      }))
+    );
+    setSoError(null);
+    setSoMessage(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleCancelSalesOrderEdit = () => {
+    setSoEditingId(null);
+    setSoCustomerId("");
+    setSoOrderDate(toDateInputValue(new Date()));
+    setSoExpectedDate("");
+    setSoNotes("");
+    setSoLines([]);
+    setSoError(null);
+    setSoMessage(null);
+  };
+
+  const handlePrintSalesOrder = (soId: string) => {
+    const order = salesOrders.find((item) => item.id === soId);
+    if (!order) return;
+    const customer = customers.find((item) => item.id === order.customer_id);
+    const lineItems = salesOrderItems.filter((item) => item.sales_order_id === soId);
+    const lineRows =
+      lineItems.length === 0
+        ? [["No line items found", "-", "-", "-"]]
+        : lineItems.map((item) => {
+            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+            const unitPrice = safeNumber(item.unit_price);
+            const discount = safeNumber(item.discount);
+            return [
+              product?.name ?? "Unknown Product",
+              String(item.quantity_ordered),
+              formatPKR(unitPrice),
+              formatPKR(unitPrice * Number(item.quantity_ordered) - discount),
+            ];
+          });
+
+    openPrintPreview(
+      `Sales Order ${order.so_number}`,
+      `${businessBrandingHtml()}
+      <h2>Sales Order</h2>
+      <div class="grid">
+        <div><strong>Order Number:</strong> ${escapeHtml(order.so_number)}</div>
+        <div><strong>Order Date:</strong> ${escapeHtml(formatDate(order.order_date ?? order.created_at))}</div>
+        <div><strong>Customer:</strong> ${escapeHtml(customer?.customer_name ?? "Unknown Customer")}</div>
+        <div><strong>Status:</strong> ${escapeHtml(order.status)}</div>
+      </div>
+      <table>
+        <thead>${renderHeaderRows(["Product", "Quantity", "Unit Price", "Line Total"])}</thead>
+        <tbody>${renderRows(lineRows)}</tbody>
+      </table>
+      ${order.notes ? `<div class="summary"><p><strong>Notes:</strong> ${escapeHtml(order.notes)}</p></div>` : ""}
+      ${businessPrintFooterHtml()}`
+    );
+  };
+
+  // ── Sales Returns (Phase 4) ───────────────────────────────────────────────
+
+  const handleSalesInvoiceSelectionChange = (value: string) => {
+    setSrSalesTransactionId(value);
+    const transaction = salesTransactions.find((item) => item.id === value);
+    if (!transaction) {
+      setSrCustomerId("");
+      setSrLines([]);
+      return;
+    }
+    setSrCustomerId(transaction.customer_id);
+
+    const invoiceItems = salesItems.filter(
+      (item) => item.sales_transaction_id === value && item.quantity > 0
+    );
+    const invoiceReturnItems = salesReturnItems.filter(
+      (item) => salesReturns.find((r) => r.id === item.sales_return_id)?.sales_transaction_id === value
+    );
+    const returnedByProduct = new Map<string, number>();
+    for (const item of invoiceReturnItems) {
+      const key = String(item.product_id);
+      returnedByProduct.set(key, (returnedByProduct.get(key) ?? 0) + safeNumber(item.quantity));
+    }
+
+    setSrLines(
+      invoiceItems.map((item) => {
+        const key = String(item.product_id);
+        const alreadyReturned = returnedByProduct.get(key) ?? 0;
+        const remaining = Math.max(0, safeNumber(item.quantity) - alreadyReturned);
+        return {
+          product_id: String(item.product_id),
+          quantity: String(remaining),
+          selling_price: item.selling_price != null ? String(item.selling_price) : "",
+          discount: item.discount != null ? String(item.discount) : "",
+          batch_number: item.batch_number ?? "",
+          expiry_date: item.expiry_date ?? "",
+        };
+      })
+    );
+  };
+
+  const handleCreateSalesReturn = async () => {
+    const validation = validateSalesReturnInput({
+      customer_id: srCustomerId || null,
+      return_date: srReturnDate,
+      reason: srReturnReason,
+      lines: srLines.map((line) => ({
+        product_id: line.product_id,
+        quantity: line.quantity,
+        unit_price: line.selling_price,
+        discount: line.discount,
+        batch_number: line.batch_number,
+        expiry_date: line.expiry_date,
+      })),
+    });
+    if (!validation.ok) {
+      setSrError(validation.errors.join(" "));
+      setSrMessage(null);
+      return;
+    }
+
+    if (!requireOrganization("create sales return")) {
+      setSrError("Organization not loaded. Please login again.");
+      setSrMessage(null);
+      return;
+    }
+
+    if (!currentOrganizationId) {
+      setSrError("Organization not loaded. Please login again.");
+      setSrMessage(null);
+      return;
+    }
+
+    setSrError(null);
+    setSrMessage(null);
+    setSrLoading(true);
+
+    try {
+      const response = await authorizedFetch("/api/sales/returns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          customerId: srCustomerId,
+          salesTransactionId: srSalesTransactionId || null,
+          returnDate: srReturnDate || null,
+          reason: srReturnReason.trim() || null,
+          createdByProfileId: currentProfile?.id ?? null,
+          lines: srLines
+            .filter((line) => line.product_id)
+            .map((line) => ({
+              productId: line.product_id,
+              quantity: Number(line.quantity),
+              unitPrice: line.selling_price === "" ? null : Number(line.selling_price),
+              discount: line.discount === "" ? 0 : Number(line.discount),
+              batchNumber: line.batch_number?.trim() || null,
+              expiryDate: line.expiry_date || null,
+            })),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        setSrError(result.error ?? "Failed to create sales return");
+        return;
+      }
+
+      await createAuditLog({
+        action: "created",
+        entity_type: "sales_return",
+        entity_id: result.returnId,
+        entity_label: result.returnNumber,
+        description: `Created sales return ${result.returnNumber}`,
+        new_values: {
+          customer_id: srCustomerId,
+          sales_transaction_id: srSalesTransactionId || null,
+          return_number: result.returnNumber,
+          line_count: srLines.filter((line) => line.product_id).length,
+        },
+      });
+
+      setSrMessage(`Sales return ${result.returnNumber} saved successfully`);
+      setSrCustomerId("");
+      setSrSalesTransactionId("");
+      setSrReturnDate(toDateInputValue(new Date()));
+      setSrReturnReason("");
+      setSrLines([]);
+      await fetchSalesReturns();
+      await fetchSalesReturnItems();
+      await fetchInventoryTransactions();
+      await fetchProducts();
+    } catch (err) {
+      setSrError(err instanceof Error ? err.message : "Failed to create sales return");
+      console.error("Error creating sales return:", err);
+    } finally {
+      setSrLoading(false);
+    }
+  };
+
+  const handleDeleteSalesReturn = async (returnId: string) => {
+    const salesReturn = salesReturns.find((item) => item.id === returnId);
+    if (!salesReturn) return;
+
+    if (!window.confirm(`Delete sales return ${salesReturn.return_number}? Stock restoration will be reversed.`)) return;
+
+    const { error: itemError } = await supabase
+      .from("sales_return_items")
+      .delete()
+      .eq("sales_return_id", returnId);
+    if (itemError) {
+      setSrError("Failed to delete sales return items");
+      console.error("Supabase delete sales return items error:", itemError);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("sales_returns")
+      .delete()
+      .eq("id", returnId)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      setSrError("Failed to delete sales return");
+      console.error("Supabase delete sales return error:", error);
+      return;
+    }
+
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "sales_return",
+      entity_id: returnId,
+      entity_label: salesReturn.return_number,
+      description: `Deleted sales return ${salesReturn.return_number}`,
+      old_values: { status: salesReturn.status },
+    });
+
+    setSrMessage("Sales return deleted");
+    fetchSalesReturns();
+    fetchSalesReturnItems();
+    fetchInventoryTransactions();
+    fetchProducts();
+  };
+
+  const handlePrintSalesReturn = (returnId: string) => {
+    const salesReturn = salesReturns.find((item) => item.id === returnId);
+    if (!salesReturn) return;
+    const customer = customers.find((item) => item.id === salesReturn.customer_id);
+    const lineItems = salesReturnItems.filter((item) => item.sales_return_id === returnId);
+    const lineRows =
+      lineItems.length === 0
+        ? [["No line items found", "-", "-", "-"]]
+        : lineItems.map((item) => {
+            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+            const unitPrice = safeNumber(item.unit_price);
+            const discount = safeNumber(item.discount);
+            return [
+              product?.name ?? "Unknown Product",
+              String(item.quantity),
+              formatPKR(unitPrice),
+              formatPKR(unitPrice * safeNumber(item.quantity) - discount),
+            ];
+          });
+
+    openPrintPreview(
+      `Sales Return ${salesReturn.return_number}`,
+      `${businessBrandingHtml()}
+      <h2>Sales Return</h2>
+      <div class="grid">
+        <div><strong>Return Number:</strong> ${escapeHtml(salesReturn.return_number)}</div>
+        <div><strong>Return Date:</strong> ${escapeHtml(formatDate(salesReturn.return_date ?? salesReturn.created_at))}</div>
+        <div><strong>Customer:</strong> ${escapeHtml(customer?.customer_name ?? "Unknown Customer")}</div>
+      </div>
+      <table>
+        <thead>${renderHeaderRows(["Product", "Quantity", "Unit Price", "Line Total"])}</thead>
+        <tbody>${renderRows(lineRows)}</tbody>
+      </table>
+      ${salesReturn.reason ? `<div class="summary"><p><strong>Reason:</strong> ${escapeHtml(salesReturn.reason)}</p></div>` : ""}
+      ${businessPrintFooterHtml()}`
+    );
+  };
+
   const filteredCustomers = customers.filter((customer) => {
     const searchTerm = customerSearch.trim().toLowerCase();
     if (!searchTerm) return true;
@@ -6833,10 +7733,30 @@ export default function Home() {
     },
     {}
   );
-  const currentSalesInvoiceTotal = salesLines.reduce(
-    (sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price),
-    0
-  );
+  const currentSalesInvoiceTotal = (() => {
+    const parsedInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
+    const parsedTaxRate = salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate);
+    const lineSubtotal = salesLines.reduce(
+      (sum, line) =>
+        sum +
+        safeNumber(line.quantity) * safeNumber(line.selling_price) -
+        (line.discount.trim() === "" ? 0 : safeNumber(line.discount)),
+      0
+    );
+    const taxableBase = Math.max(
+      0,
+      lineSubtotal -
+        (Number.isFinite(parsedInvoiceDiscount) && parsedInvoiceDiscount >= 0
+          ? parsedInvoiceDiscount
+          : 0)
+    );
+    return (
+      taxableBase +
+      (Number.isFinite(parsedTaxRate) && parsedTaxRate >= 0
+        ? (taxableBase * parsedTaxRate) / 100
+        : 0)
+    );
+  })();
   const todayDateValue = toDateInputValue(new Date());
   const creditAllocationByTransaction = salesTransactions
     .filter((transaction) => transaction.payment_type === "credit")
@@ -15092,6 +16012,55 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "sales" && (
         <>
+        <div className="mb-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setSalesTab("invoice")}
+            className={`rounded px-4 py-2 text-sm font-medium ${
+              salesTab === "invoice"
+                ? "bg-primary text-white"
+                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+            }`}
+          >
+            Sales Invoice
+          </button>
+          <button
+            type="button"
+            onClick={() => setSalesTab("orders")}
+            className={`rounded px-4 py-2 text-sm font-medium ${
+              salesTab === "orders"
+                ? "bg-primary text-white"
+                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+            }`}
+          >
+            Sales Orders
+          </button>
+          <button
+            type="button"
+            onClick={() => setSalesTab("returns")}
+            className={`rounded px-4 py-2 text-sm font-medium ${
+              salesTab === "returns"
+                ? "bg-primary text-white"
+                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+            }`}
+          >
+            Returns
+          </button>
+          <button
+            type="button"
+            onClick={() => setSalesTab("report")}
+            className={`rounded px-4 py-2 text-sm font-medium ${
+              salesTab === "report"
+                ? "bg-primary text-white"
+                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+            }`}
+          >
+            Sales Report
+          </button>
+        </div>
+
+        {salesTab === "invoice" && (
+        <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">Sales Invoice</h2>
           <div className="space-y-4">
@@ -15104,7 +16073,7 @@ export default function Home() {
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="">Select Customer</option>
-                  {customers.map((c) => (
+                  {activeCustomers.map((c) => (
                     <option key={c.id} value={c.id}>{c.customer_name}</option>
                   ))}
                 </select>
@@ -15146,6 +16115,45 @@ export default function Home() {
                   <option value="cash">Cash</option>
                   <option value="credit">Credit</option>
                 </select>
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Invoice Discount (Optional)</span>
+                <input
+                  type="number"
+                  value={salesDiscountAmount}
+                  onChange={(e) => {
+                    clearCreditOverrideState();
+                    setSalesDiscountAmount(e.target.value);
+                  }}
+                  min="0"
+                  step="0.01"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+                <span className="text-xs text-muted-foreground/80">
+                  Flat amount deducted from the line subtotal before tax.
+                </span>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Tax Rate % (Optional)</span>
+                <input
+                  type="number"
+                  value={salesTaxRate}
+                  onChange={(e) => {
+                    clearCreditOverrideState();
+                    setSalesTaxRate(e.target.value);
+                  }}
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+                <span className="text-xs text-muted-foreground/80">
+                  Tax is computed on the subtotal after discount (future-ready GST/VAT).
+                </span>
               </label>
             </div>
 
@@ -15238,7 +16246,7 @@ export default function Home() {
                         </button>
                       </div>
 
-                      <div className="grid gap-2 sm:grid-cols-3">
+                      <div className="grid gap-2 sm:grid-cols-4">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -15272,6 +16280,18 @@ export default function Home() {
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
                         </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Line Discount</span>
+                          <input
+                            type="number"
+                            value={line.discount}
+                            onChange={(e) => handleSalesLineChange(index, "discount", e.target.value)}
+                            min="0"
+                            step="0.01"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
                       </div>
                     </div>
                   ))}
@@ -15286,6 +16306,22 @@ export default function Home() {
                 + Add Product Line
               </button>
             </div>
+
+            {salesLines.length > 0 && (
+              <div className="rounded border border-border bg-card p-4 text-sm text-foreground/80">
+                <div className="flex justify-between"><span>Line Subtotal</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price), 0))}</span></div>
+                {(salesLines.some((line) => Number(line.discount) > 0) || salesDiscountAmount.trim() !== "") && (
+                  <div className="flex justify-between"><span>Discounts</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + (Number(line.discount) || 0), 0) + (Number(salesDiscountAmount) || 0))}</span></div>
+                )}
+                {salesTaxRate.trim() !== "" && Number(salesTaxRate) > 0 && (
+                  <div className="flex justify-between"><span>Tax ({Number(salesTaxRate)}%)</span><span>{pkrFormatter.format((Math.max(0, salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) - (Number(salesDiscountAmount) || 0)) * Number(salesTaxRate)) / 100)}</span></div>
+                )}
+                <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium text-foreground">
+                  <span>Invoice Total</span>
+                  <span>{pkrFormatter.format(currentSalesInvoiceTotal)}</span>
+                </div>
+              </div>
+            )}
 
             <button
               type="button"
@@ -15343,6 +16379,13 @@ export default function Home() {
                     <div className="text-xs text-muted-foreground/80">Date: {date}</div>
                     <div>Payment Type: {paymentType === "credit" ? "Credit" : "Cash"}</div>
                     <div>Status: {creditStatus}</div>
+                    {tx.total_amount != null && <div>Total Amount: {pkrFormatter.format(Number(tx.total_amount || 0))}</div>}
+                    {(tx.discount_amount != null && Number(tx.discount_amount) > 0) && (
+                      <div>Invoice Discount: {pkrFormatter.format(Number(tx.discount_amount || 0))}</div>
+                    )}
+                    {(tx.tax_amount != null && Number(tx.tax_amount) > 0) && (
+                      <div>Tax ({Number(tx.tax_rate || 0)}%): {pkrFormatter.format(Number(tx.tax_amount || 0))}</div>
+                    )}
                     {paymentType === "credit" && (
                       <>
                         <div>Invoice Total: {pkrFormatter.format(creditAllocation?.invoiceTotal ?? 0)}</div>
@@ -15363,6 +16406,821 @@ export default function Home() {
             </ul>
           )}
         </section>
+        </>
+        )}
+
+        {salesTab === "orders" && (
+        <>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">
+            {soEditingId ? "Edit Sales Order" : "New Sales Order"}
+          </h2>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Customer</span>
+                <select
+                  value={soCustomerId}
+                  onChange={(e) => setSoCustomerId(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                >
+                  <option value="">Select Customer</option>
+                  {activeCustomers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Order Date</span>
+                <input
+                  type="date"
+                  value={soOrderDate}
+                  onChange={(e) => setSoOrderDate(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Expected Date (Optional)</span>
+                <input
+                  type="date"
+                  value={soExpectedDate}
+                  onChange={(e) => setSoExpectedDate(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Notes (Optional)</span>
+                <input
+                  type="text"
+                  value={soNotes}
+                  onChange={(e) => setSoNotes(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
+
+              {soLines.length === 0 ? (
+                <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
+              ) : (
+                <div className="mb-4 space-y-3">
+                  {soLines.map((line, index) => (
+                    <div key={index} className="rounded border border-border bg-card p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSoLines(soLines.filter((_, i) => i !== index))}
+                          className="text-xs text-destructive hover:text-destructive/90"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Product</span>
+                          <select
+                            value={line.product_id ?? ""}
+                            onChange={(e) => {
+                              const newLines = [...soLines];
+                              newLines[index] = {
+                                ...newLines[index],
+                                product_id: e.target.value === "" ? null : e.target.value,
+                              };
+                              if (e.target.value) {
+                                const prod = products.find((p) => String(p.id) === e.target.value);
+                                if (prod && prod.default_selling_price != null) {
+                                  newLines[index].selling_price = String(prod.default_selling_price);
+                                }
+                              }
+                              setSoLines(newLines);
+                            }}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          >
+                            <option value="">Select Product</option>
+                            {activeProducts.map((product) => (
+                              <option key={product.id} value={String(product.id)}>{product.name}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Quantity</span>
+                          <input
+                            type="number"
+                            value={line.quantity}
+                            onChange={(e) => {
+                              const newLines = [...soLines];
+                              newLines[index].quantity = e.target.value;
+                              setSoLines(newLines);
+                            }}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Unit Price</span>
+                          <input
+                            type="number"
+                            value={line.selling_price}
+                            onChange={(e) => {
+                              const newLines = [...soLines];
+                              newLines[index].selling_price = e.target.value;
+                              setSoLines(newLines);
+                            }}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Discount</span>
+                          <input
+                            type="number"
+                            value={line.discount}
+                            onChange={(e) => {
+                              const newLines = [...soLines];
+                              newLines[index].discount = e.target.value;
+                              setSoLines(newLines);
+                            }}
+                            min="0"
+                            step="0.01"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSoLines([...soLines, { product_id: null, quantity: "", selling_price: "", discount: "" }])
+                }
+                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
+              >
+                + Add Product Line
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveSalesOrder}
+              disabled={soLoading}
+              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+            >
+              {soLoading ? "Saving..." : soEditingId ? "Update Sales Order" : "Save Sales Order"}
+            </button>
+
+            {soEditingId && (
+              <button
+                type="button"
+                onClick={handleCancelSalesOrderEdit}
+                disabled={soLoading}
+                className="w-full rounded border border-border bg-card px-4 py-2 text-foreground/80 transition hover:bg-muted/30"
+              >
+                Cancel Edit
+              </button>
+            )}
+
+            {soMessage && <p className="mt-4 text-sm text-success">{soMessage}</p>}
+            {soError && <p className="mt-4 text-sm text-destructive">{soError}</p>}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Sales Order History</h2>
+          {salesOrdersLoading ? (
+            <p className="text-sm text-muted-foreground">Loading sales orders...</p>
+          ) : salesOrders.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No sales orders found.</p>
+          ) : (
+            <ul className="space-y-2">
+              {salesOrders.map((order) => {
+                const customer = customers.find((c) => c.id === order.customer_id);
+                const items = salesOrderItems.filter((item) => item.sales_order_id === order.id);
+                const statusColor =
+                  order.status === "cancelled"
+                    ? "text-destructive"
+                    : order.status === "delivered"
+                      ? "text-success"
+                      : order.status === "confirmed"
+                        ? "text-primary"
+                        : "text-muted-foreground";
+                return (
+                  <li key={order.id} className="rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="font-medium text-foreground">
+                        Order: {order.so_number}
+                        <span className={`ml-2 rounded px-2 py-0.5 text-xs capitalize ${statusColor} border border-current/20 bg-muted/30`}>
+                          {order.status}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handlePrintSalesOrder(order.id)}
+                          className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
+                        >
+                          Print
+                        </button>
+                        {order.status === "draft" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleStartSalesOrderEdit(order.id)}
+                              className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateSalesOrderStatus(order.id, "confirmed")}
+                              className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSalesOrder(order.id)}
+                              className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                        {order.status === "confirmed" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateSalesOrderStatus(order.id, "delivered")}
+                              className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
+                            >
+                              Mark Delivered
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateSalesOrderStatus(order.id, "cancelled")}
+                              className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                        {order.status === "draft" && (
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateSalesOrderStatus(order.id, "cancelled")}
+                            className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div>Customer: {customer?.customer_name ?? "Unknown"}</div>
+                    <div className="text-xs text-muted-foreground/80">
+                      Order Date: {getDateOnly(order.order_date) ?? formatDate(order.created_at)}
+                      {order.expected_date ? ` — Expected: ${getDateOnly(order.expected_date)}` : ""}
+                    </div>
+                    {items.length > 0 && (
+                      <div className="mt-1 text-xs text-muted-foreground/80">
+                        {items.map((item) => {
+                          const product = products.find((p) => String(p.id) === String(item.product_id));
+                          return (
+                            <div key={item.id}>
+                              {product?.name ?? "Unknown Product"} × {item.quantity_ordered}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {order.notes && <div className="mt-1 text-xs text-muted-foreground/80">Notes: {order.notes}</div>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+        </>
+        )}
+
+        {salesTab === "returns" && (
+        <>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Sales Return</h2>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Source Sales Invoice</span>
+                <select
+                  value={srSalesTransactionId}
+                  onChange={(e) => handleSalesInvoiceSelectionChange(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                >
+                  <option value="">Select Invoice</option>
+                  {salesTransactions.map((tx) => {
+                    const customer = customers.find((c) => c.id === tx.customer_id);
+                    return (
+                      <option key={tx.id} value={tx.id}>
+                        {tx.invoice_number} — {customer?.customer_name ?? "Unknown"}
+                      </option>
+                    );
+                  })}
+                </select>
+                <span className="text-xs text-muted-foreground/80">
+                  Selecting an invoice pre-fills the return lines and caps quantities at what is still returnable.
+                </span>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Return Date</span>
+                <input
+                  type="date"
+                  value={srReturnDate}
+                  onChange={(e) => setSrReturnDate(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
+              <span>Reason (Optional)</span>
+              <input
+                type="text"
+                value={srReturnReason}
+                onChange={(e) => setSrReturnReason(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </label>
+
+            <div className="border-t pt-4">
+              <h3 className="mb-3 text-lg font-medium text-foreground">Return Lines</h3>
+
+              {srLines.length === 0 ? (
+                <p className="mb-4 text-sm text-muted-foreground/80">
+                  No return lines yet. Select a sales invoice to pre-fill, or add lines manually.
+                </p>
+              ) : (
+                <div className="mb-4 space-y-3">
+                  {srLines.map((line, index) => (
+                    <div key={index} className="rounded border border-border bg-card p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSrLines(srLines.filter((_, i) => i !== index))}
+                          className="text-xs text-destructive hover:text-destructive/90"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Product</span>
+                          <select
+                            value={line.product_id ?? ""}
+                            onChange={(e) => {
+                              const newLines = [...srLines];
+                              newLines[index].product_id = e.target.value === "" ? null : e.target.value;
+                              setSrLines(newLines);
+                            }}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          >
+                            <option value="">Select Product</option>
+                            {activeProducts.map((product) => (
+                              <option key={product.id} value={String(product.id)}>{product.name}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Quantity</span>
+                          <input
+                            type="number"
+                            value={line.quantity}
+                            onChange={(e) => {
+                              const newLines = [...srLines];
+                              newLines[index].quantity = e.target.value;
+                              setSrLines(newLines);
+                            }}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Unit Price</span>
+                          <input
+                            type="number"
+                            value={line.selling_price}
+                            onChange={(e) => {
+                              const newLines = [...srLines];
+                              newLines[index].selling_price = e.target.value;
+                              setSrLines(newLines);
+                            }}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Line Discount</span>
+                          <input
+                            type="number"
+                            value={line.discount}
+                            onChange={(e) => {
+                              const newLines = [...srLines];
+                              newLines[index].discount = e.target.value;
+                              setSrLines(newLines);
+                            }}
+                            min="0"
+                            step="0.01"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Batch Number (Optional)</span>
+                          <input
+                            type="text"
+                            value={line.batch_number ?? ""}
+                            onChange={(e) => {
+                              const newLines = [...srLines];
+                              newLines[index].batch_number = e.target.value;
+                              setSrLines(newLines);
+                            }}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Expiry Date (Optional)</span>
+                          <input
+                            type="date"
+                            value={line.expiry_date ?? ""}
+                            onChange={(e) => {
+                              const newLines = [...srLines];
+                              newLines[index].expiry_date = e.target.value;
+                              setSrLines(newLines);
+                            }}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSrLines([
+                    ...srLines,
+                    { product_id: null, quantity: "", selling_price: "", discount: "", batch_number: "", expiry_date: "" },
+                  ])
+                }
+                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
+              >
+                + Add Return Line
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCreateSalesReturn}
+              disabled={srLoading}
+              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+            >
+              {srLoading ? "Saving..." : "Save Sales Return"}
+            </button>
+
+            {srMessage && <p className="mt-4 text-sm text-success">{srMessage}</p>}
+            {srError && <p className="mt-4 text-sm text-destructive">{srError}</p>}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Sales Return History</h2>
+          {salesReturnsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading sales returns...</p>
+          ) : salesReturns.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No sales returns found.</p>
+          ) : (
+            <ul className="space-y-2">
+              {salesReturns.map((salesReturn) => {
+                const customer = customers.find((c) => c.id === salesReturn.customer_id);
+                const transaction = salesTransactions.find((tx) => tx.id === salesReturn.sales_transaction_id);
+                const items = salesReturnItems.filter((item) => item.sales_return_id === salesReturn.id);
+                return (
+                  <li key={salesReturn.id} className="rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="font-medium text-foreground">Return: {salesReturn.return_number}</div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handlePrintSalesReturn(salesReturn.id)}
+                          className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
+                        >
+                          Print
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSalesReturn(salesReturn.id)}
+                          className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    <div>Customer: {customer?.customer_name ?? "Unknown"}</div>
+                    <div className="text-xs text-muted-foreground/80">
+                      Return Date: {getDateOnly(salesReturn.return_date) ?? formatDate(salesReturn.created_at)}
+                    </div>
+                    {transaction && (
+                      <div className="text-xs text-muted-foreground/80">
+                        Source Invoice: {transaction.invoice_number}
+                      </div>
+                    )}
+                    {items.length > 0 && (
+                      <div className="mt-1 text-xs text-muted-foreground/80">
+                        {items.map((item) => {
+                          const product = products.find((p) => String(p.id) === String(item.product_id));
+                          return (
+                            <div key={item.id}>
+                              {product?.name ?? "Unknown Product"} × {item.quantity}
+                              {item.batch_number ? ` (batch ${item.batch_number})` : ""}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {salesReturn.reason && (
+                      <div className="mt-1 text-xs text-muted-foreground/80">Reason: {salesReturn.reason}</div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+        </>
+        )}
+
+        {salesTab === "report" && (() => {
+          const todayValue = toDateInputValue(new Date());
+          let startValue: string;
+          switch (salesReportRange) {
+            case "today":
+              startValue = todayValue;
+              break;
+            case "last_7_days": {
+              const d = new Date();
+              d.setDate(d.getDate() - 6);
+              startValue = toDateInputValue(d);
+              break;
+            }
+            case "last_30_days": {
+              const d = new Date();
+              d.setDate(d.getDate() - 29);
+              startValue = toDateInputValue(d);
+              break;
+            }
+            default:
+              startValue = getMonthRange().start;
+          }
+
+          const inRange = (tx: SalesTransaction) => {
+            const dateOnly = getDateOnly(tx.sale_date) ?? getDateOnly(tx.created_at);
+            return !!dateOnly && dateOnly >= startValue && dateOnly <= todayValue;
+          };
+
+          const rangeTransactions = salesTransactions.filter(inRange);
+          const rangeTransactionIds = new Set(rangeTransactions.map((tx) => tx.id));
+          const rangeItems = salesItems.filter((item) => rangeTransactionIds.has(item.sales_transaction_id));
+
+          const grossSales = rangeTransactions.reduce((sum, tx) => {
+            if (tx.total_amount != null) return sum + Number(tx.total_amount);
+            const items = rangeItems.filter((item) => item.sales_transaction_id === tx.id);
+            return (
+              sum +
+              items.reduce(
+                (lineSum, item) =>
+                  lineSum +
+                  safeNumber(item.quantity) * safeNumber(item.selling_price) -
+                  safeNumber(item.discount),
+                0
+              )
+            );
+          }, 0);
+          const totalDiscounts = rangeItems.reduce((sum, item) => sum + safeNumber(item.discount), 0);
+          const totalTax = rangeTransactions.reduce((sum, tx) => sum + safeNumber(tx.tax_amount), 0);
+          const cogs = rangeItems.reduce((sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.purchase_price_snapshot), 0);
+          const grossProfit = grossSales - cogs;
+
+          const outstandingReceivables = salesTransactions
+            .filter((tx) => tx.payment_type === "credit")
+            .reduce((sum, tx) => sum + Math.max(0, creditAllocationByTransaction[tx.id]?.remainingUnpaidAmount ?? 0), 0);
+
+          const dailyTotals = rangeTransactions.reduce<Record<string, number>>((buckets, tx) => {
+            const day = getDateOnly(tx.sale_date) ?? getDateOnly(tx.created_at) ?? "Unknown";
+            const items = rangeItems.filter((item) => item.sales_transaction_id === tx.id);
+            const total =
+              tx.total_amount != null
+                ? Number(tx.total_amount)
+                : items.reduce(
+                    (sum, item) =>
+                      sum + safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount),
+                    0
+                  );
+            buckets[day] = (buckets[day] ?? 0) + total;
+            return buckets;
+          }, {});
+          const dailyRows = Object.entries(dailyTotals).sort((a, b) => b[0].localeCompare(a[0]));
+
+          const productTotals = rangeItems.reduce<Record<string, { quantity: number; revenue: number; cost: number }>>(
+            (totals, item) => {
+              const key = String(item.product_id);
+              const current = totals[key] ?? { quantity: 0, revenue: 0, cost: 0 };
+              current.quantity += safeNumber(item.quantity);
+              current.revenue += safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount);
+              current.cost += safeNumber(item.quantity) * safeNumber(item.purchase_price_snapshot);
+              totals[key] = current;
+              return totals;
+            },
+            {}
+          );
+          const productRows = Object.entries(productTotals).sort((a, b) => b[1].revenue - a[1].revenue);
+
+          const customerTotals = rangeTransactions.reduce<Record<string, { revenue: number; invoices: number }>>(
+            (totals, tx) => {
+              const key = tx.customer_id;
+              const current = totals[key] ?? { revenue: 0, invoices: 0 };
+              const items = rangeItems.filter((item) => item.sales_transaction_id === tx.id);
+              current.revenue +=
+                tx.total_amount != null
+                  ? Number(tx.total_amount)
+                  : items.reduce(
+                      (sum, item) =>
+                        sum + safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount),
+                      0
+                    );
+              current.invoices += 1;
+              totals[key] = current;
+              return totals;
+            },
+            {}
+          );
+          const customerRows = Object.entries(customerTotals).sort((a, b) => b[1].revenue - a[1].revenue);
+
+          return (
+            <>
+            <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-xl font-medium text-foreground">Sales Report</h2>
+                <select
+                  value={salesReportRange}
+                  onChange={(e) => setSalesReportRange(e.target.value)}
+                  className="rounded border border-border bg-card px-3 py-2 text-sm focus:border-ring focus:outline-none"
+                >
+                  <option value="today">Today</option>
+                  <option value="last_7_days">Last 7 Days</option>
+                  <option value="last_30_days">Last 30 Days</option>
+                  <option value="this_month">This Month</option>
+                </select>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded border border-border bg-card p-4">
+                  <div className="text-xs text-muted-foreground/80">Gross Sales</div>
+                  <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(grossSales)}</div>
+                  <div className="text-xs text-muted-foreground/80">{rangeTransactions.length} invoices</div>
+                </div>
+                <div className="rounded border border-border bg-card p-4">
+                  <div className="text-xs text-muted-foreground/80">Discounts Given</div>
+                  <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(totalDiscounts)}</div>
+                </div>
+                <div className="rounded border border-border bg-card p-4">
+                  <div className="text-xs text-muted-foreground/80">Tax Collected</div>
+                  <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(totalTax)}</div>
+                </div>
+                <div className="rounded border border-border bg-card p-4">
+                  <div className="text-xs text-muted-foreground/80">Cost of Goods Sold</div>
+                  <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(cogs)}</div>
+                </div>
+                <div className="rounded border border-success/30 bg-success/5 p-4">
+                  <div className="text-xs text-success/80">Gross Profit</div>
+                  <div className="mt-1 text-lg font-medium text-success">{pkrFormatter.format(grossProfit)}</div>
+                </div>
+                <div className="rounded border border-warning/30 bg-warning/5 p-4">
+                  <div className="text-xs text-warning/80">Outstanding Receivables</div>
+                  <div className="mt-1 text-lg font-medium text-warning">{pkrFormatter.format(outstandingReceivables)}</div>
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Daily Sales</h3>
+                {dailyRows.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No sales in this period.</p>
+                ) : (
+                  <div className="overflow-x-auto rounded border border-border bg-card">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-left text-xs text-muted-foreground/80">
+                          <th className="px-3 py-2">Date</th>
+                          <th className="px-3 py-2">Sales</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailyRows.map(([day, total]) => (
+                          <tr key={day} className="border-b border-border/50 last:border-0">
+                            <td className="px-3 py-2">{day}</td>
+                            <td className="px-3 py-2">{pkrFormatter.format(total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Product-wise Sales</h3>
+                {productRows.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No product sales in this period.</p>
+                ) : (
+                  <div className="overflow-x-auto rounded border border-border bg-card">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-left text-xs text-muted-foreground/80">
+                          <th className="px-3 py-2">Product</th>
+                          <th className="px-3 py-2">Quantity</th>
+                          <th className="px-3 py-2">Revenue</th>
+                          <th className="px-3 py-2">Cost</th>
+                          <th className="px-3 py-2">Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {productRows.map(([productId, totals]) => {
+                          const product = products.find((p) => String(p.id) === productId);
+                          return (
+                            <tr key={productId} className="border-b border-border/50 last:border-0">
+                              <td className="px-3 py-2">{product?.name ?? "Unknown Product"}</td>
+                              <td className="px-3 py-2">{totals.quantity}</td>
+                              <td className="px-3 py-2">{pkrFormatter.format(totals.revenue)}</td>
+                              <td className="px-3 py-2">{pkrFormatter.format(totals.cost)}</td>
+                              <td className="px-3 py-2">{pkrFormatter.format(totals.revenue - totals.cost)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6">
+                <h3 className="mb-3 text-lg font-medium text-foreground">Customer-wise Sales</h3>
+                {customerRows.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No customer sales in this period.</p>
+                ) : (
+                  <div className="overflow-x-auto rounded border border-border bg-card">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-left text-xs text-muted-foreground/80">
+                          <th className="px-3 py-2">Customer</th>
+                          <th className="px-3 py-2">Invoices</th>
+                          <th className="px-3 py-2">Sales</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {customerRows.map(([customerId, totals]) => {
+                          const customer = customers.find((c) => c.id === customerId);
+                          return (
+                            <tr key={customerId} className="border-b border-border/50 last:border-0">
+                              <td className="px-3 py-2">{customer?.customer_name ?? "Unknown Customer"}</td>
+                              <td className="px-3 py-2">{totals.invoices}</td>
+                              <td className="px-3 py-2">{pkrFormatter.format(totals.revenue)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </section>
+            </>
+          );
+        })()}
         </>
         )}
 
@@ -15388,34 +17246,50 @@ export default function Home() {
               </button>
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <select
-              value={selectedCustomerPaymentId ?? ""}
-              onChange={(e) => handleCustomerPaymentCustomerChange(e.target.value)}
-              className="rounded border border-border px-2 py-2"
-            >
-              <option value="">Select Customer</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>{c.customer_name}</option>
-              ))}
-            </select>
+<div className="grid gap-4 sm:grid-cols-4">
+             <select
+               value={selectedCustomerPaymentId ?? ""}
+               onChange={(e) => handleCustomerPaymentCustomerChange(e.target.value)}
+               className="rounded border border-border px-2 py-2"
+             >
+               <option value="">Select Customer</option>
+               {customers.map((c) => (
+                 <option key={c.id} value={c.id}>{c.customer_name}</option>
+               ))}
+             </select>
 
-            <input
-              type="number"
-              value={customerPaymentAmount}
-              onChange={(e) => handleCustomerPaymentAmountChange(e.target.value)}
-              placeholder="Amount"
-              className="rounded border border-border px-2 py-2"
-            />
+             <input
+               type="number"
+               value={customerPaymentAmount}
+               onChange={(e) => handleCustomerPaymentAmountChange(e.target.value)}
+               placeholder="Amount"
+               className="rounded border border-border px-2 py-2"
+             />
 
-            <input
-              type="text"
-              value={customerPaymentNotes}
-              onChange={(e) => setCustomerPaymentNotes(e.target.value)}
-              placeholder="Notes (optional)"
-              className="rounded border border-border px-2 py-2"
-            />
-          </div>
+             <input
+               type="date"
+               value={customerPaymentDate}
+               onChange={(e) => setCustomerPaymentDate(e.target.value)}
+               className="rounded border border-border px-2 py-2"
+             />
+
+             <select
+               value={customerPaymentMethod}
+               onChange={(e) => setCustomerPaymentMethod(e.target.value as "cash" | "bank")}
+               className="rounded border border-border px-2 py-2"
+             >
+               <option value="cash">Cash</option>
+               <option value="bank">Bank</option>
+             </select>
+           </div>
+
+           <input
+             type="text"
+             value={customerPaymentNotes}
+             onChange={(e) => setCustomerPaymentNotes(e.target.value)}
+             placeholder="Notes (optional)"
+             className="w-full sm:col-span-4 rounded border border-border px-2 py-2"
+           />
 
           {selectedCustomerPaymentId && (
             <div className="mt-4 rounded border border-border bg-card p-4">
@@ -15619,34 +17493,50 @@ export default function Home() {
               Export Supplier Balances CSV
             </button>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <select
-              value={selectedSupplierPaymentId ?? ""}
-              onChange={(e) => handleSupplierPaymentSupplierChange(e.target.value)}
-              className="rounded border border-border px-2 py-2"
-            >
-              <option value="">Select Supplier</option>
-              {activeSuppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.supplier_name}</option>
-              ))}
-            </select>
+<div className="grid gap-4 sm:grid-cols-4">
+             <select
+               value={selectedSupplierPaymentId ?? ""}
+               onChange={(e) => handleSupplierPaymentSupplierChange(e.target.value)}
+               className="rounded border border-border px-2 py-2"
+             >
+               <option value="">Select Supplier</option>
+               {activeSuppliers.map((s) => (
+                 <option key={s.id} value={s.id}>{s.supplier_name}</option>
+               ))}
+             </select>
 
-            <input
-              type="number"
-              value={supplierPaymentAmount}
-              onChange={(e) => handleSupplierPaymentAmountChange(e.target.value)}
-              placeholder="Amount"
-              className="rounded border border-border px-2 py-2"
-            />
+             <input
+               type="number"
+               value={supplierPaymentAmount}
+               onChange={(e) => handleSupplierPaymentAmountChange(e.target.value)}
+               placeholder="Amount"
+               className="rounded border border-border px-2 py-2"
+             />
 
-            <input
-              type="text"
-              value={supplierPaymentNotes}
-              onChange={(e) => setSupplierPaymentNotes(e.target.value)}
-              placeholder="Notes (optional)"
-              className="rounded border border-border px-2 py-2"
-            />
-          </div>
+             <input
+               type="date"
+               value={supplierPaymentDate}
+               onChange={(e) => setSupplierPaymentDate(e.target.value)}
+               className="rounded border border-border px-2 py-2"
+             />
+
+             <select
+               value={supplierPaymentMethod}
+               onChange={(e) => setSupplierPaymentMethod(e.target.value as "cash" | "bank")}
+               className="rounded border border-border px-2 py-2"
+             >
+               <option value="cash">Cash</option>
+               <option value="bank">Bank</option>
+             </select>
+           </div>
+
+           <input
+             type="text"
+             value={supplierPaymentNotes}
+             onChange={(e) => setSupplierPaymentNotes(e.target.value)}
+             placeholder="Notes (optional)"
+             className="w-full sm:col-span-4 rounded border border-border px-2 py-2"
+           />
 
           {selectedSupplierPaymentId && (
             <div className="mt-4 rounded border border-border bg-card p-4">
@@ -16799,8 +18689,15 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "customers" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Customer Management</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">
+            {customerEditingId ? "Edit Customer" : "Customer Management"}
+          </h2>
           <div className="space-y-4">
+            {customerEditingId && (
+              <p className="rounded border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary/90">
+                Editing customer — changes are applied when you click Update Customer.
+              </p>
+            )}
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Customer Name</span>
               <input
@@ -16957,14 +18854,35 @@ export default function Home() {
               </div>
             )}
 
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
+              <span>Notes (Optional)</span>
+              <input
+                type="text"
+                value={customerNotes}
+                onChange={(e) => setCustomerNotes(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </label>
+
             <button
               type="button"
               onClick={handleAddCustomer}
               disabled={customersLoading}
               className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
             >
-              Save Customer
+              {customersLoading ? "Saving..." : customerEditingId ? "Update Customer" : "Save Customer"}
             </button>
+
+            {customerEditingId && (
+              <button
+                type="button"
+                onClick={handleCancelCustomerEdit}
+                disabled={customersLoading}
+                className="w-full rounded border border-border bg-card px-4 py-2 text-foreground/80 transition hover:bg-muted/30"
+              >
+                Cancel Edit
+              </button>
+            )}
           </div>
 
           {customerMessage && <p className="mt-4 text-sm text-success">{customerMessage}</p>}
@@ -17010,7 +18928,14 @@ export default function Home() {
                         className="flex flex-col gap-2 rounded border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="space-y-1 text-sm text-foreground/80">
-                          <div className="font-medium text-foreground">{customer.customer_name}</div>
+                          <div className="font-medium text-foreground">
+                            {customer.customer_name}
+                            {customer.is_active === false && (
+                              <span className="ml-2 rounded bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
+                                Archived
+                              </span>
+                            )}
+                          </div>
                           <div>Shop: {customer.shop_name ?? "None"}</div>
                           <div>Type: {customer.customer_type ?? "None"}</div>
                           <div>Phone: {customer.phone ?? "None"}</div>
@@ -17028,14 +18953,36 @@ export default function Home() {
                               </span>
                             )}
                           </div>
+                          {customer.notes && (
+                            <div className="text-xs text-muted-foreground/80">Notes: {customer.notes}</div>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCustomer(customer.id)}
-                          className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
-                        >
-                          Delete
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleStartCustomerEdit(customer.id)}
+                            className="rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
+                          >
+                            Edit
+                          </button>
+                          {customer.is_active === false ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreCustomer(customer.id)}
+                              className="rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
+                            >
+                              Restore
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleArchiveCustomer(customer.id)}
+                              className="rounded border border-destructive px-3 py-1 text-sm text-destructive transition hover:bg-destructive/5"
+                            >
+                              Archive
+                            </button>
+                          )}
+                        </div>
                       </li>
                     );
                   })}
