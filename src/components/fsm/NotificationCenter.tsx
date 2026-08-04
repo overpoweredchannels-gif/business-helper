@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { NotificationCategory, NotificationItem } from "@/lib/tradeos/types";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 const CATEGORY_LABELS: Record<NotificationCategory, string> = {
   draft_sale: "Draft Sale",
@@ -43,7 +44,7 @@ export default function NotificationCenter() {
     try {
       setLoading(true);
       const query = unreadOnly ? "?unread_only=true" : "";
-      const res = await fetch(`/api/notifications${query}`);
+      const res = await authorizedFetch(`/api/notifications${query}`);
       const data = await res.json();
       if (data.ok && Array.isArray(data.notifications)) {
         setNotifications(data.notifications);
@@ -63,7 +64,7 @@ export default function NotificationCenter() {
   }, [unreadOnly]);
 
   const markAllRead = async () => {
-    const res = await fetch("/api/notifications", {
+    const res = await authorizedFetch("/api/notifications", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "mark_all_read" }),
@@ -79,7 +80,7 @@ export default function NotificationCenter() {
 
   const clearAll = async () => {
     if (!window.confirm("Clear all notifications?")) return;
-    const res = await fetch("/api/notifications", {
+    const res = await authorizedFetch("/api/notifications", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "clear_all" }),

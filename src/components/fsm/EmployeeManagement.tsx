@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Employee, EmployeeDesignation } from "@/lib/tradeos/types";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 const DESIGNATIONS: EmployeeDesignation[] = [
   "salesman",
@@ -78,7 +79,7 @@ export default function EmployeeManagement() {
   const load = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/identity/employees");
+      const res = await authorizedFetch("/api/identity/employees");
       const data = await res.json();
       if (res.status === 403) {
         setIsOwner(false);
@@ -132,7 +133,7 @@ export default function EmployeeManagement() {
       return;
     }
     try {
-      const res = await fetch(
+      const res = await authorizedFetch(
         editingId ? `/api/identity/employees/${editingId}` : "/api/identity/employees",
         {
           method: editingId ? "PATCH" : "POST",
@@ -156,7 +157,7 @@ export default function EmployeeManagement() {
   const remove = async (id: string) => {
     if (!window.confirm("Delete this employee record?")) return;
     try {
-      const res = await fetch(`/api/identity/employees/${id}`, { method: "DELETE" });
+      const res = await authorizedFetch(`/api/identity/employees/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
         setMessage({ type: "ok", text: "Employee deleted." });

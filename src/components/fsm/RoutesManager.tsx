@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SalesRoute } from "@/lib/tradeos/types";
 import { getMapProvider, buildMultiStopNavigationUrl } from "@/lib/maps/map-provider";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 const inputStyle: React.CSSProperties = {
   padding: "0.5rem 0.75rem",
@@ -35,8 +36,8 @@ export default function RoutesManager() {
   const load = async () => {
     try {
       const [routeRes, territoryRes] = await Promise.all([
-        fetch("/api/routes"),
-        fetch("/api/territories"),
+        authorizedFetch("/api/routes"),
+        authorizedFetch("/api/territories"),
       ]);
       const routeData = await routeRes.json();
       const territoryData = await territoryRes.json();
@@ -68,7 +69,7 @@ export default function RoutesManager() {
       return;
     }
     try {
-      const res = await fetch("/api/routes", {
+      const res = await authorizedFetch("/api/routes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), territory_id: territoryId || null, route_frequency: frequency }),

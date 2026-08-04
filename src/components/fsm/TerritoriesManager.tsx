@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Territory } from "@/lib/tradeos/types";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 const inputStyle: React.CSSProperties = {
   padding: "0.5rem 0.75rem",
@@ -31,7 +32,7 @@ export default function TerritoriesManager() {
 
   const load = async () => {
     try {
-      const res = await fetch("/api/territories");
+      const res = await authorizedFetch("/api/territories");
       const data = await res.json();
       if (res.status === 403) {
         setIsOwner(false);
@@ -56,7 +57,7 @@ export default function TerritoriesManager() {
       return;
     }
     try {
-      const res = await fetch("/api/territories", {
+      const res = await authorizedFetch("/api/territories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), description: description.trim() }),
