@@ -4,6 +4,12 @@ import { Employee } from "@/lib/tradeos/types";
 
 export type EmployeeResult = { employee?: Employee; error?: string };
 
+function toNullableString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
 export class EmployeeService {
   constructor(private readonly repository = new EmployeeRepository()) {}
 
@@ -67,20 +73,20 @@ export class EmployeeService {
 
     const payload: EmployeeInput = {
       organization_id: actor.organizationId,
-      profile_id: (input.profile_id as string) ?? null,
-      employee_id: (input.employee_id as string) ?? null,
+      profile_id: toNullableString(input.profile_id),
+      employee_id: toNullableString(input.employee_id),
       full_name: (input.full_name as string)?.trim(),
-      phone: (input.phone as string) ?? null,
-      cnic: (input.cnic as string) ?? null,
-      email: (input.email as string) ?? null,
+      phone: toNullableString(input.phone),
+      cnic: toNullableString(input.cnic),
+      email: toNullableString(input.email),
       designation: ((input.designation as string) || "salesman") as EmployeeInput["designation"],
-      department: (input.department as string) ?? null,
-      joining_date: (input.joining_date as string) ?? null,
+      department: toNullableString(input.department),
+      joining_date: toNullableString(input.joining_date),
       status: (input.status as EmployeeInput["status"]) ?? "active",
-      assigned_supervisor_id: (input.assigned_supervisor_id as string) ?? null,
-      assigned_territory_id: (input.assigned_territory_id as string) ?? null,
-      assigned_route_id: (input.assigned_route_id as string) ?? null,
-      photo_url: (input.photo_url as string) ?? null,
+      assigned_supervisor_id: toNullableString(input.assigned_supervisor_id),
+      assigned_territory_id: toNullableString(input.assigned_territory_id),
+      assigned_route_id: toNullableString(input.assigned_route_id),
+      photo_url: toNullableString(input.photo_url),
       emergency_contact: (input.emergency_contact as Employee["emergency_contact"]) ?? null,
       is_active: input.is_active !== false,
     };
@@ -104,12 +110,20 @@ export class EmployeeService {
     }
 
     const payload: EmployeeInput = {};
-    const allowedFields: (keyof Employee)[] = [
+    const stringFields: (keyof Employee)[] = [
       "profile_id", "employee_id", "full_name", "phone", "cnic", "email",
-      "designation", "department", "joining_date", "status", "assigned_supervisor_id",
-      "assigned_territory_id", "assigned_route_id", "photo_url", "emergency_contact", "is_active",
+      "department", "joining_date", "assigned_supervisor_id",
+      "assigned_territory_id", "assigned_route_id", "photo_url",
     ];
-    for (const field of allowedFields) {
+    const directFields: (keyof Employee)[] = [
+      "designation", "status", "emergency_contact", "is_active",
+    ];
+    for (const field of stringFields) {
+      if (updates[field] !== undefined) {
+        (payload as Record<string, unknown>)[field] = toNullableString(updates[field]);
+      }
+    }
+    for (const field of directFields) {
       if (updates[field] !== undefined) {
         (payload as Record<string, unknown>)[field] = updates[field];
       }
