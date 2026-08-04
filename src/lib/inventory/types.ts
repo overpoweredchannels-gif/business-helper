@@ -4,6 +4,8 @@
 export type InventoryMovementType =
   | "purchase_in"
   | "sale_out"
+  | "return_out"
+  | "return_in"
   | "adjustment_in"
   | "adjustment_out";
 

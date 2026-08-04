@@ -19,6 +19,8 @@ import type {
 export const MOVEMENT_LABELS: Record<InventoryMovementType, string> = {
   purchase_in: "Purchase Receipt",
   sale_out: "Sales Issue",
+  return_out: "Purchase Return",
+  return_in: "Sales Return",
   adjustment_in: "Adjustment In",
   adjustment_out: "Adjustment Out",
 };

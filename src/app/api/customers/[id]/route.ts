@@ -69,9 +69,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       credit_policy: credit_policy ?? "cash_only",
       allow_over_limit: body?.allow_over_limit === true,
       allow_overdue_sales: body?.allow_overdue_sales === true,
-      preferred_payment_method: normalizeOptionalText(body?.preferred_payment_method),
       updated_at: new Date().toISOString(),
     };
+    if (body?.preferred_payment_method !== undefined) {
+      updates.preferred_payment_method = normalizeOptionalText(body.preferred_payment_method);
+    }
 
     const supabase = createSupabaseUserClient(getAccessToken(request));
     const { data, error } = await supabase
@@ -111,7 +113,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const supabase = createSupabaseUserClient(getAccessToken(request));
     const { data, error } = await supabase
       .from("customers")
-      .update({ is_active: !restore, updated_at: new Date().toISOString() })
+      .update({ is_active: restore, updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("organization_id", organizationId)
       .select("id, customer_name, is_active")

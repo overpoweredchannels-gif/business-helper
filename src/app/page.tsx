@@ -1221,6 +1221,12 @@ export default function Home() {
     fetchPurchaseReturns(resolvedProfile.organization_id).then(() =>
       fetchPurchaseReturnItems(resolvedProfile.organization_id)
     );
+    fetchSalesOrders(resolvedProfile.organization_id).then(() =>
+      fetchSalesOrderItems(resolvedProfile.organization_id)
+    );
+    fetchSalesReturns(resolvedProfile.organization_id).then(() =>
+      fetchSalesReturnItems(resolvedProfile.organization_id)
+    );
     fetchSalesTransactions(resolvedProfile.organization_id);
     fetchCustomerPayments(resolvedProfile.organization_id);
     fetchCustomerPaymentAllocations(resolvedProfile.organization_id);
@@ -3695,7 +3701,7 @@ export default function Home() {
           discount_amount: parsedInvoiceDiscount,
           tax_rate: parsedTaxRate,
           tax_amount: computedTaxAmount,
-          status: salesPaymentType === "cash" ? "paid" : "unpaid",
+          status: salesPaymentType === "cash" ? "paid" : "confirmed",
           invoice_type: "sales",
           created_by_profile_id: currentProfile?.id ?? null,
         })
@@ -15854,6 +15860,8 @@ export default function Home() {
                     <option value="all">All movements</option>
                     <option value="purchase_in">Purchase Receipts</option>
                     <option value="sale_out">Sales Issues</option>
+                    <option value="return_out">Purchase Returns</option>
+                    <option value="return_in">Sales Returns</option>
                     <option value="adjustment_in">Adjustments In</option>
                     <option value="adjustment_out">Adjustments Out</option>
                   </select>
