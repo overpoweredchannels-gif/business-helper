@@ -3526,12 +3526,21 @@ export default function Home() {
       return;
     }
 
-    const parsedInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
+    const rawInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
     if (
       salesDiscountAmount.trim() !== "" &&
-      (!Number.isFinite(parsedInvoiceDiscount) || parsedInvoiceDiscount < 0)
+      (!Number.isFinite(rawInvoiceDiscount) || rawInvoiceDiscount < 0)
     ) {
-      setSalesError("Invoice discount must be a valid amount greater than or equal to zero");
+      setSalesError(
+        salesDiscountType === "percent"
+          ? "Invoice discount must be a valid percentage greater than or equal to zero"
+          : "Invoice discount must be a valid amount greater than or equal to zero"
+      );
+      setSalesMessage(null);
+      return;
+    }
+    if (salesDiscountType === "percent" && rawInvoiceDiscount > 100) {
+      setSalesError("Invoice discount percentage cannot exceed 100");
       setSalesMessage(null);
       return;
     }
@@ -3687,6 +3696,10 @@ export default function Home() {
         const lineDiscount = line.discount.trim() === "" ? 0 : safeNumber(line.discount);
         return sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - lineDiscount;
       }, 0);
+      const parsedInvoiceDiscount =
+        salesDiscountType === "percent"
+          ? (lineSubtotal * rawInvoiceDiscount) / 100
+          : rawInvoiceDiscount;
       const taxableBase = Math.max(0, lineSubtotal - parsedInvoiceDiscount);
       const computedTaxAmount = (taxableBase * parsedTaxRate) / 100;
 
@@ -3784,12 +3797,50 @@ export default function Home() {
         },
       });
 
+      if (salesPaymentType === "cash") {
+        const { data: autoPayment, error: autoPaymentError } = await supabase
+          .from("customer_payments")
+          .insert({
+            customer_id: selectedCustomerIdForSale,
+            amount: taxableBase + computedTaxAmount,
+            payment_date: salesInvoiceDate,
+            payment_method: "cash",
+            notes: `Payment received against invoice ${systemInvoiceNumber}`,
+            organization_id: currentOrganizationId,
+          })
+          .select("id")
+          .single();
+
+        if (autoPaymentError) {
+          console.error(
+            "Auto customer payment insert error:",
+            JSON.stringify(autoPaymentError, null, 2)
+          );
+        } else if (autoPayment?.id) {
+          const { error: autoAllocationError } = await supabase
+            .from("customer_payment_allocations")
+            .insert({
+              customer_payment_id: autoPayment.id,
+              sales_transaction_id: salesTransactionId,
+              amount: taxableBase + computedTaxAmount,
+              organization_id: currentOrganizationId,
+            });
+          if (autoAllocationError) {
+            console.error(
+              "Auto customer payment allocation insert error:",
+              JSON.stringify(autoAllocationError, null, 2)
+            );
+          }
+        }
+      }
+
       setSalesMessage(`Sales invoice ${systemInvoiceNumber} saved successfully`);
       setSelectedCustomerIdForSale(null);
       setSalesInvoiceNumber("");
       setSalesInvoiceDate(toDateInputValue(new Date()));
       setSalesPaymentType("cash");
       setSalesDiscountAmount("");
+      setSalesDiscountType("flat");
       setSalesTaxRate("");
       clearCreditOverrideState();
       setSalesLines([]);
@@ -3799,6 +3850,10 @@ export default function Home() {
       fetchSalesItems();
       fetchPurchaseItems();
       fetchProducts();
+      fetchCustomerPayments();
+      fetchCustomerPaymentAllocations();
+      fetchSupplierPayments();
+      fetchSupplierPaymentAllocations();
     } catch (err) {
       setSalesError(err instanceof Error ? err.message : "Failed to save sales invoice");
       console.error("Error creating sales invoice:", err);
@@ -4797,7 +4852,13 @@ export default function Home() {
   const [salesInvoiceDate, setSalesInvoiceDate] = useState(toDateInputValue(new Date()));
   const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "credit">("cash");
   const [salesDiscountAmount, setSalesDiscountAmount] = useState("");
+  const [salesDiscountType, setSalesDiscountType] = useState<"flat" | "percent">("flat");
   const [salesTaxRate, setSalesTaxRate] = useState("");
+  const [customerPaymentSearch, setCustomerPaymentSearch] = useState("");
+  const [salesHistorySearch, setSalesHistorySearch] = useState("");
+  const [salesHistoryDateFrom, setSalesHistoryDateFrom] = useState("");
+  const [salesHistoryDateTo, setSalesHistoryDateTo] = useState("");
+  const [salesHistoryProductSearch, setSalesHistoryProductSearch] = useState("");
   const [creditWarning, setCreditWarning] = useState<string | null>(null);
   const [creditOverrideConfirmation, setCreditOverrideConfirmation] = useState<{
     overLimit: boolean;
@@ -5468,7 +5529,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("customer_payments")
-      .select("id, customer_id, amount, notes, created_at")
+      .select("id, customer_id, amount, notes, created_at, payment_date, payment_method")
       .eq("organization_id", orgId)
       .order("id", { ascending: true });
 
@@ -7789,7 +7850,7 @@ export default function Home() {
     {}
   );
   const currentSalesInvoiceTotal = (() => {
-    const parsedInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
+    const rawInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
     const parsedTaxRate = salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate);
     const lineSubtotal = salesLines.reduce(
       (sum, line) =>
@@ -7798,6 +7859,10 @@ export default function Home() {
         (line.discount.trim() === "" ? 0 : safeNumber(line.discount)),
       0
     );
+    const parsedInvoiceDiscount =
+      salesDiscountType === "percent"
+        ? (lineSubtotal * (Number.isFinite(rawInvoiceDiscount) ? rawInvoiceDiscount : 0)) / 100
+        : rawInvoiceDiscount;
     const taxableBase = Math.max(
       0,
       lineSubtotal -
@@ -7813,6 +7878,42 @@ export default function Home() {
     );
   })();
   const todayDateValue = toDateInputValue(new Date());
+  const filteredSalesTransactions = (() => {
+    const searchTerm = salesHistorySearch.trim().toLowerCase();
+    return salesTransactions
+      .filter((tx) => {
+        if (searchTerm) {
+          const customer = customers.find((c) => c.id === tx.customer_id);
+          const customerName = (customer?.customer_name ?? "").toLowerCase();
+          const invoiceNumber = (tx.invoice_number ?? "").toLowerCase();
+          if (
+            !customerName.includes(searchTerm) &&
+            !invoiceNumber.includes(searchTerm)
+          ) {
+            return false;
+          }
+        }
+        const saleDate = getDateOnly(tx.sale_date) ?? getDateOnly(tx.created_at) ?? "";
+        if (salesHistoryDateFrom && saleDate && saleDate < salesHistoryDateFrom) return false;
+        if (salesHistoryDateTo && saleDate && saleDate > salesHistoryDateTo) return false;
+        if (salesHistoryProductSearch.trim()) {
+          const productName = (salesHistoryProductSearch.trim().toLowerCase());
+          const txItems = salesItems.filter((item) => item.sales_transaction_id === tx.id);
+          const matches = txItems.some((item) => {
+            const product = products.find((p) => String(p.id) === String(item.product_id));
+            return (product?.name ?? "").toLowerCase().includes(productName);
+          });
+          if (!matches) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const aDate = getDateOnly(a.sale_date) ?? getDateOnly(a.created_at) ?? "";
+        const bDate = getDateOnly(b.sale_date) ?? getDateOnly(b.created_at) ?? "";
+        if (aDate !== bDate) return bDate.localeCompare(aDate);
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+  })();
   const creditAllocationByTransaction = salesTransactions
     .filter((transaction) => transaction.payment_type === "credit")
     .sort((a, b) => {
@@ -7886,7 +7987,7 @@ export default function Home() {
           ? "Paid"
           : creditDueDate && creditDueDate < todayDateValue
             ? "Overdue"
-            : "Credit outstanding";
+            : "Payment Pending";
       return {
         transaction,
         invoiceTotal,
@@ -7976,6 +8077,53 @@ export default function Home() {
       if (aDate !== bDate) return bDate.localeCompare(aDate);
       return String(b.payment.id ?? "").localeCompare(String(a.payment.id ?? ""));
     });
+  const filteredCustomerPaymentHistory = customerPaymentHistory.filter((historyItem) => {
+    const term = customerPaymentSearch.trim().toLowerCase();
+    if (!term) return true;
+    const customerName = (historyItem.customer?.customer_name ?? "").toLowerCase();
+    const invoiceNumbers = historyItem.allocations
+      .map((allocationItem) => allocationItem.transaction?.invoice_number ?? "")
+      .join(" ")
+      .toLowerCase();
+    return customerName.includes(term) || invoiceNumbers.includes(term);
+  });
+  const customerInvoicesByCustomerForSearch = (() => {
+    const term = customerPaymentSearch.trim().toLowerCase();
+    if (!term) return [];
+    const matchedCustomerIds = new Set(
+      customers
+        .filter((customer) => (customer.customer_name ?? "").toLowerCase().includes(term))
+        .map((customer) => customer.id)
+    );
+    if (matchedCustomerIds.size === 0) return [];
+    return salesTransactions
+      .filter((tx) => matchedCustomerIds.has(tx.customer_id))
+      .map((tx) => {
+        const customer = customers.find((c) => c.id === tx.customer_id);
+        const paymentType = tx.payment_type ?? "cash";
+        const creditAllocation = creditAllocationByTransaction[tx.id];
+        const remainingUnpaidAmount = creditAllocation?.remainingUnpaidAmount ?? 0;
+        const status =
+          paymentType === "cash"
+            ? "Paid"
+            : remainingUnpaidAmount <= 0
+              ? "Paid"
+              : creditAllocation && getDateOnly(tx.credit_due_date) && getDateOnly(tx.credit_due_date)! < todayDateValue
+                ? "Overdue"
+                : "Payment Pending";
+        return {
+          transaction: tx,
+          customerName: customer?.customer_name ?? "Unknown",
+          status,
+          remainingUnpaidAmount,
+        };
+      })
+      .sort((a, b) => {
+        const aDate = getDateOnly(a.transaction.sale_date) ?? getDateOnly(a.transaction.created_at) ?? "";
+        const bDate = getDateOnly(b.transaction.sale_date) ?? getDateOnly(b.transaction.created_at) ?? "";
+        return bDate.localeCompare(aDate);
+      });
+  })();
   const purchaseInvoiceTotalsByTransaction = purchaseTransactions.reduce<Record<string, number>>(
     (totals, transaction) => {
       totals[transaction.id] = purchaseItems
@@ -12901,7 +13049,7 @@ export default function Home() {
                 ? "Paid"
                 : dueDate && dueDate < todayDateValue
                   ? "Overdue"
-                  : "Credit outstanding";
+                  : "Payment Pending";
             return [
               transaction.invoice_number,
               formatDate(transaction.sale_date ?? transaction.created_at),
@@ -16177,7 +16325,31 @@ export default function Home() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Invoice Discount (Optional)</span>
+                <span className="flex items-center gap-2">
+                  Invoice Discount (Optional)
+                  <span className="flex rounded border border-border overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearCreditOverrideState();
+                        setSalesDiscountType("flat");
+                      }}
+                      className={`px-2 py-0.5 text-xs ${salesDiscountType === "flat" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
+                    >
+                      Flat
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearCreditOverrideState();
+                        setSalesDiscountType("percent");
+                      }}
+                      className={`px-2 py-0.5 text-xs ${salesDiscountType === "percent" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
+                    >
+                      %
+                    </button>
+                  </span>
+                </span>
                 <input
                   type="number"
                   value={salesDiscountAmount}
@@ -16186,11 +16358,14 @@ export default function Home() {
                     setSalesDiscountAmount(e.target.value);
                   }}
                   min="0"
+                  max={salesDiscountType === "percent" ? "100" : undefined}
                   step="0.01"
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
                 <span className="text-xs text-muted-foreground/80">
-                  Flat amount deducted from the line subtotal before tax.
+                  {salesDiscountType === "percent"
+                    ? "Percentage deducted from the line subtotal before tax."
+                    : "Flat amount deducted from the line subtotal before tax."}
                 </span>
               </label>
 
@@ -16368,10 +16543,13 @@ export default function Home() {
               <div className="rounded border border-border bg-card p-4 text-sm text-foreground/80">
                 <div className="flex justify-between"><span>Line Subtotal</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price), 0))}</span></div>
                 {(salesLines.some((line) => Number(line.discount) > 0) || salesDiscountAmount.trim() !== "") && (
-                  <div className="flex justify-between"><span>Discounts</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + (Number(line.discount) || 0), 0) + (Number(salesDiscountAmount) || 0))}</span></div>
+                  <div className="flex justify-between"><span>Line Discounts</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + (Number(line.discount) || 0), 0))}</span></div>
+                )}
+                {salesDiscountAmount.trim() !== "" && (
+                  <div className="flex justify-between"><span>Invoice Discount{salesDiscountType === "percent" ? ` (${Number(salesDiscountAmount)}%)` : ""}</span><span>{pkrFormatter.format(salesDiscountType === "percent" ? (salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) * Number(salesDiscountAmount)) / 100 : (Number(salesDiscountAmount) || 0))}</span></div>
                 )}
                 {salesTaxRate.trim() !== "" && Number(salesTaxRate) > 0 && (
-                  <div className="flex justify-between"><span>Tax ({Number(salesTaxRate)}%)</span><span>{pkrFormatter.format((Math.max(0, salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) - (Number(salesDiscountAmount) || 0)) * Number(salesTaxRate)) / 100)}</span></div>
+                  <div className="flex justify-between"><span>Tax ({Number(salesTaxRate)}%)</span><span>{pkrFormatter.format((Math.max(0, salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) - (salesDiscountType === "percent" ? (salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) * Number(salesDiscountAmount)) / 100 : (Number(salesDiscountAmount) || 0))) * Number(salesTaxRate)) / 100)}</span></div>
                 )}
                 <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium text-foreground">
                   <span>Invoice Total</span>
@@ -16399,13 +16577,45 @@ export default function Home() {
           <p className="mb-3 text-xs text-muted-foreground/80">
             Older unallocated customer payments are applied to the oldest credit invoices first.
           </p>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <input
+              type="text"
+              value={salesHistorySearch}
+              onChange={(e) => setSalesHistorySearch(e.target.value)}
+              placeholder="Search by customer name or invoice number..."
+              className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+            />
+            <input
+              type="text"
+              value={salesHistoryProductSearch}
+              onChange={(e) => setSalesHistoryProductSearch(e.target.value)}
+              placeholder="Search by product..."
+              className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+            />
+            <input
+              type="date"
+              value={salesHistoryDateFrom}
+              onChange={(e) => setSalesHistoryDateFrom(e.target.value)}
+              className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              aria-label="Date from"
+            />
+            <input
+              type="date"
+              value={salesHistoryDateTo}
+              onChange={(e) => setSalesHistoryDateTo(e.target.value)}
+              className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              aria-label="Date to"
+            />
+          </div>
           {salesLoading ? (
             <p className="text-sm text-muted-foreground">Loading sales history...</p>
           ) : salesTransactions.length === 0 ? (
             <p className="text-sm text-muted-foreground">No sales invoices found.</p>
+          ) : filteredSalesTransactions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No sales invoices match your filters.</p>
           ) : (
             <ul className="space-y-2">
-              {salesTransactions.map((tx) => {
+              {filteredSalesTransactions.map((tx) => {
                 const customer = customers.find((c) => c.id === tx.customer_id);
                 const date = new Date(tx.created_at).toLocaleDateString();
                 const paymentType = tx.payment_type ?? "cash";
@@ -16419,7 +16629,7 @@ export default function Home() {
                       ? "Paid"
                       : creditDueDate && creditDueDate < todayDateValue
                         ? "Overdue"
-                        : "Credit outstanding";
+                        : "Payment Pending";
                 return (
                   <li key={tx.id} className="flex flex-col gap-1 rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -17461,11 +17671,58 @@ export default function Home() {
 
           <div className="mt-6 border-t border-border pt-4">
             <h3 className="mb-3 text-lg font-medium text-foreground">Customer Payment History</h3>
-            {customerPaymentHistory.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No customer payments recorded yet.</p>
+            <input
+              type="text"
+              value={customerPaymentSearch}
+              onChange={(e) => setCustomerPaymentSearch(e.target.value)}
+              placeholder="Search by customer name or invoice number..."
+              className="mb-3 w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+            />
+            {customerPaymentSearch.trim() !== "" && customerInvoicesByCustomerForSearch.length > 0 && (
+              <div className="mb-4 rounded border border-border bg-card p-3">
+                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
+                  Invoice History for searched customer
+                </div>
+                <ul className="space-y-1">
+                  {customerInvoicesByCustomerForSearch.map((invoiceItem) => (
+                    <li
+                      key={invoiceItem.transaction.id}
+                      className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <span>
+                        {invoiceItem.customerName} — {invoiceItem.transaction.invoice_number} (
+                        {new Date(invoiceItem.transaction.created_at).toLocaleDateString()})
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`rounded px-2 py-0.5 text-xs ${
+                            invoiceItem.status === "Paid"
+                              ? "bg-success/10 text-success"
+                              : invoiceItem.status === "Overdue"
+                                ? "bg-destructive/10 text-destructive"
+                                : "bg-warning/10 text-warning"
+                          }`}
+                        >
+                          {invoiceItem.status}
+                        </span>
+                        {invoiceItem.remainingUnpaidAmount > 0 && (
+                          <span>Remaining: {pkrFormatter.format(invoiceItem.remainingUnpaidAmount)}</span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {filteredCustomerPaymentHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {customerPaymentSearch.trim() !== ""
+                  ? "No customer payments match your search."
+                  : "No customer payments recorded yet."}
+              </p>
             ) : (
               <ul className="space-y-3">
-                {customerPaymentHistory.map((historyItem) => (
+                {filteredCustomerPaymentHistory.map((historyItem) => (
                   <li
                     key={historyItem.payment.id}
                     className="rounded border border-border bg-card p-3 text-sm text-foreground/80"
@@ -17479,11 +17736,21 @@ export default function Home() {
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Payment Date</div>
-                        <div>{getDateOnly(historyItem.payment.created_at) ?? "-"}</div>
+                        <div>{getDateOnly(historyItem.payment.payment_date ?? historyItem.payment.created_at) ?? "-"}</div>
+                        {historyItem.payment.payment_method && (
+                          <div className="mt-1 inline-block rounded bg-muted/40 px-2 py-0.5 text-xs capitalize text-muted-foreground">
+                            {String(historyItem.payment.payment_method).replace(/_/g, " ")}
+                          </div>
+                        )}
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Total Payment</div>
                         <div>{pkrFormatter.format(historyItem.paymentAmount)}</div>
+                        {(historyItem.payment.notes ?? "").toLowerCase().includes("against invoice") && (
+                          <div className="mt-1 inline-block rounded bg-success/10 px-2 py-0.5 text-xs text-success">
+                            Payment received
+                          </div>
+                        )}
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Explicitly Allocated</div>
