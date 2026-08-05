@@ -171,6 +171,7 @@ const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
       email: hiddenEmail,
       login_id: loginId,
       phone: employee.phone,
+      full_name: displayName,
       display_name: displayName,
       role: defaultRole,
       is_active: false, // remains inactive until activated via invite link
