@@ -80,7 +80,7 @@ export class StaffOnboardingService {
       return { ok: false, error: "This employee has already accepted their invitation." };
     }
 
-    const supabase = createSupabaseService();
+const supabase = createSupabaseService();
 
     // If already invited (pending), return existing invite data instead of creating duplicates.
     if (employee.invite_status === "pending" && employee.login_id && employee.hidden_email && employee.invite_code) {
@@ -93,7 +93,17 @@ export class StaffOnboardingService {
       };
     }
 
-const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
+    // Helper: check if a hidden_email already exists in Supabase auth
+    const isHiddenEmailTaken = async (email: string): Promise<boolean> => {
+      try {
+        const { data } = await supabase.auth.admin.listUsers();
+        return data.users.some((u) => u.email?.toLowerCase() === email.toLowerCase());
+      } catch {
+        return false; // if list fails, assume not taken (will be caught at create)
+      }
+    };
+
+    const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
       const { data } = await supabase
         .from("employees")
         .select("id")
@@ -102,10 +112,21 @@ const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
         .maybeSingle();
       return Boolean(data);
     };
+
+    // Generate a login_id that is unique in BOTH employees table AND auth (via hidden_email)
     let loginId = await makeUniqueLoginId(buildBaseLoginId(employee.full_name ?? "STAFF"), isLoginIdTaken);
     let inviteCode = generateInviteCode();
     let hiddenEmail = buildHiddenEmail(loginId, actor.organizationId);
     let expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000);
+
+    // Ensure hidden_email is also unique in auth (handles leftovers from failed prior attempts)
+    for (let attempt = 0; attempt < 5 && await isHiddenEmailTaken(hiddenEmail); attempt++) {
+      loginId = await makeUniqueLoginId(`${loginId}${attempt + 1}`, isLoginIdTaken);
+      inviteCode = generateInviteCode();
+      hiddenEmail = buildHiddenEmail(loginId, actor.organizationId);
+      expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000);
+    }
+
     const defaultRole = DESIGNATION_ROLE[employee.designation ?? "salesman"] ?? "salesman";
     const displayName = employee.full_name?.trim() ?? "Staff";
 
@@ -116,12 +137,10 @@ const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
     // activates it). The staff member only ever sees their Profile ID + password.
     const tempPassword = `idp_${Math.random().toString(36).slice(2, 10)}X1`;
     let userId = "";
-    let attemptLoginId = loginId;
-    let attemptHiddenEmail = hiddenEmail;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const { data: createdUser, error: createError } = await supabase.auth.admin.createUser({
-          email: attemptHiddenEmail,
+          email: hiddenEmail,
           password: tempPassword,
           email_confirm: true,
           user_metadata: { full_name: displayName, staff_onboarding: true },
@@ -129,9 +148,9 @@ const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
         if (createError) {
           const msg = createError.message.toLowerCase();
           if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("duplicate")) {
-            // hidden email already exists → generate new login_id and retry
-            attemptLoginId = await makeUniqueLoginId(`${attemptLoginId}${attempt + 1}`, isLoginIdTaken);
-            attemptHiddenEmail = buildHiddenEmail(attemptLoginId, actor.organizationId);
+            // Should not happen since we pre-checked, but handle as fallback
+            loginId = await makeUniqueLoginId(`${loginId}${attempt + 1}`, isLoginIdTaken);
+            hiddenEmail = buildHiddenEmail(loginId, actor.organizationId);
             continue;
           }
           return { ok: false, error: createError.message };
@@ -150,19 +169,13 @@ const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
       } catch (err) {
         const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
         if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("duplicate")) {
-          attemptLoginId = await makeUniqueLoginId(`${attemptLoginId}${attempt + 1}`, isLoginIdTaken);
-          attemptHiddenEmail = buildHiddenEmail(attemptLoginId, actor.organizationId);
+          loginId = await makeUniqueLoginId(`${loginId}${attempt + 1}`, isLoginIdTaken);
+          hiddenEmail = buildHiddenEmail(loginId, actor.organizationId);
           continue;
         }
         return { ok: false, error: err instanceof Error ? err.message : "Failed to prepare staff account." };
       }
     }
-    if (!userId) {
-      return { ok: false, error: "Could not generate unique hidden email after multiple attempts." };
-    }
-    loginId = attemptLoginId;
-    hiddenEmail = attemptHiddenEmail;
-    expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000);
 
     const profilePayload = {
       id: userId,
