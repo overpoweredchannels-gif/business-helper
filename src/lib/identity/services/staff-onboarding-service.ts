@@ -81,6 +81,18 @@ export class StaffOnboardingService {
     }
 
     const supabase = createSupabaseService();
+
+    // If already invited (pending), return existing invite data instead of creating duplicates.
+    if (employee.invite_status === "pending" && employee.login_id && employee.hidden_email && employee.invite_code) {
+      return {
+        ok: true,
+        employee: employee as Employee,
+        loginId: employee.login_id,
+        code: employee.invite_code,
+        expiresAt: employee.invite_expires_at ?? undefined,
+      };
+    }
+
     const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
       const { data } = await supabase
         .from("employees")
@@ -90,13 +102,15 @@ export class StaffOnboardingService {
         .maybeSingle();
       return Boolean(data);
     };
-    const loginId = await makeUniqueLoginId(buildBaseLoginId(employee.full_name), isLoginIdTaken);
+    const baseLoginId = buildBaseLoginId(employee.full_name ?? "STAFF");
+    const loginId = await makeUniqueLoginId(baseLoginId, isLoginIdTaken);
     const inviteCode = generateInviteCode();
     const hiddenEmail = buildHiddenEmail(loginId, actor.organizationId);
     const expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000);
     const defaultRole = DESIGNATION_ROLE[employee.designation ?? "salesman"] ?? "salesman";
+    const displayName = employee.full_name?.trim() ?? "Staff";
 
-    // The role in env:owner wants visibility in Staff & Permissions immediately and
+    // The owner wants visibility in Staff & Permissions immediately and
     // permissions applied BEFORE the invite link is handed out. Those lists are driven by
     // the profiles + staff_permissions tables, so we provision the hidden auth account,
     // profile row, and permission row now (account stays inactive until the employee
@@ -108,7 +122,7 @@ export class StaffOnboardingService {
         email: hiddenEmail,
         password: tempPassword,
         email_confirm: true,
-        user_metadata: { full_name: employee.full_name, staff_onboarding: true },
+        user_metadata: { full_name: displayName, staff_onboarding: true },
       });
       if (createError || !createdUser.user) {
         return { ok: false, error: createError?.message ?? "Failed to prepare staff account." };
@@ -131,7 +145,7 @@ export class StaffOnboardingService {
       email: hiddenEmail,
       login_id: loginId,
       phone: employee.phone,
-      display_name: employee.full_name,
+      display_name: displayName,
       role: defaultRole,
       is_active: false, // remains inactive until activated via invite link
     };
