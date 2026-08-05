@@ -97,54 +97,40 @@ with missing_items as (
   select 'employees.login_id' as item
   where not exists (
     select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'employees'
-      and column_name = 'login_id'
+    where table_schema = 'public' and table_name = 'employees' and column_name = 'login_id'
   )
   union all
-  select 'employees.invite_code'
-  where not exists (
+  select 'employees.invite_code' where not exists (
     select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'employees'
-      and column_name = 'invite_code'
+    where table_schema = 'public' and table_name = 'employees' and column_name = 'invite_code'
   )
   union all
-  select 'profiles.login_id'
-  where not exists (
+  select 'profiles.login_id' where not exists (
     select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'profiles'
-      and column_name = 'login_id'
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'login_id'
   )
   union all
-  select 'profiles.phone'
-  where not exists (
+  select 'profiles.phone' where not exists (
     select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'profiles'
-      and column_name = 'phone'
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'phone'
   )
   union all
-  select 'sales_route_stops.latitude'
-  where not exists (
+  select 'sales_route_stops.latitude' where not exists (
     select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'sales_route_stops'
-      and column_name = 'latitude'
+    where table_schema = 'public' and table_name = 'sales_route_stops' and column_name = 'latitude'
   )
   union all
-  select 'sales_route_stops.customer_id nullable'
-  where exists (
+  select 'sales_route_stops.customer_id nullable' where exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'sales_route_stops'
       and column_name = 'customer_id' and is_nullable = 'NO'
   )
   union all
-  select 'sales_routes.assigned_salesman_id'
-  where not exists (
+  select 'sales_routes.assigned_salesman_id' where not exists (
     select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'sales_routes'
-      and column_name = 'assigned_salesman_id'
+    where table_schema = 'public' and table_name = 'sales_routes' and column_name = 'assigned_salesman_id'
   )
 )
-select case
-  when count(*) = 0 then 'PHASE 5B OK - staff onboarding + custom route stops ready'
-  else 'PHASE 5B FAILED - missing: ' || string_agg(item, ', ')
-end as result
+select case when count(*) = 0 then 'PHASE 5B OK - staff onboarding + custom route stops ready'
+else 'PHASE 5B FAILED - missing: ' || string_agg(item, ', ') end as result
 from missing_items;
