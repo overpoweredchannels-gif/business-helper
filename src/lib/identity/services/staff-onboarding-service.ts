@@ -93,7 +93,7 @@ export class StaffOnboardingService {
       };
     }
 
-    const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
+const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
       const { data } = await supabase
         .from("employees")
         .select("id")
@@ -102,11 +102,10 @@ export class StaffOnboardingService {
         .maybeSingle();
       return Boolean(data);
     };
-    const baseLoginId = buildBaseLoginId(employee.full_name ?? "STAFF");
-    const loginId = await makeUniqueLoginId(baseLoginId, isLoginIdTaken);
-    const inviteCode = generateInviteCode();
-    const hiddenEmail = buildHiddenEmail(loginId, actor.organizationId);
-    const expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000);
+    let loginId = await makeUniqueLoginId(buildBaseLoginId(employee.full_name ?? "STAFF"), isLoginIdTaken);
+    let inviteCode = generateInviteCode();
+    let hiddenEmail = buildHiddenEmail(loginId, actor.organizationId);
+    let expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000);
     const defaultRole = DESIGNATION_ROLE[employee.designation ?? "salesman"] ?? "salesman";
     const displayName = employee.full_name?.trim() ?? "Staff";
 
@@ -116,27 +115,54 @@ export class StaffOnboardingService {
     // profile row, and permission row now (account stays inactive until the employee
     // activates it). The staff member only ever sees their Profile ID + password.
     const tempPassword = `idp_${Math.random().toString(36).slice(2, 10)}X1`;
-    let userId: string;
-    try {
-      const { data: createdUser, error: createError } = await supabase.auth.admin.createUser({
-        email: hiddenEmail,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: { full_name: displayName, staff_onboarding: true },
-      });
-      if (createError || !createdUser.user) {
-        return { ok: false, error: createError?.message ?? "Failed to prepare staff account." };
+    let userId = "";
+    let attemptLoginId = loginId;
+    let attemptHiddenEmail = hiddenEmail;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const { data: createdUser, error: createError } = await supabase.auth.admin.createUser({
+          email: attemptHiddenEmail,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: { full_name: displayName, staff_onboarding: true },
+        });
+        if (createError) {
+          const msg = createError.message.toLowerCase();
+          if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("duplicate")) {
+            // hidden email already exists → generate new login_id and retry
+            attemptLoginId = await makeUniqueLoginId(`${attemptLoginId}${attempt + 1}`, isLoginIdTaken);
+            attemptHiddenEmail = buildHiddenEmail(attemptLoginId, actor.organizationId);
+            continue;
+          }
+          return { ok: false, error: createError.message };
+        }
+        if (!createdUser.user) {
+          return { ok: false, error: "Failed to prepare staff account." };
+        }
+        userId = createdUser.user.id;
+        await supabase.auth.admin.updateUserById(userId, {
+          app_metadata: {
+            ...(createdUser.user.app_metadata ?? {}),
+            organization_id: actor.organizationId,
+          },
+        });
+        break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+        if (msg.includes("already registered") || msg.includes("already exists") || msg.includes("duplicate")) {
+          attemptLoginId = await makeUniqueLoginId(`${attemptLoginId}${attempt + 1}`, isLoginIdTaken);
+          attemptHiddenEmail = buildHiddenEmail(attemptLoginId, actor.organizationId);
+          continue;
+        }
+        return { ok: false, error: err instanceof Error ? err.message : "Failed to prepare staff account." };
       }
-      userId = createdUser.user.id;
-      await supabase.auth.admin.updateUserById(userId, {
-        app_metadata: {
-          ...(createdUser.user.app_metadata ?? {}),
-          organization_id: actor.organizationId,
-        },
-      });
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : "Failed to prepare staff account." };
     }
+    if (!userId) {
+      return { ok: false, error: "Could not generate unique hidden email after multiple attempts." };
+    }
+    loginId = attemptLoginId;
+    hiddenEmail = attemptHiddenEmail;
+    expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000);
 
     const profilePayload = {
       id: userId,
