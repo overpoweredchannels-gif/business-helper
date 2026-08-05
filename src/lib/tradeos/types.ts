@@ -266,6 +266,8 @@ export interface StaffProfile {
   is_active: boolean | null;
   display_name: string | null;
   auth_user_id?: string | null;
+  login_id?: string | null;
+  phone?: string | null;
 }
 
 export interface StaffPermission {
@@ -639,6 +641,11 @@ export interface Employee {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  login_id?: string | null;
+  hidden_email?: string | null;
+  invite_code?: string | null;
+  invite_status?: "none" | "pending" | "accepted" | "revoked" | "expired";
+  invite_expires_at?: string | null;
 }
 
 export interface Territory {
@@ -661,14 +668,19 @@ export interface SalesRoute {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  assigned_salesman_id?: string | null;
 }
 
 export interface SalesRouteStop {
   id: string;
   organization_id: string;
   route_id: string;
-  customer_id: string;
+  customer_id: string | null;
   stop_order: number;
+  label?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
   created_at: string;
 }
 

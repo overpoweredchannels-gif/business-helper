@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Employee, EmployeeDesignation } from "@/lib/tradeos/types";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { buildWhatsAppUrl, buildWhatsAppInviteMessage, designationLabel } from "@/lib/identity/staff-invitation";
 
 const DESIGNATIONS: EmployeeDesignation[] = [
   "salesman",
@@ -75,10 +76,23 @@ export default function EmployeeManagement() {
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [isOwner, setIsOwner] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [organizationName, setOrganizationName] = useState("your organization");
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+
+  const loadOrganization = async () => {
+    try {
+      const res = await authorizedFetch("/api/identity/organization/current");
+      const data = await res.json();
+      if (data.organization?.name) setOrganizationName(data.organization.name);
+    } catch {
+      // best-effort; fall back to generic label
+    }
+  };
 
   const load = async () => {
     try {
       setLoading(true);
+      loadOrganization();
       const res = await authorizedFetch("/api/identity/employees");
       const data = await res.json();
       if (res.status === 403) {
@@ -168,6 +182,74 @@ export default function EmployeeManagement() {
       }
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+    }
+  };
+
+  const generateInvite = async (emp: Employee): Promise<{ loginId?: string; code?: string; inviteLink?: string; error?: string } | null> => {
+    try {
+      const res = await authorizedFetch("/api/identity/staff/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: emp.id }),
+      });
+      const data = await res.json();
+      if (data.loginId && data.code) {
+        return { loginId: data.loginId, code: data.code, inviteLink: data.inviteLink };
+      }
+      return { error: data.error || "Invite generation failed" };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Network error" };
+    }
+  };
+
+  const inviteViaWhatsApp = async (emp: Employee) => {
+    if (!emp.phone) {
+      setMessage({ type: "error", text: "Add a phone number to this employee before sending a WhatsApp invite." });
+      return;
+    }
+    setInvitingId(emp.id);
+    setMessage(null);
+    try {
+      const result = await generateInvite(emp);
+      if (!result) return;
+      if (result.error || !result.loginId || !result.inviteLink) {
+        setMessage({ type: "error", text: result.error || "Invite generation failed" });
+        return;
+      }
+      const text = buildWhatsAppInviteMessage({
+        organizationName,
+        employeeName: emp.full_name,
+        designationLabel: designationLabel(emp.designation, DESIGNATION_LABELS),
+        loginId: result.loginId,
+        inviteLink: result.inviteLink,
+      });
+      const waUrl = buildWhatsAppUrl(emp.phone) + `?text=${encodeURIComponent(text)}`;
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+      setMessage({ type: "ok", text: `Profile ID ${result.loginId} generated. WhatsApp invite opened for ${emp.full_name}.` });
+      load();
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setInvitingId(null);
+    }
+  };
+
+  const copyInviteLink = async (emp: Employee) => {
+    setInvitingId(emp.id);
+    setMessage(null);
+    try {
+      const result = await generateInvite(emp);
+      if (!result || result.error || !result.inviteLink) {
+        setMessage({ type: "error", text: result?.error || "Invite generation failed" });
+        return;
+      }
+      await navigator.clipboard.writeText(result.inviteLink);
+      setMessage({ type: "ok", text: `Invite link copied. Share it with ${emp.full_name}.` });
+      load();
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setInvitingId(null);
     }
   };
 
@@ -332,10 +414,44 @@ export default function EmployeeManagement() {
                   {DESIGNATION_LABELS[emp.designation] ?? emp.designation}
                   {emp.phone ? ` · ${emp.phone}` : ""}
                   {emp.employee_id ? ` · ID: ${emp.employee_id}` : ""}
+                  {emp.login_id ? ` · Profile ID: ${emp.login_id}` : ""}
                 </div>
+                {emp.invite_status && emp.invite_status !== "none" && (
+                  <div style={{ marginTop: "0.375rem" }}>
+                    <span
+                      style={{
+                        fontSize: "0.7rem",
+                        background: emp.invite_status === "accepted" ? "#dcfce7" : emp.invite_status === "pending" ? "#fef9c3" : "#f3f4f6",
+                        color: emp.invite_status === "accepted" ? "#166534" : emp.invite_status === "pending" ? "#854d0e" : "#6b7280",
+                        borderRadius: "999px",
+                        padding: "0.125rem 0.5rem",
+                      }}
+                    >
+                      Invite: {emp.invite_status}
+                    </span>
+                  </div>
+                )}
               </div>
               {isOwner && (
-                <div style={{ display: "flex", gap: "0.5rem" }}>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  {emp.invite_status !== "accepted" && (
+                    <>
+                      <button
+                        style={{ ...buttonStyle, fontSize: "0.75rem", padding: "0.375rem 0.75rem", background: "#059669" }}
+                        onClick={() => inviteViaWhatsApp(emp)}
+                        disabled={invitingId === emp.id}
+                      >
+                        {invitingId === emp.id ? "Generating..." : "WhatsApp Invite"}
+                      </button>
+                      <button
+                        style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }}
+                        onClick={() => copyInviteLink(emp)}
+                        disabled={invitingId === emp.id}
+                      >
+                        Copy Link
+                      </button>
+                    </>
+                  )}
                   <button
                     style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }}
                     onClick={() => startEdit(emp)}

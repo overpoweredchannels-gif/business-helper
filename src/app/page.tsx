@@ -1019,7 +1019,7 @@ export default function Home() {
 
     let profilesResult = await supabase
       .from("profiles")
-      .select("id, organization_id, email, role, is_active, display_name, auth_user_id")
+      .select("id, organization_id, email, role, is_active, display_name, auth_user_id, login_id, phone")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: true });
 
@@ -1027,7 +1027,7 @@ export default function Home() {
       console.warn("Profile created_at ordering unavailable, retrying by email:", profilesResult.error);
       profilesResult = await supabase
         .from("profiles")
-        .select("id, organization_id, email, role, is_active, display_name, auth_user_id")
+        .select("id, organization_id, email, role, is_active, display_name, auth_user_id, login_id, phone")
         .eq("organization_id", orgId)
         .order("email", { ascending: true });
     }
@@ -20658,7 +20658,9 @@ export default function Home() {
           </div>
 
           <div className="mb-5 rounded border border-primary/20 bg-primary/5 p-4 text-sm text-primary">
-            Staff invite by email will be added later. For now, staff accounts can be managed after they sign up under this organization.
+            Staff sign in with a Profile ID + Password (no email needed). Create an employee under Employees,
+            then generate a WhatsApp invite link. After staff activate their account, they appear here and you can
+            refine their permissions.
           </div>
 
           <div className="mb-5 rounded border border-success/20 bg-success/5 p-4">
@@ -20792,7 +20794,13 @@ export default function Home() {
                               placeholder="Display name"
                               className="w-full rounded border border-border px-3 py-2"
                             />
-                            <div className="mt-1 text-xs text-muted-foreground/80">{profile.email ?? "No email"}</div>
+                            <div className="mt-1 text-xs text-muted-foreground/80">
+                              {profile.login_id ? (
+                                <span className="font-medium text-primary/80">Profile ID: {profile.login_id}</span>
+                              ) : (
+                                profile.email ?? "No email"
+                              )}
+                            </div>
                             {currentProfile?.id === profile.id && (
                               <div className="mt-1 text-xs font-medium text-primary">Current user</div>
                             )}
@@ -20871,12 +20879,11 @@ export default function Home() {
                 <option value="">Select staff</option>
                 {staffProfiles.map((profile) => (
                   <option key={profile.id} value={profile.id}>
-                    {profile.display_name || profile.email || profile.id}
+                    {profile.display_name || profile.login_id || profile.email || profile.id}
                   </option>
                 ))}
               </select>
             </label>
-
             {(() => {
               const selectedProfile = staffProfiles.find((profile) => profile.id === selectedStaffProfileId);
               const selectedProfileIsOwner = selectedProfile?.role === "owner" || !selectedProfile?.role;

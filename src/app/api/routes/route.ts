@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
       description: (body.description as string) ?? null,
       route_frequency: (body.route_frequency as SalesRoute["route_frequency"]) ?? "daily",
       is_active: body.is_active !== false,
+      assigned_salesman_id: (body.assigned_salesman_id as string) ?? null,
     });
     return NextResponse.json({ route });
   } catch (error) {

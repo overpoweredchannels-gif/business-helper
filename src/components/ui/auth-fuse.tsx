@@ -12,6 +12,8 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "@/lib/supabase/client";
 
+type LoginMethod = "email" | "staff";
+
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -238,7 +240,9 @@ function LeftPanel() {
 
 function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { email?: string }) => void }) {
   const router = useRouter();
+  const [method, setMethod] = useState<LoginMethod>("email");
   const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -249,15 +253,31 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
     setError(null);
     setLoading(true);
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-      if (signInError) throw signInError;
+      if (method === "staff") {
+        if (!loginId.trim() || !password) throw new Error("Enter your Profile ID and password.");
+        const res = await fetch("/api/identity/staff/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ loginId: loginId.trim(), password }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Sign in failed");
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: data.accessToken,
+          refresh_token: data.refreshToken,
+        });
+        if (setSessionError) throw setSessionError;
+      } else {
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInError) throw signInError;
+      }
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
     } finally {
       setLoading(false);
     }
-  }, [email, password, router]);
+  }, [method, email, loginId, password, router]);
 
   return (
     <form onSubmit={handleSubmit} autoComplete="on" className="animate-slideUp">
@@ -266,18 +286,53 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
         <p className="text-body text-sm mt-1.5">Welcome back! Enter your credentials to continue.</p>
       </div>
 
+      <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/30 p-1 mb-4">
+        {([
+          { key: "email", label: "Email" },
+          { key: "staff", label: "Profile ID" },
+        ] as const).map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => { setMethod(tab.key); setError(null); }}
+            className={cn(
+              "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              method === tab.key
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-4">
-        <Field
-          label="Email"
-          type="email"
-          placeholder="m@example.com"
-          required
-          autoComplete="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          icon={<Mail className="size-4" />}
-          error={error && error.includes("email") ? error : null}
-        />
+        {method === "email" ? (
+          <Field
+            label="Email"
+            type="email"
+            placeholder="m@example.com"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            icon={<Mail className="size-4" />}
+            error={error && error.includes("email") ? error : null}
+          />
+        ) : (
+          <Field
+            label="Profile ID"
+            type="text"
+            placeholder="e.g. ALI01"
+            required
+            autoComplete="username"
+            value={loginId}
+            onChange={e => setLoginId(e.target.value)}
+            icon={<User className="size-4" />}
+            error={error && error.includes("Profile ID") ? error : null}
+          />
+        )}
         <PasswordField
           label="Password"
           required
@@ -285,7 +340,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
           placeholder="Enter your password"
           value={password}
           onChange={e => setPassword(e.target.value)}
-          error={error && !error.includes("email") ? error : null}
+          error={error && !error.includes("email") && !error.includes("Profile ID") ? error : null}
         />
 
         <div className="flex items-center justify-between">
@@ -294,6 +349,12 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
             Forgot password?
           </button>
         </div>
+
+        {method === "staff" && (
+          <Alert variant="warning">
+            Staff sign in with the Profile ID and password your manager gave you.
+          </Alert>
+        )}
 
         {error && <Alert>{error}</Alert>}
 
