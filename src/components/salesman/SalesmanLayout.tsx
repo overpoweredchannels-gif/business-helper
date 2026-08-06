@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, MapPin, ClipboardList, Banknote, Bell, User,
-  LogOut, Menu, X, Route as RouteIcon, Home, MessageSquareText, Clock, Target,
+  LogOut, Menu, X, Route as RouteIcon, Home, MessageSquareText, Clock, Target, CalendarClock,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { useState } from "react";
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: "/salesman/feedback", label: "Feedback", icon: MessageSquareText },
   { href: "/salesman/targets", label: "My Targets", icon: Target },
   { href: "/salesman/attendance", label: "Attendance", icon: Clock },
+  { href: "/salesman/leave", label: "Leave", icon: CalendarClock },
   { href: "/salesman/notifications", label: "Notifications", icon: Bell },
   { href: "/salesman/profile", label: "Profile", icon: User },
 ];
