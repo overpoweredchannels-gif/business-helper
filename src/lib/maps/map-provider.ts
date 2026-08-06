@@ -37,6 +37,8 @@ export interface NavigationProvider {
   buildMapUrl(location: GeoPoint, label?: string): string;
 }
 
+export * from "./google-maps";
+
 function formatCoordinate(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "";
   return value.toFixed(6);
