@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
 
       supabase
         .from("attendance_records")
-        .select("employee_id, status, date")
+        .select("employee_id, status, date, total_hours")
         .eq("organization_id", permission.actor.organizationId)
         .gte("date", monthStartStr),
 

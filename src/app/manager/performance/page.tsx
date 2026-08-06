@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Loader2, AlertCircle, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, Award } from "lucide-react";
@@ -25,7 +27,7 @@ export default function ManagerPerformancePage() {
       if (data.ok) {
         if (Array.isArray(data.performance)) {
           // Owner view - aggregate and format
-          const formatted = data.performance.map((p: any) => {
+          const formatted = data.performance.map((p: any): any => {
             const target = p.targets && p.targets[0];
             const targetValue = target?.target_value || 0;
             const salesAchievement = targetValue > 0 ? (p.salesTotal / targetValue) * 100 : 0;
@@ -76,30 +78,30 @@ export default function ManagerPerformancePage() {
           });
           const aggregated = {
             sales: {
-              total: formatted.reduce((sum, p) => sum + p.sales.total, 0),
-              count: formatted.reduce((sum, p) => sum + p.sales.count, 0),
+              total: formatted.reduce((sum: number, p: any) => sum + p.sales.total, 0),
+              count: formatted.reduce((sum: number, p: any) => sum + p.sales.count, 0),
               thisMonth: 0,
               thisWeek: 0,
             },
             visits: {
-              total: formatted.reduce((sum, p) => sum + p.visits.total, 0),
-              completed: formatted.reduce((sum, p) => sum + p.visits.completed, 0),
-              missed: formatted.reduce((sum, p) => sum + p.visits.missed, 0),
+              total: formatted.reduce((sum: number, p: any) => sum + p.visits.total, 0),
+              completed: formatted.reduce((sum: number, p: any) => sum + p.visits.completed, 0),
+              missed: formatted.reduce((sum: number, p: any) => sum + p.visits.missed, 0),
               inProgress: 0,
             },
             collections: {
-              total: formatted.reduce((sum, p) => sum + p.collections.total, 0),
-              approved: formatted.reduce((sum, p) => sum + p.collections.approved, 0),
-              pending: formatted.reduce((sum, p) => sum + p.collections.pending, 0),
-              amount: formatted.reduce((sum, p) => sum + p.collections.amount, 0),
+              total: formatted.reduce((sum: number, p: any) => sum + p.collections.total, 0),
+              approved: formatted.reduce((sum: number, p: any) => sum + p.collections.approved, 0),
+              pending: formatted.reduce((sum: number, p: any) => sum + p.collections.pending, 0),
+              amount: formatted.reduce((sum: number, p: any) => sum + p.collections.amount, 0),
             },
             attendance: {
-              days: formatted.reduce((sum, p) => sum + p.attendance.days, 0),
-              present: formatted.reduce((sum, p) => sum + p.attendance.present, 0),
+              days: formatted.reduce((sum: number, p: any) => sum + p.attendance.days, 0),
+              present: formatted.reduce((sum: number, p: any) => sum + p.attendance.present, 0),
               late: 0,
-              absent: formatted.reduce((sum, p) => sum + p.attendance.absent, 0),
+              absent: formatted.reduce((sum: number, p: any) => sum + p.attendance.absent, 0),
               leave: 0,
-              totalHours: formatted.reduce((sum, p) => sum + p.attendance.totalHours, 0),
+              totalHours: formatted.reduce((sum: number, p: any) => sum + p.attendance.totalHours, 0),
             },
             targets: [],
           };
@@ -222,7 +224,8 @@ function StatCard({ icon, label, value, sublabel }: { icon: React.ReactNode; lab
       </div>
       <div className="mt-3">
         <div className="font-heading font-bold text-xl text-foreground">{value}</div>
-        <div className="text-xs text-body mt-0.5">{label}{sublabel && <span className="text-light-text ml-1">·</span> <span className="text-light-text">{sublabel}</span>}</div>
+        <div className="text-xs text-body mt-0.5">{label}</div>
+        {sublabel && <div className="text-xs text-light-text mt-0.5">{sublabel}</div>}
       </div>
     </div>
   );

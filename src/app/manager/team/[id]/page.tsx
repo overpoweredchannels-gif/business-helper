@@ -190,7 +190,7 @@ export default function EmployeeLedgerPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <RecentPanel title="Recent Sales" icon={<TrendingUp className="size-4 text-primary" }} empty="No sales yet">
+        <RecentPanel title="Recent Sales" icon={<TrendingUp className="size-4 text-primary" />} empty="No sales yet">
           {recent.sales.map((s) => (
             <div key={s.id} className="flex justify-between py-2 border-b border-border/40 last:border-0">
               <span className="text-sm text-foreground">{formatCurrency(s.total_amount)}</span>
@@ -198,7 +198,7 @@ export default function EmployeeLedgerPage() {
             </div>
           ))}
         </RecentPanel>
-        <RecentPanel title="Recent Visits" icon={<MapPin className="size-4 text-warning" }} empty="No visits yet">
+        <RecentPanel title="Recent Visits" icon={<MapPin className="size-4 text-warning" />} empty="No visits yet">
           {recent.visits.map((v) => (
             <div key={v.id} className="flex justify-between py-2 border-b border-border/40 last:border-0">
               <span className="text-sm text-foreground capitalize">{v.status}</span>
@@ -206,7 +206,7 @@ export default function EmployeeLedgerPage() {
             </div>
           ))}
         </RecentPanel>
-        <RecentPanel title="Recent Collections" icon={<Banknote className="size-4 text-success" }} empty="No collections yet">
+        <RecentPanel title="Recent Collections" icon={<Banknote className="size-4 text-success" />} empty="No collections yet">
           {recent.collections.map((c) => (
             <div key={c.id} className="flex justify-between py-2 border-b border-border/40 last:border-0">
               <span className="text-sm text-foreground">{formatCurrency(c.amount)}</span>
@@ -227,7 +227,8 @@ function StatCard({ icon, label, value, sublabel }: { icon: React.ReactNode; lab
       </div>
       <div className="mt-3">
         <div className="font-heading font-bold text-xl text-foreground">{value}</div>
-        <div className="text-xs text-body mt-0.5">{label}{sublabel && <span className="text-light-text ml-1">·</span> <span className="text-light-text">{sublabel}</span>}</div>
+        <div className="text-xs text-body mt-0.5">{label}</div>
+        {sublabel && <div className="text-xs text-light-text mt-0.5">{sublabel}</div>}
       </div>
     </div>
   );
