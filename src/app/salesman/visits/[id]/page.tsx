@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import {
   Loader2, MapPin, Navigation, FileText, CheckCircle2, AlertCircle, ArrowLeft,
-  Plus, Trash2, Search,
+  Plus, Trash2, Search, Camera, Image as ImageIcon,
 } from "lucide-react";
 
 interface Visit {
@@ -20,6 +20,7 @@ interface Visit {
   notes?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  images?: Array<{ url: string; caption?: string | null; uploaded_at?: string }> | null;
   customers?: {
     customer_name?: string;
     shop_name?: string;
@@ -87,6 +88,10 @@ export default function VisitDetailPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
+
+  // Photos
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadVisit = useCallback(async (empId: string) => {
     setLoading(true);
@@ -235,6 +240,35 @@ export default function VisitDetailPage() {
     }
   };
 
+  const uploadPhoto = async (file: File) => {
+    setPhotoLoading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("visitId", visitId);
+      formData.append("photo", file);
+      const res = await authorizedFetch("/api/visits/photos", {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to upload photo");
+      setSuccess("Photo uploaded.");
+      await loadVisit(employeeId!);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Photo upload failed");
+    } finally {
+      setPhotoLoading(false);
+    }
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadPhoto(file);
+    e.target.value = "";
+  };
+
   const updateQty = (id: number, qty: number) => {
     setItems(items.map((i) => (i.productId === id ? { ...i, quantity: Math.max(1, qty) } : i)));
   };
@@ -341,6 +375,34 @@ export default function VisitDetailPage() {
                 <FileText className="size-4" /> {actionLoading ? "Saving..." : "Save notes"}
               </button>
             </div>
+          </div>
+
+          {/* Visit photos */}
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <h2 className="font-semibold text-foreground mb-1">Visit photos</h2>
+            <p className="text-sm text-body mb-4">Capture proof of visit or product photos.</p>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFileChange} />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={photoLoading}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {photoLoading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
+              {photoLoading ? "Uploading..." : "Take / choose photo"}
+            </button>
+
+            {visit.images && visit.images.length > 0 && (
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                {visit.images.map((img, i) => (
+                  <a key={i} href={img.url} target="_blank" rel="noopener noreferrer" className="group relative aspect-square rounded-lg overflow-hidden border border-border bg-muted">
+                    <img src={img.url} alt={img.caption || "Visit photo"} className="size-full object-cover" loading="lazy" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                      <ImageIcon className="size-5 text-white" />
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Draft sale builder */}
