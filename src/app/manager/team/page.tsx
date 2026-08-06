@@ -1,8 +1,7 @@
-"use client";
-
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
-import { Users, Loader2, AlertCircle, Briefcase, Route as RouteIcon } from "lucide-react";
+import { Users, Loader2, AlertCircle, Briefcase, Route as RouteIcon, ExternalLink } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -14,6 +13,7 @@ interface Employee {
 }
 
 export default function TeamPage() {
+  const router = useRouter();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +43,7 @@ export default function TeamPage() {
     <div className="grid gap-6">
       <div>
         <h1 className="font-heading font-bold text-2xl text-foreground">Field Team</h1>
-        <p className="text-sm text-body mt-1">Your field staff and their assignments.</p>
+        <p className="text-sm text-body mt-1">Your field staff and their assignments. Click to view ledger.</p>
       </div>
 
       {error && (
@@ -65,7 +65,11 @@ export default function TeamPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {salesmen.map((e) => (
-            <div key={e.id} className="rounded-2xl border border-border bg-card p-5">
+            <button
+              key={e.id}
+              onClick={() => router.push(`/manager/team/${e.id}`)}
+              className="rounded-2xl border border-border bg-card p-5 text-left hover:border-primary/50 hover:shadow-sm transition-all cursor-pointer"
+            >
               <div className="flex items-center gap-3 mb-3">
                 <div className="size-11 rounded-xl bg-primary-light flex items-center justify-center font-heading font-bold text-lg text-primary">
                   {e.full_name.slice(0, 1).toUpperCase()}
@@ -77,12 +81,15 @@ export default function TeamPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-1 text-xs text-light-text">
-                <RouteIcon className="size-3" />
-                {e.assigned_route_id ? "Route assigned" : "No route assigned"}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1 text-xs text-light-text">
+                  <RouteIcon className="size-3" />
+                  {e.assigned_route_id ? "Route assigned" : "No route assigned"}
+                </div>
+                <ExternalLink className="size-4 text-light-text hover:text-primary transition-colors" />
               </div>
               {e.phone && <div className="text-xs text-light-text mt-1">{e.phone}</div>}
-            </div>
+            </button>
           ))}
         </div>
       )}

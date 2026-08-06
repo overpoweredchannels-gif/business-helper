@@ -55,6 +55,27 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
+    const VISIT_FREQUENCIES = ["daily", "weekly", "monthly", "none"];
+    const PRIORITIES = ["high", "medium", "low"];
+
+    const visit_frequency = normalizeOptionalText(body?.visit_frequency);
+    if (visit_frequency && !VISIT_FREQUENCIES.includes(visit_frequency)) {
+      return NextResponse.json(
+        { ok: false, error: "Visit frequency must be one of: daily, weekly, monthly, none." },
+        { status: 400 }
+      );
+    }
+    const priority = normalizeOptionalText(body?.priority);
+    if (priority && !PRIORITIES.includes(priority)) {
+      return NextResponse.json(
+        { ok: false, error: "Priority must be one of: high, medium, low." },
+        { status: 400 }
+      );
+    }
+
+    const latitude = normalizeOptionalNumber(body?.latitude);
+    const longitude = normalizeOptionalNumber(body?.longitude);
+
     const updates: Record<string, unknown> = {
       customer_name,
       shop_name: normalizeOptionalText(body?.shop_name),
@@ -74,6 +95,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body?.preferred_payment_method !== undefined) {
       updates.preferred_payment_method = normalizeOptionalText(body.preferred_payment_method);
     }
+
+    // Field-sales assignment columns
+    updates.assigned_salesman_id = body?.assigned_salesman_id ? String(body.assigned_salesman_id) : null;
+    updates.assigned_territory_id = body?.assigned_territory_id ? String(body.assigned_territory_id) : null;
+    updates.visit_frequency = visit_frequency ?? "weekly";
+    updates.priority = priority ?? "medium";
+    updates.latitude = latitude;
+    updates.longitude = longitude;
 
     const supabase = createSupabaseUserClient(getAccessToken(request));
     const { data, error } = await supabase

@@ -51,6 +51,13 @@ export interface Customer {
   // Sales Management (Phase 4) — additive metadata.
   is_active?: boolean | null;
   notes?: string | null;
+  // Field Sales Management (Phase 5) — assignment metadata.
+  latitude?: number | null;
+  longitude?: number | null;
+  assigned_salesman_id?: string | null;
+  assigned_territory_id?: string | null;
+  visit_frequency?: string | null;
+  priority?: string | null;
 }
 
 export interface Supplier {
