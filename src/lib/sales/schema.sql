@@ -18,7 +18,7 @@ create table if not exists public.sales_orders (
   expected_date date,
   notes text,
   status text not null default 'draft'
-    check (status in ('draft', 'confirmed', 'delivered', 'cancelled')),
+    check (status in ('draft', 'pending_approval', 'approved', 'rejected', 'converted', 'confirmed', 'delivered', 'cancelled')),
   created_by_profile_id uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
