@@ -103,14 +103,23 @@ const supabase = createSupabaseService();
       }
     };
 
+    // The unique constraint that will reject this insert lives on `profiles.login_id`
+    // (global, `profiles_login_id_uidx`) and may contain orphaned/other-org leftovers
+    // not present in `employees`. Check BOTH tables so the generated id can't collide.
     const isLoginIdTaken = async (loginId: string): Promise<boolean> => {
-      const { data } = await supabase
+      const employeeHit = await supabase
         .from("employees")
         .select("id")
         .eq("organization_id", actor.organizationId)
         .eq("login_id", loginId)
         .maybeSingle();
-      return Boolean(data);
+      if (employeeHit.data) return true;
+      const profileHit = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("login_id", loginId)
+        .maybeSingle();
+      return Boolean(profileHit.data);
     };
 
     // Generate a login_id that is unique in BOTH employees table AND auth (via hidden_email)
