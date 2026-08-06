@@ -271,7 +271,24 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) throw signInError;
       }
-      router.push("/");
+
+      const { data: userData } = await supabase.auth.getUser();
+      let role: string | null = null;
+      if (userData?.user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", userData.user.id)
+          .maybeSingle();
+        role = profile?.role ?? null;
+      }
+
+      const staffRoles = ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor", "warehouse_staff"];
+      if (role && staffRoles.includes(role)) {
+        router.push("/salesman");
+      } else {
+        router.push("/");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
     } finally {

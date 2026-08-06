@@ -90,7 +90,7 @@ const BUILT_IN_ROLES: Record<BuiltInRole, RoleDefinition> = {
   salesman: {
     id: "salesman",
     name: "Salesman",
-    description: "Create sales, manage customers, and view inventory levels.",
+    description: "Field sales: visit customers, record visits, create draft sales, and collect payments.",
     permissions: [
       "sales_view",
       "sales_create",
@@ -99,6 +99,7 @@ const BUILT_IN_ROLES: Record<BuiltInRole, RoleDefinition> = {
       "customers_manage",
       "location_view",
       "ai_assistant",
+      "field_sales",
     ],
     isBuiltIn: true,
     createdAt: "",

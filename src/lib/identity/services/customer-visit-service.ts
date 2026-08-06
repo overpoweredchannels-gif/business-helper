@@ -177,7 +177,7 @@ export class CustomerVisitService {
 
     // Verify employee owns this visit (or is owner)
     const isOwner = actor.isOwner;
-    const isEmployee = visit.employee_id === actor.profileId;
+    const isEmployee = await this.isEmployeeOfProfile(actor, visit.employee_id);
 
     if (!isOwner && !isEmployee) {
       return { ok: false, error: "Not authorized to update this visit" };
@@ -229,7 +229,7 @@ export class CustomerVisitService {
 
     // Verify employee owns this visit (or is owner)
     const isOwner = actor.isOwner;
-    const isEmployee = visit.employee_id === actor.profileId;
+    const isEmployee = await this.isEmployeeOfProfile(actor, visit.employee_id);
 
     if (!isOwner && !isEmployee) {
       return { ok: false, error: "Not authorized to finish this visit" };
@@ -308,7 +308,10 @@ export class CustomerVisitService {
       return { ok: false, error: "Organization context required" };
     }
 
-    const targetEmployeeId = employeeId ?? actor.profileId;
+    const targetEmployeeId = employeeId ?? (await this.getEmployeeIdByProfile(actor));
+    if (!targetEmployeeId) {
+      return { ok: false, error: "No employee record linked to this profile" };
+    }
     const supabase = createSupabaseService();
 
     const todayStart = new Date();
@@ -432,6 +435,37 @@ export class CustomerVisitService {
     }
 
     return { ok: true, visit: updated };
+  }
+
+  /**
+   * Check whether the given employee record belongs to the actor's profile.
+   */
+  private async isEmployeeOfProfile(actor: ActorContext, employeeId: string): Promise<boolean> {
+    if (!actor.profileId) return false;
+    const supabase = createSupabaseService();
+    const { data } = await supabase
+      .from("employees")
+      .select("id, profile_id")
+      .eq("id", employeeId)
+      .eq("profile_id", actor.profileId)
+      .eq("organization_id", actor.organizationId)
+      .maybeSingle();
+    return Boolean(data);
+  }
+
+  /**
+   * Resolve the employee id for the actor's profile.
+   */
+  private async getEmployeeIdByProfile(actor: ActorContext): Promise<string | null> {
+    if (!actor.profileId || !actor.organizationId) return null;
+    const supabase = createSupabaseService();
+    const { data } = await supabase
+      .from("employees")
+      .select("id")
+      .eq("profile_id", actor.profileId)
+      .eq("organization_id", actor.organizationId)
+      .maybeSingle();
+    return data?.id ?? null;
   }
 
   /**
