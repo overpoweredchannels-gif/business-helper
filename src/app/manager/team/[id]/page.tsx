@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
-import { Loader2, AlertCircle, ArrowLeft, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, MessageSquareText, Users, Award } from "lucide-react";
+import { Loader2, AlertCircle, ArrowLeft, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, MessageSquareText, Users, Award, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Employee {
@@ -187,6 +187,8 @@ export default function EmployeeLedgerPage() {
             <div className="flex justify-between"><dt className="text-body">Phone</dt><dd className="text-foreground font-medium">{employee.phone ?? "—"}</dd></div>
           </dl>
         </div>
+
+        <ResetPasswordCard employeeId={employeeId} employeeName={employee.full_name} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -245,4 +247,61 @@ function RecentPanel({ title, icon, empty, children }: { title: string; icon: Re
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+function ResetPasswordCard({ employeeId, employeeName }: { employeeId: string; employeeName: string }) {
+  const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+
+  const submit = async () => {
+    if (!password) {
+      setMessage({ type: "error", text: "Enter a new password." });
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await authorizedFetch(`/api/identity/employees/${employeeId}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId, newPassword: password }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to reset password");
+      setMessage({ type: "ok", text: "Password reset successfully for " + employeeName + "." });
+      setPassword("");
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to reset password" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2"><KeyRound className="size-5 text-warning" /> Reset Password</h3>
+      <p className="text-sm text-body mb-3">Set a new password for {employeeName}. They can sign in with it on their next login.</p>
+      <input
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="New password"
+        className="w-full rounded-lg border border-input bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+      <button
+        onClick={submit}
+        disabled={saving}
+        className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+      >
+        {saving ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
+        {saving ? "Resetting..." : "Reset Password"}
+      </button>
+      {message && (
+        <div className={cn("mt-3 text-sm", message.type === "ok" ? "text-success" : "text-destructive")}>
+          {message.text}
+        </div>
+      )}
+    </div>
+  );
 }
