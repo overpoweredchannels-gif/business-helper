@@ -4,32 +4,29 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, MapPin, ClipboardList, Banknote, Bell, User,
-  LogOut, Menu, X, Route as RouteIcon, Home, MessageSquareText, Clock, Target,
+  ClipboardList, Banknote, MapPin, Target, MessageSquareText, Users, Home,
+  LogOut, Menu, X, LayoutDashboard,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { useState } from "react";
 
 const NAV_ITEMS = [
-  { href: "/salesman", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/salesman/visits", label: "Visits", icon: MapPin },
-  { href: "/salesman/routes", label: "My Routes", icon: RouteIcon },
-  { href: "/salesman/drafts", label: "Draft Sales", icon: ClipboardList },
-  { href: "/salesman/collections", label: "Collections", icon: Banknote },
-  { href: "/salesman/feedback", label: "Feedback", icon: MessageSquareText },
-  { href: "/salesman/targets", label: "My Targets", icon: Target },
-  { href: "/salesman/attendance", label: "Attendance", icon: Clock },
-  { href: "/salesman/notifications", label: "Notifications", icon: Bell },
-  { href: "/salesman/profile", label: "Profile", icon: User },
+  { href: "/manager", label: "Overview", icon: LayoutDashboard },
+  { href: "/manager/drafts", label: "Draft Approvals", icon: ClipboardList },
+  { href: "/manager/collections", label: "Collections", icon: Banknote },
+  { href: "/manager/visits", label: "Visit Monitor", icon: MapPin },
+  { href: "/manager/feedback", label: "Feedback", icon: MessageSquareText },
+  { href: "/manager/targets", label: "Sales Targets", icon: Target },
+  { href: "/manager/team", label: "Team", icon: Users },
 ];
 
-interface SalesmanLayoutProps {
+interface OwnerFsmLayoutProps {
   organizationName?: string | null;
   userName?: string | null;
   children: React.ReactNode;
 }
 
-export default function SalesmanLayout({ organizationName, userName, children }: SalesmanLayoutProps) {
+export default function OwnerFsmLayout({ organizationName, userName, children }: OwnerFsmLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -47,7 +44,7 @@ export default function SalesmanLayout({ organizationName, userName, children }:
         </div>
         <div className="min-w-0">
           <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
-          <div className="text-[10px] text-light-text truncate">{organizationName ?? "Field Team"}</div>
+          <div className="text-[10px] text-light-text truncate">Field Sales Admin</div>
         </div>
       </div>
 
@@ -57,11 +54,11 @@ export default function SalesmanLayout({ organizationName, userName, children }:
           className="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground/70 hover:text-foreground hover:bg-muted transition-all duration-150"
         >
           <Home className="size-4.5 shrink-0" />
-          <span>Back to Business App</span>
+          <span>Main App</span>
         </button>
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href || (item.href !== "/salesman" && pathname.startsWith(item.href));
+          const active = pathname === item.href || (item.href !== "/manager" && pathname.startsWith(item.href));
           return (
             <Link
               key={item.href}
@@ -82,11 +79,11 @@ export default function SalesmanLayout({ organizationName, userName, children }:
       <div className="border-t border-border p-2 space-y-1">
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="size-8 rounded-full bg-secondary flex items-center justify-center text-sm font-medium text-foreground">
-            {(userName ?? "S").slice(0, 1).toUpperCase()}
+            {(userName ?? "O").slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground truncate">{userName ?? "Staff Member"}</div>
-            <div className="text-[10px] text-light-text">Field Sales</div>
+            <div className="text-sm font-medium text-foreground truncate">{userName ?? "Owner"}</div>
+            <div className="text-[10px] text-light-text">{organizationName ?? "Business"}</div>
           </div>
         </div>
         <button
@@ -104,13 +101,12 @@ export default function SalesmanLayout({ organizationName, userName, children }:
     <div className="min-h-screen bg-background flex">
       <div className="hidden lg:flex sticky top-0 h-screen">{content}</div>
 
-      {/* Mobile header */}
       <div className="lg:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between bg-card border-b border-border px-4 h-14">
         <div className="flex items-center gap-2">
           <div className="size-7 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-brand font-bold text-xs">T</span>
           </div>
-          <span className="font-brand font-bold text-sm text-foreground">TradeOS</span>
+          <span className="font-brand font-bold text-sm text-foreground">Field Admin</span>
         </div>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
-import { Loader2, MapPin, ArrowLeft, Navigation, Route as RouteIcon, AlertCircle } from "lucide-react";
+import { Loader2, MapPin, ArrowLeft, Navigation, Route as RouteIcon, AlertCircle, ExternalLink } from "lucide-react";
 
 interface RouteDetail {
   id: string;
@@ -123,14 +123,24 @@ export default function RouteDetailPage() {
                 <div className="pt-1 min-w-0">
                   <div className="text-sm font-medium text-foreground">{stop.label || `Stop ${stop.stop_order}`}</div>
                   {stop.address && <div className="text-xs text-body">{stop.address}</div>}
-                  {stop.latitude != null && stop.longitude != null ? (
-                    <div className="flex items-center gap-1 text-[11px] text-light-text mt-0.5">
-                      <MapPin className="size-3" /> Has location
-                    </div>
-                  ) : (
-                    <div className="text-[11px] text-light-text mt-0.5">No GPS coordinates set</div>
-                  )}
-                  {stop.customer_id && (
+{stop.latitude != null && stop.longitude != null ? (
+                      <div className="flex items-center gap-1 text-[11px] text-light-text mt-0.5">
+                        <MapPin className="size-3" /> Has location
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-light-text mt-0.5">No GPS coordinates set</div>
+                    )}
+                    {stop.latitude != null && stop.longitude != null && (
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${stop.latitude},${stop.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        <ExternalLink className="size-3" /> Open in Google Maps
+                      </a>
+                    )}
+                    {stop.customer_id && (
                     <button
                       onClick={() => router.push(`/salesman/visits?customer=${stop.customer_id}`)}
                       className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"

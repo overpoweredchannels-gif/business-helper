@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase
     .from("customers")
     .select(
-      "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes",
+      "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, latitude, longitude, assigned_salesman_id, assigned_territory_id, visit_frequency, priority",
     )
     .eq("organization_id", permission.actor.organizationId)
     .order("customer_name", { ascending: true });
