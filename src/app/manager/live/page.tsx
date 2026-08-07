@@ -2,20 +2,30 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
-import LiveMap from "@/components/location/LiveMap";
-import { Loader2, AlertCircle, Navigation } from "lucide-react";
+import { getMapProvider } from "@/lib/maps/map-provider";
+import { Loader2, AlertCircle, Navigation, MapPin, Clock, ChevronDown } from "lucide-react";
 import type { CurrentLocationView } from "@/lib/location/types";
 
 type FilterKey = "all" | "on_duty" | "off_duty" | "with_location" | "moving" | "stale";
+
+interface HistoryPoint {
+  latitude: number;
+  longitude: number;
+  speed: number | null;
+  heading: number | null;
+  captured_at: string;
+}
 
 export default function ManagerLiveTrackingPage() {
   const [employees, setEmployees] = useState<CurrentLocationView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<CurrentLocationView | null>(null);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [pollInterval, setPollInterval] = useState(15000);
   const [lastRefresh, setLastRefresh] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [history, setHistory] = useState<Record<string, HistoryPoint[]>>({});
+  const [booting, setBooting] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -61,6 +71,28 @@ export default function ManagerLiveTrackingPage() {
     moving: moving.length,
     stale: stale.length,
   };
+
+  const toggleDetails = async (emp: CurrentLocationView) => {
+    setExpanded((prev) => (prev === emp.profileId ? null : emp.profileId));
+    if (emp.profileId !== expanded) {
+      setBooting(emp.profileId);
+      try {
+        const res = await authorizedFetch(
+          `/api/location/history?profile_id=${encodeURIComponent(emp.profileId)}&minutes=120`
+        );
+        const data = await res.json();
+        if (data.ok) {
+          setHistory((prev) => ({ ...prev, [emp.profileId]: data.points ?? [] }));
+        }
+      } catch {
+        // ignore; trail is best-effort
+      } finally {
+        setBooting(null);
+      }
+    }
+  };
+
+  const provider = getMapProvider();
 
   return (
     <div className="grid gap-6">
@@ -123,70 +155,134 @@ export default function ManagerLiveTrackingPage() {
           <Loader2 className="size-8 text-primary animate-spin" />
           <p className="text-sm text-body">Loading live locations...</p>
         </div>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-          <div className="rounded-2xl border border-border overflow-hidden min-h-[420px]">
-            <LiveMap employees={filtered} onEmployeeClick={setSelected} selectedEmployeeId={selected?.profileId ?? null} />
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span className="text-sm font-semibold text-foreground">Employee List</span>
-              {lastRefresh && <span className="text-xs text-light-text">{lastRefresh}</span>}
-            </div>
-            <div className="max-h-[540px] overflow-y-auto">
-              {filtered.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-light-text">No employees match the current filter.</div>
-              ) : (
-                filtered.map((emp) => (
-                  <button
-                    key={emp.profileId}
-                    onClick={() => setSelected(emp)}
-                    className={`w-full text-left px-4 py-3 border-b border-border/40 last:border-0 transition-colors ${
-                      selected?.profileId === emp.profileId ? "bg-primary/5" : "hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">{emp.employeeName}</div>
-                        <div className="text-xs text-body capitalize">{emp.role || "No role"}</div>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span
-                          className={`size-2 rounded-full ${
-                            emp.isOnDuty ? (emp.hasLocation ? "bg-success" : "bg-warning") : "bg-muted-foreground"
-                          }`}
-                        />
-                        <span className="text-xs text-body">{emp.isOnDuty ? "On Duty" : "Off Duty"}</span>
-                      </div>
-                    </div>
-                    {emp.hasLocation && (
-                      <div className="text-xs text-light-text mt-1">
-                        {emp.latitude.toFixed(4)}, {emp.longitude.toFixed(4)}
-                        {(emp.speed ?? 0) > 1 ? ` - ${Math.round((emp.speed ?? 0) * 3.6)} km/h` : ""}
-                        {emp.lastUpdateAge < 60000 ? " (now)" : ` (${Math.round(emp.lastUpdateAge / 60000)}m ago)`}
-                      </div>
-                    )}
-                    {!emp.hasLocation && emp.isOnDuty && (
-                      <div className="text-xs text-warning mt-1">No location data</div>
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-light-text">
+          No employees match the current filter.
         </div>
-      )}
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((emp) => {
+            const points = history[emp.profileId] ?? [];
+            const trace = points;
+            const embedUrl =
+              emp.hasLocation && emp.latitude != null && emp.longitude != null
+                ? provider.buildEmbedMapUrl({ latitude: emp.latitude, longitude: emp.longitude }, emp.employeeName)
+                : null;
+            const last = points[points.length - 1];
+            return (
+              <div key={emp.profileId} className="rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
+                {/* Listing header */}
+                <div className="px-4 py-3 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground truncate">{emp.employeeName}</div>
+                    <div className="text-xs text-body capitalize">{emp.role || "No role"}</div>
+                    {emp.hasLocation ? (
+                      <div className="text-xs text-light-text mt-0.5">
+                        {emp.latitude.toFixed(4)}, {emp.longitude.toFixed(4)}
+                        {(emp.speed ?? 0) > 1 ? ` · ${Math.round((emp.speed ?? 0) * 3.6)} km/h` : " · stationary"}
+                        {emp.lastUpdateAge < 60000 ? " · now" : ` · ${Math.round(emp.lastUpdateAge / 60000)}m ago`}
+                      </div>
+                    ) : (
+                      emp.isOnDuty && <div className="text-xs text-warning mt-0.5">No location data</div>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span
+                      className={`size-2.5 rounded-full ${
+                        emp.isOnDuty ? (emp.hasLocation ? "bg-success" : "bg-warning") : "bg-muted-foreground"
+                      }`}
+                    />
+                    <span className="text-[11px] text-body">{emp.isOnDuty ? "On Duty" : "Off Duty"}</span>
+                  </div>
+                </div>
 
-      {selected && selected.hasLocation && (
-        <a
-          href={`https://www.google.com/maps/dir/?api=1&destination=${selected.latitude},${selected.longitude}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
-        >
-          <Navigation className="size-4" /> Open Google Maps Navigation to {selected.employeeName}
-        </a>
+                {/* Embedded map below each listing */}
+                {embedUrl ? (
+                  <iframe
+                    title={`Live location for ${emp.employeeName}`}
+                    src={embedUrl}
+                    loading="lazy"
+                    allowFullScreen
+                    referrerPolicy="no-referrer-when-downgrade"
+                    className="w-full border-y border-border"
+                    style={{ height: 180 }}
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 bg-muted/30 px-4 py-6 text-xs text-light-text border-y border-border">
+                    <MapPin className="size-4 shrink-0" /> No location to show for this employee yet.
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="px-4 py-3 flex flex-wrap gap-2">
+                  {emp.hasLocation && (
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${emp.latitude},${emp.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+                    >
+                      <Navigation className="size-3.5" /> Navigate
+                    </a>
+                  )}
+                  <button
+                    onClick={() => toggleDetails(emp)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40"
+                  >
+                    <Clock className="size-3.5" />
+                    {expanded === emp.profileId ? "Hide Movement" : "View Movement"}
+                    <ChevronDown className={`size-3.5 transition-transform ${expanded === emp.profileId ? "rotate-180" : ""}`} />
+                  </button>
+                </div>
+
+                {/* Movement trail / history */}
+                {expanded === emp.profileId && (
+                  <div className="border-t border-border px-4 py-3 grid gap-3">
+                    {booting === emp.profileId ? (
+                      <div className="flex items-center gap-2 text-xs text-body">
+                        <Loader2 className="size-3.5 animate-spin" /> Loading movement trail...
+                      </div>
+                    ) : trace.length === 0 ? (
+                      <div className="text-xs text-light-text">
+                        No location history found for this employee in the last 2 hours.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid gap-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-light-text">{trace.length} recorded points</span>
+                            <span className="text-body">Last: {new Date(last.captured_at).toLocaleTimeString()}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {trace.map((p, i) => (
+                              <span
+                                key={i}
+                                className="rounded bg-muted px-2 py-1 font-mono text-[10px] text-foreground/80"
+                                title={`${new Date(p.captured_at).toLocaleTimeString()}`}
+                              >
+                                {p.latitude.toFixed(4)},{p.longitude.toFixed(4)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <a
+                          href={`https://www.google.com/maps/dir/${
+                            trace.map((p) => `${p.latitude},${p.longitude}`).join("/")
+                          }?api=1`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                        >
+                          <Navigation className="size-3.5" /> Open movement trail in Google Maps
+                        </a>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

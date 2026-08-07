@@ -8,7 +8,8 @@ export const runtime = "nodejs";
 /**
  * GET /api/sales/load-form
  *
- * Aggregates confirmed sales into a distributor Load Form grouped by brand.
+ * Aggregates confirmed sales into a distributor Load Form grouped by salesman
+ * then customer.
  *
  * Query params:
  *   customer_ids  comma-separated customer ids (OR filter)
@@ -16,8 +17,9 @@ export const runtime = "nodejs";
  *   date_from     YYYY-MM-DD inclusive lower bound on sale_date
  *   date_to       YYYY-MM-DD inclusive upper bound on sale_date
  *
- * Response: { ok, summary: { lines: [] } } where each line is a product with
- * packing/cartons/pcs/bonus/total_value/bonus_value/brand_name.
+ * Response: { ok, summary: { org_name, org_address, org_phone, salesmen, ... } }
+ * where each salesman has `customers` and each customer has `lines` with
+ * packing/cartons/pcs/bonus/total_value/bonus_value.
  */
 export async function GET(request: NextRequest) {
   const { actor, error, status } = await resolveActor(request);
@@ -39,6 +41,15 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = createSupabaseService();
+
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("name, address, city, phone")
+      .eq("id", actor.organizationId)
+      .maybeSingle();
+
+    filters.org = org ?? null;
+
     const result = await buildLoadForm(supabase, filters);
     if (!result.ok) {
       return NextResponse.json({ ok: false, error: result.error }, { status: 400 });

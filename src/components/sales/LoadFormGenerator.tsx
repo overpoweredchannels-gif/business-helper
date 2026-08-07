@@ -6,8 +6,6 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 interface LoadFormLine {
   product_id: number | string;
   product_name: string;
-  brand_id: string | null;
-  brand_name: string;
   packing: string;
   cartons: number;
   pcs: number;
@@ -16,12 +14,33 @@ interface LoadFormLine {
   bonus_value: number;
 }
 
-interface CustomerOption {
-  id: string;
-  label: string;
+interface LoadFormCustomer {
+  customer_id: string | null;
+  customer_name: string;
+  lines: LoadFormLine[];
+  total_value: number;
+  bonus_value: number;
 }
 
-interface SalesmanOption {
+interface LoadFormSalesman {
+  salesman_id: string;
+  salesman_name: string;
+  customers: LoadFormCustomer[];
+  total_value: number;
+  bonus_value: number;
+}
+
+interface LoadFormSummary {
+  org_name: string;
+  org_address: string;
+  org_phone: string;
+  salesmen: LoadFormSalesman[];
+  grand_total: number;
+  grand_bonus: number;
+  grand_net: number;
+}
+
+interface Option {
   id: string;
   label: string;
 }
@@ -30,15 +49,15 @@ const inputCls =
   "rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
 export default function LoadFormGenerator() {
-  const [customers, setCustomers] = useState<CustomerOption[]>([]);
-  const [salesmen, setSalesmen] = useState<SalesmanOption[]>([]);
+  const [customers, setCustomers] = useState<Option[]>([]);
+  const [salesmen, setSalesmen] = useState<Option[]>([]);
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
   const [selectedSalesmen, setSelectedSalesmen] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lines, setLines] = useState<LoadFormLine[]>([]);
+  const [summary, setSummary] = useState<LoadFormSummary | null>(null);
   const [generated, setGenerated] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
 
@@ -54,7 +73,9 @@ export default function LoadFormGenerator() {
         setCustomers(
           cData.customers.map((c: any) => ({
             id: c.id,
-            label: c.shop_name ? `${c.shop_name} (${c.customer_name})` : c.customer_name,
+            label: c.shop_name
+              ? `${c.shop_name} (${c.customer_name})`
+              : c.customer_name,
           })),
         );
       }
@@ -62,7 +83,9 @@ export default function LoadFormGenerator() {
         setSalesmen(
           sData.employees
             .filter((e: any) =>
-              ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor"].includes(e.designation),
+              ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor"].includes(
+                e.designation,
+              ),
             )
             .map((e: any) => ({ id: e.id, label: e.full_name })),
         );
@@ -76,19 +99,14 @@ export default function LoadFormGenerator() {
     loadOptions();
   }, [loadOptions]);
 
-  const toggleCustomer = (id: string) =>
-    setSelectedCustomers((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  const toggleSalesman = (id: string) =>
-    setSelectedSalesmen((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+  const toggle = (list: string[], id: string, setList: (v: string[]) => void) =>
+    setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
   const generate = async () => {
     setLoading(true);
     setError(null);
     setGenerated(false);
+    setSummary(null);
     try {
       const params = new URLSearchParams();
       if (selectedCustomers.length > 0) params.set("customer_ids", selectedCustomers.join(","));
@@ -98,7 +116,7 @@ export default function LoadFormGenerator() {
       const res = await authorizedFetch(`/api/sales/load-form?${params.toString()}`);
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed to build load form");
-      setLines(data.summary?.lines ?? []);
+      setSummary(data.summary ?? null);
       setGenerated(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to build load form");
@@ -106,26 +124,6 @@ export default function LoadFormGenerator() {
       setLoading(false);
     }
   };
-
-  // Group lines by brand, preserving sort order.
-  const groups: { name: string; lines: LoadFormLine[]; total: number; bonus: number }[] = [];
-  const groupIndex = new Map<string, number>();
-  for (const line of lines) {
-    const key = line.brand_name || "OTHER";
-    let idx = groupIndex.get(key);
-    if (idx === undefined) {
-      idx = groups.length;
-      groupIndex.set(key, idx);
-      groups.push({ name: key, lines: [], total: 0, bonus: 0 });
-    }
-    groups[idx].lines.push(line);
-    groups[idx].total += line.total_value;
-    groups[idx].bonus += line.bonus_value;
-  }
-
-  const grandTotal = lines.reduce((s, l) => s + l.total_value, 0);
-  const grandBonus = lines.reduce((s, l) => s + l.bonus_value, 0);
-  const netTotal = grandTotal - grandBonus;
 
   const customerLabels = selectedCustomers
     .map((id) => customers.find((c) => c.id === id)?.label)
@@ -136,10 +134,8 @@ export default function LoadFormGenerator() {
     .filter(Boolean)
     .join(", ");
 
-  const print = () => {
-    setShowPrint(true);
-    window.setTimeout(() => window.print(), 50);
-  };
+  const totalLines = () =>
+    summary?.salesmen.reduce((s, sm) => s + sm.customers.reduce((c, cust) => c + cust.lines.length, 0), 0) ?? 0;
 
   return (
     <div className="space-y-4">
@@ -155,7 +151,7 @@ export default function LoadFormGenerator() {
                   <input
                     type="checkbox"
                     checked={selectedCustomers.includes(c.id)}
-                    onChange={() => toggleCustomer(c.id)}
+                    onChange={() => toggle(selectedCustomers, c.id, setSelectedCustomers)}
                     className="accent-primary"
                   />
                   <span className="truncate">{c.label}</span>
@@ -176,7 +172,7 @@ export default function LoadFormGenerator() {
                   <input
                     type="checkbox"
                     checked={selectedSalesmen.includes(s.id)}
-                    onChange={() => toggleSalesman(s.id)}
+                    onChange={() => toggle(selectedSalesmen, s.id, setSelectedSalesmen)}
                     className="accent-primary"
                   />
                   <span className="truncate">{s.label}</span>
@@ -204,10 +200,10 @@ export default function LoadFormGenerator() {
         >
           {loading ? "Generating..." : "Generate Load Form"}
         </button>
-        {generated && lines.length > 0 && (
+        {generated && summary && summary.salesmen.length > 0 && (
           <button
             type="button"
-            onClick={print}
+            onClick={() => setShowPrint(true)}
             className="rounded border border-primary px-5 py-2.5 text-sm font-medium text-primary hover:bg-primary/5"
           >
             Print / Load Form
@@ -217,53 +213,100 @@ export default function LoadFormGenerator() {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {generated && lines.length === 0 && (
+      {generated && summary && summary.salesmen.length === 0 && (
         <p className="text-sm text-muted-foreground">No sales found for the selected filters.</p>
       )}
 
-      {generated && lines.length > 0 && (
-        <div className="overflow-x-auto rounded border border-border">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">Brand</th>
-                <th className="px-3 py-2">Product</th>
-                <th className="px-3 py-2 text-right">Packing</th>
-                <th className="px-3 py-2 text-right">Cartons</th>
-                <th className="px-3 py-2 text-right">Pcs</th>
-                <th className="px-3 py-2 text-right">Bns</th>
-                <th className="px-3 py-2 text-right">Total Value</th>
-                <th className="px-3 py-2 text-right">Bonus Value</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {groups.map((g) => (
-                <FragmentGroup key={g.name} group={g} />
+      {generated && summary && summary.salesmen.length > 0 && (
+        <div className="space-y-4">
+          <div className="bg-muted/30 px-4 py-2 text-sm text-muted-foreground">
+            {summary.salesmen.reduce(
+              (s, sm) => s + sm.customers.reduce((c, cust) => c + cust.lines.length, 0),
+              0,
+            )}
+            {" "}line items across {summary.salesmen.length} salesman
+            {summary.salesmen.length > 1 ? "s" : ""} and{" "}
+            {summary.salesmen.reduce((s, sm) => s + sm.customers.length, 0)} customers.
+          </div>
+          {summary.salesmen.map((sm) => (
+            <div key={sm.salesman_id} className="overflow-hidden rounded border border-border">
+              <div className="bg-primary/5 px-4 py-2 text-sm font-semibold text-foreground">
+                {sm.salesman_name}
+              </div>
+              {sm.customers.map((cust) => (
+                <div key={cust.customer_id || "walk-in"} className="border-t border-border">
+                  <div className="bg-muted/30 px-4 py-1.5 text-xs font-medium text-muted-foreground">
+                    {cust.customer_name}
+                  </div>
+                  <table className="w-full text-left text-sm">
+                    <thead className="text-[11px] uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-1.5">Product</th>
+                        <th className="px-2 py-1.5 text-right">Packing</th>
+                        <th className="px-2 py-1.5 text-right">Cartons</th>
+                        <th className="px-2 py-1.5 text-right">Pcs</th>
+                        <th className="px-2 py-1.5 text-right">Bns</th>
+                        <th className="px-4 py-1.5 text-right">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {cust.lines.map((line, i) => (
+                        <tr key={i}>
+                          <td className="px-4 py-1.5 text-foreground">{line.product_name}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{line.packing}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{trim(line.cartons)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{trim(line.pcs)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{trim(line.bonus)}</td>
+                          <td className="px-4 py-1.5 text-right tabular-nums">{fmt(line.total_value)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-border bg-muted/30 font-semibold">
+                        <td className="px-4 py-1.5" colSpan={2}>
+                          {cust.customer_name} Total
+                        </td>
+                        <td className="px-2 py-1.5 text-right" colSpan={2}>
+                          {fmt(cust.total_value)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right">Bns</td>
+                        <td className="px-4 py-1.5 text-right tabular-nums">{fmt(cust.bonus_value)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               ))}
-            </tbody>
-          </table>
-          <div className="grid grid-cols-2 gap-2 border-t border-border bg-muted/30 p-3 text-sm sm:grid-cols-4">
+              <div className="flex justify-between border-t border-border bg-primary/5 px-4 py-2 text-sm font-semibold text-foreground">
+                <span>{sm.salesman_name} Total</span>
+                <span className="tabular-nums">{fmt(sm.total_value)}</span>
+              </div>
+            </div>
+          ))}
+          <div className="grid grid-cols-2 gap-2 border-t border-border bg-muted/30 p-3 text-sm sm:grid-cols-3">
             <div>
               <span className="text-muted-foreground">Total Value:</span>{" "}
-              <span className="font-semibold">{fmt(grandTotal)}</span>
+              <span className="font-semibold">{fmt(summary.grand_total)}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Bonus Value:</span>{" "}
-              <span className="font-semibold">{fmt(grandBonus)}</span>
+              <span className="font-semibold">{fmt(summary.grand_bonus)}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Net Value:</span>{" "}
-              <span className="font-semibold">{fmt(netTotal)}</span>
+              <span className="font-semibold">{fmt(summary.grand_net)}</span>
             </div>
           </div>
         </div>
       )}
 
-      {showPrint && (
+      {showPrint && summary && (
         <div className="fixed inset-0 z-[100] overflow-y-auto bg-foreground/20 p-4 print:static print:bg-white print:p-0">
           <div className="mx-auto max-w-3xl bg-white print:max-w-none print:shadow-none">
             <div className="mb-3 flex justify-between print:hidden">
-              <button onClick={() => setShowPrint(false)} className="rounded border border-border bg-white px-4 py-2 text-sm text-foreground">
+              <button
+                onClick={() => setShowPrint(false)}
+                className="rounded border border-border bg-white px-4 py-2 text-sm text-foreground"
+              >
                 Close
               </button>
               <button onClick={() => window.print()} className="rounded bg-primary px-4 py-2 text-sm text-white">
@@ -271,14 +314,11 @@ export default function LoadFormGenerator() {
               </button>
             </div>
             <LoadFormDocument
+              summary={summary}
               customerLabels={customerLabels}
               salesmanLabels={salesmanLabels}
               dateFrom={dateFrom}
               dateTo={dateTo}
-              groups={groups}
-              grandTotal={grandTotal}
-              grandBonus={grandBonus}
-              netTotal={netTotal}
             />
           </div>
         </div>
@@ -287,65 +327,38 @@ export default function LoadFormGenerator() {
   );
 }
 
-function FragmentGroup({ group }: { group: { name: string; lines: LoadFormLine[] } }) {
-  return (
-    <>
-      <tr className="bg-muted/30">
-        <td colSpan={8} className="px-3 py-2 font-bold uppercase text-foreground">
-          {group.name}
-        </td>
-      </tr>
-      {group.lines.map((line) => (
-        <tr key={line.product_id}>
-          <td className="px-3 py-1.5 text-muted-foreground/70">{line.brand_name}</td>
-          <td className="px-3 py-1.5 text-foreground">{line.product_name}</td>
-          <td className="px-3 py-1.5 text-right tabular-nums">{line.packing}</td>
-          <td className="px-3 py-1.5 text-right tabular-nums">{trim(line.cartons)}</td>
-          <td className="px-3 py-1.5 text-right tabular-nums">{trim(line.pcs)}</td>
-          <td className="px-3 py-1.5 text-right tabular-nums">{trim(line.bonus)}</td>
-          <td className="px-3 py-1.5 text-right tabular-nums">{fmt(line.total_value)}</td>
-          <td className="px-3 py-1.5 text-right tabular-nums">{fmt(line.bonus_value)}</td>
-        </tr>
-      ))}
-    </>
-  );
-}
-
 function LoadFormDocument({
+  summary,
   customerLabels,
   salesmanLabels,
   dateFrom,
   dateTo,
-  groups,
-  grandTotal,
-  grandBonus,
-  netTotal,
 }: {
+  summary: LoadFormSummary;
   customerLabels: string;
   salesmanLabels: string;
   dateFrom: string;
   dateTo: string;
-  groups: { name: string; lines: LoadFormLine[] }[];
-  grandTotal: number;
-  grandBonus: number;
-  netTotal: number;
 }) {
   const today = new Date().toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "2-digit" });
   const range = dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : dateFrom || dateTo || "";
+  const rowCls = "flex py-[1.5px] text-[10px] leading-tight";
+  const headerRow = "flex text-[10px] font-bold uppercase";
+
   return (
     <div className="load-form-doc">
-      <style>{`@media print { body { font-family: 'Times New Roman', Times, serif; } .load-form-doc { color: #000; } }`}</style>
       <div className="text-center" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000" }}>
-        <div className="text-[24px] font-bold leading-tight">DAR SWEETS</div>
-        <div className="text-[11px]">Fawara Chowk, Kharian Link Road, Dinga</div>
-        <div className="text-[11px]">0301-6292574</div>
-        <div className="mt-1 text-[13px] font-bold">Load Form</div>
-        <div className="mt-2 flex justify-between text-[12px]">
+        <div className="text-2xl font-bold leading-tight">{summary.org_name || "—"}</div>
+        {summary.org_address && <div className="text-[11px]">{summary.org_address}</div>}
+        {summary.org_phone && <div className="text-[11px]">{summary.org_phone}</div>}
+        <div className="mt-1 text-center text-sm font-bold">Load Form</div>
+        <div className="mt-2 flex justify-between text-xs">
           <div>
-            <span className="font-semibold">Salesman:</span> {salesmanLabels || "All"}
+            <span className="font-semibold">Salesman:</span> {salesmanLabels || "(All salesmen)"}
           </div>
           <div>
-            <span className="font-semibold">Customer:</span> {customerLabels || "All"}
+            <span className="font-semibold">Customer:</span>{" "}
+            {customerLabels || "(All customers)"}
           </div>
           <div>
             <span className="font-semibold">Date:</span> {today}
@@ -355,45 +368,62 @@ function LoadFormDocument({
         <div className="my-2 border-b border-black" />
       </div>
 
-      {groups.map((g) => (
-        <div key={g.name} className="mt-3" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000" }}>
-          <div className="text-[12px] font-bold uppercase">{g.name}</div>
-          <div className="my-1 border-b border-black" />
-          <div className="flex text-[10px] font-bold uppercase">
-            <span className="w-[46%]">Product Name</span>
-            <span className="w-[16%] text-right">Packing</span>
-            <span className="w-[10%] text-right">Cartons</span>
-            <span className="w-[8%] text-right">Pcs</span>
-            <span className="w-[8%] text-right">Bns</span>
-            <span className="w-[12%] text-right">Value</span>
+      {summary.salesmen.map((salesman) => (
+        <div key={salesman.salesman_id} className="mb-4">
+          <div className="text-xs font-bold">
+            Salesman: {salesman.salesman_name}
           </div>
-          {g.lines.map((line, i) => (
-            <div key={i} className="flex py-[1px] text-[10px] leading-tight">
-              <span className="w-[46%]">{line.product_name}</span>
-              <span className="w-[16%] text-right tabular-nums">{line.packing}</span>
-              <span className="w-[10%] text-right tabular-nums">{trim(line.cartons)}</span>
-              <span className="w-[8%] text-right tabular-nums">{trim(line.pcs)}</span>
-              <span className="w-[8%] text-right tabular-nums">{trim(line.bonus)}</span>
-              <span className="w-[12%] text-right tabular-nums">{fmt(line.total_value)}</span>
+          {salesman.customers.map((cust) => (
+            <div key={cust.customer_id || "walk-in"} className="mt-3">
+              <div className="text-sm font-bold">
+                Customer: {cust.customer_name}
+              </div>
+              <div className="my-1 border-b border-black" />
+              <div className={`${headerRow} font-bold`}>
+                <span className="w-[46%]">Product Name</span>
+                <span className="w-[16%] text-right">Packing</span>
+                <span className="w-[10%] text-right">Cartons</span>
+                <span className="w-[8%] text-right">Pcs</span>
+                <span className="w-[8%] text-right">Bns</span>
+                <span className="w-[12%] text-right">Value</span>
+              </div>
+              {cust.lines.map((line, i) => (
+                <div key={i} className={rowCls}>
+                  <span className="w-[46%]">{line.product_name}</span>
+                  <span className="w-[16%] text-right tabular-nums">{line.packing}</span>
+                  <span className="w-[10%] text-right tabular-nums">{trim(line.cartons)}</span>
+                  <span className="w-[8%] text-right tabular-nums">{trim(line.pcs)}</span>
+                  <span className="w-[8%] text-right tabular-nums">{trim(line.bonus)}</span>
+                  <span className="w-[12%] text-right tabular-nums">{fmt(line.total_value)}</span>
+                </div>
+              ))}
+              <div className="my-1 border-b border-black" />
+              <div className={rowCls}>
+                <span className="w-[46%] font-bold">Customer Total</span>
+                <span className="w-[54%] text-right font-bold tabular-nums">{fmt(cust.total_value)}</span>
+              </div>
             </div>
           ))}
-          <div className="my-1 border-b border-black" />
+          <div className={`${rowCls} mt-2`}>
+            <span className="w-[46%] font-bold">Salesman Total</span>
+            <span className="w-[54%] text-right font-bold tabular-nums">{fmt(salesman.total_value)}</span>
+          </div>
         </div>
       ))}
 
       <div className="mt-4 border border-black p-3" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000" }}>
         <div className="flex justify-between text-[13px] font-bold">
           <span>Total Value</span>
-          <span>{fmt(grandTotal)}</span>
+          <span>{fmt(summary.grand_total)}</span>
         </div>
         <div className="flex justify-between text-[13px] font-bold">
           <span>Bonus Value</span>
-          <span>{fmt(grandBonus)}</span>
+          <span>{fmt(summary.grand_bonus)}</span>
         </div>
         <div className="my-1 border-t border-black" />
         <div className="flex justify-between text-[14px] font-bold">
           <span>Net Value</span>
-          <span>{fmt(netTotal)}</span>
+          <span>{fmt(summary.grand_net)}</span>
         </div>
       </div>
       <div className="mt-3 text-center text-[10px]" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000" }}>
