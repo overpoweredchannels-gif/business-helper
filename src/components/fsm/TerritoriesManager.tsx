@@ -24,6 +24,10 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+// Keep the Google Places autocomplete panel below the form controls so it never
+// covers the name/description inputs and swallows clicks/typing.
+const mapsOverlayCss = `.pac-container { z-index: 5000 !important; } .pac-card { z-index: 5000 !important; }`;
+
 export default function TerritoriesManager() {
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [name, setName] = useState("");
@@ -141,17 +145,20 @@ export default function TerritoriesManager() {
             gap: "0.625rem",
             gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
             alignItems: "end",
+            position: "relative",
+            zIndex: 2,
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          <style>{mapsOverlayCss}</style>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", position: "relative", zIndex: 3 }}>
             <label style={{ fontSize: "0.75rem", color: "#374151" }}>Name *</label>
             <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gulberg Zone" />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", position: "relative", zIndex: 3 }}>
             <label style={{ fontSize: "0.75rem", color: "#374151" }}>Description</label>
             <input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-          <button style={buttonStyle} onClick={create}>
+          <button style={{ ...buttonStyle, position: "relative", zIndex: 3 }} onClick={create}>
             Add Territory
           </button>
 
