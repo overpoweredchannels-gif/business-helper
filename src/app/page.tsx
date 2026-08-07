@@ -13410,6 +13410,10 @@ export default function Home() {
   };
 
   const handleSectionChange = (sectionId: SectionId) => {
+    if (sectionId === "live-tracking") {
+      router.push("/manager/live");
+      return;
+    }
     if (sectionId !== "ai-business-query") {
       stopAiBusinessVoice();
     }

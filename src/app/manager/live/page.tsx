@@ -178,7 +178,9 @@ export default function ManagerLiveTrackingPage() {
                     <div className="text-xs text-body capitalize">{emp.role || "No role"}</div>
                     {emp.hasLocation ? (
                       <div className="text-xs text-light-text mt-0.5">
-                        {emp.latitude.toFixed(4)}, {emp.longitude.toFixed(4)}
+                        {emp.latitude != null && emp.longitude != null
+                          ? `${emp.latitude.toFixed(4)}, ${emp.longitude.toFixed(4)}`
+                          : "Location unavailable"}
                         {(emp.speed ?? 0) > 1 ? ` · ${Math.round((emp.speed ?? 0) * 3.6)} km/h` : " · stationary"}
                         {emp.lastUpdateAge < 60000 ? " · now" : ` · ${Math.round(emp.lastUpdateAge / 60000)}m ago`}
                       </div>

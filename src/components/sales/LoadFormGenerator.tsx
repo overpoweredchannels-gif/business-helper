@@ -300,9 +300,9 @@ export default function LoadFormGenerator() {
       )}
 
       {showPrint && summary && (
-        <div className="fixed inset-0 z-[100] overflow-y-auto bg-foreground/20 p-4 print:static print:bg-white print:p-0">
-          <div className="mx-auto max-w-3xl bg-white print:max-w-none print:shadow-none">
-            <div className="mb-3 flex justify-between print:hidden">
+        <div className="load-form-print-root fixed inset-0 z-[100] overflow-y-auto bg-foreground/20 p-4">
+          <div className="mx-auto max-w-3xl rounded border border-border bg-white shadow-xl">
+            <div className="mb-3 flex justify-between border-b border-border px-4 py-3 print:hidden">
               <button
                 onClick={() => setShowPrint(false)}
                 className="rounded border border-border bg-white px-4 py-2 text-sm text-foreground"
@@ -321,6 +321,21 @@ export default function LoadFormGenerator() {
               dateTo={dateTo}
             />
           </div>
+          <style>{`
+            @media print {
+              body { background: #fff !important; }
+              body * { visibility: hidden; }
+              .load-form-print-root,
+              .load-form-print-root * { visibility: visible; }
+              .load-form-print-root {
+                position: absolute;
+                inset: 0;
+                overflow: visible;
+                background: #fff;
+                padding: 0;
+              }
+            }
+          `}</style>
         </div>
       )}
     </div>
