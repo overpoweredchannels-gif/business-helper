@@ -24,9 +24,16 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-// Keep the Google Places autocomplete panel below the form controls so it never
-// covers the name/description inputs and swallows clicks/typing.
-const mapsOverlayCss = `.pac-container { z-index: 5000 !important; } .pac-card { z-index: 5000 !important; }`;
+// The Google Places dropdown (.pac-container) is appended to <body>, so any
+// z-index set on a wrapper <div> creates a stacking context that traps inputs
+// beneath that panel. Fix: do NOT give the form container a z-index/position,
+// and layer the text inputs far above the panel so typing always works while
+// the map+dropdown still render underneath them.
+const mapsOverlayCss = `.pac-container, .pac-card { z-index: 12000 !important; }`;
+const overlayInputCss: React.CSSProperties = {
+  position: "relative",
+  zIndex: 99999,
+};
 
 export default function TerritoriesManager() {
   const [territories, setTerritories] = useState<Territory[]>([]);
@@ -145,20 +152,18 @@ export default function TerritoriesManager() {
             gap: "0.625rem",
             gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
             alignItems: "end",
-            position: "relative",
-            zIndex: 2,
           }}
         >
           <style>{mapsOverlayCss}</style>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", position: "relative", zIndex: 3 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", ...overlayInputCss }}>
             <label style={{ fontSize: "0.75rem", color: "#374151" }}>Name *</label>
             <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gulberg Zone" />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", position: "relative", zIndex: 3 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", ...overlayInputCss }}>
             <label style={{ fontSize: "0.75rem", color: "#374151" }}>Description</label>
             <input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-          <button style={{ ...buttonStyle, position: "relative", zIndex: 3 }} onClick={create}>
+          <button style={{ ...buttonStyle, ...overlayInputCss }} onClick={create}>
             Add Territory
           </button>
 
