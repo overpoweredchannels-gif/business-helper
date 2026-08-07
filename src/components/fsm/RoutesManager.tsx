@@ -344,12 +344,25 @@ export default function RoutesManager() {
       : null;
   };
 
-  const navigateRoute = (routeId: string) => {
-    const routeStops = stops.filter(
+  const navigateRoute = async (routeId: string) => {
+    // Stops are only in state after expanding the route; fetch them fresh so
+    // "Navigate Route" works straight from the list without expanding first.
+    let routeStopsForNav = stops;
+    try {
+      const res = await authorizedFetch(`/api/routes/${routeId}`);
+      const data = await res.json();
+      if (Array.isArray(data.stops)) {
+        routeStopsForNav = data.stops;
+        setStops(data.stops);
+      }
+    } catch {
+      // fall through with whatever is in state
+    }
+    const coords = routeStopsForNav.filter(
       (stop) =>
         stop.latitude != null && stop.longitude != null && Number.isFinite(stop.latitude),
     );
-    if (routeStops.length === 0) {
+    if (coords.length === 0) {
       setMessage({
         type: "error",
         text: "This route has no stops with coordinates. Add latitude/longitude to stops to navigate to exact locations.",
@@ -358,7 +371,7 @@ export default function RoutesManager() {
     }
     const provider = getMapProvider();
     const url = buildMultiStopNavigationUrl(
-      routeStops.map((stop) => ({
+      coords.map((stop) => ({
         customerId: stop.customer_id ?? "",
         label: stop.label ?? customerLabel(stop.customer_id) ?? "Stop",
         location: { latitude: stop.latitude!, longitude: stop.longitude! },
