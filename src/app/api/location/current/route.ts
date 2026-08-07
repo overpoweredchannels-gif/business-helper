@@ -41,16 +41,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: staff, error: staffError } = await supabase
-      .from("profiles")
-      .select("id, name, role, is_active_duty")
+    const { data: employees, error: staffError } = await supabase
+      .from("employees")
+      .select("id, profile_id, full_name, designation, status, is_active")
       .eq("organization_id", organizationId);
 
     if (staffError) return errorResponse(`Staff query error: ${staffError.message}`, 500);
 
-    let filteredStaff = staff || [];
+    let filteredStaff = employees || [];
     if (requesterRole !== "owner" && requesterRole !== "manager" && profileId) {
-      filteredStaff = filteredStaff.filter((s) => s.id === profileId);
+      filteredStaff = filteredStaff.filter((s) => s.profile_id === profileId);
     }
 
     const { data: sessions } = await supabase
@@ -62,26 +62,29 @@ export async function GET(request: NextRequest) {
     const onDutySet = new Set((sessions || []).map((s) => s.profile_id));
     const sessionMap = new Map((sessions || []).map((s) => [s.profile_id, s.id]));
 
-    const result = filteredStaff.map((s) => {
-      const latest = latestMap.get(s.id);
-      const age = latest ? Date.now() - new Date(latest.captured_at).getTime() : Infinity;
-      return {
-        profileId: s.id,
-        employeeName: s.name || "Unknown",
-        role: s.role || "",
-        latitude: latest?.latitude ?? null,
-        longitude: latest?.longitude ?? null,
-        accuracy: latest?.accuracy ?? null,
-        speed: latest?.speed ?? null,
-        heading: latest?.heading ?? null,
-        capturedAt: latest?.captured_at ?? null,
-        isOnDuty: onDutySet.has(s.id),
-        dutySessionId: sessionMap.get(s.id) || null,
-        assignedArea: null,
-        lastUpdateAge: age,
-        hasLocation: !!latest,
-      };
-    });
+    const result = filteredStaff
+      .filter((e) => e.is_active !== false && e.status !== "archived")
+      .map((s) => {
+        const pid = s.profile_id;
+        const latest = pid ? latestMap.get(pid) : undefined;
+        const age = latest ? Date.now() - new Date(latest.captured_at).getTime() : Infinity;
+        return {
+          profileId: pid ?? s.id,
+          employeeName: s.full_name || "Unknown",
+          role: s.designation || "",
+          latitude: latest?.latitude ?? null,
+          longitude: latest?.longitude ?? null,
+          accuracy: latest?.accuracy ?? null,
+          speed: latest?.speed ?? null,
+          heading: latest?.heading ?? null,
+          capturedAt: latest?.captured_at ?? null,
+          isOnDuty: pid ? onDutySet.has(pid) : false,
+          dutySessionId: pid ? sessionMap.get(pid) || null : null,
+          assignedArea: null,
+          lastUpdateAge: age,
+          hasLocation: !!latest,
+        };
+      });
 
     return NextResponse.json({ ok: true, employees: result, total: result.length });
   } catch (err) {
