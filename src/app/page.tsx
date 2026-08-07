@@ -16,6 +16,7 @@ import InvitationPanel from "@/components/identity/InvitationPanel";
 import SessionManagement from "@/components/identity/SessionManagement";
 import AuditLogPanel from "@/components/identity/AuditLogPanel";
 import ImportWizard from "@/components/inventory/ImportWizard";
+import LoadFormGenerator from "@/components/sales/LoadFormGenerator";
 import EmployeeManagement from "@/components/fsm/EmployeeManagement";
 import NotificationCenter from "@/components/fsm/NotificationCenter";
 import TerritoriesManager from "@/components/fsm/TerritoriesManager";
@@ -1535,7 +1536,7 @@ export default function Home() {
     clearCreditOverrideState();
     setSalesLines([
       ...salesLines,
-      { product_id: null, quantity: "", selling_price: "", discount: "" },
+      { product_id: null, quantity: "", selling_price: "", discount: "", bonus: "" },
     ]);
   };
 
@@ -3781,6 +3782,7 @@ export default function Home() {
           selling_price: Number(line.selling_price),
           purchase_price_snapshot: purchasePriceSnapshot,
           discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
+          bonus: line.bonus?.trim() === "" || line.bonus == null ? 0 : safeNumber(line.bonus),
           organization_id: currentOrganizationId,
         });
 
@@ -4873,6 +4875,7 @@ export default function Home() {
     quantity: string;
     selling_price: string;
     discount: string;
+    bonus?: string;
     batch_number?: string;
     expiry_date?: string;
   }
@@ -4882,7 +4885,7 @@ export default function Home() {
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
 
   // Sales Management (Phase 4) — sales orders + returns + reporting
-  const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report">("invoice");
+  const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform">("invoice");
 
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   const [salesOrdersLoading, setSalesOrdersLoading] = useState(false);
@@ -16313,6 +16316,17 @@ export default function Home() {
           >
             Sales Report
           </button>
+          <button
+            type="button"
+            onClick={() => setSalesTab("loadform")}
+            className={`rounded px-4 py-2 text-sm font-medium ${
+              salesTab === "loadform"
+                ? "bg-primary text-white"
+                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+            }`}
+          >
+            Load Form
+          </button>
         </div>
 
         {salesTab === "invoice" && (
@@ -16529,7 +16543,7 @@ export default function Home() {
                         </button>
                       </div>
 
-                      <div className="grid gap-2 sm:grid-cols-4">
+                      <div className="grid gap-2 sm:grid-cols-5">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -16570,6 +16584,18 @@ export default function Home() {
                             type="number"
                             value={line.discount}
                             onChange={(e) => handleSalesLineChange(index, "discount", e.target.value)}
+                            min="0"
+                            step="0.01"
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Bonus (free)</span>
+                          <input
+                            type="number"
+                            value={line.bonus}
+                            onChange={(e) => handleSalesLineChange(index, "bonus", e.target.value)}
                             min="0"
                             step="0.01"
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
@@ -17557,6 +17583,16 @@ export default function Home() {
             </>
           );
         })()}
+        {salesTab === "loadform" && (
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Load Form Summary</h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Select customers, salesmen, and a date range to summarize their sales. Print the summary
+            and hand it to the storekeeper or delivery man as the load form.
+          </p>
+          <LoadFormGenerator />
+        </section>
+        )}
         </>
         )}
 

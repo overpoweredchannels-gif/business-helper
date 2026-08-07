@@ -318,6 +318,11 @@ alter table public.sales_transactions
 alter table public.sales_items
   add column if not exists discount numeric(14, 2) not null default 0;
 
+-- Load Form support: per-line bonus (free) quantity shown as "Bns" on the
+-- load form and summed into its Bonus Value footer total.
+alter table public.sales_items
+  add column if not exists bonus numeric(14, 2) not null default 0 check (bonus >= 0);
+
 -- ===========================================================================
 -- PART H — PAYMENTS: METHOD + DATE (cash/bank, backdated entry)
 -- ===========================================================================
@@ -607,6 +612,7 @@ begin
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'sales_transactions' and column_name = 'tax_rate') then v_missing := v_missing || 'sales_transactions.tax_rate'; end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'sales_transactions' and column_name = 'tax_amount') then v_missing := v_missing || 'sales_transactions.tax_amount'; end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'sales_items' and column_name = 'discount') then v_missing := v_missing || 'sales_items.discount'; end if;
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'sales_items' and column_name = 'bonus') then v_missing := v_missing || 'sales_items.bonus'; end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'sales_return_items' and column_name = 'organization_id') then v_missing := v_missing || 'sales_return_items.organization_id'; end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'customer_payments' and column_name = 'payment_method') then v_missing := v_missing || 'customer_payments.payment_method'; end if;
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'customer_payments' and column_name = 'payment_date') then v_missing := v_missing || 'customer_payments.payment_date'; end if;
