@@ -7422,6 +7422,49 @@ export default function Home() {
     fetchSalesOrders();
   };
 
+  const handleDraftApproval = async (soId: string, action: "approve" | "reject") => {
+    const order = salesOrders.find((item) => item.id === soId);
+    if (!order) return;
+
+    let reason: string | null = null;
+    if (action === "reject") {
+      reason = window.prompt(`Reject ${order.so_number}? Enter a reason (required):`);
+      if (reason === null) return; // cancelled
+      if (!reason.trim()) {
+        setSoError("A rejection reason is required.");
+        return;
+      }
+    } else {
+      if (!window.confirm(`Approve ${order.so_number}? This converts it into a sales invoice and updates stock.`)) return;
+    }
+
+    setSoError(null);
+    setSoMessage(null);
+    const body: Record<string, string> = { action };
+    if (action === "reject" && reason) body.reason = reason.trim();
+
+    try {
+      const res = await authorizedFetch(`/api/sales/drafts/${soId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Action failed");
+
+      if (action === "approve") {
+        setSoMessage(`${order.so_number} approved → invoice ${data.invoiceNumber ?? ""}`);
+      } else {
+        setSoMessage(`${order.so_number} rejected.`);
+      }
+      fetchSalesOrders();
+      fetchSalesTransactions();
+    } catch (err) {
+      setSoError(err instanceof Error ? err.message : "Action failed");
+      console.error("Draft approval error:", err);
+    }
+  };
+
   const handleDeleteSalesOrder = async (soId: string) => {
     const order = salesOrders.find((item) => item.id === soId);
     if (!order) return;
@@ -16929,6 +16972,24 @@ export default function Home() {
                               className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
                             >
                               Delete
+                            </button>
+                          </>
+                        )}
+                        {order.status === "pending_approval" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleDraftApproval(order.id, "approve")}
+                              className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDraftApproval(order.id, "reject")}
+                              className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
+                            >
+                              Reject
                             </button>
                           </>
                         )}

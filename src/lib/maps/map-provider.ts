@@ -35,6 +35,8 @@ export interface NavigationProvider {
   buildDirectionsUrl(request: NavigationRequest): string;
   /** Returns a URL to view a single location. */
   buildMapUrl(location: GeoPoint, label?: string): string;
+  /** Returns an iframe-embeddable URL to render a map at a single location. */
+  buildEmbedMapUrl(location: GeoPoint, label?: string): string;
 }
 
 export * from "./google-maps";
@@ -99,6 +101,16 @@ class GoogleMapsDeepLinkProvider implements NavigationProvider {
           : "";
     return `https://www.google.com/maps?q=${q}`;
   }
+
+  buildEmbedMapUrl(location: GeoPoint, label?: string): string {
+    const q =
+      formatCoordinate(location.latitude) && formatCoordinate(location.longitude)
+        ? `${formatCoordinate(location.latitude)},${formatCoordinate(location.longitude)}`
+        : label
+          ? encodeURIComponent(label)
+          : "";
+    return `https://maps.google.com/maps?q=${q}&z=15&output=embed`;
+  }
 }
 
 class InteractiveMapProvider implements NavigationProvider {
@@ -114,6 +126,10 @@ class InteractiveMapProvider implements NavigationProvider {
 
   buildMapUrl(location: GeoPoint, label?: string): string {
     return new GoogleMapsDeepLinkProvider().buildMapUrl(location, label);
+  }
+
+  buildEmbedMapUrl(location: GeoPoint, label?: string): string {
+    return new GoogleMapsDeepLinkProvider().buildEmbedMapUrl(location, label);
   }
 }
 
@@ -141,6 +157,10 @@ export class MapProvider {
 
   buildMapUrl(location: GeoPoint, label?: string): string {
     return this.provider.buildMapUrl(location, label);
+  }
+
+  buildEmbedMapUrl(location: GeoPoint, label?: string): string {
+    return this.provider.buildEmbedMapUrl(location, label);
   }
 }
 

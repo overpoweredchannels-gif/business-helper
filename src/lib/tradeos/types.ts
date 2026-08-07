@@ -123,7 +123,7 @@ export interface SalesOrder {
   order_date: string | null;
   expected_date: string | null;
   notes: string | null;
-  status: "draft" | "confirmed" | "delivered" | "cancelled";
+  status: "draft" | "confirmed" | "delivered" | "cancelled" | "pending_approval" | "rejected" | "converted";
   created_by_profile_id: string | null;
   created_at: string;
   updated_at: string;

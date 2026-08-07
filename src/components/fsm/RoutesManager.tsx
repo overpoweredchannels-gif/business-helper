@@ -59,6 +59,7 @@ export default function RoutesManager() {
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [isOwner, setIsOwner] = useState(true);
   const [expandedRouteId, setExpandedRouteId] = useState<string | null>(null);
+  const [mapRouteId, setMapRouteId] = useState<string | null>(null);
   const [stops, setStops] = useState<SalesRouteStop[]>([]);
   const [draft, setDraft] = useState<StopDraft>({ ...emptyStopDraft });
   const [loadingStops, setLoadingStops] = useState(false);
@@ -345,6 +346,11 @@ export default function RoutesManager() {
   };
 
   const navigateRoute = async (routeId: string) => {
+    // Toggle the embedded map: clicking again collapses it.
+    if (mapRouteId === routeId) {
+      setMapRouteId(null);
+      return;
+    }
     // Stops are only in state after expanding the route; fetch them fresh so
     // "Navigate Route" works straight from the list without expanding first.
     let routeStopsForNav = stops;
@@ -369,15 +375,38 @@ export default function RoutesManager() {
       });
       return;
     }
+    setMapRouteId(routeId);
+  };
+
+  const routeEmbedUrl = (): string => {
+    const coords = stops.filter(
+      (stop) =>
+        stop.latitude != null && stop.longitude != null && Number.isFinite(stop.latitude),
+    );
+    if (coords.length === 0) return "";
     const provider = getMapProvider();
-    const url = buildMultiStopNavigationUrl(
+    const first = coords[0];
+    const label =
+      first.label ?? customerLabel(first.customer_id) ?? routes.find((r) => r.id === mapRouteId)?.name ?? "Route";
+    return provider.buildEmbedMapUrl(
+      { latitude: first.latitude!, longitude: first.longitude! },
+      label,
+    );
+  };
+
+  const buildRouteDirectionsUrl = (): string => {
+    const coords = stops.filter(
+      (stop) =>
+        stop.latitude != null && stop.longitude != null && Number.isFinite(stop.latitude),
+    );
+    if (coords.length === 0) return "";
+    return buildMultiStopNavigationUrl(
       coords.map((stop) => ({
         customerId: stop.customer_id ?? "",
         label: stop.label ?? customerLabel(stop.customer_id) ?? "Stop",
         location: { latitude: stop.latitude!, longitude: stop.longitude! },
       })),
     );
-    if (url) window.open(url, "_blank", "noopener,noreferrer");
   };
 
   const navigateStop = (stop: SalesRouteStop) => {
@@ -542,6 +571,37 @@ export default function RoutesManager() {
                   </span>
                 </div>
               </div>
+
+              {mapRouteId === route.id && (
+                <div style={{ borderTop: "1px solid #e5e7eb", padding: "1rem", background: "#fafafa" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+                    <h4 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0 }}>Route Map</h4>
+                    {buildRouteDirectionsUrl() && (
+                      <button
+                        style={{ ...smallButtonStyle, marginLeft: "auto" }}
+                        onClick={() => {
+                          const url = buildRouteDirectionsUrl();
+                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                        }}
+                      >
+                        Open in Google Maps
+                      </button>
+                    )}
+                  </div>
+                  {routeEmbedUrl() ? (
+                    <iframe
+                      title={`Route map for ${route.name}`}
+                      src={routeEmbedUrl()}
+                      loading="lazy"
+                      allowFullScreen
+                      referrerPolicy="no-referrer-when-downgrade"
+                      style={{ width: "100%", minHeight: "320px", border: "0", borderRadius: "0.375rem" }}
+                    />
+                  ) : (
+                    <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>No coordinates available for this route.</p>
+                  )}
+                </div>
+              )}
 
               {expandedRouteId === route.id && (
                 <div style={{ borderTop: "1px solid #e5e7eb", padding: "1rem", background: "#fafafa" }}>
