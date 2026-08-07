@@ -22,10 +22,14 @@ const MAX_RADIUS_KM = 10;
 const MIN_RADIUS_KM = 1;
 
 /**
- * Embeds a Google Map with a Places search box. Searching "+ a place (e.g. DHA
- * Phase 6)" centres the map, drops a draggable pin and draws a coverage circle.
+ * Embeds a Google Map with a Places search box. Searching for a place (e.g. DHA
+ * Phase 6) centres the map, drops a draggable pin and draws a coverage circle.
  * The radius is adjustable (default 3 km) and the highlighted area represents
  * the territory coverage. Exposes name/description/center/radius via onSelect.
+ *
+ * Important: the circle's center_changed/radius_changed listeners must NOT be
+ * allowed to re-trigger the React state that writes back into the circle, or we
+ * get an infinite re-render loop. We guard programmatic writes with a ref flag.
  */
 export default function TerritoryMapPicker({
   onSelect,
@@ -37,7 +41,9 @@ export default function TerritoryMapPicker({
   const circleRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<any>(null);
+  const applyingRef = useRef(false);
+  const placeNameRef = useRef("");
+  const placeAddressRef = useRef("");
 
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -45,8 +51,6 @@ export default function TerritoryMapPicker({
     initialCenter ?? null,
   );
   const [radiusKm, setRadiusKm] = useState(initialRadiusKm ?? DEFAULT_RADIUS_KM);
-  const [placeName, setPlaceName] = useState("");
-  const [placeAddress, setPlaceAddress] = useState("");
 
   const emit = useCallback(
     (centerVal: { lat: number; lng: number } | null, rKm: number, name: string, addr: string) => {
@@ -83,7 +87,8 @@ export default function TerritoryMapPicker({
 
       const mapEl = document.getElementById("territory-map-canvas");
       if (!mapEl) return;
-      const start = center ?? { lat: 31.5204, lng: 74.3587 };
+      const start = initialCenter ?? { lat: 31.5204, lng: 74.3587 };
+      const startRadius = initialRadiusKm ?? DEFAULT_RADIUS_KM;
       const map = new google.maps.Map(mapEl, {
         zoom: 12,
         center: start,
@@ -105,7 +110,7 @@ export default function TerritoryMapPicker({
       const circle = new google.maps.Circle({
         map,
         center: start,
-        radius: radiusKm * 1000,
+        radius: startRadius * 1000,
         fillColor: "#2563eb",
         fillOpacity: 0.12,
         strokeColor: "#2563eb",
@@ -117,21 +122,30 @@ export default function TerritoryMapPicker({
 
       const sync = (lat: number, lng: number, rMeters: number) => {
         const rKmVal = Math.max(MIN_RADIUS_KM, Math.min(MAX_RADIUS_KM, rMeters / 1000));
-        setCenter({ lat, lng });
-        setRadiusKm(rKmVal);
-        emit({ lat, lng }, rKmVal, placeName, placeAddress);
+        // Only update React state when the value actually changed (shallow compare
+        // on lat/lng prevents the infinite loop).
+        setCenter((prev) =>
+          prev && Math.abs(prev.lat - lat) < 1e-9 && Math.abs(prev.lng - lng) < 1e-9
+            ? prev
+            : { lat, lng },
+        );
+        setRadiusKm((prev) => (Math.abs(prev - rKmVal) < 1e-6 ? prev : rKmVal));
+        emit({ lat, lng }, rKmVal, placeNameRef.current, placeAddressRef.current);
       };
 
       marker.addListener("dragend", () => {
+        if (applyingRef.current) return;
         const pos = marker.getPosition();
         circle.setCenter(pos);
         sync(pos.lat(), pos.lng(), circle.getRadius());
       });
       circle.addListener("radius_changed", () => {
+        if (applyingRef.current) return;
         const pos = marker.getPosition();
         sync(pos.lat(), pos.lng(), circle.getRadius());
       });
       circle.addListener("center_changed", () => {
+        if (applyingRef.current) return;
         const c = circle.getCenter();
         marker.setPosition(c);
         sync(c.lat(), c.lng(), circle.getRadius());
@@ -143,24 +157,33 @@ export default function TerritoryMapPicker({
           types: ["(regions)"],
           fields: ["name", "formatted_address", "geometry"],
         });
-        autocompleteRef.current = auto;
         auto.addListener("place_changed", () => {
           const place = auto.getPlace();
           if (!place || !place.geometry || !place.geometry.location) return;
           const lat = place.geometry.location.lat();
           const lng = place.geometry.location.lng();
-          map.setCenter(place.geometry.location);
+          const name = place.name ?? place.formatted_address ?? "";
+          const addr = place.formatted_address ?? "";
+          placeNameRef.current = name;
+          placeAddressRef.current = addr;
+          applyingRef.current = true;
+          map.setCenter({ lat, lng });
           map.setZoom(13);
           marker.setPosition({ lat, lng });
           circle.setCenter({ lat, lng });
-          circle.setRadius(radiusKm * 1000);
-          setPlaceName(place.name ?? place.formatted_address ?? "");
-          setPlaceAddress(place.formatted_address ?? "");
-          emit({ lat, lng }, radiusKm, place.name ?? "", place.formatted_address ?? "");
+          circle.setRadius(startRadius * 1000);
+          applyingRef.current = false;
+          setCenter({ lat, lng });
+          setRadiusKm(startRadius);
+          emit({ lat, lng }, startRadius, name, addr);
         });
       }
 
-      emit(start, radiusKm, placeName, placeAddress);
+      applyingRef.current = true;
+      setCenter(start);
+      setRadiusKm(startRadius);
+      applyingRef.current = false;
+      emit(start, startRadius, "", "");
       setStatus("ready");
     };
 
@@ -171,15 +194,18 @@ export default function TerritoryMapPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCenter]);
 
-  // Keep the circle + map in sync with external radius/center changes.
+  // Apply slider-driven radius/center changes to the map (guarded so the
+  // circle's change events do not bounce back into state).
   useEffect(() => {
     if (!googleRef.current || !circleRef.current || !mapRef.current) return;
+    applyingRef.current = true;
     if (center) {
       circleRef.current.setCenter(center);
       if (markerRef.current) markerRef.current.setPosition(center);
       mapRef.current.setCenter(center);
     }
     circleRef.current.setRadius(radiusKm * 1000);
+    applyingRef.current = false;
   }, [center, radiusKm]);
 
   if (loadError) {
@@ -245,7 +271,7 @@ export default function TerritoryMapPicker({
 
         {center && (
           <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-            {placeName ? `${placeName} · ` : ""}
+            {placeNameRef.current ? `${placeNameRef.current} · ` : ""}
             {center.lat.toFixed(6)}, {center.lng.toFixed(6)}
           </span>
         )}
