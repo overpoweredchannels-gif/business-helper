@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Territory } from "@/lib/tradeos/types";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import TerritoryMapPicker, { TerritoryGeoSelection } from "@/components/fsm/TerritoryMapPicker";
 
 const inputStyle: React.CSSProperties = {
   padding: "0.5rem 0.75rem",
@@ -29,6 +30,8 @@ export default function TerritoriesManager() {
   const [description, setDescription] = useState("");
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [isOwner, setIsOwner] = useState(true);
+  const [geoSelection, setGeoSelection] = useState<TerritoryGeoSelection | null>(null);
+  const [useGeoName, setUseGeoName] = useState(false);
 
   const load = async () => {
     try {
@@ -60,19 +63,36 @@ export default function TerritoriesManager() {
       const res = await authorizedFetch("/api/territories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), description: description.trim() }),
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim(),
+          center_lat: geoSelection?.centerLat ?? null,
+          center_lng: geoSelection?.centerLng ?? null,
+          radius_km: geoSelection?.radiusKm ?? null,
+        }),
       });
       const data = await res.json();
       if (data.territory) {
         setMessage({ type: "ok", text: `Territory "${name.trim()}" created.` });
         setName("");
         setDescription("");
+        setGeoSelection(null);
+        setUseGeoName(false);
         load();
       } else {
         setMessage({ type: "error", text: data.error || "Create failed" });
       }
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+    }
+  };
+
+  const handleGeoSelect = (selection: TerritoryGeoSelection | null) => {
+    setGeoSelection(selection);
+    if (selection) {
+      setUseGeoName(true);
+      if (!name.trim()) setName(selection.name);
+      if (!description.trim()) setDescription(selection.description);
     }
   };
 
@@ -134,6 +154,17 @@ export default function TerritoriesManager() {
           <button style={buttonStyle} onClick={create}>
             Add Territory
           </button>
+
+          <div style={{ gridColumn: "1 / -1" }}>
+            <TerritoryMapPicker onSelect={handleGeoSelect} />
+          </div>
+
+          {useGeoName && geoSelection && (
+            <div style={{ gridColumn: "1 / -1", fontSize: "0.8rem", color: "#374151" }}>
+              <span style={{ fontWeight: 600 }}>Name:</span> {geoSelection.name} &nbsp;
+              <span style={{ fontWeight: 600 }}>Radius:</span> {geoSelection.radiusKm} km
+            </div>
+          )}
         </div>
       )}
 
@@ -156,6 +187,12 @@ export default function TerritoriesManager() {
                 <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{territory.name}</div>
                 {territory.description && (
                   <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>{territory.description}</div>
+                )}
+                {territory.center_lat != null && territory.center_lng != null && (
+                  <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.125rem" }}>
+                    {territory.center_lat.toFixed(6)}, {territory.center_lng.toFixed(6)}
+                    {territory.radius_km != null ? ` · ${territory.radius_km} km radius` : ""}
+                  </div>
                 )}
               </div>
               <span

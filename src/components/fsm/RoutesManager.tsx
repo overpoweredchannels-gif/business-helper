@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { SalesRoute, SalesRouteStop, Customer, Employee } from "@/lib/tradeos/types";
+import { SalesRoute, SalesRouteStop, Customer, Employee, Territory } from "@/lib/tradeos/types";
 import { buildMultiStopNavigationUrl, getMapProvider } from "@/lib/maps/map-provider";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import RouteMapBuilder, { RouteMapStop } from "@/components/fsm/RouteMapBuilder";
 
 const inputStyle: React.CSSProperties = {
   padding: "0.5rem 0.75rem",
@@ -50,7 +51,8 @@ export default function RoutesManager() {
   const [routes, setRoutes] = useState<SalesRoute[]>([]);
   const [name, setName] = useState("");
   const [territoryId, setTerritoryId] = useState("");
-  const [territories, setTerritories] = useState<Array<{ id: string; name: string }>>([]);
+  const [territories, setTerritories] = useState<Territory[]>([]);
+  const [routeStops, setRouteStops] = useState<RouteMapStop[]>([]);
   const [salesmen, setSalesmen] = useState<Employee[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">("daily");
@@ -116,13 +118,38 @@ export default function RoutesManager() {
       const res = await authorizedFetch("/api/routes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), territory_id: territoryId || null, route_frequency: frequency }),
+        body: JSON.stringify({
+          name: name.trim(),
+          territory_id: territoryId || null,
+          route_frequency: frequency,
+          description: routeStops.length > 0
+            ? `${routeStops.length} map-planned stop${routeStops.length > 1 ? "s" : ""}.`
+            : null,
+        }),
       });
       const data = await res.json();
       if (data.route) {
-        setMessage({ type: "ok", text: `Route "${name.trim()}" created.` });
+        // Batch-persist any stops planned on the map.
+        if (routeStops.length > 0) {
+          for (const stop of routeStops) {
+            await authorizedFetch(`/api/routes/${data.route.id}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "add_stop",
+                customer_id: null,
+                label: stop.label,
+                address: stop.address,
+                latitude: stop.latitude,
+                longitude: stop.longitude,
+              }),
+            });
+          }
+        }
+        setMessage({ type: "ok", text: `Route "${name.trim()}" created with ${routeStops.length} stop(s).` });
         setName("");
         setTerritoryId("");
+        setRouteStops([]);
         load();
       } else {
         setMessage({ type: "error", text: data.error || "Create failed" });
@@ -130,6 +157,43 @@ export default function RoutesManager() {
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
     }
+  };
+
+  const selectedTerritory = territories.find((t) => t.id === territoryId) ?? null;
+  const territoryArea =
+    selectedTerritory && selectedTerritory.center_lat != null && selectedTerritory.center_lng != null
+      ? {
+          centerLat: selectedTerritory.center_lat,
+          centerLng: selectedTerritory.center_lng,
+          radiusKm: Number(selectedTerritory.radius_km ?? 3),
+        }
+      : null;
+
+  const autoSuggestName = (stop: RouteMapStop) => {
+    setName((prev) => {
+      if (prev.trim()) return prev;
+      const base = stop.label.trim() || "Route";
+      return selectedTerritory ? `${base} Route` : base;
+    });
+  };
+
+  const handleAddStop = (stop: RouteMapStop) => {
+    setRouteStops((prev) => [...prev, stop]);
+    autoSuggestName(stop);
+  };
+
+  const handleRemoveStop = (key: string) => {
+    setRouteStops((prev) => prev.filter((s) => s.key !== key));
+  };
+
+  const handleReorderStop = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= routeStops.length) return;
+    setRouteStops((prev) => {
+      const next = [...prev];
+      const [moving] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moving);
+      return next;
+    });
   };
 
   const loadStops = async (routeId: string) => {
@@ -396,6 +460,27 @@ export default function RoutesManager() {
           <button style={buttonStyle} onClick={create}>
             Add Route
           </button>
+
+          {territoryId && (
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div style={{ fontSize: "0.75rem", color: "#374151", marginBottom: "0.25rem" }}>
+                Build the route on the map below — search each stop (shops, streets, areas), then Add stop #1/#2/#3.
+                {territoryArea ? " The green area is your selected territory." : " Note: this territory has no map area saved yet."}
+              </div>
+              <RouteMapBuilder
+                territoryArea={territoryArea}
+                stops={routeStops}
+                onAddStop={handleAddStop}
+                onRemoveStop={handleRemoveStop}
+                onReorder={handleReorderStop}
+              />
+              {routeStops.length > 0 && (
+                <p style={{ fontSize: "0.8rem", color: "#166534", marginTop: "0.5rem" }}>
+                  {routeStops.length} stop(s) planned. They will be saved when you press Add Route.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -420,7 +505,7 @@ export default function RoutesManager() {
                   <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{route.name}</div>
                   <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
                     {route.route_frequency} route
-                    {route.territory_id ? " · has territory assignment" : ""}
+                    {route.territory_id ? ` · Territory: ${territories.find((t) => t.id === route.territory_id)?.name ?? "assigned"}` : ""}
                     {salesmanName(route.assigned_salesman_id) ? ` · Assigned: ${salesmanName(route.assigned_salesman_id)}` : ""}
                   </div>
                 </div>

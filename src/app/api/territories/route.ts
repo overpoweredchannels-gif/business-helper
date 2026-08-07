@@ -37,6 +37,9 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       description: (body.description as string) ?? null,
       is_active: body.is_active !== false,
+      center_lat: typeof body.center_lat === "number" && Number.isFinite(body.center_lat) ? body.center_lat : null,
+      center_lng: typeof body.center_lng === "number" && Number.isFinite(body.center_lng) ? body.center_lng : null,
+      radius_km: typeof body.radius_km === "number" && Number.isFinite(body.radius_km) ? body.radius_km : null,
     });
     return NextResponse.json({ territory });
   } catch (error) {

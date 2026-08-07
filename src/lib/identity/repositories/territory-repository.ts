@@ -3,7 +3,8 @@ import { Territory } from "@/lib/tradeos/types";
 
 export type TerritoryInput = Partial<Territory>;
 
-const TERRITORY_COLUMNS = "id, organization_id, name, description, is_active, created_at, updated_at";
+const TERRITORY_COLUMNS =
+  "id, organization_id, name, description, is_active, created_at, updated_at, center_lat, center_lng, radius_km";
 
 export class TerritoryRepository {
   async findByOrganization(organizationId: string): Promise<Territory[]> {

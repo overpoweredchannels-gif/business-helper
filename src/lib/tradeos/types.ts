@@ -663,6 +663,9 @@ export interface Territory {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  center_lat?: number | null;
+  center_lng?: number | null;
+  radius_km?: number | null;
 }
 
 export interface SalesRoute {

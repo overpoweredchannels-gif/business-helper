@@ -12,7 +12,6 @@ interface LiveMapProps {
 
 declare global {
   interface Window {
-    google: any;
     initTradeOSMap?: () => void;
   }
 }
