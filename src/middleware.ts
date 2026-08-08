@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const publicPaths = ["/login", "/signup", "/onboarding", "/auth/callback", "/api/auth/provision"];
+  const publicPaths = ["/login", "/signup", "/onboarding", "/auth/callback", "/api/auth/provision", "/invite"];
   if (publicPaths.some((p) => pathname === p || pathname.startsWith(p))) {
     return NextResponse.next();
   }
