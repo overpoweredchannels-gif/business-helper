@@ -116,9 +116,13 @@ export class SalesRouteRepository {
     return data as SalesRouteStop;
   }
 
-  async removeStop(stopId: string): Promise<void> {
+  async removeStop(routeId: string, stopId: string): Promise<void> {
     const supabase = createSupabaseService();
-    const { error } = await supabase.from("sales_route_stops").delete().eq("id", stopId);
+    const { error } = await supabase
+      .from("sales_route_stops")
+      .delete()
+      .eq("id", stopId)
+      .eq("route_id", routeId);
     if (error) {
       throw error;
     }

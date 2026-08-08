@@ -8063,12 +8063,25 @@ export default function Home() {
     .map((transaction) => transaction.id);
   const salesInvoiceTotalsByTransaction = salesTransactions.reduce<Record<string, number>>(
     (totals, transaction) => {
-      totals[transaction.id] = salesItems
+      const storedTotal = Number(transaction.total_amount ?? 0);
+      if (Number.isFinite(storedTotal) && storedTotal > 0) {
+        totals[transaction.id] = storedTotal;
+        return totals;
+      }
+      // Fallback: recompute net-of-discount subtotal + tax, matching the save path.
+      const lineSubtotal = salesItems
         .filter((item) => item.sales_transaction_id === transaction.id)
         .reduce(
-          (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price),
+          (sum, item) =>
+            sum +
+            safeNumber(item.quantity) * safeNumber(item.selling_price) -
+            safeNumber(item.discount),
           0
         );
+      const invoiceDiscount = Math.abs(safeNumber(transaction.discount_amount));
+      const taxRate = safeNumber(transaction.tax_rate);
+      const taxableBase = Math.max(0, lineSubtotal - invoiceDiscount);
+      totals[transaction.id] = taxableBase + (taxableBase * taxRate) / 100;
       return totals;
     },
     {}
@@ -10348,7 +10361,8 @@ export default function Home() {
     (totals, item) => {
       const quantity = Number(item.quantity || 0);
       const sellingPrice = Number(item.selling_price || 0);
-      const revenue = quantity * sellingPrice;
+      const lineDiscount = safeNumber(item.discount);
+      const revenue = quantity * sellingPrice - lineDiscount;
       const purchasePriceSnapshot = Number(item.purchase_price_snapshot);
       const hasValidCost =
         Number.isFinite(purchasePriceSnapshot) && purchasePriceSnapshot > 0;
@@ -17687,7 +17701,8 @@ export default function Home() {
           const totalDiscounts = rangeItems.reduce((sum, item) => sum + safeNumber(item.discount), 0);
           const totalTax = rangeTransactions.reduce((sum, tx) => sum + safeNumber(tx.tax_amount), 0);
           const cogs = rangeItems.reduce((sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.purchase_price_snapshot), 0);
-          const grossProfit = grossSales - cogs;
+          const netSales = Math.max(0, grossSales - totalTax);
+          const grossProfit = netSales - cogs;
 
           const outstandingReceivables = salesTransactions
             .filter((tx) => tx.payment_type === "credit")
@@ -17763,8 +17778,8 @@ export default function Home() {
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded border border-border bg-card p-4">
-                  <div className="text-xs text-muted-foreground/80">Gross Sales</div>
-                  <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(grossSales)}</div>
+                  <div className="text-xs text-muted-foreground/80">Gross Sales (excl. tax)</div>
+                  <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(netSales)}</div>
                   <div className="text-xs text-muted-foreground/80">{rangeTransactions.length} invoices</div>
                 </div>
                 <div className="rounded border border-border bg-card p-4">
@@ -19358,7 +19373,7 @@ export default function Home() {
                     : reorderLevel > 0 && stock <= reorderLevel
                       ? "Reorder Needed"
                       : daysLeft <= 7
-                        ? "Low (≈7d left)"
+                        ? "Low (≈7 days left)"
                         : "Healthy";
                 const purchasePrice = safeNumber(product.last_purchase_price ?? product.default_purchase_price ?? 0);
                 const sellPrice = safeNumber(product.default_selling_price ?? 0);
@@ -19400,7 +19415,7 @@ export default function Home() {
                       Reorder needed: <b className={reorderNeededCount > 0 ? "text-warning" : ""}>{reorderNeededCount}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      Low (≈7d left): <b className={lowCount > 0 ? "text-warning" : ""}>{lowCount}</b>
+                      Low (≈7 days left): <b className={lowCount > 0 ? "text-warning" : ""}>{lowCount}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">Healthy: {rows.filter((r) => r.status === "Healthy").length}</span>
                   </div>

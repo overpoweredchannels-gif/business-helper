@@ -43,16 +43,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   if (body.action === "approve") {
     // Reduce customer outstanding balance (payment received)
-    const { data: customer } = await supabase
+    const { data: customer, error: customerError } = await supabase
       .from("customers")
       .select("outstanding_balance")
       .eq("id", existing.customer_id)
       .maybeSingle();
-    const currentBalance = Number((customer as any)?.outstanding_balance ?? 0);
-    await supabase
+    if (customerError) {
+      return NextResponse.json({ ok: false, error: `Failed to load customer: ${customerError.message}` }, { status: 400 });
+    }
+    const currentBalance = Number(customer?.outstanding_balance ?? 0);
+    const { error: balanceError } = await supabase
       .from("customers")
       .update({ outstanding_balance: Math.max(0, currentBalance - Number(existing.amount)) })
       .eq("id", existing.customer_id);
+    if (balanceError) {
+      return NextResponse.json({ ok: false, error: `Failed to update customer balance: ${balanceError.message}` }, { status: 400 });
+    }
   }
 
   const { data: updated, error } = await supabase

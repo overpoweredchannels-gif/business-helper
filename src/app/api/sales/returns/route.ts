@@ -107,17 +107,23 @@ export async function POST(request: NextRequest) {
       }
 
       const quantityErrors: string[] = [];
+      const requestedQtyByProduct = new Map<string, number>();
       for (const line of lines) {
         const productId = String(line.product_id);
+        requestedQtyByProduct.set(
+          productId,
+          (requestedQtyByProduct.get(productId) ?? 0) + Number(line.quantity || 0)
+        );
+      }
+      for (const [productId, requested] of requestedQtyByProduct) {
         const sold = soldByProduct.get(productId) ?? 0;
         const alreadyReturned = returnedByProduct.get(productId) ?? 0;
         const returnable = sold - alreadyReturned;
-        const quantity = Number(line.quantity || 0);
         if (returnable <= 0) {
           quantityErrors.push(`Product ${productId} has no returnable quantity on this invoice.`);
-        } else if (quantity > returnable) {
+        } else if (requested > returnable) {
           quantityErrors.push(
-            `Product ${productId}: cannot return ${quantity} — only ${returnable} units remain returnable on this invoice.`
+            `Product ${productId}: cannot return ${requested} — only ${returnable} units remain returnable on this invoice.`
           );
         }
       }

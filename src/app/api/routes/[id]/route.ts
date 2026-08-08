@@ -175,7 +175,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!stopId) {
       return NextResponse.json({ error: "Stop ID is required." }, { status: 400 });
     }
-    await repository.removeStop(stopId);
+    await repository.removeStop(routeId, stopId);
     const stops = await repository.listStops(routeId);
     return NextResponse.json({ success: true, stops });
   } catch (error) {

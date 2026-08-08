@@ -80,18 +80,25 @@ export async function POST(request: NextRequest) {
     }
 
     const stockErrors: string[] = [];
+    const requestedQtyByProduct = new Map<string, number>();
     for (const line of lines) {
       const productId = String(line.product_id);
+      const quantity = Number(line.quantity || 0);
+      requestedQtyByProduct.set(
+        productId,
+        (requestedQtyByProduct.get(productId) ?? 0) + quantity
+      );
+    }
+    for (const [productId, totalRequested] of requestedQtyByProduct) {
       const product = productsById.get(productId);
       if (!product) {
         stockErrors.push(`Product not found in this organization.`);
         continue;
       }
-      const quantity = Number(line.quantity || 0);
       const available = Number(product.current_stock ?? 0);
-      if (quantity > available) {
+      if (totalRequested > available) {
         stockErrors.push(
-          `${product.name}: cannot return ${quantity} — only ${available} in stock.`
+          `${product.name}: cannot return ${totalRequested} — only ${available} in stock.`
         );
       }
     }
