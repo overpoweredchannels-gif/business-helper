@@ -21,6 +21,7 @@ import EmployeeManagement from "@/components/fsm/EmployeeManagement";
 import NotificationCenter from "@/components/fsm/NotificationCenter";
 import TerritoriesManager from "@/components/fsm/TerritoriesManager";
 import RoutesManager from "@/components/fsm/RoutesManager";
+import LiveTrackingView from "@/components/fsm/LiveTrackingView";
 import {
   aiAssistantExampleCommands,
   aiAssistantRoadmapItems,
@@ -4983,6 +4984,7 @@ export default function Home() {
     territories: "owner_admin",
     routes: "owner_admin",
     notifications: "owner_admin",
+    "live-tracking": "owner_admin",
   };
   const canAccessSection = (sectionId: SectionId) => {
     if (sectionId === "dashboard") return true;
@@ -13410,10 +13412,6 @@ export default function Home() {
   };
 
   const handleSectionChange = (sectionId: SectionId) => {
-    if (sectionId === "live-tracking") {
-      router.push("/manager/live");
-      return;
-    }
     if (sectionId !== "ai-business-query") {
       stopAiBusinessVoice();
     }
@@ -22304,6 +22302,19 @@ export default function Home() {
         {activeSectionAllowed && activeSection === "notifications" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <NotificationCenter />
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "live-tracking" && (
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <div className="mb-5">
+            <h2 className="text-xl font-medium text-foreground">Live Tracking</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Click any employee below to see their live location on the map, navigate to them, or view their
+              movement trail.
+            </p>
+          </div>
+          <LiveTrackingView />
         </section>
         )}
 
