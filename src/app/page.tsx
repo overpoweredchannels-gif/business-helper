@@ -612,6 +612,19 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // Field-staff roles use the /salesman (or /supervisor for supervisors) app.
+    // Never render the owner business dashboard at "/" for them, even if they
+    // navigate to it directly.
+    const role = currentProfile?.role;
+    if (!currentUser || !role) return;
+    if (role === "owner" || role === "admin") return;
+    const fieldStaffRoles = ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor", "warehouse_staff"];
+    if (fieldStaffRoles.includes(role)) {
+      router.replace("/salesman");
+    }
+  }, [currentUser, currentProfile?.role, router]);
+
+  useEffect(() => {
     aiVoiceOperatorLoadingRef.current = aiVoiceOperatorLoading;
   }, [aiVoiceOperatorLoading]);
 
@@ -5069,6 +5082,7 @@ export default function Home() {
     routes: "owner_admin",
     notifications: "owner_admin",
     "live-tracking": "owner_admin",
+    "staff-duty": "owner_admin",
   };
   const canAccessSection = (sectionId: SectionId) => {
     if (sectionId === "dashboard") return true;
