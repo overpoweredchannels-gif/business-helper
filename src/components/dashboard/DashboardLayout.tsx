@@ -36,6 +36,7 @@ interface DashboardLayoutProps {
   canCustomize?: boolean;
   onToggleCustomize?: () => void;
   onMoveNavItem?: (id: string, direction: "up" | "down") => void;
+  onDropNavItem?: (fromId: string, toId: string) => void;
   onToggleNavHidden?: (id: string) => void;
   onResetNavOrder?: () => void;
 }
@@ -61,6 +62,7 @@ customizeMode,
   canCustomize,
   onToggleCustomize,
   onMoveNavItem,
+  onDropNavItem,
   onToggleNavHidden,
   onResetNavOrder,
 }: DashboardLayoutProps) {
@@ -81,6 +83,7 @@ customizeMode,
         canCustomize={canCustomize}
         onToggleCustomize={onToggleCustomize}
         onMoveItem={onMoveNavItem}
+        onDropItem={onDropNavItem}
         onToggleHidden={onToggleNavHidden}
         onResetOrder={onResetNavOrder}
       />
@@ -89,7 +92,7 @@ customizeMode,
       {mobileMenuOpen && (
         <>
           <div className="fixed inset-0 z-40 bg-black/30 lg:hidden" onClick={() => setMobileMenuOpen(false)} />
-          <div className="fixed inset-y-0 left-0 z-50 w-72 bg-card border-r border-border lg:hidden animate-slideInLeft">
+          <div className="fixed inset-y-0 left-0 z-50 w-[19rem] bg-card border-r border-border lg:hidden animate-slideInLeft">
             <Sidebar
               items={navigationItems}
               activeSection={activeSection}
@@ -99,6 +102,15 @@ customizeMode,
               }}
               organizationName={organizationName}
               forceVisible
+              disableCollapse
+              customizeMode={customizeMode}
+              hiddenIds={hiddenNavIds}
+              canCustomize={canCustomize}
+              onToggleCustomize={onToggleCustomize}
+              onMoveItem={onMoveNavItem}
+              onDropItem={onDropNavItem}
+              onToggleHidden={onToggleNavHidden}
+              onResetOrder={onResetNavOrder}
             />
           </div>
         </>

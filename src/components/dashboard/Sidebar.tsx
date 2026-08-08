@@ -6,8 +6,9 @@ import {
   Banknote, ArrowLeftRight, CreditCard, TrendingUp, Brain, Bot, BookOpen, Settings,
   CheckSquare, History, Shield, Lock, Clock, Sparkles, MessageSquare, Mic, Globe, Smartphone,
   ChevronLeft, ChevronRight, Eye, EyeOff, ArrowDown, ArrowUp, Pencil, RotateCcw, X, MapPin, Bell, Package, Rocket,
+  GripVertical,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
 
 const navIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -58,8 +59,10 @@ interface SidebarProps {
   canCustomize?: boolean;
   onToggleCustomize?: () => void;
   onMoveItem?: (id: string, direction: "up" | "down") => void;
+  onDropItem?: (id: string, targetId: string) => void;
   onToggleHidden?: (id: string) => void;
   onResetOrder?: () => void;
+  disableCollapse?: boolean;
 }
 
 export function Sidebar({
@@ -73,12 +76,49 @@ export function Sidebar({
   canCustomize,
   onToggleCustomize,
   onMoveItem,
+  onDropItem,
   onToggleHidden,
   onResetOrder,
+  disableCollapse,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const hiddenSet = new Set(hiddenIds || []);
   const customizing = Boolean(customizeMode) && Boolean(canCustomize);
+  const displayItems = customizing ? items : items.filter((item) => !hiddenSet.has(item.id));
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const dragPointerStart = useRef<number | null>(null);
+
+  const startDrag = (e: React.PointerEvent<HTMLElement>, id: string) => {
+    if (!customizing) return;
+    e.preventDefault();
+    dragPointerStart.current = e.pointerId;
+    if ((e.currentTarget as Element).setPointerCapture) {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    }
+    setDragId(id);
+    setDropTargetId(null);
+  };
+
+  const moveDrag = (e: React.PointerEvent<HTMLElement>) => {
+    if (!dragId || e.pointerId !== dragPointerStart.current) return;
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const row = hit?.closest?.("[data-nav-id]") as HTMLElement | null;
+    const id = row?.getAttribute("data-nav-id");
+    if (id && id !== dragId) setDropTargetId(id);
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLElement>) => {
+    if (!dragId || e.pointerId !== dragPointerStart.current) return;
+    const fromId = dragId;
+    const targetId = dropTargetId;
+    setDragId(null);
+    setDropTargetId(null);
+    dragPointerStart.current = null;
+    if (fromId && targetId && targetId !== fromId) {
+      onDropItem?.(fromId, targetId);
+    }
+  };
 
   return (
     <aside
@@ -105,27 +145,45 @@ export function Sidebar({
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {items.map((item, index) => {
+        {displayItems.map((item, index) => {
           const Icon = navIconMap[item.id];
           const isHidden = hiddenSet.has(item.id);
+          const isDragging = dragId === item.id;
+          const isDropTarget = dropTargetId === item.id;
           return (
             <div
               key={item.id}
+              data-nav-id={item.id}
               className={cn(
                 "flex items-center gap-0.5 rounded-lg",
                 customizing && "bg-muted/20",
+                isDragging && "opacity-50 ring-2 ring-primary touch-none",
+                isDropTarget && "border-t-2 border-primary",
               )}
+              onPointerMove={moveDrag}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
             >
               {customizing && (
-                <button
-                  type="button"
-                  onClick={() => onMoveItem?.(item.id, "up")}
-                  disabled={index === 0}
-                  className="shrink-0 pl-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                  title="Move up"
-                >
-                  <ArrowUp className="size-3.5" />
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => startDrag(e, item.id)}
+                    className="shrink-0 cursor-grab touch-none pl-1 text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                    title="Drag to reorder"
+                  >
+                    <GripVertical className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMoveItem?.(item.id, "up")}
+                    disabled={index === 0}
+                    className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                    title="Move up"
+                  >
+                    <ArrowUp className="size-3.5" />
+                  </button>
+                </>
               )}
               <button
                 type="button"
@@ -149,8 +207,8 @@ export function Sidebar({
                   <button
                     type="button"
                     onClick={() => onMoveItem?.(item.id, "down")}
-                    disabled={index === items.length - 1}
-                    className="shrink-0 pr-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                    disabled={index === displayItems.length - 1}
+                    className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
                     title="Move down"
                   >
                     <ArrowDown className="size-3.5" />
@@ -171,13 +229,16 @@ export function Sidebar({
             </div>
           );
         })}
+        {customizing && displayItems.length === 0 && (
+          <p className="px-3 py-2 text-xs text-light-text">No menu sections to show.</p>
+        )}
       </nav>
 
       {/* Footer: customize + collapse */}
       <div className="border-t border-border p-2 space-y-1">
         {customizing && (
           <div className="flex items-center justify-between rounded-lg px-3 py-2 text-xs text-light-text">
-            <span className="truncate">Use arrows to reorder, eye to show/hide</span>
+            <span className="truncate">Drag with mouse / finger to reorder, arrows fine-tune, eye shows &amp; hides</span>
             <div className="flex shrink-0 gap-1">
               <button
                 type="button"
@@ -208,14 +269,16 @@ export function Sidebar({
             {!collapsed && <span>Customize Menu</span>}
           </button>
         )}
+        {!disableCollapse && (
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
           className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs text-light-text hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
-          {!collapsed && <span>Collapse</span>}
+          {!collapsed && !forceVisible && <span>Collapse</span>}
         </button>
+        )}
       </div>
     </aside>
   );

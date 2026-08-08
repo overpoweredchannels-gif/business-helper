@@ -5021,6 +5021,21 @@ export default function Home() {
     persistNavPrefs(arr, navHidden);
   };
 
+  const handleNavDrop = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    const base = navigationItems.map((item) => item.id);
+    const currentOrder = navOrder ?? base;
+    const arr = [...currentOrder];
+    const fromIdx = arr.indexOf(fromId);
+    const toIdx = arr.indexOf(toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    arr.splice(fromIdx, 1);
+    const insertAt = arr.indexOf(toId);
+    arr.splice(insertAt, 0, fromId);
+    setNavOrder(arr);
+    persistNavPrefs(arr, navHidden);
+  };
+
   const sectionPermissionMap: Partial<Record<SectionId, StaffPermissionKey | "owner_admin">> = {
     products: "can_manage_products",
     brands: "can_manage_products",
@@ -5063,15 +5078,13 @@ export default function Home() {
     return hasPermission(requiredPermission);
   };
   const visibleNavigationItems = navigationItems.filter((item) => canAccessSection(item.id));
-  const navHiddenSet = new Set(navHidden ?? []);
   const navIdIndex = new Map(navOrder?.map((id, index) => [id, index]));
-  const orderedNavItems = (
+  const orderedNavItems =
     navOrder && navOrder.length > 0
       ? [...visibleNavigationItems].sort(
           (a, b) => (navIdIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (navIdIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER)
         )
-      : visibleNavigationItems
-  ).filter((item) => !navHiddenSet.has(item.id));
+      : visibleNavigationItems;
   const activeSectionLabel =
     navigationItems.find((item) => item.id === activeSection)?.label ?? "Dashboard";
   const activeSectionAllowed = canAccessSection(activeSection);
@@ -14785,6 +14798,7 @@ export default function Home() {
         canCustomize={isOwnerOrAdmin()}
         onToggleCustomize={() => setNavCustomizeMode((v) => !v)}
         onMoveNavItem={handleNavMove}
+        onDropNavItem={handleNavDrop}
         onToggleNavHidden={handleNavToggleHidden}
         onResetNavOrder={handleNavReset}
         onSearchSubmit={(query) => {
