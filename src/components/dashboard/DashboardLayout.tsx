@@ -3,7 +3,6 @@
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { FloatingAI } from "./FloatingAI";
-import { cn } from "@/lib/utils";
 import { useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
 
@@ -32,6 +31,13 @@ interface DashboardLayoutProps {
   onNotificationClick?: (notification: Notification) => void;
   onSearchSubmit?: (query: string) => void;
   onSearchChange?: (query: string) => Array<{ label: string; section?: string; type?: "product" | "customer" | "task" | "action" }>;
+  customizeMode?: boolean;
+  hiddenNavIds?: string[];
+  canCustomize?: boolean;
+  onToggleCustomize?: () => void;
+  onMoveNavItem?: (id: string, direction: "up" | "down") => void;
+  onToggleNavHidden?: (id: string) => void;
+  onResetNavOrder?: () => void;
 }
 
 export function DashboardLayout({
@@ -50,6 +56,13 @@ export function DashboardLayout({
   onNotificationClick,
   onSearchSubmit,
   onSearchChange,
+customizeMode,
+  hiddenNavIds,
+  canCustomize,
+  onToggleCustomize,
+  onMoveNavItem,
+  onToggleNavHidden,
+  onResetNavOrder,
 }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -63,6 +76,13 @@ export function DashboardLayout({
           setMobileMenuOpen(false);
         }}
         organizationName={organizationName}
+        customizeMode={customizeMode}
+        hiddenIds={hiddenNavIds}
+        canCustomize={canCustomize}
+        onToggleCustomize={onToggleCustomize}
+        onMoveItem={onMoveNavItem}
+        onToggleHidden={onToggleNavHidden}
+        onResetOrder={onResetNavOrder}
       />
 
       {/* Mobile sidebar overlay */}

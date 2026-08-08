@@ -427,6 +427,14 @@ export default function Home() {
   const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
   const [adjustmentMessage, setAdjustmentMessage] = useState<string | null>(null);
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
+  // ── Bulk Add-to-Stock (paste product lines) ────────────────────────────────
+  const [bulkStockText, setBulkStockText] = useState("");
+  const [bulkStockLines, setBulkStockLines] = useState<
+    Array<{ productId: number; name: string; qty: string; currentStock: number; matched: boolean }>
+  >([]);
+  const [bulkStockSubmitting, setBulkStockSubmitting] = useState(false);
+  const [bulkStockMessage, setBulkStockMessage] = useState<string | null>(null);
+  const [bulkStockError, setBulkStockError] = useState<string | null>(null);
   const [ledgerMovementFilter, setLedgerMovementFilter] = useState("all");
   const [ledgerProductFilter, setLedgerProductFilter] = useState("all");
   const [ledgerSearch, setLedgerSearch] = useState("");
@@ -4952,6 +4960,67 @@ export default function Home() {
     return Boolean(currentStaffPermission?.[permissionKey]);
   };
   const canManageInventory = hasPermission("can_manage_inventory");
+  // ── Customizable navigation menu ──────────────────────────────────────────
+  // Owner can reorder and show/hide sections from the sidebar. Order + hidden
+  // ids are persisted per account in localStorage (fallback: default order).
+  const NAV_PREF_KEY = useMemo(() => {
+    const id = currentProfile?.id ?? currentUser?.id ?? "anon";
+    return `tradeos_nav_prefs_${id}`;
+  }, [currentProfile?.id, currentUser?.id]);
+
+  const [navCustomizeMode, setNavCustomizeMode] = useState(false);
+  const [navOrder, setNavOrder] = useState<string[] | null>(null);
+  const [navHidden, setNavHidden] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(NAV_PREF_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { order?: string[]; hidden?: string[] };
+      if (Array.isArray(parsed.order)) setNavOrder(parsed.order);
+      if (Array.isArray(parsed.hidden)) setNavHidden(parsed.hidden);
+    } catch {
+      // ignore corrupt prefs
+    }
+  }, [NAV_PREF_KEY]);
+
+  const persistNavPrefs = (order: string[] | null, hidden: string[] | null) => {
+    try {
+      localStorage.setItem(NAV_PREF_KEY, JSON.stringify({ order, hidden }));
+    } catch {
+      // storage may be unavailable
+    }
+  };
+
+  const handleNavReset = () => {
+    setNavOrder(null);
+    setNavHidden(null);
+    persistNavPrefs(null, null);
+  };
+
+  const handleNavToggleHidden = (id: string) => {
+    const next = navHidden ? [...navHidden] : [];
+    const idx = next.indexOf(id);
+    if (idx >= 0) next.splice(idx, 1);
+    else next.push(id);
+    setNavHidden(next);
+    persistNavPrefs(navOrder, next);
+  };
+
+  const handleNavMove = (id: string, direction: "up" | "down") => {
+    const base = navigationItems.map((item) => item.id);
+    const currentOrder = navOrder ?? base;
+    const arr = [...currentOrder];
+    const idx = arr.indexOf(id);
+    if (idx < 0) return;
+    const target = direction === "up" ? idx - 1 : idx + 1;
+    if (target < 0 || target >= arr.length) return;
+    arr.splice(idx, 1);
+    arr.splice(target, 0, id);
+    setNavOrder(arr);
+    persistNavPrefs(arr, navHidden);
+  };
+
   const sectionPermissionMap: Partial<Record<SectionId, StaffPermissionKey | "owner_admin">> = {
     products: "can_manage_products",
     brands: "can_manage_products",
@@ -4994,6 +5063,15 @@ export default function Home() {
     return hasPermission(requiredPermission);
   };
   const visibleNavigationItems = navigationItems.filter((item) => canAccessSection(item.id));
+  const navHiddenSet = new Set(navHidden ?? []);
+  const navIdIndex = new Map(navOrder?.map((id, index) => [id, index]));
+  const orderedNavItems = (
+    navOrder && navOrder.length > 0
+      ? [...visibleNavigationItems].sort(
+          (a, b) => (navIdIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (navIdIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+        )
+      : visibleNavigationItems
+  ).filter((item) => !navHiddenSet.has(item.id));
   const activeSectionLabel =
     navigationItems.find((item) => item.id === activeSection)?.label ?? "Dashboard";
   const activeSectionAllowed = canAccessSection(activeSection);
@@ -5660,6 +5738,134 @@ export default function Home() {
     }
 
     setInventoryTransactions(data ?? []);
+  };
+
+  const handleBulkStockParse = () => {
+    setBulkStockError(null);
+    setBulkStockMessage(null);
+    if (!canManageInventory) {
+      setBulkStockError("You need the Manage Inventory permission to add stock.");
+      return;
+    }
+    const activeMap = new Map<string, { id: number; name: string }>();
+    for (const product of activeProducts) {
+      activeMap.set(product.name.toLowerCase(), { id: product.id, name: product.name });
+      if (product.sku) activeMap.set(product.sku.toLowerCase(), { id: product.id, name: product.name });
+      if (product.barcode) activeMap.set(product.barcode.toLowerCase(), { id: product.id, name: product.name });
+    }
+    const resolved: Array<{ productId: number; name: string; qty: string; currentStock: number; matched: boolean }> = [];
+    const lines = bulkStockText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    for (const line of lines) {
+      // Accept either "<name> [tab|comma] <qty>" or "<name> <qty>" (qty separated by last space).
+      const parts = line.split(/[\t,]/).map((p) => p.trim());
+      let lookup = "";
+      let qty = "";
+      if (parts.length >= 2 && /^\d+([.,]\d+)?$/.test(parts[parts.length - 1])) {
+        lookup = parts.slice(0, parts.length - 1).join(" ").trim();
+        qty = parts[parts.length - 1];
+      } else {
+        const m = line.match(/^(.+?)\s+(\d+(?:[.,]\d+)?)\s*$/);
+        if (m) {
+          lookup = m[1].trim();
+          qty = m[2];
+        }
+      }
+      if (!lookup || !qty) {
+        resolved.push({ productId: 0, name: `Unparsed: "${line}"`, qty: "", currentStock: 0, matched: false });
+        continue;
+      }
+      const match = activeMap.get(lookup.toLowerCase());
+      if (!match) {
+        resolved.push({ productId: 0, name: lookup, qty, currentStock: 0, matched: false });
+        continue;
+      }
+      const product = products.find((item) => item.id === match.id);
+      resolved.push({
+        productId: match.id,
+        name: match.name,
+        qty,
+        currentStock: product ? safeNumber(product.current_stock ?? 0) : 0,
+        matched: true,
+      });
+    }
+    setBulkStockLines(resolved);
+    if (resolved.length === 0) setBulkStockError("Paste one product line per row.");
+  };
+
+  const handleBulkAddStock = async () => {
+    setBulkStockError(null);
+    setBulkStockMessage(null);
+    if (!requireOrganization("add stock")) {
+      setBulkStockError("Organization not loaded. Please login again.");
+      return;
+    }
+    if (!canManageInventory) {
+      setBulkStockError("You need the Manage Inventory permission to add stock.");
+      return;
+    }
+    const pending = bulkStockLines.filter((line) => line.matched && safeNumber(line.qty) > 0);
+    const invalid = bulkStockLines.filter((line) => !line.matched || safeNumber(line.qty) <= 0);
+    if (pending.length === 0) {
+      setBulkStockError("No valid matched lines with a positive quantity to add.");
+      return;
+    }
+    if (invalid.length > 0) {
+      setBulkStockError(
+        `Some lines are unmatched or have no quantity (${invalid.length}). Matched lines can still be added — remove the bad rows to proceed cleanly, or add them now.`
+      );
+    }
+
+    setBulkStockSubmitting(true);
+    const succeeded: string[] = [];
+    const failed: Array<{ name: string; error: string }> = [];
+    try {
+      for (const line of pending) {
+        const qty = safeNumber(line.qty);
+        const response = await authorizedFetch("/api/inventory/adjust", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            organizationId: currentOrganizationId,
+            productId: line.productId,
+            quantityDelta: qty,
+            reason: "Bulk add-to-stock (opening stock / restock upload)",
+            createdByProfileId: currentProfile?.id ?? null,
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) {
+          failed.push({ name: line.name, error: result.error ?? "Failed to add stock" });
+          continue;
+        }
+        await createAuditLog({
+          action: "adjusted",
+          entity_type: "inventory_transaction",
+          entity_id: result.transactionId,
+          entity_label: line.name,
+          description: `Bulk add-to-stock of ${qty} on ${line.name} (opening stock / restock import).`,
+          new_values: { product_id: line.productId, quantity_delta: qty, reason: "bulk add-to-stock" },
+        });
+        succeeded.push(`${line.name} +${qty}`);
+      }
+      setBulkStockMessage(
+        `Added stock for ${succeeded.length} product line(s).` +
+          (succeeded.length > 0 ? ` (${succeeded.join(", ")})` : "") +
+          (failed.length > 0 ? ` Failed: ${failed.map((f) => `${f.name} — ${f.error}`).join(" | ")}` : "")
+      );
+      setBulkStockLines((lines) =>
+        lines.filter((line) => !line.matched || safeNumber(line.qty) <= 0)
+      );
+      if (failed.length === 0) setBulkStockText("");
+      await fetchInventoryTransactions();
+      await fetchProducts();
+    } catch (err) {
+      setBulkStockError(err instanceof Error ? err.message : "Failed to add stock in bulk");
+    } finally {
+      setBulkStockSubmitting(false);
+    }
   };
 
   const handleAdjustStock = async () => {
@@ -14565,7 +14771,7 @@ export default function Home() {
 
   return (
     <DashboardLayout
-        navigationItems={visibleNavigationItems}
+        navigationItems={orderedNavItems}
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
         organizationName={organizationDisplayName}
@@ -14574,6 +14780,13 @@ export default function Home() {
         onOpenAiAssistant={() => handleSectionChange("ai-assistant")}
         onAiVoice={() => handleSectionChange("ai-voice-operator")}
         onAiChat={() => handleSectionChange("ai-assistant")}
+        customizeMode={navCustomizeMode}
+        hiddenNavIds={navHidden ?? []}
+        canCustomize={isOwnerOrAdmin()}
+        onToggleCustomize={() => setNavCustomizeMode((v) => !v)}
+        onMoveNavItem={handleNavMove}
+        onToggleNavHidden={handleNavToggleHidden}
+        onResetNavOrder={handleNavReset}
         onSearchSubmit={(query) => {
           const q = query.toLowerCase().replace(/&/g, " and ");
           const match = visibleNavigationItems.find((item) => {
@@ -15921,6 +16134,78 @@ export default function Home() {
                 stock adjustments. Owners and admins can always adjust stock.
               </div>
             )}
+
+            <div className="rounded border border-border bg-card p-4">
+              <h3 className="mb-1 text-lg font-medium text-foreground">Bulk Add-to-Stock</h3>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Paste one product per line — use <code className="rounded bg-muted px-1">Product Name [tab|comma] Qty</code> or
+                <code className="rounded bg-muted px-1">Product Name Qty</code>. Rows are matched by name, SKU, or barcode
+                against your active products.
+              </p>
+              {bulkStockMessage && <p className="mb-3 whitespace-pre-wrap text-sm text-success">{bulkStockMessage}</p>}
+              {bulkStockError && <p className="mb-3 whitespace-pre-wrap text-sm text-destructive">{bulkStockError}</p>}
+
+              <textarea
+                value={bulkStockText}
+                onChange={(e) => setBulkStockText(e.target.value)}
+                rows={6}
+                placeholder={"Pepsi 500ml\t200\nColgate Toothpaste 100g, 50\nMineral Water 1.5L 120"}
+                className="w-full rounded border border-border px-3 py-2 text-sm font-mono focus:border-ring focus:outline-none"
+                disabled={bulkStockSubmitting}
+              />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleBulkStockParse}
+                  disabled={bulkStockSubmitting}
+                  className="rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5 disabled:opacity-40"
+                >
+                  Preview Lines
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkAddStock}
+                  disabled={bulkStockSubmitting || bulkStockLines.filter((line) => line.matched && safeNumber(line.qty) > 0).length === 0}
+                  className="rounded bg-primary px-4 py-2 text-sm text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
+                >
+                  {bulkStockSubmitting ? "Adding..." : `Add Stock (${bulkStockLines.filter((line) => line.matched && safeNumber(line.qty) > 0).length} lines)`}
+                </button>
+              </div>
+
+              {bulkStockLines.length > 0 && (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground/80">
+                        <th className="py-2 pr-3 font-medium">Product</th>
+                        <th className="py-2 pr-3 font-medium">Current Stock</th>
+                        <th className="py-2 pr-3 font-medium">Qty to Add</th>
+                        <th className="py-2 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkStockLines.map((line, index) => (
+                        <tr key={index} className="border-b border-border/60">
+                          <td className="py-2 pr-3 text-foreground">{line.name}</td>
+                          <td className="py-2 pr-3 text-foreground/80">{line.matched ? line.currentStock : "—"}</td>
+                          <td className="py-2 pr-3 text-foreground/80">{line.matched ? line.qty : "—"}</td>
+                          <td className="py-2">
+                            {line.matched ? (
+                              <span className="text-success">Matched</span>
+                            ) : (
+                              <span className="text-destructive">Unmatched</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="mt-2 text-xs text-muted-foreground/80">
+                    Unmatched rows are ignored on submit — fix the spelling or paste a different identifier (SKU / barcode).
+                  </p>
+                </div>
+              )}
+            </div>
 
             <div className="rounded border border-border bg-card p-4">
               <h3 className="mb-1 text-lg font-medium text-foreground">Record Stock Adjustment</h3>
@@ -19029,6 +19314,159 @@ export default function Home() {
         )}
 
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          {(() => {
+            const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+            const now = Date.now();
+            const txDateById = new Map<string, string | null>();
+            for (const tx of salesTransactions) {
+              txDateById.set(String(tx.id), tx.sale_date ?? tx.created_at ?? null);
+            }
+            const soldQty30dById = new Map<number, number>();
+            for (const item of salesItems) {
+              if (item.status === "cancelled") continue;
+              const created = txDateById.get(String(item.sales_transaction_id));
+              if (created && now - new Date(created).getTime() > THIRTY_DAYS) continue;
+              soldQty30dById.set(
+                item.product_id,
+                (soldQty30dById.get(item.product_id) ?? 0) + Number(item.quantity || 0)
+              );
+            }
+            const rows = activeProducts
+              .map((product) => {
+                const stock = getAvailableStockForProduct(product.id);
+                const reorderLevel = safeNumber(product.reorder_level ?? product.minimum_stock_level ?? 0);
+                const sold30 = soldQty30dById.get(product.id) ?? 0;
+                const daily = sold30 / 30;
+                const daysLeft = daily > 0 ? stock / daily : (stock > 0 ? Infinity : 0);
+                const status =
+                  stock <= 0
+                    ? "Out of Stock"
+                    : reorderLevel > 0 && stock <= reorderLevel
+                      ? "Reorder Needed"
+                      : daysLeft <= 7
+                        ? "Low (≈7d left)"
+                        : "Healthy";
+                const purchasePrice = safeNumber(product.last_purchase_price ?? product.default_purchase_price ?? 0);
+                const sellPrice = safeNumber(product.default_selling_price ?? 0);
+                const margin = sellPrice > 0 ? sellPrice - purchasePrice : 0;
+                const marginPct = sellPrice > 0 ? (margin / sellPrice) * 100 : 0;
+                return {
+                  product,
+                  stock,
+                  reorderLevel,
+                  sold30,
+                  daysLeft,
+                  status,
+                  margin,
+                  marginPct,
+                  sellPrice,
+                };
+              })
+              .sort((a, b) => {
+                const order = ["Out of Stock", "Reorder Needed", "Low (≈7 days left)", "Healthy"];
+                return order.indexOf(a.status) - order.indexOf(b.status);
+              });
+            const outOfStockCount = rows.filter((r) => r.status === "Out of Stock").length;
+            const reorderNeededCount = rows.filter((r) => r.status === "Reorder Needed").length;
+            const lowCount = rows.filter((r) => r.status === "Low (≈7 days left)").length;
+            const topAlerts = rows.filter((r) => r.status !== "Healthy").slice(0, 50);
+            const highMargin = [...rows]
+              .sort((a, b) => b.marginPct - a.marginPct)
+              .slice(0, 5)
+              .filter((r) => r.sellPrice > 0);
+            return (
+              <>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-xl font-medium text-foreground">Product Insights</h2>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="rounded bg-card px-2 py-1 text-foreground/80">
+                      Out of stock: <b className={outOfStockCount > 0 ? "text-destructive" : ""}>{outOfStockCount}</b>
+                    </span>
+                    <span className="rounded bg-card px-2 py-1 text-foreground/80">
+                      Reorder needed: <b className={reorderNeededCount > 0 ? "text-warning" : ""}>{reorderNeededCount}</b>
+                    </span>
+                    <span className="rounded bg-card px-2 py-1 text-foreground/80">
+                      Low (≈7d left): <b className={lowCount > 0 ? "text-warning" : ""}>{lowCount}</b>
+                    </span>
+                    <span className="rounded bg-card px-2 py-1 text-foreground/80">Healthy: {rows.filter((r) => r.status === "Healthy").length}</span>
+                  </div>
+                </div>
+
+                {topAlerts.length > 0 && (
+                  <div className="mb-5">
+                    <h3 className="mb-2 text-sm font-medium text-foreground/80">Reorder Alerts</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground/80">
+                            <th className="py-2 pr-3 font-medium">Product</th>
+                            <th className="py-2 pr-3 font-medium">Status</th>
+                            <th className="py-2 pr-3 font-medium">Stock</th>
+                            <th className="py-2 pr-3 font-medium">Sold (30d)</th>
+                            <th className="py-2 font-medium">Days Left</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {topAlerts.map((r) => (
+                            <tr key={r.product.id} className="border-b border-border/60">
+                              <td className="py-2 pr-3 text-foreground">{r.product.name}</td>
+                              <td className="py-2 pr-3">
+                                <span
+                                  className={
+                                    r.status === "Out of Stock"
+                                      ? "text-destructive"
+                                      : "text-warning"
+                                  }
+                                >
+                                  {r.status}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-3 text-foreground/80">{r.stock}</td>
+                              <td className="py-2 pr-3 text-foreground/80">{r.sold30}</td>
+                              <td className="py-2 text-foreground/80">
+                                {Number.isFinite(r.daysLeft) ? Math.max(0, Math.round(r.daysLeft)) : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {highMargin.length > 0 && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-medium text-foreground/80">Highest Margin Products</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground/80">
+                            <th className="py-2 pr-3 font-medium">Product</th>
+                            <th className="py-2 pr-3 font-medium">Selling Price</th>
+                            <th className="py-2 pr-3 font-medium">Unit Margin</th>
+                            <th className="py-2 font-medium">Margin %</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {highMargin.map((r) => (
+                            <tr key={r.product.id} className="border-b border-border/60">
+                              <td className="py-2 pr-3 text-foreground">{r.product.name}</td>
+                              <td className="py-2 pr-3 text-foreground/80">{formatPKR(r.sellPrice)}</td>
+                              <td className="py-2 pr-3 text-foreground/80">{formatPKR(r.margin)}</td>
+                              <td className="py-2 text-success">{r.marginPct.toFixed(1)}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </section>
+
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">Existing Products</h2>
             <div className="flex items-center gap-2">
@@ -19372,6 +19810,52 @@ export default function Home() {
                           <div>Phone: {customer.phone ?? "None"}</div>
                           <div>City: {customer.city ?? "None"}</div>
                           <div>Credit Policy: {creditSummary}</div>
+                          {(() => {
+                            const customerTxIds = new Set(
+                              salesTransactions
+                                .filter((tx) => String(tx.customer_id) === String(customer.id))
+                                .map((tx) => String(tx.id))
+                            );
+                            const byProduct = new Map<number, { qty: number; last: string | null; dateNum: number }>();
+                            for (const item of salesItems) {
+                              if (!customerTxIds.has(String(item.sales_transaction_id))) continue;
+                              const tx = salesTransactions.find((t) => String(t.id) === String(item.sales_transaction_id));
+                              if (tx?.status === "cancelled") continue;
+                              const px = Number(item.product_id);
+                              const entry = byProduct.get(px) ?? { qty: 0, last: null, dateNum: 0 };
+                              entry.qty += Number(item.quantity || 0);
+                              const itemDate = tx?.sale_date ?? tx?.created_at ?? "";
+                              if (itemDate) {
+                                const num = new Date(itemDate).getTime();
+                                if (num > entry.dateNum) {
+                                  entry.dateNum = num;
+                                  entry.last = itemDate;
+                                }
+                              }
+                              byProduct.set(px, entry);
+                            }
+                            const top = [...byProduct.entries()]
+                              .sort((a, b) => b[1].qty - a[1].qty)
+                              .slice(0, 4);
+                            if (top.length === 0) return null;
+                            return (
+                              <div className="pt-1 text-xs text-muted-foreground/80">
+                                <div className="mb-1 font-medium text-foreground/90">Reorder pattern</div>
+                                <ul className="space-y-0.5">
+                                  {top.map(([productId, info]) => {
+                                    const product = products.find((p) => String(p.id) === String(productId));
+                                    return (
+                                      <li key={productId} className="flex flex-wrap gap-1">
+                                        <span className="w-44 truncate">{product?.name ?? `Product ${productId}`}</span>
+                                        <span>~{info.qty} qty total</span>
+                                        {info.last && <span className="text-muted-foreground/60">last {formatDate(info.last)}</span>}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            );
+                          })()}
                           <div className="flex flex-wrap gap-2 text-xs">
                             {customer.allow_over_limit && (
                               <span className="rounded bg-warning/10 px-2 py-1 text-warning">
@@ -20303,6 +20787,34 @@ export default function Home() {
                 PURCHASE_ORDER_STATUS_OPTIONS,
                 filteredPurchaseOrders.length
               )}
+              {(() => {
+                const active = filteredPurchaseOrders.filter((po) => po.status === "ordered" || po.status === "partial");
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const overdue = active.filter((po) => {
+                  if (!po.expected_date) return false;
+                  const d = new Date(po.expected_date);
+                  return !isNaN(d.getTime()) && d < today;
+                });
+                if (active.length === 0) return null;
+                return (
+                  <div className="mb-4 flex flex-wrap gap-2 text-xs">
+                    <span className="rounded bg-card px-2 py-1 text-foreground/80">
+                      Open orders: <b>{active.length}</b>
+                    </span>
+                    <span className="rounded bg-card px-2 py-1 text-foreground/80">
+                      Expected delivery: <b>{active.filter((po) => po.expected_date).length}</b>
+                    </span>
+                    <span className="rounded bg-card px-2 py-1 text-foreground/80">
+                      Overdue:{" "}
+                      <b className={overdue.length > 0 ? "text-destructive" : ""}>{overdue.length}</b>
+                    </span>
+                    <span className="rounded bg-card px-2 py-1 text-foreground/80">
+                      Received fully: <b>{filteredPurchaseOrders.filter((po) => po.status === "received").length}</b>
+                    </span>
+                  </div>
+                );
+              })()}
               {filteredPurchaseOrders.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No purchase orders match your filters.
@@ -20348,6 +20860,68 @@ export default function Home() {
                         <div className="text-xs text-muted-foreground/80">
                           {lineItems.length} line(s) · {received} of {ordered} units received
                         </div>
+                        {(() => {
+                          const pct = ordered > 0 ? Math.min(100, Math.round((received / ordered) * 100)) : (po.status === "received" ? 100 : 0);
+                          const isOverdue =
+                            po.status !== "cancelled" &&
+                            po.status !== "received" &&
+                            received < ordered &&
+                            po.expected_date &&
+                            (() => {
+                              const d = new Date(po.expected_date!);
+                              return isNaN(d.getTime()) || d.getTime() < Date.now() - 24 * 60 * 60 * 1000;
+                            })();
+                          return (
+                            <div className="mt-2">
+                              <div className="flex items-center gap-2">
+                                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                                  <div
+                                    className={`h-2 rounded-full ${
+                                      po.status === "cancelled"
+                                        ? "bg-destructive"
+                                        : received >= ordered
+                                          ? "bg-success"
+                                          : pct > 0
+                                            ? "bg-primary"
+                                            : "bg-muted-foreground/30"
+                                    }`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                                <span className="shrink-0 text-xs text-foreground/80">{pct}%</span>
+                                {isOverdue && (
+                                  <span className="shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                                    Overdue
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        {lineItems.length > 0 && (
+                          <div className="mt-2 space-y-0.5">
+                            {lineItems.map((item) => {
+                              const product = products.find((p) => String(p.id) === String(item.product_id));
+                              const itemPct = item.quantity_ordered > 0
+                                ? Math.min(100, Math.round((safeNumber(item.quantity_received) / item.quantity_ordered) * 100))
+                                : 0;
+                              return (
+                                <div key={item.id} className="flex items-center gap-2 text-[11px] text-muted-foreground/80">
+                                  <span className="w-40 truncate">{product?.name ?? `Product ${item.product_id}`}</span>
+                                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                      className={`h-1.5 rounded-full ${itemPct >= 100 ? "bg-success" : itemPct > 0 ? "bg-primary" : "bg-muted-foreground/30"}`}
+                                      style={{ width: `${itemPct}%` }}
+                                    />
+                                  </div>
+                                  <span>
+                                    {safeNumber(item.quantity_received)}/{item.quantity_ordered}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                         {po.notes && <div className="text-xs text-muted-foreground/80">Notes: {po.notes}</div>}
                       </div>
                       <div className="flex shrink-0 flex-wrap gap-2">
