@@ -10,7 +10,8 @@
 --   profiles                    id, organization_id, auth_user_id, email,
 --                               display_name, role (free-text role id),
 --                               is_active, created_at, updated_at
---   staff_permissions           per-profile legacy boolean permissions
+--   staff_permissions           per-profile legacy boolean permissions plus
+--                               granted_sections text[] (SectionId grants)
 --   audit_logs                  organization_id, actor_profile_id, actor_email,
 --                               action, entity_type, entity_id, entity_label,
 --                               description, old_values, new_values, created_at

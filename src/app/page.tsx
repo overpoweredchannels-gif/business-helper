@@ -38,6 +38,8 @@ import {
   mobileReadinessItems,
   mobileRoadmapItems,
   navigationItems,
+  sectionPermissionGroups,
+  sectionPermissionMap,
   staffPermissionLabels,
   staffRoles,
   taskPriorities,
@@ -402,6 +404,7 @@ export default function Home() {
   const [expandedAuditLogIds, setExpandedAuditLogIds] = useState<Record<string, boolean>>({});
   const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>([]);
   const [staffPermissions, setStaffPermissions] = useState<StaffPermission[]>([]);
+  const [staffPermissionsLoaded, setStaffPermissionsLoaded] = useState(false);
   const [staffPermissionMessage, setStaffPermissionMessage] = useState<string | null>(null);
   const [staffPermissionError, setStaffPermissionError] = useState<string | null>(null);
   const [selectedStaffProfileId, setSelectedStaffProfileId] = useState("");
@@ -415,6 +418,7 @@ export default function Home() {
         return draft;
       }, {} as Record<StaffPermissionKey, boolean>)
   );
+  const [staffSectionDraft, setStaffSectionDraft] = useState<string[]>([]);
   const [inventoryTransactions, setInventoryTransactions] = useState<InventoryTransaction[]>([]);
   const [inventoryTransactionsLoading, setInventoryTransactionsLoading] = useState(false);
   const [inventoryTab, setInventoryTab] = useState<"dashboard" | "adjustments" | "ledger" | "import">("dashboard");
@@ -611,18 +615,47 @@ export default function Home() {
     checkAuthUser();
   }, []);
 
+  // Deep-link routing: "/#section-id" opens that section directly. Used by the
+  // salesman sidebar links that point staff into the main business app, e.g.
+  // "/#customer-credit".
   useEffect(() => {
-    // Field-staff roles use the /salesman (or /supervisor for supervisors) app.
-    // Never render the owner business dashboard at "/" for them, even if they
-    // navigate to it directly.
+    const applyHash = () => {
+      if (typeof window === "undefined") return;
+      const hash = window.location.hash.replace(/^#/, "");
+      if (!hash) return;
+      if (navigationItems.some((item) => item.id === hash)) {
+        handleSectionChange(hash as SectionId);
+      }
+    };
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // Field-staff roles use the /salesman (or /supervisor for supervisors) app
+    // UNLESS they have been granted specific business sections via
+    // Staff & Permissions (staff_permissions.granted_sections). Staff with
+    // granted business sections may use the main app "/", where the sidebar is
+    // filtered to exactly the sections they were granted.
     const role = currentProfile?.role;
     if (!currentUser || !role) return;
     if (role === "owner" || role === "admin") return;
     const fieldStaffRoles = ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor", "warehouse_staff"];
-    if (fieldStaffRoles.includes(role)) {
+    if (!fieldStaffRoles.includes(role)) return;
+    // Wait until the current user's permission row has been fetched so we do
+    // not wrongly bounce a staff member who was granted business sections.
+    if (!staffPermissionsLoaded) return;
+    const ownPermission = staffPermissions.find(
+      (permission) => permission.profile_id === currentProfile?.id
+    );
+    const granted = ownPermission?.granted_sections ?? [];
+    const hasBusinessAccess = granted.some((sectionId) => sectionId !== "dashboard");
+    if (!hasBusinessAccess) {
       router.replace("/salesman");
     }
-  }, [currentUser, currentProfile?.role, router]);
+  }, [currentUser, currentProfile?.role, currentProfile?.id, staffPermissions, staffPermissionsLoaded, router]);
 
   useEffect(() => {
     aiVoiceOperatorLoadingRef.current = aiVoiceOperatorLoading;
@@ -685,6 +718,7 @@ export default function Home() {
         return draft;
       }, {} as Record<StaffPermissionKey, boolean>)
     );
+    setStaffSectionDraft([...(selectedPermission?.granted_sections ?? [])]);
   }, [selectedStaffProfileId, staffPermissions]);
 
   const fetchExpenses = async (organizationId: string | null) => {
@@ -1036,6 +1070,7 @@ export default function Home() {
     if (!orgId) {
       setStaffProfiles([]);
       setStaffPermissions([]);
+      setStaffPermissionsLoaded(false);
       setSelectedStaffProfileId("");
       return;
     }
@@ -1067,12 +1102,14 @@ export default function Home() {
 
     if (permissionsError) {
       console.error("Supabase fetch staff permissions error:", JSON.stringify(permissionsError, null, 2));
+      setStaffPermissionsLoaded(true);
       return;
     }
 
     const profiles = profilesResult.data ?? [];
     setStaffProfiles(profiles);
     setStaffPermissions(permissionsData ?? []);
+    setStaffPermissionsLoaded(true);
     setStaffProfileDrafts(
       profiles.reduce((drafts, profile) => {
         drafts[profile.id] = {
@@ -5049,43 +5086,11 @@ export default function Home() {
     persistNavPrefs(arr, navHidden);
   };
 
-  const sectionPermissionMap: Partial<Record<SectionId, StaffPermissionKey | "owner_admin">> = {
-    products: "can_manage_products",
-    brands: "can_manage_products",
-    categories: "can_manage_products",
-    customers: "can_manage_customers",
-    suppliers: "can_manage_suppliers",
-    purchases: "can_create_purchases",
-    sales: "can_create_sales",
-    "customer-payments": "can_manage_payments",
-    "supplier-payments": "can_manage_payments",
-    expenses: "can_manage_expenses",
-    "profit-loss": "can_view_profit",
-    "business-intelligence": "owner_admin",
-    "ai-analytics": "owner_admin",
-    inventory: "can_view_reports",
-    "customer-credit": "can_manage_customers",
-    "supplier-ledger": "can_manage_payments",
-    "business-settings": "can_manage_settings",
-    "task-manager": "can_manage_tasks",
-    "activity-logs": "owner_admin",
-    "staff-permissions": "owner_admin",
-    "security-check": "owner_admin",
-    deployment: "owner_admin",
-    "mobile-app": "owner_admin",
-    "ai-assistant": "owner_admin",
-    "ai-business-query": "owner_admin",
-    "ai-voice-operator": "owner_admin",
-    "market-intelligence": "owner_admin",
-    employees: "owner_admin",
-    territories: "owner_admin",
-    routes: "owner_admin",
-    notifications: "owner_admin",
-    "live-tracking": "owner_admin",
-    "staff-duty": "owner_admin",
-  };
   const canAccessSection = (sectionId: SectionId) => {
     if (sectionId === "dashboard") return true;
+    if (isOwnerOrAdmin()) return true;
+    const granted = currentStaffPermission?.granted_sections ?? [];
+    if (granted.includes(sectionId)) return true;
     const requiredPermission = sectionPermissionMap[sectionId];
     if (!requiredPermission) return true;
     if (requiredPermission === "owner_admin") return isOwnerOrAdmin();
@@ -13669,6 +13674,9 @@ export default function Home() {
     }
     setActiveSection(sectionId);
     setMobileMenuOpen(false);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", `#${sectionId}`);
+    }
     window.setTimeout(() => {
       document.getElementById("tradeos-main-content")?.scrollTo({ top: 0, behavior: "smooth" });
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -14649,6 +14657,7 @@ export default function Home() {
       can_manage_tasks: Boolean(staffPermissionDraft.can_manage_tasks),
       can_manage_settings: Boolean(staffPermissionDraft.can_manage_settings),
       can_manage_inventory: Boolean(staffPermissionDraft.can_manage_inventory),
+      granted_sections: [...new Set(staffSectionDraft.filter(Boolean))],
       updated_at: now,
     };
     const previousPermissions = staffPermissions.find(
@@ -21498,6 +21507,14 @@ export default function Home() {
                       const activePermissionLabels = staffPermissionLabels
                         .filter((permission) => Boolean(profilePermissions?.[permission.key]))
                         .map((permission) => permission.label);
+                      const grantedSectionLabels = (profilePermissions?.granted_sections ?? [])
+                        .map((sectionId) =>
+                          navigationItems.find((item) => item.id === sectionId)?.label ?? sectionId
+                        );
+                      const permissionSummary = [
+                        ...grantedSectionLabels,
+                        ...activePermissionLabels,
+                      ];
                       const profileIsOwnerOrAdmin = !profile.role || profile.role === "owner" || profile.role === "admin";
 
                       return (
@@ -21550,8 +21567,8 @@ export default function Home() {
                           <td className="min-w-[260px] px-3 py-3 text-xs text-muted-foreground">
                             {profileIsOwnerOrAdmin ? (
                               <span>Full access</span>
-                            ) : activePermissionLabels.length > 0 ? (
-                              <span>{activePermissionLabels.join(", ")}</span>
+                            ) : permissionSummary.length > 0 ? (
+                              <span>{permissionSummary.join(", ")}</span>
                             ) : (
                               <span>No permissions selected</span>
                             )}
@@ -21615,23 +21632,96 @@ export default function Home() {
                       Owners have full access. Permission checkboxes are mainly for non-owner staff.
                     </div>
                   )}
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {staffPermissionLabels.map((permission) => (
-                      <label key={permission.key} className="flex items-center gap-2 rounded border border-border bg-muted/30 px-3 py-2 text-sm text-foreground/80">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(staffPermissionDraft[permission.key])}
-                          onChange={(e) =>
-                            setStaffPermissionDraft((current) => ({
-                              ...current,
-                              [permission.key]: e.target.checked,
-                            }))
-                          }
-                        />
-                        <span>{permission.label}</span>
-                      </label>
-                    ))}
+
+                  <div className="mb-4 rounded border border-border bg-muted/30 p-4 text-sm text-foreground/80">
+                    <p className="font-medium text-foreground">Sections</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Tick the sidebar sections this staff member may open. Granted sections appear in their
+                      sidebar exactly like they do for the owner. Dashboard is always available.
+                    </p>
                   </div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {sectionPermissionGroups.map((group) => {
+                      const checkedCount = group.sections.filter((section) =>
+                        staffSectionDraft.includes(section.id)
+                      ).length;
+                      const groupAllChecked = checkedCount === group.sections.length;
+                      const groupSomeChecked = checkedCount > 0 && !groupAllChecked;
+                      return (
+                        <div key={group.group} className="rounded border border-border bg-muted/30 p-3">
+                          <label className="flex items-center gap-2 border-b border-border pb-2 text-sm font-medium text-foreground">
+                            <input
+                              type="checkbox"
+                              checked={groupAllChecked}
+                              ref={(el) => {
+                                if (el) el.indeterminate = groupSomeChecked;
+                              }}
+                              onChange={(e) => {
+                                setStaffSectionDraft((current) => {
+                                  const withoutGroup = current.filter(
+                                    (id) => !group.sections.some((section) => section.id === id)
+                                  );
+                                  return e.target.checked
+                                    ? [...withoutGroup, ...group.sections.map((section) => section.id)]
+                                    : withoutGroup;
+                                });
+                              }}
+                              className="accent-primary"
+                            />
+                            <span>{group.group}</span>
+                            <span className="ml-auto text-xs text-muted-foreground">
+                              {checkedCount}/{group.sections.length}
+                            </span>
+                          </label>
+                          <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                            {group.sections.map((section) => (
+                              <label key={section.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-foreground/80 hover:bg-muted/50">
+                                <input
+                                  type="checkbox"
+                                  checked={staffSectionDraft.includes(section.id)}
+                                  onChange={(e) =>
+                                    setStaffSectionDraft((current) =>
+                                      e.target.checked
+                                        ? [...current, section.id]
+                                        : current.filter((id) => id !== section.id)
+                                    )
+                                  }
+                                  className="accent-primary"
+                                />
+                                <span>{section.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-6 rounded border border-border bg-muted/30 p-4">
+                    <p className="mb-2 text-sm font-medium text-foreground">Granular capabilities (legacy)</p>
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      Fine-grained toggles kept for compatibility. The section checkboxes above are the primary
+                      way to control what each staff member sees.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {staffPermissionLabels.map((permission) => (
+                        <label key={permission.key} className="flex items-center gap-2 rounded border border-border bg-muted/30 px-3 py-2 text-sm text-foreground/80">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(staffPermissionDraft[permission.key])}
+                            onChange={(e) =>
+                              setStaffPermissionDraft((current) => ({
+                                ...current,
+                                [permission.key]: e.target.checked,
+                              }))
+                            }
+                          />
+                          <span>{permission.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
                   <button
                     type="button"
                     onClick={saveStaffPermissions}

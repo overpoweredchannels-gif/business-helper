@@ -293,6 +293,7 @@ export interface StaffPermission {
   can_manage_tasks: boolean | null;
   can_manage_settings: boolean | null;
   can_manage_inventory: boolean | null;
+  granted_sections?: string[];
 }
 
 export interface SecurityCheck {

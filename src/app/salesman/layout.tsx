@@ -12,6 +12,7 @@ interface MeResponse {
     profile: any;
     employee: any;
     organization: { name?: string | null; working_hours?: any };
+    permissions?: { granted_sections?: string[] | null } | null;
   };
   error?: string;
 }
@@ -73,7 +74,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const name = me?.employee?.full_name || me?.profile?.display_name || me?.profile?.full_name || null;
 
   return (
-    <SalesmanLayout organizationName={me?.organization?.name} userName={name}>
+    <SalesmanLayout
+      organizationName={me?.organization?.name}
+      userName={name}
+      grantedSections={me?.permissions?.granted_sections ?? []}
+    >
       {children}
     </SalesmanLayout>
   );

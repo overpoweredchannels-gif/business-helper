@@ -6,9 +6,11 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, MapPin, ClipboardList, Banknote, Bell, User,
   LogOut, Menu, X, Route as RouteIcon, MessageSquareText, Clock, Target, CalendarClock,
+  Settings2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { useState } from "react";
+import { navigationItems } from "@/lib/tradeos/constants";
 
 const NAV_ITEMS = [
   { href: "/salesman", label: "Dashboard", icon: LayoutDashboard },
@@ -24,13 +26,28 @@ const NAV_ITEMS = [
   { href: "/salesman/profile", label: "Profile", icon: User },
 ];
 
+const BUSINESS_NAV_EXCLUDE = new Set([
+  "dashboard",
+  "visits",
+  "routes",
+  "drafts",
+  "collections",
+  "feedback",
+  "targets",
+  "attendance",
+  "leave",
+  "notifications",
+  "profile",
+]);
+
 interface SalesmanLayoutProps {
   organizationName?: string | null;
   userName?: string | null;
+  grantedSections?: string[];
   children: React.ReactNode;
 }
 
-export default function SalesmanLayout({ organizationName, userName, children }: SalesmanLayoutProps) {
+export default function SalesmanLayout({ organizationName, userName, grantedSections = [], children }: SalesmanLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -39,6 +56,12 @@ export default function SalesmanLayout({ organizationName, userName, children }:
     await supabase.auth.signOut();
     router.push("/login");
   };
+
+  const grantedNavItems = navigationItems
+    .filter((item) => grantedSections.includes(item.id) && !BUSINESS_NAV_EXCLUDE.has(item.id))
+    .map((item) => ({ href: `/#${item.id}`, label: item.label, icon: Settings2 }));
+
+  const navItems = [...NAV_ITEMS, ...grantedNavItems];
 
   const content = (
     <aside className="flex flex-col bg-card border-r border-border transition-all duration-300 h-full w-64">
@@ -53,7 +76,7 @@ export default function SalesmanLayout({ organizationName, userName, children }:
       </div>
 
       <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href || (item.href !== "/salesman" && pathname.startsWith(item.href));
           return (

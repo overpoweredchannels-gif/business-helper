@@ -37,6 +37,123 @@ export const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "notifications", label: "Notifications" },
 ];
 
+// Which owner sidebar section maps to which legacy permission key (or is
+// owner/admin only). Grants in staff_permissions.granted_sections take
+// precedence; this map is the fallback for legacy boolean permission rows.
+export const sectionPermissionMap: Partial<Record<SectionId, StaffPermissionKey | "owner_admin">> = {
+  products: "can_manage_products",
+  brands: "can_manage_products",
+  categories: "can_manage_products",
+  customers: "can_manage_customers",
+  suppliers: "can_manage_suppliers",
+  purchases: "can_create_purchases",
+  sales: "can_create_sales",
+  "customer-payments": "can_manage_payments",
+  "supplier-payments": "can_manage_payments",
+  expenses: "can_manage_expenses",
+  "profit-loss": "can_view_profit",
+  "business-intelligence": "owner_admin",
+  "ai-analytics": "owner_admin",
+  inventory: "can_view_reports",
+  "customer-credit": "can_manage_customers",
+  "supplier-ledger": "can_manage_payments",
+  "business-settings": "can_manage_settings",
+  "task-manager": "can_manage_tasks",
+  "activity-logs": "owner_admin",
+  "staff-permissions": "owner_admin",
+  "security-check": "owner_admin",
+  deployment: "owner_admin",
+  "mobile-app": "owner_admin",
+  "ai-assistant": "owner_admin",
+  "ai-business-query": "owner_admin",
+  "ai-voice-operator": "owner_admin",
+  "market-intelligence": "owner_admin",
+  employees: "owner_admin",
+  territories: "owner_admin",
+  routes: "owner_admin",
+  notifications: "owner_admin",
+  "live-tracking": "owner_admin",
+  "staff-duty": "owner_admin",
+};
+
+// The owner sidebar sections grouped for the Staff & Permissions picker.
+// Dashboard is always visible so it is intentionally not listed here.
+export const sectionPermissionGroups: Array<{ group: string; sections: Array<{ id: SectionId; label: string }> }> = [
+  {
+    group: "Products & Brands",
+    sections: [
+      { id: "products", label: "Products" },
+      { id: "brands", label: "Brands" },
+      { id: "categories", label: "Categories" },
+    ],
+  },
+  {
+    group: "Sales & Customers",
+    sections: [
+      { id: "sales", label: "Sales" },
+      { id: "customers", label: "Customers" },
+      { id: "customer-credit", label: "Customer Credit" },
+    ],
+  },
+  {
+    group: "Purchases & Suppliers",
+    sections: [
+      { id: "purchases", label: "Purchases" },
+      { id: "suppliers", label: "Suppliers" },
+      { id: "supplier-ledger", label: "Supplier Ledger" },
+    ],
+  },
+  {
+    group: "Payments & Inventory",
+    sections: [
+      { id: "customer-payments", label: "Customer Payments" },
+      { id: "supplier-payments", label: "Supplier Payments" },
+      { id: "inventory", label: "Inventory" },
+    ],
+  },
+  {
+    group: "Money & Reports",
+    sections: [
+      { id: "expenses", label: "Expenses" },
+      { id: "profit-loss", label: "Profit & Loss" },
+      { id: "business-intelligence", label: "Business Intelligence" },
+    ],
+  },
+  {
+    group: "AI & Intelligence",
+    sections: [
+      { id: "ai-analytics", label: "AI Analytics" },
+      { id: "ai-assistant", label: "AI Assistant" },
+      { id: "ai-business-query", label: "AI Business Query" },
+      { id: "ai-voice-operator", label: "AI Voice Operator" },
+      { id: "market-intelligence", label: "Market Intelligence" },
+    ],
+  },
+  {
+    group: "Staff & Field Ops",
+    sections: [
+      { id: "employees", label: "Employees" },
+      { id: "territories", label: "Territories" },
+      { id: "routes", label: "Routes" },
+      { id: "staff-duty", label: "Staff Duty" },
+      { id: "live-tracking", label: "Live Tracking" },
+      { id: "notifications", label: "Notifications" },
+      { id: "task-manager", label: "Task Manager" },
+    ],
+  },
+  {
+    group: "System & Settings",
+    sections: [
+      { id: "business-settings", label: "Business Settings" },
+      { id: "staff-permissions", label: "Staff & Permissions" },
+      { id: "security-check", label: "Security Check" },
+      { id: "deployment", label: "Deployment" },
+      { id: "mobile-app", label: "Mobile App" },
+      { id: "activity-logs", label: "Activity Logs" },
+    ],
+  },
+];
+
 export const staffPermissionLabels: Array<{ key: StaffPermissionKey; label: string }> = [
   { key: "can_manage_products", label: "Manage Products" },
   { key: "can_manage_customers", label: "Manage Customers" },

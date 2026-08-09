@@ -33,6 +33,13 @@ export async function GET(request: Request) {
     .eq("id", context.actor.organizationId)
     .maybeSingle();
 
+  const { data: permissions } = await supabase
+    .from("staff_permissions")
+    .select("*")
+    .eq("profile_id", context.actor.profileId)
+    .eq("organization_id", context.actor.organizationId)
+    .maybeSingle();
+
   return NextResponse.json({
     ok: true,
     me: {
@@ -42,6 +49,7 @@ export async function GET(request: Request) {
         name: organization?.name ?? null,
         working_hours: organization?.working_hours ?? null,
       },
+      permissions,
     },
   });
 }
