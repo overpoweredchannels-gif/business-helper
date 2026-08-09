@@ -40,7 +40,6 @@ import {
   navigationItems,
   sectionPermissionGroups,
   sectionPermissionMap,
-  staffPermissionLabels,
   staffRoles,
   taskPriorities,
   taskPriorityLabels,
@@ -404,6 +403,8 @@ export default function Home() {
   const [expandedAuditLogIds, setExpandedAuditLogIds] = useState<Record<string, boolean>>({});
   const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>([]);
   const [staffPermissions, setStaffPermissions] = useState<StaffPermission[]>([]);
+  const [selfStaffPermission, setSelfStaffPermission] = useState<StaffPermission | null>(null);
+  const [selfStaffPermissionLoaded, setSelfStaffPermissionLoaded] = useState(false);
   const [staffPermissionsLoaded, setStaffPermissionsLoaded] = useState(false);
   const [staffPermissionMessage, setStaffPermissionMessage] = useState<string | null>(null);
   const [staffPermissionError, setStaffPermissionError] = useState<string | null>(null);
@@ -411,13 +412,6 @@ export default function Home() {
   const [staffProfileDrafts, setStaffProfileDrafts] = useState<
     Record<string, { display_name: string; role: string; is_active: boolean }>
   >({});
-  const [staffPermissionDraft, setStaffPermissionDraft] = useState<Record<StaffPermissionKey, boolean>>(
-    () =>
-      staffPermissionLabels.reduce((draft, permission) => {
-        draft[permission.key] = false;
-        return draft;
-      }, {} as Record<StaffPermissionKey, boolean>)
-  );
   const [staffSectionDraft, setStaffSectionDraft] = useState<string[]>([]);
   const [inventoryTransactions, setInventoryTransactions] = useState<InventoryTransaction[]>([]);
   const [inventoryTransactionsLoading, setInventoryTransactionsLoading] = useState(false);
@@ -644,18 +638,21 @@ export default function Home() {
     if (role === "owner" || role === "admin") return;
     const fieldStaffRoles = ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor", "warehouse_staff"];
     if (!fieldStaffRoles.includes(role)) return;
-    // Wait until the current user's permission row has been fetched so we do
-    // not wrongly bounce a staff member who was granted business sections.
-    if (!staffPermissionsLoaded) return;
-    const ownPermission = staffPermissions.find(
-      (permission) => permission.profile_id === currentProfile?.id
-    );
+    const ownPermission =
+      staffPermissions.find(
+        (permission) => permission.profile_id === currentProfile?.id
+      ) ?? selfStaffPermission;
     const granted = ownPermission?.granted_sections ?? [];
     const hasBusinessAccess = granted.some((sectionId) => sectionId !== "dashboard");
+    // Wait until both the org-wide client fetch AND the server-side
+    // /api/identity/staff/me row have resolved so we do not wrongly bounce a
+    // staff member who was granted business sections.
+    const permissionsResolved = staffPermissionsLoaded && selfStaffPermissionLoaded;
+    if (!permissionsResolved) return;
     if (!hasBusinessAccess) {
       router.replace("/salesman");
     }
-  }, [currentUser, currentProfile?.role, currentProfile?.id, staffPermissions, staffPermissionsLoaded, router]);
+  }, [currentUser, currentProfile?.role, currentProfile?.id, staffPermissions, staffPermissionsLoaded, selfStaffPermission, selfStaffPermissionLoaded, router]);
 
   useEffect(() => {
     aiVoiceOperatorLoadingRef.current = aiVoiceOperatorLoading;
@@ -711,12 +708,6 @@ export default function Home() {
   useEffect(() => {
     const selectedPermission = staffPermissions.find(
       (permission) => permission.profile_id === selectedStaffProfileId
-    );
-    setStaffPermissionDraft(
-      staffPermissionLabels.reduce((draft, permission) => {
-        draft[permission.key] = Boolean(selectedPermission?.[permission.key]);
-        return draft;
-      }, {} as Record<StaffPermissionKey, boolean>)
     );
     setStaffSectionDraft([...(selectedPermission?.granted_sections ?? [])]);
   }, [selectedStaffProfileId, staffPermissions]);
@@ -1065,6 +1056,20 @@ export default function Home() {
     );
   };
 
+  const fetchSelfStaffPermission = async () => {
+    try {
+      const response = await authorizedFetch("/api/identity/staff/me");
+      const data = await response.json();
+      if (response.ok && data?.me?.permissions) {
+        setSelfStaffPermission(data.me.permissions);
+      }
+    } catch {
+      // fall back to org-wide staffPermissions resolution
+    } finally {
+      setSelfStaffPermissionLoaded(true);
+    }
+  };
+
   const fetchStaffProfilesAndPermissions = async (organizationId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -1314,6 +1319,7 @@ export default function Home() {
     fetchMarketImportQueueItems(resolvedProfile.organization_id);
     fetchMarketAiAnalyses(resolvedProfile.organization_id);
     fetchStaffProfilesAndPermissions(resolvedProfile.organization_id);
+    fetchSelfStaffPermission();
     fetchSecurityChecks(resolvedProfile.organization_id);
     fetchDutySessions(resolvedProfile.organization_id, resolvedProfile.id);
     fetchLocationPoints(resolvedProfile.organization_id);
@@ -5004,7 +5010,7 @@ export default function Home() {
   };
   const currentStaffPermission = staffPermissions.find(
     (permission) => permission.profile_id === currentProfile?.id
-  );
+  ) ?? selfStaffPermission;
   const hasPermission = (permissionKey: StaffPermissionKey) => {
     if (isOwnerOrAdmin()) return true;
     return Boolean(currentStaffPermission?.[permissionKey]);
@@ -5089,11 +5095,11 @@ export default function Home() {
   const canAccessSection = (sectionId: SectionId) => {
     if (sectionId === "dashboard") return true;
     if (isOwnerOrAdmin()) return true;
+    const requiredPermission = sectionPermissionMap[sectionId];
+    if (requiredPermission === "owner_admin") return false;
     const granted = currentStaffPermission?.granted_sections ?? [];
     if (granted.includes(sectionId)) return true;
-    const requiredPermission = sectionPermissionMap[sectionId];
-    if (!requiredPermission) return true;
-    if (requiredPermission === "owner_admin") return isOwnerOrAdmin();
+    if (!requiredPermission) return false;
     return hasPermission(requiredPermission);
   };
   const visibleNavigationItems = navigationItems.filter((item) => canAccessSection(item.id));
@@ -14642,22 +14648,27 @@ export default function Home() {
     }
 
     const now = new Date().toISOString();
+    const grantedSections = [...new Set(staffSectionDraft.filter(Boolean))];
+    const mapLegacy = (key: StaffPermissionKey) =>
+      grantedSections.some(
+        (sectionId) => sectionPermissionMap[sectionId as SectionId] === key
+      );
     const permissionPayload = {
       organization_id: currentOrganizationId,
       profile_id: selectedStaffProfileId,
-      can_manage_products: Boolean(staffPermissionDraft.can_manage_products),
-      can_manage_customers: Boolean(staffPermissionDraft.can_manage_customers),
-      can_manage_suppliers: Boolean(staffPermissionDraft.can_manage_suppliers),
-      can_create_purchases: Boolean(staffPermissionDraft.can_create_purchases),
-      can_create_sales: Boolean(staffPermissionDraft.can_create_sales),
-      can_manage_payments: Boolean(staffPermissionDraft.can_manage_payments),
-      can_manage_expenses: Boolean(staffPermissionDraft.can_manage_expenses),
-      can_view_profit: Boolean(staffPermissionDraft.can_view_profit),
-      can_view_reports: Boolean(staffPermissionDraft.can_view_reports),
-      can_manage_tasks: Boolean(staffPermissionDraft.can_manage_tasks),
-      can_manage_settings: Boolean(staffPermissionDraft.can_manage_settings),
-      can_manage_inventory: Boolean(staffPermissionDraft.can_manage_inventory),
-      granted_sections: [...new Set(staffSectionDraft.filter(Boolean))],
+      can_manage_products: mapLegacy("can_manage_products"),
+      can_manage_customers: mapLegacy("can_manage_customers"),
+      can_manage_suppliers: mapLegacy("can_manage_suppliers"),
+      can_create_purchases: mapLegacy("can_create_purchases"),
+      can_create_sales: mapLegacy("can_create_sales"),
+      can_manage_payments: mapLegacy("can_manage_payments"),
+      can_manage_expenses: mapLegacy("can_manage_expenses"),
+      can_view_profit: mapLegacy("can_view_profit"),
+      can_view_reports: mapLegacy("can_view_reports"),
+      can_manage_tasks: mapLegacy("can_manage_tasks"),
+      can_manage_settings: mapLegacy("can_manage_settings"),
+      can_manage_inventory: mapLegacy("can_manage_inventory"),
+      granted_sections: grantedSections,
       updated_at: now,
     };
     const previousPermissions = staffPermissions.find(
@@ -14675,10 +14686,9 @@ export default function Home() {
     }
 
     const previousPermissionValues = previousPermissions
-      ? staffPermissionLabels.reduce((values, permission) => {
-          values[permission.key] = Boolean(previousPermissions[permission.key]);
-          return values;
-        }, {} as Record<string, unknown>)
+      ? {
+          granted_sections: previousPermissions.granted_sections ?? [],
+        }
       : null;
 
     await createAuditLog({
@@ -21388,93 +21398,6 @@ export default function Home() {
             refine their permissions.
           </div>
 
-          <div className="mb-5 rounded border border-success/20 bg-success/5 p-4">
-            <h3 className="text-lg font-medium text-success/90">Security Readiness</h3>
-            <div className="mt-3 grid gap-2 text-sm text-success/80 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                Organization ID loaded: {currentOrganizationId ? "Yes" : "No"}
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                Current profile loaded: {currentProfile ? "Yes" : "No"}
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                Staff permissions loaded: {Array.isArray(staffPermissions) ? "Yes" : "No"}
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                RLS Phase 1 app guards active: Yes
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                Auth user linked to profile: {currentProfile?.auth_user_id ? "Pass" : "Needs link"}
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                Security policy backup table: Manual SQL completed
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                Security helper functions: Created in Supabase
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                RLS Phase 2B direct table policies applied: Yes
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                Direct organization-owned tables protected: Yes
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                RLS Phase 2C child table policies applied: Yes
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                Purchase items protected through purchase invoice organization: Yes
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                Sales items protected through sales invoice organization: Yes
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2 lg:col-span-2">
-                Payment allocation rows protected through parent payment/invoice organization: Yes
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                PWA/mobile readiness added: Yes
-              </div>
-              <div className="rounded border border-success/20 bg-card px-3 py-2">
-                Staff duty location tracking V1 added: Yes
-              </div>
-              <div className="rounded border border-warning/20 bg-warning/5 px-3 py-2 text-warning/90 lg:col-span-3">
-                Remaining security task: final cross-organization testing.
-              </div>
-              <div className="rounded border border-primary/20 bg-primary/5 px-3 py-2 text-primary lg:col-span-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <span>Final Security Test Mode available.</span>
-                  <button
-                    type="button"
-                    onClick={() => handleSectionChange("security-check")}
-                    className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/10"
-                  >
-                    Open Security Check
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSectionChange("deployment")}
-                    className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/10"
-                  >
-                    Open Deployment Readiness
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSectionChange("mobile-app")}
-                    className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/10"
-                  >
-                    Open Mobile App
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSectionChange("staff-duty")}
-                    className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/10"
-                  >
-                    Open Staff Duty
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {staffPermissionMessage && <p className="mb-4 text-sm text-success">{staffPermissionMessage}</p>}
           {staffPermissionError && <p className="mb-4 whitespace-pre-wrap text-sm text-destructive">{staffPermissionError}</p>}
 
@@ -21504,17 +21427,11 @@ export default function Home() {
                       const profilePermissions = staffPermissions.find(
                         (permission) => permission.profile_id === profile.id
                       );
-                      const activePermissionLabels = staffPermissionLabels
-                        .filter((permission) => Boolean(profilePermissions?.[permission.key]))
-                        .map((permission) => permission.label);
                       const grantedSectionLabels = (profilePermissions?.granted_sections ?? [])
                         .map((sectionId) =>
                           navigationItems.find((item) => item.id === sectionId)?.label ?? sectionId
                         );
-                      const permissionSummary = [
-                        ...grantedSectionLabels,
-                        ...activePermissionLabels,
-                      ];
+                      const permissionSummary = grantedSectionLabels;
                       const profileIsOwnerOrAdmin = !profile.role || profile.role === "owner" || profile.role === "admin";
 
                       return (
@@ -21695,31 +21612,6 @@ export default function Home() {
                         </div>
                       );
                     })}
-                  </div>
-
-                  <div className="mt-6 rounded border border-border bg-muted/30 p-4">
-                    <p className="mb-2 text-sm font-medium text-foreground">Granular capabilities (legacy)</p>
-                    <p className="mb-3 text-xs text-muted-foreground">
-                      Fine-grained toggles kept for compatibility. The section checkboxes above are the primary
-                      way to control what each staff member sees.
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {staffPermissionLabels.map((permission) => (
-                        <label key={permission.key} className="flex items-center gap-2 rounded border border-border bg-muted/30 px-3 py-2 text-sm text-foreground/80">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(staffPermissionDraft[permission.key])}
-                            onChange={(e) =>
-                              setStaffPermissionDraft((current) => ({
-                                ...current,
-                                [permission.key]: e.target.checked,
-                              }))
-                            }
-                          />
-                          <span>{permission.label}</span>
-                        </label>
-                      ))}
-                    </div>
                   </div>
 
                   <button

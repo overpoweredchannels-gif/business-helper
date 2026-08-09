@@ -142,31 +142,9 @@ export const sectionPermissionGroups: Array<{ group: string; sections: Array<{ i
     ],
   },
   {
-    group: "System & Settings",
-    sections: [
-      { id: "business-settings", label: "Business Settings" },
-      { id: "staff-permissions", label: "Staff & Permissions" },
-      { id: "security-check", label: "Security Check" },
-      { id: "deployment", label: "Deployment" },
-      { id: "mobile-app", label: "Mobile App" },
-      { id: "activity-logs", label: "Activity Logs" },
-    ],
+    group: "System Settings",
+    sections: [{ id: "business-settings", label: "Business Settings" }],
   },
-];
-
-export const staffPermissionLabels: Array<{ key: StaffPermissionKey; label: string }> = [
-  { key: "can_manage_products", label: "Manage Products" },
-  { key: "can_manage_customers", label: "Manage Customers" },
-  { key: "can_manage_suppliers", label: "Manage Suppliers" },
-  { key: "can_create_purchases", label: "Create Purchases" },
-  { key: "can_create_sales", label: "Create Sales" },
-  { key: "can_manage_payments", label: "Manage Payments" },
-  { key: "can_manage_expenses", label: "Manage Expenses" },
-  { key: "can_view_profit", label: "View Profit" },
-  { key: "can_view_reports", label: "View Reports" },
-  { key: "can_manage_tasks", label: "Manage Tasks" },
-  { key: "can_manage_settings", label: "Manage Settings" },
-  { key: "can_manage_inventory", label: "Manage Inventory" },
 ];
 
 export const staffRoles = ["owner", "admin", "manager", "staff", "accountant", "sales"];
