@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
-import { DashboardLayout, DashboardView, StaffDashboardView } from "@/components/dashboard";
+import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking } from "@/components/dashboard";
 import { cn } from "@/lib/utils";
 import { getGateway } from "@/lib/conversation";
 import type { ChatResponse } from "@/lib/conversation";
@@ -15116,6 +15116,13 @@ export default function Home() {
               else if (title === "Pending Tasks") handleSectionChange("task-manager");
               else if (title === "My Products Sold") handleSectionChange("products");
             }}
+          />
+        )}
+
+        {activeSection === "dashboard" && staffDashboardData.isStaff && (
+          <EmployeeLiveTracking
+            isStaff={true}
+            onTrackingToggle={() => {}}
           />
         )}
 
