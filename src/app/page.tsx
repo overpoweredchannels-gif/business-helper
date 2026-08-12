@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
-import { DashboardLayout, DashboardView } from "@/components/dashboard";
+import { DashboardLayout, DashboardView, StaffDashboardView } from "@/components/dashboard";
 import { cn } from "@/lib/utils";
 import { getGateway } from "@/lib/conversation";
 import type { ChatResponse } from "@/lib/conversation";
@@ -75,6 +75,7 @@ import type {
   Brand,
   Category,
   Customer,
+  Employee,
   MarketAiAnalysis,
   MarketIntelligenceItem,
   MarketImportQueueItem,
@@ -405,6 +406,7 @@ export default function Home() {
   const [staffPermissions, setStaffPermissions] = useState<StaffPermission[]>([]);
   const [selfStaffPermission, setSelfStaffPermission] = useState<StaffPermission | null>(null);
   const [selfStaffPermissionLoaded, setSelfStaffPermissionLoaded] = useState(false);
+  const [selfEmployee, setSelfEmployee] = useState<Employee | null>(null);
   const [staffPermissionsLoaded, setStaffPermissionsLoaded] = useState(false);
   const [staffPermissionMessage, setStaffPermissionMessage] = useState<string | null>(null);
   const [staffPermissionError, setStaffPermissionError] = useState<string | null>(null);
@@ -1062,6 +1064,9 @@ export default function Home() {
       const data = await response.json();
       if (response.ok && data?.me?.permissions) {
         setSelfStaffPermission(data.me.permissions);
+      }
+      if (response.ok && data?.me?.employee) {
+        setSelfEmployee(data.me.employee);
       }
     } catch {
       // fall back to org-wide staffPermissions resolution
@@ -4464,7 +4469,7 @@ export default function Home() {
     const { data, error } = await supabase
       .from("customers")
       .select(
-        "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes"
+        "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, assigned_salesman_id"
       )
       .eq("organization_id", orgId)
       .order("customer_name", { ascending: true });
@@ -5098,7 +5103,10 @@ export default function Home() {
     const requiredPermission = sectionPermissionMap[sectionId];
     if (requiredPermission === "owner_admin") return false;
     const granted = currentStaffPermission?.granted_sections ?? [];
-    if (granted.includes(sectionId)) return true;
+    // Once the owner has configured granted_sections (non-empty), it is the
+    // single source of truth. Only fall back to legacy booleans for rows that
+    // were never saved through the section picker (empty granted_sections).
+    if (granted.length > 0) return granted.includes(sectionId);
     if (!requiredPermission) return false;
     return hasPermission(requiredPermission);
   };
@@ -14794,6 +14802,93 @@ export default function Home() {
     setSecurityCheckMessage(`Security check marked ${status}.`);
   };
 
+  const role = currentProfile?.role;
+  const isStaff = Boolean(role) && role !== "owner" && role !== "admin";
+  const profileId = currentProfile?.id ?? null;
+  const employeeId = selfEmployee?.id ?? null;
+  const mySales = salesTransactions.filter((t) => t.created_by_profile_id === profileId);
+  const mySaleIds = new Set(mySales.map((t) => t.id));
+  const mySaleItems = salesItems.filter((si) => mySaleIds.has(si.sales_transaction_id));
+  const myCustomers =
+    employeeId
+      ? customers.filter((c) => c.assigned_salesman_id === employeeId)
+      : [];
+  const myCustomerById = new Map(myCustomers.map((c) => [c.id, c]));
+  const productById = new Map(products.map((p) => [String(p.id), p]));
+
+  const productTotals = new Map<string, { qty: number; value: number }>();
+  for (const item of mySaleItems) {
+    const key = String(item.product_id);
+    const qty = Number(item.quantity) || 0;
+    const value = qty * (Number(item.selling_price) || 0);
+    const prev = productTotals.get(key) ?? { qty: 0, value: 0 };
+    productTotals.set(key, { qty: prev.qty + qty, value: prev.value + value });
+  }
+  const myTopProducts = [...productTotals.entries()]
+    .map(([productId, { qty, value }]) => ({
+      name: productById.get(productId)?.name ?? `Product #${productId}`,
+      value: formatPKR(value),
+      detail: `${qty} sold`,
+    }))
+    .sort((a, b) => b.value.localeCompare(a.value, undefined, { numeric: true }))
+    .slice(0, 6);
+
+  const customerTotals = new Map<string, number>();
+  for (const sale of mySales) {
+    customerTotals.set(sale.customer_id, (customerTotals.get(sale.customer_id) ?? 0) + (Number(sale.total_amount) || 0));
+  }
+  const myTopCustomers = [...customerTotals.entries()]
+    .map(([customerId, total]) => ({
+      name: myCustomerById.get(customerId)?.customer_name ?? "Unknown customer",
+      value: formatPKR(total),
+    }))
+    .sort((a, b) => b.value.localeCompare(a.value, undefined, { numeric: true }))
+    .slice(0, 6);
+
+  const myRecentSales = mySales.slice(0, 8).map((sale) => ({
+    id: sale.id,
+    invoiceNumber: sale.invoice_number,
+    customerName: myCustomerById.get(sale.customer_id)?.customer_name ?? "Unknown customer",
+    total: formatPKR(Number(sale.total_amount) || 0),
+    date: formatDateTime(sale.created_at),
+  }));
+
+  const myCustomerIds = new Set(myCustomers.map((c) => c.id));
+  const myPendingTasks = tasks.filter(
+    (t) => t.status === "pending" && (!t.customer_id || myCustomerIds.has(t.customer_id))
+  );
+
+  const todayStart = getDateOnly(new Date().toISOString());
+  const mySalesToday = mySales.filter((s) => (s.created_at ?? "").slice(0, 10) === todayStart);
+  const todaySalesTotal = mySalesToday.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0);
+
+  const staffDashboardData = {
+    isStaff,
+    mySalesCount: mySales.length,
+    mySalesTotal: formatPKR(mySales.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0)),
+    todaySalesCount: mySalesToday.length,
+    todaySalesTotal: formatPKR(todaySalesTotal),
+    myCustomersCount: myCustomers.length,
+    pendingTasksCount: myPendingTasks.length,
+    myProductsCount: productTotals.size,
+    myTopProducts,
+    myTopCustomers,
+    myCustomers: myCustomers.slice(0, 8).map((c) => ({
+      id: c.id,
+      name: c.customer_name,
+      phone: c.phone,
+      city: c.city,
+      creditLimit: c.credit_limit != null ? formatPKR(Number(c.credit_limit)) : null,
+    })),
+    myRecentSales,
+    myPendingTasks: myPendingTasks.slice(0, 8).map((t) => ({
+      id: t.id,
+      title: t.title,
+      priority: t.priority,
+      dueDate: t.due_date ? formatDate(t.due_date) : undefined,
+    })),
+  };
+
   if (!currentUser) {
     return (
     <main className="min-h-screen bg-muted">
@@ -14996,7 +15091,35 @@ export default function Home() {
         </section>
         )}
 
-        {activeSection === "dashboard" && (
+        {activeSection === "dashboard" && staffDashboardData.isStaff && (
+          <StaffDashboardView
+            userName={currentProfile?.full_name ?? currentUser.email}
+            designation={selfEmployee?.designation ?? null}
+            mySalesCount={staffDashboardData.mySalesCount}
+            mySalesTotal={staffDashboardData.mySalesTotal}
+            todaySalesCount={staffDashboardData.todaySalesCount}
+            todaySalesTotal={staffDashboardData.todaySalesTotal}
+            myCustomersCount={staffDashboardData.myCustomersCount}
+            pendingTasksCount={staffDashboardData.pendingTasksCount}
+            myProductsCount={staffDashboardData.myProductsCount}
+            myTopProducts={staffDashboardData.myTopProducts}
+            myTopCustomers={staffDashboardData.myTopCustomers}
+            myCustomers={staffDashboardData.myCustomers}
+            myRecentSales={staffDashboardData.myRecentSales}
+            myPendingTasks={staffDashboardData.myPendingTasks}
+            onQuickAction={(label) => {
+              if (label === "New Sale") handleSectionChange("sales");
+            }}
+            onKPIClick={(title) => {
+              if (title === "My Sales" || title === "My Sales Total") handleSectionChange("sales");
+              else if (title === "My Customers") handleSectionChange("customers");
+              else if (title === "Pending Tasks") handleSectionChange("task-manager");
+              else if (title === "My Products Sold") handleSectionChange("products");
+            }}
+          />
+        )}
+
+        {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
             userName={currentProfile?.full_name ?? currentUser.email}
             todaySales={{ value: formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount) }}
