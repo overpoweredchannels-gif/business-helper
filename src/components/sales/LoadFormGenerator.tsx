@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 interface LoadFormLine {
@@ -22,10 +22,19 @@ interface LoadFormCustomer {
   bonus_value: number;
 }
 
+interface LoadFormBrand {
+  brand_id: string | null;
+  brand_name: string;
+  lines: LoadFormLine[];
+  total_value: number;
+  bonus_value: number;
+}
+
 interface LoadFormSalesman {
   salesman_id: string;
   salesman_name: string;
   customers: LoadFormCustomer[];
+  brands: LoadFormBrand[];
   total_value: number;
   bonus_value: number;
 }
@@ -34,6 +43,7 @@ interface LoadFormSummary {
   org_name: string;
   org_address: string;
   org_phone: string;
+  groupBy: "brand" | "customer";
   salesmen: LoadFormSalesman[];
   grand_total: number;
   grand_bonus: number;
@@ -48,6 +58,8 @@ interface Option {
 const inputCls =
   "rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
+type RangeKey = "today" | "last7" | "last30" | "custom";
+
 export default function LoadFormGenerator() {
   const [customers, setCustomers] = useState<Option[]>([]);
   const [salesmen, setSalesmen] = useState<Option[]>([]);
@@ -55,52 +67,63 @@ export default function LoadFormGenerator() {
   const [selectedSalesmen, setSelectedSalesmen] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [rangeKey, setRangeKey] = useState<RangeKey>("today");
+  const [groupBy, setGroupBy] = useState<"brand" | "customer">("brand");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<LoadFormSummary | null>(null);
   const [generated, setGenerated] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
 
-  const loadOptions = useCallback(async () => {
-    try {
-      const [cRes, sRes] = await Promise.all([
-        authorizedFetch("/api/customers?limit=500"),
-        authorizedFetch("/api/identity/employees?limit=500"),
-      ]);
-      const cData = await cRes.json();
-      const sData = await sRes.json();
-      if (Array.isArray(cData.customers)) {
-        setCustomers(
-          cData.customers.map((c: any) => ({
-            id: c.id,
-            label: c.shop_name
-              ? `${c.shop_name} (${c.customer_name})`
-              : c.customer_name,
-          })),
-        );
-      }
-      if (Array.isArray(sData.employees)) {
-        setSalesmen(
-          sData.employees
-            .filter((e: any) =>
-              ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor"].includes(
-                e.designation,
-              ),
-            )
-            .map((e: any) => ({ id: e.id, label: e.full_name })),
-        );
-      }
-    } catch {
-      // options are non-blocking
-    }
-  }, []);
-
   useEffect(() => {
-    loadOptions();
-  }, [loadOptions]);
+    let cancelled = false;
+    authorizedFetch("/api/sales/load-form/options")
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.ok) {
+          if (Array.isArray(data.customers)) setCustomers(data.customers);
+          if (Array.isArray(data.salesmen)) setSalesmen(data.salesmen);
+        }
+      })
+      .catch(() => {
+        // options are non-blocking
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggle = (list: string[], id: string, setList: (v: string[]) => void) =>
     setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+
+  const applyRangeKey = (key: RangeKey) => {
+    setRangeKey(key);
+    const today = new Date();
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    if (key === "today") {
+      setDateFrom(fmt(today));
+      setDateTo(fmt(today));
+    } else if (key === "last7") {
+      const from = new Date(today);
+      from.setDate(today.getDate() - 6);
+      setDateFrom(fmt(from));
+      setDateTo(fmt(today));
+    } else if (key === "last30") {
+      const from = new Date(today);
+      from.setDate(today.getDate() - 29);
+      setDateFrom(fmt(from));
+      setDateTo(fmt(today));
+    } else {
+      setDateFrom("");
+      setDateTo("");
+    }
+  };
+
+  const setCustomDate = (setter: (v: string) => void, value: string) => {
+    setter(value);
+    setRangeKey("custom");
+  };
 
   const generate = async () => {
     setLoading(true);
@@ -113,6 +136,7 @@ export default function LoadFormGenerator() {
       if (selectedSalesmen.length > 0) params.set("salesman_ids", selectedSalesmen.join(","));
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
+      params.set("group_by", groupBy);
       const res = await authorizedFetch(`/api/sales/load-form?${params.toString()}`);
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed to build load form");
@@ -135,7 +159,14 @@ export default function LoadFormGenerator() {
     .join(", ");
 
   const totalLines = () =>
-    summary?.salesmen.reduce((s, sm) => s + sm.customers.reduce((c, cust) => c + cust.lines.length, 0), 0) ?? 0;
+    summary?.salesmen.reduce((s, sm) => s + (sm.brands.length > 0 ? sm.brands : sm.customers).reduce((c, g) => c + g.lines.length, 0), 0) ?? 0;
+
+  const rangeLabel = () => {
+    if (rangeKey === "today") return "Today";
+    if (rangeKey === "last7") return "Last 7 days";
+    if (rangeKey === "last30") return "Last 30 days";
+    return dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : "Custom range";
+  };
 
   return (
     <div className="space-y-4">
@@ -183,22 +214,59 @@ export default function LoadFormGenerator() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-4">
-        <label className="flex flex-col gap-1 text-sm text-foreground/80">
-          <span>Date From</span>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={inputCls} />
-        </label>
-        <label className="flex flex-col gap-1 text-sm text-foreground/80">
-          <span>Date To</span>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={inputCls} />
-        </label>
+      <div className="rounded border border-border bg-muted/30 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium text-foreground">Period</span>
+          {(["today", "last7", "last30"] as RangeKey[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => applyRangeKey(key)}
+              className={`rounded px-3 py-1.5 text-sm transition-colors ${
+                rangeKey === key
+                  ? "bg-primary text-white"
+                  : "border border-border text-foreground/80 hover:bg-muted/40"
+              }`}
+            >
+              {key === "today" ? "Today" : key === "last7" ? "Last 7 days" : "Last 30 days"}
+            </button>
+          ))}
+          <label className="flex items-center gap-1 text-sm text-foreground/80">
+            <span>From:</span>
+            <input type="date" value={dateFrom} onChange={(e) => setCustomDate(setDateFrom, e.target.value)} className={inputCls} />
+          </label>
+          <label className="flex items-center gap-1 text-sm text-foreground/80">
+            <span>To:</span>
+            <input type="date" value={dateTo} onChange={(e) => setCustomDate(setDateTo, e.target.value)} className={inputCls} />
+          </label>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium text-foreground">Group by</span>
+          {(["brand", "customer"] as const).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setGroupBy(key)}
+              className={`rounded px-3 py-1.5 text-sm capitalize transition-colors ${
+                groupBy === key
+                  ? "bg-primary text-white"
+                  : "border border-border text-foreground/80 hover:bg-muted/40"
+              }`}
+            >
+              {key}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={generate}
           disabled={loading}
           className="rounded bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
         >
-          {loading ? "Generating..." : "Generate Load Form"}
+          {loading ? "Generating..." : "Generate Load Form Summary"}
         </button>
         {generated && summary && summary.salesmen.length > 0 && (
           <button
@@ -219,24 +287,28 @@ export default function LoadFormGenerator() {
 
       {generated && summary && summary.salesmen.length > 0 && (
         <div className="space-y-4">
-          <div className="bg-muted/30 px-4 py-2 text-sm text-muted-foreground">
-            {summary.salesmen.reduce(
-              (s, sm) => s + sm.customers.reduce((c, cust) => c + cust.lines.length, 0),
-              0,
+          <div className="rounded border border-border bg-muted/30 p-3 text-sm text-foreground">
+            <span className="font-semibold">Period:</span> {rangeLabel()}
+            {salesmanLabels && (
+              <>
+                {" "}
+                · <span className="font-semibold">Salesmen:</span> {salesmanLabels}
+              </>
             )}
-            {" "}line items across {summary.salesmen.length} salesman
-            {summary.salesmen.length > 1 ? "s" : ""} and{" "}
-            {summary.salesmen.reduce((s, sm) => s + sm.customers.length, 0)} customers.
+            {" "}
+            · <span className="font-semibold">{totalLines()}</span> line items across{" "}
+            {summary.salesmen.length} salesman{summary.salesmen.length > 1 ? "s" : ""}, grouped by{" "}
+            {summary.groupBy}.
           </div>
           {summary.salesmen.map((sm) => (
             <div key={sm.salesman_id} className="overflow-hidden rounded border border-border">
               <div className="bg-primary/5 px-4 py-2 text-sm font-semibold text-foreground">
                 {sm.salesman_name}
               </div>
-              {sm.customers.map((cust) => (
-                <div key={cust.customer_id || "walk-in"} className="border-t border-border">
+              {(summary.groupBy === "brand" ? sm.brands : sm.customers).map((grp) => (
+                <div key={groupTitle(grp)} className="border-t border-border">
                   <div className="bg-muted/30 px-4 py-1.5 text-xs font-medium text-muted-foreground">
-                    {cust.customer_name}
+                    {groupTitle(grp)}
                   </div>
                   <table className="w-full text-left text-sm">
                     <thead className="text-[11px] uppercase text-muted-foreground">
@@ -250,7 +322,7 @@ export default function LoadFormGenerator() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {cust.lines.map((line, i) => (
+                      {grp.lines.map((line, i) => (
                         <tr key={i}>
                           <td className="px-4 py-1.5 text-foreground">{line.product_name}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{line.packing}</td>
@@ -264,13 +336,13 @@ export default function LoadFormGenerator() {
                     <tfoot>
                       <tr className="border-t border-border bg-muted/30 font-semibold">
                         <td className="px-4 py-1.5" colSpan={2}>
-                          {cust.customer_name} Total
+                          {groupTitle(grp)} Total
                         </td>
                         <td className="px-2 py-1.5 text-right" colSpan={2}>
-                          {fmt(cust.total_value)}
+                          {fmt(grp.total_value)}
                         </td>
                         <td className="px-2 py-1.5 text-right">Bns</td>
-                        <td className="px-4 py-1.5 text-right tabular-nums">{fmt(cust.bonus_value)}</td>
+                        <td className="px-4 py-1.5 text-right tabular-nums">{fmt(grp.bonus_value)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -317,8 +389,7 @@ export default function LoadFormGenerator() {
               summary={summary}
               customerLabels={customerLabels}
               salesmanLabels={salesmanLabels}
-              dateFrom={dateFrom}
-              dateTo={dateTo}
+              rangeLabel={rangeLabel()}
             />
           </div>
           <style>{`
@@ -346,17 +417,15 @@ function LoadFormDocument({
   summary,
   customerLabels,
   salesmanLabels,
-  dateFrom,
-  dateTo,
+  rangeLabel,
 }: {
   summary: LoadFormSummary;
   customerLabels: string;
   salesmanLabels: string;
-  dateFrom: string;
-  dateTo: string;
+  rangeLabel: string;
 }) {
   const today = new Date().toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "2-digit" });
-  const range = dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : dateFrom || dateTo || "";
+  const range = rangeLabel || "Period not selected";
   const rowCls = "flex py-[1.5px] text-[10px] leading-tight";
   const headerRow = "flex text-[10px] font-bold uppercase";
 
@@ -366,7 +435,7 @@ function LoadFormDocument({
         <div className="text-2xl font-bold leading-tight">{summary.org_name || "—"}</div>
         {summary.org_address && <div className="text-[11px]">{summary.org_address}</div>}
         {summary.org_phone && <div className="text-[11px]">{summary.org_phone}</div>}
-        <div className="mt-1 text-center text-sm font-bold">Load Form</div>
+        <div className="mt-1 text-center text-sm font-bold">Load Form Summary</div>
         <div className="mt-2 flex justify-between text-xs">
           <div>
             <span className="font-semibold">Salesman:</span> {salesmanLabels || "(All salesmen)"}
@@ -379,7 +448,7 @@ function LoadFormDocument({
             <span className="font-semibold">Date:</span> {today}
           </div>
         </div>
-        {range && <div className="text-[11px]">Period: {range}</div>}
+        <div className="mt-1 text-xs font-semibold">Period: {range}</div>
         <div className="my-2 border-b border-black" />
       </div>
 
@@ -388,10 +457,10 @@ function LoadFormDocument({
           <div className="text-xs font-bold">
             Salesman: {salesman.salesman_name}
           </div>
-          {salesman.customers.map((cust) => (
-            <div key={cust.customer_id || "walk-in"} className="mt-3">
+          {(summary.groupBy === "brand" ? salesman.brands : salesman.customers).map((grp, gi) => (
+            <div key={gi} className="mt-3">
               <div className="text-sm font-bold">
-                Customer: {cust.customer_name}
+                {summary.groupBy === "brand" ? `Brand: ${groupTitle(grp)}` : `Customer: ${groupTitle(grp)}`}
               </div>
               <div className="my-1 border-b border-black" />
               <div className={`${headerRow} font-bold`}>
@@ -402,7 +471,7 @@ function LoadFormDocument({
                 <span className="w-[8%] text-right">Bns</span>
                 <span className="w-[12%] text-right">Value</span>
               </div>
-              {cust.lines.map((line, i) => (
+              {grp.lines.map((line, i) => (
                 <div key={i} className={rowCls}>
                   <span className="w-[46%]">{line.product_name}</span>
                   <span className="w-[16%] text-right tabular-nums">{line.packing}</span>
@@ -414,8 +483,8 @@ function LoadFormDocument({
               ))}
               <div className="my-1 border-b border-black" />
               <div className={rowCls}>
-                <span className="w-[46%] font-bold">Customer Total</span>
-                <span className="w-[54%] text-right font-bold tabular-nums">{fmt(cust.total_value)}</span>
+                <span className="w-[46%] font-bold">Total</span>
+                <span className="w-[54%] text-right font-bold tabular-nums">{fmt(grp.total_value)}</span>
               </div>
             </div>
           ))}
@@ -446,6 +515,10 @@ function LoadFormDocument({
       </div>
     </div>
   );
+}
+
+function groupTitle(g: LoadFormCustomer | LoadFormBrand): string {
+  return "brand_name" in g ? g.brand_name : g.customer_name;
 }
 
 function trim(n: number): string {

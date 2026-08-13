@@ -41,12 +41,44 @@ const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
     "productname",
     "product_name",
   ],
-  sku: ["sku", "code", "item code", "product code", "sku code", "product sku"],
+  sku: ["sku", "code", "item code", "product code", "sku code", "product sku", "stock keeping unit"],
   barcode: ["barcode", "bar code", "ean", "ean13", "upc", "barcode number"],
-  brand: ["brand", "brand name", "manufacturer", "make"],
+  brand: [
+    "brand",
+    "brand name",
+    "manufacturer",
+    "make",
+    "company",
+    "company name",
+    "supplier brand",
+    "brand/company",
+  ],
   category: ["category", "category name", "product category", "type"],
-  unit_type: ["unit type", "unit", "uom", "unit of measure", "unitofmeasure"],
-  units_per_pack: ["units per pack", "unitspack", "pack size", "pieces per pack", "pcs per pack"],
+  unit_type: [
+    "unit type",
+    "unit",
+    "uom",
+    "unit of measure",
+    "unitofmeasure",
+    "sale unit",
+    "packing",
+    "packing type",
+    "sell unit",
+    "measurement unit",
+  ],
+  units_per_pack: [
+    "units per pack",
+    "unitspack",
+    "pack size",
+    "pieces per pack",
+    "pcs per pack",
+    "pieces per box",
+    "boxes per cotton",
+    "boxes per pack",
+    "per pack",
+    "packing qty",
+    "qty per pack",
+  ],
   default_purchase_price: [
     "purchase price",
     "cost price",
@@ -54,6 +86,10 @@ const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
     "cost",
     "purchase price pkr",
     "purchaseprice",
+    "purchase value",
+    "purchasevalue",
+    "cost value",
+    "unit purchase cost",
   ],
   default_selling_price: [
     "selling price",
@@ -62,6 +98,11 @@ const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
     "price",
     "selling price pkr",
     "sellingprice",
+    "price per piece",
+    "per piece price",
+    "price/piece",
+    "unit price",
+    "price per unit",
   ],
   minimum_stock_level: ["minimum stock level", "min stock", "minimum stock", "min stock level"],
   reorder_level: ["reorder level", "reorder point", "reorder qty", "reorder quantity", "reorderlevel"],
@@ -77,6 +118,13 @@ const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
     "current stock",
     "opening qty",
     "initialstock",
+    "on hand",
+    "qty on hand",
+    "stock on hand",
+    "units on hand",
+    "onhand",
+    "qoh",
+    "qty in stock",
   ],
 };
 
@@ -93,13 +141,36 @@ export function normalizeHeader(value: string): string {
 export function guessFieldForHeader(header: string): ProductImportField | null {
   const normalized = normalizeHeader(header);
   if (!normalized) return null;
+
+  // Pass 1: exact alias match (case/space/punct normalized on both sides).
   for (const [field, aliases] of Object.entries(FIELD_ALIASES) as [
     Exclude<ProductImportField, "skip">,
     string[],
   ][]) {
     if (aliases.includes(normalized)) return field;
   }
-  return null;
+
+  // Pass 2: fuzzy substring match. Compress whitespace so "unit price" and
+  // "Unit Price" both become "unitprice", then pick the LONGEST alias that is a
+  // substring of the header. Longest-match-wins prevents the generic "unit"
+  // alias from stealing "unit price", or "stock" from stealing "stock keeping unit".
+  const compact = normalized.replace(/\s+/g, "");
+  let best: { field: Exclude<ProductImportField, "skip">; length: number } | null = null;
+  for (const [field, aliases] of Object.entries(FIELD_ALIASES) as [
+    Exclude<ProductImportField, "skip">,
+    string[],
+  ][]) {
+    for (const alias of aliases) {
+      const aliasCompact = alias.replace(/\s+/g, "");
+      if (aliasCompact.length < 3) continue;
+      if (compact.includes(aliasCompact)) {
+        if (!best || aliasCompact.length > best.length) {
+          best = { field, length: aliasCompact.length };
+        }
+      }
+    }
+  }
+  return best?.field ?? null;
 }
 
 export function guessColumnMapping(headers: string[]): ColumnMapping {
@@ -168,10 +239,12 @@ export interface ValidateImportRowsParams {
   categories: Category[];
   brands: Brand[];
   products: Product[];
+  /** When true, unknown brands become a warning instead of a blocking error (they will be auto-created during import). */
+  createMissingBrands?: boolean;
 }
 
 export function validateImportRows(params: ValidateImportRowsParams): ImportPreviewResult {
-  const { fileColumns, mapping, rows, mode, categories, brands, products } = params;
+  const { fileColumns, mapping, rows, mode, categories, brands, products, createMissingBrands = false } = params;
   const mappedFields = new Set(
     fileColumns
       .filter((column) => mapping[column] && mapping[column] !== "skip")
@@ -271,7 +344,11 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
 
     if (mappedFields.has("brand") && values.brand) {
       if (!brandNames.has(values.brand.trim().toLowerCase())) {
-        errors.push(`Unknown brand "${values.brand}". Create the brand first or fix the name.`);
+        if (createMissingBrands) {
+          warnings.push(`Brand "${values.brand}" does not exist yet — it will be created automatically on import.`);
+        } else {
+          errors.push(`Unknown brand "${values.brand}". Create the brand first or fix the name.`);
+        }
       }
     }
 

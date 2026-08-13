@@ -75,6 +75,7 @@ export default function ImportWizard({
   const [dataRows, setDataRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<ColumnMapping>({});
   const [mode, setMode] = useState<DuplicateMode>("skip");
+  const [createMissingBrands, setCreateMissingBrands] = useState(true);
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportRunResult | null>(null);
@@ -185,6 +186,7 @@ export default function ImportWizard({
         categories,
         brands,
         products,
+        createMissingBrands,
       })
     );
     setStep("preview");
@@ -255,6 +257,24 @@ export default function ImportWizard({
     const brandIdByName = new Map(brands.map((b) => [b.name.trim().toLowerCase(), b.id]));
     const categoryIdByName = new Map(categories.map((c) => [c.name.trim().toLowerCase(), c.id]));
 
+    // Brands created on the fly (auto-create option), keyed by lowercased name.
+    const createdBrandIds = new Map<string, string>();
+
+    const ensureBrand = async (name: string): Promise<string | null> => {
+      const key = name.trim().toLowerCase();
+      if (brandIdByName.has(key)) return brandIdByName.get(key)!;
+      if (createdBrandIds.has(key)) return createdBrandIds.get(key)!;
+      if (!createMissingBrands) return null;
+      const { data, error } = await supabase
+        .from("brands")
+        .insert({ organization_id: organizationId, name: name.trim() })
+        .select("id")
+        .single();
+      if (error || !data) return null;
+      createdBrandIds.set(key, data.id);
+      return data.id;
+    };
+
     const result: ImportRunResult = { created: 0, updated: 0, skipped: 0, failed: 0, failures: [] };
 
     for (const row of preview.rows) {
@@ -264,8 +284,11 @@ export default function ImportWizard({
         continue;
       }
       const v = row.values;
-      const brandId = v.brand ? brandIdByName.get(v.brand.trim().toLowerCase()) ?? null : null;
+      const brandId = v.brand ? (brandIdByName.get(v.brand.trim().toLowerCase()) ?? null) : null;
       const categoryId = v.category ? categoryIdByName.get(v.category.trim().toLowerCase()) ?? null : null;
+
+      // If the brand doesn't exist yet and auto-create is enabled, insert it.
+      const finalBrandId = brandId ?? (v.brand ? await ensureBrand(v.brand) : null);
 
       const toNumberOrNull = (value: string): number | null => {
         if (!value) return null;
@@ -290,11 +313,12 @@ export default function ImportWizard({
         name: v.name.trim(),
         sku: v.sku.trim() || null,
         barcode: v.barcode.trim() || null,
-        brand_id: brandId,
+        brand_id: finalBrandId,
         category_id: categoryId,
         unit_type: v.unit_type.trim() || null,
         units_per_pack: toNumberOrNull(v.units_per_pack),
         default_purchase_price: toNumberOrNull(v.default_purchase_price),
+        last_purchase_price: toNumberOrNull(v.default_purchase_price),
         default_selling_price: toNumberOrNull(v.default_selling_price),
         minimum_stock_level: toNumberOrNull(v.minimum_stock_level),
         reorder_level: toNumberOrNull(v.reorder_level),
@@ -597,6 +621,20 @@ export default function ImportWizard({
                 />
                 Update existing products (by SKU, then by name + brand)
               </label>
+              <label className="mt-1 flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={createMissingBrands}
+                  onChange={(e) => setCreateMissingBrands(e.target.checked)}
+                  className="h-4 w-4 accent-primary"
+                />
+                Auto-create brands that don&apos;t exist yet
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Price per piece/cotton, purchase value, on-hand qty and packing are detected automatically from
+                headers like &quot;Price per Piece&quot;, &quot;Units Per Pack&quot;, &quot;Company&quot; or
+                &quot;Qty on Hand&quot;.
+              </p>
             </div>
             <button
               type="button"

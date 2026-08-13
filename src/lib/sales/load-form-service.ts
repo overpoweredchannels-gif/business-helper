@@ -1,14 +1,16 @@
 // TradeOS ERP — Load Form aggregation service.
 //
 // A Load Form (distributor warehouse picking sheet) summarizes confirmed sales
-// into a printable document grouped by SALESMAN then CUSTOMER. Under each
-// customer it lists the products sold with packing / cartons / pieces / bonus,
+// into a printable document grouped by SALESMAN then BRAND (or CUSTOMER). Under
+// each brand it lists the products sold with packing / cartons / pieces / bonus,
 // plus Total / Bonus / Net value footers.
 //
 // Read-only: reads sales_transactions + sales_items + products and aggregates;
 // never mutates data.
 
 import { SupabaseClient } from "@supabase/supabase-js";
+
+export type LoadFormGroupBy = "brand" | "customer";
 
 export interface LoadFormFilters {
   organizationId: string;
@@ -20,6 +22,8 @@ export interface LoadFormFilters {
   dateFrom?: string | null;
   /** Inclusive upper bound on sale_date (YYYY-MM-DD). */
   dateTo?: string | null;
+  /** How to group products: by product brand or by customer. Defaults to brand. */
+  groupBy?: LoadFormGroupBy;
   /** Organization branding (name/address/city/phone) for the printed header. */
   org?: { name?: string; address?: string; city?: string; phone?: string } | null;
 }
@@ -47,10 +51,19 @@ export interface LoadFormCustomerGroup {
   bonus_value: number;
 }
 
+export interface LoadFormBrandGroup {
+  brand_id: string | null;
+  brand_name: string;
+  lines: LoadFormLine[];
+  total_value: number;
+  bonus_value: number;
+}
+
 export interface LoadFormSalesmanGroup {
   salesman_id: string;
   salesman_name: string;
   customers: LoadFormCustomerGroup[];
+  brands: LoadFormBrandGroup[];
   total_value: number;
   bonus_value: number;
 }
@@ -59,6 +72,7 @@ export interface LoadFormSummary {
   org_name: string;
   org_address: string;
   org_phone: string;
+  groupBy: LoadFormGroupBy;
   salesmen: LoadFormSalesmanGroup[];
   grand_total: number;
   grand_bonus: number;
@@ -77,7 +91,11 @@ interface SalesRowRow {
   bonus: number;
   selling_price: number;
   discount: number;
-  products: { name: string; units_per_pack: number | null } | null;
+  products: {
+    name: string;
+    units_per_pack: number | null;
+    brands: { id: string; name: string } | null;
+  } | null;
   sales_transactions: {
     customer_id: string | null;
     created_by_profile_id: string | null;
@@ -95,7 +113,7 @@ async function fetchRows(supabase: SupabaseClient, filters: LoadFormFilters): Pr
        bonus,
        selling_price,
        discount,
-       products!inner(name, units_per_pack),
+       products!inner(name, units_per_pack, brands(id, name)),
        sales_transactions!inner(
          customer_id,
          created_by_profile_id,
@@ -179,9 +197,13 @@ export async function buildLoadForm(
     }
   }
 
-  // Aggregate per (salesman, customer, product).
+  // Aggregate per (salesman, group key, product). The group key is either the
+  // customer id (groupBy=customer) or the brand id (groupBy=brand).
+  const groupBy: LoadFormGroupBy = filters.groupBy ?? "brand";
+
   const salesmanMap = new Map<string, Map<string, Map<string, LineAgg>>>();
   const customerName = new Map<string, string>();
+  const brandName = new Map<string, string>();
   const salesmanName = new Map<string, string>();
   const salesmanOrder: string[] = [];
 
@@ -196,24 +218,33 @@ export async function buildLoadForm(
       salesmanOrder.push(sid);
     }
 
-    const cid = tx.customer_id ?? "walk-in";
-    if (!customerName.get(cid)) {
-      const c = tx.customers;
-      customerName.set(
-        cid,
-        c?.shop_name ? `${c.customer_name} (${c.shop_name})` : (c?.customer_name ?? "Walk-in Customer"),
-      );
+    // Determine the grouping key for this line.
+    let gid: string;
+    if (groupBy === "brand") {
+      gid = product.brands?.id ?? "no-brand";
+      if (!brandName.get(gid)) {
+        brandName.set(gid, product.brands?.name ?? "Unbranded");
+      }
+    } else {
+      gid = tx.customer_id ?? "walk-in";
+      if (!customerName.get(gid)) {
+        const c = tx.customers;
+        customerName.set(
+          gid,
+          c?.shop_name ? `${c.customer_name} (${c.shop_name})` : (c?.customer_name ?? "Walk-in Customer"),
+        );
+      }
     }
 
-    let byCustomer = salesmanMap.get(sid);
-    if (!byCustomer) {
-      byCustomer = new Map<string, Map<string, LineAgg>>();
-      salesmanMap.set(sid, byCustomer);
+    let byGroup = salesmanMap.get(sid);
+    if (!byGroup) {
+      byGroup = new Map<string, Map<string, LineAgg>>();
+      salesmanMap.set(sid, byGroup);
     }
-    let lineMap = byCustomer.get(cid);
+    let lineMap = byGroup.get(gid);
     if (!lineMap) {
       lineMap = new Map<string, LineAgg>();
-      byCustomer.set(cid, lineMap);
+      byGroup.set(gid, lineMap);
     }
 
     const pid = String(row.product_id);
@@ -252,27 +283,48 @@ export async function buildLoadForm(
   const salesmen: LoadFormSalesmanGroup[] = salesmanOrder
     .filter((sid) => salesmanMap.has(sid))
     .map((sid) => {
-      const byCustomer = salesmanMap.get(sid)!;
-      const customers: LoadFormCustomerGroup[] = [...byCustomer.entries()].map(([cid, lineMap]) => {
+      const byGroup = salesmanMap.get(sid)!;
+
+      const makeGroup = (gid: string, label: string) => {
+        const lineMap = byGroup.get(gid)!;
         const lines: LoadFormLine[] = [...lineMap.values()].sort((a, b) =>
           a.product_name.localeCompare(b.product_name),
         );
         const total = round2(lines.reduce((s, l) => s + l.total_value, 0));
         const bonus = round2(lines.reduce((s, l) => s + l.bonus_value, 0));
-        return {
-          customer_id: cid === "walk-in" ? null : cid,
-          customer_name: customerName.get(cid) ?? "Customer",
-          lines,
-          total_value: total,
-          bonus_value: bonus,
-        };
-      });
-      const total = round2(customers.reduce((s, c) => s + c.total_value, 0));
-      const bonus = round2(customers.reduce((s, c) => s + c.bonus_value, 0));
+        return { label, lines, total, bonus };
+      };
+
+      const groupIds = [...byGroup.keys()];
+      const customers: LoadFormCustomerGroup[] =
+        groupBy === "customer"
+          ? groupIds.map((gid) => ({
+              customer_id: gid === "walk-in" ? null : gid,
+              customer_name: customerName.get(gid) ?? "Customer",
+              lines: makeGroup(gid, customerName.get(gid) ?? "Customer").lines,
+              total_value: makeGroup(gid, customerName.get(gid) ?? "Customer").total,
+              bonus_value: makeGroup(gid, customerName.get(gid) ?? "Customer").bonus,
+            }))
+          : [];
+
+      const brands: LoadFormBrandGroup[] =
+        groupBy === "brand"
+          ? groupIds.map((gid) => ({
+              brand_id: gid === "no-brand" ? null : gid,
+              brand_name: brandName.get(gid) ?? "Unbranded",
+              lines: makeGroup(gid, brandName.get(gid) ?? "Unbranded").lines,
+              total_value: makeGroup(gid, brandName.get(gid) ?? "Unbranded").total,
+              bonus_value: makeGroup(gid, brandName.get(gid) ?? "Unbranded").bonus,
+            }))
+          : [];
+
+      const total = round2(groupIds.reduce((s, gid) => s + makeGroup(gid, "").total, 0));
+      const bonus = round2(groupIds.reduce((s, gid) => s + makeGroup(gid, "").bonus, 0));
       return {
         salesman_id: sid,
         salesman_name: salesmanName.get(sid) ?? "Salesman",
         customers,
+        brands,
         total_value: total,
         bonus_value: bonus,
       };
@@ -292,6 +344,7 @@ export async function buildLoadForm(
       org_name: orgName,
       org_address: orgAddress,
       org_phone: orgPhone,
+      groupBy,
       salesmen,
       grand_total: grandTotal,
       grand_bonus: grandBonus,

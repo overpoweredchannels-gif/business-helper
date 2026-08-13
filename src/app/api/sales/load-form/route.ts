@@ -9,16 +9,17 @@ export const runtime = "nodejs";
  * GET /api/sales/load-form
  *
  * Aggregates confirmed sales into a distributor Load Form grouped by salesman
- * then customer.
+ * then brand (or customer).
  *
  * Query params:
  *   customer_ids  comma-separated customer ids (OR filter)
  *   salesman_ids  comma-separated salesman profile ids - created_by_profile_id (OR)
  *   date_from     YYYY-MM-DD inclusive lower bound on sale_date
  *   date_to       YYYY-MM-DD inclusive upper bound on sale_date
+ *   group_by      "brand" (default) or "customer"
  *
- * Response: { ok, summary: { org_name, org_address, org_phone, salesmen, ... } }
- * where each salesman has `customers` and each customer has `lines` with
+ * Response: { ok, summary: { org_name, org_address, org_phone, groupBy, salesmen, ... } }
+ * where each salesman has `customers`/`brands` and each group has `lines` with
  * packing/cartons/pcs/bonus/total_value/bonus_value.
  */
 export async function GET(request: NextRequest) {
@@ -37,6 +38,7 @@ export async function GET(request: NextRequest) {
     salesmanIds: splitIds(searchParams.get("salesman_ids")),
     dateFrom: searchParams.get("date_from"),
     dateTo: searchParams.get("date_to"),
+    groupBy: searchParams.get("group_by") === "customer" ? "customer" : "brand",
   };
 
   try {
