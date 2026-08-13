@@ -53,6 +53,46 @@ const getLocationErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : geoError?.message ?? "Could not read current location.";
 };
 
+/**
+ * Get the most accurate fix available. The browser's very first position fix
+ * is often a cached or coarse one (tens to hundreds of meters off). We keep
+ * re-requesting with maximumAge 0 until accuracy is good enough (~100 m) or we
+ * run out of attempts, so the duty session starts at the right spot.
+ */
+function acquireAccurateFix(maxAttempts = 6): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      reject(new Error("This browser does not support location tracking."));
+      return;
+    }
+    let attempts = 0;
+    const tryOnce = () => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const accuracy = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
+          // Accept the fix once it is good, or on the final attempt (best effort).
+          if (accuracy <= 100 || attempts >= maxAttempts - 1) {
+            resolve(pos);
+          } else {
+            attempts += 1;
+            setTimeout(tryOnce, 1200);
+          }
+        },
+        (err) => {
+          attempts += 1;
+          if (attempts >= maxAttempts) {
+            reject(err);
+          } else {
+            setTimeout(tryOnce, 1200);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    };
+    tryOnce();
+  });
+}
+
 export function EmployeeLiveTracking() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -128,9 +168,9 @@ export function EmployeeLiveTracking() {
   const handlePosition = useCallback(
     (position: GeolocationPosition) => {
       const accuracy = position.coords.accuracy ?? null;
-      // Skip very imprecise GPS fixes (e.g. wifi/gps glitches > 120m) so the
+      // Skip very imprecise GPS fixes (e.g. wifi/gps glitches > 100m) so the
       // owner sees an accurate live location.
-      if (accuracy != null && accuracy > 120) {
+      if (accuracy != null && accuracy > 100) {
         return;
       }
       const point: LocationPoint = {
@@ -172,7 +212,7 @@ export function EmployeeLiveTracking() {
       const watchId = navigator.geolocation.watchPosition(
         handlePosition,
         (geoError) => setError(getLocationErrorMessage(geoError)),
-        { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 }
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
       );
       watchIdRef.current = watchId;
       sessionIdRef.current = sessionId;
@@ -249,14 +289,9 @@ export function EmployeeLiveTracking() {
     }
 
     setBooting(true);
+    setMessage("Acquiring accurate GPS fix…");
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 20000,
-          maximumAge: 30000,
-        });
-      });
+      const position = await acquireAccurateFix();
 
       const startPoint: LocationPoint = {
         latitude: position.coords.latitude,
@@ -419,7 +454,17 @@ export function EmployeeLiveTracking() {
                 {lastLocation.latitude.toFixed(5)}, {lastLocation.longitude.toFixed(5)}
               </span>
             )}
-            {lastLocation.accuracy != null && ` · ±${Math.round(lastLocation.accuracy)}m`}
+            {lastLocation.accuracy != null && (
+              <span
+                className={`ml-1 inline-block rounded px-1 py-0.5 text-[10px] font-semibold ${
+                  lastLocation.accuracy <= 100
+                    ? "bg-success/10 text-success"
+                    : "bg-warning/10 text-warning"
+                }`}
+              >
+                ±{Math.round(lastLocation.accuracy)}m
+              </span>
+            )}
             <span className="ml-1 inline-flex items-center gap-1 text-success">
               <Crosshair className="size-3 animate-pulse" /> live
             </span>

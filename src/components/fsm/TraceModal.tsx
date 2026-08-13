@@ -21,7 +21,29 @@ interface TraceModalProps {
   onClose: () => void;
 }
 
-/** Build a google maps embed URL that draws the whole movement trail (works with or without an API key). */
+function haversineMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): number {
+  const R = 6371000;
+  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+  const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
+  const la1 = (a.latitude * Math.PI) / 180;
+  const la2 = (b.latitude * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Time gap between consecutive points, in minutes. */
+function minutesBetween(a: string, b: string): number {
+  return (new Date(b).getTime() - new Date(a).getTime()) / 60000;
+}
+
+/** Human-friendly "moved X m in Y min" summary between two points. */
+function moveInfo(meters: number | null, minutes: number | null): string {
+  if (meters == null) return "";
+  const dist = meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
+  const time = minutes != null && minutes >= 1 ? ` in ${Math.round(minutes)} min` : "";
+  return ` · moved ${dist}${time}`;
+}
+
 function buildTrailEmbedUrl(points: TracePoint[], liveLat?: number, liveLng?: number): string {
   const pts = points.length > 0 ? points : [];
   if (pts.length === 0) {
@@ -185,6 +207,26 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
     };
   }, [onClose]);
 
+  // Auto-resolve a place name for every recorded point in the background, so the
+  // owner sees street/shop names without having to tap each one.
+  useEffect(() => {
+    if (points.length === 0) return;
+    let alive = true;
+    (async () => {
+      for (const p of points) {
+        const key = `${p.latitude.toFixed(4)},${p.longitude.toFixed(4)}`;
+        if (placeMap[key]) continue;
+        const place = await getPlaceName(p.latitude, p.longitude);
+        if (!alive) return;
+        setPlaceMap((prev) => (prev[key] ? prev : { ...prev, [key]: place?.label ?? "Unknown location" }));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [points]);
+
   const resolvePlace = async (p: TracePoint) => {
     const key = `${p.latitude.toFixed(4)},${p.longitude.toFixed(4)}`;
     if (placeMap[key]) return;
@@ -192,7 +234,7 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
     const place = await getPlaceName(p.latitude, p.longitude);
     setPlaceMap((prev) => ({ ...prev, [key]: place?.label ?? "Unknown location" }));
     setResolving(null);
-  };
+  };// eslint-disable-next-line react-hooks/exhaustive-deps
 
   return (
     <div
@@ -273,7 +315,7 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
             <span className="font-medium text-foreground flex items-center gap-1.5">
               <Clock className="size-3.5 text-primary" /> Recorded points
             </span>
-            <span className="text-light-text">Tap a point to see the exact street / shop name</span>
+            <span className="text-light-text">Street names are resolved automatically; tap for details</span>
           </div>
           {reversed.length === 0 ? (
             <p className="text-sm text-light-text">No recorded points in the last 2 hours.</p>
@@ -283,28 +325,44 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
                 const key = `${p.latitude.toFixed(4)},${p.longitude.toFixed(4)}`;
                 const place = placeMap[key];
                 const isResolving = resolving === key;
+                const prev = reversed[i + 1];
+                const movedMeters = prev ? haversineMeters(prev, p) : null;
+                const gapMinutes = prev ? minutesBetween(prev.captured_at, p.captured_at) : null;
+                const isNewest = i === 0;
                 return (
                   <button
                     key={`${p.captured_at}-${i}`}
                     onClick={() => resolvePlace(p)}
                     className="flex w-full items-start gap-3 rounded-xl border border-border p-3 text-left hover:bg-muted/40 transition-colors"
                   >
-                    <span className="mt-0.5 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                      #{i + 1}
+                    <span
+                      className={`mt-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        isNewest ? "bg-success/15 text-success" : "bg-primary/10 text-primary"
+                      }`}
+                    >
+                      {isNewest ? "LIVE" : `#${i}`}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <MapPin className="size-3.5 shrink-0 text-primary" />
                         <span className="text-xs font-medium text-foreground truncate">
-                          {place ?? (isResolving ? "Resolving place name..." : "Tap to look up place name")}
+                          {place ?? (isResolving ? "Resolving place name..." : "Place name not available")}
                         </span>
                       </div>
                       <div className="mt-0.5 font-mono text-[10px] text-light-text">
                         {p.latitude.toFixed(5)}, {p.longitude.toFixed(5)}
-                        {p.speed != null && p.speed > 1 ? ` · ${Math.round(p.speed * 3.6)} km/h` : " · stationary"}
-                        {i === 0 ? " · now" : ""}
+                        {p.speed != null && p.speed > 1
+                          ? ` · ${Math.round(p.speed * 3.6)} km/h`
+                          : movedMeters != null && movedMeters < 25
+                            ? " · stationary"
+                            : moveInfo(movedMeters, gapMinutes)}
                       </div>
-                      <div className="mt-0.5 text-[10px] text-body">{new Date(p.captured_at).toLocaleString()}</div>
+                      <div className="mt-0.5 text-[10px] text-body">
+                        {new Date(p.captured_at).toLocaleString()}
+                        {isNewest && p.captured_at
+                          ? ` · ${Math.max(0, Math.round((Date.now() - new Date(p.captured_at).getTime()) / 60000))}m ago`
+                          : ""}
+                      </div>
                     </div>
                     <a
                       href={`https://www.google.com/maps?q=${p.latitude},${p.longitude}`}

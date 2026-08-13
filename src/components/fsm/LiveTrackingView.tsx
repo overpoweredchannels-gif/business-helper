@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { getMapProvider } from "@/lib/maps/map-provider";
-import { getPlaceName, getEta, formatEta, type EtaResult } from "@/lib/maps/client-maps";
+import { getPlaceName } from "@/lib/maps/client-maps";
 import {
   Loader2,
   AlertCircle,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { CurrentLocationView } from "@/lib/location/types";
 import TraceModal, { type TracePoint } from "./TraceModal";
+import NavigateModal from "./NavigateModal";
 
 type FilterKey = "all" | "on_duty" | "off_duty" | "with_location" | "moving" | "stale";
 
@@ -30,9 +31,8 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
   const [history, setHistory] = useState<Record<string, TracePoint[]>>({});
   const [booting, setBooting] = useState<string | null>(null);
   const [liveLabel, setLiveLabel] = useState<Record<string, string>>({});
-  const [etas, setEtas] = useState<Record<string, EtaResult | null>>({});
-  const [etaLoading, setEtaLoading] = useState<string | null>(null);
   const [traceModal, setTraceModal] = useState<string | null>(null);
+  const [navModal, setNavModal] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -116,48 +116,16 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
   };
 
   /**
-   * Owner clicks Navigate: ask the browser for the owner's own location to
-   * compute ETA, then open turn-by-turn directions in Google Maps.
+   * Navigate: open the in-app navigation modal which asks for your (owner's)
+   * location, shows the route preview + ETA, and lets you launch turn-by-turn.
    */
   const handleNavigate = (emp: CurrentLocationView) => {
-    if (!emp.latitude || !emp.longitude) return;
-    if (!navigator.geolocation) return;
-    setEtaLoading(emp.profileId);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        const eta = await getEta(latitude, longitude, emp.latitude!, emp.longitude!);
-        setEtas((prev) => ({ ...prev, [emp.profileId]: eta }));
-        setEtaLoading(null);
-        const provider = getMapProvider();
-        window.open(
-          provider.buildDirectionsUrl({
-            destinationLabel: `${emp.employeeName} (live location)`,
-            destination: { latitude: emp.latitude!, longitude: emp.longitude! },
-          }),
-          "_blank",
-          "noopener,noreferrer"
-        );
-      },
-      () => {
-        setEtaLoading(null);
-        setEtas((prev) => ({ ...prev, [emp.profileId]: null }));
-        const provider = getMapProvider();
-        window.open(
-          provider.buildDirectionsUrl({
-            destinationLabel: `${emp.employeeName} (live location)`,
-            destination: { latitude: emp.latitude!, longitude: emp.longitude! },
-          }),
-          "_blank",
-          "noopener,noreferrer"
-        );
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
+    setNavModal(emp.profileId);
   };
 
   const provider = getMapProvider();
   const traceEmployee = employees.find((e) => e.profileId === traceModal);
+  const navModalEmployee = employees.find((e) => e.profileId === navModal);
 
   return (
     <div className="space-y-4">
@@ -243,7 +211,6 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                 ? `${emp.latitude.toFixed(4)},${emp.longitude.toFixed(4)}`
                 : "";
             const placeLabel = labelKey ? liveLabel[labelKey] : undefined;
-            const eta = etas[emp.profileId];
             return (
               <div key={emp.profileId} className="rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
                 {/* Listing header */}
@@ -309,15 +276,9 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                   {emp.hasLocation && (
                     <button
                       onClick={() => handleNavigate(emp)}
-                      disabled={etaLoading === emp.profileId}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
                     >
-                      {etaLoading === emp.profileId ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <Navigation className="size-3.5" />
-                      )}
-                      {eta ? `Navigate · ${formatEta(eta)}` : "Navigate"}
+                      <Navigation className="size-3.5" /> Navigate
                     </button>
                   )}
                   {expanded === emp.profileId && (
@@ -384,6 +345,10 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
           points={history[traceEmployee.profileId] ?? []}
           onClose={() => setTraceModal(null)}
         />
+      )}
+
+      {navModalEmployee && (
+        <NavigateModal employee={navModalEmployee} onClose={() => setNavModal(null)} />
       )}
     </div>
   );
