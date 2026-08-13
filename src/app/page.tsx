@@ -15120,10 +15120,7 @@ export default function Home() {
         )}
 
         {activeSection === "dashboard" && staffDashboardData.isStaff && (
-          <EmployeeLiveTracking
-            isStaff={true}
-            onTrackingToggle={() => {}}
-          />
+          <EmployeeLiveTracking />
         )}
 
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (

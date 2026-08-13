@@ -1,113 +1,413 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { MapPin, Map, LogOut } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { MapPin, Loader2, AlertCircle, LogOut, Radio, Navigation } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
-interface EmployeeLiveTrackingProps {
-  isStaff: boolean;
-  onTrackingToggle: (isActive: boolean) => void;
+interface MeResponse {
+  ok: boolean;
+  me?: {
+    profile?: { id?: string; organization_id?: string; full_name?: string | null };
+    employee?: { full_name?: string | null; designation?: string | null } | null;
+  };
+  error?: string;
 }
 
-export function EmployeeLiveTracking({ isStaff, onTrackingToggle }: EmployeeLiveTrackingProps) {
-  const [isTracking, setIsTracking] = useState(false);
-  const [lastLocation, setLastLocation] = useState<{ lat: number; lng: number } | null>(null);
+interface DutyStatus {
+  onDuty: boolean;
+  dutySessionId: string | null;
+  startedAt: string | null;
+}
+
+interface LocationPoint {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  speed: number | null;
+  heading: number | null;
+  altitude: number | null;
+  capturedAt: string;
+}
+
+const getLocationErrorMessage = (error: unknown) => {
+  const geoError =
+    typeof error === "object" && error !== null && "code" in error
+      ? (error as { code?: number; message?: string })
+      : null;
+
+  if (geoError?.code) {
+    if (geoError.code === 1) {
+      return "Location permission was denied. Please allow location access to start live tracking.";
+    }
+    if (geoError.code === 2) {
+      return "Location is currently unavailable. Please check GPS/location settings and try again.";
+    }
+    if (geoError.code === 3) {
+      return "Location request timed out. Please try again.";
+    }
+  }
+
+  return error instanceof Error ? error.message : geoError?.message ?? "Could not read current location.";
+};
+
+export function EmployeeLiveTracking() {
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [tracking, setTracking] = useState(false);
+  const [booting, setBooting] = useState(false);
+  const [lastLocation, setLastLocation] = useState<LocationPoint | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [dutySessionId, setDutySessionId] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
-  const toggleTracking = useCallback(() => {
-    setIsTracking(!isTracking);
-    onTrackingToggle(!isTracking);
-  }, [isTracking, onTrackingToggle]);
+  const watchIdRef = useRef<number | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const lastSavedTimeRef = useRef(0);
 
-  const fetchLocation = useCallback(async () => {
+  const stopWatch = useCallback(() => {
+    if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
+    watchIdRef.current = null;
+    setTracking(false);
+  }, []);
+
+  const uploadPoint = useCallback(
+    async (sessionId: string, point: LocationPoint) => {
+      try {
+        const res = await authorizedFetch("/api/location/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dutySessionId: sessionId,
+            latitude: point.latitude,
+            longitude: point.longitude,
+            accuracy: point.accuracy,
+            speed: point.speed,
+            heading: point.heading,
+            altitude: point.altitude,
+            capturedAt: point.capturedAt,
+          }),
+        });
+        const data = (await res.json()) as { ok?: boolean; error?: string };
+        if (data.ok) {
+          setLastSavedAt(point.capturedAt);
+          lastSavedTimeRef.current = new Date(point.capturedAt).getTime();
+        } else {
+          throw new Error(data.error || "Upload failed");
+        }
+      } catch {
+        // transient failures are retried on the next geolocation update
+      }
+    },
+    []
+  );
+
+  const handlePosition = useCallback(
+    (position: GeolocationPosition) => {
+      const point: LocationPoint = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy ?? null,
+        speed: position.coords.speed ?? null,
+        heading: position.coords.heading ?? null,
+        altitude: position.coords.altitude ?? null,
+        capturedAt: new Date().toISOString(),
+      };
+      setLastLocation(point);
+
+      const sessionId = sessionIdRef.current;
+      if (!sessionId) return;
+
+      const now = new Date(point.capturedAt).getTime();
+      const distanceMeters =
+        lastSavedTimeRef.current > 0 && lastLocation
+          ? Math.hypot(
+              (point.latitude - lastLocation.latitude) * 111320,
+              (point.longitude - lastLocation.longitude) * 111320 * Math.max(0.2, Math.cos((point.latitude * Math.PI) / 180))
+            )
+          : Number.POSITIVE_INFINITY;
+      const enoughTimePassed = now - lastSavedTimeRef.current >= 30000;
+      const meaningfulDistance = distanceMeters >= 25;
+
+      if (enoughTimePassed || meaningfulDistance) {
+        void uploadPoint(sessionId, point);
+      }
+    },
+    [lastLocation, uploadPoint]
+  );
+
+  const resumeWatch = useCallback(
+    (sessionId: string) => {
+      if (typeof navigator === "undefined" || !navigator.geolocation) return;
+      if (watchIdRef.current !== null) return;
+      const watchId = navigator.geolocation.watchPosition(
+        handlePosition,
+        (geoError) => setError(getLocationErrorMessage(geoError)),
+        { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 }
+      );
+      watchIdRef.current = watchId;
+      sessionIdRef.current = sessionId;
+      setTracking(true);
+    },
+    [handlePosition]
+  );
+
+  const loadIdentity = useCallback(async () => {
     try {
-      if (typeof navigator === "undefined") {
-        setLastLocation({ lat: 37.7749, lng: -122.4194 }); // San Francisco fallback
-        return;
-      }
-
-      if (!navigator.geolocation) {
-        setError("Geolocation not supported");
-        return;
-      }
-
-      setError(null);
-      const position = await new Promise<GeolocationCoordinates>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => resolve(pos.coords),
-          reject,
-          { enableHighAccuracy: true, timeout: 20000 }
+      const res = await authorizedFetch("/api/identity/staff/me");
+      const data: MeResponse = await res.json();
+      if (data.ok && data.me) {
+        setProfileId(data.me.profile?.id ?? null);
+        setOrganizationId(data.me.profile?.organization_id ?? null);
+        setDisplayName(
+          data.me.employee?.full_name || data.me.profile?.full_name || null
         );
-      });
-
-      setLastLocation({
-        lat: position.latitude,
-        lng: position.longitude,
-      });
+      } else {
+        setError(data.error || "Failed to load your profile.");
+      }
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    if (isTracking) {
-      fetchLocation();
-      const interval = setInterval(fetchLocation, 30000);
-      return () => clearInterval(interval);
+  const loadStatus = useCallback(async () => {
+    if (!profileId || !organizationId) return;
+    try {
+      const res = await authorizedFetch("/api/location/device-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "status",
+          organizationId,
+          profileId,
+        }),
+      });
+      const data = (await res.json()) as { ok?: boolean; onDuty?: boolean; dutySessionId?: string | null; startedAt?: string | null };
+      if (data.ok && data.onDuty && data.dutySessionId) {
+        setDutySessionId(data.dutySessionId);
+        sessionIdRef.current = data.dutySessionId;
+        setTracking(true);
+        resumeWatch(data.dutySessionId);
+        setMessage("Resumed sharing your live location.");
+      }
+    } catch {
+      // status check is best-effort
     }
-  }, [isTracking]);
+  }, [profileId, organizationId, resumeWatch]);
+
+  useEffect(() => {
+    void loadIdentity();
+  }, [loadIdentity]);
+
+  useEffect(() => {
+    if (!loading) void loadStatus();
+  }, [loading, loadStatus]);
+
+  const startTracking = useCallback(async () => {
+    setError(null);
+    setMessage(null);
+
+    if (!profileId || !organizationId) {
+      setError("Your profile is not loaded. Please refresh and try again.");
+      return;
+    }
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setError("This browser does not support location tracking.");
+      return;
+    }
+
+    setBooting(true);
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 30000,
+        });
+      });
+
+      const startPoint: LocationPoint = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy ?? null,
+        speed: position.coords.speed ?? null,
+        heading: position.coords.heading ?? null,
+        altitude: position.coords.altitude ?? null,
+        capturedAt: new Date().toISOString(),
+      };
+
+      const res = await authorizedFetch("/api/location/device-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "start",
+          organizationId,
+          profileId,
+          startLatitude: startPoint.latitude,
+          startLongitude: startPoint.longitude,
+          startAccuracy: startPoint.accuracy,
+        }),
+      });
+      const data = (await res.json()) as { ok?: boolean; dutySessionId?: string | null; message?: string; error?: string };
+      if (!data.ok || !data.dutySessionId) {
+        throw new Error(data.error || data.message || "Could not start live tracking.");
+      }
+
+      sessionIdRef.current = data.dutySessionId;
+      setDutySessionId(data.dutySessionId);
+      setLastLocation(startPoint);
+      lastSavedTimeRef.current = 0;
+      void uploadPoint(data.dutySessionId, startPoint);
+
+      setTracking(true);
+      setMessage("Live tracking started. Your location is being shared with your organization.");
+
+      resumeWatch(data.dutySessionId);
+    } catch (err) {
+      setError(getLocationErrorMessage(err));
+    } finally {
+      setBooting(false);
+    }
+  }, [profileId, organizationId, resumeWatch, uploadPoint]);
+
+  const stopTracking = useCallback(async () => {
+    setError(null);
+    stopWatch();
+
+    if (profileId && organizationId) {
+      try {
+        await authorizedFetch("/api/location/device-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "signout", organizationId, profileId }),
+        });
+      } catch {
+        // best-effort signout
+      }
+    }
+
+    sessionIdRef.current = null;
+    setDutySessionId(null);
+    setMessage("Live tracking stopped. Location sharing is off.");
+  }, [profileId, organizationId, stopWatch]);
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center gap-2 text-sm text-body">
+          <Loader2 className="size-4 animate-spin text-primary" /> Loading live tracking…
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">
-            <MapPin className="size-3 mr-1" /> Live Tracking
-          </h3>
-          <span className="text-xs text-text/60 uppercase tracking-wired">Live Location</span>
-        </div>
+      <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
-          {isTracking ? (
-            <button
-              onClick={toggleTracking}
-              className="rounded-lg bg-destructive px-3 py-1.5 text-sm font-medium text-destructive/90 hover:opacity-90"
-              title="Stop tracking"
-            >
-              <LogOut className="size-3.5" /> Stop
-            </button>
-          ) : (
-            <button
-              onClick={toggleTracking}
-              className="rounded-lg bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
-              title="Start tracking"
-            >
-              <MapPin className="size-3.5" /> Start
-            </button>
-          )}
-          {isTracking && <span className="text-xs text-primary/90">Live</span>}
+          <span className="relative flex size-3 shrink-0">
+            {tracking && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+            )}
+            <span
+              className={cn(
+                "relative inline-flex rounded-full size-3",
+                tracking ? "bg-success" : "bg-muted-foreground"
+              )}
+            />
+          </span>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">
+              <MapPin className="size-3.5 mr-1 inline-block" />
+              Live Tracking
+            </h3>
+            <span className="text-xs text-body">
+              {tracking ? "Sharing your live location" : "Location sharing is off"}
+            </span>
+          </div>
         </div>
+        {tracking ? (
+          <button
+            onClick={() => void stopTracking()}
+            className="inline-flex items-center gap-2 rounded-lg bg-destructive px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+            title="Stop sharing your location"
+          >
+            <LogOut className="size-3.5" /> Stop
+          </button>
+        ) : (
+          <button
+            onClick={() => void startTracking()}
+            disabled={booting}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+            title="Allow location access and start sharing"
+          >
+            {booting ? <Loader2 className="size-3.5 animate-spin" /> : <Radio className="size-3.5" />}
+            {booting ? "Starting…" : "Start"}
+          </button>
+        )}
       </div>
 
-      {lastLocation ? (
-        <div className="mt-3">
-          <p className="text-xs text-text/60">
-            <span className="font-medium">Location:</span> 
-            {lastLocation.lat.toFixed(4)}, {lastLocation.lng.toFixed(4)}
-          </p>
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${lastLocation.lat},${lastLocation.lng}`}
-            target="_blank"
-            rel="noopener"
-            className="inline-flex items-center gap-2 text-xs text-primary underline underline-offset-2 hover:opacity-90">
-            <MapPin className="size-3" /> Open in Google Maps
-          </a>
-        </div>
-      ) : (
-        <p className="text-xs text-text/60">Fetching location…</p>
+      {message && (
+        <p className="mb-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2 text-xs text-success">{message}</p>
+      )}
+      {error && (
+        <p className="mb-2 flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <AlertCircle className="size-3.5 mt-0.5 shrink-0" /> {error}
+        </p>
       )}
 
-      {error && (
-        <p className="mt-2 text-sm text-destructive">{error}</p>
+      {tracking && lastLocation ? (
+        <div className="mt-1 rounded-lg border border-border bg-muted/20 p-3">
+          <div className="text-xs text-body">
+            {displayName ? <span className="font-medium text-foreground">{displayName} · </span> : null}
+            {lastLocation.latitude.toFixed(5)}, {lastLocation.longitude.toFixed(5)}
+            {lastLocation.accuracy != null && ` · ±${Math.round(lastLocation.accuracy)}m`}
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${lastLocation.latitude},${lastLocation.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+            >
+              <MapPin className="size-3.5" /> Open in Google Maps
+            </a>
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${lastLocation.latitude},${lastLocation.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+            >
+              <Navigation className="size-3.5" /> Navigate
+            </a>
+          </div>
+          {lastSavedAt && (
+            <div className="mt-1.5 text-[11px] text-body">
+              Last updated {new Date(lastSavedAt).toLocaleTimeString()}
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="mt-1 text-xs text-body">
+          Start live tracking to share your location with your organization. Location is uploaded while TradeOS
+          stays open.
+        </p>
       )}
     </div>
   );

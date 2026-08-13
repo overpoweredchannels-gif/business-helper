@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { EmployeeLiveTracking } from "@/components/dashboard";
 import { User, Briefcase, Phone, Calendar, Hash, Building2, Loader2, AlertCircle } from "lucide-react";
 
 export default function ProfilePage() {
@@ -93,6 +94,8 @@ export default function ProfilePage() {
           <p className="text-sm text-body">No duty hours configured yet.</p>
         )}
       </div>
+
+      <EmployeeLiveTracking />
     </div>
   );
 }

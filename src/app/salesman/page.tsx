@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { EmployeeLiveTracking } from "@/components/dashboard";
 import {
   MapPin, ClipboardList, Route as RouteIcon, Bell, Users, Loader2,
   CheckCircle2, XCircle, Clock as ClockIcon, ChevronRight, TrendingUp, Banknote,
@@ -191,6 +192,9 @@ export default function SalesmanDashboard() {
           </Link>
         </div>
       )}
+
+      {/* Live tracking */}
+      <EmployeeLiveTracking />
 
       {/* Quick actions */}
       <div>
