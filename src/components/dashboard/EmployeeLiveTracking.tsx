@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MapPin, Loader2, AlertCircle, LogOut, Radio, Navigation } from "lucide-react";
+import { MapPin, Loader2, AlertCircle, LogOut, Radio, Crosshair } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { getMapProvider } from "@/lib/maps/map-provider";
+import { getPlaceName } from "@/lib/maps/client-maps";
 
 interface MeResponse {
   ok: boolean;
@@ -63,6 +65,7 @@ export function EmployeeLiveTracking() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [placeName, setPlaceName] = useState<string | null>(null);
 
   const watchIdRef = useRef<number | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -107,12 +110,33 @@ export function EmployeeLiveTracking() {
     []
   );
 
+  // Reverse-geocode the employee's current location so they see a real street/shop
+  // name instead of raw coordinates.
+  useEffect(() => {
+    if (!lastLocation) return;
+    let alive = true;
+    getPlaceName(lastLocation.latitude, lastLocation.longitude)
+      .then((place) => {
+        if (alive && place?.label) setPlaceName(place.label);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [lastLocation?.latitude, lastLocation?.longitude]);
+
   const handlePosition = useCallback(
     (position: GeolocationPosition) => {
+      const accuracy = position.coords.accuracy ?? null;
+      // Skip very imprecise GPS fixes (e.g. wifi/gps glitches > 120m) so the
+      // owner sees an accurate live location.
+      if (accuracy != null && accuracy > 120) {
+        return;
+      }
       const point: LocationPoint = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy ?? null,
+        accuracy,
         speed: position.coords.speed ?? null,
         heading: position.coords.heading ?? null,
         altitude: position.coords.altitude ?? null,
@@ -373,32 +397,35 @@ export function EmployeeLiveTracking() {
       )}
 
       {tracking && lastLocation ? (
-        <div className="mt-1 rounded-lg border border-border bg-muted/20 p-3">
+        <div className="mt-1 rounded-lg border border-border bg-muted/20 p-3 grid gap-3">
+          <iframe
+            title={`Your current live location`}
+            src={getMapProvider().buildEmbedMapUrl(
+              { latitude: lastLocation.latitude, longitude: lastLocation.longitude },
+              displayName ?? "Current location"
+            )}
+            loading="lazy"
+            allowFullScreen
+            referrerPolicy="no-referrer-when-downgrade"
+            className="w-full rounded-lg border border-border"
+            style={{ height: 200 }}
+          />
           <div className="text-xs text-body">
             {displayName ? <span className="font-medium text-foreground">{displayName} · </span> : null}
-            {lastLocation.latitude.toFixed(5)}, {lastLocation.longitude.toFixed(5)}
+            {placeName ? (
+              <span className="text-foreground/90">📍 {placeName}</span>
+            ) : (
+              <span className="font-mono">
+                {lastLocation.latitude.toFixed(5)}, {lastLocation.longitude.toFixed(5)}
+              </span>
+            )}
             {lastLocation.accuracy != null && ` · ±${Math.round(lastLocation.accuracy)}m`}
-          </div>
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${lastLocation.latitude},${lastLocation.longitude}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
-            >
-              <MapPin className="size-3.5" /> Open in Google Maps
-            </a>
-            <a
-              href={`https://www.google.com/maps/dir/?api=1&destination=${lastLocation.latitude},${lastLocation.longitude}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
-            >
-              <Navigation className="size-3.5" /> Navigate
-            </a>
+            <span className="ml-1 inline-flex items-center gap-1 text-success">
+              <Crosshair className="size-3 animate-pulse" /> live
+            </span>
           </div>
           {lastSavedAt && (
-            <div className="mt-1.5 text-[11px] text-body">
+            <div className="text-[11px] text-body">
               Last updated {new Date(lastSavedAt).toLocaleTimeString()}
             </div>
           )}
