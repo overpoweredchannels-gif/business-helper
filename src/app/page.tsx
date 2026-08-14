@@ -7612,6 +7612,50 @@ export default function Home() {
 
     setSoError(null);
     setSoMessage(null);
+
+    // Non-owner staff creating a new sales order must go through the draft
+    // approval pipeline (pending_approval + owner notification) so the owner
+    // is alerted and can approve/reject. Owners/admins keep the direct flow.
+    if (!isOwnerOrAdmin() && !soEditingId) {
+      setSoLoading(true);
+      try {
+        const res = await authorizedFetch("/api/sales/drafts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerId: soCustomerId,
+            items: soLines
+              .filter((line) => line.product_id)
+              .map((line) => ({
+                productId: line.product_id,
+                quantity: Number(line.quantity),
+                unitPrice: line.selling_price ? Number(line.selling_price) : 0,
+                discount: line.discount ? Number(line.discount) : 0,
+              })),
+            notes: soNotes.trim() || undefined,
+            expectedDate: soExpectedDate || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Failed to create sales order");
+        setSoMessage(`Sales order ${data.draft?.so_number ?? ""} created and sent for approval.`);
+        setSoEditingId(null);
+        setSoCustomerId("");
+        setSoOrderDate(toDateInputValue(new Date()));
+        setSoExpectedDate("");
+        setSoNotes("");
+        setSoLines([]);
+        await fetchSalesOrders();
+        await fetchSalesOrderItems();
+      } catch (err) {
+        setSoError(err instanceof Error ? err.message : "Failed to save sales order");
+        console.error("Error saving sales order:", err);
+      } finally {
+        setSoLoading(false);
+      }
+      return;
+    }
+
     setSoLoading(true);
 
     try {
