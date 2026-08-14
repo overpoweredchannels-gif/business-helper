@@ -1,6 +1,7 @@
 import { createSupabaseService } from "@/lib/supabase/server";
 import { isWithinRadius } from "@/lib/maps/google-maps";
 import { logAuditEvent } from "@/lib/identity/audit";
+import { getInvoiceNumberService } from "@/lib/invoices/invoice-number-service";
 import type { ActorContext } from "@/lib/identity/types";
 
 export interface VisitStartInput {
@@ -485,13 +486,22 @@ export class CustomerVisitService {
       .eq("id", visit.employee_id)
       .maybeSingle();
 
+    let soNumber: string;
+    try {
+      soNumber = await getInvoiceNumberService().generateSalesOrder(actor.organizationId);
+    } catch (err) {
+      console.error("Draft sale order-number generation failed:", err);
+      return null;
+    }
+
     const { data: sale, error } = await supabase
       .from("sales_orders")
       .insert({
         organization_id: actor.organizationId,
+        so_number: soNumber,
         customer_id: draftData.customerId,
         order_date: new Date().toISOString().split("T")[0],
-        status: "draft",
+        status: "pending_approval",
         created_by_profile_id: employee?.profile_id ?? actor.profileId,
         notes: `Created from visit ${visit.id}`,
       })
@@ -514,10 +524,62 @@ export class CustomerVisitService {
         discount: item.discount ?? 0,
       }));
 
-      await supabase.from("sales_order_items").insert(items);
+      const { error: itemsError } = await supabase.from("sales_order_items").insert(items);
+      if (itemsError) {
+        console.error("Draft sale items failed:", itemsError);
+      }
     }
 
+    // Notify the owner a draft sale needs approval
+    await this.notifyOwnerOfDraftSale(actor, sale.id, draftData);
+
     return sale;
+  }
+
+  private async notifyOwnerOfDraftSale(
+    actor: ActorContext,
+    draftId: string,
+    draftData: NonNullable<VisitFinishInput["draftSaleData"]>
+  ) {
+    const supabase = createSupabaseService();
+
+    const { data: owner } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("organization_id", actor.organizationId)
+      .eq("role", "owner")
+      .maybeSingle();
+
+    if (!owner) return;
+
+    const totalAmount = draftData.items.reduce(
+      (sum, item) => sum + Number(item.quantity ?? 0) * Number(item.unitPrice ?? 0) - Number(item.discount ?? 0),
+      0
+    );
+
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("customer_name, shop_name")
+      .eq("id", draftData.customerId)
+      .maybeSingle();
+
+    const customerName = customer?.shop_name || customer?.customer_name || draftData.customerId || "Customer";
+
+    const { error } = await supabase.from("notifications").insert({
+      organization_id: actor.organizationId,
+      recipient_profile_id: owner.id,
+      category: "draft_sale",
+      title: "New draft sale pending approval",
+      body: `${customerName}: ${totalAmount} awaits your approval.`,
+      entity_type: "sales_order",
+      entity_id: draftId,
+      channel: "in_app",
+      is_read: false,
+    });
+
+    if (error) {
+      console.error("Owner draft-sale notification failed:", error);
+    }
   }
 }
 

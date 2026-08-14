@@ -518,7 +518,7 @@ export class DraftSaleService {
 
     if (!owner) return;
 
-    await supabase.from("notifications").insert({
+    const { error } = await supabase.from("notifications").insert({
       organization_id: actor.organizationId,
       recipient_profile_id: owner.id,
       category: "draft_sale",
@@ -529,6 +529,10 @@ export class DraftSaleService {
       channel: "in_app",
       is_read: false,
     });
+
+    if (error) {
+      console.error("Owner draft-sale notification failed:", error.message);
+    }
   }
 
   private async notifySalesmanOfApproval(actor: ActorContext, salesmanProfileId: string | null, soNumber: string, invoiceNumber: string, totalAmount: number) {
