@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking } from "@/components/dashboard";
 import { cn } from "@/lib/utils";
@@ -81,6 +82,7 @@ import type {
   MarketImportQueueItem,
   MarketNewsSource,
   NewPurchaseExpenseReminder,
+  NotificationItem,
   Product,
   PurchaseLine,
   PurchaseOrder,
@@ -511,6 +513,8 @@ export default function Home() {
   const aiVoiceFinalTranscriptRef = useRef("");
   const aiVoiceLastAutoSentRef = useRef<{ text: string; sentAt: number }>({ text: "", sentAt: 0 });
   const [aiAlerts, setAiAlerts] = useState<AiAlert[]>([]);
+  const [realNotifications, setRealNotifications] = useState<NotificationItem[]>([]);
+  const [saleAlert, setSaleAlert] = useState<NotificationItem | null>(null);
   const [aiDailyBriefings, setAiDailyBriefings] = useState<AiDailyBriefing[]>([]);
   const [aiBriefingMessage, setAiBriefingMessage] = useState<string | null>(null);
   const [aiBriefingError, setAiBriefingError] = useState<string | null>(null);
@@ -918,6 +922,60 @@ export default function Home() {
     setAiAlerts(data ?? []);
   };
 
+  const fetchRealNotifications = async (organizationId?: string | null) => {
+    if (!currentProfile) return;
+    try {
+      const response = await authorizedFetch("/api/notifications?limit=20&unread_only=true");
+      const data = await response.json();
+      if (!data.ok || !Array.isArray(data.notifications)) {
+        if (data.error) console.warn("fetch notifications:", data.error);
+        return;
+      }
+      const fresh = data.notifications as NotificationItem[];
+      setRealNotifications(fresh);
+
+      const draft = fresh.find((n) => n.category === "draft_sale" && !n.is_read);
+      if (draft) {
+        const isFirstPoll = seenNotificationIdsRef.current.size === 0;
+        const isNew = !seenNotificationIdsRef.current.has(draft.id);
+        if (isNew) {
+          const next = new Set(seenNotificationIdsRef.current);
+          fresh.forEach((n) => next.add(n.id));
+          seenNotificationIdsRef.current = next;
+          if (!isFirstPoll) {
+            setSaleAlert(draft);
+            playNotificationSound();
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("fetch notifications error:", err);
+    }
+  };
+
+  const seenNotificationIdsRef = useRef<Set<string>>(new Set());
+  const playNotificationSound = () => {
+    try {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.8);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.8);
+      osc.onended = () => ctx.close();
+    } catch {
+      /* audio not available */
+    }
+  };
+
   const fetchAiDailyBriefings = async (organizationId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -1318,6 +1376,7 @@ export default function Home() {
     fetchAiBusinessQueryLogs(resolvedProfile.organization_id);
     fetchAiVoiceOperatorSessions(resolvedProfile.organization_id);
     fetchAiAlerts(resolvedProfile.organization_id);
+    fetchRealNotifications(resolvedProfile.organization_id);
     fetchAiDailyBriefings(resolvedProfile.organization_id);
     fetchMarketNewsSources(resolvedProfile.organization_id);
     fetchMarketIntelligenceItems(resolvedProfile.organization_id);
@@ -1332,6 +1391,19 @@ export default function Home() {
     fetchSalesItems(resolvedProfile.organization_id);
     fetchInventoryTransactions(resolvedProfile.organization_id);
   };
+
+  useEffect(() => {
+    if (!currentProfile) return;
+    fetchRealNotifications(currentOrganizationId);
+    const interval = window.setInterval(() => fetchRealNotifications(currentOrganizationId), 30000);
+    return () => window.clearInterval(interval);
+  }, [currentProfile?.id, currentOrganizationId]);
+
+  useEffect(() => {
+    if (!saleAlert) return;
+    const timer = window.setTimeout(() => setSaleAlert(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [saleAlert]);
 
   const checkAuthUser = async () => {
     const logTag = `[CHECK_AUTH ${Date.now()}]`;
@@ -4956,6 +5028,7 @@ export default function Home() {
 
   // Sales Management (Phase 4) — sales orders + returns + reporting
   const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform">("invoice");
+  const [salesOrderStatusFilter, setSalesOrderStatusFilter] = useState<"all" | "pending_approval">("all");
 
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   const [salesOrdersLoading, setSalesOrdersLoading] = useState(false);
@@ -7716,6 +7789,7 @@ export default function Home() {
       }
       fetchSalesOrders();
       fetchSalesTransactions();
+      fetchRealNotifications();
     } catch (err) {
       setSoError(err instanceof Error ? err.message : "Action failed");
       console.error("Draft approval error:", err);
@@ -14967,8 +15041,21 @@ export default function Home() {
             .map((p) => ({ label: p.name, section: "products", type: "product" as const }));
           return [...sectionMatches, ...productMatches];
         }}
-        notificationCount={aiAlerts.filter((a) => a.status === "active" || a.status === "new").length}
+        notificationCount={
+          aiAlerts.filter((a) => a.status === "active" || a.status === "new").length +
+          realNotifications.filter((n) => !n.is_read).length
+        }
         notifications={[
+          ...realNotifications.filter((n) => !n.is_read).slice(0, 5).map((n) => ({
+            id: n.id,
+            title: n.title,
+            description: n.body ?? undefined,
+            severity: (n.category === "draft_sale" || n.category === "inventory"
+              ? "warning"
+              : "info") as "info" | "warning" | "critical",
+            section: n.category === "draft_sale" ? ("sales" as const) : ("notifications" as const),
+            time: formatDateTime(n.created_at),
+          })),
           ...aiAlerts.filter((a) => a.status === "active" || a.status === "new").slice(0, 5).map((a) => ({
             id: a.id,
             title: a.title,
@@ -14986,6 +15073,12 @@ export default function Home() {
           }] : []),
         ]}
         onNotificationClick={(n) => {
+          if (n.section === "sales") {
+            handleSectionChange("sales");
+            setSalesTab("orders");
+            setSalesOrderStatusFilter("pending_approval");
+            return;
+          }
           if (n.section) handleSectionChange(n.section as SectionId);
         }}
       >
@@ -17416,15 +17509,55 @@ export default function Home() {
         </section>
 
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Sales Order History</h2>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">Sales Order History</h2>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSalesOrderStatusFilter("all")}
+                className={cn(
+                  "rounded border px-3 py-1 text-xs transition-colors",
+                  salesOrderStatusFilter === "all"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:bg-muted"
+                )}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setSalesOrderStatusFilter("pending_approval")}
+                className={cn(
+                  "relative rounded border px-3 py-1 text-xs transition-colors",
+                  salesOrderStatusFilter === "pending_approval"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:bg-muted"
+                )}
+              >
+                Pending Approval
+                {salesOrders.filter((o) => o.status === "pending_approval").length > 0 && (
+                  <span className="absolute -top-2 -right-2 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-semibold text-white">
+                    {salesOrders.filter((o) => o.status === "pending_approval").length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
           {salesOrdersLoading ? (
             <p className="text-sm text-muted-foreground">Loading sales orders...</p>
           ) : salesOrders.length === 0 ? (
             <p className="text-sm text-muted-foreground">No sales orders found.</p>
           ) : (
             <ul className="space-y-2">
-              {salesOrders.map((order) => {
-                const customer = customers.find((c) => c.id === order.customer_id);
+              {(() => {
+                const visible = salesOrderStatusFilter === "all"
+                  ? salesOrders
+                  : salesOrders.filter((o) => o.status === salesOrderStatusFilter);
+                if (visible.length === 0) {
+                  return <li className="text-sm text-muted-foreground">No pending approval orders.</li>;
+                }
+                return visible.map((order) => {
+                  const customer = customers.find((c) => c.id === order.customer_id);
                 const items = salesOrderItems.filter((item) => item.sales_order_id === order.id);
                 const statusColor =
                   order.status === "cancelled"
@@ -17543,7 +17676,8 @@ export default function Home() {
                     {order.notes && <div className="mt-1 text-xs text-muted-foreground/80">Notes: {order.notes}</div>}
                   </li>
                 );
-              })}
+                });
+              })()}
             </ul>
           )}
         </section>
@@ -23912,6 +24046,40 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             <p className="mt-4 whitespace-pre-wrap text-sm text-destructive">{businessSettingsError}</p>
           )}
         </section>
+        )}
+
+        {saleAlert && (
+          <div className="fixed bottom-6 right-6 z-[100] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card p-4 shadow-lg animate-scaleIn">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-500">
+                <Bell className="size-4.5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground">{saleAlert.title}</p>
+                {saleAlert.body && <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{saleAlert.body}</p>}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaleAlert(null);
+                    handleSectionChange("sales");
+                    setSalesTab("orders");
+                    setSalesOrderStatusFilter("pending_approval");
+                  }}
+                  className="mt-2 rounded bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90"
+                >
+                  Review & Approve
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSaleAlert(null)}
+                className="text-muted-foreground hover:text-foreground"
+                title="Dismiss"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
         )}
 
           </div>
