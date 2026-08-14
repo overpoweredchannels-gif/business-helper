@@ -426,7 +426,7 @@ export default function ImportWizard({
           if (initialStock > 0 && inserted?.id) {
             const { error: adjustError } = await supabase.rpc("adjust_inventory", {
               p_organization_id: organizationId,
-              p_product_id: inserted.id,
+              p_product_id: String(inserted.id),
               p_quantity_delta: initialStock,
               p_reason: "Initial stock imported from product import file",
               p_created_by: actorProfileId,
@@ -441,9 +441,19 @@ export default function ImportWizard({
         }
       } catch (err) {
         result.failed += 1;
+        const details =
+          typeof err === "object" && err !== null
+            ? [
+                (err as { message?: unknown }).message,
+                (err as { details?: unknown }).details,
+                (err as { hint?: unknown }).hint,
+              ]
+                .filter((part) => part !== undefined && part !== null && part !== "")
+                .join(" ")
+            : String(err);
         result.failures.push({
           rowLabel: `Row ${row.rowIndex}`,
-          message: err instanceof Error ? err.message : "Failed to import row",
+          message: details || "Failed to import row",
         });
       }
     }
