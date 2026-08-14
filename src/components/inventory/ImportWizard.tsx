@@ -56,6 +56,25 @@ const STATUS_LABEL: Record<string, string> = {
   update: "Update",
   skipped: "Skipped",
   error: "Error",
+  warning: "Import (fix)",
+};
+
+const PREVIEW_FIELD_LABELS: Partial<Record<ProductImportField, string>> = {
+  name: "Name",
+  sku: "SKU",
+  barcode: "Barcode",
+  brand: "Brand",
+  category: "Category",
+  unit_type: "Unit Type",
+  units_per_pack: "Units/Pack",
+  default_purchase_price: "Purchase",
+  default_selling_price: "Selling",
+  minimum_stock_level: "Min Stock",
+  reorder_level: "Reorder",
+  initial_stock: "Initial Stock",
+  track_batch: "Track Batch",
+  track_expiry: "Track Expiry",
+  overselling_policy: "Oversell",
 };
 
 export default function ImportWizard({
@@ -93,6 +112,33 @@ export default function ImportWizard({
     () => (preview ? preview.rows.slice(0, MAX_PREVIEW_ROWS) : []),
     [preview]
   );
+
+  // Mapped fields shown as columns in the preview table, in a stable order.
+  type ValueField = Exclude<ProductImportField, "skip">;
+  const previewPreviewFields = useMemo(() => {
+    if (!preview) return [] as ValueField[];
+    const order: ValueField[] = [
+      "name",
+      "sku",
+      "barcode",
+      "brand",
+      "category",
+      "unit_type",
+      "units_per_pack",
+      "default_purchase_price",
+      "default_selling_price",
+      "minimum_stock_level",
+      "reorder_level",
+      "initial_stock",
+      "track_batch",
+      "track_expiry",
+      "overselling_policy",
+    ];
+    const used = new Set(preview.rows[0] ? Object.keys(preview.rows[0].values) : []);
+    return order.filter((field) => used.has(field));
+  }, [preview]);
+
+  const previewFieldLabel = (field: ValueField) => PREVIEW_FIELD_LABELS[field] ?? field;
 
   const resetFile = () => {
     setStep("file");
@@ -277,6 +323,13 @@ export default function ImportWizard({
 
     const result: ImportRunResult = { created: 0, updated: 0, skipped: 0, failed: 0, failures: [] };
 
+    // Track product identity already imported during this run so repeated
+    // names/SKUs in the file are skipped instead of colliding with the DB
+    // unique indexes and failing the whole batch.
+    const importedNameKeys = new Set<string>();
+    const importedSkuKeys = new Set<string>();
+    let deDuplicated = 0;
+
     for (const row of preview.rows) {
       if (row.errors.length > 0) {
         result.failed += 1;
@@ -289,6 +342,25 @@ export default function ImportWizard({
 
       // If the brand doesn't exist yet and auto-create is enabled, insert it.
       const finalBrandId = brandId ?? (v.brand ? await ensureBrand(v.brand) : null);
+
+      const nameKey = `${v.name.trim().toLowerCase()}${v.brand ? "|" + v.brand.trim().toLowerCase() : ""}`;
+      const skuKey = v.sku.trim().toLowerCase();
+      if (skuKey && importedSkuKeys.has(skuKey)) {
+        deDuplicated += 1;
+        result.failures.push({
+          rowLabel: `Row ${row.rowIndex}`,
+          message: `Duplicate SKU "${v.sku}" already imported from this file; row skipped.`,
+        });
+        continue;
+      }
+      if (importedNameKeys.has(nameKey)) {
+        deDuplicated += 1;
+        result.failures.push({
+          rowLabel: `Row ${row.rowIndex}`,
+          message: `Duplicate product name "${v.name}" already imported from this file; row skipped.`,
+        });
+        continue;
+      }
 
       const toNumberOrNull = (value: string): number | null => {
         if (!value) return null;
@@ -338,6 +410,8 @@ export default function ImportWizard({
             .eq("organization_id", organizationId);
           if (updateError) throw updateError;
           result.updated += 1;
+          importedNameKeys.add(nameKey);
+          if (skuKey) importedSkuKeys.add(skuKey);
         } else {
           const { data: inserted, error: insertError } = await supabase
             .from("products")
@@ -346,6 +420,8 @@ export default function ImportWizard({
             .single();
           if (insertError) throw insertError;
           result.created += 1;
+          importedNameKeys.add(nameKey);
+          if (skuKey) importedSkuKeys.add(skuKey);
 
           if (initialStock > 0 && inserted?.id) {
             const { error: adjustError } = await supabase.rpc("adjust_inventory", {
@@ -372,7 +448,14 @@ export default function ImportWizard({
       }
     }
 
-    result.skipped = preview.skipCount;
+    if (deDuplicated > 0) {
+      result.failures.push({
+        rowLabel: "Import",
+        message: `${deDuplicated} duplicate row(s) were skipped because a product with the same name or SKU was already imported from this file.`,
+      });
+    }
+
+    result.skipped = preview.skipCount + deDuplicated;
     setImportResult(result);
     setImporting(false);
     setStep("done");
@@ -656,18 +739,19 @@ export default function ImportWizard({
               <span className="rounded bg-success/10 px-2 py-1 text-xs text-success">New: {preview.newCount}</span>
               <span className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">Update: {preview.updateCount}</span>
               <span className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">Skipped: {preview.skipCount}</span>
+              <span className="rounded bg-warning/10 px-2 py-1 text-xs text-warning">Warnings: {preview.warningCount}</span>
               <span className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">Errors: {preview.errorCount}</span>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
               {preview.errorCount > 0
-                ? "Fix the errors below before importing. Rows with errors are skipped automatically."
-                : `Ready to import ${preview.newCount + preview.updateCount} rows.`}
+                ? "Rows with an error are omitted. Everything else is imported — values that could not be read are saved as \"not available\"."
+                : `Ready to import ${preview.newCount + preview.updateCount} rows. Missing or unreadable values are saved as "not available"; new brands are created automatically.`}
             </p>
           </div>
 
           {preview.errorRows.length > 0 && (
             <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
-              <h4 className="mb-2 text-sm font-medium text-destructive">Errors to fix ({preview.errorRows.length})</h4>
+              <h4 className="mb-2 text-sm font-medium text-destructive">Rows that cannot be imported ({preview.errorRows.length})</h4>
               <ul className="max-h-48 space-y-1 overflow-y-auto text-sm text-destructive/90">
                 {preview.errorRows.slice(0, 200).map((row, index) => (
                   <li key={index}>
@@ -687,16 +771,17 @@ export default function ImportWizard({
                 <tr className="border-b border-border text-xs text-muted-foreground">
                   <th className="px-3 py-2 font-medium">Row</th>
                   <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Name</th>
-                  <th className="px-3 py-2 font-medium">SKU</th>
-                  <th className="px-3 py-2 font-medium">Category</th>
-                  <th className="px-3 py-2 font-medium">Brand</th>
+                  {previewPreviewFields.map((field) => (
+                    <th key={field} className="px-3 py-2 font-medium">
+                      {previewFieldLabel(field)}
+                    </th>
+                  ))}
                   <th className="px-3 py-2 font-medium">Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {previewRows.map((row) => {
-                  const status = row.errors.length > 0 ? "error" : row.existingProductId ? (mode === "update" ? "update" : "skipped") : "new";
+                  const status = row.errors.length > 0 ? "error" : row.existingProductId ? (mode === "update" ? "update" : "skipped") : row.warnings.length > 0 ? "warning" : "new";
                   return (
                     <tr key={row.rowIndex} className="border-b border-border/50 align-top">
                       <td className="px-3 py-2 text-muted-foreground">{row.rowIndex}</td>
@@ -709,21 +794,26 @@ export default function ImportWizard({
                                 ? "bg-muted text-muted-foreground"
                                 : status === "update"
                                   ? "bg-primary/10 text-primary"
-                                  : "bg-success/10 text-success"
+                                  : status === "warning"
+                                    ? "bg-warning/10 text-warning"
+                                    : "bg-success/10 text-success"
                           }`}
                         >
                           {STATUS_LABEL[status]}
                         </span>
                       </td>
-                      <td className="px-3 py-2 font-medium text-foreground">{row.values.name || "-"}</td>
-                      <td className="px-3 py-2">{row.values.sku || "-"}</td>
-                      <td className="px-3 py-2">{row.values.category || "-"}</td>
-                      <td className="px-3 py-2">{row.values.brand || "-"}</td>
+                      {previewPreviewFields.map((field) => (
+                        <td key={field} className="px-3 py-2">
+                          {row.values[field] || <span className="text-muted-foreground">-</span>}
+                        </td>
+                      ))}
                       <td className="px-3 py-2 text-xs">
                         {row.errors.length > 0 ? (
                           <span className="text-destructive">{row.errors.join(" ")}</span>
+                        ) : row.warnings.length > 0 ? (
+                          <span className="text-warning">{row.warnings.join(" ")}</span>
                         ) : (
-                          <span className="text-muted-foreground">{row.warnings.join(" ") || "-"}</span>
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </td>
                     </tr>
@@ -731,7 +821,7 @@ export default function ImportWizard({
                 })}
                 {preview.rows.length > MAX_PREVIEW_ROWS && (
                   <tr>
-                    <td colSpan={7} className="px-3 py-2 text-sm text-muted-foreground">
+                    <td colSpan={previewPreviewFields.length + 3} className="px-3 py-2 text-sm text-muted-foreground">
                       ...and {preview.rows.length - MAX_PREVIEW_ROWS} more rows (not shown).
                     </td>
                   </tr>
@@ -741,13 +831,15 @@ export default function ImportWizard({
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button
+                        <button
               type="button"
               onClick={runImport}
-              disabled={importing || preview.errorCount > 0 || preview.newCount + preview.updateCount === 0}
+              disabled={importing || preview.newCount + preview.updateCount === 0}
               className="rounded bg-success px-4 py-2 text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
-              {importing ? "Importing..." : `Import ${preview.newCount + preview.updateCount} rows`}
+              {importing
+                ? "Importing..."
+                : `Import ${preview.newCount + preview.updateCount} rows`}
             </button>
             <button
               type="button"

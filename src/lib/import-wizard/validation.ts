@@ -41,7 +41,21 @@ const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
     "productname",
     "product_name",
   ],
-  sku: ["sku", "code", "item code", "product code", "sku code", "product sku", "stock keeping unit"],
+  sku: [
+    "sku",
+    "code",
+    "item code",
+    "product code",
+    "sku code",
+    "product sku",
+    "stock keeping unit",
+    "serial",
+    "serial number",
+    "serial no",
+    "serial no.",
+    "sr no",
+    "sr #",
+  ],
   barcode: ["barcode", "bar code", "ean", "ean13", "upc", "barcode number"],
   brand: [
     "brand",
@@ -52,6 +66,11 @@ const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
     "company name",
     "supplier brand",
     "brand/company",
+    "store",
+    "store name",
+    "shop",
+    "shop name",
+    "outlet",
   ],
   category: ["category", "category name", "product category", "type"],
   unit_type: [
@@ -103,6 +122,10 @@ const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
     "price/piece",
     "unit price",
     "price per unit",
+    "sale value",
+    "sales value",
+    "retail",
+    "rate",
   ],
   minimum_stock_level: ["minimum stock level", "min stock", "minimum stock", "min stock level"],
   reorder_level: ["reorder level", "reorder point", "reorder qty", "reorder quantity", "reorderlevel"],
@@ -125,6 +148,11 @@ const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
     "onhand",
     "qoh",
     "qty in stock",
+    "pcs",
+    "pieces",
+    "available qty",
+    "available quantity",
+    "in stock",
   ],
 };
 
@@ -262,6 +290,7 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
   let updateCount = 0;
   let skipCount = 0;
   let errorCount = 0;
+  let warningCount = 0;
   const errorRows: { rowIndex: number; message: string }[] = [];
 
   rows.forEach((cells, index) => {
@@ -283,11 +312,11 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
     if (mappedFields.has("name")) {
       const name = values.name;
       if (!name) {
-        errors.push(`Missing required "name" value.`);
+        errors.push(`Missing product name; this row cannot be imported.`);
       } else {
         const nameKey = `${name.trim().toLowerCase()}${values.brand ? "|" + values.brand.trim().toLowerCase() : ""}`;
         if (seenNames.has(nameKey)) {
-          errors.push(`Duplicate product name in file (also on row ${seenNames.get(nameKey)}).`);
+          warnings.push(`Duplicate name in file (also on row ${seenNames.get(nameKey)}); duplicate will be skipped at import.`);
         } else {
           seenNames.set(nameKey, rowIndex);
         }
@@ -297,7 +326,7 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
     if (mappedFields.has("sku") && values.sku) {
       const skuKey = values.sku.trim().toLowerCase();
       if (seenSkus.has(skuKey)) {
-        errors.push(`Duplicate SKU in file (also on row ${seenSkus.get(skuKey)}).`);
+        warnings.push(`Duplicate SKU in file (also on row ${seenSkus.get(skuKey)}); duplicate will be skipped at import.`);
       } else {
         seenSkus.set(skuKey, rowIndex);
       }
@@ -306,7 +335,7 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
     if (mappedFields.has("units_per_pack") && values.units_per_pack) {
       const parsed = parseNumberValue(values.units_per_pack);
       if (parsed === null || !Number.isInteger(parsed) || parsed <= 0) {
-        errors.push(`"Units per pack" must be a positive whole number, got "${values.units_per_pack}".`);
+        warnings.push(`"Units per pack" value "${values.units_per_pack}" is not a positive whole number; imported as not available.`);
       }
     }
 
@@ -314,7 +343,7 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
       if (mappedFields.has(field) && values[field]) {
         const parsed = parseNumberValue(values[field]);
         if (parsed === null || parsed < 0) {
-          errors.push(`Invalid number "${values[field]}" for ${field}.`);
+          warnings.push(`Number "${values[field]}" for ${field} is invalid; imported as not available.`);
         }
       }
     }
@@ -322,7 +351,7 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
     if (mappedFields.has("initial_stock") && values.initial_stock) {
       const parsed = parseNumberValue(values.initial_stock);
       if (parsed === null || parsed < 0) {
-        errors.push(`Invalid initial stock "${values.initial_stock}" (must be a non-negative number).`);
+        warnings.push(`Initial stock "${values.initial_stock}" is invalid; imported as not available.`);
       }
     }
 
@@ -330,7 +359,7 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
       if (mappedFields.has(field) && values[field]) {
         const parsed = parseBoolValue(values[field]);
         if (parsed === null) {
-          errors.push(`Invalid value "${values[field]}" for ${field} (use yes/no/true/false/1/0).`);
+          warnings.push(`Value "${values[field]}" for ${field} is invalid (use yes/no/true/false/1/0); imported as not available.`);
         }
       }
     }
@@ -338,45 +367,50 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
     if (mappedFields.has("overselling_policy") && values.overselling_policy) {
       const parsed = parseOversellingPolicyValue(values.overselling_policy);
       if (parsed === null) {
-        errors.push(`Invalid value "${values.overselling_policy}" for overselling policy (use allow or block).`);
+        warnings.push(`Value "${values.overselling_policy}" for overselling policy is invalid (use allow or block); imported as not available.`);
       }
     }
 
     if (mappedFields.has("brand") && values.brand) {
       if (!brandNames.has(values.brand.trim().toLowerCase())) {
         if (createMissingBrands) {
-          warnings.push(`Brand "${values.brand}" does not exist yet — it will be created automatically on import.`);
+          warnings.push(`Brand "${values.brand}" is new and will be created automatically on import.`);
         } else {
-          errors.push(`Unknown brand "${values.brand}". Create the brand first or fix the name.`);
+          warnings.push(`Brand "${values.brand}" not found; product will be imported without a brand.`);
         }
       }
     }
 
     if (mappedFields.has("category") && values.category) {
       if (!categoryNames.has(values.category.trim().toLowerCase())) {
-        errors.push(`Unknown category "${values.category}". Create the category first or fix the name.`);
+        warnings.push(`Category "${values.category}" not found; product will be imported without a category.`);
       }
     }
 
     const existing = findExistingProduct(values, products, brands);
-    if (existing.product) {
-      if (mode === "skip") {
-        warnings.push(`Already exists in your products (${existing.matchBy === "sku" ? "SKU" : "name"} match). Skipped.`);
-        skipCount += 1;
-      } else {
-        updateCount += 1;
-        if (values.initial_stock) {
-          warnings.push("Initial stock is ignored when updating an existing product (stock is only set on create).");
+
+    // Only importable rows (no hard errors) are counted toward new/update/skip.
+    if (errors.length === 0) {
+      if (existing.product) {
+        if (mode === "skip") {
+          warnings.push(`Already exists in your products (${existing.matchBy === "sku" ? "SKU" : "name"} match). Skipped.`);
+          skipCount += 1;
+        } else {
+          updateCount += 1;
+          if (values.initial_stock) {
+            warnings.push("Initial stock is ignored when updating an existing product (stock is only set on create).");
+          }
         }
+      } else {
+        newCount += 1;
       }
-    } else {
-      newCount += 1;
     }
 
     if (errors.length > 0) {
       errorCount += errors.length;
       errorRows.push({ rowIndex, message: errors.join(" ") });
     }
+    warningCount += warnings.length;
 
     parsedRows.push({
       rowIndex,
@@ -394,6 +428,7 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
     updateCount,
     skipCount,
     errorCount,
+    warningCount,
     errorRows,
   };
 }

@@ -40,6 +40,7 @@ export interface ImportPreviewResult {
   updateCount: number;
   skipCount: number;
   errorCount: number;
+  warningCount: number;
   errorRows: { rowIndex: number; message: string }[];
 }
 
