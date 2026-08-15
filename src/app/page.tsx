@@ -15423,6 +15423,7 @@ export default function Home() {
             paymentsDue={paymentsDue}
             customersToFollowUp={customersToFollowUp}
             expiringProducts={expiringProducts}
+            pendingApprovals={salesOrders.filter((o) => o.status === "pending_approval").length}
             recentActivities={[
               ...recentSalesInvoices.slice(0, 5).map((inv) => ({
                 id: `sale-${inv.id}`,

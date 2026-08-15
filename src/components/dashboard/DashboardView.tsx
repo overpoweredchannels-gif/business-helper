@@ -60,6 +60,7 @@ interface DashboardViewProps {
   lowStockItems?: number;
   customersToFollowUp?: number;
   expiringProducts?: number;
+  pendingApprovals?: number;
   smartModules?: SmartModuleConfig[];
   revenueData?: Array<{ label: string; value: number }>;
   profitData?: Array<{ label: string; value: number }>;
@@ -90,6 +91,7 @@ export function DashboardView({
   lowStockItems = 0,
   customersToFollowUp = 0,
   expiringProducts = 0,
+  pendingApprovals = 0,
   smartModules = [],
   revenueData,
   profitData,
@@ -115,6 +117,7 @@ export function DashboardView({
   const safeLowStock = lowStockAlerts?.count?.toString() ?? "0";
 
   const taskList = [
+    ...(pendingApprovals > 0 ? [{ label: "Pending Approvals", value: pendingApprovals, icon: AlertTriangle, color: "text-warning" }] : []),
     { label: "Invoices Due", value: invoicesDue, icon: Receipt, color: "text-destructive" },
     { label: "Payments Due", value: paymentsDue, icon: DollarSign, color: "text-warning" },
     { label: "Low Stock Items", value: lowStockItems, icon: AlertTriangle, color: "text-warning" },
@@ -189,6 +192,14 @@ export function DashboardView({
             onClick={() => onKPIClick?.("Low Stock Alerts")}
           />
         )}
+        {pendingApprovals > 0 && (
+          <KPICard
+            title="Pending Approvals"
+            value={String(pendingApprovals)}
+            icon={<AlertTriangle className="size-4" />}
+            onClick={() => onKPIClick?.("Pending Approvals")}
+          />
+        )}
         {ordersToday && (
           <KPICard
             title="Orders Today"
@@ -248,13 +259,18 @@ export function DashboardView({
           <h3 className="text-sm font-semibold text-foreground mb-3">Needs Your Attention</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
             {taskList.map((t) => (
-              <div key={t.label} className="flex items-center gap-2.5 p-3 rounded-lg bg-muted">
+              <button
+                key={t.label}
+                type="button"
+                onClick={() => t.label === "Pending Approvals" && onKPIClick?.("Pending Approvals")}
+                className={`flex items-center gap-2.5 p-3 rounded-lg bg-muted text-left ${t.label === "Pending Approvals" ? "cursor-pointer hover:bg-warning/10" : "cursor-default"}`}
+              >
                 <t.icon className={cn("size-5", t.color)} />
                 <div>
                   <p className="text-lg font-semibold text-foreground">{t.value}</p>
                   <p className="text-[10px] text-light-text">{t.label}</p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
