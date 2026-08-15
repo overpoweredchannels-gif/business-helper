@@ -3814,6 +3814,53 @@ export default function Home() {
 
     setSalesError(null);
     setSalesMessage(null);
+
+    // Non-owner staff creating a sale invoice must go through the draft
+    // approval pipeline (pending_approval + owner notification) so the owner
+    // can approve/reject before it becomes a confirmed invoice.
+    if (!isOwnerOrAdmin()) {
+      setSalesInvoiceLoading(true);
+      try {
+        const res = await authorizedFetch("/api/sales/drafts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerId: selectedCustomerIdForSale,
+            items: salesLines
+              .filter((line) => line.product_id)
+              .map((line) => ({
+                productId: line.product_id,
+                quantity: Number(line.quantity),
+                unitPrice: Number(line.selling_price),
+                discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
+              })),
+          }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Failed to create draft sale");
+        setSalesMessage(`Sales order ${data.draft?.so_number ?? ""} created and sent for approval.`);
+        setSelectedCustomerIdForSale(null);
+        setSalesInvoiceNumber("");
+        setSalesInvoiceDate(toDateInputValue(new Date()));
+        setSalesPaymentType("cash");
+        setSalesDiscountAmount("");
+        setSalesDiscountType("flat");
+        setSalesTaxRate("");
+        clearCreditOverrideState();
+        setSalesLines([]);
+        fetchSalesTransactions();
+        fetchSalesItems();
+        fetchSalesOrderItems();
+        fetchSalesOrders();
+      } catch (err) {
+        setSalesError(err instanceof Error ? err.message : "Failed to save sales invoice");
+        console.error("Error creating sales invoice:", err);
+      } finally {
+        setSalesInvoiceLoading(false);
+      }
+      return;
+    }
+
     setSalesInvoiceLoading(true);
 
     try {

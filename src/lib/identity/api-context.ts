@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
-import { createSupabaseUserClient } from "../supabase/server";
+import { createSupabaseService, createSupabaseUserClient } from "../supabase/server";
 import { normalizeRole } from "./permissions";
-import { getRolePermissions } from "./roles";
+import { getRolePermissions, LEGACY_PERMISSION_MAP } from "./roles";
+import { sectionPermissionMap } from "@/lib/tradeos/constants";
 import type { ActorContext } from "./types";
+import type { ModulePermission } from "./types";
 import type { PermissionContext } from "./permissions";
 
 export type ApiActor = ActorContext;
@@ -67,6 +69,47 @@ export async function resolveActor(
   }
 
   const role = normalizeRole(profile.role);
+
+  // Merge fine-grained staff_permissions (the source of truth the owner uses
+  // in Staff & Permissions) so staff on custom roles (e.g. "staff", "sales")
+  // can actually exercise the API actions their granted sections allow.
+  let extraPermissions: string[] = [];
+  try {
+    const service = createSupabaseService();
+    const { data: staffPermRow } = await service
+      .from("staff_permissions")
+      .select("*")
+      .eq("profile_id", profile.id)
+      .eq("organization_id", profile.organization_id)
+      .maybeSingle();
+
+    const row = staffPermRow as Record<string, unknown> | null;
+    for (const [legacyField, permission] of Object.entries(LEGACY_PERMISSION_MAP)) {
+      if (row && row[legacyField] === true) {
+        extraPermissions.push(permission);
+      }
+    }
+    const granted = Array.isArray(row?.granted_sections)
+      ? (row.granted_sections as string[])
+      : [];
+    for (const sectionId of granted) {
+      const required = sectionPermissionMap[sectionId as keyof typeof sectionPermissionMap];
+      if (required && required !== "owner_admin") {
+        const mapped = LEGACY_PERMISSION_MAP[required as keyof typeof LEGACY_PERMISSION_MAP];
+        if (mapped) {
+          extraPermissions.push(mapped);
+        }
+      }
+    }
+  } catch {
+    // Non-fatal: fall back to role-based permissions only
+  }
+
+  const rolePermissions = role ? getRolePermissions(role) : [];
+  const mergedPermissions = Array.from(
+    new Set([...rolePermissions, ...extraPermissions])
+  ) as ModulePermission[];
+
   return {
     actor: {
       profileId: profile.id,
@@ -75,7 +118,7 @@ export async function resolveActor(
       role,
       isOwner: role === "owner",
       isActive: profile.is_active !== false,
-      permissions: role ? getRolePermissions(role) : [],
+      permissions: mergedPermissions,
     },
   };
 }
