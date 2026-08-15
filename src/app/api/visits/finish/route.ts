@@ -24,6 +24,8 @@ export async function POST(request: NextRequest) {
         unitPrice: number;
         discount?: number;
       }>;
+      paymentType?: "cash" | "credit";
+      creditDays?: number;
     };
   };
 

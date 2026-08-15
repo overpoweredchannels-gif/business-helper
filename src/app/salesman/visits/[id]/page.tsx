@@ -220,7 +220,14 @@ export default function VisitDetailPage() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed to finish visit");
-      setSuccess(createDraftSale ? "Visit finished. Draft sale created and sent for approval." : "Visit finished.");
+      const draftCreated = createDraftSale && Boolean(data?.visit?.draftSale);
+      if (createDraftSale && !draftCreated) {
+        setError("Visit finished, but the draft sale could not be created. Please contact your manager.");
+        setItems([]);
+        await loadVisit(employeeId!);
+        return;
+      }
+      setSuccess(draftCreated ? "Visit finished. Draft sale created and sent for approval." : "Visit finished.");
       setItems([]);
       await loadVisit(employeeId!);
     } catch (err) {

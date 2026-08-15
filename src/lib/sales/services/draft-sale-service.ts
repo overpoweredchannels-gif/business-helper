@@ -43,6 +43,13 @@ export interface ApproveResult {
 
 const DRAFT_STATUSES = ["draft", "pending_approval", "approved", "rejected", "cancelled", "converted"];
 
+function addDaysToIsoDate(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return isoDate;
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().split("T")[0];
+}
+
 export class DraftSaleService {
   /**
    * Salesman creates a draft sale (status: draft → pending_approval)
@@ -96,7 +103,7 @@ export class DraftSaleService {
         return { ok: false, error: `Product ${item.productId} not found` };
       }
 
-      totalAmount += item.quantity * item.unitPrice;
+      totalAmount += item.quantity * item.unitPrice - (item.discount ?? 0);
       verifiedItems.push(item);
     }
 
@@ -111,6 +118,8 @@ export class DraftSaleService {
         expected_date: input.expectedDate ?? null,
         notes: input.notes ?? null,
         status: "pending_approval",
+        payment_type: input.paymentType ?? "credit",
+        credit_days: input.creditDays ?? null,
         created_by_profile_id: actor.profileId,
       })
       .select()
@@ -247,7 +256,7 @@ export class DraftSaleService {
       .from("sales_orders")
       .select(`
         id, organization_id, so_number, customer_id, order_date, expected_date, notes,
-        status, created_by_profile_id, created_at,
+        status, payment_type, credit_days, created_by_profile_id, created_at,
         sales_order_items(product_id, quantity_ordered, unit_price, discount)
       `)
       .eq("id", draftId)
@@ -306,6 +315,12 @@ export class DraftSaleService {
 
     const now = new Date().toISOString();
 
+    const paymentType = draft.payment_type === "cash" ? "cash" : "credit";
+    const creditDueDate =
+      paymentType === "credit" && Number(draft.credit_days ?? 0) > 0
+        ? addDaysToIsoDate(draft.order_date ?? now.split("T")[0], Number(draft.credit_days))
+        : null;
+
     // Create sales_transaction (invoice)
     const { data: invoice, error: invoiceError } = await supabase
       .from("sales_transactions")
@@ -314,11 +329,11 @@ export class DraftSaleService {
         customer_id: draft.customer_id,
         invoice_number: invoiceNumber,
         sale_date: draft.order_date ?? now.split("T")[0],
-        payment_type: "credit", // default to credit; can be updated later
-        credit_due_date: null,
+        payment_type: paymentType,
+        credit_due_date: creditDueDate,
+        status: paymentType === "cash" ? "paid" : "confirmed",
         notes: `Converted from draft ${draft.so_number}. ${draft.notes ?? ""}`.trim(),
         total_amount: totalAmount,
-        status: "confirmed",
         invoice_type: "sales",
         created_by_profile_id: draft.created_by_profile_id ?? actor.profileId,
         created_at: now,

@@ -3834,6 +3834,8 @@ export default function Home() {
                 unitPrice: Number(line.selling_price),
                 discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
               })),
+            paymentType: salesPaymentType,
+            creditDays: salesPaymentType === "credit" ? selectedCustomerCreditDays : undefined,
           }),
         });
         const data = await res.json();
@@ -4806,7 +4808,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("sales_orders")
-      .select("id, organization_id, so_number, customer_id, order_date, expected_date, notes, status, created_by_profile_id, created_at, updated_at")
+      .select("id, organization_id, so_number, customer_id, order_date, expected_date, notes, status, payment_type, credit_days, created_by_profile_id, created_at, updated_at")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -17666,6 +17668,11 @@ export default function Home() {
                         <span className={`ml-2 rounded px-2 py-0.5 text-xs capitalize ${statusColor} border border-current/20 bg-muted/30`}>
                           {order.status}
                         </span>
+                        {order.payment_type && (
+                          <span className={`ml-1 rounded px-2 py-0.5 text-xs capitalize border ${order.payment_type === "cash" ? "border-success/30 text-success bg-success/5" : "border-warning/30 text-warning bg-warning/5"}`}>
+                            {order.payment_type}
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button

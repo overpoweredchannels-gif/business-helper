@@ -34,6 +34,8 @@ export interface VisitFinishInput {
       unitPrice: number;
       discount?: number;
     }>;
+    paymentType?: "cash" | "credit";
+    creditDays?: number;
   };
 }
 
@@ -502,6 +504,8 @@ export class CustomerVisitService {
         customer_id: draftData.customerId,
         order_date: new Date().toISOString().split("T")[0],
         status: "pending_approval",
+        payment_type: draftData.paymentType ?? "credit",
+        credit_days: draftData.creditDays ?? null,
         created_by_profile_id: employee?.profile_id ?? actor.profileId,
         notes: `Created from visit ${visit.id}`,
       })
