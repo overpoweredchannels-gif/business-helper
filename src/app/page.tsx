@@ -5130,6 +5130,13 @@ export default function Home() {
   const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform">("invoice");
   const [salesOrderStatusFilter, setSalesOrderStatusFilter] = useState<"all" | "pending_approval">("all");
 
+  useEffect(() => {
+    if (activeSection === "sales" && salesTab === "orders") {
+      fetchSalesOrders(undefined);
+      fetchSalesOrderItems(undefined);
+    }
+  }, [activeSection, salesTab]);
+
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   const [salesOrdersLoading, setSalesOrdersLoading] = useState(false);
   const [salesOrderItems, setSalesOrderItems] = useState<SalesOrderItem[]>([]);
