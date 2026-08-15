@@ -283,7 +283,7 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [productSearch, setProductSearch] = useState("");
-  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [productToView, setProductToView] = useState<Product | null>(null);
   const [productSku, setProductSku] = useState("");
   const [productBarcode, setProductBarcode] = useState("");
@@ -432,7 +432,7 @@ export default function Home() {
   // ── Bulk Add-to-Stock (paste product lines) ────────────────────────────────
   const [bulkStockText, setBulkStockText] = useState("");
   const [bulkStockLines, setBulkStockLines] = useState<
-    Array<{ productId: number; name: string; qty: string; currentStock: number; matched: boolean }>
+    Array<{ productId: string; name: string; qty: string; currentStock: number; matched: boolean }>
   >([]);
   const [bulkStockSubmitting, setBulkStockSubmitting] = useState(false);
   const [bulkStockMessage, setBulkStockMessage] = useState<string | null>(null);
@@ -5970,13 +5970,13 @@ export default function Home() {
       setBulkStockError("You need the Manage Inventory permission to add stock.");
       return;
     }
-    const activeMap = new Map<string, { id: number; name: string }>();
+    const activeMap = new Map<string, { id: string; name: string }>();
     for (const product of activeProducts) {
       activeMap.set(product.name.toLowerCase(), { id: product.id, name: product.name });
       if (product.sku) activeMap.set(product.sku.toLowerCase(), { id: product.id, name: product.name });
       if (product.barcode) activeMap.set(product.barcode.toLowerCase(), { id: product.id, name: product.name });
     }
-    const resolved: Array<{ productId: number; name: string; qty: string; currentStock: number; matched: boolean }> = [];
+    const resolved: Array<{ productId: string; name: string; qty: string; currentStock: number; matched: boolean }> = [];
     const lines = bulkStockText
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -5997,12 +5997,12 @@ export default function Home() {
         }
       }
       if (!lookup || !qty) {
-        resolved.push({ productId: 0, name: `Unparsed: "${line}"`, qty: "", currentStock: 0, matched: false });
+        resolved.push({ productId: "", name: `Unparsed: "${line}"`, qty: "", currentStock: 0, matched: false });
         continue;
       }
       const match = activeMap.get(lookup.toLowerCase());
       if (!match) {
-        resolved.push({ productId: 0, name: lookup, qty, currentStock: 0, matched: false });
+        resolved.push({ productId: "", name: lookup, qty, currentStock: 0, matched: false });
         continue;
       }
       const product = products.find((item) => item.id === match.id);
@@ -6414,7 +6414,7 @@ export default function Home() {
     fetchCategories();
   };
 
-  const handleArchiveProduct = async (productId: number) => {
+  const handleArchiveProduct = async (productId: string) => {
     setMessage(null);
     setError(null);
     if (!requireOrganization("archive product")) {
@@ -19841,7 +19841,7 @@ export default function Home() {
             for (const tx of salesTransactions) {
               txDateById.set(String(tx.id), tx.sale_date ?? tx.created_at ?? null);
             }
-            const soldQty30dById = new Map<number, number>();
+            const soldQty30dById = new Map<string, number>();
             for (const item of salesItems) {
               if (item.status === "cancelled") continue;
               const created = txDateById.get(String(item.sales_transaction_id));

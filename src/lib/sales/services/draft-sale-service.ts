@@ -4,7 +4,7 @@ import { logAuditEvent } from "@/lib/identity/audit";
 import type { ActorContext } from "@/lib/identity/types";
 
 export interface DraftSaleItemInput {
-  productId: number;
+  productId: string;
   quantity: number;
   unitPrice: number;
   discount?: number;

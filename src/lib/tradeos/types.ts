@@ -11,7 +11,7 @@ export interface Category {
 }
 
 export interface Product {
-  id: number;
+  id: string;
   name: string;
   brand_id: string | null;
   category_id: string | null;
@@ -134,7 +134,7 @@ export interface SalesOrder {
 export interface SalesOrderItem {
   id: string;
   sales_order_id: string;
-  product_id: number;
+  product_id: string;
   quantity_ordered: number;
   quantity_delivered: number;
   unit_price: number | null;

@@ -29,7 +29,7 @@ export interface VisitFinishInput {
   draftSaleData?: {
     customerId: string;
     items: Array<{
-      productId: number;
+      productId: string;
       quantity: number;
       unitPrice: number;
       discount?: number;

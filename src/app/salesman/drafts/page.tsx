@@ -15,7 +15,7 @@ interface Draft {
   created_at: string;
   notes?: string | null;
   customers?: { customer_name?: string; shop_name?: string };
-  sales_order_items?: Array<{ product_id: number; quantity_ordered: number; unit_price: number; discount?: number }>;
+  sales_order_items?: Array<{ product_id: string; quantity_ordered: number; unit_price: number; discount?: number }>;
 }
 
 interface Customer {
@@ -26,7 +26,7 @@ interface Customer {
 }
 
 interface Product {
-  id: number;
+  id: string;
   name: string;
   sku?: string;
   current_stock: number;
@@ -34,7 +34,7 @@ interface Product {
 }
 
 interface DraftItem {
-  productId: number;
+  productId: string;
   productName: string;
   quantity: number;
   unitPrice: number;
@@ -135,11 +135,11 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
     }
   };
 
-  const updateQty = (id: number, qty: number) => {
+  const updateQty = (id: string, qty: number) => {
     setItems(items.map((i) => (i.productId === id ? { ...i, quantity: Math.max(1, qty) } : i)));
   };
 
-  const removeItem = (id: number) => {
+  const removeItem = (id: string) => {
     setItems(items.filter((i) => i.productId !== id));
   };
 

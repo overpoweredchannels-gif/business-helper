@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     draftSaleData?: {
       customerId: string;
       items: Array<{
-        productId: number;
+        productId: string;
         quantity: number;
         unitPrice: number;
         discount?: number;

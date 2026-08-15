@@ -31,7 +31,7 @@ interface Visit {
 }
 
 interface Product {
-  id: number;
+  id: string;
   name: string;
   sku?: string;
   unit_type?: string;
@@ -40,7 +40,7 @@ interface Product {
 }
 
 interface DraftItem {
-  productId: number;
+  productId: string;
   productName: string;
   quantity: number;
   unitPrice: number;
@@ -276,11 +276,11 @@ export default function VisitDetailPage() {
     e.target.value = "";
   };
 
-  const updateQty = (id: number, qty: number) => {
+  const updateQty = (id: string, qty: number) => {
     setItems(items.map((i) => (i.productId === id ? { ...i, quantity: Math.max(1, qty) } : i)));
   };
 
-  const removeItem = (id: number) => {
+  const removeItem = (id: string) => {
     setItems(items.filter((i) => i.productId !== id));
   };
 
