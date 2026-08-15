@@ -5082,6 +5082,10 @@ export default function Home() {
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   const [salesOrdersLoading, setSalesOrdersLoading] = useState(false);
   const [salesOrderItems, setSalesOrderItems] = useState<SalesOrderItem[]>([]);
+  const [draftReviewOrder, setDraftReviewOrder] = useState<SalesOrder | null>(null);
+  const [draftReviewAction, setDraftReviewAction] = useState<"approve" | "reject" | null>(null);
+  const [draftReviewReason, setDraftReviewReason] = useState("");
+  const [draftReviewLoading, setDraftReviewLoading] = useState(false);
   const [soCustomerId, setSoCustomerId] = useState("");
   const [soOrderDate, setSoOrderDate] = useState(toDateInputValue(new Date()));
   const [soExpectedDate, setSoExpectedDate] = useState("");
@@ -7849,22 +7853,20 @@ export default function Home() {
     const order = salesOrders.find((item) => item.id === soId);
     if (!order) return;
 
-    let reason: string | null = null;
     if (action === "reject") {
-      reason = window.prompt(`Reject ${order.so_number}? Enter a reason (required):`);
-      if (reason === null) return; // cancelled
-      if (!reason.trim()) {
-        setSoError("A rejection reason is required.");
-        return;
-      }
-    } else {
-      if (!window.confirm(`Approve ${order.so_number}? This converts it into a sales invoice and updates stock.`)) return;
+      setDraftReviewOrder(order);
+      setDraftReviewAction("reject");
+      setDraftReviewReason("");
+      setSoError(null);
+      setSoMessage(null);
+      return;
     }
+
+    if (!window.confirm(`Approve ${order.so_number}? This converts it into a sales invoice and updates stock.`)) return;
 
     setSoError(null);
     setSoMessage(null);
     const body: Record<string, string> = { action };
-    if (action === "reject" && reason) body.reason = reason.trim();
 
     try {
       const res = await authorizedFetch(`/api/sales/drafts/${soId}`, {
@@ -7875,17 +7877,56 @@ export default function Home() {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Action failed");
 
-      if (action === "approve") {
-        setSoMessage(`${order.so_number} approved → invoice ${data.invoiceNumber ?? ""}`);
-      } else {
-        setSoMessage(`${order.so_number} rejected.`);
-      }
+      setSoMessage(`${order.so_number} approved → invoice ${data.invoiceNumber ?? ""}`);
       fetchSalesOrders();
       fetchSalesTransactions();
       fetchRealNotifications();
     } catch (err) {
       setSoError(err instanceof Error ? err.message : "Action failed");
       console.error("Draft approval error:", err);
+    }
+  };
+
+  const submitDraftReview = async () => {
+    if (!draftReviewOrder) return;
+    const order = draftReviewOrder;
+
+    if (draftReviewAction === "reject" && !draftReviewReason.trim()) {
+      setSoError("A rejection reason is required.");
+      return;
+    }
+
+    setDraftReviewLoading(true);
+    setSoError(null);
+    setSoMessage(null);
+    const body: Record<string, string> = { action: draftReviewAction ?? "approve" };
+    if (draftReviewAction === "reject") body.reason = draftReviewReason.trim();
+
+    try {
+      const res = await authorizedFetch(`/api/sales/drafts/${order.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Action failed");
+
+      if (draftReviewAction === "approve") {
+        setSoMessage(`${order.so_number} approved → invoice ${data.invoiceNumber ?? ""}`);
+      } else {
+        setSoMessage(`${order.so_number} rejected.`);
+      }
+      setDraftReviewOrder(null);
+      setDraftReviewAction(null);
+      setDraftReviewReason("");
+      fetchSalesOrders();
+      fetchSalesTransactions();
+      fetchRealNotifications();
+    } catch (err) {
+      setSoError(err instanceof Error ? err.message : "Action failed");
+      console.error("Draft review error:", err);
+    } finally {
+      setDraftReviewLoading(false);
     }
   };
 
@@ -17711,10 +17752,16 @@ export default function Home() {
                           <>
                             <button
                               type="button"
-                              onClick={() => handleDraftApproval(order.id, "approve")}
+                              onClick={() => {
+                                setDraftReviewOrder(order);
+                                setDraftReviewAction("approve");
+                                setDraftReviewReason("");
+                                setSoError(null);
+                                setSoMessage(null);
+                              }}
                               className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
                             >
-                              Approve
+                              Review
                             </button>
                             <button
                               type="button"
@@ -24179,6 +24226,118 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             </div>
           </div>
         )}
+
+        {draftReviewOrder && (() => {
+          const order = draftReviewOrder;
+          const orderItems = salesOrderItems.filter((item) => item.sales_order_id === order.id);
+          const customer = customers.find((c) => c.id === order.customer_id);
+          const total = orderItems.reduce(
+            (sum, item) => sum + Number(item.quantity_ordered) * Number(item.unit_price ?? 0) - Number(item.discount ?? 0),
+            0
+          );
+          return (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center bg-foreground/30 p-4">
+              <div className="w-full max-w-lg rounded-xl border border-border bg-card p-5 shadow-xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">Draft Order Review</h3>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {order.so_number} · by {order.created_by_profile_id ? (
+                        <span className="font-medium text-foreground">{staffProfiles.find((p) => p.id === order.created_by_profile_id)?.display_name ?? "Employee"}</span>
+                      ) : "Employee"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDraftReviewOrder(null)}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Close"
+                  >
+                    <X className="size-5" />
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded border border-border bg-muted/30 p-3">
+                    <div className="text-xs text-muted-foreground">Customer</div>
+                    <div className="mt-0.5 font-medium text-foreground">{customer?.customer_name ?? "Unknown"}</div>
+                  </div>
+                  <div className="rounded border border-border bg-muted/30 p-3">
+                    <div className="text-xs text-muted-foreground">Payment</div>
+                    <div className={`mt-0.5 font-medium capitalize ${order.payment_type === "cash" ? "text-success" : "text-warning"}`}>
+                      {order.payment_type === "cash" ? "Cash" : `Credit${order.credit_days ? ` (${order.credit_days}d)` : ""}`}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded border border-border">
+                  <div className="border-b border-border bg-muted/30 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Items
+                  </div>
+                  <ul className="divide-y divide-border">
+                    {orderItems.length === 0 && <li className="px-3 py-2 text-sm text-muted-foreground">No items on this draft.</li>}
+                    {orderItems.map((item) => {
+                      const product = products.find((p) => String(p.id) === String(item.product_id));
+                      return (
+                        <li key={item.sales_order_id + String(item.product_id)} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                          <span className="min-w-0 truncate text-foreground/90">{product?.name ?? "Unknown Product"}</span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {item.quantity_ordered} × {pkrFormatter.format(Number(item.unit_price ?? 0))}
+                            {Number(item.discount ?? 0) > 0 && <span className="ml-1 text-destructive">-{pkrFormatter.format(Number(item.discount))}</span>}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div className="flex items-center justify-between border-t border-border px-3 py-2 text-sm font-semibold text-foreground">
+                    <span>Total</span>
+                    <span>{pkrFormatter.format(total)}</span>
+                  </div>
+                </div>
+
+                {order.notes && <div className="mt-3 text-xs text-muted-foreground/80">Notes: {order.notes}</div>}
+
+                {draftReviewAction === "reject" && (
+                  <div className="mt-3">
+                    <label className="mb-1 block text-xs font-medium text-foreground/80">Rejection reason (required)</label>
+                    <textarea
+                      value={draftReviewReason}
+                      onChange={(e) => setDraftReviewReason(e.target.value)}
+                      rows={2}
+                      placeholder="Why is this draft being rejected?"
+                      className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                    />
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDraftReviewOrder(null)}
+                    className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => submitDraftReview()}
+                    disabled={draftReviewLoading}
+                    className={cn(
+                      "rounded px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50",
+                      draftReviewAction === "reject" ? "bg-destructive" : "bg-primary"
+                    )}
+                  >
+                    {draftReviewLoading
+                      ? "Working..."
+                      : draftReviewAction === "reject"
+                        ? "Reject Draft"
+                        : "Approve & Convert to Invoice"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
           </div>
     </DashboardLayout>

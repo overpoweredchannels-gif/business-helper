@@ -296,6 +296,11 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
                 <div className="font-medium text-foreground">{d.so_number}</div>
                 <div className="text-xs text-body">{d.customers?.shop_name || d.customers?.customer_name}</div>
                 <div className="text-xs text-light-text mt-0.5">{new Date(d.created_at).toLocaleDateString()}</div>
+                {d.status === "rejected" && d.notes && (
+                  <div className="text-xs text-destructive mt-1 line-clamp-2">
+                    {d.notes.replace(/^\[Rejected:\s*|\]\s*$/g, "").trim()}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <StatusBadge status={d.status} />
