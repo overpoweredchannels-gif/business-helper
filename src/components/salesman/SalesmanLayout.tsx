@@ -4,41 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, MapPin, ClipboardList, Banknote, Bell, User,
-  LogOut, Menu, X, Route as RouteIcon, MessageSquareText, Clock, Target, CalendarClock,
-  Settings2,
+  LayoutDashboard, LogOut, Menu, X, Settings2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { useState } from "react";
 import { navigationItems } from "@/lib/tradeos/constants";
-
-const NAV_ITEMS = [
-  { href: "/salesman", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/salesman/visits", label: "Visits", icon: MapPin },
-  { href: "/salesman/routes", label: "My Routes", icon: RouteIcon },
-  { href: "/salesman/drafts", label: "Draft Sales", icon: ClipboardList },
-  { href: "/salesman/collections", label: "Collections", icon: Banknote },
-  { href: "/salesman/feedback", label: "Feedback", icon: MessageSquareText },
-  { href: "/salesman/targets", label: "My Targets", icon: Target },
-  { href: "/salesman/attendance", label: "Attendance", icon: Clock },
-  { href: "/salesman/leave", label: "Leave", icon: CalendarClock },
-  { href: "/salesman/notifications", label: "Notifications", icon: Bell },
-  { href: "/salesman/profile", label: "Profile", icon: User },
-];
-
-const BUSINESS_NAV_EXCLUDE = new Set([
-  "dashboard",
-  "visits",
-  "routes",
-  "drafts",
-  "collections",
-  "feedback",
-  "targets",
-  "attendance",
-  "leave",
-  "notifications",
-  "profile",
-]);
 
 interface SalesmanLayoutProps {
   organizationName?: string | null;
@@ -57,11 +27,18 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
     router.push("/login");
   };
 
+  // The employee sidebar intentionally shows ONLY the business ledgers the
+  // owner has granted via Staff & Permissions, plus a Dashboard link. Field
+  // menus (visits, drafts, collections, etc.) are reached from the dashboard
+  // quick actions, not from the sidebar.
   const grantedNavItems = navigationItems
-    .filter((item) => grantedSections.includes(item.id) && !BUSINESS_NAV_EXCLUDE.has(item.id))
+    .filter((item) => grantedSections.includes(item.id))
     .map((item) => ({ href: `/#${item.id}`, label: item.label, icon: Settings2 }));
 
-  const navItems = [...NAV_ITEMS, ...grantedNavItems];
+  const navItems = [
+    { href: "/salesman", label: "Dashboard", icon: LayoutDashboard },
+    ...grantedNavItems,
+  ];
 
   const content = (
     <aside className="flex flex-col bg-card border-r border-border transition-all duration-300 h-full w-64">

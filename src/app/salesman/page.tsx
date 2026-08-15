@@ -5,9 +5,8 @@ import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { EmployeeLiveTracking } from "@/components/dashboard";
 import {
-  MapPin, ClipboardList, Route as RouteIcon, Bell, Users, Loader2,
-  CheckCircle2, XCircle, Clock as ClockIcon, ChevronRight, TrendingUp, Banknote,
-  AlertCircle,
+  MapPin, ClipboardList, Route as RouteIcon, Bell, Loader2,
+  CheckCircle2, ChevronRight, Banknote, AlertCircle, User, Briefcase, Hash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +45,7 @@ interface NotificationItem {
 export default function SalesmanDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [me, setMe] = useState<any>(null);
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [meLoadError, setMeLoadError] = useState(false);
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -57,8 +57,11 @@ export default function SalesmanDashboard() {
     try {
       const res = await authorizedFetch("/api/identity/staff/me");
       const data = await res.json();
-      if (data.ok && data.me?.employee) {
-        setEmployeeId(data.me.employee.id);
+      if (data.ok && data.me) {
+        setMe(data.me);
+        if (data.me.employee) {
+          setEmployeeId(data.me.employee.id);
+        }
       } else {
         setMeLoadError(true);
       }
@@ -131,6 +134,11 @@ export default function SalesmanDashboard() {
     weekday: "long", month: "long", day: "numeric", year: "numeric",
   });
 
+  const profile = me?.profile ?? {};
+  const employee = me?.employee ?? {};
+  const profileName = employee.full_name || profile.display_name || profile.full_name || null;
+  const profileDesignation = employee.designation || profile.role || "staff";
+
   const activeVisit = visits.find((v) => v.visit_status === "in_progress");
   const completedCount = visits.filter((v) => v.visit_status === "completed").length;
   const upcomingCount = visits.filter((v) => v.visit_status === "planned").length;
@@ -159,6 +167,28 @@ export default function SalesmanDashboard() {
       {error && (
         <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">{error}</div>
       )}
+
+      {/* Profile summary */}
+      <div className="rounded-2xl border border-border bg-card p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="size-14 rounded-2xl bg-primary flex items-center justify-center font-heading font-bold text-xl text-primary-foreground shrink-0">
+          {(profileName ?? "S").slice(0, 1).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-heading font-bold text-lg text-foreground truncate">{profileName ?? "Staff Member"}</div>
+          <div className="text-sm text-body capitalize">{profileDesignation.replace(/_/g, " ")}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-light-text">
+            {employee.employee_id && (
+              <span className="inline-flex items-center gap-1"><Hash className="size-3" /> {employee.employee_id}</span>
+            )}
+            {me?.organization?.name && (
+              <span className="inline-flex items-center gap-1"><Briefcase className="size-3" /> {me.organization.name}</span>
+            )}
+            {employee.phone && (
+              <span className="inline-flex items-center gap-1"><User className="size-3" /> {employee.phone}</span>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -192,9 +222,6 @@ export default function SalesmanDashboard() {
           </Link>
         </div>
       )}
-
-      {/* Live tracking */}
-      <EmployeeLiveTracking />
 
       {/* Quick actions */}
       <div>
@@ -273,6 +300,9 @@ export default function SalesmanDashboard() {
           </ul>
         )}
       </Section>
+
+      {/* Live tracking (always at the bottom) */}
+      <EmployeeLiveTracking />
     </div>
   );
 }
