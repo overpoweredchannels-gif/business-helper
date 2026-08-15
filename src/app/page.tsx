@@ -4867,9 +4867,11 @@ export default function Home() {
 
     if (error) {
       console.error("Supabase fetch sales orders error:", error);
+      setSalesOrdersError(`Failed to load sales orders: ${error.message}`);
       return;
     }
 
+    setSalesOrdersError(null);
     setSalesOrders(data ?? []);
   };
 
@@ -4895,6 +4897,7 @@ export default function Home() {
         .eq("organization_id", orgId);
       if (soError) {
         console.error("Supabase fetch sales order ids error:", soError);
+        setSalesOrdersError(`Failed to load sales order items: ${soError.message}`);
         return;
       }
       ids = (soRows ?? []).map((row) => row.id);
@@ -4913,9 +4916,11 @@ export default function Home() {
 
     if (error) {
       console.error("Supabase fetch sales order items error:", error);
+      setSalesOrdersError(`Failed to load sales order items: ${error.message}`);
       return;
     }
 
+    setSalesOrdersError(null);
     setSalesOrderItems(data ?? []);
   };
 
@@ -5130,15 +5135,21 @@ export default function Home() {
   const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform">("invoice");
   const [salesOrderStatusFilter, setSalesOrderStatusFilter] = useState<"all" | "pending_approval">("all");
 
+  const refreshSalesOrders = async () => {
+    await fetchSalesOrders(undefined);
+    await fetchSalesOrderItems(undefined);
+  };
+
   useEffect(() => {
     if (activeSection === "sales" && salesTab === "orders") {
-      fetchSalesOrders(undefined);
-      fetchSalesOrderItems(undefined);
+      refreshSalesOrders();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, salesTab]);
 
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   const [salesOrdersLoading, setSalesOrdersLoading] = useState(false);
+  const [salesOrdersError, setSalesOrdersError] = useState<string | null>(null);
   const [salesOrderItems, setSalesOrderItems] = useState<SalesOrderItem[]>([]);
   const [draftReviewOrder, setDraftReviewOrder] = useState<SalesOrder | null>(null);
   const [draftReviewAction, setDraftReviewAction] = useState<"approve" | "reject" | null>(null);
@@ -15269,6 +15280,7 @@ export default function Home() {
             handleSectionChange("sales");
             setSalesTab("orders");
             setSalesOrderStatusFilter("pending_approval");
+            refreshSalesOrders();
             return;
           }
           if (n.section) handleSectionChange(n.section as SectionId);
@@ -17738,6 +17750,8 @@ export default function Home() {
           </div>
           {salesOrdersLoading ? (
             <p className="text-sm text-muted-foreground">Loading sales orders...</p>
+          ) : salesOrdersError ? (
+            <p className="text-sm text-destructive">{salesOrdersError}</p>
           ) : salesOrders.length === 0 ? (
             <p className="text-sm text-muted-foreground">No sales orders found.</p>
           ) : (
@@ -23370,6 +23384,7 @@ export default function Home() {
               handleSectionChange("sales");
               setSalesTab("orders");
               setSalesOrderStatusFilter("pending_approval");
+              refreshSalesOrders();
             }}
           />
         </section>
@@ -24274,6 +24289,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                     handleSectionChange("sales");
                     setSalesTab("orders");
                     setSalesOrderStatusFilter("pending_approval");
+                    refreshSalesOrders();
                   }}
                   className="mt-2 rounded bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90"
                 >
