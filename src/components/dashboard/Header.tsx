@@ -212,6 +212,16 @@ export function Header({
                     })}
                   </div>
                 )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNotificationClick?.({ id: "notifications-center", title: "View all notifications", section: "notifications" });
+                    setNotifOpen(false);
+                  }}
+                  className="w-full text-center rounded-lg px-3 py-2 text-xs font-medium text-primary hover:bg-muted transition-colors"
+                >
+                  View all notifications
+                </button>
               </div>
             )}
           </div>

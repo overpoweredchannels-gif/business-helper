@@ -514,6 +514,9 @@ export default function Home() {
   const aiVoiceLastAutoSentRef = useRef<{ text: string; sentAt: number }>({ text: "", sentAt: 0 });
   const [aiAlerts, setAiAlerts] = useState<AiAlert[]>([]);
   const [realNotifications, setRealNotifications] = useState<NotificationItem[]>([]);
+  const [notificationHistory, setNotificationHistory] = useState<NotificationItem[]>([]);
+  const [notificationFilter, setNotificationFilter] = useState<"all" | "unread" | "draft_sale" | "approval">("all");
+  const [notificationHistoryLoading, setNotificationHistoryLoading] = useState(false);
   const [saleAlert, setSaleAlert] = useState<NotificationItem | null>(null);
   const [aiDailyBriefings, setAiDailyBriefings] = useState<AiDailyBriefing[]>([]);
   const [aiBriefingMessage, setAiBriefingMessage] = useState<string | null>(null);
@@ -950,6 +953,54 @@ export default function Home() {
       }
     } catch (err) {
       console.warn("fetch notifications error:", err);
+    }
+  };
+
+    const fetchNotificationHistory = async (organizationId?: string | null) => {
+    if (!currentProfile) return;
+    setNotificationHistoryLoading(true);
+    try {
+      const response = await authorizedFetch("/api/notifications?limit=100");
+      const data = await response.json();
+      if (data.ok && Array.isArray(data.notifications)) {
+        setNotificationHistory(data.notifications as NotificationItem[]);
+      }
+    } catch (err) {
+      console.warn("fetch notification history error:", err);
+    } finally {
+      setNotificationHistoryLoading(false);
+    }
+  };
+
+  const markNotificationsRead = async (id?: string, markAll = false) => {
+    try {
+      const response = await authorizedFetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(markAll ? { action: "mark_all_read" } : { id }),
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || "Failed to update notification");
+      await fetchRealNotifications();
+      await fetchNotificationHistory();
+    } catch (err) {
+      console.warn("mark notification read error:", err);
+    }
+  };
+
+  const deleteNotification = async (id: string) => {
+    try {
+      const response = await authorizedFetch("/api/notifications", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || "Failed to delete notification");
+      await fetchRealNotifications();
+      await fetchNotificationHistory();
+    } catch (err) {
+      console.warn("delete notification error:", err);
     }
   };
 
@@ -23306,7 +23357,13 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "notifications" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <NotificationCenter />
+          <NotificationCenter
+            onReviewDraft={() => {
+              handleSectionChange("sales");
+              setSalesTab("orders");
+              setSalesOrderStatusFilter("pending_approval");
+            }}
+          />
         </section>
         )}
 
