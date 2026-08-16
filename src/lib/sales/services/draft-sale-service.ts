@@ -352,6 +352,7 @@ export class DraftSaleService {
       quantity: Number(item.quantity_ordered),
       selling_price: Number(item.unit_price ?? 0),
       discount: Number(item.discount ?? 0),
+      organization_id: actor.organizationId,
       created_at: now,
     }));
 

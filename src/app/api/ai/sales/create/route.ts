@@ -137,6 +137,7 @@ export async function POST(req: NextRequest) {
         product_id: product_id,
         quantity: Number(quantity),
         selling_price: Number(selling_price),
+        organization_id: organizationId,
         created_at: now,
       })
       .select("id")

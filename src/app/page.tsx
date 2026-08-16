@@ -3176,6 +3176,7 @@ export default function Home() {
         quantity,
         selling_price: sellingPrice,
         purchase_price_snapshot: getLatestPurchasePriceSnapshotForProduct(productId),
+        organization_id: currentOrganizationId,
       });
 
       if (itemError) {
