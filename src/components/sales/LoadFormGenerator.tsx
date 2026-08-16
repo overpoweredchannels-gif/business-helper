@@ -8,7 +8,7 @@ import type { LoadFormSummary } from "@/lib/sales/load-form-service";
 interface LoadFormLine {
   product_id: number | string;
   product_name: string;
-  packing: string;
+  unit_type: string | null;
   cartons: number;
   pcs: number;
   bonus: number;
@@ -319,9 +319,11 @@ export default function LoadFormGenerator() {
           </div>
           {summary.salesmen.map((sm) => (
             <div key={sm.salesman_id} className="overflow-hidden rounded border border-border">
-              <div className="bg-primary/5 px-4 py-2 text-sm font-semibold text-foreground">
-                {sm.salesman_name}
-              </div>
+              {summary.groupBySalesman && (
+                <div className="bg-primary/5 px-4 py-2 text-sm font-semibold text-foreground">
+                  {sm.salesman_name}
+                </div>
+              )}
               {(summary.groupBy === "brand" ? sm.brands : sm.customers).map((grp) => (
                 <div key={groupTitle(grp)} className="border-t border-border">
                   <div className="bg-muted/30 px-4 py-1.5 text-xs font-medium text-muted-foreground">
@@ -331,7 +333,7 @@ export default function LoadFormGenerator() {
                     <thead className="text-[11px] uppercase text-muted-foreground">
                       <tr>
                         <th className="px-4 py-1.5">Product</th>
-                        <th className="px-2 py-1.5 text-right">Packing</th>
+                        <th className="px-2 py-1.5 text-right">Unit</th>
                         <th className="px-2 py-1.5 text-right">Cartons</th>
                         <th className="px-2 py-1.5 text-right">Pcs</th>
                         <th className="px-2 py-1.5 text-right">Bns</th>
@@ -342,7 +344,7 @@ export default function LoadFormGenerator() {
                       {grp.lines.map((line, i) => (
                         <tr key={i}>
                           <td className="px-4 py-1.5 text-foreground">{line.product_name}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">{line.packing}</td>
+                          <td className="px-2 py-1.5 text-right">{line.unit_type ?? ""}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{trim(line.cartons)}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{trim(line.pcs)}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{trim(line.bonus)}</td>
@@ -365,10 +367,12 @@ export default function LoadFormGenerator() {
                   </table>
                 </div>
               ))}
-              <div className="flex justify-between border-t border-border bg-primary/5 px-4 py-2 text-sm font-semibold text-foreground">
-                <span>{sm.salesman_name} Total</span>
-                <span className="tabular-nums">{fmt(sm.total_value)}</span>
-              </div>
+              {summary.groupBySalesman && (
+                <div className="flex justify-between border-t border-border bg-primary/5 px-4 py-2 text-sm font-semibold text-foreground">
+                  <span>{sm.salesman_name} Total</span>
+                  <span className="tabular-nums">{fmt(sm.total_value)}</span>
+                </div>
+              )}
             </div>
           ))}
           <div className="grid grid-cols-2 gap-2 border-t border-border bg-muted/30 p-3 text-sm sm:grid-cols-3">

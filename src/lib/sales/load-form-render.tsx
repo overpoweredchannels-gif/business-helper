@@ -5,7 +5,7 @@
 // No data is fetched here; the caller supplies everything.
 
 import React from "react";
-import type { LoadFormSummary, LoadFormCustomerGroup, LoadFormBrandGroup } from "./load-form-service";
+import type { LoadFormSummary, LoadFormLine, LoadFormCustomerGroup, LoadFormBrandGroup } from "./load-form-service";
 import { getLoadFormTemplate } from "./load-form-template";
 
 export interface LoadFormRenderProps {
@@ -28,6 +28,23 @@ function groupKey(g: Group): string {
 
 function isBrand(g: Group): boolean {
   return "brand_name" in g;
+}
+
+function columnValue(key: string, line: LoadFormLine): string {
+  switch (key) {
+    case "product":
+      return line.product_name;
+    case "unit":
+      return line.unit_type || "";
+    case "cartons":
+      return trim(line.cartons);
+    case "pcs":
+      return trim(line.pcs);
+    case "bonus":
+      return trim(line.bonus);
+    default:
+      return "";
+  }
 }
 
 function trim(n: number): string {
@@ -55,14 +72,16 @@ export function LoadFormDocument({
 
   const rule = `1px solid ${page.rule}`;
   const metaLine = [
-    header.showSalesman && {
-      label: "Salesman",
-      value: salesmanLabels || "(All salesmen)",
-    },
-    header.showCustomer && {
-      label: "Customer",
-      value: customerLabels || "(All customers)",
-    },
+    header.showSalesman &&
+      salesmanLabels && {
+        label: "Salesman",
+        value: salesmanLabels,
+      },
+    header.showCustomer &&
+      customerLabels && {
+        label: "Customer",
+        value: customerLabels,
+      },
     header.showDate && {
       label: header.dateLabel,
       value: rangeLabel || "—",
@@ -105,9 +124,12 @@ export function LoadFormDocument({
       </div>
 
       {/* ---------------------------- Product body --------------------------- */}
-      {summary.salesmen.map((sm) => (
-        <div key={sm.salesman_id} style={{ marginTop: t.spacing.salesmanGapPx }}>
-          {salesman.showSalesmanSection && (
+      {summary.salesmen.map((sm, si) => (
+        <div
+          key={sm.salesman_id}
+          style={{ marginTop: si === 0 ? 0 : t.spacing.salesmanGapPx }}
+        >
+          {summary.groupBySalesman && salesman.showSalesmanSection && (
             <div style={{ fontSize: salesman.sizePx, fontWeight: 700 }}>
               {salesman.label}: {sm.salesman_name}
             </div>
@@ -146,11 +168,17 @@ export function LoadFormDocument({
                     lineHeight: 1.25,
                   }}
                 >
-                  <span style={{ width: `${cols.labels[0]!.widthPct}%` }}>{line.product_name}</span>
-                  <span style={{ width: `${cols.labels[1]!.widthPct}%`, textAlign: "right" }}>{line.packing}</span>
-                  <span style={{ width: `${cols.labels[2]!.widthPct}%`, textAlign: "right" }}>{trim(line.cartons)}</span>
-                  <span style={{ width: `${cols.labels[3]!.widthPct}%`, textAlign: "right" }}>{trim(line.pcs)}</span>
-                  <span style={{ width: `${cols.labels[4]!.widthPct}%`, textAlign: "right" }}>{trim(line.bonus)}</span>
+                  {cols.labels.map((c) => (
+                    <span
+                      key={c.key}
+                      style={{
+                        width: `${c.widthPct}%`,
+                        textAlign: c.key === "product" ? "left" : "right",
+                      }}
+                    >
+                      {columnValue(c.key, line)}
+                    </span>
+                  ))}
                 </div>
               ))}
 
@@ -174,7 +202,7 @@ export function LoadFormDocument({
             </div>
           ))}
 
-          {salesman.showSalesmanTotal && (
+          {summary.groupBySalesman && salesman.showSalesmanTotal && (
             <div style={{ display: "flex", fontSize: salesman.sizePx, fontWeight: 700, marginTop: 4 }}>
               <span style={{ width: `${cols.labels[0]!.widthPct}%` }}>{salesman.salesmanTotalLabel}</span>
               <span style={{ width: `${100 - cols.labels[0]!.widthPct}%`, textAlign: "right" }}>

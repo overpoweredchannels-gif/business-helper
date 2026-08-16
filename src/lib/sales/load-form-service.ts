@@ -34,8 +34,8 @@ export interface LoadFormLine {
   product_id: number | string;
   product_name: string;
   units_per_pack: number | null;
-  /** Display packing: e.g. "24" (units per pack). */
-  packing: string;
+  /** The recommended unit type assigned to the product, e.g. "Cottons", "Boxes", "Packets", "Pieces". */
+  unit_type: string | null;
   cartons: number;
   pcs: number;
   bonus: number;
@@ -75,6 +75,12 @@ export interface LoadFormSummary {
   org_address: string;
   org_phone: string;
   groupBy: LoadFormGroupBy;
+  /**
+   * true when the user filtered to specific salesmen (per-salesman sections +
+   * per-salesman totals are shown). false when "all salesmen" is selected, in
+   * which case the whole load form is a single flow grouped by brand only.
+   */
+  groupBySalesman: boolean;
   salesmen: LoadFormSalesmanGroup[];
   grand_total: number;
   grand_bonus: number;
@@ -95,6 +101,7 @@ interface SalesRowRow {
   discount: number;
   products: {
     name: string;
+    unit_type: string | null;
     units_per_pack: number | null;
     brands: { id: string; name: string } | null;
   } | null;
@@ -115,7 +122,7 @@ async function fetchRows(supabase: SupabaseClient, filters: LoadFormFilters): Pr
        bonus,
        selling_price,
        discount,
-       products!inner(name, units_per_pack, brands(id, name)),
+       products!inner(name, unit_type, units_per_pack, brands(id, name)),
        sales_transactions!inner(
          customer_id,
          created_by_profile_id,
@@ -155,7 +162,7 @@ interface LineAgg {
   product_id: number | string;
   product_name: string;
   units_per_pack: number | null;
-  packing: string;
+  unit_type: string | null;
   cartons: number;
   pcs: number;
   bonus: number;
@@ -178,13 +185,21 @@ export async function buildLoadForm(
     return { ok: false, error: err instanceof Error ? err.message : "Failed to load sales" };
   }
 
-  const salesmanIds = [
-    ...new Set(
-      rows
-        .map((r) => r.sales_transactions?.created_by_profile_id)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  ];
+  // When the user selects "all salesmen" (no salesman filter), the load form is
+  // a single flow grouped by brand only — no per-salesman sections and no
+  // "Unknown Salesman" bucket. When specific salesmen are filtered, each
+  // salesman gets their own section.
+  const groupBySalesman = Boolean(filters.salesmanIds && filters.salesmanIds.length > 0);
+
+  const salesmanIds = groupBySalesman
+    ? [
+        ...new Set(
+          rows
+            .map((r) => r.sales_transactions?.created_by_profile_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ]
+    : [];
 
   // Resolve salesman display names.
   let profileNames: Record<string, string> = {};
@@ -217,9 +232,9 @@ export async function buildLoadForm(
     const product = row.products;
     if (!tx || !product) continue;
 
-    const sid = tx.created_by_profile_id ?? "unassigned";
+    const sid = groupBySalesman ? (tx.created_by_profile_id ?? "unassigned") : "__all__";
     if (!salesmanName.has(sid)) {
-      salesmanName.set(sid, profileNames[sid] ?? "Unknown Salesman");
+      salesmanName.set(sid, groupBySalesman ? (profileNames[sid] ?? "Unknown Salesman") : "All Salesmen");
       salesmanOrder.push(sid);
     }
 
@@ -263,7 +278,7 @@ export async function buildLoadForm(
       product_id: pid,
       product_name: product.name,
       units_per_pack: product.units_per_pack ?? null,
-      packing: perPack > 0 ? String(perPack) : "",
+      unit_type: product.unit_type ?? null,
       cartons: 0,
       pcs: 0,
       bonus: 0,
@@ -350,6 +365,7 @@ export async function buildLoadForm(
       org_address: orgAddress,
       org_phone: orgPhone,
       groupBy,
+      groupBySalesman,
       salesmen,
       grand_total: grandTotal,
       grand_bonus: grandBonus,

@@ -51,7 +51,7 @@ export interface LoadFormTemplate {
 
   columns: {
     /** Column headers, left to right, uppercase on print. */
-    labels: { key: "product" | "packing" | "cartons" | "pcs" | "bonus"; label: string; widthPct: number }[];
+    labels: { key: "product" | "unit" | "cartons" | "pcs" | "bonus"; label: string; widthPct: number }[];
     headerSizePx: number;
     rowSizePx: number;
     /** Uppercase the column headers. */
@@ -137,7 +137,7 @@ export const loadFormTemplates: Record<string, LoadFormTemplate> = {
     columns: {
       labels: [
         { key: "product", label: "Product Name", widthPct: 46 },
-        { key: "packing", label: "Packing", widthPct: 14 },
+        { key: "unit", label: "Unit", widthPct: 14 },
         { key: "cartons", label: "Cartons", widthPct: 13 },
         { key: "pcs", label: "Pcs", widthPct: 13 },
         { key: "bonus", label: "Bns", widthPct: 14 },
