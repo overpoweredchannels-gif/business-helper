@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   const organizationId = permission.actor.organizationId;
   const supabase = createSupabaseService();
 
-  const [customersRes, employeesRes] = await Promise.all([
+  const [customersRes, employeesRes, brandsRes] = await Promise.all([
     supabase
       .from("customers")
       .select("id, customer_name, shop_name")
@@ -28,6 +28,11 @@ export async function GET(request: NextRequest) {
       .in("designation", SALES_DESIGNATIONS)
       .eq("is_active", true)
       .order("full_name", { ascending: true }),
+    supabase
+      .from("brands")
+      .select("id, name")
+      .eq("organization_id", organizationId)
+      .order("name", { ascending: true }),
   ]);
 
   const customers = (customersRes.data ?? []).map((c) => ({
@@ -39,5 +44,7 @@ export async function GET(request: NextRequest) {
     .filter((e) => e.profile_id)
     .map((e) => ({ id: e.profile_id, label: e.full_name }));
 
-  return NextResponse.json({ ok: true, customers, salesmen });
+  const brands = (brandsRes.data ?? []).map((b) => ({ id: b.id, label: b.name }));
+
+  return NextResponse.json({ ok: true, customers, salesmen, brands });
 }

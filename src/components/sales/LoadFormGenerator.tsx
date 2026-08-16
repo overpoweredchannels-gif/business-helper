@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { LoadFormDocument } from "@/lib/sales/load-form-render";
+import type { LoadFormSummary } from "@/lib/sales/load-form-service";
 
 interface LoadFormLine {
   product_id: number | string;
@@ -30,26 +32,6 @@ interface LoadFormBrand {
   bonus_value: number;
 }
 
-interface LoadFormSalesman {
-  salesman_id: string;
-  salesman_name: string;
-  customers: LoadFormCustomer[];
-  brands: LoadFormBrand[];
-  total_value: number;
-  bonus_value: number;
-}
-
-interface LoadFormSummary {
-  org_name: string;
-  org_address: string;
-  org_phone: string;
-  groupBy: "brand" | "customer";
-  salesmen: LoadFormSalesman[];
-  grand_total: number;
-  grand_bonus: number;
-  grand_net: number;
-}
-
 interface Option {
   id: string;
   label: string;
@@ -74,6 +56,8 @@ export default function LoadFormGenerator() {
   const [summary, setSummary] = useState<LoadFormSummary | null>(null);
   const [generated, setGenerated] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
+  const [brands, setBrands] = useState<Option[]>([]);
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +68,7 @@ export default function LoadFormGenerator() {
         if (data?.ok) {
           if (Array.isArray(data.customers)) setCustomers(data.customers);
           if (Array.isArray(data.salesmen)) setSalesmen(data.salesmen);
+          if (Array.isArray(data.brands)) setBrands(data.brands);
         }
       })
       .catch(() => {
@@ -134,6 +119,7 @@ export default function LoadFormGenerator() {
       const params = new URLSearchParams();
       if (selectedCustomers.length > 0) params.set("customer_ids", selectedCustomers.join(","));
       if (selectedSalesmen.length > 0) params.set("salesman_ids", selectedSalesmen.join(","));
+      if (selectedBrands.length > 0) params.set("brand_ids", selectedBrands.join(","));
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
       params.set("group_by", groupBy);
@@ -157,6 +143,10 @@ export default function LoadFormGenerator() {
     .map((id) => salesmen.find((s) => s.id === id)?.label)
     .filter(Boolean)
     .join(", ");
+  const brandLabels = selectedBrands
+    .map((id) => brands.find((b) => b.id === id)?.label)
+    .filter(Boolean)
+    .join(", ");
 
   const totalLines = () =>
     summary?.salesmen.reduce((s, sm) => s + (sm.brands.length > 0 ? sm.brands : sm.customers).reduce((c, g) => c + g.lines.length, 0), 0) ?? 0;
@@ -170,7 +160,7 @@ export default function LoadFormGenerator() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded border border-border bg-muted/30 p-4">
           <h3 className="mb-2 text-sm font-medium text-foreground">Customers</h3>
           {customers.length === 0 ? (
@@ -207,6 +197,27 @@ export default function LoadFormGenerator() {
                     className="accent-primary"
                   />
                   <span className="truncate">{s.label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded border border-border bg-muted/30 p-4">
+          <h3 className="mb-2 text-sm font-medium text-foreground">Brands</h3>
+          {brands.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Loading brands...</p>
+          ) : (
+            <div className="max-h-52 overflow-y-auto space-y-1">
+              {brands.map((b) => (
+                <label key={b.id} className="flex items-center gap-2 text-sm text-foreground/80">
+                  <input
+                    type="checkbox"
+                    checked={selectedBrands.includes(b.id)}
+                    onChange={() => toggle(selectedBrands, b.id, setSelectedBrands)}
+                    className="accent-primary"
+                  />
+                  <span className="truncate">{b.label}</span>
                 </label>
               ))}
             </div>
@@ -295,6 +306,12 @@ export default function LoadFormGenerator() {
                 · <span className="font-semibold">Salesmen:</span> {salesmanLabels}
               </>
             )}
+            {brandLabels && (
+              <>
+                {" "}
+                · <span className="font-semibold">Brands:</span> {brandLabels}
+              </>
+            )}
             {" "}
             · <span className="font-semibold">{totalLines()}</span> line items across{" "}
             {summary.salesmen.length} salesman{summary.salesmen.length > 1 ? "s" : ""}, grouped by{" "}
@@ -373,7 +390,7 @@ export default function LoadFormGenerator() {
 
       {showPrint && summary && (
         <div className="load-form-print-root fixed inset-0 z-[100] overflow-y-auto bg-foreground/20 p-4">
-          <div className="mx-auto max-w-3xl rounded border border-border bg-white shadow-xl">
+          <div className="mx-auto max-w-[210mm] rounded border border-border bg-white shadow-xl">
             <div className="mb-3 flex justify-between border-b border-border px-4 py-3 print:hidden">
               <button
                 onClick={() => setShowPrint(false)}
@@ -382,19 +399,21 @@ export default function LoadFormGenerator() {
                 Close
               </button>
               <button onClick={() => window.print()} className="rounded bg-primary px-4 py-2 text-sm text-white">
-                Print
+                Print / Save PDF
               </button>
             </div>
             <LoadFormDocument
               summary={summary}
+              templateId="default"
               customerLabels={customerLabels}
               salesmanLabels={salesmanLabels}
               rangeLabel={rangeLabel()}
             />
           </div>
           <style>{`
+            @page { size: A4; margin: 8mm; }
             @media print {
-              body { background: #fff !important; }
+              html, body { background: #fff !important; }
               body * { visibility: hidden; }
               .load-form-print-root,
               .load-form-print-root * { visibility: visible; }
@@ -405,114 +424,15 @@ export default function LoadFormGenerator() {
                 background: #fff;
                 padding: 0;
               }
+              .load-form-print-root > div {
+                max-width: 100% !important;
+                box-shadow: none !important;
+                border: none !important;
+              }
             }
           `}</style>
         </div>
       )}
-    </div>
-  );
-}
-
-function LoadFormDocument({
-  summary,
-  customerLabels,
-  salesmanLabels,
-  rangeLabel,
-}: {
-  summary: LoadFormSummary;
-  customerLabels: string;
-  salesmanLabels: string;
-  rangeLabel: string;
-}) {
-  const today = new Date().toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "2-digit" });
-  const range = rangeLabel || "Period not selected";
-  const rowCls = "flex py-[1.5px] text-[10px] leading-tight";
-  const headerRow = "flex text-[10px] font-bold uppercase";
-
-  return (
-    <div className="load-form-doc">
-      <div className="text-center" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000" }}>
-        <div className="text-2xl font-bold leading-tight">{summary.org_name || "—"}</div>
-        {summary.org_address && <div className="text-[11px]">{summary.org_address}</div>}
-        {summary.org_phone && <div className="text-[11px]">{summary.org_phone}</div>}
-        <div className="mt-1 text-center text-sm font-bold">Load Form Summary</div>
-        <div className="mt-2 flex justify-between text-xs">
-          <div>
-            <span className="font-semibold">Salesman:</span> {salesmanLabels || "(All salesmen)"}
-          </div>
-          <div>
-            <span className="font-semibold">Customer:</span>{" "}
-            {customerLabels || "(All customers)"}
-          </div>
-          <div>
-            <span className="font-semibold">Date:</span> {today}
-          </div>
-        </div>
-        <div className="mt-1 text-xs font-semibold">Period: {range}</div>
-        <div className="my-2 border-b border-black" />
-      </div>
-
-      {summary.salesmen.map((salesman) => (
-        <div key={salesman.salesman_id} className="mb-4">
-          <div className="text-xs font-bold">
-            Salesman: {salesman.salesman_name}
-          </div>
-          {(summary.groupBy === "brand" ? salesman.brands : salesman.customers).map((grp, gi) => (
-            <div key={gi} className="mt-3">
-              <div className="text-sm font-bold">
-                {summary.groupBy === "brand" ? `Brand: ${groupTitle(grp)}` : `Customer: ${groupTitle(grp)}`}
-              </div>
-              <div className="my-1 border-b border-black" />
-              <div className={`${headerRow} font-bold`}>
-                <span className="w-[46%]">Product Name</span>
-                <span className="w-[16%] text-right">Packing</span>
-                <span className="w-[10%] text-right">Cartons</span>
-                <span className="w-[8%] text-right">Pcs</span>
-                <span className="w-[8%] text-right">Bns</span>
-                <span className="w-[12%] text-right">Value</span>
-              </div>
-              {grp.lines.map((line, i) => (
-                <div key={i} className={rowCls}>
-                  <span className="w-[46%]">{line.product_name}</span>
-                  <span className="w-[16%] text-right tabular-nums">{line.packing}</span>
-                  <span className="w-[10%] text-right tabular-nums">{trim(line.cartons)}</span>
-                  <span className="w-[8%] text-right tabular-nums">{trim(line.pcs)}</span>
-                  <span className="w-[8%] text-right tabular-nums">{trim(line.bonus)}</span>
-                  <span className="w-[12%] text-right tabular-nums">{fmt(line.total_value)}</span>
-                </div>
-              ))}
-              <div className="my-1 border-b border-black" />
-              <div className={rowCls}>
-                <span className="w-[46%] font-bold">Total</span>
-                <span className="w-[54%] text-right font-bold tabular-nums">{fmt(grp.total_value)}</span>
-              </div>
-            </div>
-          ))}
-          <div className={`${rowCls} mt-2`}>
-            <span className="w-[46%] font-bold">Salesman Total</span>
-            <span className="w-[54%] text-right font-bold tabular-nums">{fmt(salesman.total_value)}</span>
-          </div>
-        </div>
-      ))}
-
-      <div className="mt-4 border border-black p-3" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000" }}>
-        <div className="flex justify-between text-[13px] font-bold">
-          <span>Total Value</span>
-          <span>{fmt(summary.grand_total)}</span>
-        </div>
-        <div className="flex justify-between text-[13px] font-bold">
-          <span>Bonus Value</span>
-          <span>{fmt(summary.grand_bonus)}</span>
-        </div>
-        <div className="my-1 border-t border-black" />
-        <div className="flex justify-between text-[14px] font-bold">
-          <span>Net Value</span>
-          <span>{fmt(summary.grand_net)}</span>
-        </div>
-      </div>
-      <div className="mt-3 text-center text-[10px]" style={{ fontFamily: "'Times New Roman', Times, serif", color: "#000" }}>
-        Generated by TradeOS
-      </div>
     </div>
   );
 }

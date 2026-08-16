@@ -14,6 +14,7 @@ export const runtime = "nodejs";
  * Query params:
  *   customer_ids  comma-separated customer ids (OR filter)
  *   salesman_ids  comma-separated salesman profile ids - created_by_profile_id (OR)
+ *   brand_ids     comma-separated product brand ids (OR filter)
  *   date_from     YYYY-MM-DD inclusive lower bound on sale_date
  *   date_to       YYYY-MM-DD inclusive upper bound on sale_date
  *   group_by      "brand" (default) or "customer"
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
     organizationId: actor.organizationId ?? "",
     customerIds: splitIds(searchParams.get("customer_ids")),
     salesmanIds: splitIds(searchParams.get("salesman_ids")),
+    brandIds: splitIds(searchParams.get("brand_ids")),
     dateFrom: searchParams.get("date_from"),
     dateTo: searchParams.get("date_to"),
     groupBy: searchParams.get("group_by") === "customer" ? "customer" : "brand",

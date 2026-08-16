@@ -18,6 +18,8 @@ export interface LoadFormFilters {
   customerIds?: string[];
   /** Restrict by salesman profile ids - created_by_profile_id (OR). */
   salesmanIds?: string[];
+  /** Restrict by product brand ids (OR). When empty, all brands. */
+  brandIds?: string[];
   /** Inclusive lower bound on sale_date (YYYY-MM-DD). */
   dateFrom?: string | null;
   /** Inclusive upper bound on sale_date (YYYY-MM-DD). */
@@ -131,6 +133,9 @@ async function fetchRows(supabase: SupabaseClient, filters: LoadFormFilters): Pr
   }
   if (filters.salesmanIds && filters.salesmanIds.length > 0) {
     query = query.in("sales_transactions.created_by_profile_id", filters.salesmanIds);
+  }
+  if (filters.brandIds && filters.brandIds.length > 0) {
+    query = query.in("products.brand_id", filters.brandIds);
   }
   if (filters.dateFrom) {
     query = query.gte("sales_transactions.sale_date", filters.dateFrom);
