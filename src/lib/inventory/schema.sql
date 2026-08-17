@@ -146,8 +146,9 @@ create or replace function public.inventory_sync_purchase_item()
 returns trigger language plpgsql security definer as $$
 declare
   v_org uuid;
-  v_product_id integer;
+  v_product_id uuid;
   v_delta numeric;
+  v_upp numeric;
   v_batch text;
   v_expiry date;
   v_ref uuid;
@@ -180,6 +181,14 @@ begin
     return coalesce(new, old);
   end if;
 
+  -- Convert subunit quantity to main units for the ledger / current_stock.
+  if coalesce((case when tg_op = 'DELETE' then old.unit_mode else new.unit_mode end), 'main') = 'subunit' then
+    select units_per_pack into v_upp from public.products where id = v_product_id;
+    if v_upp is not null and v_upp > 0 then
+      v_delta := v_delta / v_upp;
+    end if;
+  end if;
+
   insert into public.inventory_transactions
     (organization_id, product_id, movement_type, quantity_delta, batch_number, expiry_date,
      reference_type, reference_id, created_at)
@@ -199,8 +208,9 @@ create or replace function public.inventory_sync_sale_item()
 returns trigger language plpgsql security definer as $$
 declare
   v_org uuid;
-  v_product_id integer;
+  v_product_id uuid;
   v_delta numeric;
+  v_upp numeric;
   v_ref uuid;
   v_created_at timestamptz;
 begin
@@ -225,6 +235,14 @@ begin
 
   if v_product_id is null or v_org is null or v_delta = 0 then
     return coalesce(new, old);
+  end if;
+
+  -- Convert subunit quantity to main units for the ledger / current_stock.
+  if coalesce((case when tg_op = 'DELETE' then old.unit_mode else new.unit_mode end), 'main') = 'subunit' then
+    select units_per_pack into v_upp from public.products where id = v_product_id;
+    if v_upp is not null and v_upp > 0 then
+      v_delta := v_delta / v_upp;
+    end if;
   end if;
 
   insert into public.inventory_transactions

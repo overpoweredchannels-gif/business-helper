@@ -1758,18 +1758,29 @@ export default function Home() {
     if (field === "product_id" && value) {
       const prod = products.find((p) => String(p.id) === value);
       if (prod) {
-        newLines[index].selling_price = prod.default_selling_price != null ? String(prod.default_selling_price) : "";
-        newLines[index].unit_mode = "main";
+        const mainPrice = prod.default_selling_price != null ? Number(prod.default_selling_price) : 0;
+        if (hasSubunit(prod) && mainPrice > 0) {
+          newLines[index].selling_price = String(subunitPriceFromMain(mainPrice, prod.units_per_pack ?? 0));
+          newLines[index].unit_mode = "subunit";
+        } else {
+          newLines[index].selling_price = mainPrice > 0 ? String(mainPrice) : "";
+          newLines[index].unit_mode = "main";
+        }
       }
     }
     // when the unit changes, auto-derive the per-unit price from the main price
     if (field === "unit_mode" && value) {
       const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
       const perPack = prod?.units_per_pack;
-      const mainPrice = safeNumber(newLines[index].selling_price);
+      const mainPrice =
+        prod?.default_selling_price != null
+          ? Number(prod.default_selling_price)
+          : safeNumber(newLines[index].selling_price);
       if (value === "subunit") {
         newLines[index].selling_price =
           perPack && perPack > 0 && mainPrice > 0 ? String(subunitPriceFromMain(mainPrice, perPack)) : "";
+      } else if (prod?.default_selling_price != null) {
+        newLines[index].selling_price = String(prod.default_selling_price);
       }
     }
     setSalesLines(newLines);
@@ -6967,19 +6978,29 @@ export default function Home() {
     if (field === "product_id" && value) {
       const prod = products.find((p) => String(p.id) === String(value));
       if (prod) {
-        newLines[index].purchase_price =
-          prod.default_purchase_price != null ? String(prod.default_purchase_price) : "";
-        newLines[index].unit_mode = "main";
+        const mainPrice = prod.default_purchase_price != null ? Number(prod.default_purchase_price) : 0;
+        if (hasSubunit(prod) && mainPrice > 0) {
+          newLines[index].purchase_price = String(subunitPriceFromMain(mainPrice, prod.units_per_pack ?? 0));
+          newLines[index].unit_mode = "subunit";
+        } else {
+          newLines[index].purchase_price = mainPrice > 0 ? String(mainPrice) : "";
+          newLines[index].unit_mode = "main";
+        }
       }
     }
     // when the unit changes, auto-derive the per-unit price from the main price
     if (field === "unit_mode" && value) {
       const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
       const perPack = prod?.units_per_pack;
-      const mainPrice = safeNumber(newLines[index].purchase_price);
+      const mainPrice =
+        prod?.default_purchase_price != null
+          ? Number(prod.default_purchase_price)
+          : safeNumber(newLines[index].purchase_price);
       if (value === "subunit") {
         newLines[index].purchase_price =
           perPack && perPack > 0 && mainPrice > 0 ? String(subunitPriceFromMain(mainPrice, perPack)) : "";
+      } else if (prod?.default_purchase_price != null) {
+        newLines[index].purchase_price = String(prod.default_purchase_price);
       }
     }
     setPurchaseLines(newLines);
@@ -7159,19 +7180,29 @@ export default function Home() {
     if (field === "product_id" && value) {
       const prod = products.find((p) => String(p.id) === String(value));
       if (prod) {
-        newLines[index].purchase_price =
-          prod.default_purchase_price != null ? String(prod.default_purchase_price) : "";
-        newLines[index].unit_mode = "main";
+        const mainPrice = prod.default_purchase_price != null ? Number(prod.default_purchase_price) : 0;
+        if (hasSubunit(prod) && mainPrice > 0) {
+          newLines[index].purchase_price = String(subunitPriceFromMain(mainPrice, prod.units_per_pack ?? 0));
+          newLines[index].unit_mode = "subunit";
+        } else {
+          newLines[index].purchase_price = mainPrice > 0 ? String(mainPrice) : "";
+          newLines[index].unit_mode = "main";
+        }
       }
     }
     // when the unit changes, auto-derive the per-unit price from the main price
     if (field === "unit_mode" && value) {
       const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
       const perPack = prod?.units_per_pack;
-      const mainPrice = safeNumber(newLines[index].purchase_price);
+      const mainPrice =
+        prod?.default_purchase_price != null
+          ? Number(prod.default_purchase_price)
+          : safeNumber(newLines[index].purchase_price);
       if (value === "subunit") {
         newLines[index].purchase_price =
           perPack && perPack > 0 && mainPrice > 0 ? String(subunitPriceFromMain(mainPrice, perPack)) : "";
+      } else if (prod?.default_purchase_price != null) {
+        newLines[index].purchase_price = String(prod.default_purchase_price);
       }
     }
     setPoLines(newLines);
@@ -7324,6 +7355,9 @@ export default function Home() {
     );
     setReceiveMessage(null);
     setReceiveError(null);
+    setTimeout(() => {
+      document.getElementById("purchase-order-receive")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
   };
 
   const handleReceiveLineChange = (itemId: string, field: keyof typeof receiveLines[number], value: string) => {
@@ -7533,16 +7567,31 @@ export default function Home() {
   const handleReturnLineChange = (index: number, field: keyof PurchaseLine, value: string | null) => {
     const newLines = [...returnLines];
     newLines[index] = { ...newLines[index], [field]: value };
+    if (field === "product_id" && value) {
+      const prod = products.find((p) => String(p.id) === String(value));
+      if (prod) {
+        const mainPrice = prod.default_purchase_price != null ? Number(prod.default_purchase_price) : 0;
+        if (hasSubunit(prod) && mainPrice > 0) {
+          newLines[index].purchase_price = String(subunitPriceFromMain(mainPrice, prod.units_per_pack ?? 0));
+          newLines[index].unit_mode = "subunit";
+        } else {
+          newLines[index].purchase_price = mainPrice > 0 ? String(mainPrice) : "";
+          newLines[index].unit_mode = "main";
+        }
+      }
+    }
     if (field === "unit_mode") {
       const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
       const perPack = prod?.units_per_pack;
-      const mainPrice = safeNumber(newLines[index].purchase_price);
+      const mainPrice =
+        prod?.default_purchase_price != null
+          ? Number(prod.default_purchase_price)
+          : safeNumber(newLines[index].purchase_price);
       if (value === "subunit" && perPack && perPack > 0 && mainPrice > 0) {
         newLines[index].purchase_price = String(subunitPriceFromMain(mainPrice, perPack));
+      } else if (value === "main" && prod?.default_purchase_price != null) {
+        newLines[index].purchase_price = String(prod.default_purchase_price);
       }
-    }
-    if (field === "product_id" && value) {
-      newLines[index].unit_mode = "main";
     }
     setReturnLines(newLines);
   };
@@ -17740,10 +17789,16 @@ export default function Home() {
                               };
                               if (e.target.value) {
                                 const prod = products.find((p) => String(p.id) === e.target.value);
-                                if (prod && prod.default_selling_price != null) {
-                                  newLines[index].selling_price = String(prod.default_selling_price);
+                                const mainPrice = prod?.default_selling_price != null ? Number(prod.default_selling_price) : 0;
+                                if (hasSubunit(prod) && mainPrice > 0) {
+                                  newLines[index].selling_price = String(subunitPriceFromMain(mainPrice, prod?.units_per_pack ?? 0));
+                                  newLines[index].unit_mode = "subunit";
+                                } else {
+                                  if (prod && prod.default_selling_price != null) {
+                                    newLines[index].selling_price = String(prod.default_selling_price);
+                                  }
+                                  newLines[index].unit_mode = "main";
                                 }
-                                newLines[index].unit_mode = "main";
                               }
                               setSoLines(newLines);
                             }}
@@ -17766,9 +17821,14 @@ export default function Home() {
                               newLines[index].unit_mode = nextMode;
                               const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
                               const perPack = prod?.units_per_pack;
-                              const mainPrice = safeNumber(newLines[index].selling_price);
+                              const mainPrice =
+                                prod?.default_selling_price != null
+                                  ? Number(prod.default_selling_price)
+                                  : safeNumber(newLines[index].selling_price);
                               if (nextMode === "subunit" && perPack && perPack > 0 && mainPrice > 0) {
                                 newLines[index].selling_price = String(subunitPriceFromMain(mainPrice, perPack));
+                              } else if (nextMode === "main" && prod?.default_selling_price != null) {
+                                newLines[index].selling_price = String(prod.default_selling_price);
                               }
                               setSoLines(newLines);
                             }}
@@ -18144,7 +18204,17 @@ export default function Home() {
                               const newLines = [...srLines];
                               newLines[index].product_id = e.target.value === "" ? null : e.target.value;
                               if (e.target.value) {
-                                newLines[index].unit_mode = "main";
+                                const prod = products.find((p) => String(p.id) === e.target.value);
+                                const mainPrice = prod?.default_selling_price != null ? Number(prod.default_selling_price) : 0;
+                                if (hasSubunit(prod) && mainPrice > 0) {
+                                  newLines[index].selling_price = String(subunitPriceFromMain(mainPrice, prod?.units_per_pack ?? 0));
+                                  newLines[index].unit_mode = "subunit";
+                                } else {
+                                  if (prod && prod.default_selling_price != null) {
+                                    newLines[index].selling_price = String(prod.default_selling_price);
+                                  }
+                                  newLines[index].unit_mode = "main";
+                                }
                               }
                               setSrLines(newLines);
                             }}
@@ -18167,9 +18237,14 @@ export default function Home() {
                               newLines[index].unit_mode = nextMode;
                               const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
                               const perPack = prod?.units_per_pack;
-                              const mainPrice = safeNumber(newLines[index].selling_price);
+                              const mainPrice =
+                                prod?.default_selling_price != null
+                                  ? Number(prod.default_selling_price)
+                                  : safeNumber(newLines[index].selling_price);
                               if (nextMode === "subunit" && perPack && perPack > 0 && mainPrice > 0) {
                                 newLines[index].selling_price = String(subunitPriceFromMain(mainPrice, perPack));
+                              } else if (nextMode === "main" && prod?.default_selling_price != null) {
+                                newLines[index].selling_price = String(prod.default_selling_price);
                               }
                               setSrLines(newLines);
                             }}
@@ -21771,7 +21846,7 @@ export default function Home() {
           const po = purchaseOrders.find((item) => item.id === receivePoId);
           const supplier = suppliers.find((s) => s.id === po?.supplier_id);
           return (
-            <section className="mt-8 rounded border border-success/20 bg-success/5 p-5">
+            <section id="purchase-order-receive" className="mt-8 rounded border border-success/20 bg-success/5 p-5">
               <h2 className="mb-1 text-lg font-medium text-foreground">
                 Receive Purchase Order {po?.po_number ?? ""}
               </h2>

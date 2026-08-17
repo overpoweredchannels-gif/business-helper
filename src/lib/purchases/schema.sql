@@ -281,7 +281,7 @@ create or replace function public.inventory_sync_purchase_return_item()
 returns trigger language plpgsql security definer as $$
 declare
   v_org uuid;
-  v_product_id integer;
+  v_product_id uuid;
   v_delta numeric;
   v_upp numeric;
   v_batch text;
