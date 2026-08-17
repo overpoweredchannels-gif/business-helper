@@ -16,6 +16,7 @@ export interface Product {
   brand_id: string | null;
   category_id: string | null;
   unit_type: string | null;
+  subunit_type?: string | null;
   units_per_pack?: number | null;
   sku?: string | null;
   barcode?: string | null;
@@ -139,6 +140,7 @@ export interface SalesOrderItem {
   quantity_delivered: number;
   unit_price: number | null;
   discount: number | null;
+  unit_mode?: "main" | "subunit";
   created_at: string;
 }
 
@@ -163,6 +165,7 @@ export interface SalesReturnItem {
   quantity: number;
   unit_price: number | null;
   discount: number | null;
+  unit_mode?: "main" | "subunit";
   batch_number: string | null;
   expiry_date: string | null;
   created_at: string;
@@ -191,6 +194,7 @@ export interface PurchaseOrderItem {
   quantity_ordered: number;
   quantity_received: number;
   unit_price: number | null;
+  unit_mode?: "main" | "subunit";
   batch_number: string | null;
   expiry_date: string | null;
   created_at: string;
@@ -216,6 +220,7 @@ export interface PurchaseReturnItem {
   product_id: number;
   quantity: number;
   unit_price: number | null;
+  unit_mode?: "main" | "subunit";
   batch_number: string | null;
   expiry_date: string | null;
   created_at: string;
@@ -570,6 +575,7 @@ export interface PurchaseLine {
   quantity: string;
   purchase_price: string;
   selling_price: string;
+  unit_mode?: "main" | "subunit";
   batch_number: string;
   expiry_date: string;
 }

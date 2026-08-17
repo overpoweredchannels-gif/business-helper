@@ -99,6 +99,7 @@ interface SalesRowRow {
   bonus: number;
   selling_price: number;
   discount: number;
+  unit_mode: "main" | "subunit" | null;
   products: {
     name: string;
     unit_type: string | null;
@@ -122,6 +123,7 @@ async function fetchRows(supabase: SupabaseClient, filters: LoadFormFilters): Pr
        bonus,
        selling_price,
        discount,
+       unit_mode,
        products!inner(name, unit_type, units_per_pack, brands(id, name)),
        sales_transactions!inner(
          customer_id,
@@ -273,6 +275,9 @@ export async function buildLoadForm(
     const bonus = Number(row.bonus) || 0;
     const price = Number(row.selling_price) || 0;
     const disc = Number(row.discount) || 0;
+    // Normalize the sold quantity to pieces before packing. Subunit sales are
+    // already in pieces; main-unit sales carry perPack pieces per unit.
+    const qtyPieces = row.unit_mode === "subunit" || perPack === 0 ? qty : qty * perPack;
 
     const agg = lineMap.get(pid) ?? {
       product_id: pid,
@@ -291,11 +296,11 @@ export async function buildLoadForm(
     agg.bonus_value += bonus * price;
 
     if (perPack > 0) {
-      const totalUnits = agg.cartons * perPack + agg.pcs + qty;
+      const totalUnits = agg.cartons * perPack + agg.pcs + qtyPieces;
       agg.cartons = Math.floor(totalUnits / perPack);
       agg.pcs = totalUnits % perPack;
     } else {
-      agg.pcs += qty;
+      agg.pcs += qtyPieces;
     }
     lineMap.set(pid, agg);
   }

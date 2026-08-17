@@ -59,6 +59,7 @@ create table if not exists public.products (
   sku text,
   barcode text,
   unit_type text check (char_length(trim(unit_type)) between 1 and 50),
+  subunit_type text check (subunit_type is null or char_length(trim(subunit_type)) between 1 and 50),
   units_per_pack integer check (units_per_pack is null or units_per_pack >= 1),
   last_purchase_price numeric(14, 2) check (last_purchase_price is null or last_purchase_price >= 0),
   default_purchase_price numeric(14, 2) check (default_purchase_price is null or default_purchase_price >= 0),
@@ -76,6 +77,7 @@ create table if not exists public.products (
 -- Columns for existing deployments (no-op on fresh installs)
 alter table public.products add column if not exists sku text;
 alter table public.products add column if not exists barcode text;
+alter table public.products add column if not exists subunit_type text;
 alter table public.products add column if not exists units_per_pack integer;
 alter table public.products add column if not exists default_purchase_price numeric(14, 2);
 alter table public.products add column if not exists current_stock numeric(14, 2) not null default 0;

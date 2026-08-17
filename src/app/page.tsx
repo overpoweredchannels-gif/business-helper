@@ -112,6 +112,13 @@ import type {
 } from "@/lib/tradeos/types";
 import { isValidUuid, normalizeOptionalUuid, safeNumber, safeTextOrNull } from "@/lib/tradeos/validators";
 import {
+  hasSubunit,
+  quantityToMainUnits,
+  subunitPriceFromMain,
+  unitLabelFor,
+  type UnitMode,
+} from "@/lib/tradeos/units";
+import {
   validateProductInput,
   validateBrandName,
   validateCategoryName,
@@ -255,6 +262,7 @@ export default function Home() {
   const [reorderRecommendationSearch, setReorderRecommendationSearch] = useState("");
   const [name, setName] = useState("");
   const [unitType, setUnitType] = useState("");
+  const [subunitType, setSubunitType] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("");
   const [minimumStockLevel, setMinimumStockLevel] = useState("");
   const [reorderLevel, setReorderLevel] = useState("");
@@ -1729,7 +1737,7 @@ export default function Home() {
     clearCreditOverrideState();
     setSalesLines([
       ...salesLines,
-      { product_id: null, quantity: "", selling_price: "", discount: "", bonus: "" },
+      { product_id: null, quantity: "", selling_price: "", discount: "", bonus: "", unit_mode: "main" },
     ]);
   };
 
@@ -1746,11 +1754,22 @@ export default function Home() {
     clearCreditOverrideState();
     const newLines = [...salesLines];
     newLines[index] = { ...newLines[index], [field]: value } as SalesLine;
-    // if product selected, populate default selling price
+    // if product selected, populate default selling price (per main unit)
     if (field === "product_id" && value) {
       const prod = products.find((p) => String(p.id) === value);
       if (prod) {
         newLines[index].selling_price = prod.default_selling_price != null ? String(prod.default_selling_price) : "";
+        newLines[index].unit_mode = "main";
+      }
+    }
+    // when the unit changes, auto-derive the per-unit price from the main price
+    if (field === "unit_mode" && value) {
+      const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
+      const perPack = prod?.units_per_pack;
+      const mainPrice = safeNumber(newLines[index].selling_price);
+      if (value === "subunit") {
+        newLines[index].selling_price =
+          perPack && perPack > 0 && mainPrice > 0 ? String(subunitPriceFromMain(mainPrice, perPack)) : "";
       }
     }
     setSalesLines(newLines);
@@ -4026,6 +4045,7 @@ export default function Home() {
           purchase_price_snapshot: purchasePriceSnapshot,
           discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
           bonus: line.bonus?.trim() === "" || line.bonus == null ? 0 : safeNumber(line.bonus),
+          unit_mode: line.unit_mode ?? "main",
           organization_id: currentOrganizationId,
         });
 
@@ -4616,7 +4636,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, brand_id, category_id, unit_type, units_per_pack, sku, barcode, last_purchase_price, default_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, current_stock, overselling_policy, is_active, created_at, updated_at")
+      .select("id, name, brand_id, category_id, unit_type, subunit_type, units_per_pack, sku, barcode, last_purchase_price, default_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, current_stock, overselling_policy, is_active, created_at, updated_at")
       .eq("organization_id", orgId)
       .order("name", { ascending: true });
 
@@ -4766,7 +4786,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("purchase_order_items")
-      .select("id, purchase_order_id, product_id, quantity_ordered, quantity_received, unit_price, batch_number, expiry_date, created_at")
+      .select("id, purchase_order_id, product_id, quantity_ordered, quantity_received, unit_price, unit_mode, batch_number, expiry_date, created_at")
       .in("purchase_order_id", ids)
       .order("created_at", { ascending: true });
 
@@ -4837,7 +4857,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("purchase_return_items")
-      .select("id, purchase_return_id, product_id, quantity, unit_price, batch_number, expiry_date, created_at")
+      .select("id, purchase_return_id, product_id, quantity, unit_price, unit_mode, batch_number, expiry_date, created_at")
       .in("purchase_return_id", ids)
       .order("created_at", { ascending: true });
 
@@ -4911,7 +4931,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("sales_order_items")
-      .select("id, sales_order_id, product_id, quantity_ordered, quantity_delivered, unit_price, discount, created_at")
+      .select("id, sales_order_id, product_id, quantity_ordered, quantity_delivered, unit_price, discount, unit_mode, created_at")
       .in("sales_order_id", ids)
       .order("created_at", { ascending: true });
 
@@ -4984,7 +5004,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("sales_return_items")
-      .select("id, sales_return_id, product_id, quantity, unit_price, discount, batch_number, expiry_date, created_at")
+      .select("id, sales_return_id, product_id, quantity, unit_price, discount, unit_mode, batch_number, expiry_date, created_at")
       .in("sales_return_id", ids)
       .order("created_at", { ascending: true });
 
@@ -5024,6 +5044,7 @@ export default function Home() {
     quantityReceived: number;
     receiveQuantity: string;
     unitPrice: string;
+    unitMode: "main" | "subunit";
     batchNumber: string;
     expiryDate: string;
   }[]>([]);
@@ -5124,6 +5145,7 @@ export default function Home() {
     selling_price: string;
     discount: string;
     bonus?: string;
+    unit_mode?: UnitMode;
     batch_number?: string;
     expiry_date?: string;
   }
@@ -5841,7 +5863,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("purchase_items")
-      .select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, batch_number, expiry_date")
+      .select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, unit_mode, batch_number, expiry_date")
       .eq("organization_id", orgId)
       .order("id", { ascending: true });
 
@@ -5946,7 +5968,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("sales_items")
-      .select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot, discount")
+      .select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot, discount, unit_mode")
       .eq("organization_id", orgId)
       .order("id", { ascending: true });
 
@@ -6923,6 +6945,7 @@ export default function Home() {
         quantity: "",
         purchase_price: "",
         selling_price: "",
+        unit_mode: "main",
         batch_number: "",
         expiry_date: "",
       },
@@ -6940,6 +6963,25 @@ export default function Home() {
   ) => {
     const newLines = [...purchaseLines];
     newLines[index] = { ...newLines[index], [field]: value };
+    // if product selected, populate default purchase price (per main unit)
+    if (field === "product_id" && value) {
+      const prod = products.find((p) => String(p.id) === String(value));
+      if (prod) {
+        newLines[index].purchase_price =
+          prod.default_purchase_price != null ? String(prod.default_purchase_price) : "";
+        newLines[index].unit_mode = "main";
+      }
+    }
+    // when the unit changes, auto-derive the per-unit price from the main price
+    if (field === "unit_mode" && value) {
+      const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
+      const perPack = prod?.units_per_pack;
+      const mainPrice = safeNumber(newLines[index].purchase_price);
+      if (value === "subunit") {
+        newLines[index].purchase_price =
+          perPack && perPack > 0 && mainPrice > 0 ? String(subunitPriceFromMain(mainPrice, perPack)) : "";
+      }
+    }
     setPurchaseLines(newLines);
   };
 
@@ -7027,6 +7069,7 @@ export default function Home() {
           quantity: Number(line.quantity),
           purchase_price: Number(line.purchase_price),
           selling_price: line.selling_price ? Number(line.selling_price) : null,
+          unit_mode: line.unit_mode ?? "main",
           batch_number: line.batch_number || null,
           expiry_date: line.expiry_date || null,
         });
@@ -7098,6 +7141,7 @@ export default function Home() {
         quantity: "",
         purchase_price: "",
         selling_price: "",
+        unit_mode: "main",
         batch_number: "",
         expiry_date: "",
       },
@@ -7111,6 +7155,25 @@ export default function Home() {
   const handlePoLineChange = (index: number, field: keyof PurchaseLine, value: string | null) => {
     const newLines = [...poLines];
     newLines[index] = { ...newLines[index], [field]: value };
+    // if product selected, populate default purchase price (per main unit)
+    if (field === "product_id" && value) {
+      const prod = products.find((p) => String(p.id) === String(value));
+      if (prod) {
+        newLines[index].purchase_price =
+          prod.default_purchase_price != null ? String(prod.default_purchase_price) : "";
+        newLines[index].unit_mode = "main";
+      }
+    }
+    // when the unit changes, auto-derive the per-unit price from the main price
+    if (field === "unit_mode" && value) {
+      const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
+      const perPack = prod?.units_per_pack;
+      const mainPrice = safeNumber(newLines[index].purchase_price);
+      if (value === "subunit") {
+        newLines[index].purchase_price =
+          perPack && perPack > 0 && mainPrice > 0 ? String(subunitPriceFromMain(mainPrice, perPack)) : "";
+      }
+    }
     setPoLines(newLines);
   };
 
@@ -7174,6 +7237,7 @@ export default function Home() {
           product_id: line.product_id,
           quantity_ordered: Number(line.quantity),
           unit_price: line.purchase_price ? Number(line.purchase_price) : null,
+          unit_mode: line.unit_mode ?? "main",
           batch_number: line.batch_number || null,
           expiry_date: line.expiry_date || null,
         });
@@ -7253,6 +7317,7 @@ export default function Home() {
         quantityReceived: Number(item.quantity_received),
         receiveQuantity: String(Math.max(Number(item.quantity_ordered) - Number(item.quantity_received), 0)),
         unitPrice: item.unit_price != null ? String(item.unit_price) : "",
+        unitMode: item.unit_mode ?? "main",
         batchNumber: item.batch_number ?? "",
         expiryDate: item.expiry_date ?? "",
       }))
@@ -7349,6 +7414,7 @@ export default function Home() {
           quantity: receiveQuantity,
           purchase_price: line.unitPrice ? Number(line.unitPrice) : null,
           selling_price: null,
+          unit_mode: line.unitMode ?? "main",
           batch_number: line.batchNumber || null,
           expiry_date: line.expiryDate || null,
         });
@@ -7414,9 +7480,10 @@ export default function Home() {
         ? [["No line items found", "-", "-", "-"]]
         : lineItems.map((item) => {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
               product?.name ?? "Unknown Product",
-              String(item.quantity_ordered),
+              `${item.quantity_ordered} ${unit}`,
               formatPKR(safeNumber(item.unit_price)),
               formatPKR(safeNumber(item.quantity_ordered) * safeNumber(item.unit_price)),
             ];
@@ -7452,6 +7519,7 @@ export default function Home() {
         quantity: "",
         purchase_price: "",
         selling_price: "",
+        unit_mode: "main",
         batch_number: "",
         expiry_date: "",
       },
@@ -7465,6 +7533,17 @@ export default function Home() {
   const handleReturnLineChange = (index: number, field: keyof PurchaseLine, value: string | null) => {
     const newLines = [...returnLines];
     newLines[index] = { ...newLines[index], [field]: value };
+    if (field === "unit_mode") {
+      const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
+      const perPack = prod?.units_per_pack;
+      const mainPrice = safeNumber(newLines[index].purchase_price);
+      if (value === "subunit" && perPack && perPack > 0 && mainPrice > 0) {
+        newLines[index].purchase_price = String(subunitPriceFromMain(mainPrice, perPack));
+      }
+    }
+    if (field === "product_id" && value) {
+      newLines[index].unit_mode = "main";
+    }
     setReturnLines(newLines);
   };
 
@@ -7505,6 +7584,7 @@ export default function Home() {
           quantity: String(remaining),
           purchase_price: item.purchase_price != null ? String(item.purchase_price) : "",
           selling_price: item.selling_price != null ? String(item.selling_price) : "",
+          unit_mode: item.unit_mode ?? "main",
           batch_number: item.batch_number ?? "",
           expiry_date: item.expiry_date ?? "",
         };
@@ -7530,16 +7610,17 @@ export default function Home() {
       if (!line.product_id) continue;
       const product = products.find((p) => String(p.id) === String(line.product_id));
       const quantity = Number(line.quantity || 0);
+      const mainQuantity = product ? quantityToMainUnits(quantity, line.unit_mode ?? "main", product.units_per_pack) : quantity;
       const available = getAvailableStockForProduct(line.product_id);
       if (
         product &&
         Number.isFinite(quantity) &&
         quantity > 0 &&
         Number.isFinite(available) &&
-        quantity > available
+        mainQuantity > available
       ) {
         stockErrors.push(
-          `${product.name}: cannot return ${quantity} — only ${available} in stock.`
+          `${product.name}: cannot return ${quantity} ${unitLabelFor(product, line.unit_mode ?? "main")} — only ${available} ${unitLabelFor(product, "main")} in stock.`
         );
       }
     }
@@ -7580,6 +7661,7 @@ export default function Home() {
             productId: line.product_id,
             quantity: line.quantity,
             unitPrice: line.purchase_price,
+            unitMode: line.unit_mode,
             batchNumber: line.batch_number || null,
             expiryDate: line.expiry_date || null,
           })),
@@ -7674,9 +7756,10 @@ export default function Home() {
         ? [["No line items found", "-", "-", "-"]]
         : lineItems.map((item) => {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
               product?.name ?? "Unknown Product",
-              String(item.quantity),
+              `${item.quantity} ${unit}`,
               formatPKR(safeNumber(item.unit_price)),
               formatPKR(safeNumber(item.quantity) * safeNumber(item.unit_price)),
             ];
@@ -7754,6 +7837,7 @@ export default function Home() {
                 quantity: Number(line.quantity),
                 unitPrice: line.selling_price ? Number(line.selling_price) : 0,
                 discount: line.discount ? Number(line.discount) : 0,
+                unitMode: line.unit_mode ?? "main",
               })),
             notes: soNotes.trim() || undefined,
             expectedDate: soExpectedDate || undefined,
@@ -7848,6 +7932,7 @@ export default function Home() {
           quantity_delivered: 0,
           unit_price: line.selling_price ? Number(line.selling_price) : null,
           discount: line.discount ? Number(line.discount) : 0,
+          unit_mode: line.unit_mode ?? "main",
         });
         if (itemError) throw itemError;
       }
@@ -8070,6 +8155,7 @@ export default function Home() {
         quantity: String(item.quantity_ordered),
         selling_price: item.unit_price != null ? String(item.unit_price) : "",
         discount: item.discount != null ? String(item.discount) : "",
+        unit_mode: item.unit_mode ?? "main",
       }))
     );
     setSoError(null);
@@ -8100,9 +8186,10 @@ export default function Home() {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const unitPrice = safeNumber(item.unit_price);
             const discount = safeNumber(item.discount);
+            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
               product?.name ?? "Unknown Product",
-              String(item.quantity_ordered),
+              `${item.quantity_ordered} ${unit}`,
               formatPKR(unitPrice),
               formatPKR(unitPrice * Number(item.quantity_ordered) - discount),
             ];
@@ -8161,6 +8248,7 @@ export default function Home() {
           quantity: String(remaining),
           selling_price: item.selling_price != null ? String(item.selling_price) : "",
           discount: item.discount != null ? String(item.discount) : "",
+          unit_mode: item.unit_mode ?? "main",
           batch_number: item.batch_number ?? "",
           expiry_date: item.expiry_date ?? "",
         };
@@ -8321,9 +8409,10 @@ export default function Home() {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const unitPrice = safeNumber(item.unit_price);
             const discount = safeNumber(item.discount);
+            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
               product?.name ?? "Unknown Product",
-              String(item.quantity),
+              `${item.quantity} ${unit}`,
               formatPKR(unitPrice),
               formatPKR(unitPrice * safeNumber(item.quantity) - discount),
             ];
@@ -11381,9 +11470,10 @@ export default function Home() {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const quantity = safeNumber(item.quantity);
             const sellingPrice = safeNumber(item.selling_price);
+            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
               product?.name ?? "Unknown Product",
-              String(quantity),
+              `${quantity} ${unit}`,
               formatPKR(sellingPrice),
               formatPKR(quantity * sellingPrice),
             ];
@@ -11450,9 +11540,10 @@ export default function Home() {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const quantity = safeNumber(item.quantity);
             const purchasePrice = safeNumber(item.purchase_price);
+            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
               product?.name ?? "Unknown Product",
-              String(quantity),
+              `${quantity} ${unit}`,
               formatPKR(purchasePrice),
               formatPKR(quantity * purchasePrice),
               item.batch_number ?? "-",
@@ -13718,6 +13809,7 @@ export default function Home() {
   const resetProductForm = () => {
     setName("");
     setUnitType("");
+    setSubunitType("");
     setUnitsPerPack("");
     setMinimumStockLevel("");
     setReorderLevel("");
@@ -13738,6 +13830,7 @@ export default function Home() {
   const startEditProduct = (product: Product) => {
     setName(product.name ?? "");
     setUnitType(product.unit_type ?? "");
+    setSubunitType(product.subunit_type ?? "");
     setUnitsPerPack(product.units_per_pack != null ? String(product.units_per_pack) : "");
     setMinimumStockLevel(product.minimum_stock_level != null ? String(product.minimum_stock_level) : "");
     setReorderLevel(product.reorder_level != null ? String(product.reorder_level) : "");
@@ -13773,6 +13866,7 @@ export default function Home() {
       sku: productSku,
       barcode: productBarcode,
       unitType,
+      subunitType,
       unitsPerPack,
       minimumStockLevel,
       reorderLevel,
@@ -13812,6 +13906,7 @@ export default function Home() {
           brandId: selectedBrandId,
           excludeProductId: editingProductId,
           unitType,
+          subunitType,
           unitsPerPack,
           minimumStockLevel,
           reorderLevel,
@@ -13835,6 +13930,7 @@ export default function Home() {
       brand_id: selectedBrandId,
       category_id: selectedCategoryId,
       unit_type: unitType.trim(),
+      subunit_type: subunitType.trim() || null,
       units_per_pack: unitsPerPack ? Number(unitsPerPack) : null,
       sku: productSku.trim() || null,
       barcode: productBarcode.trim() || null,
@@ -17304,7 +17400,11 @@ export default function Home() {
                 <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
               ) : (
                 <div className="mb-4 space-y-3">
-                  {salesLines.map((line, index) => (
+                  {salesLines.map((line, index) => {
+                    const lineProduct = line.product_id
+                      ? activeProducts.find((p) => String(p.id) === String(line.product_id))
+                      : null;
+                    return (
                     <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
@@ -17317,7 +17417,7 @@ export default function Home() {
                         </button>
                       </div>
 
-                      <div className="grid gap-2 sm:grid-cols-5">
+                      <div className="grid gap-2 sm:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -17333,7 +17433,28 @@ export default function Home() {
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity</span>
+                          <span>Sell as</span>
+                          <select
+                            value={line.unit_mode ?? "main"}
+                            onChange={(e) =>
+                              handleSalesLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main")
+                            }
+                            disabled={!lineProduct || !hasSubunit(lineProduct)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <option value="main">
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                            </option>
+                            {lineProduct && hasSubunit(lineProduct) && (
+                              <option value="subunit">
+                                {unitLabelFor(lineProduct, "subunit")}
+                              </option>
+                            )}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
                           <input
                             type="number"
                             value={line.quantity}
@@ -17343,7 +17464,7 @@ export default function Home() {
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Selling Price</span>
+                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
                           <input
                             type="number"
                             value={line.selling_price}
@@ -17377,7 +17498,8 @@ export default function Home() {
                         </label>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -17589,7 +17711,11 @@ export default function Home() {
                 <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
               ) : (
                 <div className="mb-4 space-y-3">
-                  {soLines.map((line, index) => (
+                  {soLines.map((line, index) => {
+                    const lineProduct = line.product_id
+                      ? activeProducts.find((p) => String(p.id) === String(line.product_id))
+                      : null;
+                    return (
                     <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
@@ -17601,7 +17727,7 @@ export default function Home() {
                           Remove
                         </button>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-4">
+                      <div className="grid gap-2 sm:grid-cols-5">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -17617,6 +17743,7 @@ export default function Home() {
                                 if (prod && prod.default_selling_price != null) {
                                   newLines[index].selling_price = String(prod.default_selling_price);
                                 }
+                                newLines[index].unit_mode = "main";
                               }
                               setSoLines(newLines);
                             }}
@@ -17630,7 +17757,37 @@ export default function Home() {
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity</span>
+                          <span>Buy as</span>
+                          <select
+                            value={line.unit_mode ?? "main"}
+                            onChange={(e) => {
+                              const newLines = [...soLines];
+                              const nextMode = e.target.value === "subunit" ? "subunit" : "main";
+                              newLines[index].unit_mode = nextMode;
+                              const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
+                              const perPack = prod?.units_per_pack;
+                              const mainPrice = safeNumber(newLines[index].selling_price);
+                              if (nextMode === "subunit" && perPack && perPack > 0 && mainPrice > 0) {
+                                newLines[index].selling_price = String(subunitPriceFromMain(mainPrice, perPack));
+                              }
+                              setSoLines(newLines);
+                            }}
+                            disabled={!lineProduct || !hasSubunit(lineProduct)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <option value="main">
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                            </option>
+                            {lineProduct && hasSubunit(lineProduct) && (
+                              <option value="subunit">
+                                {unitLabelFor(lineProduct, "subunit")}
+                              </option>
+                            )}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
                           <input
                             type="number"
                             value={line.quantity}
@@ -17644,7 +17801,7 @@ export default function Home() {
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Unit Price</span>
+                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
                           <input
                             type="number"
                             value={line.selling_price}
@@ -17674,14 +17831,15 @@ export default function Home() {
                         </label>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
               <button
                 type="button"
                 onClick={() =>
-                  setSoLines([...soLines, { product_id: null, quantity: "", selling_price: "", discount: "" }])
+                  setSoLines([...soLines, { product_id: null, quantity: "", selling_price: "", discount: "", unit_mode: "main" }])
                 }
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
@@ -17961,7 +18119,11 @@ export default function Home() {
                 </p>
               ) : (
                 <div className="mb-4 space-y-3">
-                  {srLines.map((line, index) => (
+                  {srLines.map((line, index) => {
+                    const lineProduct = line.product_id
+                      ? activeProducts.find((p) => String(p.id) === String(line.product_id))
+                      : null;
+                    return (
                     <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
@@ -17973,7 +18135,7 @@ export default function Home() {
                           Remove
                         </button>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-3">
+                      <div className="grid gap-2 sm:grid-cols-4">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -17981,6 +18143,9 @@ export default function Home() {
                             onChange={(e) => {
                               const newLines = [...srLines];
                               newLines[index].product_id = e.target.value === "" ? null : e.target.value;
+                              if (e.target.value) {
+                                newLines[index].unit_mode = "main";
+                              }
                               setSrLines(newLines);
                             }}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
@@ -17993,7 +18158,37 @@ export default function Home() {
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity</span>
+                          <span>Return as</span>
+                          <select
+                            value={line.unit_mode ?? "main"}
+                            onChange={(e) => {
+                              const newLines = [...srLines];
+                              const nextMode = e.target.value === "subunit" ? "subunit" : "main";
+                              newLines[index].unit_mode = nextMode;
+                              const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
+                              const perPack = prod?.units_per_pack;
+                              const mainPrice = safeNumber(newLines[index].selling_price);
+                              if (nextMode === "subunit" && perPack && perPack > 0 && mainPrice > 0) {
+                                newLines[index].selling_price = String(subunitPriceFromMain(mainPrice, perPack));
+                              }
+                              setSrLines(newLines);
+                            }}
+                            disabled={!lineProduct || !hasSubunit(lineProduct)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <option value="main">
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                            </option>
+                            {lineProduct && hasSubunit(lineProduct) && (
+                              <option value="subunit">
+                                {unitLabelFor(lineProduct, "subunit")}
+                              </option>
+                            )}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
                           <input
                             type="number"
                             value={line.quantity}
@@ -18007,7 +18202,7 @@ export default function Home() {
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Unit Price</span>
+                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
                           <input
                             type="number"
                             value={line.selling_price}
@@ -18066,7 +18261,8 @@ export default function Home() {
                         </label>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -19580,7 +19776,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
                 Unit Type
@@ -19590,6 +19786,19 @@ export default function Home() {
                 value={unitType}
                 onChange={(e) => setUnitType(e.target.value)}
                 required
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                Subunit Type
+              </label>
+              <input
+                type="text"
+                value={subunitType}
+                onChange={(e) => setSubunitType(e.target.value)}
+                placeholder="e.g. Pieces (optional)"
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               />
             </div>
@@ -19771,6 +19980,10 @@ export default function Home() {
               <div>
                 <div className="text-xs text-muted-foreground/80">Unit Type</div>
                 <div className="text-sm font-medium text-foreground">{productToView.unit_type ?? "None"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground/80">Subunit Type</div>
+                <div className="text-sm font-medium text-foreground">{productToView.subunit_type ?? "None"}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground/80">Units Per Pack</div>
@@ -20693,7 +20906,11 @@ export default function Home() {
                 <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
               ) : (
                 <div className="mb-4 space-y-3">
-                  {purchaseLines.map((line, index) => (
+                  {purchaseLines.map((line, index) => {
+                    const lineProduct = line.product_id
+                      ? activeProducts.find((p) => String(p.id) === String(line.product_id))
+                      : null;
+                    return (
                     <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
@@ -20706,7 +20923,7 @@ export default function Home() {
                         </button>
                       </div>
 
-                      <div className="grid gap-2 sm:grid-cols-3">
+                      <div className="grid gap-2 sm:grid-cols-4">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -20726,7 +20943,28 @@ export default function Home() {
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity</span>
+                          <span>Buy as</span>
+                          <select
+                            value={line.unit_mode ?? "main"}
+                            onChange={(e) =>
+                              handlePurchaseLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main")
+                            }
+                            disabled={!lineProduct || !hasSubunit(lineProduct)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <option value="main">
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                            </option>
+                            {lineProduct && hasSubunit(lineProduct) && (
+                              <option value="subunit">
+                                {unitLabelFor(lineProduct, "subunit")}
+                              </option>
+                            )}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
                           <input
                             type="number"
                             value={line.quantity}
@@ -20736,7 +20974,7 @@ export default function Home() {
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Purchase Price</span>
+                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
                           <input
                             type="number"
                             value={line.purchase_price}
@@ -20778,7 +21016,8 @@ export default function Home() {
                         </label>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -21227,7 +21466,11 @@ export default function Home() {
                 <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
               ) : (
                 <div className="mb-4 space-y-3">
-                  {poLines.map((line, index) => (
+                  {poLines.map((line, index) => {
+                    const lineProduct = line.product_id
+                      ? activeProducts.find((p) => String(p.id) === String(line.product_id))
+                      : null;
+                    return (
                     <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
@@ -21239,7 +21482,7 @@ export default function Home() {
                           Remove
                         </button>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-4">
+                      <div className="grid gap-2 sm:grid-cols-5">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -21258,7 +21501,27 @@ export default function Home() {
                           </select>
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity</span>
+                          <span>Buy as</span>
+                          <select
+                            value={line.unit_mode ?? "main"}
+                            onChange={(e) =>
+                              handlePoLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main")
+                            }
+                            disabled={!lineProduct || !hasSubunit(lineProduct)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <option value="main">
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                            </option>
+                            {lineProduct && hasSubunit(lineProduct) && (
+                              <option value="subunit">
+                                {unitLabelFor(lineProduct, "subunit")}
+                              </option>
+                            )}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
                           <input
                             type="number"
                             min="0"
@@ -21268,7 +21531,7 @@ export default function Home() {
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Unit Price</span>
+                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
                           <input
                             type="number"
                             min="0"
@@ -21288,7 +21551,8 @@ export default function Home() {
                         </label>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -21531,12 +21795,12 @@ export default function Home() {
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                           <span className="text-sm font-medium text-foreground">{product?.name ?? "Unknown Product"}</span>
                           <span className="text-xs text-muted-foreground/80">
-                            Ordered {line.quantityOrdered} · Already received {line.quantityReceived} · Remaining {remaining}
+                            Ordered {line.quantityOrdered} {product ? unitLabelFor(product, line.unitMode) : ""} · Already received {line.quantityReceived} · Remaining {remaining}
                           </span>
                         </div>
                         <div className="grid gap-2 sm:grid-cols-4">
                           <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                            <span>Receive Quantity</span>
+                            <span>Receive Quantity ({product ? unitLabelFor(product, line.unitMode) : "units"})</span>
                             <input
                               type="number"
                               min="0"
@@ -21680,7 +21944,11 @@ export default function Home() {
                 <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
               ) : (
                 <div className="mb-4 space-y-3">
-                  {returnLines.map((line, index) => (
+                  {returnLines.map((line, index) => {
+                    const lineProduct = line.product_id
+                      ? products.find((p) => String(p.id) === String(line.product_id))
+                      : null;
+                    return (
                     <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
@@ -21692,7 +21960,7 @@ export default function Home() {
                           Remove
                         </button>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-4">
+                      <div className="grid gap-2 sm:grid-cols-5">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -21711,7 +21979,25 @@ export default function Home() {
                           </select>
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity</span>
+                          <span>Return as</span>
+                          <select
+                            value={line.unit_mode ?? "main"}
+                            onChange={(e) => handleReturnLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main")}
+                            disabled={!lineProduct || !hasSubunit(lineProduct)}
+                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <option value="main">
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                            </option>
+                            {lineProduct && hasSubunit(lineProduct) && (
+                              <option value="subunit">
+                                {unitLabelFor(lineProduct, "subunit")}
+                              </option>
+                            )}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
                           <input
                             type="number"
                             min="0"
@@ -21721,7 +22007,7 @@ export default function Home() {
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Unit Price</span>
+                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
                           <input
                             type="number"
                             min="0"
@@ -21741,7 +22027,8 @@ export default function Home() {
                         </label>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 

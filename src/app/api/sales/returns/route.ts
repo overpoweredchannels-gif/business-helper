@@ -24,6 +24,7 @@ interface ReturnLinePayload {
   quantity: string | number;
   unitPrice?: string | number | null;
   discount?: string | number | null;
+  unitMode?: "main" | "subunit" | null;
   batchNumber?: string | null;
   expiryDate?: string | null;
 }
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
       quantity: line?.quantity,
       unit_price: line?.unitPrice,
       discount: line?.discount,
+      unit_mode: line?.unitMode === "subunit" ? "subunit" : "main",
       batch_number: line?.batchNumber,
       expiry_date: line?.expiryDate,
     }));
@@ -167,6 +169,7 @@ export async function POST(request: NextRequest) {
         quantity: Number(line.quantity),
         unit_price: line.unit_price != null ? Number(line.unit_price) : null,
         discount: line.discount != null ? Number(line.discount) : 0,
+        unit_mode: line.unit_mode,
         batch_number: line.batch_number || null,
         expiry_date: line.expiry_date || null,
       });

@@ -39,6 +39,7 @@ create table if not exists public.sales_order_items (
   quantity_delivered numeric(14, 2) not null default 0 check (quantity_delivered >= 0),
   unit_price numeric(14, 2) check (unit_price is null or unit_price >= 0),
   discount numeric(14, 2) not null default 0 check (discount >= 0),
+  unit_mode text not null default 'main' check (unit_mode in ('main', 'subunit')),
   created_at timestamptz not null default now()
 );
 
@@ -76,6 +77,7 @@ create table if not exists public.sales_return_items (
   quantity numeric(14, 2) not null check (quantity > 0),
   unit_price numeric(14, 2) check (unit_price is null or unit_price >= 0),
   discount numeric(14, 2) not null default 0 check (discount >= 0),
+  unit_mode text not null default 'main' check (unit_mode in ('main', 'subunit')),
   batch_number text,
   expiry_date date,
   created_at timestamptz not null default now()
@@ -203,6 +205,7 @@ declare
   v_org uuid;
   v_product_id uuid;
   v_delta numeric;
+  v_upp numeric;
   v_batch text;
   v_expiry date;
   v_ref uuid;
@@ -233,6 +236,14 @@ begin
 
   if v_product_id is null or v_org is null or v_delta = 0 then
     return coalesce(new, old);
+  end if;
+
+  -- Normalize subunit quantity to main units for the ledger / current_stock.
+  if coalesce((case when tg_op = 'DELETE' then old.unit_mode else new.unit_mode end), 'main') = 'subunit' then
+    select units_per_pack into v_upp from public.products where id = v_product_id;
+    if v_upp is not null and v_upp > 0 then
+      v_delta := v_delta / v_upp;
+    end if;
   end if;
 
   insert into public.inventory_transactions

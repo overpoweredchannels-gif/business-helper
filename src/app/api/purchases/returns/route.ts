@@ -23,6 +23,7 @@ interface ReturnLinePayload {
   productId: string | number;
   quantity: string | number;
   unitPrice?: string | number | null;
+  unitMode?: "main" | "subunit" | null;
   batchNumber?: string | null;
   expiryDate?: string | null;
 }
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
       product_id: line?.productId,
       quantity: line?.quantity,
       unit_price: line?.unitPrice,
+      unit_mode: line?.unitMode === "subunit" ? "subunit" : "main",
       batch_number: line?.batchNumber,
       expiry_date: line?.expiryDate,
     }));
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     const { data: products, error: productsError } = await supabase
       .from("products")
-      .select("id, name, current_stock")
+      .select("id, name, current_stock, units_per_pack")
       .eq("organization_id", organizationId)
       .in("id", productIds);
 
@@ -74,7 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: productsError.message }, { status: 500 });
     }
 
-    const productsById = new Map<string, { name: string; current_stock: number | null }>();
+    const productsById = new Map<string, { name: string; current_stock: number | null; units_per_pack: number | null }>();
     for (const product of products ?? []) {
       productsById.set(String(product.id), product);
     }
@@ -84,9 +86,14 @@ export async function POST(request: NextRequest) {
     for (const line of lines) {
       const productId = String(line.product_id);
       const quantity = Number(line.quantity || 0);
+      const product = productsById.get(productId);
+      let mainQuantity = quantity;
+      if (product && line.unit_mode === "subunit" && Number(product.units_per_pack) > 0) {
+        mainQuantity = quantity / Number(product.units_per_pack);
+      }
       requestedQtyByProduct.set(
         productId,
-        (requestedQtyByProduct.get(productId) ?? 0) + quantity
+        (requestedQtyByProduct.get(productId) ?? 0) + mainQuantity
       );
     }
     for (const [productId, totalRequested] of requestedQtyByProduct) {
@@ -143,6 +150,7 @@ export async function POST(request: NextRequest) {
         product_id: line.product_id,
         quantity: Number(line.quantity),
         unit_price: line.unit_price != null ? Number(line.unit_price) : null,
+        unit_mode: line.unit_mode,
         batch_number: line.batch_number || null,
         expiry_date: line.expiry_date || null,
       });

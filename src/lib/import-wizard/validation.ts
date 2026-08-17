@@ -85,6 +85,16 @@ const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
     "sell unit",
     "measurement unit",
   ],
+  subunit_type: [
+    "subunit type",
+    "sub unit",
+    "sub-unit",
+    "piece unit",
+    "piece type",
+    "unit name pieces",
+    "small unit",
+    "secondary unit",
+  ],
   units_per_pack: [
     "units per pack",
     "unitspack",

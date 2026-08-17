@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       sku: body?.sku,
       barcode: body?.barcode,
       unitType: body?.unitType ?? "",
+      subunitType: body?.subunitType ?? null,
       unitsPerPack: body?.unitsPerPack,
       minimumStockLevel: body?.minimumStockLevel,
       reorderLevel: body?.reorderLevel,

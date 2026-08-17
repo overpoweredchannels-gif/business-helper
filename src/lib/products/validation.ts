@@ -55,6 +55,7 @@ export interface ProductInput {
   sku?: string | null;
   barcode?: string | null;
   unitType: string;
+  subunitType?: string | null;
   unitsPerPack?: string | number | null;
   minimumStockLevel?: string | number | null;
   reorderLevel?: string | number | null;
@@ -69,6 +70,7 @@ export const validateProductInput = (input: ProductInput): ValidationResult => {
   const sku = normalizeOptionalText(input.sku);
   const barcode = normalizeOptionalText(input.barcode);
   const unitType = normalizeOptionalText(input.unitType);
+  const subunitType = normalizeOptionalText(input.subunitType);
   const unitsPerPack = normalizeOptionalNumber(input.unitsPerPack);
   const minimumStockLevel = normalizeOptionalNumber(input.minimumStockLevel);
   const reorderLevel = normalizeOptionalNumber(input.reorderLevel);
@@ -81,6 +83,9 @@ export const validateProductInput = (input: ProductInput): ValidationResult => {
 
   const unitError = requireLength(unitType, "Unit type", MAX_UNIT_TYPE_LENGTH, true);
   if (unitError) errors.push(unitError);
+
+  const subunitError = requireLength(subunitType, "Subunit type", MAX_UNIT_TYPE_LENGTH, false);
+  if (subunitError) errors.push(subunitError);
 
   const skuError = requireLength(sku, "SKU", MAX_SKU_LENGTH, false);
   if (skuError) errors.push(skuError);

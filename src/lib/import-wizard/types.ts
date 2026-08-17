@@ -7,6 +7,7 @@ export type ProductImportField =
   | "brand"
   | "category"
   | "unit_type"
+  | "subunit_type"
   | "units_per_pack"
   | "default_purchase_price"
   | "default_selling_price"
