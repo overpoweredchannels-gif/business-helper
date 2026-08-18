@@ -9,9 +9,11 @@ interface LoadFormLine {
   product_id: number | string;
   product_name: string;
   unit_type: string | null;
-  cartons: number;
-  pcs: number;
-  bonus: number;
+  subunit_type: string | null;
+  main_qty: number;
+  subunit_qty: number;
+  bonus_main_qty: number;
+  bonus_subunit_qty: number;
   total_value: number;
   bonus_value: number;
 }
@@ -333,9 +335,7 @@ export default function LoadFormGenerator() {
                     <thead className="text-[11px] uppercase text-muted-foreground">
                       <tr>
                         <th className="px-4 py-1.5">Product</th>
-                        <th className="px-2 py-1.5 text-right">Unit</th>
-                        <th className="px-2 py-1.5 text-right">Cartons</th>
-                        <th className="px-2 py-1.5 text-right">Pcs</th>
+                        <th className="px-2 py-1.5 text-right">Quantity</th>
                         <th className="px-2 py-1.5 text-right">Bns</th>
                         <th className="px-4 py-1.5 text-right">Value</th>
                       </tr>
@@ -344,10 +344,8 @@ export default function LoadFormGenerator() {
                       {grp.lines.map((line, i) => (
                         <tr key={i}>
                           <td className="px-4 py-1.5 text-foreground">{line.product_name}</td>
-                          <td className="px-2 py-1.5 text-right">{line.unit_type ?? ""}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">{trim(line.cartons)}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">{trim(line.pcs)}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">{trim(line.bonus)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{quantityLabel(line)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{bonusLabel(line)}</td>
                           <td className="px-4 py-1.5 text-right tabular-nums">{fmt(line.total_value)}</td>
                         </tr>
                       ))}
@@ -357,11 +355,8 @@ export default function LoadFormGenerator() {
                         <td className="px-4 py-1.5" colSpan={2}>
                           {groupTitle(grp)} Total
                         </td>
-                        <td className="px-2 py-1.5 text-right" colSpan={2}>
-                          {fmt(grp.total_value)}
-                        </td>
-                        <td className="px-2 py-1.5 text-right">Bns</td>
-                        <td className="px-4 py-1.5 text-right tabular-nums">{fmt(grp.bonus_value)}</td>
+                        <td className="px-2 py-1.5 text-right">{fmt(grp.bonus_value)}</td>
+                        <td className="px-4 py-1.5 text-right tabular-nums">{fmt(grp.total_value)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -443,6 +438,24 @@ export default function LoadFormGenerator() {
 
 function groupTitle(g: LoadFormCustomer | LoadFormBrand): string {
   return "brand_name" in g ? g.brand_name : g.customer_name;
+}
+
+function quantityLabel(line: LoadFormLine): string {
+  const unitType = line.unit_type ?? "Units";
+  const subunitType = line.subunit_type ?? "Pcs";
+  const parts: string[] = [];
+  if (line.main_qty > 0) parts.push(`${trim(line.main_qty)} ${unitType}`);
+  if (line.subunit_qty > 0) parts.push(`${trim(line.subunit_qty)} ${subunitType}`);
+  return parts.length > 0 ? parts.join(" + ") : "0";
+}
+
+function bonusLabel(line: LoadFormLine): string {
+  const unitType = line.unit_type ?? "Units";
+  const subunitType = line.subunit_type ?? "Pcs";
+  const parts: string[] = [];
+  if (line.bonus_main_qty > 0) parts.push(`${trim(line.bonus_main_qty)} ${unitType}`);
+  if (line.bonus_subunit_qty > 0) parts.push(`${trim(line.bonus_subunit_qty)} ${subunitType}`);
+  return parts.length > 0 ? parts.join(" + ") : "";
 }
 
 function trim(n: number): string {

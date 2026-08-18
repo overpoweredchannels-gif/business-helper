@@ -30,18 +30,32 @@ function isBrand(g: Group): boolean {
   return "brand_name" in g;
 }
 
+function quantityLabel(line: LoadFormLine): string {
+  const unitType = line.unit_type ?? "Units";
+  const subunitType = line.subunit_type ?? "Pcs";
+  const parts: string[] = [];
+  if (line.main_qty > 0) parts.push(`${trim(line.main_qty)} ${unitType}`);
+  if (line.subunit_qty > 0) parts.push(`${trim(line.subunit_qty)} ${subunitType}`);
+  return parts.length > 0 ? parts.join(" + ") : "0";
+}
+
+function bonusLabel(line: LoadFormLine): string {
+  const unitType = line.unit_type ?? "Units";
+  const subunitType = line.subunit_type ?? "Pcs";
+  const parts: string[] = [];
+  if (line.bonus_main_qty > 0) parts.push(`${trim(line.bonus_main_qty)} ${unitType}`);
+  if (line.bonus_subunit_qty > 0) parts.push(`${trim(line.bonus_subunit_qty)} ${subunitType}`);
+  return parts.length > 0 ? parts.join(" + ") : "";
+}
+
 function columnValue(key: string, line: LoadFormLine): string {
   switch (key) {
     case "product":
       return line.product_name;
-    case "unit":
-      return line.unit_type || "";
-    case "cartons":
-      return trim(line.cartons);
-    case "pcs":
-      return trim(line.pcs);
+    case "quantity":
+      return quantityLabel(line);
     case "bonus":
-      return trim(line.bonus);
+      return bonusLabel(line);
     default:
       return "";
   }

@@ -34,11 +34,18 @@ export interface LoadFormLine {
   product_id: number | string;
   product_name: string;
   units_per_pack: number | null;
-  /** The recommended unit type assigned to the product, e.g. "Cottons", "Boxes", "Packets", "Pieces". */
+  /** The main unit label assigned to the product, e.g. "Cotton". */
   unit_type: string | null;
-  cartons: number;
-  pcs: number;
-  bonus: number;
+  /** The subunit label assigned to the product, e.g. "Boxes". */
+  subunit_type: string | null;
+  /** Total quantity sold in main units (e.g. cotton). */
+  main_qty: number;
+  /** Total quantity sold in subunit units (e.g. boxes). */
+  subunit_qty: number;
+  /** Bonus quantity given in main units. */
+  bonus_main_qty: number;
+  /** Bonus quantity given in subunit units. */
+  bonus_subunit_qty: number;
   /** Value of the sold (non-bonus) quantity. */
   total_value: number;
   /** Value of bonus units. */
@@ -103,6 +110,7 @@ interface SalesRowRow {
   products: {
     name: string;
     unit_type: string | null;
+    subunit_type: string | null;
     units_per_pack: number | null;
     brands: { id: string; name: string } | null;
   } | null;
@@ -124,7 +132,7 @@ async function fetchRows(supabase: SupabaseClient, filters: LoadFormFilters): Pr
        selling_price,
        discount,
        unit_mode,
-       products!inner(name, unit_type, units_per_pack, brands(id, name)),
+       products!inner(name, unit_type, subunit_type, units_per_pack, brands(id, name)),
        sales_transactions!inner(
          customer_id,
          created_by_profile_id,
@@ -165,9 +173,11 @@ interface LineAgg {
   product_name: string;
   units_per_pack: number | null;
   unit_type: string | null;
-  cartons: number;
-  pcs: number;
-  bonus: number;
+  subunit_type: string | null;
+  main_qty: number;
+  subunit_qty: number;
+  bonus_main_qty: number;
+  bonus_subunit_qty: number;
   total_value: number;
   bonus_value: number;
 }
@@ -270,37 +280,38 @@ export async function buildLoadForm(
     }
 
     const pid = String(row.product_id);
-    const perPack = product.units_per_pack && product.units_per_pack > 0 ? product.units_per_pack : 0;
     const qty = Number(row.quantity) || 0;
     const bonus = Number(row.bonus) || 0;
     const price = Number(row.selling_price) || 0;
     const disc = Number(row.discount) || 0;
-    // Normalize the sold quantity to pieces before packing. Subunit sales are
-    // already in pieces; main-unit sales carry perPack pieces per unit.
-    const qtyPieces = row.unit_mode === "subunit" || perPack === 0 ? qty : qty * perPack;
 
     const agg = lineMap.get(pid) ?? {
       product_id: pid,
       product_name: product.name,
       units_per_pack: product.units_per_pack ?? null,
       unit_type: product.unit_type ?? null,
-      cartons: 0,
-      pcs: 0,
-      bonus: 0,
+      subunit_type: product.subunit_type ?? null,
+      main_qty: 0,
+      subunit_qty: 0,
+      bonus_main_qty: 0,
+      bonus_subunit_qty: 0,
       total_value: 0,
       bonus_value: 0,
     } as LineAgg;
 
-    agg.bonus += bonus;
     agg.total_value += qty * price - disc;
     agg.bonus_value += bonus * price;
 
-    if (perPack > 0) {
-      const totalUnits = agg.cartons * perPack + agg.pcs + qtyPieces;
-      agg.cartons = Math.floor(totalUnits / perPack);
-      agg.pcs = totalUnits % perPack;
+    // Track the sold quantity per unit mode: main-unit sales (e.g. cotton)
+    // and subunit sales (e.g. boxes) are kept separate so the load form can
+    // label the quantity with the unit it was actually sold in. Bonus is
+    // tracked the same way so it can be shown with its unit too.
+    if (row.unit_mode === "subunit") {
+      agg.subunit_qty += qty;
+      agg.bonus_subunit_qty += bonus;
     } else {
-      agg.pcs += qtyPieces;
+      agg.main_qty += qty;
+      agg.bonus_main_qty += bonus;
     }
     lineMap.set(pid, agg);
   }
