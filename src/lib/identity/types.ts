@@ -97,4 +97,5 @@ export interface Invitation {
   fullName?: string | null;
   phone?: string | null;
   designation?: string | null;
+  status?: "pending" | "accepted" | "revoked" | string;
 }

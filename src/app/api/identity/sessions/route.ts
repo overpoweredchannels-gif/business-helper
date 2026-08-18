@@ -82,6 +82,17 @@ export async function POST(request: NextRequest) {
   }
 
   if (body.sessionId) {
+    // A user may only revoke their own session; owner/manager may revoke any
+    // session belonging to their organization.
+    const orgSessions = getActiveSessionsForOrg(actor.organizationId);
+    const target = orgSessions.find((s) => s.sessionId === body.sessionId);
+    const isOwn = target?.profileId === actor.profileId;
+    if (!target) {
+      return NextResponse.json({ ok: false, error: "Session not found." }, { status: 404 });
+    }
+    if (!isOwn && !(actor.isOwner || actor.role === "manager")) {
+      return NextResponse.json({ ok: false, error: "You can only revoke your own sessions." }, { status: 403 });
+    }
     const result = revokeSessionById(body.sessionId);
     if (!result.success) {
       return NextResponse.json({ ok: false, error: result.error ?? "Session not found." }, { status: 404 });
@@ -102,6 +113,11 @@ export async function POST(request: NextRequest) {
   if (body.profileId) {
     if (!actor.isOwner) {
       return NextResponse.json({ ok: false, error: "Only the owner can revoke another user's sessions." }, { status: 403 });
+    }
+    // Owner can only revoke sessions for users within their own organization.
+    const orgProfiles = new Set(getActiveSessionsForOrg(actor.organizationId).map((s) => s.profileId));
+    if (!orgProfiles.has(body.profileId)) {
+      return NextResponse.json({ ok: false, error: "No active sessions found for this user in your organization." }, { status: 404 });
     }
     const { revokeAllForProfile } = await import("@/lib/identity/sessions");
     const count = revokeAllForProfile(body.profileId);

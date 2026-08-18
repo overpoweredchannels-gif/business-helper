@@ -80,7 +80,7 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
     try {
       const [cRes, pRes] = await Promise.all([
         authorizedFetch("/api/customers"),
-        authorizedFetch("/api/products/list?limit=300"),
+        authorizedFetch("/api/products/list?limit=1000"),
       ]);
       const cData = await cRes.json();
       const pData = await pRes.json();

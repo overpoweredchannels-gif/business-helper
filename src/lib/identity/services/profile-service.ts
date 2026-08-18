@@ -25,6 +25,17 @@ export class ProfileService {
       throw new Error("Profile context required");
     }
 
-    return this.repository.update(actor.profileId, updates as Partial<ProfileRecord>);
+    // Allowlist: a user may only ever edit their own display name / email.
+    // Role, organization, activation state and identity fields can never be
+    // changed through the self-profile endpoint — those go through the
+    // owner-gated staff management flow (saveStaffProfile) instead.
+    const allowlisted: Partial<ProfileRecord> = {};
+    for (const key of ["full_name", "display_name", "email"] as const) {
+      if (key in updates) {
+        (allowlisted as Record<string, unknown>)[key] = updates[key];
+      }
+    }
+
+    return this.repository.update(actor.profileId, allowlisted);
   }
 }

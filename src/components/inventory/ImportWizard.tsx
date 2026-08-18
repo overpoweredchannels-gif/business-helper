@@ -406,9 +406,34 @@ export default function ImportWizard({
 
       try {
         if (row.existingProductId) {
+          // In update mode, only overwrite fields the file actually provides —
+          // empty cells must not wipe existing product data.
+          const updatable: Record<string, unknown> = { ...payload };
+          if (v.name) updatable.name = v.name.trim();
+          if (v.sku.trim()) updatable.sku = v.sku.trim();
+          if (v.barcode.trim()) updatable.barcode = v.barcode.trim();
+          if (finalBrandId) updatable.brand_id = finalBrandId;
+          if (categoryId) updatable.category_id = categoryId;
+          if (v.unit_type.trim()) updatable.unit_type = v.unit_type.trim();
+          if (v.subunit_type.trim()) updatable.subunit_type = v.subunit_type.trim();
+          for (const key of [
+            "units_per_pack",
+            "default_purchase_price",
+            "last_purchase_price",
+            "default_selling_price",
+            "minimum_stock_level",
+            "reorder_level",
+          ] as const) {
+            const raw = (v as unknown as Record<string, string>)[key];
+            if (raw) updatable[key] = toNumberOrNull(raw);
+          }
+          if (v.track_batch.trim()) updatable.track_batch = toBoolOrNull(v.track_batch);
+          if (v.track_expiry.trim()) updatable.track_expiry = toBoolOrNull(v.track_expiry);
+          if (v.overselling_policy.trim()) updatable.overselling_policy = toPolicyOrNull(v.overselling_policy);
+
           const { error: updateError } = await supabase
             .from("products")
-            .update({ ...payload, updated_at: new Date().toISOString() })
+            .update({ ...updatable, updated_at: new Date().toISOString() })
             .eq("id", row.existingProductId)
             .eq("organization_id", organizationId);
           if (updateError) throw updateError;

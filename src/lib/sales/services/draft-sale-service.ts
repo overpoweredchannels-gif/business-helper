@@ -8,6 +8,8 @@ export interface DraftSaleItemInput {
   quantity: number;
   unitPrice: number;
   discount?: number;
+  unitMode?: "main" | "subunit";
+  bonus?: number;
 }
 
 export interface CreateDraftSaleInput {
@@ -137,6 +139,8 @@ export class DraftSaleService {
       quantity_delivered: 0,
       unit_price: item.unitPrice,
       discount: item.discount ?? 0,
+      unit_mode: item.unitMode === "subunit" ? "subunit" : "main",
+      bonus: item.bonus ?? 0,
     }));
 
     const { error: itemsError } = await supabase
@@ -257,7 +261,7 @@ export class DraftSaleService {
       .select(`
         id, organization_id, so_number, customer_id, order_date, expected_date, notes,
         status, payment_type, credit_days, created_by_profile_id, created_at,
-        sales_order_items(product_id, quantity_ordered, unit_price, discount)
+        sales_order_items(product_id, quantity_ordered, unit_price, discount, unit_mode, bonus)
       `)
       .eq("id", draftId)
       .eq("organization_id", actor.organizationId)
@@ -280,7 +284,7 @@ export class DraftSaleService {
     for (const item of items) {
       const { data: product } = await supabase
         .from("products")
-        .select("id, current_stock")
+        .select("id, current_stock, units_per_pack")
         .eq("id", item.product_id)
         .eq("organization_id", actor.organizationId)
         .maybeSingle();
@@ -289,13 +293,18 @@ export class DraftSaleService {
         return { ok: false, error: `Product ${item.product_id} not found` };
       }
 
+      // Normalize subunit quantities to main units before comparing to stock.
+      const requestedMain = item.unit_mode === "subunit" && Number(product.units_per_pack ?? 0) > 0
+        ? Number(item.quantity_ordered) / Number(product.units_per_pack)
+        : Number(item.quantity_ordered);
+
       const { data: effectivePolicy } = await supabase.rpc(
         "resolve_overselling_policy",
         { p_organization_id: actor.organizationId, p_product_id: item.product_id }
       );
       const oversellingAllowed = String(effectivePolicy ?? "allow") !== "block";
-      if (!oversellingAllowed && Number(product.current_stock ?? 0) < Number(item.quantity_ordered)) {
-        return { ok: false, error: `Insufficient stock for product ${item.product_id}: ${product.current_stock} available, ${item.quantity_ordered} requested` };
+      if (!oversellingAllowed && Number(product.current_stock ?? 0) < requestedMain) {
+        return { ok: false, error: `Insufficient stock for product ${item.product_id}: ${product.current_stock} available, ${requestedMain} requested` };
       }
     }
 
@@ -352,6 +361,7 @@ export class DraftSaleService {
       quantity: Number(item.quantity_ordered),
       selling_price: Number(item.unit_price ?? 0),
       discount: Number(item.discount ?? 0),
+      bonus: Number(item.bonus ?? 0),
       unit_mode: item.unit_mode ?? "main",
       organization_id: actor.organizationId,
       created_at: now,

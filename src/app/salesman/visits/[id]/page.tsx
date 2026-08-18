@@ -115,7 +115,7 @@ export default function VisitDetailPage() {
 
   const loadProducts = useCallback(async () => {
     try {
-      const res = await authorizedFetch("/api/products/list?limit=300");
+      const res = await authorizedFetch("/api/products/list?limit=1000");
       const data = await res.json();
       if (data.ok) setProducts(data.products ?? []);
     } catch {

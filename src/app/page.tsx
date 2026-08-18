@@ -2172,13 +2172,30 @@ export default function Home() {
     }
     return currentOrganization?.overselling_policy === "block" ? "block" : "allow";
   };
-  const getOversellingViolationMessage = (product: Product, quantity: number): string | null => {
+  const getOversellingViolationMessage = (product: Product, quantity: number, unitMode?: string): string | null => {
     if (getEffectiveOversellingPolicy(product) !== "block") return null;
     const available = getAvailableStockForProduct(product.id);
-    if (quantity > available) {
-      return `Cannot sell ${quantity} of ${product.name}: only ${available} in stock (overselling is blocked for this product).`;
+    // Stock is tracked in main units; convert subunit quantities first.
+    const mainQuantity =
+      unitMode === "subunit" && Number(product.units_per_pack ?? 0) > 0
+        ? quantity / Number(product.units_per_pack)
+        : quantity;
+    if (mainQuantity > available) {
+      return `Cannot sell ${quantity} ${unitMode === "subunit" ? "units" : ""} of ${product.name}: only ${available} in stock (overselling is blocked for this product).`;
     }
     return null;
+  };
+  // Cost of a sales line in main units. purchase_price_snapshot is stored per
+  // main unit (see the sales-invoice handler), and the fallback product price
+  // is per main unit too — so only the sold quantity needs normalizing.
+  const salesLineCogsInMainUnits = (item: any, product?: Product): number | null => {
+    const quantity = safeNumber(item.quantity);
+    const costSnapshot = safeNumber(item.purchase_price_snapshot);
+    const fallbackCost = safeNumber(product?.last_purchase_price);
+    const unitCost = costSnapshot > 0 ? costSnapshot : fallbackCost > 0 ? fallbackCost : null;
+    if (unitCost === null) return null;
+    const mainQuantity = quantityToMainUnits(quantity, item.unit_mode ?? "main", product?.units_per_pack);
+    return mainQuantity * unitCost;
   };
   const evaluateAiDraftData = (actionType: string, parsedData: Record<string, unknown>) => {
     const product = products.find((item) => String(item.id) === String(parsedData.product_id));
@@ -3741,7 +3758,7 @@ export default function Home() {
         setSalesMessage(null);
         return;
       }
-      const violation = getOversellingViolationMessage(product, quantity);
+      const violation = getOversellingViolationMessage(product, quantity, line.unit_mode);
       if (violation) {
         setSalesError(violation);
         setSalesMessage(null);
@@ -4041,12 +4058,20 @@ export default function Home() {
         const product = products.find((p) => String(p.id) === String(line.product_id));
         const latestPurchasePrice = Number(latestPurchaseItem?.purchase_price);
         const productLastPurchasePrice = Number(product?.last_purchase_price);
+        // Cost is always stored per main unit so COGS math is unit-safe even
+        // when the purchase was recorded in subunit mode.
+        const normalizeCostToMainUnit = (price: number): number | null => {
+          if (!Number.isFinite(price) || price <= 0) return null;
+          if (latestPurchaseItem?.unit_mode === "subunit" && Number(product?.units_per_pack ?? 0) > 0) {
+            return price * Number(product?.units_per_pack);
+          }
+          return price;
+        };
         const purchasePriceSnapshot =
-          Number.isFinite(latestPurchasePrice) && latestPurchasePrice > 0
-            ? latestPurchasePrice
-            : Number.isFinite(productLastPurchasePrice) && productLastPurchasePrice > 0
-              ? productLastPurchasePrice
-              : null;
+          normalizeCostToMainUnit(latestPurchasePrice) ??
+          (Number.isFinite(productLastPurchasePrice) && productLastPurchasePrice > 0
+            ? productLastPurchasePrice
+            : null);
 
         const { error: itemError } = await supabase.from("sales_items").insert({
           sales_transaction_id: salesTransactionId,
@@ -4464,6 +4489,7 @@ export default function Home() {
       expense_type: expenseType,
       amount,
       notes: expenseNotes.trim() || null,
+      expense_date: toDateInputValue(new Date()),
       supplier_id: selectedExpenseSupplierId || null,
       customer_id: selectedExpenseCustomerId || null,
       purchase_transaction_id: selectedExpensePurchaseId || null,
@@ -5239,7 +5265,6 @@ export default function Home() {
   });
   const isOwnerOrAdmin = () => {
     const role = currentProfile?.role;
-    if (!role) return true;
     return role === "owner" || role === "admin";
   };
   const currentStaffPermission = staffPermissions.find(
@@ -6157,7 +6182,7 @@ export default function Home() {
       return;
     }
 
-    const productId = Number(adjustmentProductId);
+    const productId = adjustmentProductId;
     const quantity = Number(adjustmentQuantity);
     const quantityDelta = adjustmentDirection === "in" ? quantity : -quantity;
 
@@ -7007,6 +7032,10 @@ export default function Home() {
   };
 
   const handleCreatePurchaseInvoice = async () => {
+    if (invoiceLoading) {
+      return;
+    }
+
     if (!selectedSupplierId) {
       setInvoiceError("Please select a supplier");
       setInvoiceMessage(null);
@@ -7015,6 +7044,18 @@ export default function Home() {
 
     if (purchaseLines.length === 0 || purchaseLines.some((line) => !line.product_id)) {
       setInvoiceError("Please add at least one product line");
+      setInvoiceMessage(null);
+      return;
+    }
+
+    if (purchaseLines.some((line) => Number(line.quantity) <= 0)) {
+      setInvoiceError("Each line needs a quantity greater than zero");
+      setInvoiceMessage(null);
+      return;
+    }
+
+    if (purchaseLines.some((line) => Number(line.purchase_price) < 0)) {
+      setInvoiceError("Purchase price cannot be negative");
       setInvoiceMessage(null);
       return;
     }
@@ -7063,6 +7104,9 @@ export default function Home() {
           notes: null,
           organization_id: currentOrganizationId,
           total_amount: purchaseTotal,
+          purchase_date: toDateInputValue(new Date()),
+          payment_type: "cash",
+          created_by_profile_id: currentProfile?.id ?? null,
         })
         .select()
         .single();
@@ -7209,6 +7253,10 @@ export default function Home() {
   };
 
   const handleCreatePurchaseOrder = async () => {
+    if (poLoading) {
+      return;
+    }
+
     const validation = validatePurchaseOrderInput({
       supplier_id: poSupplierId || null,
       order_date: poOrderDate,
@@ -7620,14 +7668,28 @@ export default function Home() {
     const returnedByProduct = new Map<string, number>();
     for (const item of invoiceReturnItems) {
       const key = String(item.product_id);
-      returnedByProduct.set(key, (returnedByProduct.get(key) ?? 0) + safeNumber(item.quantity));
+      const product = products.find((p) => String(p.id) === String(item.product_id));
+      // Normalize returned quantities to main units before subtracting from
+      // the purchased main-unit quantity.
+      returnedByProduct.set(
+        key,
+        (returnedByProduct.get(key) ?? 0) +
+          quantityToMainUnits(safeNumber(item.quantity), item.unit_mode ?? "main", product?.units_per_pack)
+      );
     }
 
     setReturnLines(
       invoiceItems.map((item) => {
         const key = String(item.product_id);
+        const product = products.find((p) => String(p.id) === String(item.product_id));
         const alreadyReturned = returnedByProduct.get(key) ?? 0;
-        const remaining = Math.max(0, safeNumber(item.quantity) - alreadyReturned);
+        const purchasedMain = quantityToMainUnits(safeNumber(item.quantity), item.unit_mode ?? "main", product?.units_per_pack);
+        const remainingMain = Math.max(0, purchasedMain - alreadyReturned);
+        // Prefill in the line's own unit mode so the user sees a familiar number.
+        const remaining =
+          item.unit_mode === "subunit" && Number(product?.units_per_pack ?? 0) > 0
+            ? remainingMain * Number(product?.units_per_pack)
+            : remainingMain;
         return {
           product_id: String(item.product_id),
           quantity: String(remaining),
@@ -7642,6 +7704,10 @@ export default function Home() {
   };
 
   const handleCreatePurchaseReturn = async () => {
+    if (returnLoading) {
+      return;
+    }
+
     const validation = validatePurchaseReturnInput({
       supplier_id: returnSupplierId || null,
       return_date: returnDate,
@@ -8359,6 +8425,7 @@ export default function Home() {
               quantity: Number(line.quantity),
               unitPrice: line.selling_price === "" ? null : Number(line.selling_price),
               discount: line.discount === "" ? 0 : Number(line.discount),
+              unitMode: line.unit_mode ?? "main",
               batchNumber: line.batch_number?.trim() || null,
               expiryDate: line.expiry_date || null,
             })),
@@ -8568,7 +8635,7 @@ export default function Home() {
     (totals, allocation) => {
       const salesTransactionId = String(allocation.sales_transaction_id ?? "");
       const transaction = salesTransactionsById[salesTransactionId];
-      if (!transaction || transaction.payment_type !== "credit") return totals;
+      if (!transaction) return totals;
       totals[transaction.customer_id] =
         (totals[transaction.customer_id] ?? 0) + safeNumber(allocation.amount);
       return totals;
@@ -9456,6 +9523,7 @@ export default function Home() {
       soldQty,
       currentStock,
       defaultSellingPrice: product.default_selling_price ?? null,
+      lastPurchasePrice: product.last_purchase_price ?? null,
       reorderLevel: product.reorder_level ?? 0,
     };
   });
@@ -9482,10 +9550,18 @@ export default function Home() {
       const category = categories.find((item) => item.id === product.category_id);
       const purchasedQty = filteredPurchaseItems
         .filter((item) => String(item.product_id) === productId)
-        .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+        .reduce(
+          (sum, item) =>
+            sum + quantityToMainUnits(safeNumber(item.quantity), item.unit_mode ?? "main", product.units_per_pack),
+          0
+        );
       const soldQty = filteredSalesItems
         .filter((item) => String(item.product_id) === productId)
-        .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+        .reduce(
+          (sum, item) =>
+            sum + quantityToMainUnits(safeNumber(item.quantity), item.unit_mode ?? "main", product.units_per_pack),
+          0
+        );
       const currentStock = safeNumber(product.current_stock ?? 0);
       const reorderLevel = safeNumber(product.reorder_level ?? product.minimum_stock_level ?? 0);
       const recentSalesQuantity = filteredSalesItems
@@ -9495,7 +9571,11 @@ export default function Home() {
           const saleDate = getDateOnly(transaction?.sale_date);
           return Boolean(saleDate && saleDate >= thirtyDaysAgoValue && saleDate <= todayDateValue);
         })
-        .reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+        .reduce(
+          (sum, item) =>
+            sum + quantityToMainUnits(safeNumber(item.quantity), item.unit_mode ?? "main", product.units_per_pack),
+          0
+        );
       const dailyAverageSales = recentSalesQuantity / 30;
       const estimatedDaysLeft =
         dailyAverageSales > 0 ? currentStock / dailyAverageSales : null;
@@ -9631,14 +9711,33 @@ export default function Home() {
 
   // Receivables per customer
   const receivablesStats = customers.map((customer) => {
-    const customerTxIds = salesTransactions.filter((tx) => tx.customer_id === customer.id).map((t) => t.id);
-    const totalSales = salesItems
-      .filter((si) => customerTxIds.includes(si.sales_transaction_id))
-      .reduce((sum, si) => sum + Number(si.quantity || 0) * Number(si.selling_price || 0), 0);
+    const customerTxIds = salesTransactions
+      .filter((tx) => tx.customer_id === customer.id)
+      .map((t) => t.id);
+    // Only credit invoices create receivables. total_amount already includes
+    // invoice-level discount and tax, so don't re-sum raw line values.
+    const totalSales = salesTransactions
+      .filter((tx) => tx.customer_id === customer.id && tx.payment_type === "credit")
+      .reduce((sum, tx) => sum + Number(tx.total_amount ?? 0), 0);
 
     const paymentsReceived = customerPayments
       .filter((p) => p.customer_id === customer.id)
       .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    // Remaining unpaid balance per credit invoice is tracked by the credit
+    // allocation engine (handles discounts, tax and cash auto-payments).
+    const outstanding = customerTxIds.reduce(
+      (sum, txId) =>
+        sum +
+        Math.max(
+          0,
+          creditAllocationByTransaction[txId]?.remainingUnpaidAmount ??
+            (salesTransactions.find((tx) => tx.id === txId)?.payment_type === "credit"
+              ? Number(salesTransactions.find((tx) => tx.id === txId)?.total_amount ?? 0)
+              : 0)
+        ),
+      0
+    );
 
     return {
       customerId: customer.id,
@@ -9646,7 +9745,7 @@ export default function Home() {
       shopName: customer.shop_name,
       totalSales,
       paymentsReceived,
-      outstanding: totalSales - paymentsReceived,
+      outstanding,
     };
   });
 
@@ -9782,16 +9881,45 @@ export default function Home() {
   const totalSuppliers = suppliers.length;
   const totalReceivables = receivablesStats.reduce((sum, customer) => sum + customer.outstanding, 0);
   const totalPayables = payablesStats.reduce((sum, supplier) => sum + supplier.remainingPayable, 0);
+  // Inventory value is normally a cost-based figure; fall back to selling
+  // price only when no cost is known for a product.
   const inventoryValue = inventoryStats.reduce(
-    (sum, item) => sum + item.currentStock * (Number(item.defaultSellingPrice ?? 0) || 0),
+    (sum, item) =>
+      sum +
+      item.currentStock *
+        (Number(item.lastPurchasePrice ?? 0) > 0
+          ? Number(item.lastPurchasePrice)
+          : Number(item.defaultSellingPrice ?? 0) || 0),
     0
   );
   const lowStockProducts = inventoryStats.filter(
     (item) => typeof item.reorderLevel === "number" && item.currentStock <= item.reorderLevel
   );
   const pendingTasks = tasks.filter((t) => t.status === "pending");
+  // True "today" KPIs for the dashboard hero cards (independent of the BI
+  // range selector which defaults to 30 days).
+  const todayTransactions = salesTransactions.filter(
+    (tx) => getDateOnly(tx.sale_date) === todayDateValue || getDateOnly(tx.created_at) === todayDateValue
+  );
+  const todayTransactionIds = new Set(todayTransactions.map((tx) => tx.id));
+  const todaySalesItems = salesItems.filter((item) => todayTransactionIds.has(item.sales_transaction_id));
+  const todaySalesAmount = todaySalesItems.reduce(
+    (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount),
+    0
+  );
+  const todayProfitAmount = todaySalesItems.reduce((sum, item) => {
+    const product = products.find((p) => String(p.id) === String(item.product_id));
+    const cogs = salesLineCogsInMainUnits(item, product);
+    const revenue = safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount);
+    return sum + revenue - (cogs ?? 0);
+  }, 0);
   const invoicesDue = pendingTasks.filter((t) => t.task_type === "payment_collection").length || 0;
-  const paymentsDue = pendingTasks.filter((t) => t.task_type === "payment_collection").length || 0;
+  // Payments due = supplier purchases with an outstanding payable (overdue or
+  // not yet paid). Uses the same allocation engine as the payables ledger.
+  const paymentsDue = purchaseTransactions.filter((tx) => {
+    const remaining = supplierPaymentAllocationByPurchaseTransaction[tx.id]?.remainingPayableAmount;
+    return Number.isFinite(remaining) ? remaining > 0 : true;
+  }).length || 0;
   const customersToFollowUp = pendingTasks.filter((t) => t.task_type === "customer_follow_up" || t.task_type === "sales_follow_up").length || 0;
   const expiringProducts = pendingTasks.filter((t) => t.task_type === "stock_check" && t.title.toLowerCase().includes("expir")).length || 0;
   const topSellingProducts = products
@@ -9982,14 +10110,12 @@ export default function Home() {
       (totals, item) => {
         const quantity = safeNumber(item.quantity);
         const sellingPrice = safeNumber(item.selling_price);
-        const revenue = quantity * sellingPrice;
-        const costSnapshot = safeNumber(item.purchase_price_snapshot);
+        const revenue = quantity * sellingPrice - safeNumber(item.discount);
         const product = productById[String(item.product_id)];
-        const fallbackCost = safeNumber(product?.last_purchase_price);
-        const unitCost = costSnapshot > 0 ? costSnapshot : fallbackCost > 0 ? fallbackCost : null;
+        const lineCogs = salesLineCogsInMainUnits(item, product);
         totals.revenue += revenue;
-        if (unitCost !== null) {
-          totals.knownCogs += quantity * unitCost;
+        if (lineCogs !== null) {
+          totals.knownCogs += lineCogs;
           totals.costedRevenue += revenue;
         } else {
           totals.unknownCostRevenue += revenue;
@@ -10014,17 +10140,17 @@ export default function Home() {
         const productId = String(product.id);
         const productSalesItems = selectedSalesItems.filter((item) => String(item.product_id) === productId);
         const invoiceIds = new Set(productSalesItems.map((item) => String(item.sales_transaction_id)));
-        const quantitySold = productSalesItems.reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+        const quantitySold = productSalesItems.reduce(
+          (sum, item) => sum + quantityToMainUnits(safeNumber(item.quantity), item.unit_mode ?? "main", product.units_per_pack),
+          0
+        );
         const salesValue = productSalesItems.reduce(
           (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price),
           0
         );
         const knownCogs = productSalesItems.reduce((sum, item) => {
-          const quantity = safeNumber(item.quantity);
-          const costSnapshot = safeNumber(item.purchase_price_snapshot);
-          const fallbackCost = safeNumber(product.last_purchase_price);
-          const unitCost = costSnapshot > 0 ? costSnapshot : fallbackCost > 0 ? fallbackCost : null;
-          return unitCost === null ? sum : sum + quantity * unitCost;
+          const lineCogs = salesLineCogsInMainUnits(item, product);
+          return lineCogs === null ? sum : sum + lineCogs;
         }, 0);
         const unknownCostLineCount = productSalesItems.filter((item) => {
           const costSnapshot = safeNumber(item.purchase_price_snapshot);
@@ -10189,11 +10315,10 @@ export default function Home() {
       const group = ensureDay(getDateOnly(getUsableTimestamp(transaction?.sale_date, transaction?.created_at).value));
       const quantity = safeNumber(item.quantity);
       const revenue = quantity * safeNumber(item.selling_price);
-      const costSnapshot = safeNumber(item.purchase_price_snapshot);
-      const fallbackCost = safeNumber(productById[String(item.product_id)]?.last_purchase_price);
-      const unitCost = costSnapshot > 0 ? costSnapshot : fallbackCost > 0 ? fallbackCost : null;
+      const product = productById[String(item.product_id)];
+      const lineCogs = salesLineCogsInMainUnits(item, product);
       group.sales += revenue;
-      group.profit += unitCost === null ? 0 : revenue - quantity * unitCost;
+      group.profit += lineCogs === null ? 0 : revenue - lineCogs;
     });
     selectedPurchaseItems.forEach((item) => {
       const transaction = purchasesById[String(item.purchase_transaction_id)];
@@ -10806,20 +10931,44 @@ export default function Home() {
   const expensesInPeriod = expenses.filter((expense) =>
     isDateInRange(expense.expense_date, profitLossStartDate, profitLossEndDate)
   );
+  // Precompute per-invoice subtotal (pre-discount/pre-tax) so invoice-level
+  // discounts and tax can be allocated across lines proportionally.
+  const profitLossSubtotalsByTransaction = salesItemsInPeriod.reduce<Record<string, number>>(
+    (map, item) => {
+      const key = String(item.sales_transaction_id);
+      map[key] = (map[key] ?? 0) + Number(item.quantity || 0) * Number(item.selling_price || 0) - safeNumber(item.discount);
+      return map;
+    },
+    {}
+  );
+  const invoiceRevenueRatioFor = (transaction: SalesTransaction): number => {
+    const subtotal = profitLossSubtotalsByTransaction[String(transaction.id)] ?? 0;
+    if (subtotal <= 0) return 1;
+    const netRevenue = Number(transaction.total_amount ?? 0) - safeNumber(transaction.tax_amount);
+    if (!Number.isFinite(netRevenue) || netRevenue <= 0) return 1;
+    return netRevenue / subtotal;
+  };
   const profitLossTotals = salesItemsInPeriod.reduce(
     (totals, item) => {
       const quantity = Number(item.quantity || 0);
       const sellingPrice = Number(item.selling_price || 0);
       const lineDiscount = safeNumber(item.discount);
-      const revenue = quantity * sellingPrice - lineDiscount;
-      const purchasePriceSnapshot = Number(item.purchase_price_snapshot);
-      const hasValidCost =
-        Number.isFinite(purchasePriceSnapshot) && purchasePriceSnapshot > 0;
+      const lineNet = quantity * sellingPrice - lineDiscount;
+      // Invoice-level discount and tax are recorded on the transaction; apply
+      // them to this line's revenue proportionally to its share of the
+      // invoice's pre-discount subtotal so totals reconcile with the invoices.
+      const transaction = salesTransactionsInPeriod.find(
+        (tx) => tx.id === item.sales_transaction_id
+      );
+      const ratio = transaction && lineNet > 0 ? invoiceRevenueRatioFor(transaction) : 1;
+      const revenue = lineNet * ratio;
+      const product = products.find((p) => String(p.id) === String(item.product_id));
+      const lineCogs = salesLineCogsInMainUnits(item, product);
 
       totals.totalRevenue += revenue;
 
-      if (hasValidCost) {
-        totals.knownCostOfGoodsSold += quantity * purchasePriceSnapshot;
+      if (lineCogs !== null) {
+        totals.knownCostOfGoodsSold += lineCogs;
         totals.costedSalesRevenue += revenue;
       } else {
         totals.missingCostSalesValue += revenue;
@@ -11506,12 +11655,17 @@ export default function Home() {
     const customer = customers.find((item) => item.id === transaction.customer_id);
     const lineItems = salesItems.filter((item) => item.sales_transaction_id === transaction.id);
     const creditAllocation = creditAllocationByTransaction[transaction.id];
+    // Prefer the stored invoice total (which includes invoice-level discount and
+    // tax) over re-summing lines; falls back to the line sum for legacy rows.
     const invoiceTotal =
-      creditAllocation?.invoiceTotal ??
-      lineItems.reduce(
-        (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price),
-        0
-      );
+      Number.isFinite(Number(transaction.total_amount)) && Number(transaction.total_amount) > 0
+        ? Number(transaction.total_amount)
+        : creditAllocation?.invoiceTotal ??
+          lineItems.reduce(
+            (sum, item) =>
+              sum + safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount),
+            0
+          );
     const lineRows =
       lineItems.length === 0
         ? [["No line items found", "-", formatPKR(0), formatPKR(0)]]
@@ -11519,12 +11673,14 @@ export default function Home() {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const quantity = safeNumber(item.quantity);
             const sellingPrice = safeNumber(item.selling_price);
+            const lineDiscount = safeNumber(item.discount);
+            const lineTotal = quantity * sellingPrice - lineDiscount;
             const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
               product?.name ?? "Unknown Product",
               `${quantity} ${unit}`,
               formatPKR(sellingPrice),
-              formatPKR(quantity * sellingPrice),
+              lineDiscount > 0 ? `${formatPKR(lineTotal)} (disc: ${formatPKR(lineDiscount)})` : formatPKR(lineTotal),
             ];
           });
 
@@ -11549,6 +11705,16 @@ export default function Home() {
       </table>
       <div class="summary">
         <p><strong>Grand Total:</strong> ${escapeHtml(formatPKR(invoiceTotal))}</p>
+        ${
+          Number(transaction.discount_amount) > 0
+            ? `<p><strong>Discount:</strong> ${escapeHtml(formatPKR(Number(transaction.discount_amount)))}</p>`
+            : ""
+        }
+        ${
+          Number(transaction.tax_amount) > 0
+            ? `<p><strong>Tax (${escapeHtml(String(transaction.tax_rate ?? 0))}%):</strong> ${escapeHtml(formatPKR(Number(transaction.tax_amount)))}</p>`
+            : ""
+        }
         ${
           transaction.payment_type === "credit"
             ? `<p><strong>Remaining Balance:</strong> ${escapeHtml(formatPKR(creditAllocation?.remainingUnpaidAmount ?? 0))}</p>`
@@ -15569,13 +15735,13 @@ export default function Home() {
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
             userName={currentProfile?.full_name ?? currentUser.email}
-            todaySales={{ value: formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount) }}
-            todayProfit={{ value: formatPKR(businessIntelligenceAnalytics.overview.estimatedNetProfit) }}
+            todaySales={{ value: formatPKR(todaySalesAmount) }}
+            todayProfit={{ value: formatPKR(todayProfitAmount) }}
             inventoryValue={{ value: formatPKR(inventoryValue) }}
             outstandingReceivables={{ value: formatPKR(totalReceivables) }}
             outstandingPayables={{ value: formatPKR(totalPayables) }}
             lowStockAlerts={{ value: String(reorderRecommendationSummary.urgentReorderCount), count: reorderRecommendationSummary.urgentReorderCount }}
-            healthScore={75}
+            healthScore={businessHealthScore.score}
             healthMetrics={[
               { label: "Cash Flow", value: formatPKR(totalReceivables - totalPayables), status: totalReceivables > totalPayables ? "good" as const : "warning" as const },
               { label: "Inventory Health", value: `${lowStockProducts.length} low stock`, status: lowStockProducts.length > 5 ? "critical" as const : lowStockProducts.length > 2 ? "warning" as const : "good" as const },
@@ -17068,7 +17234,7 @@ export default function Home() {
                   {ledgerProductFilter !== "all" && (
                     <p className="mb-3 text-sm text-muted-foreground">
                       Opening balance:{" "}
-                      {formatMovementChange(ledgerQuery.openingBalances.get(Number(ledgerProductFilter)) ?? 0)}
+                      {formatMovementChange(ledgerQuery.openingBalances.get(String(ledgerProductFilter)) ?? 0)}
                     </p>
                   )}
                   <div className="overflow-x-auto">
@@ -18484,7 +18650,10 @@ export default function Home() {
           }, 0);
           const totalDiscounts = rangeItems.reduce((sum, item) => sum + safeNumber(item.discount), 0);
           const totalTax = rangeTransactions.reduce((sum, tx) => sum + safeNumber(tx.tax_amount), 0);
-          const cogs = rangeItems.reduce((sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.purchase_price_snapshot), 0);
+          const cogs = rangeItems.reduce((sum, item) => {
+            const product = products.find((p) => String(p.id) === String(item.product_id));
+            return sum + (salesLineCogsInMainUnits(item, product) ?? 0);
+          }, 0);
           const netSales = Math.max(0, grossSales - totalTax);
           const grossProfit = netSales - cogs;
 
@@ -18512,9 +18681,10 @@ export default function Home() {
             (totals, item) => {
               const key = String(item.product_id);
               const current = totals[key] ?? { quantity: 0, revenue: 0, cost: 0 };
+              const product = products.find((p) => String(p.id) === String(item.product_id));
               current.quantity += safeNumber(item.quantity);
               current.revenue += safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount);
-              current.cost += safeNumber(item.quantity) * safeNumber(item.purchase_price_snapshot);
+              current.cost += salesLineCogsInMainUnits(item, product) ?? 0;
               totals[key] = current;
               return totals;
             },

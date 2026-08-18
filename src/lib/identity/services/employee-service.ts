@@ -24,7 +24,7 @@ export class EmployeeService {
     if (!actor.organizationId) {
       throw new Error("Organization context required");
     }
-    return this.repository.findById(employeeId);
+    return this.repository.findById(employeeId, actor.organizationId);
   }
 
   validateEmployeeInput(input: Record<string, unknown>): string | null {
@@ -130,7 +130,7 @@ export class EmployeeService {
     }
 
     try {
-      const employee = await this.repository.update(employeeId, payload);
+      const employee = await this.repository.update(employeeId, payload, actor.organizationId);
       return { employee };
     } catch (error) {
       return { error: error instanceof Error ? error.message : "Failed to update employee" };
@@ -142,7 +142,7 @@ export class EmployeeService {
       return { success: false, error: "Organization context required" };
     }
     try {
-      await this.repository.remove(employeeId);
+      await this.repository.remove(employeeId, actor.organizationId);
       return { success: true };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Failed to remove employee" };

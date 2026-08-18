@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search") ?? "";
-  const limit = Math.min(Number(searchParams.get("limit") ?? 100), 300);
+  const offset = Math.max(0, Number(searchParams.get("offset") ?? 0) || 0);
+  const limit = Math.min(Math.max(1, Number(searchParams.get("limit") ?? 100) || 100), 1000);
 
   const supabase = createSupabaseService();
   let query = supabase
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
     .select("id, name, sku, unit_type, current_stock, default_selling_price")
     .eq("organization_id", permission.actor.organizationId)
     .order("name", { ascending: true })
-    .limit(limit);
+    .range(offset, offset + limit - 1);
 
   if (search.trim()) {
     query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%`);
@@ -31,5 +32,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, products: data ?? [] });
+  return NextResponse.json({ ok: true, products: data ?? [], nextOffset: (data ?? []).length === limit ? offset + limit : null });
 }

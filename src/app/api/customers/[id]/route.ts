@@ -96,13 +96,27 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updates.preferred_payment_method = normalizeOptionalText(body.preferred_payment_method);
     }
 
-    // Field-sales assignment columns
-    updates.assigned_salesman_id = body?.assigned_salesman_id ? String(body.assigned_salesman_id) : null;
-    updates.assigned_territory_id = body?.assigned_territory_id ? String(body.assigned_territory_id) : null;
-    updates.visit_frequency = visit_frequency ?? "weekly";
-    updates.priority = priority ?? "medium";
-    updates.latitude = latitude;
-    updates.longitude = longitude;
+    // Field-sales assignment columns — only touch them when the caller
+    // explicitly provides a value, so unrelated customer edits (name, phone,
+    // credit policy...) never wipe the assigned salesman / territory.
+    if (body?.assigned_salesman_id !== undefined) {
+      updates.assigned_salesman_id = body?.assigned_salesman_id ? String(body.assigned_salesman_id) : null;
+    }
+    if (body?.assigned_territory_id !== undefined) {
+      updates.assigned_territory_id = body?.assigned_territory_id ? String(body.assigned_territory_id) : null;
+    }
+    if (visit_frequency !== null) {
+      updates.visit_frequency = visit_frequency;
+    }
+    if (priority !== null) {
+      updates.priority = priority;
+    }
+    if (latitude !== null) {
+      updates.latitude = latitude;
+    }
+    if (longitude !== null) {
+      updates.longitude = longitude;
+    }
 
     const supabase = createSupabaseUserClient(getAccessToken(request));
     const { data, error } = await supabase

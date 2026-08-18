@@ -40,7 +40,7 @@ export type InventoryStatus =
   | "missing_reorder_level";
 
 export interface InventorySnapshotItem {
-  productId: number;
+  productId: string | number;
   productName: string;
   brandName: string;
   categoryName: string;

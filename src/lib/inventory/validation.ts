@@ -34,7 +34,10 @@ export const normalizeOptionalNumber = (value: unknown): number | null => {
 export const normalizeExpiryDate = (value: unknown): string | null => {
   const text = normalizeOptionalText(value);
   if (!text) return null;
-  const date = new Date(`${text}T00:00:00`);
+  // Already in canonical form — pass through to avoid timezone shifting.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  // Parse as UTC so toISOString() cannot shift the day for local offsets.
+  const date = new Date(`${text}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
 };
@@ -51,13 +54,15 @@ export interface InventoryAdjustmentInputLike {
 
 export const validateAdjustmentInput = (input: InventoryAdjustmentInputLike): ValidationResult => {
   const errors: string[] = [];
-  const productId = normalizeOptionalNumber(input.product_id);
+  const productIdText = normalizeOptionalText(String(input.product_id ?? ""));
   const quantityDelta = normalizeOptionalNumber(input.quantity_delta);
   const reason = normalizeOptionalText(input.reason);
   const batchNumber = normalizeOptionalText(input.batch_number);
   const expiryDate = normalizeExpiryDate(input.expiry_date);
 
-  if (productId === null || productId <= 0) {
+  // product_id may be an integer (dev) or uuid (production); only require a
+  // non-empty value here — ownership is enforced inside adjust_inventory().
+  if (productIdText === null) {
     errors.push("Select a product");
   }
 

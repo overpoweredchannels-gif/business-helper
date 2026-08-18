@@ -143,20 +143,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Failed to create purchase return" }, { status: 500 });
     }
 
-    for (const line of lines) {
-      const { error: itemError } = await supabase.from("purchase_return_items").insert({
-        purchase_return_id: returnId,
-        organization_id: organizationId,
-        product_id: line.product_id,
-        quantity: Number(line.quantity),
-        unit_price: line.unit_price != null ? Number(line.unit_price) : null,
-        unit_mode: line.unit_mode,
-        batch_number: line.batch_number || null,
-        expiry_date: line.expiry_date || null,
-      });
-      if (itemError) {
-        return NextResponse.json({ ok: false, error: itemError.message }, { status: 400 });
-      }
+    // Insert all items in a single statement so the return header + items are
+    // atomic (a partial return with stock already adjusted must never exist).
+    const itemsToInsert = lines.map((line) => ({
+      purchase_return_id: returnId,
+      organization_id: organizationId,
+      product_id: line.product_id,
+      quantity: Number(line.quantity),
+      unit_price: line.unit_price != null ? Number(line.unit_price) : null,
+      unit_mode: line.unit_mode,
+      batch_number: line.batch_number || null,
+      expiry_date: line.expiry_date || null,
+    }));
+
+    const { error: itemsError } = await supabase.from("purchase_return_items").insert(itemsToInsert);
+
+    if (itemsError) {
+      // Roll back the header so no orphan return remains.
+      await supabase.from("purchase_returns").delete().eq("id", returnId);
+      return NextResponse.json({ ok: false, error: itemsError.message }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true, returnId, returnNumber });

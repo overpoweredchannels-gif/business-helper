@@ -33,12 +33,17 @@ export const isAdjustmentType = (type: string): boolean =>
 
 // ─── Running balances ───────────────────────────────────────────────────────
 
+// Normalizes a product id for map keys. product_id may be an integer (dev) or
+// a uuid string (production), so map keys are always strings.
+const productKey = (id: string | number | null | undefined): string =>
+  id === null || id === undefined ? "" : String(id);
+
 // Adds a cumulative running balance per product (assumes the input is
 // already sorted chronologically).
 export const withRunningBalances = (transactions: InventoryTransaction[]): LedgerRow[] => {
-  const balances = new Map<number, number>();
+  const balances = new Map<string, number>();
   return transactions.map((transaction) => {
-    const productId = Number(transaction.product_id);
+    const productId = productKey(transaction.product_id);
     const previous = balances.get(productId) ?? 0;
     const runningBalance = previous + Number(transaction.quantity_delta);
     balances.set(productId, runningBalance);
@@ -48,11 +53,13 @@ export const withRunningBalances = (transactions: InventoryTransaction[]): Ledge
 
 export const totalDeltaForProduct = (
   transactions: InventoryTransaction[],
-  productId: number
-): number =>
-  transactions
-    .filter((transaction) => Number(transaction.product_id) === productId)
+  productId: number | string
+): number => {
+  const key = productKey(productId);
+  return transactions
+    .filter((transaction) => productKey(transaction.product_id) === key)
     .reduce((sum, transaction) => sum + Number(transaction.quantity_delta), 0);
+};
 
 // ─── Snapshots / statuses ───────────────────────────────────────────────────
 
@@ -88,16 +95,16 @@ export const buildInventorySnapshots = (
   products: SnapshotProduct[],
   transactions: InventoryTransaction[]
 ): InventorySnapshotItem[] => {
-  const byProduct = new Map<number, InventoryTransaction[]>();
+  const byProduct = new Map<string, InventoryTransaction[]>();
   for (const transaction of transactions) {
-    const productId = Number(transaction.product_id);
+    const productId = productKey(transaction.product_id);
     const list = byProduct.get(productId) ?? [];
     list.push(transaction);
     byProduct.set(productId, list);
   }
 
   return products.map((product) => {
-    const productId = Number(product.id);
+    const productId = productKey(product.id);
     const productTransactions = byProduct.get(productId) ?? [];
     const totalIn = productTransactions
       .filter((transaction) => Number(transaction.quantity_delta) > 0)
@@ -145,19 +152,19 @@ export interface LedgerQuery {
 export const queryLedger = (
   transactions: InventoryTransaction[],
   query: LedgerQuery
-): { rows: LedgerRow[]; openingBalances: Map<number, number> } => {
+): { rows: LedgerRow[]; openingBalances: Map<string, number> } => {
   const all = withRunningBalances(transactions);
   const searchTerm = query.searchText.trim().toLowerCase();
   const rows: LedgerRow[] = [];
-  const openingBalances = new Map<number, number>();
-  const seenProducts = new Set<number>();
+  const openingBalances = new Map<string, number>();
+  const seenProducts = new Set<string>();
 
   for (const transaction of all) {
-    const productId = Number(transaction.product_id);
-    const productName = query.productNames.get(String(productId)) ?? "";
+    const productId = productKey(transaction.product_id);
+    const productName = query.productNames.get(productId) ?? "";
 
     if (query.movementType && transaction.movement_type !== query.movementType) continue;
-    if (query.productId !== null && productId !== query.productId) continue;
+    if (query.productId !== null && productKey(query.productId) !== productId) continue;
     if (
       searchTerm &&
       !productName.toLowerCase().includes(searchTerm) &&
@@ -183,12 +190,13 @@ export const queryLedger = (
 // costing pass will consume — no costing is computed yet (Phase 1).
 export const getBatchBreakdown = (
   transactions: InventoryTransaction[],
-  productId: number
+  productId: number | string
 ): InventoryBatchBreakdown[] => {
   const byBatch = new Map<string, InventoryBatchBreakdown>();
+  const targetKey = productKey(productId);
 
   for (const transaction of transactions) {
-    if (Number(transaction.product_id) !== productId) continue;
+    if (productKey(transaction.product_id) !== targetKey) continue;
     const batchNumber = transaction.batch_number ?? "(no batch)";
     const entry = byBatch.get(batchNumber) ?? {
       batchNumber,

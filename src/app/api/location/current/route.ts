@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { resolveActor } from "@/lib/identity/api-context";
 
 export const runtime = "nodejs";
 
@@ -13,11 +14,20 @@ function errorResponse(message: string, status: number = 400) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const organizationId = searchParams.get("organizationId");
-    const profileId = searchParams.get("profileId");
-    const requesterRole = searchParams.get("role") || "employee";
 
-    if (!organizationId) return errorResponse("organizationId is required");
+    const context = await resolveActor(request);
+    if (context.error || !context.actor?.organizationId) {
+      return errorResponse(context.error ?? "Unauthorized", context.status ?? 401);
+    }
+
+    const organizationId = searchParams.get("organizationId") || context.actor.organizationId;
+    if (String(organizationId) !== String(context.actor.organizationId)) {
+      return errorResponse("Forbidden: organization mismatch", 403);
+    }
+
+    const actorRole = context.actor.role;
+    const actorProfileId = context.actor.profileId;
+    const requesterRole = actorRole === "owner" || actorRole === "manager" ? actorRole : "employee";
 
     const supabase = createClient(supabaseUrl(), supabaseKey(), {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -49,8 +59,8 @@ export async function GET(request: NextRequest) {
     if (staffError) return errorResponse(`Staff query error: ${staffError.message}`, 500);
 
     let filteredStaff = employees || [];
-    if (requesterRole !== "owner" && requesterRole !== "manager" && profileId) {
-      filteredStaff = filteredStaff.filter((s) => s.profile_id === profileId);
+    if (requesterRole !== "owner" && requesterRole !== "manager" && actorProfileId) {
+      filteredStaff = filteredStaff.filter((s) => s.profile_id === actorProfileId);
     }
 
     const { data: sessions } = await supabase

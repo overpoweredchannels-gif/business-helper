@@ -47,7 +47,17 @@ export function checkActionPermission(
   action: string,
   context: PermissionContext,
 ): PermissionCheckResult {
-  const required = ACTION_PERMISSION_MAP[action] || ["ai_assistant"];
+  const required = ACTION_PERMISSION_MAP[action] || [];
+  if (required.length === 0) {
+    return {
+      allowed: false,
+      action,
+      requiredPermissions: [],
+      deniedBy: "unknown_action",
+      message: `This action is not registered. Please contact your store owner.`,
+      context,
+    };
+  }
   const role = context.role;
   const isOwner = context.isOwner || role === "owner";
 
@@ -93,7 +103,10 @@ export function verifyIdentity(ctx: PermissionContext): { valid: boolean; reason
 }
 
 export function isActionAllowedForRole(action: string, role: RoleType | null): boolean {
-  const required = ACTION_PERMISSION_MAP[action] || ["ai_assistant"];
+  const required = ACTION_PERMISSION_MAP[action];
+  if (!required || required.length === 0) {
+    return false;
+  }
   if (role === "owner") {
     return true;
   }

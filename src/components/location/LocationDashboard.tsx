@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import LiveMap from "./LiveMap";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import type { CurrentLocationView } from "../../lib/location/types";
 
 export default function LocationDashboard() {
@@ -16,7 +17,7 @@ export default function LocationDashboard() {
   const fetchLocations = useCallback(async () => {
     try {
       const orgId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("organizationId") : null;
-      const res = await fetch(`/api/location/current?organizationId=${orgId || ""}`);
+      const res = await authorizedFetch(`/api/location/current?organizationId=${orgId || ""}`);
       const data = await res.json();
       if (data.ok) {
         setEmployees(data.employees || []);

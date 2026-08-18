@@ -26,13 +26,13 @@ export class EmployeeRepository {
     return (data ?? []) as Employee[];
   }
 
-  async findById(id: string): Promise<Employee | null> {
+  async findById(id: string, organizationId?: string): Promise<Employee | null> {
     const supabase = createSupabaseService();
-    const { data, error } = await supabase
-      .from("employees")
-      .select(EMPLOYEE_COLUMNS)
-      .eq("id", id)
-      .maybeSingle();
+    let query = supabase.from("employees").select(EMPLOYEE_COLUMNS).eq("id", id);
+    if (organizationId) {
+      query = query.eq("organization_id", organizationId);
+    }
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       throw error;
@@ -56,14 +56,17 @@ export class EmployeeRepository {
     return data as Employee;
   }
 
-  async update(id: string, updates: EmployeeInput): Promise<Employee> {
+async update(id: string, updates: EmployeeInput, organizationId?: string): Promise<Employee> {
     const supabase = createSupabaseService();
-    const { data, error } = await supabase
+    let query = supabase
       .from("employees")
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq("id", id)
-      .select(EMPLOYEE_COLUMNS)
-      .single();
+      .select(EMPLOYEE_COLUMNS);
+    if (organizationId) {
+      query = query.eq("organization_id", organizationId);
+    }
+    const { data, error } = await query.single();
 
     if (error) {
       throw error;
@@ -72,9 +75,13 @@ export class EmployeeRepository {
     return data as Employee;
   }
 
-  async remove(id: string): Promise<void> {
+async remove(id: string, organizationId?: string): Promise<void> {
     const supabase = createSupabaseService();
-    const { error } = await supabase.from("employees").delete().eq("id", id);
+    let query = supabase.from("employees").delete().eq("id", id);
+    if (organizationId) {
+      query = query.eq("organization_id", organizationId);
+    }
+    const { error } = await query;
     if (error) {
       throw error;
     }

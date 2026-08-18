@@ -38,7 +38,14 @@ export async function POST(request: NextRequest) {
     customerId?: string;
     visitId?: string;
     routeId?: string;
-    items?: Array<{ productId: string; quantity: number; unitPrice: number; discount?: number }>;
+    items?: Array<{
+      productId: string;
+      quantity: number;
+      unitPrice: number;
+      discount?: number;
+      unitMode?: "main" | "subunit";
+      bonus?: number;
+    }>;
     notes?: string;
     expectedDate?: string;
     paymentType?: "cash" | "credit";

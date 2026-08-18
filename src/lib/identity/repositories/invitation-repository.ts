@@ -1,13 +1,16 @@
 import { createSupabaseService } from "@/lib/supabase/server";
+import { randomBytes } from "crypto";
 import { Invitation, RoleType } from "../types";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const INVITATION_TTL_HOURS = 72;
 
 function generateCode(): string {
+  // CSPRNG-backed code so invite codes cannot be guessed or brute-forced.
+  const bytes = randomBytes(8);
   let code = "";
   for (let i = 0; i < 8; i++) {
-    code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+    code += CODE_CHARS[bytes[i] % CODE_CHARS.length];
   }
   return code;
 }
@@ -27,11 +30,12 @@ function mapRow(row: Record<string, unknown>): Invitation {
     fullName: row.full_name ? String(row.full_name) : null,
     phone: row.phone ? String(row.phone) : null,
     designation: row.designation ? String(row.designation) : null,
+    status: row.status ? String(row.status) : "pending",
   };
 }
 
 const INVITATION_COLUMNS =
-  "code, organization_id, email, role, created_by, created_at, expires_at, accepted_at, accepted_by, employee_id, full_name, phone, designation";
+  "code, organization_id, email, role, created_by, created_at, expires_at, accepted_at, accepted_by, employee_id, full_name, phone, designation, status";
 
 export class InvitationRepository {
   async create(input: {
@@ -115,6 +119,7 @@ export class InvitationRepository {
         status: "accepted",
       })
       .eq("code", code)
+      .eq("status", "pending")
       .select(INVITATION_COLUMNS)
       .single();
 
@@ -200,6 +205,9 @@ export class InvitationService {
     const invitation = await this.repository.findByCode(normalized);
     if (!invitation) {
       return { error: "Invitation not found." };
+    }
+    if (invitation.status === "revoked") {
+      return { error: "This invitation has been revoked." };
     }
     if (invitation.acceptedAt) {
       return { error: "This invitation has already been used." };
