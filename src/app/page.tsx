@@ -18,6 +18,7 @@ import SessionManagement from "@/components/identity/SessionManagement";
 import AuditLogPanel from "@/components/identity/AuditLogPanel";
 import ImportWizard from "@/components/inventory/ImportWizard";
 import LoadFormGenerator from "@/components/sales/LoadFormGenerator";
+import SalesInvoiceGenerator from "@/components/sales/SalesInvoiceGenerator";
 import EmployeeManagement from "@/components/fsm/EmployeeManagement";
 import NotificationCenter from "@/components/fsm/NotificationCenter";
 import TerritoriesManager from "@/components/fsm/TerritoriesManager";
@@ -5192,7 +5193,7 @@ export default function Home() {
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
 
   // Sales Management (Phase 4) — sales orders + returns + reporting
-  const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform">("invoice");
+  const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform" | "invoices">("invoice");
   const [salesOrderStatusFilter, setSalesOrderStatusFilter] = useState<"all" | "pending_approval">("all");
 
   const refreshSalesOrders = async () => {
@@ -17412,6 +17413,17 @@ export default function Home() {
           >
             Load Form
           </button>
+          <button
+            type="button"
+            onClick={() => setSalesTab("invoices")}
+            className={`rounded px-4 py-2 text-sm font-medium ${
+              salesTab === "invoices"
+                ? "bg-primary text-white"
+                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
+            }`}
+          >
+            Invoice Generator
+          </button>
         </div>
 
         {salesTab === "invoice" && (
@@ -18861,6 +18873,17 @@ export default function Home() {
             and hand it to the storekeeper or delivery man as the load form.
           </p>
           <LoadFormGenerator />
+        </section>
+        )}
+        {salesTab === "invoices" && (
+        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="mb-4 text-xl font-medium text-foreground">Sales Invoice Generator</h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Filter confirmed sales by customer, salesman, date range, area, route, or city — then print one
+            invoice, one salesman&apos;s invoices, or all at once. Customize the invoice template to match your
+            existing paper layout.
+          </p>
+          <SalesInvoiceGenerator />
         </section>
         )}
         </>

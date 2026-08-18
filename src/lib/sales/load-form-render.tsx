@@ -7,10 +7,13 @@
 import React from "react";
 import type { LoadFormSummary, LoadFormLine, LoadFormCustomerGroup, LoadFormBrandGroup } from "./load-form-service";
 import { getLoadFormTemplate } from "./load-form-template";
+import type { PrintTemplate } from "@/lib/print/print-template-types";
 
 export interface LoadFormRenderProps {
   summary: LoadFormSummary;
   templateId?: string | null;
+  /** Fully resolved template (custom or default). Takes precedence over templateId. */
+  template?: PrintTemplate;
   customerLabels?: string;
   salesmanLabels?: string;
   rangeLabel?: string;
@@ -72,11 +75,12 @@ function fmt(n: number): string {
 export function LoadFormDocument({
   summary,
   templateId,
+  template: resolvedTemplate,
   customerLabels = "",
   salesmanLabels = "",
   rangeLabel = "",
 }: LoadFormRenderProps) {
-  const t = getLoadFormTemplate(templateId);
+  const t = resolvedTemplate ?? getLoadFormTemplate(templateId);
   const page = t.page;
   const header = t.header;
   const cols = t.columns;
@@ -180,6 +184,7 @@ export function LoadFormDocument({
                     paddingTop: t.spacing.rowPadYPx,
                     paddingBottom: t.spacing.rowPadYPx,
                     lineHeight: 1.25,
+                    fontWeight: t.boldBody ? 700 : undefined,
                   }}
                 >
                   {cols.labels.map((c) => (

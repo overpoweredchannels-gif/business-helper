@@ -1,186 +1,26 @@
-// TradeOS ERP — Load Form print template definition.
+// TradeOS ERP — Load Form template access.
 //
-// A template is pure visual configuration: it describes HOW a Load FormSummary
-// is rendered on the printed page. Data (brands, products, quantities, totals)
-// lives separately in the summary and is never stored here. The default
-// template reproduces the classic distributor load form (white page, black
-// text, serif, compact) used as the reference.
-//
-// Templates are plain serializable objects so they can later be edited via a
-// settings UI without touching the aggregation/render logic.
+// The Load Form uses the shared print-template system (see
+// src/lib/print/print-template-types.ts). This module keeps the old
+// `getLoadFormTemplate` surface so existing callers (LoadFormGenerator, the
+// renderer) keep working while the canonical default lives in
+// src/lib/print/default-templates.ts.
 
-export interface LoadFormTemplate {
-  id: string;
-  name: string;
-  description: string;
+import { cloneDefaultTemplate, DEFAULT_PRINT_TEMPLATES } from "@/lib/print/default-templates";
+import type { PrintTemplate } from "@/lib/print/print-template-types";
 
-  /** Serif family used for the whole document. */
-  fontFamily: string;
+export type LoadFormTemplate = PrintTemplate;
 
-  page: {
-    /** Background behind the printed sheet (white for print). */
-    background: string;
-    /** Ink color for body text (black for print). */
-    ink: string;
-    /** Color for rules / borders (black for print). */
-    rule: string;
-  };
-
-  header: {
-    /** Show the organization name as a large bold title. */
-    showOrgName: boolean;
-    orgNameSizePx: number;
-    /** Small location + contact line under the title. */
-    showOrgAddress: boolean;
-    showOrgPhone: boolean;
-    contactSizePx: number;
-    /** The centered "Load Form" heading. */
-    headingText: string;
-    headingSizePx: number;
-    /** Compact meta line: salesman / customer / date. */
-    metaSizePx: number;
-    /** Show the Salesman field in the meta line. */
-    showSalesman: boolean;
-    /** Show the Customer field in the meta line. */
-    showCustomer: boolean;
-    /** Show the Date field in the meta line. */
-    showDate: boolean;
-    /** Label used for the date field (e.g. "Date:"). */
-    dateLabel: string;
-  };
-
-  columns: {
-    /** Column headers, left to right, uppercase on print. */
-    labels: { key: "product" | "quantity" | "bonus"; label: string; widthPct: number }[];
-    headerSizePx: number;
-    rowSizePx: number;
-    /** Uppercase the column headers. */
-    uppercaseHeaders: boolean;
-  };
-
-  groups: {
-    /** Header style for each brand/customer group. */
-    groupSizePx: number;
-    /** Show a "Brand:" / "Customer:" prefix on the group header. */
-    showPrefix: boolean;
-    /** Show the group subtotal line (Total Value) after each group. */
-    showGroupTotal: boolean;
-    /** Label for the group subtotal row, e.g. "Total". */
-    groupTotalLabel: string;
-  };
-
-  salesman: {
-    /** Show a "Salesman: Name" section title. */
-    showSalesmanSection: boolean;
-    sizePx: number;
-    label: string;
-    /** Show a salesman subtotal at the end of each salesman section. */
-    showSalesmanTotal: boolean;
-    salesmanTotalLabel: string;
-  };
-
-  footer: {
-    /** Show the bordered totals block. */
-    showTotals: boolean;
-    labelSizePx: number;
-    valueSizePx: number;
-    totalLabel: string;
-    bonusLabel: string;
-    netLabel: string;
-    /** Suffix style used in the reference, e.g. "Total Value :-". */
-    valueSuffix: string;
-    /** Footnote under the totals block. */
-    showFootnote: boolean;
-    footnoteText: string;
-    footnoteSizePx: number;
-  };
-
-  spacing: {
-    /** Space between salesman sections. */
-    salesmanGapPx: number;
-    /** Space between brand/customer groups. */
-    groupGapPx: number;
-    /** Vertical padding inside each product row. */
-    rowPadYPx: number;
-  };
+export function getLoadFormTemplate(id: string | null | undefined): LoadFormTemplate {
+  if (id && id !== DEFAULT_PRINT_TEMPLATES.load_form.id) {
+    // Callers should pass a fully resolved custom template via the new
+    // `template` prop instead; id-based lookup only ever returns the default
+    // (custom templates are loaded from the API and passed directly).
+    return cloneDefaultTemplate("load_form");
+  }
+  return cloneDefaultTemplate("load_form");
 }
 
 export const loadFormTemplates: Record<string, LoadFormTemplate> = {
-  default: {
-    id: "default",
-    name: "Default Load Form",
-    description:
-      "Classic distributor load form: white page, black serif text, brand-grouped products, Value/Bonus/Net footer. Reproduces the reference layout.",
-    fontFamily: "'Times New Roman', Times, serif",
-
-    page: {
-      background: "#ffffff",
-      ink: "#000000",
-      rule: "#000000",
-    },
-
-    header: {
-      showOrgName: true,
-      orgNameSizePx: 22,
-      showOrgAddress: true,
-      showOrgPhone: true,
-      contactSizePx: 10,
-      headingText: "Load Form",
-      headingSizePx: 14,
-      metaSizePx: 10,
-      showSalesman: true,
-      showCustomer: true,
-      showDate: true,
-      dateLabel: "Date",
-    },
-
-    columns: {
-      labels: [
-        { key: "product", label: "Product Name", widthPct: 48 },
-        { key: "quantity", label: "Quantity", widthPct: 32 },
-        { key: "bonus", label: "Bns", widthPct: 20 },
-      ],
-      headerSizePx: 9,
-      rowSizePx: 10,
-      uppercaseHeaders: true,
-    },
-
-    groups: {
-      groupSizePx: 12,
-      showPrefix: true,
-      showGroupTotal: true,
-      groupTotalLabel: "Total",
-    },
-
-    salesman: {
-      showSalesmanSection: true,
-      sizePx: 11,
-      label: "Salesman",
-      showSalesmanTotal: true,
-      salesmanTotalLabel: "Salesman Total",
-    },
-
-    footer: {
-      showTotals: true,
-      labelSizePx: 11,
-      valueSizePx: 12,
-      totalLabel: "Total Value",
-      bonusLabel: "Bonus Value",
-      netLabel: "Net Value",
-      valueSuffix: " :-",
-      showFootnote: true,
-      footnoteText: "Generated by TradeOS",
-      footnoteSizePx: 8,
-    },
-
-    spacing: {
-      salesmanGapPx: 12,
-      groupGapPx: 8,
-      rowPadYPx: 1,
-    },
-  },
+  default: cloneDefaultTemplate("load_form"),
 };
-
-export function getLoadFormTemplate(id: string | null | undefined): LoadFormTemplate {
-  return loadFormTemplates[id ?? "default"] ?? loadFormTemplates.default;
-}

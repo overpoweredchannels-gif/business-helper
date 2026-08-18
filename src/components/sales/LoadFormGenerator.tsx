@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { LoadFormDocument } from "@/lib/sales/load-form-render";
 import type { LoadFormSummary } from "@/lib/sales/load-form-service";
+import type { PrintTemplate } from "@/lib/print/print-template-types";
+import { cloneDefaultTemplate } from "@/lib/print/default-templates";
+import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 
 interface LoadFormLine {
   product_id: number | string;
@@ -58,6 +61,8 @@ export default function LoadFormGenerator() {
   const [summary, setSummary] = useState<LoadFormSummary | null>(null);
   const [generated, setGenerated] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
+  const [template, setTemplate] = useState<PrintTemplate>(() => cloneDefaultTemplate("load_form"));
+  const [showCustomizer, setShowCustomizer] = useState(false);
   const [brands, setBrands] = useState<Option[]>([]);
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
 
@@ -281,6 +286,13 @@ export default function LoadFormGenerator() {
         >
           {loading ? "Generating..." : "Generate Load Form Summary"}
         </button>
+        <button
+          type="button"
+          onClick={() => setShowCustomizer(true)}
+          className="rounded border border-primary px-5 py-2.5 text-sm font-medium text-primary hover:bg-primary/5"
+        >
+          Customize Template
+        </button>
         {generated && summary && summary.salesmen.length > 0 && (
           <button
             type="button"
@@ -403,7 +415,7 @@ export default function LoadFormGenerator() {
             </div>
             <LoadFormDocument
               summary={summary}
-              templateId="default"
+              template={template}
               customerLabels={customerLabels}
               salesmanLabels={salesmanLabels}
               rangeLabel={rangeLabel()}
@@ -431,6 +443,23 @@ export default function LoadFormGenerator() {
             }
           `}</style>
         </div>
+      )}
+
+      {showCustomizer && (
+        <TemplateCustomizer
+          docType="load_form"
+          previewRenderer={(t) => (
+            <LoadFormDocument
+              summary={previewSummary}
+              template={t}
+              customerLabels="Sample Shop"
+              salesmanLabels="Mohammad Aslam"
+              rangeLabel="Last 7 days"
+            />
+          )}
+          onClose={() => setShowCustomizer(false)}
+          onSaved={(t) => setTemplate(t)}
+        />
       )}
     </div>
   );
@@ -465,3 +494,60 @@ function trim(n: number): string {
 function fmt(n: number): string {
   return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 }
+
+// Sample summary used as the live preview inside the customizer.
+const previewSummary: LoadFormSummary = {
+  org_name: "TradeOS Distributors",
+  org_address: "Main Bazaar, Faisalabad",
+  org_phone: "0300-1234567",
+  groupBy: "brand",
+  groupBySalesman: true,
+  salesmen: [
+    {
+      salesman_id: "preview-salesman",
+      salesman_name: "Mohammad Aslam",
+      customers: [],
+      brands: [
+        {
+          brand_id: "preview-brand",
+          brand_name: "Shan Foods",
+          lines: [
+            {
+              product_id: 1,
+              product_name: "Cotton 220g",
+              units_per_pack: 20,
+              unit_type: "Cotton",
+              subunit_type: "Box",
+              main_qty: 5,
+              subunit_qty: 10,
+              bonus_main_qty: 0,
+              bonus_subunit_qty: 2,
+              total_value: 24500,
+              bonus_value: 700,
+            },
+            {
+              product_id: 2,
+              product_name: "Rice 1kg",
+              units_per_pack: 12,
+              unit_type: "Bag",
+              subunit_type: "Pouch",
+              main_qty: 3,
+              subunit_qty: 0,
+              bonus_main_qty: 1,
+              bonus_subunit_qty: 0,
+              total_value: 12600,
+              bonus_value: 4200,
+            },
+          ],
+          total_value: 37100,
+          bonus_value: 4900,
+        },
+      ],
+      total_value: 37100,
+      bonus_value: 4900,
+    },
+  ],
+  grand_total: 37100,
+  grand_bonus: 4900,
+  grand_net: 32200,
+};
