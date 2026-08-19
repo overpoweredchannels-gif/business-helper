@@ -20,7 +20,8 @@ export type ModulePermission =
   | "administration"
   | "settings_manage"
   | "field_sales"
-  | "draft_approval";
+  | "draft_approval"
+  | "import_export";
 
 export type BuiltInRole =
   | "owner"

@@ -23,6 +23,7 @@ const ALL_PERMISSIONS: ModulePermission[] = [
   "settings_manage",
   "field_sales",
   "draft_approval",
+  "import_export",
 ];
 
 const VIEW_ONLY: ModulePermission[] = [
