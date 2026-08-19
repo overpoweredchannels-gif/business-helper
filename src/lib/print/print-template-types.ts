@@ -67,6 +67,8 @@ export interface PrintTemplate {
     showInvoiceNo: boolean;
     /** Label used for the date field (e.g. "Date"). */
     dateLabel: string;
+    /** Order of header sections for drag-and-drop reordering. */
+    headerOrder?: string[];
   };
 
   columns: {

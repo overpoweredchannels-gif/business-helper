@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { LoadFormDocument } from "@/lib/sales/load-form-render";
 import type { LoadFormSummary } from "@/lib/sales/load-form-service";
@@ -42,16 +42,27 @@ interface Option {
   label: string;
 }
 
+type RangeKey = "today" | "last7" | "last30" | "custom";
+
+interface TemplateOption {
+  id: string;
+  name: string;
+  description: string | null;
+  config: PrintTemplate;
+  is_default: boolean;
+  is_builtin: boolean;
+}
+
 const inputCls =
   "rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
-
-type RangeKey = "today" | "last7" | "last30" | "custom";
 
 export default function LoadFormGenerator() {
   const [customers, setCustomers] = useState<Option[]>([]);
   const [salesmen, setSalesmen] = useState<Option[]>([]);
+  const [brands, setBrands] = useState<Option[]>([]);
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
   const [selectedSalesmen, setSelectedSalesmen] = useState<string[]>([]);
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [rangeKey, setRangeKey] = useState<RangeKey>("today");
@@ -63,28 +74,57 @@ export default function LoadFormGenerator() {
   const [showPrint, setShowPrint] = useState(false);
   const [template, setTemplate] = useState<PrintTemplate>(() => cloneDefaultTemplate("load_form"));
   const [showCustomizer, setShowCustomizer] = useState(false);
-  const [brands, setBrands] = useState<Option[]>([]);
-  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
+  const [orgBranding, setOrgBranding] = useState<{ name?: string; address?: string; city?: string; phone?: string } | null>(null);
+  const [templates, setTemplates] = useState<TemplateOption[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("default-load-form");
 
+  // Fetch options + org branding + templates on mount
   useEffect(() => {
     let cancelled = false;
-    authorizedFetch("/api/sales/load-form/options")
-      .then((res) => res.json())
-      .then((data) => {
+    Promise.all([
+      authorizedFetch("/api/sales/load-form/options"),
+      authorizedFetch("/api/print-templates?doc_type=load_form"),
+      authorizedFetch("/api/org/branding"),
+    ])
+      .then(async ([optionsRes, templatesRes, orgRes]) => {
         if (cancelled) return;
-        if (data?.ok) {
-          if (Array.isArray(data.customers)) setCustomers(data.customers);
-          if (Array.isArray(data.salesmen)) setSalesmen(data.salesmen);
-          if (Array.isArray(data.brands)) setBrands(data.brands);
+        const [optionsData, templatesData, orgData] = await Promise.all([
+          optionsRes.json(),
+          templatesRes.json(),
+          orgRes.json(),
+        ]);
+        if (cancelled) return;
+        if (optionsData?.ok) {
+          if (Array.isArray(optionsData.customers)) setCustomers(optionsData.customers);
+          if (Array.isArray(optionsData.salesmen)) setSalesmen(optionsData.salesmen);
+          if (Array.isArray(optionsData.brands)) setBrands(optionsData.brands);
+        }
+        if (templatesData?.ok && Array.isArray(templatesData.templates)) {
+          setTemplates(templatesData.templates as TemplateOption[]);
+          const def = templatesData.templates.find((t: TemplateOption) => t.is_default);
+          if (def) setSelectedTemplateId(def.id);
+        }
+        if (orgData?.ok) {
+          setOrgBranding(orgData.branding ?? null);
         }
       })
       .catch(() => {
-        // options are non-blocking
+        // non-blocking
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Load selected template config when template changes
+  useEffect(() => {
+    const tpl = templates.find((t) => t.id === selectedTemplateId);
+    if (tpl) {
+      setTemplate(tpl.config);
+    } else {
+      setTemplate(cloneDefaultTemplate("load_form"));
+    }
+  }, [selectedTemplateId, templates]);
 
   const toggle = (list: string[], id: string, setList: (v: string[]) => void) =>
     setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
@@ -167,6 +207,38 @@ export default function LoadFormGenerator() {
 
   return (
     <div className="space-y-4">
+      {/* Template Selector Bar */}
+      <div className="flex flex-wrap items-center gap-3 rounded border border-border bg-muted/30 p-3">
+        <label className="flex items-center gap-2 text-sm text-foreground/80">
+          <span className="font-medium">Template:</span>
+          <select
+            value={selectedTemplateId}
+            onChange={(e) => setSelectedTemplateId(e.target.value)}
+            className="rounded border border-border bg-card px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          >
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.is_builtin ? " (default)" : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setShowCustomizer(true)}
+            className="rounded border border-primary px-3 py-1.5 text-xs text-primary hover:bg-primary/5"
+          >
+            Customize
+          </button>
+        </label>
+        <div className="flex-1" />
+        {orgBranding && (
+          <span className="text-xs text-muted-foreground">
+            Business: {orgBranding.name}
+          </span>
+        )}
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded border border-border bg-muted/30 p-4">
           <h3 className="mb-2 text-sm font-medium text-foreground">Customers</h3>
@@ -459,6 +531,7 @@ export default function LoadFormGenerator() {
           )}
           onClose={() => setShowCustomizer(false)}
           onSaved={(t) => setTemplate(t)}
+          orgBranding={orgBranding}
         />
       )}
     </div>

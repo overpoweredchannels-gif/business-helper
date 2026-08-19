@@ -1,13 +1,6 @@
 "use client";
 
-// TradeOS ERP — Print Template Customizer.
-//
-// Live editor for printable document templates (sales invoice / load form).
-// Left pane: controls (fonts, sizes, toggles, columns). Right pane: live
-// preview rendered with the current config. Templates persist per organization
-// via POST /api/print-templates.
-
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import {
   PRINT_FONTS,
@@ -23,6 +16,8 @@ export interface TemplateCustomizerProps {
   onClose: () => void;
   /** Called after a template is saved; gives the persisted config. */
   onSaved?: (template: PrintTemplate) => void;
+  /** Organization branding for presets (from settings). */
+  orgBranding?: { name?: string; address?: string; city?: string; phone?: string } | null;
 }
 
 interface TemplateOption {
@@ -59,11 +54,86 @@ const SIZE_FIELDS: { key: string; label: string }[] = [
 const inputCls =
   "w-full rounded border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
+/** Drag-and-drop reorder helper for arrays of objects with unique id/key. */
+function useDragReorder<T extends { key: string }>(items: T[], onReorder: (newItems: T[]) => void) {
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const dragRefs = useRef<Array<HTMLDivElement | null>>([]);
+
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) {
+      setDraggedIndex(null);
+      return;
+    }
+    const newItems = [...items];
+    const [removed] = newItems.splice(draggedIndex, 1);
+    newItems.splice(index, 0, removed);
+    onReorder(newItems);
+    setDraggedIndex(null);
+  };
+
+  const handleDragEnd = () => setDraggedIndex(null);
+
+  const setRef = (index: number) => (el: HTMLDivElement | null) => {
+    dragRefs.current[index] = el;
+  };
+
+  return { draggedIndex, handleDragStart, handleDragOver, handleDrop, handleDragEnd, setRef };
+}
+
+/** Drag-and-drop reorder helper for string arrays (e.g. headerOrder). */
+function useDragReorderStrings(items: string[], onReorder: (newItems: string[]) => void) {
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const dragRefs = useRef<Array<HTMLDivElement | null>>([]);
+
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) {
+      setDraggedIndex(null);
+      return;
+    }
+    const newItems = [...items];
+    const [removed] = newItems.splice(draggedIndex, 1);
+    newItems.splice(index, 0, removed);
+    onReorder(newItems);
+    setDraggedIndex(null);
+  };
+
+  const handleDragEnd = () => setDraggedIndex(null);
+
+  const setRef = (index: number) => (el: HTMLDivElement | null) => {
+    dragRefs.current[index] = el;
+  };
+
+  return { draggedIndex, handleDragStart, handleDragOver, handleDrop, handleDragEnd, setRef };
+}
+
 export default function TemplateCustomizer({
   docType,
   previewRenderer,
   onClose,
   onSaved,
+  orgBranding,
 }: TemplateCustomizerProps) {
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [selectedId, setSelectedId] = useState<string>(() => `default-${docType}`);
@@ -72,6 +142,14 @@ export default function TemplateCustomizer({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Header section order for drag-and-drop
+  const [headerOrder, setHeaderOrder] = useState<string[]>(() => [
+    "orgName",
+    "contact",
+    "heading",
+    "meta",
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +219,12 @@ export default function TemplateCustomizer({
     update({ columns: { ...working.columns, labels } });
   };
 
+  const reorderHeaderSections = (newOrder: string[]) => {
+    setHeaderOrder(newOrder);
+    // The renderer reads headerOrder from template - we'll add it to the template
+    update({ header: { ...working.header, headerOrder: newOrder } });
+  };
+
   const handleSelect = (id: string) => {
     setSelectedId(id);
     const t = templates.find((x) => x.id === id);
@@ -148,6 +232,9 @@ export default function TemplateCustomizer({
       if (t.is_builtin) setName(`${t.name} (Custom)`);
       else setName(t.name);
       setDescription(t.description ?? "");
+      // Initialize headerOrder from template if present
+      if (t.config.header.headerOrder) setHeaderOrder(t.config.header.headerOrder);
+      else setHeaderOrder(["orgName", "contact", "heading", "meta"]);
     }
     setMessage(null);
     setError(null);
@@ -159,6 +246,7 @@ export default function TemplateCustomizer({
     setMessage(null);
     setError(null);
     try {
+      const configToSave = { ...working, header: { ...working.header, headerOrder } };
       const res = await authorizedFetch("/api/print-templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -166,13 +254,13 @@ export default function TemplateCustomizer({
           doc_type: docType,
           name: finalName,
           description: description.trim() || null,
-          config: working,
+          config: configToSave,
         }),
       });
       const data = await res.json();
       if (!data?.ok) throw new Error(data?.error || "Failed to save template");
       setMessage(`Saved template "${finalName}".`);
-      onSaved?.(data.template?.config ?? working);
+      onSaved?.(data.template?.config ?? configToSave);
       await reloadTemplates();
       if (data.template?.id) setSelectedId(data.template.id);
     } catch (err) {
@@ -207,6 +295,35 @@ export default function TemplateCustomizer({
       setTemplates(data.templates as TemplateOption[]);
     }
   };
+
+  // Drag-and-drop for header sections (string array)
+  const {
+    draggedIndex: headerDraggedIndex,
+    handleDragStart: headerDragStart,
+    handleDragOver: headerDragOver,
+    handleDrop: headerDrop,
+    handleDragEnd: headerDragEnd,
+    setRef: setHeaderRef,
+  } = useDragReorderStrings(headerOrder, reorderHeaderSections);
+
+  // Drag-and-drop for columns
+  const {
+    draggedIndex: columnDraggedIndex,
+    handleDragStart: columnDragStart,
+    handleDragOver: columnDragOver,
+    handleDrop: columnDrop,
+    handleDragEnd: columnDragEnd,
+    setRef: setColumnRef,
+  } = useDragReorder(working.columns.labels, (newLabels) => {
+    update({ columns: { ...working.columns, labels: newLabels } });
+  });
+
+  const headerSectionItems = [
+    { id: "orgName", label: "Business Name", enabled: working.header.showOrgName },
+    { id: "contact", label: "Address / Phone", enabled: working.header.showOrgAddress || working.header.showOrgPhone },
+    { id: "heading", label: "Document Heading", enabled: true },
+    { id: "meta", label: "Meta Fields (Salesman/Customer/City/Date/Invoice)", enabled: true },
+  ];
 
   return (
     <div className="fixed inset-0 z-[120] flex flex-col bg-background">
@@ -290,9 +407,71 @@ export default function TemplateCustomizer({
               </select>
             </div>
 
-            {/* Header toggles */}
+            {/* Business Settings Presets */}
+            {orgBranding && (
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">Business Settings (from Organization)</h3>
+                <div className="space-y-1.5 text-sm text-foreground/70">
+                  <p><strong>Business Name:</strong> {orgBranding.name || "—"}</p>
+                  <p><strong>Address:</strong> {orgBranding.address || "—"}</p>
+                  <p><strong>City:</strong> {orgBranding.city || "—"}</p>
+                  <p><strong>Phone:</strong> {orgBranding.phone || "—"}</p>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  These values come from Settings → Organization. The template uses them automatically when printing.
+                </p>
+              </div>
+            )}
+
+            {/* Header Section Order (Drag & Drop) */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Header Fields</h3>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">Header Section Order (Drag to Reorder)</h3>
+              <div className="space-y-1.5">
+                {headerSectionItems.map((section, i) => (
+                  <div
+                    key={section.id}
+                    ref={setHeaderRef(i)}
+                    draggable
+                    onDragStart={(e) => headerDragStart(e, i)}
+                    onDragOver={(e) => headerDragOver(e, i)}
+                    onDrop={(e) => headerDrop(e, i)}
+                    onDragEnd={headerDragEnd}
+                    className={`flex items-center gap-2 rounded border p-2 text-sm ${
+                      headerDraggedIndex === i ? "opacity-50 ring-2 ring-primary" :
+                      section.enabled ? "border-border bg-card" : "border-border/50 bg-muted/50 opacity-60"
+                    }`}
+                  >
+                    <span className="cursor-grab text-muted-foreground">⋮⋮</span>
+                    <input
+                      type="checkbox"
+                      checked={section.enabled}
+                      onChange={() => {
+                        const key = section.id === "orgName" ? "showOrgName" :
+                          section.id === "contact" ? "showOrgAddress" :
+                          section.id === "meta" ? "showSalesman" : "showOrgName"; // fallback
+                        // Toggle both address and phone together for contact
+                        if (section.id === "contact") {
+                          update({ header: { ...working.header, showOrgAddress: !working.header.showOrgAddress, showOrgPhone: !working.header.showOrgPhone } });
+                        } else if (section.id === "orgName") {
+                          update({ header: { ...working.header, showOrgName: !working.header.showOrgName } });
+                        }
+                      }}
+                      className="accent-primary"
+                    />
+                    <span className="flex-1">{section.label}</span>
+                    {section.enabled ? (
+                      <span className="text-[10px] text-green-600">Enabled</span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">Disabled</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Header toggles (legacy checkboxes, kept for granular control) */}
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">Header Fields (Granular)</h3>
               <div className="space-y-1.5">
                 {SECTIONS.map((s) => (
                   <label key={s.key} className="flex items-center gap-2 text-sm text-foreground/80">
@@ -366,12 +545,24 @@ export default function TemplateCustomizer({
               <span>Bold table rows</span>
             </label>
 
-            {/* Columns */}
+            {/* Columns (Drag & Drop Reorder) */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Columns</h3>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">Columns (Drag to Reorder)</h3>
               <div className="space-y-2">
                 {working.columns.labels.map((col, i) => (
-                  <div key={`${col.key}-${i}`} className="flex items-center gap-1.5 rounded border border-border bg-card p-1.5">
+                  <div
+                    key={`${col.key}-${i}`}
+                    ref={setColumnRef(i)}
+                    draggable
+                    onDragStart={(e) => columnDragStart(e, i)}
+                    onDragOver={(e) => columnDragOver(e, i)}
+                    onDrop={(e) => columnDrop(e, i)}
+                    onDragEnd={columnDragEnd}
+                    className={`flex items-center gap-1.5 rounded border p-1.5 ${
+                      columnDraggedIndex === i ? "opacity-50 ring-2 ring-primary" : "border-border bg-card"
+                    }`}
+                  >
+                    <span className="cursor-grab text-muted-foreground">⋮⋮</span>
                     <button
                       type="button"
                       onClick={() => moveColumn(i, -1)}
