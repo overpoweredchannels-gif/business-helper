@@ -51,10 +51,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: `File exceeds max rows (${config.maxRows})` }, { status: 400 });
     }
 
-    const mapping: Record<string, string> = mappingStr ? JSON.parse(mappingStr) : guessColumnMapping(headers, config.fields);
-    const mappedCount = headers.filter(h => mapping[h] && mapping[h] !== "skip").length;
+    let mapping: Record<string, string> = mappingStr ? JSON.parse(mappingStr) : guessColumnMapping(headers, config.fields);
+    let mappedCount = headers.filter(h => mapping[h] && mapping[h] !== "skip").length;
+
+    // The client parses the file with its own parser (BOM strip, quoting). If
+    // its header strings differ from ours (e.g. a UTF-8 BOM from Excel), the
+    // sent mapping will miss every column. Re-guess against our headers.
+    if (mappedCount === 0 && mappingStr) {
+      const reguessed = guessColumnMapping(headers, config.fields);
+      mappedCount = headers.filter(h => reguessed[h] && reguessed[h] !== "skip").length;
+      if (mappedCount > 0) {
+        mapping = reguessed;
+      }
+    }
+
     if (mappedCount === 0) {
-      return NextResponse.json({ ok: false, error: "No columns mapped" }, { status: 400 });
+      const recognized = config.fields.map(f => f.label).join(", ");
+      return NextResponse.json({
+        ok: false,
+        error: `No columns mapped. File headers: ${headers.join(", ") || "(empty)"}. Recognized columns: ${recognized}`,
+      }, { status: 400 });
     }
 
     // Parse all rows

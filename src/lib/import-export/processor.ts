@@ -16,48 +16,12 @@ import type {
   SupabaseClient,
 } from "./types";
 import { getEntityConfig } from "./registry";
+import { parseCsv } from "@/lib/import-wizard/csv";
+
+export { parseCsv };
 
 const MAX_PREVIEW_ROWS = 100;
 const DEFAULT_MAX_FILE_ROWS = 5000;
-
-/** Parse CSV text into matrix of strings. */
-export function parseCsv(text: string): string[][] {
-  const lines = text.split(/\r?\n/);
-  const matrix: string[][] = [];
-  let current = "";
-  let inQuotes = false;
-  let row: string[] = [];
-  
-  for (const line of lines) {
-    let i = 0;
-    while (i < line.length) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i += 2;
-        } else {
-          inQuotes = !inQuotes;
-          i++;
-        }
-      } else if (ch === "," && !inQuotes) {
-        row.push(current.trim());
-        current = "";
-        i++;
-      } else {
-        current += ch;
-        i++;
-      }
-    }
-    row.push(current.trim());
-    current = "";
-    if (row.some((c) => c !== "")) {
-      matrix.push(row);
-      row = [];
-    }
-  }
-  return matrix;
-}
 
 /** Read file (CSV/Excel/ODS) and return header row + data rows. */
 export async function readImportFile(file: File): Promise<{ headers: string[]; rows: string[][] }> {
@@ -308,7 +272,12 @@ export async function runImport(
   if (config.postImportHook) {
     const created = preview.rows.filter(r => r.status === "new" && r.errors.length === 0).map(r => ({ id: (r as any).createdId, rawValues: r.values }));
     const updated = preview.rows.filter(r => r.status === "update" && r.errors.length === 0).map(r => ({ id: r.existingId, rawValues: r.values }));
-    await config.postImportHook(created, updated, ctx);
+    try {
+      await config.postImportHook(created, updated, ctx);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      result.failures.push({ rowLabel: "Post-import hook", message: msg });
+    }
   }
   
   return result;

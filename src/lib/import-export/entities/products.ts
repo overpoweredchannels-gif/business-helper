@@ -190,33 +190,50 @@ export const productsImportConfig: EntityImportConfig = {
     const supabase = ctx.supabase;
     const initialStockMap = new Map<string | number, number>();
     
-    // Collect initial stock from created products
+    // Collect initial stock from created products (rawValues holds the parsed
+    // file row, including the initial_stock field).
     for (const row of created) {
-      const product = row as any;
-      const initialStock = Number((product as any).initial_stock ?? 0);
-      if (initialStock > 0 && product.id) {
-        initialStockMap.set(product.id, initialStock);
+      const rawValues = (row as any).rawValues ?? {};
+      const initialStock = Number(rawValues.initial_stock ?? 0);
+      if (initialStock > 0 && (row as any).id) {
+        initialStockMap.set((row as any).id, initialStock);
       }
     }
     
     // Also check updated products for initial_stock in payload
     for (const row of updated) {
-      const product = row as any;
-      const initialStock = Number((product as any).initial_stock ?? 0);
-      if (initialStock > 0 && product.id) {
-        initialStockMap.set(product.id, initialStock);
+      const rawValues = (row as any).rawValues ?? {};
+      const initialStock = Number(rawValues.initial_stock ?? 0);
+      if (initialStock > 0 && (row as any).id) {
+        initialStockMap.set((row as any).id, initialStock);
       }
     }
     
-    // Apply initial stock adjustments
+    // Apply initial stock adjustments directly (bypasses the adjust_inventory
+    // RPC because it checks auth.uid(), which is null under the service key).
     for (const [productId, qty] of initialStockMap) {
-      await supabase.rpc("adjust_inventory", {
-        p_organization_id: ctx.orgId,
-        p_product_id: String(productId),
-        p_quantity_delta: qty,
-        p_reason: "Initial stock imported from product import file",
-        p_created_by: ctx.actorProfileId,
+      await supabase.from("inventory_transactions").insert({
+        organization_id: ctx.orgId,
+        product_id: String(productId),
+        movement_type: "adjustment_in",
+        quantity_delta: qty,
+        reason: "Initial stock imported from product import file",
+        reference_type: "adjustment",
+        reference_id: null,
+        created_by: ctx.actorProfileId,
       });
+      const { data: prod } = await supabase
+        .from("products")
+        .select("current_stock")
+        .eq("id", String(productId))
+        .eq("organization_id", ctx.orgId)
+        .maybeSingle();
+      const current = Number((prod as any)?.current_stock ?? 0);
+      await supabase
+        .from("products")
+        .update({ current_stock: current + qty, updated_at: new Date().toISOString() })
+        .eq("id", String(productId))
+        .eq("organization_id", ctx.orgId);
     }
   },
 
