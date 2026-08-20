@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
@@ -79,6 +79,28 @@ export default function ImportWizardV2({
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingTemplateName, setEditingTemplateName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<File | null>(null);
+
+  const loadTemplates = useCallback(async () => {
+    try {
+      const res = await authorizedFetch(`/api/import-export/templates?entity_key=${encodeURIComponent(entityKey)}`);
+      const data = await res.json();
+      if (data.ok) {
+        setTemplates(data.templates ?? []);
+        const def = (data.templates ?? []).find((t: any) => t.is_default);
+        setDefaultTemplateIdState(def ? def.id : "default");
+      }
+    } catch {
+      setTemplates([]);
+    }
+  }, [entityKey]);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
+
+  const mappedFieldCount = headers.filter((header) => mapping[header] && mapping[header] !== "skip").length;
+  const hasNameMapping = headers.some((h) => mapping[h] === "name" || mapping[h] === "customer_name" || mapping[h] === "supplier_name" || mapping[h] === "full_name" || mapping[h] === "email");
 
   const previewRows = useMemo(
     () => (preview ? preview.rows.slice(0, MAX_PREVIEW_ROWS) : []),
@@ -117,6 +139,7 @@ export default function ImportWizardV2({
     setImportResult(null);
     if (!file) return;
 
+    fileRef.current = file;
     const lower = file.name.toLowerCase();
     if (!/\.(csv|xlsx|xls|ods)$/.test(lower)) {
       setFileError("Unsupported file type. Use .csv, .xlsx, .xls, or .ods files.");
@@ -177,39 +200,150 @@ export default function ImportWizardV2({
     } catch (err) {
       setFileError(err instanceof Error ? `Failed to read file: ${err.message}` : "Failed to read file.");
     }
-  }, [config]);
+  }, [config, templates, defaultTemplateId]);
 
   const setFieldForColumn = useCallback((column: string, field: string) => {
     setMapping((prev) => ({ ...prev, [column]: field }));
   }, []);
 
   const handleRunPreview = useCallback(async () => {
-    // This would call the API to generate preview
-    // For now, we'll do client-side preview using the processor logic
-    // In production, this calls the API
-    const res = await authorizedFetch("/api/import-export/import", {
-      method: "POST",
-      body: JSON.stringify({
-        entity_key: entityKey,
-        mode: "preview",
-        mapping: JSON.stringify(mapping),
-        duplicate_mode: mode,
-        create_missing_refs: createMissingRefs,
-        file_name: fileName,
-        // We'll send the file separately in production
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-    
-    const data = await res.json();
-    if (!data.ok) {
-      setFileError(data.error || "Preview failed");
+    if (!fileRef.current) {
+      setFileError("Please select a file first.");
       return;
     }
-    
-    setPreview(data.preview);
-    setStep("preview");
+    setFileError(null);
+    try {
+      const formData = new FormData();
+      formData.set("entity_key", entityKey);
+      formData.set("mode", "preview");
+      formData.set("duplicate_mode", mode);
+      formData.set("create_missing_refs", String(createMissingRefs));
+      formData.set("mapping", JSON.stringify(mapping));
+      formData.set("file_name", fileName);
+      formData.set("file", fileRef.current);
+
+      const res = await authorizedFetch("/api/import-export/import", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!data.ok) {
+        setFileError(data.error || "Preview failed");
+        return;
+      }
+
+      setPreview(data.preview);
+      setStep("preview");
+    } catch (err) {
+      setFileError(err instanceof Error ? `Preview failed: ${err.message}` : "Preview failed");
+    }
   }, [entityKey, mapping, mode, createMissingRefs, fileName]);
+
+  const handleRunImport = useCallback(async () => {
+    if (!fileRef.current || !preview) return;
+    setImporting(true);
+    setFileError(null);
+    try {
+      const formData = new FormData();
+      formData.set("entity_key", entityKey);
+      formData.set("mode", "run");
+      formData.set("duplicate_mode", mode);
+      formData.set("create_missing_refs", String(createMissingRefs));
+      formData.set("mapping", JSON.stringify(mapping));
+      formData.set("file_name", fileName);
+      formData.set("file", fileRef.current);
+
+      const res = await authorizedFetch("/api/import-export/import", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!data.ok) {
+        setFileError(data.error || "Import failed");
+        return;
+      }
+
+      setImportResult(data.result);
+      setStep("done");
+      onImported();
+    } catch (err) {
+      setFileError(err instanceof Error ? `Import failed: ${err.message}` : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }, [entityKey, mapping, mode, createMissingRefs, fileName, preview, onImported]);
+
+  const handleSaveTemplate = useCallback(async () => {
+    const name = templateName.trim();
+    if (!name || mappedFieldCount === 0) return;
+    try {
+      const res = await authorizedFetch("/api/import-export/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entity_key: entityKey,
+          name,
+          mapping,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setTemplateMessage(data.error || "Failed to save template");
+        return;
+      }
+      setTemplateName("");
+      setTemplateMessage(`Template "${name}" saved.`);
+      loadTemplates();
+    } catch (err) {
+      setTemplateMessage(err instanceof Error ? `Failed to save template: ${err.message}` : "Failed to save template");
+    }
+  }, [entityKey, templateName, mapping, mappedFieldCount, loadTemplates]);
+
+  const handleRenameTemplate = useCallback(async (template: any) => {
+    const name = editingTemplateName.trim();
+    if (!name || !editingTemplateId) return;
+    try {
+      if (name !== template.name) {
+        await authorizedFetch("/api/import-export/templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            entity_key: entityKey,
+            name,
+            mapping: template.mapping,
+          }),
+        });
+        await authorizedFetch(`/api/import-export/templates?id=${template.id}`, {
+          method: "DELETE",
+        });
+      }
+      setEditingTemplateId(null);
+      setEditingTemplateName("");
+      loadTemplates();
+    } catch (err) {
+      setTemplateMessage(err instanceof Error ? `Failed to rename template: ${err.message}` : "Failed to rename template");
+    }
+  }, [entityKey, editingTemplateId, editingTemplateName, loadTemplates]);
+
+  const handleDeleteTemplate = useCallback(async (template: any) => {
+    if (template.is_builtin) return;
+    try {
+      const res = await authorizedFetch(`/api/import-export/templates?id=${template.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setTemplateMessage(data.error || "Failed to delete template");
+        return;
+      }
+      setTemplateMessage(`Template "${template.name}" deleted.`);
+      loadTemplates();
+    } catch (err) {
+      setTemplateMessage(err instanceof Error ? `Failed to delete template: ${err.message}` : "Failed to delete template");
+    }
+  }, [loadTemplates]);
 
   // Simplified guessColumnMapping for client-side
   function guessColumnMapping(headers: string[], fields: ImportFieldDef[]): ColumnMapping {
@@ -232,11 +366,6 @@ export default function ImportWizardV2({
     }
     return mapping;
   }
-
-  // ... rest of the component (truncated for brevity - similar to ImportWizard but generic)
-  
-  const mappedFieldCount = headers.filter((header) => mapping[header] && mapping[header] !== "skip").length;
-  const hasNameMapping = headers.some((h) => mapping[h] === "name" || mapping[h] === "customer_name" || mapping[h] === "supplier_name" || mapping[h] === "full_name" || mapping[h] === "email");
 
   return (
     <div className="space-y-6">
@@ -322,17 +451,37 @@ export default function ImportWizardV2({
                 <ul className="mt-1 space-y-1">
                   {templates.map((template) => (
                     <li key={template.id} className="flex flex-wrap items-center gap-2 rounded border border-border/60 bg-muted/20 px-2 py-1.5 text-sm">
-                      <span className="flex-1 font-medium text-foreground/90">{template.name}</span>
-                      <button type="button" onClick={() => {
-                        if (template.id === "default") {
-                          const guessed = guessColumnMapping(headers, config.fields);
-                          setMapping(guessed);
-                        } else {
-                          setMapping({ ...template.mapping });
-                        }
-                      }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Load</button>
-                      <button type="button" onClick={() => setEditingTemplateId(template.id)} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Rename</button>
-                      <button type="button" onClick={() => handleDeleteTemplate(template)} className="rounded border border-destructive px-2 py-1 text-xs text-destructive hover:bg-destructive/5">Delete</button>
+                      {editingTemplateId === template.id ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editingTemplateName}
+                            onChange={(e) => setEditingTemplateName(e.target.value)}
+                            placeholder="New template name"
+                            className="flex-1 rounded border border-border px-2 py-1 text-sm"
+                          />
+                          <button type="button" onClick={() => handleRenameTemplate(template)} disabled={!editingTemplateName.trim()} className="rounded border border-primary px-2 py-1 text-xs text-primary hover:bg-primary/5 disabled:opacity-40">Save</button>
+                          <button type="button" onClick={() => { setEditingTemplateId(null); setEditingTemplateName(""); }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Cancel</button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex-1 font-medium text-foreground/90">{template.name}</span>
+                          <button type="button" onClick={() => {
+                            if (template.id === "default") {
+                              const guessed = guessColumnMapping(headers, config.fields);
+                              setMapping(guessed);
+                            } else {
+                              setMapping({ ...template.mapping });
+                            }
+                          }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Load</button>
+                          {!template.is_builtin && (
+                            <>
+                              <button type="button" onClick={() => { setEditingTemplateId(template.id); setEditingTemplateName(template.name); }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Rename</button>
+                              <button type="button" onClick={() => handleDeleteTemplate(template)} className="rounded border border-destructive px-2 py-1 text-xs text-destructive hover:bg-destructive/5">Delete</button>
+                            </>
+                          )}
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -518,7 +667,3 @@ function formatCellValue(value: unknown): React.ReactNode {
   if (typeof value === "object") return <span className="text-muted-foreground">[Object]</span>;
   return String(value);
 }
-
-async function handleSaveTemplate() {}
-async function handleDeleteTemplate(template: any) {}
-async function handleRunImport() {}

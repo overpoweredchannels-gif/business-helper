@@ -11,12 +11,14 @@ import { getGateway } from "@/lib/conversation";
 import type { ChatResponse } from "@/lib/conversation";
 import type { ChatContext } from "@/hooks/useAIChat";
 import { AIAssistant } from "@/components/ai/AIAssistant";
+import { hasPermission as hasRolePermission } from "@/lib/identity/roles";
 import RoleManagement from "@/components/identity/RoleManagement";
 import PermissionMatrix from "@/components/identity/PermissionMatrix";
 import InvitationPanel from "@/components/identity/InvitationPanel";
 import SessionManagement from "@/components/identity/SessionManagement";
 import AuditLogPanel from "@/components/identity/AuditLogPanel";
 import ImportWizard from "@/components/inventory/ImportWizard";
+import ImportExportSection from "@/components/import-export/ImportExportSection";
 import LoadFormGenerator from "@/components/sales/LoadFormGenerator";
 import SalesInvoiceGenerator from "@/components/sales/SalesInvoiceGenerator";
 import EmployeeManagement from "@/components/fsm/EmployeeManagement";
@@ -5133,6 +5135,8 @@ export default function Home() {
   const [expenseLoading, setExpenseLoading] = useState(false);
   const [expenseMessage, setExpenseMessage] = useState<string | null>(null);
 
+  const [fsmReloadKey, setFsmReloadKey] = useState(0);
+
   const [selectedCustomerPaymentId, setSelectedCustomerPaymentId] = useState<string | null>(null);
   const [customerPaymentAmount, setCustomerPaymentAmount] = useState("");
   const [customerPaymentNotes, setCustomerPaymentNotes] = useState("");
@@ -5275,6 +5279,7 @@ export default function Home() {
     if (isOwnerOrAdmin()) return true;
     return Boolean(currentStaffPermission?.[permissionKey]);
   };
+  const canImportExport = isOwnerOrAdmin() || hasRolePermission(currentProfile?.role ?? null, "import_export");
   const canManageInventory = hasPermission("can_manage_inventory");
   // ── Customizable navigation menu ──────────────────────────────────────────
   // Owner can reorder and show/hide sections from the sidebar. Order + hidden
@@ -16638,7 +16643,20 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "brands" && (
         <section className="mb-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Brand Management</h2>
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">Brand Management</h2>
+            {canImportExport && (
+              <ImportExportSection
+                entityKey="brands"
+                entityLabel="Brands"
+                supabase={supabase}
+                organizationId={currentOrganizationId}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+                onImported={() => fetchBrands()}
+              />
+            )}
+          </div>
           <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Brand Name</span>
@@ -17429,7 +17447,20 @@ export default function Home() {
         {salesTab === "invoice" && (
         <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Sales Invoice</h2>
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">Sales Invoice</h2>
+            {canImportExport && (
+              <ImportExportSection
+                entityKey="sales_invoices"
+                entityLabel="Sales Invoices"
+                supabase={supabase}
+                organizationId={currentOrganizationId}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+                onImported={() => { fetchSalesTransactions(); }}
+              />
+            )}
+          </div>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
@@ -18894,6 +18925,17 @@ export default function Home() {
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h2 className="text-xl font-medium text-foreground">Customer Payments</h2>
             <div className="flex flex-wrap gap-2">
+              {canImportExport && (
+                <ImportExportSection
+                  entityKey="customer_payments"
+                  entityLabel="Customer Payments"
+                  supabase={supabase}
+                  organizationId={currentOrganizationId}
+                  actorProfileId={currentProfile?.id ?? null}
+                  createAuditLog={createAuditLog}
+                  onImported={() => fetchCustomerPayments()}
+                />
+              )}
               <button
                 type="button"
                 onClick={handleExportCustomerBalancesCsv}
@@ -19207,13 +19249,26 @@ export default function Home() {
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">Supplier Payments</h2>
-            <button
-              type="button"
-              onClick={handleExportSupplierBalancesCsv}
-              className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
-            >
-              Export Supplier Balances CSV
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {canImportExport && (
+                <ImportExportSection
+                  entityKey="supplier_payments"
+                  entityLabel="Supplier Payments"
+                  supabase={supabase}
+                  organizationId={currentOrganizationId}
+                  actorProfileId={currentProfile?.id ?? null}
+                  createAuditLog={createAuditLog}
+                  onImported={() => fetchSupplierPayments()}
+                />
+              )}
+              <button
+                type="button"
+                onClick={handleExportSupplierBalancesCsv}
+                className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
+              >
+                Export Supplier Balances CSV
+              </button>
+            </div>
           </div>
 <div className="grid gap-4 sm:grid-cols-4">
              <select
@@ -19792,7 +19847,20 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "customer-credit" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Receivables Dashboard</h2>
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">Receivables Dashboard</h2>
+            {canImportExport && (
+              <ImportExportSection
+                entityKey="customer_credit"
+                entityLabel="Customer Credit"
+                supabase={supabase}
+                organizationId={currentOrganizationId}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+                onImported={() => { fetchCustomers(); }}
+              />
+            )}
+          </div>
           {customers.length === 0 ? (
             <p className="text-sm text-muted-foreground">No customers.</p>
           ) : (
@@ -19841,7 +19909,20 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "categories" && (
         <section className="mb-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Category Management</h2>
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">Category Management</h2>
+            {canImportExport && (
+              <ImportExportSection
+                entityKey="categories"
+                entityLabel="Categories"
+                supabase={supabase}
+                organizationId={currentOrganizationId}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+                onImported={() => fetchCategories()}
+              />
+            )}
+          </div>
           <div className="space-y-4">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Category Name</span>
@@ -19952,15 +20033,28 @@ export default function Home() {
           <h2 className="text-xl font-medium text-foreground">
             {editingProductId ? `Edit Product: ${name}` : "Add Product"}
           </h2>
-          {editingProductId && (
-            <button
-              type="button"
-              onClick={resetProductForm}
-              className="rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted"
-            >
-              Cancel Edit
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {canImportExport && (
+              <ImportExportSection
+                entityKey="products"
+                entityLabel="Products"
+                supabase={supabase}
+                organizationId={currentOrganizationId}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+                onImported={() => { fetchProducts(); fetchCategories(); fetchBrands(); }}
+              />
+            )}
+            {editingProductId && (
+              <button
+                type="button"
+                onClick={resetProductForm}
+                className="rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted"
+              >
+                Cancel Edit
+              </button>
+            )}
+          </div>
         </div>
 
         {message && <p className="mb-4 text-sm text-success">{message}</p>}
@@ -20581,9 +20675,22 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "customers" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">
-            {customerEditingId ? "Edit Customer" : "Customer Management"}
-          </h2>
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">
+              {customerEditingId ? "Edit Customer" : "Customer Management"}
+            </h2>
+            {canImportExport && (
+              <ImportExportSection
+                entityKey="customers"
+                entityLabel="Customers"
+                supabase={supabase}
+                organizationId={currentOrganizationId}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+                onImported={() => fetchCustomers()}
+              />
+            )}
+          </div>
           <div className="space-y-4">
             {customerEditingId && (
               <p className="rounded border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary/90">
@@ -21133,7 +21240,20 @@ export default function Home() {
         {purchaseTab === "invoice" && (
         <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Purchase Invoice</h2>
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">Purchase Invoice</h2>
+            {canImportExport && (
+              <ImportExportSection
+                entityKey="purchases"
+                entityLabel="Purchases"
+                supabase={supabase}
+                organizationId={currentOrganizationId}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+                onImported={() => { fetchPurchaseTransactions(); fetchProducts(); }}
+              />
+            )}
+          </div>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
@@ -22418,13 +22538,26 @@ export default function Home() {
               <h2 className="text-xl font-medium text-foreground">Staff & Permissions</h2>
               <p className="mt-1 text-sm text-muted-foreground">Manage staff roles, account status, and module access.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => fetchStaffProfilesAndPermissions(currentOrganizationId)}
-              className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
-            >
-              Refresh Staff
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {canImportExport && (
+                <ImportExportSection
+                  entityKey="staff"
+                  entityLabel="Staff"
+                  supabase={supabase}
+                  organizationId={currentOrganizationId}
+                  actorProfileId={currentProfile?.id ?? null}
+                  createAuditLog={createAuditLog}
+                  onImported={() => fetchStaffProfilesAndPermissions(currentOrganizationId)}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => fetchStaffProfilesAndPermissions(currentOrganizationId)}
+                className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
+              >
+                Refresh Staff
+              </button>
+            </div>
           </div>
 
           <div className="mb-5 rounded border border-primary/20 bg-primary/5 p-4 text-sm text-primary">
@@ -23917,19 +24050,61 @@ export default function Home() {
 
         {activeSectionAllowed && activeSection === "employees" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <EmployeeManagement />
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">Employees</h2>
+            {canImportExport && (
+              <ImportExportSection
+                entityKey="employees"
+                entityLabel="Employees"
+                supabase={supabase}
+                organizationId={currentOrganizationId}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+                onImported={() => setFsmReloadKey((k) => k + 1)}
+              />
+            )}
+          </div>
+          <EmployeeManagement key={fsmReloadKey} />
         </section>
         )}
 
         {activeSectionAllowed && activeSection === "territories" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <TerritoriesManager />
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">Territories</h2>
+            {canImportExport && (
+              <ImportExportSection
+                entityKey="territories"
+                entityLabel="Territories"
+                supabase={supabase}
+                organizationId={currentOrganizationId}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+                onImported={() => setFsmReloadKey((k) => k + 1)}
+              />
+            )}
+          </div>
+          <TerritoriesManager key={fsmReloadKey} />
         </section>
         )}
 
         {activeSectionAllowed && activeSection === "routes" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <RoutesManager />
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-medium text-foreground">Routes</h2>
+            {canImportExport && (
+              <ImportExportSection
+                entityKey="routes"
+                entityLabel="Routes"
+                supabase={supabase}
+                organizationId={currentOrganizationId}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+                onImported={() => setFsmReloadKey((k) => k + 1)}
+              />
+            )}
+          </div>
+          <RoutesManager key={fsmReloadKey} />
         </section>
         )}
 
