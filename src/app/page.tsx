@@ -327,10 +327,14 @@ export default function Home() {
 
   const [customerName, setCustomerName] = useState("");
   const [shopName, setShopName] = useState("");
+  const [customerOrganizationName, setCustomerOrganizationName] = useState("");
+  const [customerContactPerson, setCustomerContactPerson] = useState("");
   const [phone, setPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [city, setCity] = useState("");
   const [area, setArea] = useState("");
+  const [address, setAddress] = useState("");
+  const [shippingAddress, setShippingAddress] = useState("");
   const [customerType, setCustomerType] = useState("Retailer");
   const [creditPolicy, setCreditPolicy] = useState("cash_only");
   const [creditLimit, setCreditLimit] = useState("");
@@ -1577,7 +1581,7 @@ export default function Home() {
       setEmail("");
       setPassword("");
       setFullName("");
-      setOrganizationName("");
+setCustomerOrganizationName("");
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Failed to create account");
       console.error("Signup error:", err);
@@ -4717,7 +4721,7 @@ export default function Home() {
     const { data, error } = await supabase
       .from("customers")
       .select(
-        "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, assigned_salesman_id"
+        "id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, assigned_salesman_id, assigned_territory_id"
       )
       .eq("organization_id", orgId)
       .order("customer_name", { ascending: true });
@@ -6603,10 +6607,14 @@ export default function Home() {
     const customerPayload = {
       customer_name: customerName.trim(),
       shop_name: shopName || null,
+      organization_name: customerOrganizationName || null,
+      contact_person: customerContactPerson || null,
       phone: phone || null,
       whatsapp: whatsapp || null,
       city: city || null,
       area: area || null,
+      address: address || null,
+      shipping_address: shippingAddress || null,
       customer_type: customerType,
       credit_policy: creditPolicy,
       credit_limit: requiresCreditLimit ? parsedCreditLimit : 0,
@@ -6682,10 +6690,14 @@ export default function Home() {
     setCustomerEditingId(null);
     setCustomerName("");
     setShopName("");
+    setCustomerOrganizationName("");
+    setContactPerson("");
     setPhone("");
     setWhatsapp("");
     setCity("");
     setArea("");
+    setAddress("");
+    setShippingAddress("");
     setCustomerType("Retailer");
     setCreditPolicy("cash_only");
     setCreditLimit("");
@@ -6703,10 +6715,14 @@ export default function Home() {
     setCustomerEditingId(customerId);
     setCustomerName(customer.customer_name ?? "");
     setShopName(customer.shop_name ?? "");
+    setCustomerOrganizationName((customer as any).organization_name ?? "");
+    setCustomerContactPerson((customer as any).contact_person ?? "");
     setPhone(customer.phone ?? "");
     setWhatsapp(customer.whatsapp ?? "");
     setCity(customer.city ?? "");
     setArea(customer.area ?? "");
+    setAddress((customer as any).address ?? "");
+    setShippingAddress((customer as any).shipping_address ?? "");
     setCustomerType(customer.customer_type ?? "Retailer");
     setCreditPolicy(customer.credit_policy ?? "cash_only");
     setCreditLimit(customer.credit_limit != null ? String(customer.credit_limit) : "");
@@ -6727,6 +6743,8 @@ export default function Home() {
     setWhatsapp("");
     setCity("");
     setArea("");
+    setAddress("");
+    setShippingAddress("");
     setCustomerType("Retailer");
     setCreditPolicy("cash_only");
     setCreditLimit("");
@@ -20723,13 +20741,35 @@ export default function Home() {
               />
             </label>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+<div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Shop Name</span>
+                <span>Contact Person</span>
                 <input
                   type="text"
-                  value={shopName}
-                  onChange={(e) => setShopName(e.target.value)}
+                  value={customerContactPerson}
+                  onChange={(e) => setCustomerContactPerson(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Organization Name</span>
+                <input
+                  type="text"
+                  value={customerOrganizationName}
+                  onChange={(e) => setCustomerOrganizationName(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Contact Person</span>
+                <input
+                  type="text"
+                  value={contactPerson}
+                  onChange={(e) => setContactPerson(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
@@ -20756,6 +20796,62 @@ export default function Home() {
                 />
               </label>
 
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>City</span>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Area</span>
+                <input
+                  type="text"
+                  value={area}
+                  onChange={(e) => setArea(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Address</span>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>Shipping Address</span>
+                <input
+                  type="text"
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>WhatsApp</span>
+                <input
+                  type="text"
+                  value={whatsapp}
+                  onChange={(e) => setWhatsapp(e.target.value)}
+                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>City</span>
                 <input
