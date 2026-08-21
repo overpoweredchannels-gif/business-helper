@@ -1258,6 +1258,21 @@ export default function Home() {
     setSelectedStaffProfileId(nextSelectedStaffProfileId);
   };
 
+  const handleDeleteInactiveStaff = async () => {
+    if (!currentOrganizationId) return;
+    if (!confirm("This will permanently delete all inactive staff profiles and their permissions for this organization. Continue?")) return;
+    try {
+      const res = await fetch("/api/staff/delete-inactive", { method: "POST" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      alert(`Deleted ${data.deletedCount ?? 0} inactive staff profile(s).`);
+      fetchStaffProfilesAndPermissions(currentOrganizationId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete inactive staff";
+      alert(msg);
+    }
+  };
+
   const fetchDutySessions = async (organizationId?: string | null, profileId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -22550,6 +22565,13 @@ export default function Home() {
                   onImported={() => fetchStaffProfilesAndPermissions(currentOrganizationId)}
                 />
               )}
+              <button
+                type="button"
+                onClick={handleDeleteInactiveStaff}
+                className="rounded border border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
+              >
+                Delete Inactive Staff
+              </button>
               <button
                 type="button"
                 onClick={() => fetchStaffProfilesAndPermissions(currentOrganizationId)}
