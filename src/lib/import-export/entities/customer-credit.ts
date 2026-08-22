@@ -31,7 +31,7 @@ export const customerCreditImportConfig: EntityImportConfig = {
 
   async buildUpsertPayload(row, ctx) {
     const v = row.values as Record<string, unknown>;
-    const customerId = v.customer ? await resolveRef(ctx, "customers", v.customer as string) : null;
+    const customerId = v.customer ? await resolveRef(ctx, "customers", v.customer as string, "customer_name") : null;
     
     if (!customerId) throw new Error("Customer not found: " + v.customer);
     
@@ -49,7 +49,7 @@ export const customerCreditImportConfig: EntityImportConfig = {
   async findExisting(row, ctx) {
     const v = row.values as Record<string, unknown>;
     if (!v.customer) return null;
-    const customerId = await resolveRef(ctx, "customers", v.customer as string);
+    const customerId = await resolveRef(ctx, "customers", v.customer as string, "customer_name");
     if (!customerId) return null;
     const { data } = await ctx.supabase
       .from("customer_credit")
@@ -87,7 +87,7 @@ export const customerCreditImportConfig: EntityImportConfig = {
         .from("customer_credit")
         .select(`
           id, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, credit_policy,
-          customers(customer_name)
+          customer:customers(customer_name)
         `)
         .eq("organization_id", orgId);
       if (error) throw error;
@@ -104,10 +104,9 @@ async function resolveRef(ctx: ImportContext, table: string, name: string, nameC
   if (!cache) {
     cache = new Map();
     ctx.refCaches.set(table, cache);
-    const selectCol = table === "customers" ? "id, customer_name" : "id, name";
     const { data } = await ctx.supabase
       .from(table)
-      .select(selectCol)
+      .select(`id, ${nameColumn}`)
       .eq("organization_id", ctx.orgId);
     for (const row of data ?? []) {
       cache.set(String(row[nameColumn]).trim().toLowerCase(), row.id);

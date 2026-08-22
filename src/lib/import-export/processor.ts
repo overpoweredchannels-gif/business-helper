@@ -187,7 +187,13 @@ export function buildPreviewResult(
       stats.errorCount++;
       errorRows.push({ rowIndex: row.rowIndex, message: row.errors.join("; ") });
     } else if (row.status === "new") stats.newCount++;
-    else if (row.status === "update") stats.updateCount++;
+    else if (row.status === "update") {
+      if (mode === "skip") stats.skipCount++;
+      else if (mode === "error") {
+        stats.errorCount++;
+        errorRows.push({ rowIndex: row.rowIndex, message: "Record already exists" });
+      } else stats.updateCount++;
+    }
     else if (row.status === "skip") stats.skipCount++;
     else if (row.status === "warning") stats.warningCount++;
   }
@@ -210,6 +216,8 @@ export async function runImport(
   };
   
   const seenUniqueKeys = new Map<string, number>();
+  const successfullyCreated: Array<{ id: unknown; rawValues: Record<string, unknown> }> = [];
+  const successfullyUpdated: Array<{ id: unknown; rawValues: Record<string, unknown> }> = [];
   
   for (const row of preview.rows) {
     if (row.errors.length > 0) {
@@ -244,8 +252,9 @@ export async function runImport(
         // Update mode
         if (config.applyUpdate) {
           const payload = await config.buildUpsertPayload!(row, ctx);
-          await config.applyUpdate(row.existingId as any, payload, ctx);
+          await config.applyUpdate({ id: row.existingId, rawValues: row.values }, payload, ctx);
           result.updated++;
+          successfullyUpdated.push({ id: row.existingId, rawValues: row.values });
         }
       } else {
         // Create new
@@ -259,6 +268,7 @@ export async function runImport(
           if (error) throw error;
           (row as any).createdId = data.id;
           result.created++;
+          successfullyCreated.push({ id: data.id, rawValues: row.values });
         }
       }
     } catch (err) {
@@ -270,10 +280,8 @@ export async function runImport(
   
   // Run post-import hook if defined
   if (config.postImportHook) {
-    const created = preview.rows.filter(r => r.status === "new" && r.errors.length === 0).map(r => ({ id: (r as any).createdId, rawValues: r.values }));
-    const updated = preview.rows.filter(r => r.status === "update" && r.errors.length === 0).map(r => ({ id: r.existingId, rawValues: r.values }));
     try {
-      await config.postImportHook(created, updated, ctx);
+      await config.postImportHook(successfullyCreated, successfullyUpdated, ctx);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       result.failures.push({ rowLabel: "Post-import hook", message: msg });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseUserClient } from "@/lib/supabase/server";
-import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
+import { buildOrganizationContext } from "@/lib/identity/api-context";
+import { requirePermission } from "@/lib/identity/authorization";
 import { validatePurchaseReturnInput } from "@/lib/purchases/validation";
 import { generateInvoiceNumberWithClient } from "@/lib/invoices/invoice-number-service";
 
@@ -31,10 +32,14 @@ interface ReturnLinePayload {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { actor, error, status } = await resolveActor(request);
-    if (error || !actor) {
-      return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+    const permission = await requirePermission(request, "purchases_create");
+    if (!permission.allowed || !permission.actor) {
+      return NextResponse.json(
+        { ok: false, error: permission.reason ?? "Forbidden" },
+        { status: 403 },
+      );
     }
+    const actor = permission.actor;
 
     const organizationContext = buildOrganizationContext(actor);
     const organizationId = organizationContext.actor.organizationId;
@@ -128,8 +133,7 @@ export async function POST(request: NextRequest) {
         return_date: body?.returnDate || null,
         reason: typeof body?.reason === "string" ? body.reason.trim() || null : null,
         status: "confirmed",
-        created_by_profile_id:
-          typeof body?.createdByProfileId === "string" ? body.createdByProfileId : null,
+        created_by_profile_id: actor.profileId,
       })
       .select("id")
       .single();

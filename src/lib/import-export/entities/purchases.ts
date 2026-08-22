@@ -70,8 +70,8 @@ export const purchasesImportConfig: EntityImportConfig = {
 
   async buildUpsertPayload(row, ctx) {
     const v = row.values as Record<string, unknown>;
-    const supplierId = v.supplier ? await resolveRef(ctx, "suppliers", v.supplier as string) : null;
-    const createdById = v.created_by ? await resolveRef(ctx, "profiles", v.created_by as string, "name") : null;
+    const supplierId = v.supplier ? await resolveRef(ctx, "suppliers", v.supplier as string, "supplier_name") : null;
+    const createdById = v.created_by ? await resolveRef(ctx, "profiles", v.created_by as string, "display_name") : null;
     
     return {
       invoice_number: v.invoice_number ? String(v.invoice_number).trim() : null,
@@ -127,8 +127,8 @@ export const purchasesImportConfig: EntityImportConfig = {
         .select(`
           id, invoice_number, supplier_invoice_number, purchase_date, payment_type,
           total_amount, discount_amount, tax_rate, tax_amount, credit_due_date, status,
-          suppliers(supplier_name),
-          profiles!created_by_profile_id(name)
+          supplier:suppliers(supplier_name),
+          created_by:profiles!created_by_profile_id(display_name)
         `)
         .eq("organization_id", orgId)
         .eq("invoice_type", "purchase");
@@ -151,10 +151,9 @@ async function resolveRef(ctx: ImportContext, table: string, name: string, nameC
   if (!cache) {
     cache = new Map();
     ctx.refCaches.set(table, cache);
-    const selectCol = table === "profiles" ? "id, name" : "id, name";
     const { data } = await ctx.supabase
       .from(table)
-      .select(selectCol)
+      .select(`id, ${nameColumn}`)
       .eq("organization_id", ctx.orgId);
     for (const row of data ?? []) {
       cache.set(String(row[nameColumn]).trim().toLowerCase(), row.id);

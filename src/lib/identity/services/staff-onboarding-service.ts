@@ -232,7 +232,7 @@ const supabase = createSupabaseService();
       return { ok: false, error: `Failed to create invitation: ${error.message}` };
     }
 
-    logAuditEvent({
+    await logAuditEvent({
       organizationId: actor.organizationId,
       actorProfileId: actor.profileId,
       actorEmail: actor.email,
@@ -368,7 +368,7 @@ const supabase = createSupabaseService();
       return { ok: false, error: `Invitation acceptance failed: ${acceptError.message}` };
     }
 
-    logAuditEvent({
+    await logAuditEvent({
       organizationId: employee.organization_id,
       actorProfileId: userId,
       actorEmail: hiddenEmail,

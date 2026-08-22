@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
-import { resolveActor } from "@/lib/identity/api-context";
+import { requirePermission } from "@/lib/identity/authorization";
 import { querySalesLedger } from "@/lib/invoices/invoice-ledger-service";
 import type { InvoiceStatus } from "@/lib/invoices/types";
 
@@ -25,10 +25,11 @@ export const runtime = "nodejs";
  *   offset        page offset (default 0)
  */
 export async function GET(request: NextRequest) {
-  const { actor, error, status } = await resolveActor(request);
-  if (error || !actor) {
-    return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+  const permission = await requirePermission(request, "sales_view");
+  if (!permission.allowed || !permission.actor) {
+    return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
+  const actor = permission.actor;
 
   try {
     const { searchParams } = new URL(request.url);

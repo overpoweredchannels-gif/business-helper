@@ -267,8 +267,8 @@ export const productsImportConfig: EntityImportConfig = {
           default_purchase_price, default_selling_price, minimum_stock_level,
           reorder_level, track_batch, track_expiry, overselling_policy,
           current_stock, is_active,
-          brands(name),
-          categories(name)
+          brand:brands(name),
+          category:categories(name)
         `)
         .eq("organization_id", orgId);
       

@@ -322,10 +322,12 @@ async function testDeleteSupplier() {
   const service = SupplierService.withSupabase(client);
 
   await service.deleteSupplier(owner, "sup-1");
-  const deleteCall = findCallOnTable(mock.fromCalls, "suppliers", "delete");
-  assertTrue(!!deleteCall, "Issues a delete");
+  const updateCall = findCallOnTable(mock.fromCalls, "suppliers", "update");
+  assertTrue(!!updateCall, "Archives the supplier with an update");
+  const updateArgs = updateCall?.args[0] as Record<string, unknown>;
+  assertEqual(updateArgs.is_active, false, "Marks the supplier inactive");
   const auditArgs = findCallOnTable(mock.fromCalls, "audit_logs", "insert")?.args[0] as Record<string, unknown>;
-  assertEqual(auditArgs.action, "supplier_deleted", "Audits the deletion");
+  assertEqual(auditArgs.action, "supplier_archived", "Audits the archive");
 }
 
 async function main() {

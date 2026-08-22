@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createSupabaseService, createSupabaseUserClient } from "../supabase/server";
 import { normalizeRole } from "./permissions";
 import { getRolePermissions, LEGACY_PERMISSION_MAP } from "./roles";
+import { RoleRepository } from "./repositories/role-repository";
 import { sectionPermissionMap } from "@/lib/tradeos/constants";
 import type { ActorContext } from "./types";
 import type { ModulePermission } from "./types";
@@ -105,7 +106,15 @@ export async function resolveActor(
     // Non-fatal: fall back to role-based permissions only
   }
 
-  const rolePermissions = role ? getRolePermissions(role) : [];
+  let rolePermissions = role ? getRolePermissions(role) : [];
+  if (role && rolePermissions.length === 0) {
+    try {
+      const customRole = await new RoleRepository().find(profile.organization_id, role);
+      rolePermissions = customRole?.permissions ?? [];
+    } catch {
+      rolePermissions = [];
+    }
+  }
   const mergedPermissions = Array.from(
     new Set([...rolePermissions, ...extraPermissions])
   ) as ModulePermission[];

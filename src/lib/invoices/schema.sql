@@ -17,7 +17,7 @@
 -- ---------------------------------------------------------------------------
 create table if not exists public.invoice_sequences (
   organization_id uuid not null references public.organizations(id) on delete cascade,
-  invoice_type text not null check (invoice_type in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order')),
+  invoice_type text not null check (invoice_type in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order', 'sales_order')),
   current_number integer not null default 0,
   updated_at timestamptz not null default now(),
   primary key (organization_id, invoice_type)
@@ -57,7 +57,7 @@ begin
     raise exception 'next_invoice_number: p_organization_id is required';
   end if;
 
-  if p_invoice_type not in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order') then
+  if p_invoice_type not in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order', 'sales_order') then
     raise exception 'next_invoice_number: unknown invoice_type "%"', p_invoice_type;
   end if;
 
@@ -94,7 +94,7 @@ end $$;
 
 alter table public.invoice_sequences
   add constraint invoice_sequences_invoice_type_check
-  check (invoice_type in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order'));
+  check (invoice_type in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order', 'sales_order'));
 
 -- ---------------------------------------------------------------------------
 -- 3. Invoice metadata columns (Part 4) — additive only, existing rows keep

@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: accepted.error ?? "Invitation acceptance failed." }, { status: 500 });
   }
 
-  logAuditEvent({
+  await logAuditEvent({
     organizationId: invitation.organizationId,
     actorProfileId: createdUser.user.id,
     actorEmail: invitation.email,

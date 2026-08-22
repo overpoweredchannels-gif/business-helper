@@ -86,7 +86,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const route = await repository.update(routeId, updates);
-    logAuditEvent({
+    await logAuditEvent({
       organizationId: permission.actor.organizationId,
       actorProfileId: permission.actor.profileId,
       actorEmail: permission.actor.email,

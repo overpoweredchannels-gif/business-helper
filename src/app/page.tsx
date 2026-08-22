@@ -1268,7 +1268,7 @@ export default function Home() {
     if (!currentOrganizationId) return;
     if (!confirm("This will permanently delete all inactive staff profiles and their permissions for this organization. Continue?")) return;
     try {
-      const res = await fetch("/api/staff/delete-inactive", { method: "POST" });
+      const res = await authorizedFetch("/api/staff/delete-inactive", { method: "POST" });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       alert(`Deleted ${data.deletedCount ?? 0} inactive staff profile(s).`);

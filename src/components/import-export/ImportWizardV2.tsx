@@ -42,7 +42,20 @@ interface ImportWizardV2Props {
 
 type Step = "file" | "mapping" | "preview" | "done";
 
-export default function ImportWizardV2({
+export default function ImportWizardV2(props: ImportWizardV2Props) {
+  const config = getEntityConfig(props.entityKey);
+  if (!config) {
+    return (
+      <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
+        <p className="text-destructive">Unknown entity: {props.entityKey}</p>
+      </div>
+    );
+  }
+
+  return <ImportWizardContent {...props} config={config} />;
+}
+
+function ImportWizardContent({
   entityKey,
   supabase,
   organizationId,
@@ -50,17 +63,8 @@ export default function ImportWizardV2({
   createAuditLog,
   onImported,
   extraContext,
-}: ImportWizardV2Props) {
-  const config = useMemo(() => getEntityConfig(entityKey), [entityKey]);
-  
-  if (!config) {
-    return (
-      <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
-        <p className="text-destructive">Unknown entity: {entityKey}</p>
-      </div>
-    );
-  }
-  
+  config,
+}: ImportWizardV2Props & { config: EntityImportConfig }) {
   const [step, setStep] = useState<Step>("file");
   const [fileName, setFileName] = useState("");
   const [fileError, setFileError] = useState<string | null>(null);

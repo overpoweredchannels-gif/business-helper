@@ -117,9 +117,9 @@ export const employeesImportConfig: EntityImportConfig = {
         .select(`
           id, full_name, email, phone, designation, department, hire_date, salary,
           is_active, visit_frequency, priority,
-          territories!assigned_territory_id(name),
-          sales_routes!assigned_route_id(name),
-          employees!supervisor_id(full_name)
+          assigned_territory:territories!assigned_territory_id(name),
+          assigned_route:sales_routes!assigned_route_id(name),
+          supervisor:employees!supervisor_id(full_name)
         `)
         .eq("organization_id", orgId)
         .order("full_name", { ascending: true });

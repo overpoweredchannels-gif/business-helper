@@ -156,7 +156,7 @@ export class DraftSaleService {
     // Create notification for owner (approval required)
     await this.notifyOwnerOfDraft(actor, draft.id, customer.customer_name, totalAmount);
 
-    logAuditEvent({
+    await logAuditEvent({
       organizationId: actor.organizationId,
       actorProfileId: actor.profileId,
       actorEmail: actor.email,
@@ -415,7 +415,7 @@ export class DraftSaleService {
       totalAmount
     );
 
-    logAuditEvent({
+    await logAuditEvent({
       organizationId: actor.organizationId,
       actorProfileId: actor.profileId,
       actorEmail: actor.email,
@@ -480,7 +480,7 @@ export class DraftSaleService {
     // Notify salesman
     await this.notifySalesmanOfRejection(actor, draft.created_by_profile_id, draft.so_number, reason);
 
-    logAuditEvent({
+    await logAuditEvent({
       organizationId: actor.organizationId,
       actorProfileId: actor.profileId,
       actorEmail: actor.email,

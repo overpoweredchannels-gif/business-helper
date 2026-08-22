@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 interface RoleView {
   id: string;
@@ -94,7 +95,7 @@ export default function RoleManagement() {
 
   const loadRoles = async () => {
     try {
-      const res = await fetch("/api/identity/roles");
+      const res = await authorizedFetch("/api/identity/roles");
       const data = await res.json();
       if (data.ok) {
         setRoles(data.roles || []);
@@ -120,7 +121,7 @@ export default function RoleManagement() {
 
   const createRole = async () => {
     if (!newName.trim()) return;
-    const res = await fetch("/api/identity/roles", {
+    const res = await authorizedFetch("/api/identity/roles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newName, description: newDescription, permissions: newPermissions }),

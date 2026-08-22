@@ -146,7 +146,7 @@ class AuthManager {
     const account = this.findAccountByEmail(email);
     const organizationId = account ? account.organizationId : "unknown";
     if (!account) {
-      logAuditEvent({
+      void logAuditEvent({
         organizationId,
         actorEmail: email,
         action: "login_failed",
@@ -157,7 +157,7 @@ class AuthManager {
       return { error: "Invalid email or password." };
     }
     if (!account.isActive) {
-      logAuditEvent({
+      void logAuditEvent({
         organizationId: account.organizationId,
         actorProfileId: account.profileId,
         actorEmail: account.email,
@@ -170,7 +170,7 @@ class AuthManager {
       return { error: "This account has been deactivated. Contact your store owner." };
     }
     if (account.lockedUntil && new Date(account.lockedUntil).getTime() > Date.now()) {
-      logAuditEvent({
+      void logAuditEvent({
         organizationId: account.organizationId,
         actorProfileId: account.profileId,
         actorEmail: account.email,
@@ -193,7 +193,7 @@ class AuthManager {
         account.failedAttempts = 0;
       }
       this.persist();
-      logAuditEvent({
+      void logAuditEvent({
         organizationId: account.organizationId,
         actorProfileId: account.profileId,
         actorEmail: account.email,
@@ -218,7 +218,7 @@ class AuthManager {
       rememberDevice: input.rememberDevice,
     });
 
-    logAuditEvent({
+    void logAuditEvent({
       organizationId: account.organizationId,
       actorProfileId: account.profileId,
       actorEmail: account.email,
@@ -238,7 +238,7 @@ class AuthManager {
       return { success: false };
     }
     sessionManager.revokeSession(token);
-    logAuditEvent({
+    void logAuditEvent({
       organizationId: session.organizationId,
       actorProfileId: session.profileId,
       action: "logout",
@@ -271,7 +271,7 @@ class AuthManager {
     account.passwordHash = hashPassword(input.newPassword, account.passwordSalt);
     account.mustChangePassword = false;
     this.persist();
-    logAuditEvent({
+    void logAuditEvent({
       organizationId: account.organizationId,
       actorProfileId: account.profileId,
       actorEmail: account.email,
@@ -299,7 +299,7 @@ class AuthManager {
       expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000).toISOString(),
     };
     this.persist();
-    logAuditEvent({
+    void logAuditEvent({
       organizationId: account.organizationId,
       actorProfileId: account.profileId,
       actorEmail: account.email,
@@ -336,7 +336,7 @@ class AuthManager {
     account.lockedUntil = null;
     delete this.resetTokens[token];
     this.persist();
-    logAuditEvent({
+    void logAuditEvent({
       organizationId: account.organizationId,
       actorProfileId: account.profileId,
       actorEmail: account.email,
@@ -361,7 +361,7 @@ class AuthManager {
     const previous = account.role;
     account.role = normalized;
     this.persist();
-    logAuditEvent({
+    void logAuditEvent({
       organizationId: account.organizationId,
       actorProfileId: account.profileId,
       actorEmail: account.email,
@@ -384,7 +384,7 @@ class AuthManager {
       sessionManager.revokeAllForProfile(profileId);
     }
     this.persist();
-    logAuditEvent({
+    void logAuditEvent({
       organizationId: account.organizationId,
       actorProfileId: account.profileId,
       actorEmail: account.email,

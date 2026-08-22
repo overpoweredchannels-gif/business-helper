@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveActor } from "@/lib/identity/api-context";
+import { requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { buildLoadForm, LoadFormFilters } from "@/lib/sales/load-form-service";
 
@@ -24,10 +24,11 @@ export const runtime = "nodejs";
  * packing/cartons/pcs/bonus/total_value/bonus_value.
  */
 export async function GET(request: NextRequest) {
-  const { actor, error, status } = await resolveActor(request);
-  if (error || !actor) {
-    return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+  const permission = await requirePermission(request, "sales_view");
+  if (!permission.allowed || !permission.actor) {
+    return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
+  const actor = permission.actor;
 
   const { searchParams } = new URL(request.url);
   const splitIds = (val: string | null) =>

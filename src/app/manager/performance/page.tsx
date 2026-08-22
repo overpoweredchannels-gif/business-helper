@@ -15,6 +15,7 @@ interface PerformanceMetrics {
 
 export default function ManagerPerformancePage() {
   const [performance, setPerformance] = useState<PerformanceMetrics | null>(null);
+  const [performanceList, setPerformanceList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +67,7 @@ export default function ManagerPerformancePage() {
                 leave: 0,
                 totalHours: p.attendanceHours,
               },
-              targets: [],
+              targets: p.targets ?? [],
               metrics: {
                 salesAchievement: Number(salesAchievement.toFixed(1)),
                 visitRate: Number(visitRate.toFixed(1)),
@@ -106,10 +107,10 @@ export default function ManagerPerformancePage() {
             targets: [],
           };
           setPerformance(aggregated);
-          // Set the list for rankings
-          (window as any).performanceList = formatted;
+          setPerformanceList(formatted);
         } else {
           setPerformance(data.performance);
+          setPerformanceList([]);
         }
       } else {
         setError(data.error || "Failed to load performance data");
@@ -163,7 +164,7 @@ export default function ManagerPerformancePage() {
       <div className="rounded-2xl border border-border bg-card p-6">
         <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2"><Award className="size-5 text-primary" /> Top Performers</h2>
         <div className="grid gap-3">
-          {(window as any).performanceList?.slice(0, 10).map((p: any, index: number) => (
+          {performanceList.slice(0, 10).map((p: any, index: number) => (
             <div key={p.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
               <div className="flex items-center gap-4">
                 <div className={cn("size-8 rounded-full flex items-center justify-center font-bold text-sm",

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePermission } from "@/lib/identity/authorization";
+import { requireOwner } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const permission = await requirePermission(request, "import_export");
+  const permission = await requireOwner(request);
   if (!permission.allowed || !permission.actor?.organizationId) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }

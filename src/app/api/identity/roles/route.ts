@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveActor } from "@/lib/identity/api-context";
-import {
-  getRoleDefinitions,
-  createCustomRole,
-  buildPermissionMatrix,
-} from "@/lib/identity/roles";
+import { requireOwner } from "@/lib/identity/authorization";
+import { getRoleDefinitions, buildPermissionMatrix, validateRoleName } from "@/lib/identity/roles";
+import { RoleRepository } from "@/lib/identity/repositories/role-repository";
 import { logAuditEvent } from "@/lib/identity/audit";
 import { ModulePermission } from "@/lib/identity/types";
 
@@ -31,15 +28,19 @@ const ALL_MODULE_PERMISSIONS: ModulePermission[] = [
   "ai_assistant",
   "administration",
   "settings_manage",
+  "field_sales",
+  "draft_approval",
+  "import_export",
 ];
 
 export async function GET(request: NextRequest) {
-  const { actor, error, status } = await resolveActor(request);
-  if (error || !actor) {
-    return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+  const permission = await requireOwner(request);
+  if (!permission.allowed || !permission.actor) {
+    return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
-  const roles = getRoleDefinitions();
-  const builtIn = roles.filter((r) => r.isBuiltIn);
+  const builtIn = getRoleDefinitions().filter((r) => r.isBuiltIn);
+  const custom = await new RoleRepository().listForOrganization(permission.actor.organizationId);
+  const roles = [...builtIn, ...custom];
   const matrix = buildPermissionMatrix(builtIn.map((r) => r.id));
   return NextResponse.json({
     ok: true,
@@ -57,13 +58,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { actor, error, status } = await resolveActor(request);
-  if (error || !actor) {
-    return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+  const permission = await requireOwner(request);
+  if (!permission.allowed || !permission.actor) {
+    return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
-  if (!actor.isOwner) {
-    return NextResponse.json({ ok: false, error: "Only the store owner can create roles." }, { status: 403 });
-  }
+  const actor = permission.actor;
 
   let body: { name?: string; description?: string; permissions?: ModulePermission[] };
   try {
@@ -72,16 +71,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const result = createCustomRole({
+  const nameError = validateRoleName(body.name ?? "");
+  if (nameError) {
+    return NextResponse.json({ ok: false, error: nameError }, { status: 400 });
+  }
+  const allowed = new Set<ModulePermission>(ALL_MODULE_PERMISSIONS);
+  const permissions = (Array.isArray(body.permissions) ? body.permissions : []).filter((item) => allowed.has(item));
+  const result = await new RoleRepository().create(actor.organizationId, {
     name: body.name ?? "",
     description: body.description,
-    permissions: Array.isArray(body.permissions) ? body.permissions : [],
+    permissions,
   });
   if (result.error || !result.role) {
     return NextResponse.json({ ok: false, error: result.error ?? "Role creation failed." }, { status: 400 });
   }
 
-  logAuditEvent({
+  await logAuditEvent({
     organizationId: actor.organizationId,
     actorProfileId: actor.profileId,
     actorEmail: actor.email,

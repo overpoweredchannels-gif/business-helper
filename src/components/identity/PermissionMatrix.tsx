@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 interface MatrixRole {
   id: string;
@@ -62,7 +63,7 @@ export default function PermissionMatrix() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/identity/roles");
+        const res = await authorizedFetch("/api/identity/roles");
         const data = await res.json();
         if (data.ok) {
           const builtIn = (data.roles as MatrixRole[]).filter((r) => r.isBuiltIn);

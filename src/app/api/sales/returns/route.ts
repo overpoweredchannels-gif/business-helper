@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseUserClient } from "@/lib/supabase/server";
-import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
+import { buildOrganizationContext } from "@/lib/identity/api-context";
 import { requirePermission } from "@/lib/identity/authorization";
 import { validateSalesReturnInput } from "@/lib/sales/validation";
 import { generateInvoiceNumberWithClient } from "@/lib/invoices/invoice-number-service";
@@ -41,11 +41,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { actor, error, status } = await resolveActor(request);
-    if (error || !actor) {
-      return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
-    }
-
+    const actor = permission.actor;
     const organizationContext = buildOrganizationContext(actor);
     const organizationId = organizationContext.actor.organizationId;
 
@@ -146,8 +142,7 @@ export async function POST(request: NextRequest) {
         return_date: body?.returnDate || null,
         reason: typeof body?.reason === "string" ? body.reason.trim() || null : null,
         status: "confirmed",
-        created_by_profile_id:
-          typeof body?.createdByProfileId === "string" ? body.createdByProfileId : null,
+        created_by_profile_id: actor.profileId,
       })
       .select("id")
       .single();
@@ -161,8 +156,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Failed to create sales return" }, { status: 500 });
     }
 
-    for (const line of lines) {
-      const { error: itemError } = await supabase.from("sales_return_items").insert({
+    const itemsToInsert = lines.map((line) => ({
         sales_return_id: returnId,
         organization_id: organizationId,
         product_id: line.product_id,
@@ -172,10 +166,12 @@ export async function POST(request: NextRequest) {
         unit_mode: line.unit_mode,
         batch_number: line.batch_number || null,
         expiry_date: line.expiry_date || null,
-      });
-      if (itemError) {
-        return NextResponse.json({ ok: false, error: itemError.message }, { status: 400 });
-      }
+    }));
+
+    const { error: itemsError } = await supabase.from("sales_return_items").insert(itemsToInsert);
+    if (itemsError) {
+      await supabase.from("sales_returns").delete().eq("id", returnId);
+      return NextResponse.json({ ok: false, error: itemsError.message }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true, returnId, returnNumber });

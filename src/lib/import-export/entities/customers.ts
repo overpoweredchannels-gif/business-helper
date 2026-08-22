@@ -175,8 +175,8 @@ export const customersImportConfig: EntityImportConfig = {
           customer_type, credit_policy, credit_limit, credit_days,
           allow_over_limit, allow_overdue_sales, preferred_payment_method,
           is_active, notes,
-          employees!assigned_salesman_id(full_name),
-          territories!assigned_territory_id(name)
+          assigned_salesman:employees!assigned_salesman_id(full_name),
+          assigned_territory:territories!assigned_territory_id(name)
         `)
         .eq("organization_id", orgId);
       

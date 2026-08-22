@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveActor } from "@/lib/identity/api-context";
-import { updateCustomRole, deleteCustomRole } from "@/lib/identity/roles";
+import { requireOwner } from "@/lib/identity/authorization";
+import { RoleRepository } from "@/lib/identity/repositories/role-repository";
 import { logAuditEvent } from "@/lib/identity/audit";
 import { ModulePermission } from "@/lib/identity/types";
 
@@ -8,13 +8,11 @@ export const runtime = "nodejs";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { actor, error, status } = await resolveActor(request);
-  if (error || !actor) {
-    return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+  const permission = await requireOwner(request);
+  if (!permission.allowed || !permission.actor) {
+    return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
-  if (!actor.isOwner) {
-    return NextResponse.json({ ok: false, error: "Only the store owner can edit roles." }, { status: 403 });
-  }
+  const actor = permission.actor;
 
   let body: { name?: string; description?: string; permissions?: ModulePermission[] };
   try {
@@ -23,7 +21,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const result = updateCustomRole(id, {
+  const result = await new RoleRepository().update(actor.organizationId, id, {
     name: body.name,
     description: body.description,
     permissions: body.permissions,
@@ -32,7 +30,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ ok: false, error: result.error ?? "Role not found." }, { status: 400 });
   }
 
-  logAuditEvent({
+  await logAuditEvent({
     organizationId: actor.organizationId,
     actorProfileId: actor.profileId,
     actorEmail: actor.email,
@@ -48,20 +46,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { actor, error, status } = await resolveActor(request);
-  if (error || !actor) {
-    return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+  const permission = await requireOwner(request);
+  if (!permission.allowed || !permission.actor) {
+    return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
-  if (!actor.isOwner) {
-    return NextResponse.json({ ok: false, error: "Only the store owner can delete roles." }, { status: 403 });
-  }
+  const actor = permission.actor;
 
-  const result = deleteCustomRole(id);
+  const result = await new RoleRepository().delete(actor.organizationId, id);
   if (!result.success) {
     return NextResponse.json({ ok: false, error: result.error ?? "Role not found." }, { status: 404 });
   }
 
-  logAuditEvent({
+  await logAuditEvent({
     organizationId: actor.organizationId,
     actorProfileId: actor.profileId,
     actorEmail: actor.email,

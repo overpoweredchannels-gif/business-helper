@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 interface AuditEntryView {
   id: string;
@@ -42,11 +43,7 @@ export default function AuditLogPanel() {
   useEffect(() => {
     (async () => {
       try {
-        const orgId =
-          typeof window !== "undefined"
-            ? new URLSearchParams(window.location.search).get("organizationId")
-            : null;
-        const res = await fetch(`/api/audit?organizationId=${orgId || ""}`);
+        const res = await authorizedFetch("/api/audit");
         const data = await res.json();
         if (data.ok) {
           setEntries(data.entries || []);

@@ -3,6 +3,7 @@ import { resolveActor } from "@/lib/identity/api-context";
 import { validateEmail } from "@/lib/identity/invitations";
 import { InvitationService } from "@/lib/identity/repositories/invitation-repository";
 import { normalizeRole, roleExists } from "@/lib/identity/permissions";
+import { RoleRepository } from "@/lib/identity/repositories/role-repository";
 import { logAuditEvent } from "@/lib/identity/audit";
 
 export const runtime = "nodejs";
@@ -29,7 +30,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: emailError }, { status: 400 });
   }
   const role = normalizeRole(body.role ?? "viewer");
-  if (!role || !roleExists(role)) {
+  const customRole = role && !roleExists(role)
+    ? await new RoleRepository().find(actor.organizationId, role)
+    : null;
+  if (!role || (!roleExists(role) && !customRole)) {
     return NextResponse.json({ ok: false, error: "Unknown role. Please pick a role from the role library." }, { status: 400 });
   }
 
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: result.error ?? "Invitation failed." }, { status: 400 });
   }
 
-  logAuditEvent({
+  await logAuditEvent({
     organizationId: actor.organizationId,
     actorProfileId: actor.profileId,
     actorEmail: actor.email,

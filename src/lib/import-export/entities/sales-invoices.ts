@@ -72,7 +72,7 @@ export const salesInvoicesImportConfig: EntityImportConfig = {
   // Custom handling for invoice + lines - will be handled in processor
   async buildUpsertPayload(row, ctx) {
     const v = row.values as Record<string, unknown>;
-    const customerId = v.customer ? await resolveRef(ctx, "customers", v.customer as string) : null;
+    const customerId = v.customer ? await resolveRef(ctx, "customers", v.customer as string, "customer_name") : null;
     const salesmanId = v.salesman ? await resolveRef(ctx, "employees", v.salesman as string, "full_name") : null;
     
     return {
@@ -111,8 +111,8 @@ export const salesInvoicesImportConfig: EntityImportConfig = {
       { key: "invoice_number", label: "Invoice #" },
       { key: "sale_date", label: "Date" },
       { key: "customer", label: "Customer", transform: (v) => (v as any)?.customer_name ?? "" },
-      { key: "shop_name", label: "Shop", transform: (v) => (v as any)?.shop_name ?? "" },
-      { key: "salesman", label: "Salesman", transform: (v) => (v as any)?.full_name ?? "" },
+      { key: "customer", label: "Shop", transform: (v) => (v as any)?.shop_name ?? "" },
+      { key: "salesman", label: "Salesman", transform: (v) => (v as any)?.display_name ?? "" },
       { key: "payment_type", label: "Payment" },
       { key: "total_amount", label: "Total" },
       { key: "discount_amount", label: "Discount" },
@@ -129,8 +129,8 @@ export const salesInvoicesImportConfig: EntityImportConfig = {
         .select(`
           id, invoice_number, sale_date, payment_type, total_amount,
           discount_amount, tax_rate, tax_amount, credit_due_date, status,
-          customers(customer_name, shop_name),
-          employees!created_by_profile_id(full_name)
+          customer:customers(customer_name, shop_name),
+          salesman:profiles!created_by_profile_id(display_name)
         `)
         .eq("organization_id", orgId)
         .eq("invoice_type", "sales");
@@ -155,13 +155,14 @@ async function resolveRef(ctx: ImportContext, table: string, name: string, nameC
   if (!cache) {
     cache = new Map();
     ctx.refCaches.set(table, cache);
-    const selectCol = table === "employees" ? "id, full_name" : "id, name";
+    const selectCol = table === "employees" ? "profile_id, full_name" : `id, ${nameColumn}`;
     const { data } = await ctx.supabase
       .from(table)
       .select(selectCol)
       .eq("organization_id", ctx.orgId);
     for (const row of data ?? []) {
-      cache.set(String(row[nameColumn]).trim().toLowerCase(), row.id);
+      const referencedId = table === "employees" ? row.profile_id : row.id;
+      if (referencedId) cache.set(String(row[nameColumn]).trim().toLowerCase(), referencedId);
     }
   }
   

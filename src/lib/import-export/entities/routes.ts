@@ -118,8 +118,8 @@ export const routesImportConfig: EntityImportConfig = {
         .from("sales_routes")
         .select(`
           id, name, description, route_frequency, is_active,
-          territories!territory_id(name),
-          employees!assigned_salesman_id(full_name)
+          territory:territories!territory_id(name),
+          assigned_salesman:employees!assigned_salesman_id(full_name)
         `)
         .eq("organization_id", orgId)
         .order("name", { ascending: true });

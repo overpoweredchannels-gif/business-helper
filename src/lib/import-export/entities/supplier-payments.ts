@@ -46,8 +46,8 @@ export const supplierPaymentsImportConfig: EntityImportConfig = {
 
   async buildUpsertPayload(row, ctx) {
     const v = row.values as Record<string, unknown>;
-    const supplierId = v.supplier ? await resolveRef(ctx, "suppliers", v.supplier as string) : null;
-    const createdById = v.created_by ? await resolveRef(ctx, "profiles", v.created_by as string, "name") : null;
+    const supplierId = v.supplier ? await resolveRef(ctx, "suppliers", v.supplier as string, "supplier_name") : null;
+    const createdById = v.created_by ? await resolveRef(ctx, "profiles", v.created_by as string, "display_name") : null;
     
     if (!supplierId) throw new Error("Supplier not found: " + v.supplier);
     
@@ -76,7 +76,7 @@ export const supplierPaymentsImportConfig: EntityImportConfig = {
       { key: "payment_method", label: "Method" },
       { key: "reference_number", label: "Reference" },
       { key: "notes", label: "Notes" },
-      { key: "created_by", label: "Recorded By", transform: (v) => (v as any)?.name ?? "" },
+      { key: "created_by", label: "Recorded By", transform: (v) => (v as any)?.display_name ?? "" },
     ],
     async fetchData(orgId, filters) {
       const { createSupabaseService } = await import("@/lib/supabase/server");
@@ -85,8 +85,8 @@ export const supplierPaymentsImportConfig: EntityImportConfig = {
         .from("supplier_payments")
         .select(`
           id, amount, payment_date, payment_method, reference_number, notes,
-          suppliers(supplier_name),
-          profiles!created_by_profile_id(name)
+          supplier:suppliers(supplier_name),
+          created_by:profiles!created_by_profile_id(display_name)
         `)
         .eq("organization_id", orgId);
       
@@ -109,10 +109,9 @@ async function resolveRef(ctx: ImportContext, table: string, name: string, nameC
   if (!cache) {
     cache = new Map();
     ctx.refCaches.set(table, cache);
-    const selectCol = table === "profiles" ? "id, name" : table === "suppliers" ? "id, supplier_name" : "id, name";
     const { data } = await ctx.supabase
       .from(table)
-      .select(selectCol)
+      .select(`id, ${nameColumn}`)
       .eq("organization_id", ctx.orgId);
     for (const row of data ?? []) {
       cache.set(String(row[nameColumn]).trim().toLowerCase(), row.id);

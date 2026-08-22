@@ -64,6 +64,11 @@ create table if not exists public.role_definitions (
   created_at timestamptz not null default now()
 );
 
+alter table public.role_definitions
+  add column if not exists organization_id uuid references public.organizations(id) on delete cascade;
+create index if not exists role_definitions_org_idx on public.role_definitions(organization_id);
+alter table public.role_definitions enable row level security;
+
 create table if not exists public.role_invitations (
   code text primary key,
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -299,7 +304,7 @@ create policy categories_write_org on public.categories
 
 create table if not exists public.invoice_sequences (
   organization_id uuid not null references public.organizations(id) on delete cascade,
-  invoice_type text not null check (invoice_type in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order')),
+  invoice_type text not null check (invoice_type in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order', 'sales_order')),
   current_number integer not null default 0,
   updated_at timestamptz not null default now(),
   primary key (organization_id, invoice_type)
@@ -321,7 +326,7 @@ begin
     raise exception 'next_invoice_number: p_organization_id is required';
   end if;
 
-  if p_invoice_type not in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order') then
+  if p_invoice_type not in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order', 'sales_order') then
     raise exception 'next_invoice_number: unknown invoice_type "%"', p_invoice_type;
   end if;
 
@@ -357,7 +362,7 @@ end $$;
 
 alter table public.invoice_sequences
   add constraint invoice_sequences_invoice_type_check
-  check (invoice_type in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order'));
+  check (invoice_type in ('sales', 'purchase', 'sales_return', 'purchase_return', 'purchase_order', 'sales_order'));
 
 -- Invoice metadata columns (additive — existing rows keep working)
 alter table public.sales_transactions

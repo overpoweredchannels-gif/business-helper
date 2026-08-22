@@ -1,4 +1,5 @@
 import { AuditEntry } from "./types";
+import { AuditRepository } from "@/lib/audit/audit-repository";
 
 const AUDIT_STORAGE_KEY = "tradeos_audit_log";
 const MAX_AUDIT_ENTRIES = 500;
@@ -87,7 +88,7 @@ class AuditLogger {
 
 export const auditLogger = new AuditLogger();
 
-export function logAuditEvent(input: {
+export async function logAuditEvent(input: {
   organizationId: string;
   actorProfileId?: string | null;
   actorEmail?: string | null;
@@ -96,8 +97,22 @@ export function logAuditEvent(input: {
   entityId?: string | null;
   description?: string | null;
   success?: boolean;
-}): AuditEntry {
-  return auditLogger.log(input);
+}): Promise<AuditEntry> {
+  const entry = auditLogger.log(input);
+  try {
+    await new AuditRepository().create({
+      organization_id: input.organizationId,
+      actor_profile_id: input.actorProfileId ?? null,
+      actor_email: input.actorEmail ?? null,
+      action: input.action,
+      entity_type: input.entityType,
+      entity_id: input.entityId ?? null,
+      description: input.description ?? null,
+    });
+  } catch (error) {
+    console.error("Failed to persist identity audit event", error);
+  }
+  return entry;
 }
 
 export function getAuditEntries(organizationId: string, limit = 100): AuditEntry[] {

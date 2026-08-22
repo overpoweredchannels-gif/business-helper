@@ -138,7 +138,7 @@ export class CustomerVisitService {
       return { ok: false, error: `Failed to start visit: ${error.message}` };
     }
 
-    logAuditEvent({
+    await logAuditEvent({
       organizationId: actor.organizationId,
       actorProfileId: actor.profileId,
       actorEmail: actor.email,
@@ -289,7 +289,7 @@ export class CustomerVisitService {
       );
     }
 
-    logAuditEvent({
+    await logAuditEvent({
       organizationId: actor.organizationId,
       actorProfileId: actor.profileId,
       actorEmail: actor.email,

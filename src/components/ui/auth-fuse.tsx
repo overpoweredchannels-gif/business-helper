@@ -11,6 +11,7 @@ import {
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "@/lib/supabase/client";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 type LoginMethod = "email" | "staff";
 
@@ -281,6 +282,15 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
           .eq("id", userData.user.id)
           .maybeSingle();
         role = profile?.role ?? null;
+        await authorizedFetch("/api/identity/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            register: true,
+            deviceName: typeof navigator === "undefined" ? "Web browser" : navigator.userAgent.slice(0, 120),
+            rememberDevice: rememberMe,
+          }),
+        });
       }
 
       const staffRoles = ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor", "warehouse_staff"];
@@ -294,7 +304,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
     } finally {
       setLoading(false);
     }
-  }, [method, email, loginId, password, router]);
+  }, [method, email, loginId, password, rememberMe, router]);
 
   return (
     <form onSubmit={handleSubmit} autoComplete="on" className="animate-slideUp">

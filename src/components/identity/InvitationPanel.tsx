@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 interface InvitationView {
   code: string;
@@ -39,7 +40,7 @@ export default function InvitationPanel() {
 
   const load = async () => {
     try {
-      const res = await fetch("/api/identity/invite");
+      const res = await authorizedFetch("/api/identity/invite");
       const data = await res.json();
       if (data.ok) {
         setInvitations(data.invitations || []);
@@ -58,7 +59,7 @@ export default function InvitationPanel() {
   }, []);
 
   const sendInvite = async () => {
-    const res = await fetch("/api/identity/invite", {
+    const res = await authorizedFetch("/api/identity/invite", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, role }),

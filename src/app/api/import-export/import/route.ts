@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build preview result
-    const preview = buildPreviewResult(headers, parsedRows, "skip");
+    const preview = buildPreviewResult(headers, parsedRows, duplicateMode);
 
     if (mode === "preview") {
       return NextResponse.json({ ok: true, preview });
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
           description: params.description,
           old_values: params.old_values,
           new_values: params.new_values,
-          profile_id: profileId,
+          actor_profile_id: profileId,
         });
       },
     };

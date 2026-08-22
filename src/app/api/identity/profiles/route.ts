@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { resolveActor } from "@/lib/identity/api-context";
+import { requireOwner } from "@/lib/identity/authorization";
 import { ProfileService } from "@/lib/identity/services/profile-service";
 
 export async function GET(request: Request) {
-  const context = await resolveActor(request);
-  if (!context.actor?.organizationId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requireOwner(request);
+  if (!permission.allowed || !permission.actor) {
+    return NextResponse.json({ error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
 
   const service = new ProfileService();
-  const profiles = await service.listProfiles(context.actor);
+  const profiles = await service.listProfiles(permission.actor);
 
   return NextResponse.json({ profiles });
 }

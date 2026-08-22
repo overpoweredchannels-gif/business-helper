@@ -40,9 +40,7 @@ export default function ExportWizard({ entityKey, onClose, onExported }: ExportW
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
       
-      const res = await fetch(`/api/import-export/export?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("sb-access-token") ?? ""}` },
-      });
+      const res = await authorizedFetch(`/api/import-export/export?${params.toString()}`);
       
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 interface SessionView {
   sessionId: string;
@@ -45,10 +46,11 @@ export default function SessionManagement() {
 
   const load = async () => {
     try {
-      const res = await fetch("/api/identity/sessions");
+      const res = await authorizedFetch("/api/identity/sessions");
       const data = await res.json();
       if (data.ok) {
         setSessions(data.sessions || []);
+        if (data.policy) setPolicy(data.policy);
         setError(null);
       } else {
         setError(data.error || "Failed to load sessions");
@@ -63,7 +65,7 @@ export default function SessionManagement() {
   }, []);
 
   const revoke = async (sessionId: string) => {
-    const res = await fetch("/api/identity/sessions", {
+    const res = await authorizedFetch("/api/identity/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionId }),
@@ -79,7 +81,7 @@ export default function SessionManagement() {
   };
 
   const savePolicy = async () => {
-    const res = await fetch("/api/identity/sessions", {
+    const res = await authorizedFetch("/api/identity/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ policy }),

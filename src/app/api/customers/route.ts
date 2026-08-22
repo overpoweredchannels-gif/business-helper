@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
     }
 
-    logAuditEvent({
+    await logAuditEvent({
       organizationId,
       actorProfileId: permission.actor.profileId,
       actorEmail: permission.actor.email,

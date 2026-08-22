@@ -43,7 +43,7 @@ export const staffImportConfig: EntityImportConfig = {
   entityKey: "staff",
   entityName: "Staff & Permissions",
   tableName: "profiles", // Main table is profiles, permissions in staff_permissions
-  existingColumns: "id, email, name, role, is_active, organization_id",
+  existingColumns: "id, email, display_name, role, is_active, organization_id",
   
   fields: [
     { key: "email", label: "Email", type: "text", required: true, unique: true, preview: true, width: 220, help: "Required. Unique login email." },
@@ -78,7 +78,7 @@ export const staffImportConfig: EntityImportConfig = {
 
     return {
       email: v.email ? String(v.email).trim().toLowerCase() : null,
-      name: v.name ? String(v.name).trim() : null,
+      display_name: v.name ? String(v.name).trim() : null,
       role: v.role as any ?? "staff",
       is_active: v.is_active as boolean ?? true,
       organization_id: ctx.orgId,
@@ -104,7 +104,7 @@ export const staffImportConfig: EntityImportConfig = {
     // Update profile
     const { error: profileError } = await supabase
       .from("profiles")
-      .update({ name: payload.name, role: payload.role, is_active: payload.is_active })
+      .update({ display_name: payload.display_name, role: payload.role, is_active: payload.is_active })
       .eq("id", profileId)
       .eq("organization_id", ctx.orgId);
     if (profileError) throw profileError;
@@ -170,7 +170,7 @@ export const staffImportConfig: EntityImportConfig = {
     filenamePrefix: "staff_export",
     columns: [
       { key: "email", label: "Email" },
-      { key: "name", label: "Name" },
+      { key: "display_name", label: "Name" },
       { key: "role", label: "Role" },
       { key: "is_active", label: "Active", transform: (v) => v ? "Yes" : "No" },
       ...SECTIONS.map((section) => ({
@@ -185,13 +185,20 @@ export const staffImportConfig: EntityImportConfig = {
       const { data, error } = await supabase
         .from("profiles")
         .select(`
-          id, email, name, role, is_active,
-          staff_permissions!profile_id(granted_sections)
+          id, email, display_name, role, is_active,
+          permissions:staff_permissions!profile_id(granted_sections)
         `)
         .eq("organization_id", orgId)
-        .order("name", { ascending: true });
+        .order("display_name", { ascending: true });
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).map((row: any) => {
+        const permissionRow = Array.isArray(row.permissions) ? row.permissions[0] : row.permissions;
+        const granted = new Set<string>(permissionRow?.granted_sections ?? []);
+        return {
+          ...row,
+          ...Object.fromEntries(SECTIONS.map((section) => [`perm_${section}`, granted.has(section)])),
+        };
+      });
     },
   },
 };

@@ -99,7 +99,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     });
   }
 
-  logAuditEvent({
+  await logAuditEvent({
     organizationId: permission.actor.organizationId,
     actorProfileId: permission.actor.profileId,
     actorEmail: permission.actor.email,
