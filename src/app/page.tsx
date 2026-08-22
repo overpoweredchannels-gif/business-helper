@@ -26,6 +26,7 @@ import NotificationCenter from "@/components/fsm/NotificationCenter";
 import TerritoriesManager from "@/components/fsm/TerritoriesManager";
 import RoutesManager from "@/components/fsm/RoutesManager";
 import LiveTrackingView from "@/components/fsm/LiveTrackingView";
+import CustomerHistory from "@/components/sales/CustomerHistory";
 import {
   aiAssistantExampleCommands,
   aiAssistantRoadmapItems,
@@ -347,6 +348,7 @@ export default function Home() {
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerEditingId, setCustomerEditingId] = useState<string | null>(null);
+  const [viewCustomerHistoryId, setViewCustomerHistoryId] = useState<string | null>(null);
   const [customerNotes, setCustomerNotes] = useState("");
 
   const [supplierName, setSupplierName] = useState("");
@@ -6733,6 +6735,10 @@ setCustomerOrganizationName("");
     setCustomerError(null);
     setCustomerMessage(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleViewCustomerHistory = (customerId: string) => {
+    setViewCustomerHistoryId(customerId);
   };
 
   const handleCancelCustomerEdit = () => {
@@ -21121,6 +21127,13 @@ setCustomerOrganizationName("");
                           >
                             Edit
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setViewCustomerHistoryId(customer.id)}
+                            className="rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
+                          >
+                            History
+                          </button>
                           {customer.is_active === false ? (
                             <button
                               type="button"
@@ -21147,6 +21160,29 @@ setCustomerOrganizationName("");
             </div>
           </div>
         </section>
+        )}
+
+        {viewCustomerHistoryId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="relative w-full max-w-5xl max-h-[90vh] overflow-auto rounded-lg border border-border bg-background p-4 shadow-xl">
+              <div className="mb-4 flex items-center justify-between border-b border-border pb-3">
+                <h2 className="text-lg font-semibold text-foreground">Customer History</h2>
+                <button
+                  type="button"
+                  onClick={() => setViewCustomerHistoryId(null)}
+                  className="rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted/30"
+                >
+                  Close
+                </button>
+              </div>
+              <CustomerHistory
+                organizationId={currentOrganizationId}
+                supabase={supabase}
+                actorProfileId={currentProfile?.id ?? null}
+                createAuditLog={createAuditLog}
+              />
+            </div>
+          </div>
         )}
 
         {activeSectionAllowed && activeSection === "suppliers" && (
