@@ -38,10 +38,14 @@ export interface Customer {
   id: string;
   customer_name: string;
   shop_name: string | null;
+  organization_name?: string | null;
+  contact_person?: string | null;
   phone: string | null;
   whatsapp: string | null;
   city: string | null;
   area: string | null;
+  address?: string | null;
+  shipping_address?: string | null;
   customer_type: string | null;
   credit_policy: string | null;
   credit_limit: number | null;

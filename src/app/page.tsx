@@ -349,6 +349,7 @@ export default function Home() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerEditingId, setCustomerEditingId] = useState<string | null>(null);
   const [viewCustomerHistoryId, setViewCustomerHistoryId] = useState<string | null>(null);
+  const [customerWorkspaceTab, setCustomerWorkspaceTab] = useState<"management" | "history">("management");
   const [customerNotes, setCustomerNotes] = useState("");
 
   const [supplierName, setSupplierName] = useState("");
@@ -1770,6 +1771,35 @@ setCustomerOrganizationName("");
     setSalesLines(salesLines.filter((_, i) => i !== index));
   };
 
+  const loadRecentCustomerPrices = async (customerId: string) => {
+    try {
+      const response = await authorizedFetch(`/api/customers/${customerId}/pricing`);
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error ?? "Failed to load recent prices");
+      const prices = (result.prices ?? []) as Array<{
+        product_id: string;
+        last_selling_price: number;
+        unit_mode: UnitMode;
+        last_sold_at: string;
+      }>;
+      setRecentCustomerPrices((current) => {
+        const next = { ...current };
+        for (const price of prices) next[`${customerId}:${price.product_id}`] = price;
+        return next;
+      });
+      return new Map(prices.map((price) => [String(price.product_id), price]));
+    } catch (error) {
+      console.error("Failed to load customer-specific prices:", error);
+      return new Map<string, { product_id: string; last_selling_price: number; unit_mode: UnitMode; last_sold_at: string }>();
+    }
+  };
+
+  const applyRecentPrice = (line: SalesLine, product: Product | undefined, recent: RecentCustomerPrice | undefined) => {
+    if (!product || !recent) return line;
+    const mode: UnitMode = recent.unit_mode === "subunit" && hasSubunit(product) ? "subunit" : "main";
+    return { ...line, unit_mode: mode, selling_price: String(recent.last_selling_price) };
+  };
+
   const handleSalesLineChange = (
     index: number,
     field: keyof SalesLine,
@@ -1782,6 +1812,14 @@ setCustomerOrganizationName("");
     if (field === "product_id" && value) {
       const prod = products.find((p) => String(p.id) === value);
       if (prod) {
+        const recent = selectedCustomerIdForSale
+          ? recentCustomerPrices[`${selectedCustomerIdForSale}:${value}`]
+          : undefined;
+        if (recent) {
+          newLines[index] = applyRecentPrice(newLines[index], prod, recent);
+          setSalesLines(newLines);
+          return;
+        }
         const mainPrice = prod.default_selling_price != null ? Number(prod.default_selling_price) : 0;
         if (hasSubunit(prod) && mainPrice > 0) {
           newLines[index].selling_price = String(subunitPriceFromMain(mainPrice, prod.units_per_pack ?? 0));
@@ -1795,7 +1833,21 @@ setCustomerOrganizationName("");
     // when the unit changes, auto-derive the per-unit price from the main price
     if (field === "unit_mode" && value) {
       const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
+      const recent = selectedCustomerIdForSale && newLines[index].product_id
+        ? recentCustomerPrices[`${selectedCustomerIdForSale}:${newLines[index].product_id}`]
+        : undefined;
       const perPack = prod?.units_per_pack;
+      if (recent && prod) {
+        if (value === recent.unit_mode) {
+          newLines[index].selling_price = String(recent.last_selling_price);
+        } else if (value === "subunit" && recent.unit_mode === "main" && perPack && perPack > 0) {
+          newLines[index].selling_price = String(subunitPriceFromMain(recent.last_selling_price, perPack));
+        } else if (value === "main" && recent.unit_mode === "subunit" && perPack && perPack > 0) {
+          newLines[index].selling_price = String(recent.last_selling_price * perPack);
+        }
+        setSalesLines(newLines);
+        return;
+      }
       const mainPrice =
         prod?.default_selling_price != null
           ? Number(prod.default_selling_price)
@@ -1810,10 +1862,26 @@ setCustomerOrganizationName("");
     setSalesLines(newLines);
   };
 
-  const handleSalesCustomerChange = (customerId: string) => {
+  const handleSalesCustomerChange = async (customerId: string) => {
     setSelectedCustomerIdForSale(customerId === "" ? null : customerId);
     setSalesPaymentType("cash");
     clearCreditOverrideState();
+    if (!customerId) return;
+    const prices = await loadRecentCustomerPrices(customerId);
+    setSalesLines((current) => current.map((line) => {
+      if (!line.product_id) return line;
+      return applyRecentPrice(line, products.find((product) => String(product.id) === String(line.product_id)), prices.get(String(line.product_id)));
+    }));
+  };
+
+  const handleSalesOrderCustomerChange = async (customerId: string) => {
+    setSoCustomerId(customerId);
+    if (!customerId) return;
+    const prices = await loadRecentCustomerPrices(customerId);
+    setSoLines((current) => current.map((line) => {
+      if (!line.product_id) return line;
+      return applyRecentPrice(line, products.find((product) => String(product.id) === String(line.product_id)), prices.get(String(line.product_id)));
+    }));
   };
 
   const handleSalesPaymentTypeChange = (paymentType: "cash" | "credit") => {
@@ -5212,7 +5280,14 @@ setCustomerOrganizationName("");
     batch_number?: string;
     expiry_date?: string;
   }
+  interface RecentCustomerPrice {
+    product_id: string;
+    last_selling_price: number;
+    unit_mode: UnitMode;
+    last_sold_at: string;
+  }
   const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
+  const [recentCustomerPrices, setRecentCustomerPrices] = useState<Record<string, RecentCustomerPrice>>({});
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
   const [salesError, setSalesError] = useState<string | null>(null);
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
@@ -6658,23 +6733,23 @@ setCustomerOrganizationName("");
       });
       setCustomerMessage("Customer updated successfully");
     } else {
-      const { data, error } = await supabase.from("customers").insert({
-        ...customerPayload,
-        organization_id: currentOrganizationId,
-      }).select("id").single();
-
+      const response = await authorizedFetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(customerPayload),
+      });
+      const result = await response.json();
       setCustomersLoading(false);
 
-      if (error) {
-        setCustomerError("Failed to save customer");
-        console.error("Supabase add customer error:", error);
+      if (!response.ok || !result.ok) {
+        setCustomerError(result.error ?? "Failed to save customer");
         return;
       }
 
       await createAuditLog({
         action: "created",
         entity_type: "customer",
-        entity_id: data?.id ?? null,
+        entity_id: result.customer?.id ?? null,
         entity_label: customerName,
         description: `Created customer ${customerName}`,
         new_values: {
@@ -6693,7 +6768,7 @@ setCustomerOrganizationName("");
     setCustomerName("");
     setShopName("");
     setCustomerOrganizationName("");
-    setContactPerson("");
+    setCustomerContactPerson("");
     setPhone("");
     setWhatsapp("");
     setCity("");
@@ -6745,6 +6820,8 @@ setCustomerOrganizationName("");
     setCustomerEditingId(null);
     setCustomerName("");
     setShopName("");
+    setCustomerOrganizationName("");
+    setCustomerContactPerson("");
     setPhone("");
     setWhatsapp("");
     setCity("");
@@ -8600,7 +8677,19 @@ setCustomerOrganizationName("");
   const filteredCustomers = customers.filter((customer) => {
     const searchTerm = customerSearch.trim().toLowerCase();
     if (!searchTerm) return true;
-    return [customer.customer_name, customer.shop_name, customer.phone].some(
+    return [
+      customer.customer_name,
+      customer.shop_name,
+      customer.organization_name,
+      customer.contact_person,
+      customer.phone,
+      customer.whatsapp,
+      customer.city,
+      customer.area,
+      customer.address,
+      customer.shipping_address,
+      customer.customer_type,
+    ].some(
       (value) => value?.toLowerCase().includes(searchTerm)
     );
   });
@@ -17958,7 +18047,7 @@ setCustomerOrganizationName("");
                 <span>Customer</span>
                 <select
                   value={soCustomerId}
-                  onChange={(e) => setSoCustomerId(e.target.value)}
+                  onChange={(e) => void handleSalesOrderCustomerChange(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="">Select Customer</option>
@@ -18035,9 +18124,17 @@ setCustomerOrganizationName("");
                                 ...newLines[index],
                                 product_id: e.target.value === "" ? null : e.target.value,
                               };
-                              if (e.target.value) {
-                                const prod = products.find((p) => String(p.id) === e.target.value);
-                                const mainPrice = prod?.default_selling_price != null ? Number(prod.default_selling_price) : 0;
+                               if (e.target.value) {
+                                 const prod = products.find((p) => String(p.id) === e.target.value);
+                                 const recent = soCustomerId
+                                   ? recentCustomerPrices[`${soCustomerId}:${e.target.value}`]
+                                   : undefined;
+                                 if (recent) {
+                                   newLines[index] = applyRecentPrice(newLines[index], prod, recent);
+                                   setSoLines(newLines);
+                                   return;
+                                 }
+                                 const mainPrice = prod?.default_selling_price != null ? Number(prod.default_selling_price) : 0;
                                 if (hasSubunit(prod) && mainPrice > 0) {
                                   newLines[index].selling_price = String(subunitPriceFromMain(mainPrice, prod?.units_per_pack ?? 0));
                                   newLines[index].unit_mode = "subunit";
@@ -18067,9 +18164,23 @@ setCustomerOrganizationName("");
                               const newLines = [...soLines];
                               const nextMode = e.target.value === "subunit" ? "subunit" : "main";
                               newLines[index].unit_mode = nextMode;
-                              const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
-                              const perPack = prod?.units_per_pack;
-                              const mainPrice =
+                               const prod = products.find((p) => String(p.id) === String(newLines[index].product_id));
+                               const perPack = prod?.units_per_pack;
+                               const recent = soCustomerId && newLines[index].product_id
+                                 ? recentCustomerPrices[`${soCustomerId}:${newLines[index].product_id}`]
+                                 : undefined;
+                               if (recent) {
+                                 if (nextMode === recent.unit_mode) {
+                                   newLines[index].selling_price = String(recent.last_selling_price);
+                                 } else if (nextMode === "subunit" && recent.unit_mode === "main" && perPack && perPack > 0) {
+                                   newLines[index].selling_price = String(subunitPriceFromMain(recent.last_selling_price, perPack));
+                                 } else if (nextMode === "main" && recent.unit_mode === "subunit" && perPack && perPack > 0) {
+                                   newLines[index].selling_price = String(recent.last_selling_price * perPack);
+                                 }
+                                 setSoLines(newLines);
+                                 return;
+                               }
+                               const mainPrice =
                                 prod?.default_selling_price != null
                                   ? Number(prod.default_selling_price)
                                   : safeNumber(newLines[index].selling_price);
@@ -20730,6 +20841,14 @@ setCustomerOrganizationName("");
               />
             )}
           </div>
+          <div className="mb-5 flex gap-2 border-b border-border pb-3">
+            <button type="button" onClick={() => setCustomerWorkspaceTab("management")}
+              className={cn("rounded px-3 py-2 text-sm", customerWorkspaceTab === "management" ? "bg-primary text-white" : "border border-border bg-card text-foreground/80")}>Customer Management</button>
+            <button type="button" onClick={() => setCustomerWorkspaceTab("history")}
+              className={cn("rounded px-3 py-2 text-sm", customerWorkspaceTab === "history" ? "bg-primary text-white" : "border border-border bg-card text-foreground/80")}>Customer History</button>
+          </div>
+          {customerWorkspaceTab === "management" ? (
+          <>
           <div className="space-y-4">
             {customerEditingId && (
               <p className="rounded border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary/90">
@@ -20747,73 +20866,13 @@ setCustomerOrganizationName("");
               />
             </label>
 
-<div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Contact Person</span>
-                <input
-                  type="text"
-                  value={customerContactPerson}
-                  onChange={(e) => setCustomerContactPerson(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Organization Name</span>
-                <input
-                  type="text"
-                  value={customerOrganizationName}
-                  onChange={(e) => setCustomerOrganizationName(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-            </div>
-
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Contact Person</span>
-                <input
-                  type="text"
-                  value={contactPerson}
-                  onChange={(e) => setContactPerson(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Phone</span>
-                <input
-                  type="text"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>WhatsApp</span>
-                <input
-                  type="text"
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>City</span>
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Shop Name</span><input type="text" value={shopName} onChange={(e) => setShopName(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Organization Name</span><input type="text" value={customerOrganizationName} onChange={(e) => setCustomerOrganizationName(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Contact Person</span><input type="text" value={customerContactPerson} onChange={(e) => setCustomerContactPerson(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Phone</span><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>WhatsApp</span><input type="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>City</span><input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Area</span>
                 <input
@@ -20825,73 +20884,22 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Address</span>
+                <span>Customer Type (select or type your own)</span>
                 <input
                   type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Shipping Address</span>
-                <input
-                  type="text"
-                  value={shippingAddress}
-                  onChange={(e) => setShippingAddress(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>WhatsApp</span>
-                <input
-                  type="text"
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>City</span>
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-3">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Area</span>
-                <input
-                  type="text"
-                  value={area}
-                  onChange={(e) => setArea(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-              </label>
-
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Customer Type</span>
-                <select
+                  list="customer-type-options"
                   value={customerType}
                   onChange={(e) => setCustomerType(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                >
-                  <option value="Retailer">Retailer</option>
-                  <option value="Wholesaler">Wholesaler</option>
-                </select>
+                />
+                <datalist id="customer-type-options"><option value="Retailer" /><option value="Wholesaler" /><option value="Distributor" /><option value="Institutional" /></datalist>
               </label>
-
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Complete Address</span><textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Shipping Address</span><textarea value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} rows={3} placeholder="Leave blank when same as complete address" className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Credit Policy</span>
                 <select
@@ -20899,7 +20907,7 @@ setCustomerOrganizationName("");
                   onChange={(e) => handleCreditPolicyChange(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
-                  <option value="cash_only">Cash Only</option>
+                  <option value="cash_only">Cash Only / Credit Restricted</option>
                   <option value="limit_only">Credit Limit Only</option>
                   <option value="days_only">Credit Days Only</option>
                   <option value="limit_and_days">Credit Limit and Days</option>
@@ -21159,6 +21167,10 @@ setCustomerOrganizationName("");
               )}
             </div>
           </div>
+          </>
+          ) : (
+            <CustomerHistory organizationId={currentOrganizationId} />
+          )}
         </section>
         )}
 
@@ -21177,9 +21189,7 @@ setCustomerOrganizationName("");
               </div>
               <CustomerHistory
                 organizationId={currentOrganizationId}
-                supabase={supabase}
-                actorProfileId={currentProfile?.id ?? null}
-                createAuditLog={createAuditLog}
+                customerId={viewCustomerHistoryId}
               />
             </div>
           </div>

@@ -1,303 +1,117 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
-import { formatPKR } from "@/lib/tradeos/formatters";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
-import { format } from "date-fns";
+import { formatPKR } from "@/lib/tradeos/formatters";
 
-interface CustomerHistoryProps {
-  organizationId: string | null;
-  supabase: any;
-  actorProfileId: string | null;
-  createAuditLog: (params: any) => Promise<void>;
-  customerId?: string | null;
-}
+interface Props { organizationId: string | null; customerId?: string | null }
+type CustomerRow = { id: string; customer_name: string; shop_name?: string | null; organization_name?: string | null; contact_person?: string | null; phone?: string | null; whatsapp?: string | null; city?: string | null; area?: string | null; address?: string | null; customer_type?: string | null; credit_policy?: string | null };
+type TransactionRow = { id: string; customer_id: string | null; invoice_number: string; total_amount?: number | null; status?: string | null; sale_date?: string | null; created_at: string; created_by_profile_id?: string | null; payment_type?: string | null };
+type SalesItemRow = { sales_transaction_id: string; product_id: string; quantity: number; selling_price: number; discount?: number | null; created_at: string };
+type PaymentRow = { customer_id: string | null; amount: number; payment_date?: string | null; created_at: string };
+type OrderRow = { id: string; customer_id: string | null; so_number: string; status: string; order_date?: string | null; expected_date?: string | null; created_at: string; created_by_profile_id?: string | null };
+type OrderItemRow = { sales_order_id: string; product_id: string };
+type ProductRow = { id: string; name: string };
+type ProfileRow = { id: string; display_name?: string | null; email?: string | null };
+type Data = { customers: CustomerRow[]; transactions: TransactionRow[]; salesItems: SalesItemRow[]; payments: PaymentRow[]; orders: OrderRow[]; orderItems: OrderItemRow[]; products: ProductRow[]; profiles: ProfileRow[] };
+const empty: Data = { customers: [], transactions: [], salesItems: [], payments: [], orders: [], orderItems: [], products: [], profiles: [] };
+const num = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const showDate = (value?: string | null) => value ? new Date(value).toLocaleDateString("en-PK") : "—";
 
-export default function CustomerHistory({
-  organizationId,
-  supabase,
-  actorProfileId,
-  createAuditLog,
-  customerId,
-}: CustomerHistoryProps) {
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(customerId ?? null);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [salesTransactions, setSalesTransactions] = useState<any[]>([]);
-  const [customerPayments, setCustomerPayments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+export default function CustomerHistory({ organizationId, customerId }: Props) {
+  const [data, setData] = useState<Data>(empty);
+  const [selectedId, setSelectedId] = useState(customerId ?? "");
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [loading, setLoading] = useState(Boolean(organizationId));
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!organizationId) return;
-    fetchCustomers();
+    let active = true;
+    authorizedFetch("/api/customers/history")
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error ?? "Failed to load customer history");
+        if (active) setData(result);
+      })
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Failed to load customer history"); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [organizationId]);
 
-  useEffect(() => {
-    if (!organizationId || !selectedCustomerId) return;
-    fetchCustomerHistory();
-  }, [organizationId, selectedCustomerId]);
-
-  // If customerId is passed as prop, lock the selection
-  useEffect(() => {
-    if (customerId) {
-      setSelectedCustomerId(customerId);
+  const profiles = useMemo(() => new Map(data.profiles.map((row) => [String(row.id), row])), [data.profiles]);
+  const products = useMemo(() => new Map(data.products.map((row) => [String(row.id), row])), [data.products]);
+  const transactionsById = useMemo(() => new Map(data.transactions.map((row) => [String(row.id), row])), [data.transactions]);
+  const matchingCustomers = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return data.customers;
+    const ids = new Set<string>();
+    for (const row of data.customers) {
+      if ([row.customer_name, row.shop_name, row.organization_name, row.contact_person, row.phone, row.whatsapp, row.city, row.area]
+        .some((value) => String(value ?? "").toLowerCase().includes(term))) ids.add(String(row.id));
     }
-  }, [customerId]);
-
-  const fetchCustomers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("customers")
-        .select("id, customer_name, shop_name, phone, city, credit_limit, credit_policy, credit_days")
-        .eq("organization_id", organizationId)
-        .eq("is_active", true)
-        .order("customer_name", { ascending: true });
-
-      if (error) throw error;
-      setCustomers(data ?? []);
-    } catch (err) {
-      console.error("Failed to fetch customers:", err);
+    for (const row of [...data.transactions, ...data.orders]) {
+      const profile = profiles.get(String(row.created_by_profile_id));
+      const documentNumber = "invoice_number" in row ? row.invoice_number : row.so_number;
+      if ([documentNumber, profile?.display_name, profile?.email]
+        .some((value) => String(value ?? "").toLowerCase().includes(term))) ids.add(String(row.customer_id));
     }
-  };
+    return data.customers.filter((row) => ids.has(String(row.id)));
+  }, [data.customers, data.orders, data.transactions, profiles, search]);
+  const customer = data.customers.find((row) => String(row.id) === String(selectedId));
 
-  const fetchCustomerHistory = async () => {
-    setLoading(true);
-    setMessage(null);
-    try {
-      const [salesRes, paymentsRes] = await Promise.all([
-        supabase
-          .from("sales_transactions")
-          .select(`
-            id, invoice_number, invoice_type, total_amount, status, created_at,
-            sales_items(id, product_id, quantity, unit_price, total_price, unit_mode)
-          `)
-          .eq("organization_id", organizationId)
-          .eq("customer_id", selectedCustomerId)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("customer_payments")
-          .select("id, amount, payment_method, reference_number, notes, created_at")
-          .eq("organization_id", organizationId)
-          .eq("customer_id", selectedCustomerId)
-          .order("created_at", { ascending: false }),
-      ]);
+  const history = useMemo(() => {
+    const within = (value: string) => { const day = value.slice(0, 10); return (!dateFrom || day >= dateFrom) && (!dateTo || day <= dateTo); };
+    const transactions = data.transactions.filter((row) => String(row.customer_id) === String(selectedId) && !["cancelled", "void"].includes(String(row.status)) && within(row.sale_date ?? row.created_at));
+    const txIds = new Set(transactions.map((row) => String(row.id)));
+    const salesItems = data.salesItems.filter((row) => txIds.has(String(row.sales_transaction_id)));
+    const payments = data.payments.filter((row) => String(row.customer_id) === String(selectedId) && within(row.payment_date ?? row.created_at));
+    const orders = data.orders.filter((row) => String(row.customer_id) === String(selectedId) && within(row.order_date ?? row.created_at));
+    const orderIds = new Set(orders.map((row) => String(row.id)));
+    const orderItems = data.orderItems.filter((row) => orderIds.has(String(row.sales_order_id)));
+    return { transactions, salesItems, payments, orders, orderItems };
+  }, [data, dateFrom, dateTo, selectedId]);
 
-      if (salesRes.error) throw salesRes.error;
-      if (paymentsRes.error) throw paymentsRes.error;
-
-      setSalesTransactions(salesRes.data ?? []);
-      setCustomerPayments(paymentsRes.data ?? []);
-    } catch (err) {
-      setMessage(err instanceof Error ? `Failed to load history: ${err.message}` : "Failed to load history");
-    } finally {
-      setLoading(false);
+  const summary = useMemo(() => {
+    const totalSales = history.transactions.reduce((sum, row) => sum + num(row.total_amount), 0);
+    const totalPaid = history.payments.reduce((sum, row) => sum + num(row.amount), 0);
+    const pendingOrders = history.orders.filter((row) => ["draft", "pending_approval", "confirmed"].includes(String(row.status)));
+    const productStats = new Map<string, { qty: number; revenue: number; price: number; date: string }>();
+    const sortedItems = [...history.salesItems].sort((a, b) => String(transactionsById.get(String(b.sales_transaction_id))?.sale_date ?? b.created_at).localeCompare(String(transactionsById.get(String(a.sales_transaction_id))?.sale_date ?? a.created_at)));
+    for (const item of sortedItems) {
+      const id = String(item.product_id); const current = productStats.get(id) ?? { qty: 0, revenue: 0, price: num(item.selling_price), date: "" };
+      current.qty += num(item.quantity); current.revenue += num(item.quantity) * num(item.selling_price) - num(item.discount);
+      if (!current.date) { const tx = transactionsById.get(String(item.sales_transaction_id)); current.date = tx?.sale_date ?? tx?.created_at ?? item.created_at; current.price = num(item.selling_price); }
+      productStats.set(id, current);
     }
-  };
+    const monthly = new Map<string, number>();
+    for (const tx of history.transactions) { const month = String(tx.sale_date ?? tx.created_at).slice(0, 7); monthly.set(month, (monthly.get(month) ?? 0) + num(tx.total_amount)); }
+    return { totalSales, totalPaid, outstanding: Math.max(0, totalSales - totalPaid), pendingOrders,
+      topProducts: [...productStats.entries()].sort((a, b) => b[1].revenue - a[1].revenue), monthly: [...monthly.entries()].sort((a, b) => b[0].localeCompare(a[0])) };
+  }, [history, transactionsById]);
 
-  const totals = useMemo(() => {
-    const totalSales = salesTransactions
-      .filter((t) => t.status !== "cancelled")
-      .reduce((sum, t) => sum + Number(t.total_amount || 0), 0);
-    const totalPaid = customerPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-    const outstanding = totalSales - totalPaid;
-    const unpaidInvoices = salesTransactions
-      .filter((t) => t.status === "pending" || t.status === "partially_paid")
-      .map((t) => ({
-        invoiceNumber: t.invoice_number,
-        date: t.created_at,
-        amount: Number(t.total_amount || 0),
-        items: t.sales_items?.length ?? 0,
-      }));
-    return { totalSales, totalPaid, outstanding, unpaidInvoices };
-  }, [salesTransactions, customerPayments]);
-
-  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-xl font-medium text-foreground">Customer History</h2>
+  return <div className="space-y-5">
+    {!customerId && <div className="grid gap-3 md:grid-cols-2">
+      <label className="flex flex-col gap-1 text-sm"><span>Search customer, salesman, invoice, or order</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, invoice, salesman..." className="rounded border border-border px-3 py-2" /></label>
+      <label className="flex flex-col gap-1 text-sm"><span>Customer</span><select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="rounded border border-border px-3 py-2"><option value="">Select customer</option>{matchingCustomers.map((row) => <option key={row.id} value={row.id}>{row.customer_name}{row.shop_name ? ` — ${row.shop_name}` : ""}</option>)}</select></label>
+    </div>}
+    <div className="grid gap-3 sm:grid-cols-2"><label className="flex flex-col gap-1 text-sm"><span>From</span><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded border border-border px-3 py-2" /></label><label className="flex flex-col gap-1 text-sm"><span>To</span><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded border border-border px-3 py-2" /></label></div>
+    {loading && <p className="text-sm text-muted-foreground">Loading customer history...</p>}
+    {error && <p className="rounded border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
+    {!loading && !error && !customer && <p className="rounded border border-border bg-muted/30 p-6 text-center text-muted-foreground">Select a customer to open the complete profile.</p>}
+    {customer && <>
+      <section className="rounded border border-border bg-card p-4"><h3 className="text-lg font-semibold">{customer.customer_name}</h3><p className="text-sm text-muted-foreground">{customer.shop_name ?? customer.organization_name ?? "No shop or organization"}</p>
+        <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4"><div>Contact: {customer.contact_person ?? "—"}</div><div>Phone: {customer.phone ?? "—"}</div><div>WhatsApp: {customer.whatsapp ?? "—"}</div><div>Area: {[customer.area, customer.city].filter(Boolean).join(", ") || "—"}</div><div>Type: {customer.customer_type ?? "—"}</div><div className="capitalize">Credit: {String(customer.credit_policy ?? "cash_only").replaceAll("_", " ")}</div><div className="sm:col-span-2">Address: {customer.address ?? "—"}</div></div>
+      </section>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[["Total sales", formatPKR(summary.totalSales)], ["Total paid", formatPKR(summary.totalPaid)], ["Outstanding", formatPKR(summary.outstanding)], ["Invoices", history.transactions.length], ["Pending orders", summary.pendingOrders.length]].map(([label, value]) => <div key={label} className="rounded border border-border bg-card p-3"><div className="text-xs text-muted-foreground">{label}</div><div className="text-lg font-semibold">{value}</div></div>)}</div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded border border-border bg-card p-4"><h4 className="mb-3 font-medium">Top products and last price</h4>{summary.topProducts.length ? <div className="space-y-2 text-sm">{summary.topProducts.slice(0, 10).map(([id, item]) => <div key={id} className="flex justify-between gap-3 border-b border-border/60 pb-2"><div><div className="font-medium">{products.get(id)?.name ?? `Product ${id}`}</div><div className="text-xs text-muted-foreground">Qty {item.qty} · last {showDate(item.date)}</div></div><div className="text-right">{formatPKR(item.revenue)}<div className="text-xs text-muted-foreground">Last {formatPKR(item.price)}</div></div></div>)}</div> : <p className="text-sm text-muted-foreground">No product history.</p>}</section>
+        <section className="rounded border border-border bg-card p-4"><h4 className="mb-3 font-medium">Monthly sales</h4>{summary.monthly.length ? summary.monthly.slice(0, 12).map(([month, amount]) => <div key={month} className="flex justify-between border-b border-border/60 py-2 text-sm"><span>{month}</span><strong>{formatPKR(amount)}</strong></div>) : <p className="text-sm text-muted-foreground">No monthly sales.</p>}</section>
       </div>
-
-      {!customerId && (
-        <div className="rounded border border-border bg-card p-4">
-          <label className="flex flex-col gap-2 text-sm text-foreground/80">
-            <span>Select Customer</span>
-            <select
-              value={selectedCustomerId ?? ""}
-              onChange={(e) => setSelectedCustomerId(e.target.value || null)}
-              className="rounded border border-border px-3 py-2 w-full sm:w-80"
-            >
-              <option value="">Select a customer...</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.customer_name} {c.shop_name ? `(${c.shop_name})` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
-
-      {!selectedCustomerId && !customerId && (
-        <div className="rounded border border-border bg-muted/30 p-8 text-center">
-          <p className="text-muted-foreground">Select a customer to view their history.</p>
-        </div>
-      )}
-
-      {selectedCustomerId && selectedCustomer && (
-        <div className="space-y-4">
-          <div className="rounded border border-border bg-card p-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">
-              {selectedCustomer.customer_name}
-              {selectedCustomer.shop_name && <span className="ml-2 text-foreground/60">({selectedCustomer.shop_name})</span>}
-            </h3>
-            <div className="grid gap-3 sm:grid-cols-4 text-sm">
-              <div className="rounded border border-border/50 bg-muted/30 p-3">
-                <div className="text-muted-foreground/80">Phone</div>
-                <div className="font-medium">{selectedCustomer.phone ?? "—"}</div>
-              </div>
-              <div className="rounded border border-border/50 bg-muted/30 p-3">
-                <div className="text-muted-foreground/80">City</div>
-                <div className="font-medium">{selectedCustomer.city ?? "—"}</div>
-              </div>
-              <div className="rounded border border-border/50 bg-muted/30 p-3">
-                <div className="text-muted-foreground/80">Credit Policy</div>
-                <div className="font-medium capitalize">{selectedCustomer.credit_policy?.replace("_", " ") ?? "Cash Only"}</div>
-              </div>
-              <div className="rounded border border-border/50 bg-muted/30 p-3">
-                <div className="text-muted-foreground/80">Credit Limit</div>
-                <div className="font-medium">{formatPKR(selectedCustomer.credit_limit)}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded border border-success/20 bg-success/5 p-4">
-              <div className="text-sm text-muted-foreground/80">Total Sales</div>
-              <div className="text-2xl font-bold text-success">{formatPKR(totals.totalSales)}</div>
-            </div>
-            <div className="rounded border border-primary/20 bg-primary/5 p-4">
-              <div className="text-sm text-muted-foreground/80">Total Paid</div>
-              <div className="text-2xl font-bold text-primary">{formatPKR(totals.totalPaid)}</div>
-            </div>
-            <div className={`rounded border p-4 ${totals.outstanding > 0 ? "border-destructive/20 bg-destructive/5" : "border-success/20 bg-success/5"}`}>
-              <div className="text-sm text-muted-foreground/80">Outstanding Balance</div>
-              <div className={`text-2xl font-bold ${totals.outstanding > 0 ? "text-destructive" : "text-success"}`}>
-                {formatPKR(totals.outstanding)}
-              </div>
-            </div>
-          </div>
-
-          {totals.unpaidInvoices.length > 0 && (
-            <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
-              <h4 className="mb-3 text-sm font-medium text-destructive">Unpaid Invoices ({totals.unpaidInvoices.length})</h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-destructive/30 text-left text-xs uppercase tracking-wide text-destructive/80">
-                      <th className="py-2 pr-3 font-medium">Invoice</th>
-                      <th className="py-2 pr-3 font-medium">Date</th>
-                      <th className="py-2 pr-3 font-medium">Amount</th>
-                      <th className="py-2 font-medium">Items</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {totals.unpaidInvoices.map((inv) => (
-                      <tr key={inv.invoiceNumber} className="border-b border-destructive/10">
-                        <td className="py-2 pr-3 font-medium text-destructive">{inv.invoiceNumber}</td>
-                        <td className="py-2 pr-3 text-muted-foreground">{format(new Date(inv.date), "dd MMM yyyy")}</td>
-                        <td className="py-2 pr-3 text-destructive font-medium">{formatPKR(inv.amount)}</td>
-                        <td className="py-2 text-muted-foreground">{inv.items}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          <div className="rounded border border-border bg-card p-4">
-            <h4 className="mb-3 text-sm font-medium text-foreground">All Sales Transactions</h4>
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
-            ) : salesTransactions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No sales transactions found.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground/80">
-                      <th className="py-2 pr-3 font-medium">Invoice</th>
-                      <th className="py-2 pr-3 font-medium">Date</th>
-                      <th className="py-2 pr-3 font-medium">Type</th>
-                      <th className="py-2 pr-3 font-medium">Status</th>
-                      <th className="py-2 pr-3 font-medium">Amount</th>
-                      <th className="py-2 font-medium">Items</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {salesTransactions.map((tx) => (
-                      <tr key={tx.id} className="border-b border-border/50">
-                        <td className="py-2 pr-3 font-medium text-foreground">{tx.invoice_number}</td>
-                        <td className="py-2 pr-3 text-muted-foreground">{format(new Date(tx.created_at), "dd MMM yyyy HH:mm")}</td>
-                        <td className="py-2 pr-3 text-muted-foreground">{tx.invoice_type}</td>
-                        <td className="py-2 pr-3">
-                          <span className={`rounded px-2 py-0.5 text-xs ${
-                            tx.status === "paid" ? "bg-success/10 text-success" :
-                            tx.status === "pending" ? "bg-warning/10 text-warning" :
-                            tx.status === "partially_paid" ? "bg-primary/10 text-primary" :
-                            "bg-destructive/10 text-destructive"
-                          }`}>{tx.status}</span>
-                        </td>
-                        <td className="py-2 pr-3 text-foreground">{formatPKR(tx.total_amount)}</td>
-                        <td className="py-2 text-muted-foreground">{tx.sales_items?.length ?? 0}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="rounded border border-border bg-card p-4">
-            <h4 className="mb-3 text-sm font-medium text-foreground">Payments Received</h4>
-            {customerPayments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No payments recorded.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground/80">
-                      <th className="py-2 pr-3 font-medium">Date</th>
-                      <th className="py-2 pr-3 font-medium">Method</th>
-                      <th className="py-2 pr-3 font-medium">Amount</th>
-                      <th className="py-2 pr-3 font-medium">Reference</th>
-                      <th className="py-2 font-medium">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customerPayments.map((p) => (
-                      <tr key={p.id} className="border-b border-border/50">
-                        <td className="py-2 pr-3 text-muted-foreground">{format(new Date(p.created_at), "dd MMM yyyy HH:mm")}</td>
-                        <td className="py-2 pr-3 capitalize">{p.payment_method}</td>
-                        <td className="py-2 pr-3 text-success font-medium">{formatPKR(p.amount)}</td>
-                        <td className="py-2 pr-3 text-muted-foreground">{p.reference_number ?? "—"}</td>
-                        <td className="py-2 text-muted-foreground">{p.notes ?? "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {message && (
-        <p className={`text-sm ${message.startsWith("Failed") ? "text-destructive" : "text-success"}`}>{message}</p>
-      )}
-    </div>
-  );
+      <section className="overflow-x-auto rounded border border-border bg-card p-4"><h4 className="mb-3 font-medium">Sales invoice history</h4><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="py-2 pr-3">Invoice</th><th>Date</th><th>Salesman</th><th>Payment</th><th>Status</th><th>Total</th></tr></thead><tbody>{history.transactions.map((tx) => { const profile = profiles.get(String(tx.created_by_profile_id)); return <tr key={tx.id} className="border-b border-border/60"><td className="py-2 pr-3 font-medium">{tx.invoice_number}</td><td>{showDate(tx.sale_date ?? tx.created_at)}</td><td>{profile?.display_name ?? profile?.email ?? "—"}</td><td className="capitalize">{tx.payment_type ?? "cash"}</td><td className="capitalize">{tx.status ?? "confirmed"}</td><td>{formatPKR(tx.total_amount)}</td></tr>; })}</tbody></table>{!history.transactions.length && <p className="py-3 text-sm text-muted-foreground">No invoices in this period.</p>}</section>
+      <section className="overflow-x-auto rounded border border-border bg-card p-4"><h4 className="mb-3 font-medium">Orders</h4><table className="w-full min-w-[620px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="py-2 pr-3">Order</th><th>Date</th><th>Expected</th><th>Status</th><th>Items</th></tr></thead><tbody>{history.orders.map((order) => <tr key={order.id} className="border-b border-border/60"><td className="py-2 pr-3 font-medium">{order.so_number}</td><td>{showDate(order.order_date ?? order.created_at)}</td><td>{showDate(order.expected_date)}</td><td className="capitalize">{String(order.status).replaceAll("_", " ")}</td><td>{history.orderItems.filter((item) => String(item.sales_order_id) === String(order.id)).length}</td></tr>)}</tbody></table>{!history.orders.length && <p className="py-3 text-sm text-muted-foreground">No orders in this period.</p>}</section>
+    </>}
+  </div>;
 }

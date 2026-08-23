@@ -26,28 +26,28 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const body = await request.json();
 
-    const customer_name = normalizeOptionalText(body?.customer_name);
-    if (!customer_name) {
+    const customer_name = body?.customer_name !== undefined ? normalizeOptionalText(body.customer_name) : null;
+    if (body?.customer_name !== undefined && !customer_name) {
       return NextResponse.json({ ok: false, error: "Customer name is required." }, { status: 400 });
     }
-    if (customer_name.length > 150) {
+    if (customer_name && customer_name.length > 150) {
       return NextResponse.json(
         { ok: false, error: "Customer name must be 150 characters or fewer." },
         { status: 400 }
       );
     }
 
-    const credit_limit = normalizeOptionalNumber(body?.credit_limit);
-    if (credit_limit !== null && credit_limit < 0) {
+    const credit_limit = body?.credit_limit !== undefined ? normalizeOptionalNumber(body.credit_limit) : null;
+    if (body?.credit_limit !== undefined && credit_limit !== null && credit_limit < 0) {
       return NextResponse.json({ ok: false, error: "Credit limit cannot be negative." }, { status: 400 });
     }
 
-    const credit_days = normalizeOptionalNumber(body?.credit_days);
-    if (credit_days !== null && credit_days < 0) {
+    const credit_days = body?.credit_days !== undefined ? normalizeOptionalNumber(body.credit_days) : null;
+    if (body?.credit_days !== undefined && credit_days !== null && credit_days < 0) {
       return NextResponse.json({ ok: false, error: "Credit days cannot be negative." }, { status: 400 });
     }
 
-    const credit_policy = normalizeOptionalText(body?.credit_policy);
+    const credit_policy = body?.credit_policy !== undefined ? normalizeOptionalText(body.credit_policy) : null;
     if (credit_policy && !CREDIT_POLICIES.includes(credit_policy)) {
       return NextResponse.json(
         { ok: false, error: "Credit policy must be one of: cash_only, limit_only, days_only, limit_and_days, unrestricted." },
@@ -76,22 +76,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const latitude = normalizeOptionalNumber(body?.latitude);
     const longitude = normalizeOptionalNumber(body?.longitude);
 
-    const updates: Record<string, unknown> = {
-      customer_name,
-      shop_name: normalizeOptionalText(body?.shop_name),
-      phone: normalizeOptionalText(body?.phone),
-      whatsapp: normalizeOptionalText(body?.whatsapp),
-      city: normalizeOptionalText(body?.city),
-      area: normalizeOptionalText(body?.area),
-      customer_type: normalizeOptionalText(body?.customer_type) ?? "Retailer",
-      notes: normalizeOptionalText(body?.notes),
-      credit_limit,
-      credit_days,
-      credit_policy: credit_policy ?? "cash_only",
-      allow_over_limit: body?.allow_over_limit === true,
-      allow_overdue_sales: body?.allow_overdue_sales === true,
-      updated_at: new Date().toISOString(),
-    };
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const optionalTextFields = [
+      "shop_name", "organization_name", "contact_person", "phone", "whatsapp",
+      "city", "area", "address", "shipping_address", "customer_type", "notes",
+    ] as const;
+    if (customer_name) updates.customer_name = customer_name;
+    for (const field of optionalTextFields) {
+      if (body?.[field] !== undefined) updates[field] = normalizeOptionalText(body[field]);
+    }
+    if (body?.credit_limit !== undefined) updates.credit_limit = credit_limit;
+    if (body?.credit_days !== undefined) updates.credit_days = credit_days;
+    if (body?.credit_policy !== undefined) updates.credit_policy = credit_policy ?? "cash_only";
+    if (body?.allow_over_limit !== undefined) updates.allow_over_limit = body.allow_over_limit === true;
+    if (body?.allow_overdue_sales !== undefined) updates.allow_overdue_sales = body.allow_overdue_sales === true;
     if (body?.preferred_payment_method !== undefined) {
       updates.preferred_payment_method = normalizeOptionalText(body.preferred_payment_method);
     }

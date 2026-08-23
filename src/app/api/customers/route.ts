@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase
     .from("customers")
     .select(
-      "id, customer_name, shop_name, phone, whatsapp, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, latitude, longitude, assigned_salesman_id, assigned_territory_id, visit_frequency, priority",
+      "id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, latitude, longitude, assigned_salesman_id, assigned_territory_id, visit_frequency, priority, created_at, updated_at",
     )
     .eq("organization_id", permission.actor.organizationId)
     .order("customer_name", { ascending: true });
@@ -101,10 +101,14 @@ export async function POST(request: NextRequest) {
         organization_id: organizationId,
         customer_name,
         shop_name: normalizeOptionalText(body?.shop_name),
+        organization_name: normalizeOptionalText(body?.organization_name),
+        contact_person: normalizeOptionalText(body?.contact_person),
         phone: normalizeOptionalText(body?.phone),
         whatsapp: normalizeOptionalText(body?.whatsapp),
         city: normalizeOptionalText(body?.city),
         area: normalizeOptionalText(body?.area),
+        address: normalizeOptionalText(body?.address),
+        shipping_address: normalizeOptionalText(body?.shipping_address),
         customer_type: normalizeOptionalText(body?.customer_type) ?? "Retailer",
         notes: normalizeOptionalText(body?.notes),
         credit_limit,
