@@ -146,23 +146,39 @@ export default function RoutesManager() {
         const customerSyncData = await customerSync.json();
         if (!customerSync.ok) throw new Error(customerSyncData.error ?? "Failed to save route customers");
         // Batch-persist any stops planned on the map.
+        const plannedStopIds: string[] = [];
         if (routeStops.length > 0) {
           for (const stop of routeStops) {
-            await authorizedFetch(`/api/routes/${data.route.id}`, {
+            const stopResponse = await authorizedFetch(`/api/routes/${data.route.id}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 action: "add_stop",
-                customer_id: null,
+                customer_id: stop.customerId ?? null,
                 label: stop.label,
                 address: stop.address,
                 latitude: stop.latitude,
                 longitude: stop.longitude,
               }),
             });
+            const stopData = await stopResponse.json();
+            if (!stopResponse.ok || !stopData.stop) throw new Error(stopData.error ?? `Failed to save stop ${stop.label}`);
+            plannedStopIds.push(String(stopData.stop.id));
           }
+          const savedRouteResponse = await authorizedFetch(`/api/routes/${data.route.id}`);
+          const savedRouteData = await savedRouteResponse.json();
+          if (!savedRouteResponse.ok || !Array.isArray(savedRouteData.stops)) throw new Error(savedRouteData.error ?? "Failed to load saved route stops");
+          const remainingStopIds = savedRouteData.stops.map((stop: SalesRouteStop) => String(stop.id)).filter((id: string) => !plannedStopIds.includes(id));
+          const reorderResponse = await authorizedFetch(`/api/routes/${data.route.id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "reorder", ordered_stop_ids: [...plannedStopIds, ...remainingStopIds] }),
+          });
+          const reorderData = await reorderResponse.json();
+          if (!reorderResponse.ok || !Array.isArray(reorderData.stops)) throw new Error(reorderData.error ?? "Failed to preserve the planned stop order");
         }
-        setMessage({ type: "ok", text: `Route "${name.trim()}" created with ${selectedRouteCustomerIds.length} customer(s) and ${routeStops.length} custom stop(s).` });
+        const taggedCount = routeStops.filter((stop) => stop.customerId).length;
+        setMessage({ type: "ok", text: `Route "${name.trim()}" created with ${selectedRouteCustomerIds.length} customer(s), including ${taggedCount} mapped customer stop(s).` });
         setName("");
         setTerritoryId("");
         setRouteStops([]);
@@ -197,6 +213,10 @@ export default function RoutesManager() {
 
   const handleAddStop = (stop: RouteMapStop) => {
     setRouteStops((prev) => [...prev, stop]);
+    if (stop.customerId) {
+      const customerId = stop.customerId;
+      setSelectedRouteCustomerIds((current) => current.includes(customerId) ? current : [...current, customerId]);
+    }
     autoSuggestName(stop);
   };
 
@@ -564,7 +584,10 @@ export default function RoutesManager() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
                   {selectedTerritoryCustomers.filter((customer) => !customerSearch.trim() || [customer.customer_name, customer.shop_name, customer.area].some((value) => String(value ?? "").toLowerCase().includes(customerSearch.trim().toLowerCase()))).map((customer) => (
                     <label key={customer.id} style={{ display: "flex", gap: "0.45rem", padding: "0.45rem", border: "1px solid #e5e7eb", borderRadius: "0.35rem", fontSize: "0.76rem" }}>
-                      <input type="checkbox" checked={selectedRouteCustomerIds.includes(customer.id)} onChange={(event) => setSelectedRouteCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} />
+                      <input type="checkbox" checked={selectedRouteCustomerIds.includes(customer.id)} onChange={(event) => {
+                        setSelectedRouteCustomerIds((current) => event.target.checked ? [...new Set([...current, customer.id])] : current.filter((id) => id !== customer.id));
+                        if (!event.target.checked) setRouteStops((current) => current.filter((stop) => stop.customerId !== customer.id));
+                      }} />
                       <span><strong>{customer.customer_name}</strong>{customer.shop_name ? ` · ${customer.shop_name}` : ""}<br /><span style={{ color: "#6b7280" }}>{customer.area ?? customer.city ?? "No area"}</span></span>
                     </label>
                   ))}
@@ -576,6 +599,7 @@ export default function RoutesManager() {
               </div>
               <RouteMapBuilder
                 territoryArea={territoryArea}
+                customers={selectedTerritoryCustomers}
                 stops={routeStops}
                 onAddStop={handleAddStop}
                 onRemoveStop={handleRemoveStop}

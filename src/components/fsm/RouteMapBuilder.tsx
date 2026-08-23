@@ -5,6 +5,7 @@ import { getGoogleMaps } from "@/lib/maps/client-loader";
 
 export interface RouteMapStop {
   key: string;
+  customerId?: string | null;
   label: string;
   address: string;
   latitude: number;
@@ -13,6 +14,7 @@ export interface RouteMapStop {
 
 interface RouteMapBuilderProps {
   territoryArea?: { centerLat: number; centerLng: number; radiusKm: number } | null;
+  customers?: Array<{ id: string; customer_name: string; shop_name?: string | null }>;
   stops: RouteMapStop[];
   onAddStop: (stop: RouteMapStop) => void;
   onRemoveStop: (key: string) => void;
@@ -27,6 +29,7 @@ interface RouteMapBuilderProps {
  */
 export default function RouteMapBuilder({
   territoryArea,
+  customers = [],
   stops,
   onAddStop,
   onRemoveStop,
@@ -43,6 +46,7 @@ export default function RouteMapBuilder({
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [searchValue, setSearchValue] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [pickedPlace, setPickedPlace] = useState<{
     name: string;
     address: string;
@@ -205,15 +209,20 @@ export default function RouteMapBuilder({
       setStatus("ready");
       return;
     }
+    const customer = customers.find((item) => item.id === selectedCustomerId);
     onAddStop({
       key: `${pickedPlace.lat}-${pickedPlace.lng}-${Date.now()}`,
-      label: pickedPlace.name,
+      customerId: customer?.id ?? null,
+      label: customer
+        ? `${customer.customer_name}${customer.shop_name ? ` (${customer.shop_name})` : ""} — ${pickedPlace.name}`
+        : pickedPlace.name,
       address: pickedPlace.address,
       latitude: pickedPlace.lat,
       longitude: pickedPlace.lng,
     });
     setPickedPlace(null);
     setSearchValue("");
+    setSelectedCustomerId("");
   };
 
   if (loadError) {
@@ -236,6 +245,28 @@ export default function RouteMapBuilder({
   return (
     <div style={{ marginTop: "0.75rem" }}>
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+        <select
+          value={selectedCustomerId}
+          onChange={(event) => setSelectedCustomerId(event.target.value)}
+          style={{
+            flex: "1 1 220px",
+            padding: "0.5rem 0.75rem",
+            border: "1px solid #d1d5db",
+            borderRadius: "0.375rem",
+            fontSize: "0.875rem",
+            background: "#fff",
+            color: "#111827",
+          }}
+        >
+          <option value="">Custom location (no customer)</option>
+          {customers
+            .filter((customer) => !stops.some((stop) => stop.customerId === customer.id))
+            .map((customer) => (
+              <option key={customer.id} value={customer.id}>
+                {customer.customer_name}{customer.shop_name ? ` (${customer.shop_name})` : ""}
+              </option>
+            ))}
+        </select>
         <input
           ref={searchInputRef}
           type="text"
@@ -269,7 +300,7 @@ export default function RouteMapBuilder({
             cursor: pickedPlace ? "pointer" : "not-allowed",
           }}
         >
-          Add stop {stops.length + 1}
+          {selectedCustomerId ? "Tag customer at stop" : "Add custom stop"} {stops.length + 1}
         </button>
       </div>
 
@@ -304,6 +335,7 @@ export default function RouteMapBuilder({
                 <span style={{ fontWeight: 600, color: "#374151" }}>
                   {index + 1}. {stop.label}
                 </span>
+                {stop.customerId && <span style={{ color: "#166534", marginLeft: "0.5rem" }}>Customer tagged</span>}
                 {stop.address && <span style={{ color: "#6b7280", marginLeft: "0.5rem" }}>{stop.address}</span>}
                 <span style={{ color: "#9ca3af", marginLeft: "0.5rem" }}>
                   {stop.latitude.toFixed(6)}, {stop.longitude.toFixed(6)}

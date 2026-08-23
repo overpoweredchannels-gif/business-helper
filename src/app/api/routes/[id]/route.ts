@@ -175,7 +175,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         });
         const { error } = await supabase
           .from("sales_route_stops")
-          .upsert(rows, { onConflict: "route_id,customer_id" });
+          .upsert(rows, { onConflict: "route_id,customer_id", ignoreDuplicates: true });
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       }
       const stops = await repository.listStops(routeId);
@@ -194,20 +194,45 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (body.action === "add_stop") {
       const label = toNullableString(body.label);
-      if (!label && !body.customer_id) {
+      const customerId = toNullableString(body.customer_id);
+      if (!label && !customerId) {
         return NextResponse.json({ error: "Stop needs a label or a customer." }, { status: 400 });
       }
       const stops = await repository.listStops(routeId);
-      const stop = await repository.addStop({
-        organization_id: permission.actor.organizationId,
-        route_id: routeId,
-        customer_id: toNullableString(body.customer_id),
-        stop_order: stops.length + 1,
-        label: label ?? toNullableString(body.customer_id),
+      let customerLabel: string | null = null;
+      if (customerId) {
+        if (!existing.territory_id) {
+          return NextResponse.json({ error: "Assign a territory to the route before tagging a customer stop." }, { status: 400 });
+        }
+        const supabase = createSupabaseService();
+        const { data: customer, error } = await supabase
+          .from("customers")
+          .select("id, customer_name, shop_name, assigned_territory_id")
+          .eq("id", customerId)
+          .eq("organization_id", permission.actor.organizationId)
+          .maybeSingle();
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        if (!customer || customer.assigned_territory_id !== existing.territory_id) {
+          return NextResponse.json({ error: "The tagged customer must belong to the route territory." }, { status: 400 });
+        }
+        customerLabel = customer.shop_name ?? customer.customer_name;
+      }
+      const stopInput = {
+        customer_id: customerId,
+        label: label ?? customerLabel,
         latitude: toNumber(body.latitude),
         longitude: toNumber(body.longitude),
         address: toNullableString(body.address),
-      });
+      };
+      const currentCustomerStop = customerId ? stops.find((stop) => stop.customer_id === customerId) : null;
+      const stop = currentCustomerStop
+        ? await repository.updateStop(currentCustomerStop.id, stopInput)
+        : await repository.addStop({
+            organization_id: permission.actor.organizationId,
+            route_id: routeId,
+            stop_order: stops.length + 1,
+            ...stopInput,
+          });
       return NextResponse.json({ stop });
     }
 
