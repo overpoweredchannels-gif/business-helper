@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
-import { Loader2, AlertCircle, ArrowLeft, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, MessageSquareText, Users, Award, KeyRound } from "lucide-react";
+import { Loader2, AlertCircle, ArrowLeft, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, MessageSquareText, Users, Award, KeyRound, Route as RouteIcon, Store, Package, Radar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Employee {
@@ -33,9 +33,20 @@ interface LedgerData {
   employee: Employee;
   aggregates: Aggregates;
   recent: {
-    sales: Array<{ id: string; total_amount: number; created_at: string; status: string }>;
+    sales: Array<{ id: string; invoice_number?: string; total_amount: number; created_at: string; sale_date?: string | null; status: string; customers?: { customer_name?: string | null; shop_name?: string | null } | null }>;
     visits: Array<{ id: string; status: string; created_at: string }>;
     collections: Array<{ id: string; amount: number; status: string; created_at: string }>;
+  };
+  assignment: {
+    territory: { id?: string; name?: string; description?: string | null } | null;
+    route: { id?: string; name?: string; route_frequency?: string | null } | null;
+    stops: Array<{ id: string; label?: string | null; customer_id?: string | null }>;
+    customers: Array<{ id: string; customer_name: string; shop_name?: string | null; phone?: string | null; area?: string | null; city?: string | null }>;
+  };
+  analytics: {
+    byDate: Array<{ date: string; total: number; count: number }>;
+    byProduct: Array<{ product_id: string; name: string; quantity: number; total: number }>;
+    byCustomer: Array<{ customer_id: string; name: string; count: number; total: number }>;
   };
 }
 
@@ -103,7 +114,7 @@ export default function EmployeeLedgerPage() {
     );
   }
 
-  const { employee, aggregates, recent } = data;
+  const { employee, aggregates, recent, assignment, analytics } = data;
 
   return (
     <div className="grid gap-6">
@@ -111,6 +122,7 @@ export default function EmployeeLedgerPage() {
         <button onClick={() => router.push("/manager/team")} className="inline-flex items-center gap-2 text-sm text-primary hover:underline">
           <ArrowLeft className="size-4" /> Back
         </button>
+        <button onClick={() => router.push("/manager/live")} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"><Radar className="size-4" /> Live Tracking</button>
       </div>
 
       <div className="rounded-2xl border border-border bg-card p-6">
@@ -145,6 +157,12 @@ export default function EmployeeLedgerPage() {
         <StatCard icon={<Target className="size-5 text-warning" />} label="This Month" value={formatCurrency(aggregates.sales.thisMonth)} />
         <StatCard icon={<Banknote className="size-5 text-success" />} label="Collections" value={formatCurrency(aggregates.collections.amount)} sublabel={`${aggregates.collections.approved} approved`} />
         <StatCard icon={<MapPin className="size-5 text-info" />} label="Visits" value={`${aggregates.visits.completed}/${aggregates.visits.total}`} sublabel={`${aggregates.visits.missed} missed`} />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <AssignmentSummary icon={<MapPin className="size-5 text-primary" />} label="Territory assigned" value={assignment.territory?.name ?? "No territory"} detail={assignment.territory?.description ?? "No territory assigned to this employee."} />
+        <AssignmentSummary icon={<RouteIcon className="size-5 text-primary" />} label="Route assigned" value={assignment.route?.name ?? "No route"} detail={assignment.route ? `${assignment.stops.length} stop(s) · ${assignment.route.route_frequency ?? "daily"}` : "No route assigned to this employee."} />
+        <AssignmentSummary icon={<Users className="size-5 text-primary" />} label="Customers assigned" value={`${assignment.customers.length} customer(s)`} detail="Direct assignments and customers on the assigned route." />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -195,8 +213,8 @@ export default function EmployeeLedgerPage() {
         <RecentPanel title="Recent Sales" icon={<TrendingUp className="size-4 text-primary" />} empty="No sales yet">
           {recent.sales.map((s) => (
             <div key={s.id} className="flex justify-between py-2 border-b border-border/40 last:border-0">
-              <span className="text-sm text-foreground">{formatCurrency(s.total_amount)}</span>
-              <span className="text-xs text-body">{formatDate(s.created_at)}</span>
+              <span className="text-sm text-foreground"><span className="block font-medium">{s.invoice_number ?? formatCurrency(s.total_amount)}</span><span className="text-xs text-body">{s.customers?.shop_name ?? s.customers?.customer_name ?? "Customer"}</span></span>
+              <span className="text-xs text-body text-right"><span className="block font-medium text-foreground">{formatCurrency(s.total_amount)}</span>{formatDate(s.sale_date ?? s.created_at)}</span>
             </div>
           ))}
         </RecentPanel>
@@ -217,8 +235,27 @@ export default function EmployeeLedgerPage() {
           ))}
         </RecentPanel>
       </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <AnalyticsPanel title="Sales ranking by products" icon={<Package className="size-4 text-primary" />} rows={analytics.byProduct.slice(0, 10).map((row) => ({ id: row.product_id, name: row.name, detail: `${row.quantity} units`, value: formatCurrency(row.total) }))} />
+        <AnalyticsPanel title="Sales by customer" icon={<Store className="size-4 text-primary" />} rows={analytics.byCustomer.slice(0, 10).map((row) => ({ id: row.customer_id, name: row.name, detail: `${row.count} invoice(s)`, value: formatCurrency(row.total) }))} />
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <h3 className="font-semibold text-foreground mb-1 flex items-center gap-2"><Users className="size-5 text-primary" /> Assigned customers</h3>
+        <p className="text-xs text-body mb-4">These are the customers available to this employee for draft sales.</p>
+        {assignment.customers.length === 0 ? <p className="text-sm text-body py-4 text-center">No customers assigned.</p> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{assignment.customers.map((customer) => <div key={customer.id} className="rounded-xl border border-border p-4"><div className="text-sm font-medium text-foreground">{customer.shop_name ?? customer.customer_name}</div>{customer.shop_name && <div className="text-xs text-body">{customer.customer_name}</div>}<div className="text-xs text-light-text mt-2">{[customer.area, customer.city].filter(Boolean).join(", ") || "No area"}</div>{customer.phone && <div className="text-xs text-light-text mt-1">{customer.phone}</div>}</div>)}</div>}
+      </div>
     </div>
   );
+}
+
+function AssignmentSummary({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
+  return <div className="rounded-2xl border border-border bg-card p-5"><div className="flex items-center gap-2 text-xs text-body">{icon}{label}</div><div className="font-semibold text-foreground mt-3">{value}</div><div className="text-xs text-light-text mt-1">{detail}</div></div>;
+}
+
+function AnalyticsPanel({ title, icon, rows }: { title: string; icon: React.ReactNode; rows: Array<{ id: string; name: string; detail: string; value: string }> }) {
+  return <div className="rounded-2xl border border-border bg-card p-5"><h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">{icon}{title}</h3>{rows.length === 0 ? <p className="text-sm text-body py-4 text-center">No confirmed sales yet.</p> : <div className="divide-y divide-border">{rows.map((row, index) => <div key={row.id} className="flex items-center gap-3 py-3"><div className="size-7 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">{index + 1}</div><div className="min-w-0 flex-1"><div className="text-sm font-medium text-foreground truncate">{row.name}</div><div className="text-xs text-body">{row.detail}</div></div><div className="text-sm font-semibold text-foreground">{row.value}</div></div>)}</div>}</div>;
 }
 
 function StatCard({ icon, label, value, sublabel }: { icon: React.ReactNode; label: string; value: string | number; sublabel?: string }) {

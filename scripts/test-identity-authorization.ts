@@ -5,6 +5,7 @@ import {
   requireRoleDirect,
   requireOrganizationDirect,
 } from "../src/lib/identity/authorization";
+import { getRolePermissions } from "../src/lib/identity/roles";
 import type { ActorContext } from "../src/lib/identity/types";
 
 const owner: ActorContext = {
@@ -50,5 +51,11 @@ assert.equal(requireRoleDirect(manager, "owner").allowed, false);
 
 assert.equal(requireOrganizationDirect(owner).allowed, true);
 assert.equal(requireOrganizationDirect({ ...viewer, organizationId: "" }).allowed, false);
+
+const salesmanPermissions = getRolePermissions("salesman");
+assert.equal(salesmanPermissions.includes("field_sales"), true);
+assert.equal(salesmanPermissions.includes("location_view"), true);
+assert.equal(salesmanPermissions.includes("sales_view"), false);
+assert.equal(salesmanPermissions.includes("customers_manage"), false);
 
 console.log("identity authorization helpers OK");

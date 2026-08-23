@@ -2,6 +2,7 @@ import { createSupabaseService } from "@/lib/supabase/server";
 import { getInvoiceNumberService, generateSalesInvoice } from "@/lib/invoices/invoice-number-service";
 import { logAuditEvent } from "@/lib/identity/audit";
 import type { ActorContext } from "@/lib/identity/types";
+import { loadSalesmanAssignmentScope } from "@/lib/sales/salesman-workspace-service";
 
 export interface DraftSaleItemInput {
   productId: string;
@@ -66,6 +67,25 @@ export class DraftSaleService {
     }
 
     const supabase = createSupabaseService();
+
+    const canManageAllSales = actor.isOwner
+      || actor.permissions?.includes("sales_manage")
+      || actor.permissions?.includes("administration");
+    if (!canManageAllSales) {
+      const scope = await loadSalesmanAssignmentScope({
+        organizationId: actor.organizationId,
+        profileId: actor.profileId,
+      });
+      if (!scope || scope.employee.is_active === false) {
+        return { ok: false, error: "An active employee profile is required to create a sale" };
+      }
+      if (!scope.eligibleCustomerIds.includes(input.customerId)) {
+        return { ok: false, error: "You can create sales only for customers assigned directly to you or included in your assigned route and territory" };
+      }
+      if (input.routeId && String(scope.route?.id ?? "") !== input.routeId) {
+        return { ok: false, error: "The selected route is not assigned to you" };
+      }
+    }
 
     // Verify customer belongs to org
     const { data: customer } = await supabase

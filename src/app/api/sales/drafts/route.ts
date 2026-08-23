@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
+import { resolveActor } from "@/lib/identity/api-context";
 import { getDraftSaleService } from "@/lib/sales/services/draft-sale-service";
 
 export const runtime = "nodejs";
@@ -29,9 +30,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const permission = await requirePermission(request, "sales_create");
-  if (!permission.allowed || !permission.actor) {
-    return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
+  const context = await resolveActor(request);
+  if (!context.actor) {
+    return NextResponse.json({ ok: false, error: context.error ?? "Unauthorized" }, { status: context.status ?? 401 });
   }
 
   let body: {
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
   }
 
   const service = getDraftSaleService();
-  const result = await service.createDraft(permission.actor, {
+  const result = await service.createDraft(context.actor, {
     customerId,
     visitId,
     routeId,

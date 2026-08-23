@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import {
   ClipboardList, Loader2, Search, Plus, Trash2, AlertCircle, CheckCircle2, X, ChevronDown,
@@ -25,6 +26,12 @@ interface Customer {
   phone?: string;
 }
 
+interface AssignmentSummary {
+  territory?: { id?: string; name?: string } | null;
+  route?: { id?: string; name?: string } | null;
+  eligible_customer_count?: number;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -41,17 +48,20 @@ interface DraftItem {
   stock: number;
 }
 
-export default function DraftsPage({ searchParams }: { searchParams?: { new?: string } }) {
+export default function DraftsPage() {
+  const searchParams = useSearchParams();
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
-  const [showNew, setShowNew] = useState(Boolean(searchParams?.new));
+  const [showNew, setShowNew] = useState(searchParams.get("new") === "1");
 
   // New draft form
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [assignment, setAssignment] = useState<AssignmentSummary | null>(null);
+  const [recentPrices, setRecentPrices] = useState<Record<string, number>>({});
   const [customerId, setCustomerId] = useState("");
   const [notes, setNotes] = useState("");
   const [productSearch, setProductSearch] = useState("");
@@ -78,16 +88,14 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
 
   const loadFormData = useCallback(async () => {
     try {
-      const [cRes, pRes] = await Promise.all([
-        authorizedFetch("/api/customers"),
-        authorizedFetch("/api/products/list?limit=1000"),
-      ]);
-      const cData = await cRes.json();
-      const pData = await pRes.json();
-      if (Array.isArray(cData.customers)) setCustomers(cData.customers);
-      if (pData.ok) setProducts(pData.products ?? []);
-    } catch {
-      // ignore
+      const response = await authorizedFetch("/api/identity/staff/sales-options");
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error ?? "Could not load assigned customers and products");
+      setCustomers(Array.isArray(data.customers) ? data.customers : []);
+      setProducts(Array.isArray(data.products) ? data.products : []);
+      setAssignment(data.assignment ?? null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load sale options");
     }
   }, []);
 
@@ -95,6 +103,32 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
     loadDrafts();
     loadFormData();
   }, [loadDrafts, loadFormData]);
+
+  useEffect(() => {
+    if (searchParams.get("new") === "1") setShowNew(true);
+  }, [searchParams]);
+
+  const selectCustomer = useCallback(async (nextCustomerId: string) => {
+    setCustomerId(nextCustomerId);
+    setItems([]);
+    setRecentPrices({});
+    if (!nextCustomerId) return;
+    try {
+      const response = await authorizedFetch(`/api/customers/${nextCustomerId}/pricing`);
+      const data = await response.json();
+      if (!response.ok || !data.ok) return;
+      setRecentPrices(Object.fromEntries((data.prices ?? []).map((price: { product_id: string; last_selling_price: number }) => [String(price.product_id), Number(price.last_selling_price)])));
+    } catch {
+      // The product default remains available if price history cannot be loaded.
+    }
+  }, []);
+
+  useEffect(() => {
+    const requestedCustomerId = searchParams.get("customer");
+    if (requestedCustomerId && !customerId && customers.some((customer) => customer.id === requestedCustomerId)) {
+      void selectCustomer(requestedCustomerId);
+    }
+  }, [customerId, customers, searchParams, selectCustomer]);
 
   const submitDraft = async () => {
     setSaving(true);
@@ -107,6 +141,7 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerId,
+          routeId: assignment?.route?.id,
           items: items.map((i) => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice })),
           notes: notes || undefined,
         }),
@@ -131,12 +166,16 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
     if (existing) {
       setItems(items.map((i) => (i.productId === p.id ? { ...i, quantity: i.quantity + 1 } : i)));
     } else {
-      setItems([...items, { productId: p.id, productName: p.name, quantity: 1, unitPrice: Number(p.default_selling_price ?? 0), stock: Number(p.current_stock ?? 0) }]);
+      setItems([...items, { productId: p.id, productName: p.name, quantity: 1, unitPrice: recentPrices[String(p.id)] ?? Number(p.default_selling_price ?? 0), stock: Number(p.current_stock ?? 0) }]);
     }
   };
 
   const updateQty = (id: string, qty: number) => {
     setItems(items.map((i) => (i.productId === id ? { ...i, quantity: Math.max(1, qty) } : i)));
+  };
+
+  const updatePrice = (id: string, price: number) => {
+    setItems(items.map((item) => item.productId === id ? { ...item, unitPrice: Math.max(0, price) } : item));
   };
 
   const removeItem = (id: string) => {
@@ -149,15 +188,15 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
     <div className="grid gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading font-bold text-2xl text-foreground">Draft Sales</h1>
-          <p className="text-sm text-body mt-1">Create a draft sale and your manager will approve it.</p>
+          <h1 className="font-heading font-bold text-2xl text-foreground">My Sales</h1>
+          <p className="text-sm text-body mt-1">Create sales for your assigned customers. Your manager approves them before invoicing.</p>
         </div>
         <button
           onClick={() => setShowNew(!showNew)}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground"
         >
           {showNew ? <X className="size-4" /> : <Plus className="size-4" />}
-          {showNew ? "Close" : "New draft"}
+          {showNew ? "Close" : "New Sale"}
         </button>
       </div>
 
@@ -180,13 +219,16 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
       {showNew && (
         <div className="rounded-2xl border border-border bg-card p-6 grid gap-5">
           <div>
-            <h2 className="font-semibold text-foreground mb-3">New draft sale</h2>
+            <h2 className="font-semibold text-foreground mb-1">New Sale</h2>
+            <p className="text-xs text-body mb-4">
+              {[assignment?.territory?.name, assignment?.route?.name].filter(Boolean).join(" · ") || "Direct customer assignments"} · {customers.length} eligible customer(s)
+            </p>
             <label className="text-sm font-medium text-foreground">Customer</label>
             <div className="relative mt-1.5">
               <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
               <select
                 value={customerId}
-                onChange={(e) => setCustomerId(e.target.value)}
+                onChange={(e) => void selectCustomer(e.target.value)}
                 className="w-full h-11 rounded-lg border border-input bg-card px-3.5 pr-10 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none"
               >
                 <option value="">Select customer...</option>
@@ -195,6 +237,7 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
                 ))}
               </select>
             </div>
+            {customers.length === 0 && <p className="mt-2 text-xs text-destructive">No customers are assigned to your route, territory, or employee profile. Ask your manager to assign them first.</p>}
           </div>
 
           <div>
@@ -219,7 +262,7 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
                         <div className="text-foreground font-medium">{p.name}</div>
                         <div className="text-xs text-body">Stock: {p.current_stock}</div>
                       </div>
-                      <div className="text-sm font-semibold text-foreground">{fmt(p.default_selling_price)}</div>
+                        <div className="text-right"><div className="text-sm font-semibold text-foreground">{fmt(recentPrices[String(p.id)] ?? p.default_selling_price)}</div>{recentPrices[String(p.id)] != null && <div className="text-[10px] text-primary">Last customer price</div>}</div>
                     </button>
                   ))}
                 {products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
@@ -234,7 +277,7 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
                   <div key={item.productId} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-foreground truncate">{item.productName}</div>
-                      <div className="text-xs text-body">{fmt(item.unitPrice)} each</div>
+                      <label className="mt-1 flex items-center gap-1 text-xs text-body">Price <input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updatePrice(item.productId, Number(event.target.value))} className="w-24 rounded border border-input bg-card px-2 py-1 text-xs text-foreground" /></label>
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => updateQty(item.productId, item.quantity - 1)} className="size-7 rounded-md border border-border text-foreground hover:bg-muted">−</button>
@@ -268,7 +311,7 @@ export default function DraftsPage({ searchParams }: { searchParams?: { new?: st
 
           <button
             onClick={submitDraft}
-            disabled={saving}
+            disabled={saving || customers.length === 0}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-primary px-6 text-primary-foreground font-medium disabled:opacity-50"
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}

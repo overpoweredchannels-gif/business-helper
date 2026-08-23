@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePermission } from "@/lib/identity/authorization";
+import { resolveActor } from "@/lib/identity/api-context";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { loadSalesmanAssignmentScope } from "@/lib/sales/salesman-workspace-service";
 
 export const runtime = "nodejs";
 
@@ -15,14 +16,25 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const permission = await requirePermission(request, "sales_view");
-  if (!permission.allowed || !permission.actor?.organizationId) {
-    return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
+  const context = await resolveActor(request);
+  if (!context.actor?.organizationId) {
+    return NextResponse.json({ ok: false, error: context.error ?? "Unauthorized" }, { status: context.status ?? 401 });
   }
 
   const { id: customerId } = await params;
   const supabase = createSupabaseService();
-  const organizationId = permission.actor.organizationId;
+  const organizationId = context.actor.organizationId;
+
+  const canViewAllSales = context.actor.isOwner
+    || context.actor.permissions?.includes("sales_view")
+    || context.actor.permissions?.includes("sales_manage")
+    || context.actor.permissions?.includes("administration");
+  if (!canViewAllSales) {
+    const scope = await loadSalesmanAssignmentScope({ organizationId, profileId: context.actor.profileId });
+    if (!scope?.eligibleCustomerIds.includes(customerId)) {
+      return NextResponse.json({ ok: false, error: "This customer is not assigned to you." }, { status: 403 });
+    }
+  }
 
   const { data: customer, error: customerError } = await supabase
     .from("customers")

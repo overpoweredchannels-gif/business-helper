@@ -74,7 +74,7 @@ export async function resolveActor(
   // Merge fine-grained staff_permissions (the source of truth the owner uses
   // in Staff & Permissions) so staff on custom roles (e.g. "staff", "sales")
   // can actually exercise the API actions their granted sections allow.
-  let extraPermissions: string[] = [];
+  const extraPermissions: string[] = [];
   try {
     const service = createSupabaseService();
     const { data: staffPermRow } = await service
@@ -100,6 +100,13 @@ export async function resolveActor(
         if (mapped) {
           extraPermissions.push(mapped);
         }
+      }
+      // The Sales section represents the organization-wide ledger in the UI.
+      // A salesman can always create assignment-scoped drafts through the
+      // dedicated self-service APIs, while this explicit grant also unlocks
+      // viewing the complete ledger.
+      if (sectionId === "sales") {
+        extraPermissions.push("sales_view");
       }
     }
   } catch {

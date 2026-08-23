@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { buildSalesmanWorkspace } from "@/lib/sales/salesman-workspace-service";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,8 @@ export async function GET(
     return NextResponse.json({ ok: false, error: "Employee not found" }, { status: 404 });
   }
 
+  const workspace = await buildSalesmanWorkspace({ organizationId: orgId, employeeId: id });
+
   // Run parallel aggregation queries
   const today = new Date().toISOString().split("T")[0];
   const monthStart = new Date();
@@ -46,12 +49,7 @@ export async function GET(
     targetsRes,
     feedbackRes,
   ] = await Promise.all([
-    // Sales (via sales_orders created by employee's profile)
-    supabase
-      .from("sales_orders")
-      .select("id, total_amount, status, created_at, created_by_profile_id")
-      .eq("organization_id", orgId)
-      .eq("created_by_profile_id", employee.profile_id),
+    Promise.resolve({ data: workspace?.sales.recent ?? [], error: null }),
 
     // Visits
     supabase
@@ -153,11 +151,11 @@ export async function GET(
     employee,
     aggregates: {
       sales: {
-        total: salesTotal,
-        today: salesToday,
-        thisWeek: salesThisWeek,
-        thisMonth: salesThisMonth,
-        count: sales.length,
+        total: workspace?.sales.total ?? salesTotal,
+        today: workspace?.sales.today ?? salesToday,
+        thisWeek: workspace?.sales.thisWeek ?? salesThisWeek,
+        thisMonth: workspace?.sales.thisMonth ?? salesThisMonth,
+        count: workspace?.sales.count ?? sales.length,
       },
       visits: {
         total: visitsTotal,
@@ -188,9 +186,20 @@ export async function GET(
       },
     },
     recent: {
-      sales: recentSales,
+      sales: workspace?.sales.recent ?? recentSales,
       visits: recentVisits,
       collections: recentCollections,
+    },
+    assignment: {
+      territory: workspace?.territory ?? null,
+      route: workspace?.route ?? null,
+      stops: workspace?.stops ?? [],
+      customers: workspace?.customers ?? [],
+    },
+    analytics: {
+      byDate: workspace?.sales.byDate ?? [],
+      byProduct: workspace?.sales.byProduct ?? [],
+      byCustomer: workspace?.sales.byCustomer ?? [],
     },
   });
 }

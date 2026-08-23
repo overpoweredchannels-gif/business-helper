@@ -96,13 +96,26 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
   if (routeId) {
     if (route?.assigned_salesman_id && route.assigned_salesman_id !== employeeId) {
+      const previousEmployeeId = route.assigned_salesman_id;
       const { error: previousEmployeeError } = await supabase
         .from("employees")
         .update({ assigned_route_id: null, updated_at: new Date().toISOString() })
-        .eq("id", route.assigned_salesman_id)
+        .eq("id", previousEmployeeId)
         .eq("organization_id", organizationId)
         .eq("assigned_route_id", routeId);
       if (previousEmployeeError) return NextResponse.json({ ok: false, error: previousEmployeeError.message }, { status: 500 });
+
+      // A route can belong to only one employee. Remove its customer subset
+      // from the previous employee before assigning the route to someone new.
+      if (eligibleCustomerIds.length) {
+        const { error: previousCustomersError } = await supabase
+          .from("customers")
+          .update({ assigned_salesman_id: null, updated_at: new Date().toISOString() })
+          .eq("organization_id", organizationId)
+          .eq("assigned_salesman_id", previousEmployeeId)
+          .in("id", eligibleCustomerIds);
+        if (previousCustomersError) return NextResponse.json({ ok: false, error: previousCustomersError.message }, { status: 500 });
+      }
     }
     const { error } = await supabase
       .from("sales_routes")
@@ -118,6 +131,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .eq("id", employeeId)
     .eq("organization_id", organizationId);
   if (assignmentError) return NextResponse.json({ ok: false, error: assignmentError.message }, { status: 500 });
+
+  const { error: clearCustomersError } = await supabase
+    .from("customers")
+    .update({ assigned_salesman_id: null, updated_at: new Date().toISOString() })
+    .eq("organization_id", organizationId)
+    .eq("assigned_salesman_id", employeeId);
+  if (clearCustomersError) return NextResponse.json({ ok: false, error: clearCustomersError.message }, { status: 500 });
 
   if (customerIds.length) {
     const { error } = await supabase

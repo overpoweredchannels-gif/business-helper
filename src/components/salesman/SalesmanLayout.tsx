@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, LogOut, Menu, X, Settings2,
+  LayoutDashboard, LogOut, Menu, X, Settings2, PlusCircle, Users, Route as RouteIcon,
+  BarChart3, MapPin, UserRound,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { useState } from "react";
@@ -27,16 +28,20 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
     router.push("/login");
   };
 
-  // The employee sidebar intentionally shows ONLY the business ledgers the
-  // owner has granted via Staff & Permissions, plus a Dashboard link. Field
-  // menus (visits, drafts, collections, etc.) are reached from the dashboard
-  // quick actions, not from the sidebar.
+  // Personal field-work tools are always available. Organization-wide ledgers
+  // remain visible only when explicitly granted by the owner.
   const grantedNavItems = navigationItems
     .filter((item) => grantedSections.includes(item.id))
     .map((item) => ({ href: `/#${item.id}`, label: item.label, icon: Settings2 }));
 
   const navItems = [
     { href: "/salesman", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/salesman/drafts?new=1", label: "New Sale", icon: PlusCircle },
+    { href: "/salesman#sales", label: "My Sales", icon: BarChart3 },
+    { href: "/salesman#customers", label: "My Customers", icon: Users },
+    { href: "/salesman/routes", label: "My Route", icon: RouteIcon },
+    { href: "/salesman#tracking", label: "Live Tracking", icon: MapPin },
+    { href: "/salesman/profile", label: "My Profile", icon: UserRound },
     ...grantedNavItems,
   ];
 
@@ -55,7 +60,8 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
       <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href || (item.href !== "/salesman" && pathname.startsWith(item.href));
+          const itemPath = item.href.split(/[?#]/)[0];
+          const active = pathname === itemPath || (itemPath !== "/salesman" && pathname.startsWith(itemPath));
           return (
             <Link
               key={item.href}

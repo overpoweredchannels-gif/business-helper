@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner, requirePermission } from "@/lib/identity/authorization";
+import { requireOwner } from "@/lib/identity/authorization";
+import { resolveActor } from "@/lib/identity/api-context";
 import { SalesRouteRepository } from "@/lib/identity/repositories/sales-route-repository";
 import { logAuditEvent } from "@/lib/identity/audit";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { loadSalesmanAssignmentScope } from "@/lib/sales/salesman-workspace-service";
 
 export const runtime = "nodejs";
 
@@ -29,9 +31,9 @@ function toNullableString(value: unknown): string | null {
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const permission = await requirePermission(request, "field_sales");
-  if (!permission.allowed || !permission.actor) {
-    return NextResponse.json({ error: permission.reason ?? "Forbidden" }, { status: 403 });
+  const actorContext = await resolveActor(request);
+  if (!actorContext.actor) {
+    return NextResponse.json({ error: actorContext.error ?? "Unauthorized" }, { status: actorContext.status ?? 401 });
   }
 
   const routeId = await getRouteId(context);
@@ -39,8 +41,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   try {
     const route = await repository.findById(routeId);
-    if (!route || route.organization_id !== permission.actor.organizationId) {
+    if (!route || route.organization_id !== actorContext.actor.organizationId) {
       return NextResponse.json({ error: "Route not found." }, { status: 404 });
+    }
+    const canViewAllRoutes = actorContext.actor.isOwner
+      || actorContext.actor.permissions?.includes("sales_manage")
+      || actorContext.actor.permissions?.includes("administration");
+    if (!canViewAllRoutes) {
+      const scope = await loadSalesmanAssignmentScope({
+        organizationId: actorContext.actor.organizationId,
+        profileId: actorContext.actor.profileId,
+      });
+      if (!scope?.route?.id || String(scope.route.id) !== routeId) {
+        return NextResponse.json({ error: "This route is not assigned to you." }, { status: 403 });
+      }
     }
     const stops = await repository.listStops(routeId);
     return NextResponse.json({ route, stops });

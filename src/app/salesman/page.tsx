@@ -1,361 +1,181 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { EmployeeLiveTracking } from "@/components/dashboard";
 import {
-  MapPin, ClipboardList, Route as RouteIcon, Bell, Loader2,
-  CheckCircle2, ChevronRight, Banknote, AlertCircle, User, Briefcase, Hash,
+  AlertCircle, ArrowUpRight, BarChart3, Bell, Briefcase, CalendarDays, ChevronRight,
+  CircleDollarSign, ClipboardList, Hash, Loader2, MapPin, Package, Plus,
+  Route as RouteIcon, ShoppingBag, Store, User, Users,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
-interface Visit {
-  id: string;
-  customer_id: string;
-  visit_status: string;
-  started_at?: string;
-  ended_at?: string;
-  customers?: { customer_name?: string; shop_name?: string };
-}
+type Workspace = {
+  employee: {
+    id: string; employee_id?: string | null; full_name: string; phone?: string | null;
+    designation?: string | null; department?: string | null; joining_date?: string | null;
+  };
+  territory: { id?: string; name?: string; description?: string | null } | null;
+  route: { id?: string; name?: string; description?: string | null; route_frequency?: string | null } | null;
+  customers: Array<{
+    id: string; customer_name: string; shop_name?: string | null; contact_person?: string | null;
+    phone?: string | null; area?: string | null; city?: string | null; address?: string | null;
+  }>;
+  stops: Array<{ id: string; customer_id?: string | null; label?: string | null; stop_order?: number; address?: string | null }>;
+  sales: {
+    total: number; today: number; thisWeek: number; thisMonth: number; count: number;
+    byDate: Array<{ date: string; total: number; count: number }>;
+    byProduct: Array<{ product_id: string; name: string; quantity: number; total: number }>;
+    byCustomer: Array<{ customer_id: string; name: string; total: number; count: number }>;
+    recent: Array<{
+      id: string; invoice_number: string; total_amount: number; status?: string | null;
+      sale_date?: string | null; created_at: string;
+      customers?: { customer_name?: string | null; shop_name?: string | null } | null;
+    }>;
+  };
+};
 
-interface Draft {
-  id: string;
-  so_number: string;
-  status: string;
-  total_amount: number;
-  customers?: { customer_name?: string };
-}
-
-interface RouteItem {
-  id: string;
-  name: string;
-  assigned_salesman_id?: string | null;
-}
-
-interface NotificationItem {
-  id: string;
-  category: string;
-  title: string;
-  body: string;
-  is_read: boolean;
-  created_at: string;
-}
+type Visit = { id: string; visit_status: string };
+type Draft = { id: string; status: string };
+type NotificationItem = { id: string; title: string; body: string };
 
 export default function SalesmanDashboard() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [me, setMe] = useState<any>(null);
-  const [employeeId, setEmployeeId] = useState<string | null>(null);
-  const [meLoadError, setMeLoadError] = useState(false);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [dateRange, setDateRange] = useState<7 | 30>(7);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const loadMe = useCallback(async () => {
-    try {
-      const res = await authorizedFetch("/api/identity/staff/me");
-      const data = await res.json();
-      if (data.ok && data.me) {
-        setMe(data.me);
-        if (data.me.employee) {
-          setEmployeeId(data.me.employee.id);
-        }
-      } else {
-        setMeLoadError(true);
-      }
-    } catch {
-      setMeLoadError(true);
-    }
-  }, []);
-
-  const loadAll = useCallback(async (empId: string) => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [visitsRes, draftsRes, routesRes, notifRes] = await Promise.all([
-        authorizedFetch(`/api/visits/today?employeeId=${empId}`),
+      const overviewResponse = await authorizedFetch("/api/identity/staff/overview");
+      const overview = await overviewResponse.json();
+      if (!overviewResponse.ok || !overview.ok) throw new Error(overview.error ?? "Could not load your workspace");
+      const nextWorkspace = overview.workspace as Workspace;
+      setWorkspace(nextWorkspace);
+
+      const [visitsResponse, draftsResponse, notificationsResponse] = await Promise.all([
+        authorizedFetch(`/api/visits/today?employeeId=${nextWorkspace.employee.id}`),
         authorizedFetch("/api/sales/drafts/mine"),
-        authorizedFetch("/api/routes"),
         authorizedFetch("/api/notifications?unread_only=true&limit=5"),
       ]);
-      const visitsData = await visitsRes.json();
-      const draftsData = await draftsRes.json();
-      const routesData = await routesRes.json();
-      const notifData = await notifRes.json();
-
-      if (visitsData.ok) setVisits(visitsData.visits ?? []);
-      if (draftsData.ok) setDrafts(draftsData.drafts ?? []);
-      if (Array.isArray(routesData.routes)) {
-        const mine = routesData.routes.filter((r: RouteItem) => r.assigned_salesman_id === empId);
-        setRoutes(mine);
-      }
-      if (notifData.ok) setNotifications(notifData.notifications ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load dashboard");
+      const [visitData, draftData, notificationData] = await Promise.all([
+        visitsResponse.json(), draftsResponse.json(), notificationsResponse.json(),
+      ]);
+      if (visitData.ok) setVisits(visitData.visits ?? []);
+      if (draftData.ok) setDrafts(draftData.drafts ?? []);
+      if (notificationData.ok) setNotifications(notificationData.notifications ?? []);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load your workspace");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    if (meLoadError) {
-      setLoading(false);
-      return;
-    }
-    if (employeeId) {
-      loadAll(employeeId);
-    }
-  }, [employeeId, meLoadError, loadAll]);
+  useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => {
-    loadMe();
-  }, [loadMe]);
+  const visibleDates = useMemo(
+    () => [...(workspace?.sales.byDate ?? [])].slice(0, dateRange).reverse(),
+    [workspace?.sales.byDate, dateRange],
+  );
+  const maxDay = Math.max(1, ...visibleDates.map((row) => row.total));
 
   if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 gap-3">
-        <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading your day...</p>
-      </div>
-    );
+    return <div className="flex flex-col items-center justify-center py-24 gap-3"><Loader2 className="size-8 text-primary animate-spin" /><p className="text-sm text-body">Loading your sales workspace…</p></div>;
+  }
+  if (error || !workspace) {
+    return <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-5 text-sm text-destructive flex gap-2"><AlertCircle className="size-4 mt-0.5" />{error ?? "Employee workspace unavailable"}</div>;
   }
 
-  if (error) {
-    return (
-      <div className="rounded-2xl border border-destructive bg-destructive-bg p-6 text-sm text-destructive">
-        {error}
-      </div>
-    );
-  }
-
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: "long", month: "long", day: "numeric", year: "numeric",
-  });
-
-  const profile = me?.profile ?? {};
-  const employee = me?.employee ?? {};
-  const profileName = employee.full_name || profile.display_name || profile.full_name || null;
-  const profileDesignation = employee.designation || profile.role || "staff";
-
-  const activeVisit = visits.find((v) => v.visit_status === "in_progress");
-  const completedCount = visits.filter((v) => v.visit_status === "completed").length;
-  const upcomingCount = visits.filter((v) => v.visit_status === "planned").length;
-  const missedCount = visits.filter((v) => v.visit_status === "missed").length;
-  const pendingDrafts = drafts.filter((d) => d.status === "pending_approval").length;
-  const unreadCount = notifications.length;
-
-  const statCard = (label: string, value: string | number, sub?: string, Icon?: React.ComponentType<{ className?: string }>) => (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-medium text-light-text uppercase tracking-wide">{label}</span>
-        {Icon && <Icon className="size-4 text-primary" />}
-      </div>
-      <div className="font-heading font-bold text-2xl text-foreground">{value}</div>
-      {sub && <div className="text-xs text-body mt-1">{sub}</div>}
-    </div>
-  );
+  const employee = workspace.employee;
+  const sales = workspace.sales;
+  const completedVisits = visits.filter((visit) => visit.visit_status === "completed").length;
+  const pendingDrafts = drafts.filter((draft) => draft.status === "pending_approval").length;
 
   return (
     <div className="grid gap-6">
-      <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Field Dashboard</h1>
-        <p className="text-sm text-body mt-1">{today}</p>
-      </div>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div><p className="text-sm text-body">Welcome back</p><h1 className="font-heading font-bold text-2xl text-foreground">{employee.full_name}</h1><p className="text-xs text-light-text mt-1">Your assigned customers, sales performance, route, and duty tracking.</p></div>
+        <Link href="/salesman/drafts?new=1" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"><Plus className="size-5" /> New Sale</Link>
+      </header>
 
-      {error && (
-        <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">{error}</div>
-      )}
-
-      {/* Profile summary */}
-      <div className="rounded-2xl border border-border bg-card p-5 flex flex-col sm:flex-row sm:items-center gap-4">
-        <div className="size-14 rounded-2xl bg-primary flex items-center justify-center font-heading font-bold text-xl text-primary-foreground shrink-0">
-          {(profileName ?? "S").slice(0, 1).toUpperCase()}
-        </div>
+      <section className="rounded-2xl border border-border bg-card p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="size-14 rounded-2xl bg-primary flex items-center justify-center font-heading font-bold text-xl text-primary-foreground">{employee.full_name.slice(0, 1).toUpperCase()}</div>
         <div className="flex-1 min-w-0">
-          <div className="font-heading font-bold text-lg text-foreground truncate">{profileName ?? "Staff Member"}</div>
-          <div className="text-sm text-body capitalize">{profileDesignation.replace(/_/g, " ")}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-light-text">
-            {employee.employee_id && (
-              <span className="inline-flex items-center gap-1"><Hash className="size-3" /> {employee.employee_id}</span>
-            )}
-            {me?.organization?.name && (
-              <span className="inline-flex items-center gap-1"><Briefcase className="size-3" /> {me.organization.name}</span>
-            )}
-            {employee.phone && (
-              <span className="inline-flex items-center gap-1"><User className="size-3" /> {employee.phone}</span>
-            )}
+          <div className="font-heading font-bold text-lg text-foreground">Complete profile</div>
+          <div className="text-sm text-body capitalize">{String(employee.designation ?? "staff").replace(/_/g, " ")}</div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-light-text">
+            {employee.employee_id && <span className="inline-flex items-center gap-1"><Hash className="size-3" />{employee.employee_id}</span>}
+            {employee.department && <span className="inline-flex items-center gap-1"><Briefcase className="size-3" />{employee.department}</span>}
+            {employee.phone && <span className="inline-flex items-center gap-1"><User className="size-3" />{employee.phone}</span>}
+            {employee.joining_date && <span className="inline-flex items-center gap-1"><CalendarDays className="size-3" />Joined {formatDate(employee.joining_date)}</span>}
           </div>
         </div>
-      </div>
+        <Link href="/salesman/profile" className="text-sm text-primary hover:underline">View profile</Link>
+      </section>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCard("Visits completed", completedCount, `${upcomingCount} planned remaining`, CheckCircle2)}
-        {statCard("Pending drafts", pendingDrafts, `${drafts.length} total`, ClipboardIcon)}
-        {statCard("Missed visits", missedCount, "mark on time", AlertCircle)}
-        {statCard("Unread alerts", unreadCount, "", Bell)}
-      </div>
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="Total Sales" value={money(sales.total)} detail={`${sales.count} confirmed invoices`} icon={CircleDollarSign} />
+        <Stat label="Today" value={money(sales.today)} detail="Sales created today" icon={ShoppingBag} />
+        <Stat label="This Week" value={money(sales.thisWeek)} detail="Current calendar week" icon={BarChart3} />
+        <Stat label="This Month" value={money(sales.thisMonth)} detail="Current month" icon={CalendarDays} />
+      </section>
 
-      {/* Active visit callout */}
-      {activeVisit && (
-        <div className="rounded-2xl border border-primary/30 bg-primary-light p-5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="relative flex size-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-              <span className="relative inline-flex rounded-full size-3 bg-primary" />
-            </span>
-            <div>
-              <div className="font-medium text-foreground">Visit in progress</div>
-              <div className="text-xs text-body">
-                {activeVisit.customers?.shop_name || activeVisit.customers?.customer_name || "Customer"} — started{" "}
-                {activeVisit.started_at ? new Date(activeVisit.started_at).toLocaleTimeString() : ""}
-              </div>
-            </div>
-          </div>
-          <Link
-            href={`/salesman/visits/${activeVisit.id}`}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-          >
-            Continue visit <ChevronRight className="size-4" />
-          </Link>
-        </div>
-      )}
+      <section id="assignments" className="grid gap-4 md:grid-cols-3 scroll-mt-20">
+        <AssignmentCard icon={MapPin} title="Territory assigned" value={workspace.territory?.name ?? "No territory assigned"} detail={workspace.territory?.description ?? "Ask your manager to assign a territory."} />
+        <AssignmentCard icon={RouteIcon} title="Route assigned" value={workspace.route?.name ?? "No route assigned"} detail={workspace.route ? `${workspace.stops.length} stop(s) · ${workspace.route.route_frequency ?? "daily"}` : "Ask your manager to assign a route."} href={workspace.route?.id ? `/salesman/routes/${workspace.route.id}` : undefined} />
+        <AssignmentCard icon={Users} title="Customers assigned" value={`${workspace.customers.length} customer(s)`} detail="Only these customers can be selected for a new sale." href="#customers" />
+      </section>
 
-      {/* Quick actions */}
-      <div>
-        <h2 className="font-heading font-bold text-lg text-foreground mb-3">Quick Actions</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <QuickAction href="/salesman/visits" icon={MapPin} label="Today's Visits" />
-          <QuickAction href="/salesman/routes" icon={RouteIcon} label="My Routes" />
-          <QuickAction href="/salesman/drafts" icon={ClipboardIcon} label="New Draft Sale" />
-          <QuickAction href="/salesman/collections" icon={Banknote} label="Record Collection" />
-        </div>
-      </div>
+      <section id="sales" className="grid gap-6 lg:grid-cols-2 scroll-mt-20">
+        <Panel title="Sales by date" icon={CalendarDays} action={<div className="flex rounded-lg border border-border p-0.5">{([7, 30] as const).map((range) => <button key={range} onClick={() => setDateRange(range)} className={`rounded-md px-2.5 py-1 text-xs ${dateRange === range ? "bg-primary text-primary-foreground" : "text-body"}`}>{range} days</button>)}</div>}>
+          {visibleDates.length === 0 ? <Empty text="No confirmed sales yet." /> : <div className="grid gap-3">{visibleDates.map((row) => <div key={row.date} className="grid grid-cols-[74px_1fr_auto] items-center gap-3 text-xs"><span className="text-body">{shortDate(row.date)}</span><div className="h-2 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(3, row.total / maxDay * 100)}%` }} /></div><span className="font-medium text-foreground">{money(row.total)}</span></div>)}</div>}
+        </Panel>
+        <Panel title="Sales ranking by products" icon={Package}><Ranking rows={sales.byProduct.slice(0, 8).map((row) => ({ id: row.product_id, name: row.name, value: money(row.total), detail: `${row.quantity} units` }))} empty="No product sales yet." /></Panel>
+        <Panel title="Sales by customer" icon={Store}><Ranking rows={sales.byCustomer.slice(0, 8).map((row) => ({ id: row.customer_id, name: row.name, value: money(row.total), detail: `${row.count} invoice(s)` }))} empty="No customer sales yet." /></Panel>
+        <Panel title="Recent sales" icon={ShoppingBag} action={<Link href="/salesman/drafts" className="text-xs text-primary hover:underline">My drafts</Link>}>
+          {sales.recent.length === 0 ? <Empty text="No confirmed sales yet." /> : <div className="divide-y divide-border">{sales.recent.slice(0, 8).map((sale) => <div key={sale.id} className="flex items-center justify-between gap-3 py-3"><div className="min-w-0"><div className="text-sm font-medium text-foreground truncate">{sale.invoice_number}</div><div className="text-xs text-body truncate">{sale.customers?.shop_name ?? sale.customers?.customer_name ?? "Customer"} · {formatDate(sale.sale_date ?? sale.created_at)}</div></div><span className="text-sm font-semibold text-foreground">{money(sale.total_amount)}</span></div>)}</div>}
+        </Panel>
+      </section>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Assigned routes */}
-        <Section title="My assigned routes" href="/salesman/routes">
-          {routes.length === 0 ? (
-            <Empty text="No routes assigned yet. Ask your manager to assign one." />
-          ) : (
-            <ul className="divide-y divide-border">
-              {routes.map((r) => (
-                <li key={r.id}>
-                  <Link href={`/salesman/routes/${r.id}`} className="flex items-center justify-between gap-3 py-3 hover:bg-muted/40 rounded-lg px-2 -mx-2">
-                    <div className="flex items-center gap-3">
-                      <RouteIcon className="size-4.5 text-primary" />
-                      <div>
-                        <div className="text-sm font-medium text-foreground">{r.name}</div>
-                        <div className="text-xs text-body">View stops & navigate</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="size-4 text-light-text" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
+      <section id="customers" className="rounded-2xl border border-border bg-card p-5 scroll-mt-20">
+        <div className="flex items-center justify-between mb-4"><div><h2 className="font-semibold text-foreground">My assigned customers</h2><p className="text-xs text-body mt-0.5">Direct assignments and customers tagged on your assigned route.</p></div><Link href="/salesman/drafts?new=1" className="inline-flex items-center gap-1 text-xs font-medium text-primary">New Sale <ArrowUpRight className="size-3" /></Link></div>
+        {workspace.customers.length === 0 ? <Empty text="No customers assigned. Your manager must assign customers before you can create a sale." /> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{workspace.customers.map((customer) => <div key={customer.id} className="rounded-xl border border-border p-4"><div className="font-medium text-sm text-foreground">{customer.shop_name ?? customer.customer_name}</div>{customer.shop_name && <div className="text-xs text-body">{customer.customer_name}</div>}<div className="text-xs text-light-text mt-2">{[customer.area, customer.city].filter(Boolean).join(", ") || customer.address || "No address"}</div>{customer.phone && <div className="text-xs text-light-text mt-1">{customer.phone}</div>}<Link href={`/salesman/drafts?new=1&customer=${customer.id}`} className="mt-3 inline-flex items-center gap-1 text-xs text-primary">Create sale <ChevronRight className="size-3" /></Link></div>)}</div>}
+      </section>
 
-        {/* Notifications */}
-        <Section title="Recent alerts" href="/salesman/notifications">
-          {notifications.length === 0 ? (
-            <Empty text="No unread notifications." />
-          ) : (
-            <ul className="divide-y divide-border">
-              {notifications.map((n) => (
-                <li key={n.id} className="py-3 flex gap-3">
-                  <Bell className="size-4.5 text-primary mt-0.5 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate">{n.title}</div>
-                    <div className="text-xs text-body line-clamp-2">{n.body}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-      </div>
+      <section className="grid gap-4 md:grid-cols-3">
+        <MiniAction href="/salesman/visits" icon={MapPin} title="Today's visits" detail={`${completedVisits}/${visits.length} completed`} />
+        <MiniAction href="/salesman/drafts" icon={ClipboardList} title="Draft sales" detail={`${pendingDrafts} pending approval`} />
+        <MiniAction href="/salesman/notifications" icon={Bell} title="Recent alerts" detail={`${notifications.length} unread`} />
+      </section>
 
-      {/* Drafts summary */}
-      <Section title="My draft sales" href="/salesman/drafts">
-        {drafts.length === 0 ? (
-          <Empty text="No drafts yet. Create one from a visit." />
-        ) : (
-          <ul className="divide-y divide-border">
-            {drafts.slice(0, 5).map((d) => (
-              <li key={d.id} className="flex items-center justify-between py-3">
-                <div>
-                  <div className="text-sm font-medium text-foreground">{d.so_number}</div>
-                  <div className="text-xs text-body">{d.customers?.customer_name}</div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <StatusBadge status={d.status} />
-                  <span className="text-sm font-semibold text-foreground">{fmt(d.total_amount)}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-
-      {/* Live tracking (always at the bottom) */}
-      <EmployeeLiveTracking />
+      <section id="tracking" className="scroll-mt-20"><div className="mb-3"><h2 className="font-heading font-bold text-lg text-foreground">Live tracking</h2><p className="text-xs text-body">Start or stop your duty location and review the current tracking state.</p></div><EmployeeLiveTracking /></section>
     </div>
   );
 }
 
-function QuickAction({ href, icon: Icon, label }: { href: string; icon: React.ComponentType<{ className?: string }>; label: string }) {
-  return (
-    <Link href={href} className="flex flex-col items-start gap-2 rounded-2xl border border-border bg-card p-4 hover:border-primary/40 transition-colors">
-      <Icon className="size-5 text-primary" />
-      <span className="text-sm font-medium text-foreground">{label}</span>
-    </Link>
-  );
+function Stat({ label, value, detail, icon: Icon }: { label: string; value: string; detail: string; icon: React.ComponentType<{ className?: string }> }) {
+  return <div className="rounded-2xl border border-border bg-card p-5"><div className="flex items-center justify-between"><span className="text-xs uppercase tracking-wide text-light-text">{label}</span><Icon className="size-4 text-primary" /></div><div className="mt-3 font-heading font-bold text-xl text-foreground">{value}</div><div className="text-xs text-body mt-1">{detail}</div></div>;
 }
-
-function Section({ title, href, children }: { title: string; href: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-semibold text-foreground">{title}</h3>
-        <Link href={href} className="text-xs text-primary hover:underline">View all</Link>
-      </div>
-      {children}
-    </div>
-  );
+function AssignmentCard({ icon: Icon, title, value, detail, href }: { icon: React.ComponentType<{ className?: string }>; title: string; value: string; detail: string; href?: string }) {
+  const content = <><div className="flex items-center gap-2 text-xs text-light-text"><Icon className="size-4 text-primary" />{title}</div><div className="mt-3 font-semibold text-foreground">{value}</div><div className="mt-1 text-xs text-body">{detail}</div></>;
+  return href ? <Link href={href} className="rounded-2xl border border-border bg-card p-5 hover:border-primary/40">{content}</Link> : <div className="rounded-2xl border border-border bg-card p-5">{content}</div>;
 }
-
-function Empty({ text }: { text: string }) {
-  return <p className="text-sm text-body py-4 text-center">{text}</p>;
+function Panel({ title, icon: Icon, action, children }: { title: string; icon: React.ComponentType<{ className?: string }>; action?: React.ReactNode; children: React.ReactNode }) {
+  return <div className="rounded-2xl border border-border bg-card p-5"><div className="flex items-center justify-between gap-3 mb-4"><h2 className="font-semibold text-foreground flex items-center gap-2"><Icon className="size-4 text-primary" />{title}</h2>{action}</div>{children}</div>;
 }
-
-function fmt(n: number) {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(n || 0);
+function Ranking({ rows, empty }: { rows: Array<{ id: string; name: string; value: string; detail: string }>; empty: string }) {
+  if (rows.length === 0) return <Empty text={empty} />;
+  return <div className="divide-y divide-border">{rows.map((row, index) => <div key={row.id} className="flex items-center gap-3 py-3"><div className="size-7 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">{index + 1}</div><div className="min-w-0 flex-1"><div className="text-sm font-medium text-foreground truncate">{row.name}</div><div className="text-xs text-body">{row.detail}</div></div><div className="text-sm font-semibold text-foreground">{row.value}</div></div>)}</div>;
 }
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    pending_approval: "bg-warning/10 text-warning",
-    approved: "bg-success/10 text-success",
-    rejected: "bg-destructive/10 text-destructive",
-    converted: "bg-primary/10 text-primary",
-    draft: "bg-muted text-muted-foreground",
-  };
-  const label: Record<string, string> = {
-    pending_approval: "Pending",
-    approved: "Approved",
-    rejected: "Rejected",
-    converted: "Converted",
-    draft: "Draft",
-  };
-  return (
-    <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium", styles[status] ?? "bg-muted text-muted-foreground")}>
-      {label[status] ?? status}
-    </span>
-  );
+function MiniAction({ href, icon: Icon, title, detail }: { href: string; icon: React.ComponentType<{ className?: string }>; title: string; detail: string }) {
+  return <Link href={href} className="rounded-2xl border border-border bg-card p-4 flex items-center gap-3 hover:border-primary/40"><div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center"><Icon className="size-5 text-primary" /></div><div className="flex-1"><div className="text-sm font-medium text-foreground">{title}</div><div className="text-xs text-body">{detail}</div></div><ChevronRight className="size-4 text-light-text" /></Link>;
 }
-
-const ClipboardIcon = ({ className }: { className?: string }) => <ClipboardList className={className} />;
+function Empty({ text }: { text: string }) { return <p className="py-5 text-center text-sm text-body">{text}</p>; }
+function money(value: number) { return new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(Number(value || 0)); }
+function formatDate(value: string) { return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
+function shortDate(value: string) { return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
