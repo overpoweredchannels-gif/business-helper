@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireOwner, requirePermission } from "@/lib/identity/authorization";
 import { SalesRouteRepository } from "@/lib/identity/repositories/sales-route-repository";
 import { logAuditEvent } from "@/lib/identity/audit";
+import { createSupabaseService } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -117,6 +118,78 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const existing = await repository.findById(routeId);
     if (!existing || existing.organization_id !== permission.actor.organizationId) {
       return NextResponse.json({ error: "Route not found." }, { status: 404 });
+    }
+
+    if (body.action === "sync_customers") {
+      const organizationId = permission.actor.organizationId;
+      if (!existing.territory_id) {
+        return NextResponse.json({ error: "Select a territory before adding route customers." }, { status: 400 });
+      }
+      const customerIds: string[] = Array.isArray(body.customer_ids)
+        ? [...new Set<string>(body.customer_ids.filter((value: unknown): value is string => typeof value === "string" && value.length > 0))]
+        : [];
+      const supabase = createSupabaseService();
+      const { data: eligibleCustomers, error: customersError } = customerIds.length
+        ? await supabase
+            .from("customers")
+            .select("id, customer_name, shop_name, address, latitude, longitude")
+            .eq("organization_id", organizationId)
+            .eq("assigned_territory_id", existing.territory_id)
+            .in("id", customerIds)
+        : { data: [], error: null };
+      if (customersError) return NextResponse.json({ error: customersError.message }, { status: 500 });
+      if ((eligibleCustomers ?? []).length !== customerIds.length) {
+        return NextResponse.json({ error: "Every route customer must belong to the route territory." }, { status: 400 });
+      }
+
+      const currentStops = await repository.listStops(routeId);
+      const selectedSet = new Set(customerIds);
+      const removableStopIds = currentStops
+        .filter((stop) => stop.customer_id && !selectedSet.has(stop.customer_id))
+        .map((stop) => stop.id);
+      if (removableStopIds.length) {
+        const { error } = await supabase
+          .from("sales_route_stops")
+          .delete()
+          .eq("organization_id", organizationId)
+          .eq("route_id", routeId)
+          .in("id", removableStopIds);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      const customStopCount = currentStops.filter((stop) => !stop.customer_id).length;
+      if (customerIds.length) {
+        const customerById = new Map((eligibleCustomers ?? []).map((customer) => [String(customer.id), customer]));
+        const rows = customerIds.map((customerId, index) => {
+          const customer = customerById.get(customerId)!;
+          return {
+            organization_id: organizationId,
+            route_id: routeId,
+            customer_id: customerId,
+            stop_order: customStopCount + index + 1,
+            label: customer.shop_name ?? customer.customer_name,
+            address: customer.address,
+            latitude: customer.latitude,
+            longitude: customer.longitude,
+          };
+        });
+        const { error } = await supabase
+          .from("sales_route_stops")
+          .upsert(rows, { onConflict: "route_id,customer_id" });
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      const stops = await repository.listStops(routeId);
+      await logAuditEvent({
+        organizationId: permission.actor.organizationId,
+        actorProfileId: permission.actor.profileId,
+        actorEmail: permission.actor.email,
+        action: "route_customers_synced",
+        entityType: "sales_route",
+        entityId: routeId,
+        description: `Saved ${customerIds.length} customer(s) on route ${existing.name}.`,
+        success: true,
+      });
+      return NextResponse.json({ success: true, stops });
     }
 
     if (body.action === "add_stop") {

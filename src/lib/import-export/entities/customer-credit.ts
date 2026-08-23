@@ -1,6 +1,22 @@
 // TradeOS ERP — Customer Credit Import Config
 
-import type { EntityImportConfig, ImportFieldDef, ImportContext } from "../types";
+import type { EntityImportConfig, ImportContext } from "../types";
+
+const CREDIT_POLICIES = ["cash_only", "limit_only", "days_only", "limit_and_days", "unrestricted"] as const;
+
+function parseCreditPolicy(raw: string): string {
+  const normalized = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const aliases: Record<string, string> = {
+    cash: "cash_only",
+    credit_limit: "limit_only",
+    credit_limit_only: "limit_only",
+    credit_days: "days_only",
+    credit_days_only: "days_only",
+    credit_limit_and_days: "limit_and_days",
+    unlimited: "unrestricted",
+  };
+  return aliases[normalized] ?? normalized;
+}
 
 function parseNumber(raw: string): number | null {
   if (!raw || !raw.trim()) return null;
@@ -12,8 +28,8 @@ function parseNumber(raw: string): number | null {
 export const customerCreditImportConfig: EntityImportConfig = {
   entityKey: "customer_credit",
   entityName: "Customer Credit",
-  tableName: "customer_credit",
-  existingColumns: "id, customer_id, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, credit_policy",
+  tableName: "customers",
+  existingColumns: "id, customer_name, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, credit_policy",
   
   fields: [
     { key: "customer", label: "Customer", type: "select", required: true, preview: true, width: 180, options: async () => [], help: "Customer name (required)." },
@@ -21,7 +37,7 @@ export const customerCreditImportConfig: EntityImportConfig = {
     { key: "credit_days", label: "Credit Days", type: "integer", required: false, preview: true, width: 90, parse: (s) => { const n = Number(s); return Number.isFinite(n) ? n : null; }, help: "Payment due days." },
     { key: "allow_over_limit", label: "Allow Over Limit", type: "boolean", required: false, preview: true, width: 110, parse: (s) => s?.trim().toLowerCase() === "yes" || s?.trim() === "1" || s?.trim().toLowerCase() === "true" ? true : s?.trim().toLowerCase() === "no" || s?.trim() === "0" || s?.trim().toLowerCase() === "false" ? false : null, defaultValue: false },
     { key: "allow_overdue_sales", label: "Allow Overdue Sales", type: "boolean", required: false, preview: true, width: 130, parse: (s) => s?.trim().toLowerCase() === "yes" || s?.trim() === "1" || s?.trim().toLowerCase() === "true" ? true : s?.trim().toLowerCase() === "no" || s?.trim() === "0" || s?.trim().toLowerCase() === "false" ? false : null, defaultValue: false },
-    { key: "credit_policy", label: "Credit Policy", type: "select", required: false, preview: true, width: 120, options: ["strict", "flexible", "none"], defaultValue: "flexible" },
+    { key: "credit_policy", label: "Credit Policy", type: "select", required: false, preview: true, width: 150, options: [...CREDIT_POLICIES], defaultValue: "cash_only", parse: parseCreditPolicy, validate: (value) => CREDIT_POLICIES.includes(String(value) as (typeof CREDIT_POLICIES)[number]) ? null : "Credit Policy must be cash_only, limit_only, days_only, limit_and_days, or unrestricted" },
   ],
 
   uniqueKeys: [["customer"]],
@@ -36,13 +52,11 @@ export const customerCreditImportConfig: EntityImportConfig = {
     if (!customerId) throw new Error("Customer not found: " + v.customer);
     
     return {
-      customer_id: customerId,
       credit_limit: v.credit_limit as number | null,
       credit_days: v.credit_days as number | null,
       allow_over_limit: v.allow_over_limit as boolean ?? false,
       allow_overdue_sales: v.allow_overdue_sales as boolean ?? false,
-      credit_policy: v.credit_policy as "strict" | "flexible" | "none" ?? "flexible",
-      organization_id: ctx.orgId,
+      credit_policy: v.credit_policy as (typeof CREDIT_POLICIES)[number] ?? "cash_only",
     };
   },
 
@@ -52,17 +66,17 @@ export const customerCreditImportConfig: EntityImportConfig = {
     const customerId = await resolveRef(ctx, "customers", v.customer as string, "customer_name");
     if (!customerId) return null;
     const { data } = await ctx.supabase
-      .from("customer_credit")
+      .from("customers")
       .select("id")
       .eq("organization_id", ctx.orgId)
-      .eq("customer_id", customerId)
+      .eq("id", customerId)
       .maybeSingle();
     return data as any;
   },
 
   async applyUpdate(existing, payload, ctx) {
     const { error } = await ctx.supabase
-      .from("customer_credit")
+      .from("customers")
       .update(payload)
       .eq("id", (existing as any).id)
       .eq("organization_id", ctx.orgId);
@@ -84,14 +98,13 @@ export const customerCreditImportConfig: EntityImportConfig = {
       const { createSupabaseService } = await import("@/lib/supabase/server");
       const supabase = createSupabaseService();
       const { data, error } = await supabase
-        .from("customer_credit")
+        .from("customers")
         .select(`
-          id, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, credit_policy,
-          customer:customers(customer_name)
+          id, customer_name, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, credit_policy
         `)
         .eq("organization_id", orgId);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).map((row) => ({ ...row, customer: { customer_name: row.customer_name } }));
     },
   },
 };

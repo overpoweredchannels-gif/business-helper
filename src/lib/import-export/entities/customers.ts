@@ -1,6 +1,6 @@
 // TradeOS ERP — Customers Import Config
 
-import type { EntityImportConfig, ParsedRow, ImportContext } from "../types";
+import type { EntityImportConfig, ImportContext } from "../types";
 
 function parseNumber(raw: string): number | null {
   if (!raw || !raw.trim()) return null;
@@ -17,20 +17,20 @@ function parseBool(raw: string): boolean | null {
   return null;
 }
 
-function parseCreditPolicy(raw: string): "strict" | "flexible" | "none" | null {
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === "strict") return "strict";
-  if (normalized === "flexible") return "flexible";
-  if (normalized === "none") return "none";
-  return null;
-}
+const CREDIT_POLICIES = ["cash_only", "limit_only", "days_only", "limit_and_days", "unrestricted"] as const;
 
-function parsePaymentMethod(raw: string): "cash" | "bank" | "other" | null {
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === "cash") return "cash";
-  if (normalized === "bank") return "bank";
-  if (normalized === "other") return "other";
-  return null;
+function parseCreditPolicy(raw: string): string {
+  const normalized = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const aliases: Record<string, string> = {
+    cash: "cash_only",
+    credit_limit: "limit_only",
+    credit_limit_only: "limit_only",
+    credit_days: "days_only",
+    credit_days_only: "days_only",
+    credit_limit_and_days: "limit_and_days",
+    unlimited: "unrestricted",
+  };
+  return aliases[normalized] ?? normalized;
 }
 
 export const customersImportConfig: EntityImportConfig = {
@@ -50,8 +50,8 @@ export const customersImportConfig: EntityImportConfig = {
     { key: "area", label: "Area", type: "text", required: false, preview: true, width: 120, help: "Area/neighborhood." },
     { key: "address", label: "Address", type: "text", required: false, preview: false, width: 200, help: "Billing/primary address." },
     { key: "shipping_address", label: "Shipping Address", type: "text", required: false, preview: false, width: 200, help: "Shipping address (if different)." },
-    { key: "customer_type", label: "Customer Type", type: "select", required: false, preview: true, width: 120, options: ["regular", "wholesale", "retail", "distributor", "institutional"], help: "Type of customer." },
-    { key: "credit_policy", label: "Credit Policy", type: "select", required: false, preview: true, width: 120, options: ["strict", "flexible", "none"], help: "Credit terms policy." },
+    { key: "customer_type", label: "Customer Type", type: "text", required: false, preview: true, width: 120, defaultValue: "Retailer", help: "Retailer, Wholesaler, or any custom customer type." },
+    { key: "credit_policy", label: "Credit Policy", type: "select", required: false, preview: true, width: 150, options: [...CREDIT_POLICIES], defaultValue: "cash_only", parse: parseCreditPolicy, validate: (value) => CREDIT_POLICIES.includes(String(value) as (typeof CREDIT_POLICIES)[number]) ? null : "Credit Policy must be cash_only, limit_only, days_only, limit_and_days, or unrestricted", help: "Credit terms policy." },
     { key: "credit_limit", label: "Credit Limit", type: "decimal", required: false, preview: true, width: 110, parse: parseNumber, help: "Maximum credit allowed." },
     { key: "credit_days", label: "Credit Days", type: "integer", required: false, preview: true, width: 90, parse: parseNumber, help: "Payment due days." },
     { key: "allow_over_limit", label: "Allow Over Limit", type: "boolean", required: false, preview: true, width: 110, parse: parseBool, defaultValue: false },
@@ -88,8 +88,8 @@ export const customersImportConfig: EntityImportConfig = {
       area: v.area ? String(v.area).trim() : null,
       address: v.address ? String(v.address).trim() : null,
       shipping_address: v.shipping_address ? String(v.shipping_address).trim() : null,
-      customer_type: v.customer_type ? String(v.customer_type).trim() : null,
-      credit_policy: v.credit_policy as "strict" | "flexible" | "none" | null,
+      customer_type: v.customer_type ? String(v.customer_type).trim() : "Retailer",
+      credit_policy: v.credit_policy as (typeof CREDIT_POLICIES)[number] ?? "cash_only",
       credit_limit: v.credit_limit as number | null,
       credit_days: v.credit_days as number | null,
       allow_over_limit: v.allow_over_limit as boolean ?? false,

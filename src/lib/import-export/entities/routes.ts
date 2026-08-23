@@ -2,14 +2,6 @@
 
 import type { EntityImportConfig, ImportFieldDef, ImportContext } from "../types";
 
-function parseBool(raw: string): boolean | null {
-  const normalized = raw.trim().toLowerCase();
-  if (!normalized) return null;
-  if (["yes", "true", "1", "y", "on"].includes(normalized)) return true;
-  if (["no", "false", "0", "n", "off", "none"].includes(normalized)) return false;
-  return null;
-}
-
 export const routesImportConfig: EntityImportConfig = {
   entityKey: "routes",
   entityName: "Sales Routes",
@@ -77,26 +69,46 @@ export const routesImportConfig: EntityImportConfig = {
       const routeId = item.id;
       if (!routeId || !v.stops) continue;
       
-      try {
-        const stops = Array.isArray(v.stops) ? v.stops : JSON.parse(String(v.stops));
-        if (!Array.isArray(stops)) continue;
-        
-        for (const stop of stops) {
-          const customerId = stop.customer ? await resolveRef(ctx, "customers", stop.customer) : null;
-          if (!customerId) continue;
-          
-          await ctx.supabase
-            .from("sales_route_stops")
-            .upsert({
-              route_id: routeId,
-              organization_id: ctx.orgId,
-              customer_id: customerId,
-              stop_order: Number(stop.stop_order) || 0,
-              label: stop.label ? String(stop.label).trim() : null,
-            }, { onConflict: "route_id,customer_id" });
+      const stops = Array.isArray(v.stops) ? v.stops : JSON.parse(String(v.stops));
+      if (!Array.isArray(stops)) throw new Error(`Stops for route ${String(v.name ?? routeId)} must be a JSON array.`);
+
+      const { data: route, error: routeError } = await ctx.supabase
+        .from("sales_routes")
+        .select("territory_id, assigned_salesman_id")
+        .eq("id", routeId)
+        .eq("organization_id", ctx.orgId)
+        .single();
+      if (routeError) throw routeError;
+
+      for (const stop of stops) {
+        const customerId = stop.customer ? await resolveRef(ctx, "customers", String(stop.customer), "customer_name") : null;
+        if (!customerId) throw new Error(`Customer not found for route ${String(v.name ?? routeId)}: ${String(stop.customer ?? "")}`);
+
+        const { error: stopError } = await ctx.supabase
+          .from("sales_route_stops")
+          .upsert({
+            route_id: routeId,
+            organization_id: ctx.orgId,
+            customer_id: customerId,
+            stop_order: Number(stop.stop_order) || 0,
+            label: stop.label ? String(stop.label).trim() : null,
+            address: stop.address ? String(stop.address).trim() : null,
+            latitude: Number.isFinite(Number(stop.latitude)) ? Number(stop.latitude) : null,
+            longitude: Number.isFinite(Number(stop.longitude)) ? Number(stop.longitude) : null,
+          }, { onConflict: "route_id,customer_id" });
+        if (stopError) throw stopError;
+
+        const customerAssignment: Record<string, string> = {};
+        if (route.territory_id) customerAssignment.assigned_territory_id = route.territory_id;
+        if (route.assigned_salesman_id) customerAssignment.assigned_salesman_id = route.assigned_salesman_id;
+        if (Object.keys(customerAssignment).length > 0) {
+          const { error: customerError } = await ctx.supabase
+            .from("customers")
+            .update(customerAssignment)
+            .eq("id", customerId)
+            .eq("organization_id", ctx.orgId);
+          if (customerError) throw customerError;
         }
-      } catch {
-        // Ignore stops parsing errors
       }
     }
   },
@@ -110,6 +122,7 @@ export const routesImportConfig: EntityImportConfig = {
       { key: "route_frequency", label: "Frequency" },
       { key: "is_active", label: "Active", transform: (v) => v ? "Yes" : "No" },
       { key: "assigned_salesman", label: "Salesman", transform: (v) => (v as any)?.full_name ?? "" },
+      { key: "stops", label: "Stops (JSON)", transform: (v) => JSON.stringify(Array.isArray(v) ? v.map((stop: any) => ({ customer: stop.customer?.customer_name ?? "", stop_order: stop.stop_order ?? 0, label: stop.label ?? null, address: stop.address ?? null, latitude: stop.latitude ?? null, longitude: stop.longitude ?? null })) : []) },
     ],
     async fetchData(orgId) {
       const { createSupabaseService } = await import("@/lib/supabase/server");
@@ -119,7 +132,8 @@ export const routesImportConfig: EntityImportConfig = {
         .select(`
           id, name, description, route_frequency, is_active,
           territory:territories!territory_id(name),
-          assigned_salesman:employees!assigned_salesman_id(full_name)
+          assigned_salesman:employees!assigned_salesman_id(full_name),
+          stops:sales_route_stops(stop_order, label, address, latitude, longitude, customer:customers(customer_name))
         `)
         .eq("organization_id", orgId)
         .order("name", { ascending: true });

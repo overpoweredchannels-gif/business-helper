@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Employee, EmployeeDesignation } from "@/lib/tradeos/types";
+import { Fragment, useEffect, useState } from "react";
+import { Customer, Employee, EmployeeDesignation, SalesRoute, SalesRouteStop, Territory } from "@/lib/tradeos/types";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { buildWhatsAppUrl, buildWhatsAppInviteMessage, designationLabel } from "@/lib/identity/staff-invitation";
 
@@ -69,6 +69,18 @@ const emptyForm: Record<string, string> = {
   assigned_route_id: "",
 };
 
+type EmployeeSummary = Employee & {
+  assigned_route_name?: string | null;
+  assigned_territory_name?: string | null;
+  assigned_customer_count: number;
+  invoice_count: number;
+  authored_invoice_count: number;
+  total_sales: number;
+  remaining_balance: number;
+  unpaid_invoices: number;
+  customers: Array<{ id: string; customer_name: string; shop_name?: string | null; invoice_count: number; total_sales: number; remaining_balance: number; unpaid_invoices: number }>;
+};
+
 export default function EmployeeManagement() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [form, setForm] = useState<Record<string, string>>({ ...emptyForm });
@@ -78,6 +90,15 @@ export default function EmployeeManagement() {
   const [loading, setLoading] = useState(true);
   const [organizationName, setOrganizationName] = useState("your organization");
   const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"management" | "profiles">("management");
+  const [territories, setTerritories] = useState<Territory[]>([]);
+  const [routes, setRoutes] = useState<SalesRoute[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [routeStops, setRouteStops] = useState<SalesRouteStop[]>([]);
+  const [assignmentScope, setAssignmentScope] = useState<"route_only" | "route_all" | "selected">("route_only");
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
+  const [summaries, setSummaries] = useState<EmployeeSummary[]>([]);
+  const [expandedProfileId, setExpandedProfileId] = useState<string | null>(null);
 
   const loadOrganization = async () => {
     try {
@@ -93,8 +114,12 @@ export default function EmployeeManagement() {
     try {
       setLoading(true);
       loadOrganization();
-      const res = await authorizedFetch("/api/identity/employees");
-      const data = await res.json();
+      const [res, optionsRes, summariesRes] = await Promise.all([
+        authorizedFetch("/api/identity/employees"),
+        authorizedFetch("/api/customers/assignment-options"),
+        authorizedFetch("/api/identity/employees/summaries"),
+      ]);
+      const [data, optionsData, summariesData] = await Promise.all([res.json(), optionsRes.json(), summariesRes.json()]);
       if (res.status === 403) {
         setIsOwner(false);
         setMessage({ type: "error", text: data.error || "Access denied" });
@@ -103,6 +128,15 @@ export default function EmployeeManagement() {
       } else {
         setMessage({ type: "error", text: data.error || "Failed to load employees" });
       }
+      if (optionsData.ok) {
+        setTerritories(optionsData.territories ?? []);
+        setRoutes(optionsData.routes ?? []);
+        setRouteStops(optionsData.routeStops ?? []);
+      }
+      if (summariesData.ok) setSummaries(summariesData.employees ?? []);
+      const customerRes = await authorizedFetch("/api/customers");
+      const customerData = await customerRes.json();
+      if (Array.isArray(customerData.customers)) setCustomers(customerData.customers);
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
     } finally {
@@ -121,6 +155,8 @@ export default function EmployeeManagement() {
   const resetForm = () => {
     setForm({ ...emptyForm });
     setEditingId(null);
+    setAssignmentScope("route_only");
+    setSelectedCustomerIds([]);
   };
 
   const startEdit = (employee: Employee) => {
@@ -139,6 +175,8 @@ export default function EmployeeManagement() {
       assigned_territory_id: employee.assigned_territory_id ?? "",
       assigned_route_id: employee.assigned_route_id ?? "",
     });
+    setAssignmentScope("selected");
+    setSelectedCustomerIds(customers.filter((customer) => customer.assigned_salesman_id === employee.id).map((customer) => customer.id));
   };
 
   const save = async () => {
@@ -157,6 +195,18 @@ export default function EmployeeManagement() {
       );
       const data = await res.json();
       if (data.employee) {
+        const assignmentRes = await authorizedFetch(`/api/identity/employees/${data.employee.id}/assignment`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            territory_id: form.assigned_territory_id || null,
+            route_id: form.assigned_route_id || null,
+            assignment_scope: assignmentScope,
+            customer_ids: selectedCustomerIds,
+          }),
+        });
+        const assignmentData = await assignmentRes.json();
+        if (!assignmentRes.ok || !assignmentData.ok) throw new Error(assignmentData.error ?? "Employee saved, but assignment failed");
         setMessage({ type: "ok", text: editingId ? "Employee updated." : "Employee added." });
         resetForm();
         load();
@@ -253,6 +303,15 @@ export default function EmployeeManagement() {
     }
   };
 
+  const availableRoutes = routes.filter((route) => !form.assigned_territory_id || route.territory_id === form.assigned_territory_id);
+  const selectedRouteCustomerIdSet = new Set(routeStops.filter((stop) => stop.route_id === form.assigned_route_id && stop.customer_id).map((stop) => String(stop.customer_id)));
+  const eligibleCustomers = customers.filter((customer) => customer.is_active !== false && (
+    form.assigned_route_id
+      ? selectedRouteCustomerIdSet.has(customer.id)
+      : Boolean(form.assigned_territory_id) && customer.assigned_territory_id === form.assigned_territory_id
+  ));
+  const formatMoney = (value: number) => new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(value);
+
   return (
     <div style={{ padding: "1.5rem" }}>
       <div
@@ -290,6 +349,13 @@ export default function EmployeeManagement() {
         </p>
       )}
 
+      <div style={{ display: "flex", gap: "0.5rem", margin: "1rem 0", borderBottom: "1px solid #e5e7eb", paddingBottom: "0.75rem" }}>
+        <button style={{ ...buttonStyle, background: tab === "management" ? "#111827" : "#fff", color: tab === "management" ? "#fff" : "#374151", border: "1px solid #d1d5db" }} onClick={() => setTab("management")}>Employee Management</button>
+        <button style={{ ...buttonStyle, background: tab === "profiles" ? "#111827" : "#fff", color: tab === "profiles" ? "#fff" : "#374151", border: "1px solid #d1d5db" }} onClick={() => setTab("profiles")}>Employee Profiles</button>
+      </div>
+
+      {tab === "management" ? <>
+
       {isOwner && (
         <div
           style={{
@@ -316,6 +382,37 @@ export default function EmployeeManagement() {
               ))}
             </select>
           </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Territory</label>
+            <select style={inputStyle} value={form.assigned_territory_id} onChange={(event) => { setField("assigned_territory_id", event.target.value); setField("assigned_route_id", ""); setSelectedCustomerIds([]); }}>
+              <option value="">No territory</option>
+              {territories.map((territory) => <option key={territory.id} value={territory.id}>{territory.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Route</label>
+            <select style={inputStyle} value={form.assigned_route_id} disabled={!form.assigned_territory_id} onChange={(event) => { setField("assigned_route_id", event.target.value); setSelectedCustomerIds([]); }}>
+              <option value="">No route</option>
+              {availableRoutes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Assign customers</label>
+            <select style={inputStyle} value={assignmentScope} disabled={!form.assigned_territory_id} onChange={(event) => setAssignmentScope(event.target.value as "route_only" | "route_all" | "selected")}>
+              <option value="route_only">Route/territory only</option>
+              <option value="route_all">All customers in selection</option>
+              <option value="selected">Only selected customers</option>
+            </select>
+          </div>
+          {assignmentScope === "selected" && form.assigned_territory_id && (
+            <div style={{ gridColumn: "1 / -1", border: "1px solid #e5e7eb", borderRadius: "0.4rem", padding: "0.75rem" }}>
+              <div style={{ fontSize: "0.78rem", fontWeight: 600, marginBottom: "0.5rem" }}>Choose customers from {form.assigned_route_id ? "this route" : "this territory"}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
+                {eligibleCustomers.map((customer) => <label key={customer.id} style={{ display: "flex", gap: "0.45rem", border: "1px solid #e5e7eb", borderRadius: "0.35rem", padding: "0.45rem", fontSize: "0.75rem" }}><input type="checkbox" checked={selectedCustomerIds.includes(customer.id)} onChange={(event) => setSelectedCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} /><span>{customer.customer_name}{customer.shop_name ? ` · ${customer.shop_name}` : ""}</span></label>)}
+                {eligibleCustomers.length === 0 && <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>No customers are available; add customers to the territory and route first.</span>}
+              </div>
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
             <label style={{ fontSize: "0.75rem", color: "#374151" }}>Phone</label>
             <input style={inputStyle} value={form.phone} onChange={(e) => setField("phone", e.target.value)} placeholder="03xx-xxxxxxx" />
@@ -467,6 +564,31 @@ export default function EmployeeManagement() {
           ))}
         </div>
       )}
+      </> : (
+        <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", minWidth: "980px", borderCollapse: "collapse", fontSize: "0.78rem" }}>
+              <thead><tr style={{ background: "#f9fafb", textAlign: "left", color: "#4b5563" }}><th style={{ padding: "0.7rem" }}>Employee</th><th>Territory / Route</th><th>Customers</th><th>Invoices</th><th>Total Sales</th><th>Remaining</th><th>Unpaid</th><th>Actions</th></tr></thead>
+              <tbody>{summaries.map((employee) => <Fragment key={employee.id}>
+                <tr style={{ borderTop: "1px solid #e5e7eb" }}>
+                  <td style={{ padding: "0.7rem" }}><strong>{employee.full_name}</strong><div style={{ color: "#6b7280", textTransform: "capitalize" }}>{employee.designation}</div></td>
+                  <td>{employee.assigned_territory_name ?? "No territory"}<div style={{ color: "#6b7280" }}>{employee.assigned_route_name ?? "No route"}</div></td>
+                  <td>{employee.assigned_customer_count}</td><td>{employee.invoice_count}<div style={{ color: "#6b7280" }}>{employee.authored_invoice_count} created by employee</div></td>
+                  <td>{formatMoney(employee.total_sales)}</td><td style={{ color: employee.remaining_balance > 0 ? "#b45309" : "#166534", fontWeight: 600 }}>{formatMoney(employee.remaining_balance)}</td><td>{employee.unpaid_invoices}</td>
+                  <td><div style={{ display: "flex", gap: "0.35rem" }}><button style={smallProfileButton} onClick={() => setExpandedProfileId((current) => current === employee.id ? null : employee.id)}>{expandedProfileId === employee.id ? "Close" : "Customers"}</button><button style={smallProfileButton} onClick={() => { startEdit(employee); setTab("management"); }}>Assign</button></div></td>
+                </tr>
+                {expandedProfileId === employee.id && <tr key={`${employee.id}-customers`}><td colSpan={8} style={{ padding: "0.8rem", background: "#fafafa" }}>
+                  <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>Assigned customer portfolio</div>
+                  {employee.customers.length === 0 ? <span style={{ color: "#6b7280" }}>No customers assigned.</span> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left", color: "#6b7280" }}><th style={{ padding: "0.4rem" }}>Customer</th><th>Invoices</th><th>Sales</th><th>Remaining</th><th>Unpaid</th></tr></thead><tbody>{employee.customers.map((customer) => <tr key={customer.id} style={{ borderTop: "1px solid #e5e7eb" }}><td style={{ padding: "0.45rem" }}>{customer.customer_name}{customer.shop_name ? ` · ${customer.shop_name}` : ""}</td><td>{customer.invoice_count}</td><td>{formatMoney(customer.total_sales)}</td><td>{formatMoney(customer.remaining_balance)}</td><td>{customer.unpaid_invoices}</td></tr>)}</tbody></table></div>}
+                </td></tr>}
+              </Fragment>)}</tbody>
+            </table>
+          </div>
+          {!loading && summaries.length === 0 && <p style={{ padding: "1rem", color: "#6b7280", fontSize: "0.8rem" }}>No employee profiles found.</p>}
+        </div>
+      )}
     </div>
   );
 }
+
+const smallProfileButton: React.CSSProperties = { padding: "0.3rem 0.6rem", fontSize: "0.72rem", cursor: "pointer", border: "1px solid #d1d5db", borderRadius: "0.35rem", background: "#fff" };

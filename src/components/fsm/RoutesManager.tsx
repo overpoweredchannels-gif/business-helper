@@ -64,6 +64,10 @@ export default function RoutesManager() {
   const [draft, setDraft] = useState<StopDraft>({ ...emptyStopDraft });
   const [loadingStops, setLoadingStops] = useState(false);
   const [salesmanByRoute, setSalesmanByRoute] = useState<Record<string, string>>({});
+  const [selectedRouteCustomerIds, setSelectedRouteCustomerIds] = useState<string[]>([]);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [savingRouteCustomers, setSavingRouteCustomers] = useState(false);
+  const [assignmentScopeByRoute, setAssignmentScopeByRoute] = useState<Record<string, "route_only" | "route_all" | "selected">>({});
 
   const load = async () => {
     try {
@@ -115,6 +119,10 @@ export default function RoutesManager() {
       setMessage({ type: "error", text: "Route name is required." });
       return;
     }
+    if (!territoryId) {
+      setMessage({ type: "error", text: "Select a territory before creating a route." });
+      return;
+    }
     try {
       const res = await authorizedFetch("/api/routes", {
         method: "POST",
@@ -130,6 +138,13 @@ export default function RoutesManager() {
       });
       const data = await res.json();
       if (data.route) {
+        const customerSync = await authorizedFetch(`/api/routes/${data.route.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "sync_customers", customer_ids: selectedRouteCustomerIds }),
+        });
+        const customerSyncData = await customerSync.json();
+        if (!customerSync.ok) throw new Error(customerSyncData.error ?? "Failed to save route customers");
         // Batch-persist any stops planned on the map.
         if (routeStops.length > 0) {
           for (const stop of routeStops) {
@@ -147,10 +162,11 @@ export default function RoutesManager() {
             });
           }
         }
-        setMessage({ type: "ok", text: `Route "${name.trim()}" created with ${routeStops.length} stop(s).` });
+        setMessage({ type: "ok", text: `Route "${name.trim()}" created with ${selectedRouteCustomerIds.length} customer(s) and ${routeStops.length} custom stop(s).` });
         setName("");
         setTerritoryId("");
         setRouteStops([]);
+        setSelectedRouteCustomerIds([]);
         load();
       } else {
         setMessage({ type: "error", text: data.error || "Create failed" });
@@ -161,6 +177,7 @@ export default function RoutesManager() {
   };
 
   const selectedTerritory = territories.find((t) => t.id === territoryId) ?? null;
+  const selectedTerritoryCustomers = customers.filter((customer) => customer.is_active !== false && customer.assigned_territory_id === territoryId);
   const territoryArea =
     selectedTerritory && selectedTerritory.center_lat != null && selectedTerritory.center_lng != null
       ? {
@@ -204,6 +221,7 @@ export default function RoutesManager() {
       const data = await res.json();
       if (Array.isArray(data.stops)) {
         setStops(data.stops);
+        setSelectedRouteCustomerIds(data.stops.filter((stop: SalesRouteStop) => stop.customer_id).map((stop: SalesRouteStop) => String(stop.customer_id)));
       } else {
         setMessage({ type: "error", text: data.error || "Failed to load stops" });
       }
@@ -211,6 +229,25 @@ export default function RoutesManager() {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
     } finally {
       setLoadingStops(false);
+    }
+  };
+
+  const saveRouteCustomers = async (route: SalesRoute) => {
+    setSavingRouteCustomers(true);
+    try {
+      const response = await authorizedFetch(`/api/routes/${route.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync_customers", customer_ids: selectedRouteCustomerIds }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Failed to save route customers");
+      if (Array.isArray(result.stops)) setStops(result.stops);
+      setMessage({ type: "ok", text: `${selectedRouteCustomerIds.length} customer(s) saved on ${route.name}.` });
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Failed to save route customers" });
+    } finally {
+      setSavingRouteCustomers(false);
     }
   };
 
@@ -317,23 +354,37 @@ export default function RoutesManager() {
     }
   };
 
-  const assignSalesman = async (routeId: string, employeeId: string) => {
-    setSalesmanByRoute((prev) => ({ ...prev, [routeId]: employeeId }));
+  const assignSalesman = async (route: SalesRoute, employeeId: string) => {
+    const routeId = route.id;
+    const previousEmployeeId = route.assigned_salesman_id ?? "";
     try {
-      const res = await authorizedFetch(`/api/routes/${routeId}`, {
+      const targetEmployeeId = employeeId || previousEmployeeId;
+      if (!targetEmployeeId) {
+        setMessage({ type: "ok", text: "Route is already unassigned." });
+        return;
+      }
+      const scope = employeeId ? (assignmentScopeByRoute[routeId] ?? "route_only") : "route_only";
+      const res = await authorizedFetch(`/api/identity/employees/${targetEmployeeId}/assignment`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assigned_salesman_id: employeeId || null }),
+        body: JSON.stringify({
+          territory_id: route.territory_id,
+          route_id: employeeId ? routeId : null,
+          assignment_scope: scope,
+          customer_ids: scope === "selected" ? selectedRouteCustomerIds : [],
+        }),
       });
       const data = await res.json();
-      if (data.route) {
-        setMessage({ type: "ok", text: "Salesman assigned." });
-        load();
+      if (data.ok) {
+        setMessage({ type: "ok", text: employeeId ? `Employee and ${data.customer_ids?.length ?? 0} customer(s) assigned.` : "Employee removed from route." });
+        setRoutes((current) => current.map((item) => item.id === routeId ? { ...item, assigned_salesman_id: employeeId || null } : item));
       } else {
         setMessage({ type: "error", text: data.error || "Failed to assign salesman" });
+        setSalesmanByRoute((current) => ({ ...current, [routeId]: previousEmployeeId }));
       }
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setSalesmanByRoute((current) => ({ ...current, [routeId]: previousEmployeeId }));
     }
   };
 
@@ -481,9 +532,9 @@ export default function RoutesManager() {
             <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gulberg Morning" />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Territory</label>
-            <select style={inputStyle} value={territoryId} onChange={(e) => setTerritoryId(e.target.value)}>
-              <option value="">No territory</option>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Territory *</label>
+            <select style={inputStyle} value={territoryId} onChange={(e) => { setTerritoryId(e.target.value); setSelectedRouteCustomerIds([]); setRouteStops([]); }}>
+              <option value="">Select territory</option>
               {territories.map((territory) => (
                 <option key={territory.id} value={territory.id}>
                   {territory.name}
@@ -505,6 +556,20 @@ export default function RoutesManager() {
 
           {territoryId && (
             <div style={{ gridColumn: "1 / -1" }}>
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.375rem", padding: "0.75rem", marginBottom: "0.75rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+                  <div><strong style={{ fontSize: "0.82rem" }}>Route customers</strong><div style={{ fontSize: "0.7rem", color: "#6b7280" }}>Only customers saved in this territory are available.</div></div>
+                  <input style={{ ...inputStyle, minWidth: "220px" }} value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Search territory customers..." />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
+                  {selectedTerritoryCustomers.filter((customer) => !customerSearch.trim() || [customer.customer_name, customer.shop_name, customer.area].some((value) => String(value ?? "").toLowerCase().includes(customerSearch.trim().toLowerCase()))).map((customer) => (
+                    <label key={customer.id} style={{ display: "flex", gap: "0.45rem", padding: "0.45rem", border: "1px solid #e5e7eb", borderRadius: "0.35rem", fontSize: "0.76rem" }}>
+                      <input type="checkbox" checked={selectedRouteCustomerIds.includes(customer.id)} onChange={(event) => setSelectedRouteCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} />
+                      <span><strong>{customer.customer_name}</strong>{customer.shop_name ? ` · ${customer.shop_name}` : ""}<br /><span style={{ color: "#6b7280" }}>{customer.area ?? customer.city ?? "No area"}</span></span>
+                    </label>
+                  ))}
+                </div>
+              </div>
               <div style={{ fontSize: "0.75rem", color: "#374151", marginBottom: "0.25rem" }}>
                 Build the route on the map below — search each stop (shops, streets, areas), then Add stop #1/#2/#3.
                 {territoryArea ? " The green area is your selected territory." : " Note: this territory has no map area saved yet."}
@@ -605,12 +670,31 @@ export default function RoutesManager() {
 
               {expandedRouteId === route.id && (
                 <div style={{ borderTop: "1px solid #e5e7eb", padding: "1rem", background: "#fafafa" }}>
+                  <div style={{ border: "1px solid #e5e7eb", background: "#fff", borderRadius: "0.375rem", padding: "0.75rem", marginBottom: "0.75rem" }}>
+                    <div style={{ fontSize: "0.82rem", fontWeight: 600 }}>Customers on this route</div>
+                    <div style={{ fontSize: "0.7rem", color: "#6b7280", marginBottom: "0.5rem" }}>Only customers assigned to {territories.find((territory) => territory.id === route.territory_id)?.name ?? "this territory"} can be selected.</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
+                      {customers.filter((customer) => customer.is_active !== false && customer.assigned_territory_id === route.territory_id).map((customer) => (
+                        <label key={customer.id} style={{ display: "flex", gap: "0.45rem", padding: "0.45rem", border: "1px solid #e5e7eb", borderRadius: "0.35rem", fontSize: "0.76rem" }}>
+                          <input type="checkbox" checked={selectedRouteCustomerIds.includes(customer.id)} onChange={(event) => setSelectedRouteCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} />
+                          <span>{customer.customer_name}{customer.shop_name ? ` · ${customer.shop_name}` : ""}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <button style={{ ...smallButtonStyle, marginTop: "0.6rem" }} disabled={savingRouteCustomers} onClick={() => saveRouteCustomers(route)}>{savingRouteCustomers ? "Saving..." : `Save ${selectedRouteCustomerIds.length} Route Customer(s)`}</button>
+                  </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
-                    <label style={{ fontSize: "0.75rem", color: "#374151" }}>Assigned salesman</label>
+                    <label style={{ fontSize: "0.75rem", color: "#374151" }}>Customer assignment</label>
+                    <select style={{ ...inputStyle, padding: "0.375rem 0.75rem", fontSize: "0.75rem" }} value={assignmentScopeByRoute[route.id] ?? "route_only"} onChange={(event) => setAssignmentScopeByRoute((current) => ({ ...current, [route.id]: event.target.value as "route_only" | "route_all" | "selected" }))}>
+                      <option value="route_only">Assign route only</option>
+                      <option value="route_all">Assign all route customers</option>
+                      <option value="selected">Assign selected route customers</option>
+                    </select>
+                    <label style={{ fontSize: "0.75rem", color: "#374151" }}>Assigned employee</label>
                     <select
                       style={{ ...inputStyle, padding: "0.375rem 0.75rem", fontSize: "0.75rem" }}
                       value={salesmanByRoute[route.id] ?? ""}
-                      onChange={(e) => assignSalesman(route.id, e.target.value)}
+                      onChange={(e) => setSalesmanByRoute((current) => ({ ...current, [route.id]: e.target.value }))}
                     >
                       <option value="">Unassigned</option>
                       {salesmen
@@ -618,9 +702,10 @@ export default function RoutesManager() {
                         .map((s) => (
                           <option key={s.id} value={s.id}>
                             {s.full_name} ({s.designation.replace(/_/g, " ")})
-                          </option>
-                        ))}
+                      </option>
+                    ))}
                     </select>
+                    <button style={smallButtonStyle} onClick={() => assignSalesman(route, salesmanByRoute[route.id] ?? "")}>Save Assignment</button>
                   </div>
 
                   <h4 style={{ fontSize: "0.875rem", fontWeight: 600, margin: "0 0 0.5rem" }}>Stops</h4>
@@ -702,7 +787,7 @@ export default function RoutesManager() {
                         onChange={(e) => setDraftField("customerId", e.target.value)}
                       >
                         <option value="">Custom stop</option>
-                        {customers.map((customer) => (
+                        {customers.filter((customer) => customer.assigned_territory_id === route.territory_id).map((customer) => (
                           <option key={customer.id} value={customer.id}>
                             {customer.customer_name}
                             {customer.shop_name ? ` (${customer.shop_name})` : ""}

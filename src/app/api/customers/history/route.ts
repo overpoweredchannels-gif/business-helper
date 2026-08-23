@@ -12,11 +12,11 @@ export async function GET(request: NextRequest) {
 
   const organizationId = permission.actor.organizationId;
   const supabase = createSupabaseService();
-  const [customersResult, transactionsResult, paymentsResult, ordersResult, productsResult, profilesResult] =
+  const [customersResult, transactionsResult, paymentsResult, allocationsResult, ordersResult, productsResult, profilesResult] =
     await Promise.all([
       supabase
         .from("customers")
-        .select("id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, is_active, notes")
+        .select("id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, is_active, notes, assigned_salesman_id, assigned_territory_id")
         .eq("organization_id", organizationId)
         .order("customer_name", { ascending: true }),
       supabase
@@ -29,6 +29,10 @@ export async function GET(request: NextRequest) {
         .select("id, customer_id, amount, payment_date, payment_method, notes, created_at")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("customer_payment_allocations")
+        .select("customer_payment_id, sales_transaction_id, amount")
+        .eq("organization_id", organizationId),
       supabase
         .from("sales_orders")
         .select("id, customer_id, so_number, status, order_date, expected_date, created_at, created_by_profile_id")
@@ -48,6 +52,7 @@ export async function GET(request: NextRequest) {
     customersResult.error,
     transactionsResult.error,
     paymentsResult.error,
+    allocationsResult.error,
     ordersResult.error,
     productsResult.error,
     profilesResult.error,
@@ -86,6 +91,7 @@ export async function GET(request: NextRequest) {
     transactions: transactionsResult.data ?? [],
     salesItems: itemsResult.data ?? [],
     payments: paymentsResult.data ?? [],
+    allocations: allocationsResult.data ?? [],
     orders: ordersResult.data ?? [],
     orderItems: orderItemsResult.data ?? [],
     products: productsResult.data ?? [],

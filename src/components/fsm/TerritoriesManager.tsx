@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Territory } from "@/lib/tradeos/types";
+import { Customer, Territory } from "@/lib/tradeos/types";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import TerritoryMapPicker, { TerritoryGeoSelection } from "@/components/fsm/TerritoryMapPicker";
 
@@ -43,11 +43,19 @@ export default function TerritoriesManager() {
   const [isOwner, setIsOwner] = useState(true);
   const [geoSelection, setGeoSelection] = useState<TerritoryGeoSelection | null>(null);
   const [useGeoName, setUseGeoName] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [expandedTerritoryId, setExpandedTerritoryId] = useState<string | null>(null);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [savingCustomers, setSavingCustomers] = useState(false);
 
   const load = async () => {
     try {
-      const res = await authorizedFetch("/api/territories");
-      const data = await res.json();
+      const [res, customerRes] = await Promise.all([
+        authorizedFetch("/api/territories"),
+        authorizedFetch("/api/customers"),
+      ]);
+      const [data, customerData] = await Promise.all([res.json(), customerRes.json()]);
       if (res.status === 403) {
         setIsOwner(false);
         setMessage({ type: "error", text: data.error || "Access denied" });
@@ -56,6 +64,7 @@ export default function TerritoriesManager() {
       } else {
         setMessage({ type: "error", text: data.error || "Failed to load territories" });
       }
+      if (Array.isArray(customerData.customers)) setCustomers(customerData.customers);
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
     }
@@ -89,12 +98,43 @@ export default function TerritoriesManager() {
         setDescription("");
         setGeoSelection(null);
         setUseGeoName(false);
-        load();
+        await load();
+        setExpandedTerritoryId(data.territory.id);
+        setSelectedCustomerIds([]);
       } else {
         setMessage({ type: "error", text: data.error || "Create failed" });
       }
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+    }
+  };
+
+  const openCustomers = (territoryId: string) => {
+    if (expandedTerritoryId === territoryId) {
+      setExpandedTerritoryId(null);
+      return;
+    }
+    setExpandedTerritoryId(territoryId);
+    setSelectedCustomerIds(customers.filter((customer) => customer.assigned_territory_id === territoryId).map((customer) => customer.id));
+    setCustomerSearch("");
+  };
+
+  const saveCustomers = async (territory: Territory) => {
+    setSavingCustomers(true);
+    try {
+      const response = await authorizedFetch(`/api/territories/${territory.id}/customers`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_ids: selectedCustomerIds }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error ?? "Failed to save territory customers");
+      setMessage({ type: "ok", text: `${selectedCustomerIds.length} customer(s) saved in ${territory.name}.` });
+      await load();
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Failed to save territory customers" });
+    } finally {
+      setSavingCustomers(false);
     }
   };
 
@@ -184,17 +224,12 @@ export default function TerritoriesManager() {
         <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>No territories yet.</p>
       ) : (
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
-          {territories.map((territory, index) => (
-            <div
-              key={territory.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "0.75rem 1rem",
-                borderTop: index === 0 ? "none" : "1px solid #e5e7eb",
-              }}
-            >
+          {territories.map((territory, index) => {
+            const memberCount = customers.filter((customer) => customer.assigned_territory_id === territory.id).length;
+            const query = customerSearch.trim().toLowerCase();
+            const visibleCustomers = customers.filter((customer) => customer.is_active !== false && (!query || [customer.customer_name, customer.shop_name, customer.city, customer.area].some((value) => String(value ?? "").toLowerCase().includes(query))));
+            return <div key={territory.id} style={{ borderTop: index === 0 ? "none" : "1px solid #e5e7eb" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 1rem", gap: "0.75rem", flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{territory.name}</div>
                 {territory.description && (
@@ -206,7 +241,12 @@ export default function TerritoriesManager() {
                     {territory.radius_km != null ? ` · ${territory.radius_km} km radius` : ""}
                   </div>
                 )}
+                <div style={{ fontSize: "0.72rem", color: "#4b5563", marginTop: "0.2rem" }}>{memberCount} customer(s)</div>
               </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <button style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }} onClick={() => openCustomers(territory.id)}>
+                {expandedTerritoryId === territory.id ? "Close Customers" : "Manage Customers"}
+              </button>
               <span
                 style={{
                   fontSize: "0.7rem",
@@ -218,8 +258,27 @@ export default function TerritoriesManager() {
               >
                 {territory.is_active ? "Active" : "Inactive"}
               </span>
+              </div>
+              </div>
+              {expandedTerritoryId === territory.id && (
+                <div style={{ borderTop: "1px solid #e5e7eb", background: "#fafafa", padding: "1rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+                    <div><div style={{ fontSize: "0.875rem", fontWeight: 600 }}>Customers in {territory.name}</div><div style={{ fontSize: "0.72rem", color: "#6b7280" }}>Selecting a customer here moves them from any previous territory.</div></div>
+                    <input style={{ ...inputStyle, minWidth: "240px" }} value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Search customers..." />
+                  </div>
+                  <div style={{ maxHeight: "300px", overflowY: "auto", display: "grid", gap: "0.4rem", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+                    {visibleCustomers.map((customer) => (
+                      <label key={customer.id} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", border: "1px solid #e5e7eb", borderRadius: "0.375rem", padding: "0.55rem", background: "#fff", fontSize: "0.78rem" }}>
+                        <input type="checkbox" checked={selectedCustomerIds.includes(customer.id)} onChange={(event) => setSelectedCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} />
+                        <span><strong>{customer.customer_name}</strong>{customer.shop_name ? ` · ${customer.shop_name}` : ""}<br /><span style={{ color: "#6b7280" }}>{[customer.area, customer.city].filter(Boolean).join(", ") || "No area"}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                  <button style={{ ...buttonStyle, marginTop: "0.75rem" }} disabled={savingCustomers} onClick={() => saveCustomers(territory)}>{savingCustomers ? "Saving..." : `Save ${selectedCustomerIds.length} Customer(s)`}</button>
+                </div>
+              )}
             </div>
-          ))}
+          })}
         </div>
       )}
     </div>
