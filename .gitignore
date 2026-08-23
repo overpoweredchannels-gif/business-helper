@@ -2,6 +2,11 @@
 
 # dependencies
 /node_modules
+/mobile/node_modules
+/mobile/.expo
+/mobile/android
+/mobile/ios
+/mobile/dist
 /.pnp
 .pnp.*
 .yarn/*
@@ -32,6 +37,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!/mobile/.env.example
 
 # vercel
 .vercel

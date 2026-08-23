@@ -64,12 +64,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (requestedIds.length) {
     const { data: validCustomers, error: validationError } = await supabase
       .from("customers")
-      .select("id")
+      .select("id, assigned_territory_id")
       .eq("organization_id", organizationId)
       .in("id", requestedIds);
     if (validationError) return NextResponse.json({ ok: false, error: validationError.message }, { status: 500 });
     if ((validCustomers ?? []).length !== requestedIds.length) {
       return NextResponse.json({ ok: false, error: "One or more customers do not belong to this organization." }, { status: 400 });
+    }
+    if ((validCustomers ?? []).some((customer) => customer.assigned_territory_id && customer.assigned_territory_id !== id)) {
+      return NextResponse.json({ ok: false, error: "A selected customer already belongs to another territory. Remove that assignment first." }, { status: 409 });
     }
   }
 

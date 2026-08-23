@@ -56,11 +56,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { dutySessionId, latitude, longitude, accuracy, speed, heading, altitude, capturedAt } = body;
 
-    if (!dutySessionId) return errorResponse("dutySessionId is required");
-    if (typeof latitude !== "number" || typeof longitude !== "number") return errorResponse("latitude and longitude must be numbers");
+    if (typeof dutySessionId !== "string" || !dutySessionId.trim()) return errorResponse("dutySessionId is required");
+    if (typeof latitude !== "number" || !Number.isFinite(latitude) || typeof longitude !== "number" || !Number.isFinite(longitude)) {
+      return errorResponse("latitude and longitude must be finite numbers");
+    }
     if (latitude < -90 || latitude > 90) return errorResponse("latitude out of range");
     if (longitude < -180 || longitude > 180) return errorResponse("longitude out of range");
-    if (!capturedAt) return errorResponse("capturedAt is required");
+    if (typeof capturedAt !== "string" || !capturedAt.trim()) return errorResponse("capturedAt must be a non-empty date string");
+
+    const capturedAtDate = new Date(capturedAt);
+    if (Number.isNaN(capturedAtDate.getTime())) return errorResponse("capturedAt must be a valid date");
+    if (capturedAtDate.getTime() > Date.now() + 5 * 60 * 1000) {
+      return errorResponse("capturedAt cannot be more than five minutes in the future");
+    }
+    for (const [name, value] of Object.entries({ accuracy, speed, heading, altitude })) {
+      if (value != null && (typeof value !== "number" || !Number.isFinite(value))) {
+        return errorResponse(`${name} must be a finite number or null`);
+      }
+    }
+    if (typeof accuracy === "number" && accuracy < 0) return errorResponse("accuracy cannot be negative");
+
+    const capturedAtIso = capturedAtDate.toISOString();
 
     const serviceClient = createClient(supabaseUrl(), supabaseKey(), {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -68,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     const { data: dutySession, error: dutyError } = await serviceClient
       .from("staff_duty_sessions")
-      .select("id, status")
+      .select("id, status, started_at, ended_at")
       .eq("id", dutySessionId)
       .eq("organization_id", organizationId)
       .eq("profile_id", profileId)
@@ -76,7 +92,30 @@ export async function POST(request: NextRequest) {
 
     if (dutyError) return errorResponse(`Duty session lookup failed: ${dutyError.message}`, 500);
     if (!dutySession) return errorResponse("Duty session not found for this user.", 404);
-    if (dutySession.status !== "on_duty") return errorResponse("Duty session is not active.", 400);
+
+    const sessionStart = new Date(dutySession.started_at).getTime();
+    const sessionEnd = dutySession.ended_at ? new Date(dutySession.ended_at).getTime() : null;
+    const captureTime = capturedAtDate.getTime();
+    const clockToleranceMs = 5 * 60 * 1000;
+    if (!Number.isFinite(sessionStart)) return errorResponse("Duty session has an invalid start time.", 500);
+    if (sessionEnd != null && !Number.isFinite(sessionEnd)) return errorResponse("Duty session has an invalid end time.", 500);
+    if (captureTime < sessionStart - clockToleranceMs || (sessionEnd != null && captureTime > sessionEnd + clockToleranceMs)) {
+      return errorResponse("Location time falls outside this duty session.", 400);
+    }
+    if (dutySession.status !== "on_duty" && sessionEnd == null) {
+      return errorResponse("Duty session is not active.", 400);
+    }
+
+    const { data: existingPoint, error: duplicateError } = await serviceClient
+      .from("staff_location_points")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("profile_id", profileId)
+      .eq("duty_session_id", dutySessionId)
+      .eq("captured_at", capturedAtIso)
+      .maybeSingle();
+    if (duplicateError) return errorResponse(`Duplicate check failed: ${duplicateError.message}`, 500);
+    if (existingPoint) return NextResponse.json({ ok: true, pointId: existingPoint.id, duplicate: true });
 
     const point = {
       organization_id: organizationId,
@@ -88,7 +127,7 @@ export async function POST(request: NextRequest) {
       speed: speed ?? null,
       heading: heading ?? null,
       altitude: altitude ?? null,
-      captured_at: capturedAt,
+      captured_at: capturedAtIso,
     };
 
     const { data, error } = await serviceClient.from("staff_location_points").insert(point).select("id").single();

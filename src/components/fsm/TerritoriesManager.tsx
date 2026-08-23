@@ -227,7 +227,11 @@ export default function TerritoriesManager() {
           {territories.map((territory, index) => {
             const memberCount = customers.filter((customer) => customer.assigned_territory_id === territory.id).length;
             const query = customerSearch.trim().toLowerCase();
-            const visibleCustomers = customers.filter((customer) => customer.is_active !== false && (!query || [customer.customer_name, customer.shop_name, customer.city, customer.area].some((value) => String(value ?? "").toLowerCase().includes(query))));
+            const visibleCustomers = customers.filter((customer) =>
+              customer.is_active !== false
+              && (!customer.assigned_territory_id || customer.assigned_territory_id === territory.id)
+              && (!query || [customer.customer_name, customer.shop_name, customer.city, customer.area].some((value) => String(value ?? "").toLowerCase().includes(query)))
+            );
             return <div key={territory.id} style={{ borderTop: index === 0 ? "none" : "1px solid #e5e7eb" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 1rem", gap: "0.75rem", flexWrap: "wrap" }}>
               <div>
@@ -263,7 +267,7 @@ export default function TerritoriesManager() {
               {expandedTerritoryId === territory.id && (
                 <div style={{ borderTop: "1px solid #e5e7eb", background: "#fafafa", padding: "1rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
-                    <div><div style={{ fontSize: "0.875rem", fontWeight: 600 }}>Customers in {territory.name}</div><div style={{ fontSize: "0.72rem", color: "#6b7280" }}>Selecting a customer here moves them from any previous territory.</div></div>
+                    <div><div style={{ fontSize: "0.875rem", fontWeight: 600 }}>Customers in {territory.name}</div><div style={{ fontSize: "0.72rem", color: "#6b7280" }}>Only unassigned customers and existing members of this territory are available.</div></div>
                     <input style={{ ...inputStyle, minWidth: "240px" }} value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Search customers..." />
                   </div>
                   <div style={{ maxHeight: "300px", overflowY: "auto", display: "grid", gap: "0.4rem", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
