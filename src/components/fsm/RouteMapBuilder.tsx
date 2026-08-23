@@ -39,12 +39,14 @@ export default function RouteMapBuilder({
   const mapRef = useRef<any>(null);
   const circleRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const pickedMarkerRef = useRef<any>(null);
   const polylineRef = useRef<any>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<any>(null);
 
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const [searchValue, setSearchValue] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [pickedPlace, setPickedPlace] = useState<{
@@ -53,6 +55,32 @@ export default function RouteMapBuilder({
     lat: number;
     lng: number;
   } | null>(null);
+
+  const selectMapPlace = useCallback((place: { name: string; address: string; lat: number; lng: number }) => {
+    setPickedPlace(place);
+    setSearchValue(`${place.name}${place.address && place.address !== place.name ? ` — ${place.address}` : ""}`);
+    setSelectionError(null);
+    if (pickedMarkerRef.current) pickedMarkerRef.current.setMap(null);
+    if (googleRef.current && mapRef.current) {
+      pickedMarkerRef.current = new googleRef.current.maps.Marker({
+        position: { lat: place.lat, lng: place.lng },
+        map: mapRef.current,
+        title: place.name,
+        animation: googleRef.current.maps.Animation.DROP,
+      });
+      mapRef.current.setCenter({ lat: place.lat, lng: place.lng });
+      mapRef.current.setZoom(17);
+    }
+  }, []);
+
+  const clearPickedPlace = () => {
+    setPickedPlace(null);
+    setSelectionError(null);
+    if (pickedMarkerRef.current) {
+      pickedMarkerRef.current.setMap(null);
+      pickedMarkerRef.current = null;
+    }
+  };
 
   // Keep territory area in sync (draw circle).
   useEffect(() => {
@@ -143,6 +171,50 @@ export default function RouteMapBuilder({
     });
     mapRef.current = map;
 
+    const reverseGeocode = (lat: number, lng: number) => {
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode({ location: { lat, lng } }, (results: any[], geocodeStatus: string) => {
+        const result = geocodeStatus === "OK" ? results?.[0] : null;
+        if (!result) {
+          setSelectionError("Google Maps could not identify this point. Search for the shop or click a labeled place.");
+          return;
+        }
+        selectMapPlace({
+          name: result.formatted_address ?? "Map location",
+          address: result.formatted_address ?? "",
+          lat,
+          lng,
+        });
+      });
+    };
+
+    map.addListener("click", (event: any) => {
+      if (!event.latLng) return;
+      const lat = event.latLng.lat();
+      const lng = event.latLng.lng();
+      if (event.placeId && google.maps.places) {
+        event.stop?.();
+        const places = new google.maps.places.PlacesService(map);
+        places.getDetails(
+          { placeId: event.placeId, fields: ["name", "formatted_address", "geometry"] },
+          (place: any, placeStatus: string) => {
+            if (placeStatus === google.maps.places.PlacesServiceStatus.OK && place?.geometry?.location) {
+              selectMapPlace({
+                name: place.name ?? place.formatted_address ?? "Map location",
+                address: place.formatted_address ?? "",
+                lat: place.geometry.location.lat(),
+                lng: place.geometry.location.lng(),
+              });
+              return;
+            }
+            reverseGeocode(lat, lng);
+          },
+        );
+        return;
+      }
+      reverseGeocode(lat, lng);
+    });
+
     if (territoryArea) {
       circleRef.current = new google.maps.Circle({
         map,
@@ -167,10 +239,7 @@ export default function RouteMapBuilder({
         if (!place || !place.geometry || !place.geometry.location) return;
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
-        map.setCenter({ lat, lng });
-        map.setZoom(16);
-        setSearchValue(`${place.name ?? ""}${place.formatted_address ? ` — ${place.formatted_address}` : ""}`);
-        setPickedPlace({
+        selectMapPlace({
           name: place.name ?? place.formatted_address ?? "Stop",
           address: place.formatted_address ?? "",
           lat,
@@ -180,7 +249,7 @@ export default function RouteMapBuilder({
     }
 
     setStatus("ready");
-  }, [territoryArea]);
+  }, [selectMapPlace, territoryArea]);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,6 +292,10 @@ export default function RouteMapBuilder({
     setPickedPlace(null);
     setSearchValue("");
     setSelectedCustomerId("");
+    if (pickedMarkerRef.current) {
+      pickedMarkerRef.current.setMap(null);
+      pickedMarkerRef.current = null;
+    }
   };
 
   if (loadError) {
@@ -274,7 +347,7 @@ export default function RouteMapBuilder({
           value={searchValue}
           onChange={(e) => {
             setSearchValue(e.target.value);
-            setPickedPlace(null);
+            clearPickedPlace();
           }}
           disabled={status !== "ready"}
           style={{
@@ -302,6 +375,18 @@ export default function RouteMapBuilder({
         >
           {selectedCustomerId ? "Tag customer at stop" : "Add custom stop"} {stops.length + 1}
         </button>
+      </div>
+
+      <div style={{ marginBottom: "0.5rem", border: `1px solid ${pickedPlace ? "#86efac" : "#e5e7eb"}`, borderRadius: "0.375rem", background: pickedPlace ? "#f0fdf4" : "#f9fafb", padding: "0.6rem 0.75rem", fontSize: "0.78rem" }}>
+        {pickedPlace ? (
+          <>
+            <div><strong>Customer:</strong> {customers.find((customer) => customer.id === selectedCustomerId)?.customer_name ?? "Custom location"}</div>
+            <div><strong>Google Maps location:</strong> {pickedPlace.name}</div>
+            <div style={{ color: "#4b5563" }}>{pickedPlace.address || "No formatted address returned"}</div>
+            <div style={{ color: "#6b7280" }}>{pickedPlace.lat.toFixed(6)}, {pickedPlace.lng.toFixed(6)}</div>
+          </>
+        ) : <span style={{ color: "#6b7280" }}>Search for a shop or click a labeled shop/place directly on the map to select its exact location.</span>}
+        {selectionError && <div style={{ color: "#b91c1c", marginTop: "0.25rem" }}>{selectionError}</div>}
       </div>
 
       <div
