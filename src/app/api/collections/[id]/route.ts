@@ -27,7 +27,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const { data: existing } = await supabase
     .from("collections")
-    .select("id, organization_id, status, employee_id, amount, customer_id, notes")
+    .select("id, organization_id, status, employee_id, amount, customer_id, method, reference_number, notes")
     .eq("id", id)
     .eq("organization_id", permission.actor.organizationId)
     .maybeSingle();
@@ -41,41 +41,89 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const now = new Date().toISOString();
 
-  if (body.action === "approve") {
-    // Reduce customer outstanding balance (payment received)
-    const { data: customer, error: customerError } = await supabase
-      .from("customers")
-      .select("outstanding_balance")
-      .eq("id", existing.customer_id)
-      .maybeSingle();
-    if (customerError) {
-      return NextResponse.json({ ok: false, error: `Failed to load customer: ${customerError.message}` }, { status: 400 });
-    }
-    const currentBalance = Number(customer?.outstanding_balance ?? 0);
-    const { error: balanceError } = await supabase
-      .from("customers")
-      .update({ outstanding_balance: Math.max(0, currentBalance - Number(existing.amount)) })
-      .eq("id", existing.customer_id);
-    if (balanceError) {
-      return NextResponse.json({ ok: false, error: `Failed to update customer balance: ${balanceError.message}` }, { status: 400 });
-    }
-  }
-
+  const nextStatus = body.action === "approve" ? "approved" : "rejected";
   const { data: updated, error } = await supabase
     .from("collections")
     .update({
-      status: body.action === "approve" ? "approved" : "rejected",
+      status: nextStatus,
       approved_by: permission.actor.profileId,
       approved_at: now,
       notes: body.notes ?? existing.notes ?? null,
       updated_at: now,
     })
     .eq("id", id)
+    .eq("organization_id", permission.actor.organizationId)
+    .eq("status", "pending")
     .select()
-    .single();
+    .maybeSingle();
+  if (error || !updated) {
+    return NextResponse.json({ ok: false, error: error?.message ?? "Collection was already processed by another approver" }, { status: 409 });
+  }
 
-  if (error) {
-    return NextResponse.json({ ok: false, error: `Failed to update collection: ${error.message}` }, { status: 400 });
+  if (body.action === "approve") {
+    const { data: customer, error: customerError } = await supabase
+      .from("customers")
+      .select("outstanding_balance")
+      .eq("id", existing.customer_id)
+      .eq("organization_id", permission.actor.organizationId)
+      .maybeSingle();
+    if (customerError || !customer) {
+      await supabase.from("collections").update({ status: "pending", approved_by: null, approved_at: null }).eq("id", id).eq("organization_id", permission.actor.organizationId).eq("status", "approved");
+      return NextResponse.json({ ok: false, error: `Failed to load customer: ${customerError?.message ?? "Customer not found"}` }, { status: 400 });
+    }
+    const currentBalance = Number(customer?.outstanding_balance ?? 0);
+    const paymentMethod = existing.method === "bank_transfer" ? "bank" : existing.method === "cash" ? "cash" : "other";
+    const { data: payment, error: paymentError } = await supabase.from("customer_payments").insert({
+      organization_id: permission.actor.organizationId,
+      customer_id: existing.customer_id,
+      amount: Number(existing.amount),
+      payment_date: now.split("T")[0],
+      payment_method: paymentMethod,
+      notes: `Approved collection ${id}${existing.reference_number ? ` (${existing.reference_number})` : ""}`,
+    }).select("id").single();
+    if (paymentError || !payment) {
+      await supabase.from("collections").update({ status: "pending", approved_by: null, approved_at: null }).eq("id", id).eq("organization_id", permission.actor.organizationId).eq("status", "approved");
+      return NextResponse.json({ ok: false, error: `Failed to create customer payment: ${paymentError?.message ?? "No payment id returned"}` }, { status: 400 });
+    }
+    const [{ data: invoices, error: invoicesError }, { data: allocations, error: allocationsError }] = await Promise.all([
+      supabase.from("sales_transactions").select("id, total_amount, sale_date, created_at").eq("organization_id", permission.actor.organizationId).eq("customer_id", existing.customer_id).eq("payment_type", "credit").neq("status", "cancelled").neq("status", "void").order("sale_date", { ascending: true }),
+      supabase.from("customer_payment_allocations").select("sales_transaction_id, amount").eq("organization_id", permission.actor.organizationId),
+    ]);
+    if (invoicesError || allocationsError) {
+      await supabase.from("customer_payments").delete().eq("id", payment.id).eq("organization_id", permission.actor.organizationId);
+      await supabase.from("collections").update({ status: "pending", approved_by: null, approved_at: null }).eq("id", id).eq("organization_id", permission.actor.organizationId).eq("status", "approved");
+      return NextResponse.json({ ok: false, error: invoicesError?.message ?? allocationsError?.message }, { status: 500 });
+    }
+    const allocatedByInvoice = new Map<string, number>();
+    for (const allocation of allocations ?? []) allocatedByInvoice.set(String(allocation.sales_transaction_id), (allocatedByInvoice.get(String(allocation.sales_transaction_id)) ?? 0) + Number(allocation.amount ?? 0));
+    let remaining = Number(existing.amount);
+    const rows: Array<{ organization_id: string; customer_payment_id: string; sales_transaction_id: string; amount: number }> = [];
+    for (const invoice of invoices ?? []) {
+      const due = Math.max(0, Number(invoice.total_amount ?? 0) - (allocatedByInvoice.get(String(invoice.id)) ?? 0));
+      const amount = Math.min(due, remaining);
+      if (amount > 0) rows.push({ organization_id: permission.actor.organizationId, customer_payment_id: payment.id, sales_transaction_id: invoice.id, amount });
+      remaining -= amount;
+      if (remaining <= 0) break;
+    }
+    if (rows.length) {
+      const { error: allocationError } = await supabase.from("customer_payment_allocations").insert(rows);
+      if (allocationError) {
+        await supabase.from("customer_payments").delete().eq("id", payment.id).eq("organization_id", permission.actor.organizationId);
+        await supabase.from("collections").update({ status: "pending", approved_by: null, approved_at: null }).eq("id", id).eq("organization_id", permission.actor.organizationId).eq("status", "approved");
+        return NextResponse.json({ ok: false, error: `Failed to allocate customer payment: ${allocationError.message}` }, { status: 400 });
+      }
+    }
+    const { error: balanceError } = await supabase
+      .from("customers")
+      .update({ outstanding_balance: Math.max(0, currentBalance - Number(existing.amount)) })
+      .eq("id", existing.customer_id)
+      .eq("organization_id", permission.actor.organizationId);
+    if (balanceError) {
+      await supabase.from("customer_payment_allocations").delete().eq("customer_payment_id", payment.id).eq("organization_id", permission.actor.organizationId);
+      await supabase.from("customer_payments").delete().eq("id", payment.id).eq("organization_id", permission.actor.organizationId);
+      await supabase.from("collections").update({ status: "pending", approved_by: null, approved_at: null }).eq("id", id).eq("organization_id", permission.actor.organizationId).eq("status", "approved");
+      return NextResponse.json({ ok: false, error: `Failed to update customer balance: ${balanceError.message}` }, { status: 400 });
+    }
   }
 
   // Notify the employee who recorded it

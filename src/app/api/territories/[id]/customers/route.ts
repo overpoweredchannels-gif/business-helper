@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireOwner, requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { logAuditEvent } from "@/lib/identity/audit";
+import { loadSalesmanAssignmentScope } from "@/lib/sales/salesman-workspace-service";
 
 export const runtime = "nodejs";
 
@@ -18,21 +19,30 @@ async function getTerritory(id: string, organizationId: string) {
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const permission = await requirePermission(request, "field_sales");
+  const permission = await requirePermission(request, "location_view");
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
   const { id } = await params;
+  const canViewTeam = permission.actor.isOwner || permission.actor.role === "manager" || permission.actor.role === "supervisor" || Boolean(permission.actor.permissions?.includes("administration"));
+  const scope = canViewTeam ? null : await loadSalesmanAssignmentScope({ organizationId: permission.actor.organizationId, profileId: permission.actor.profileId });
+  if (!canViewTeam && String(scope?.territory?.id ?? "") !== id) {
+    return NextResponse.json({ ok: false, error: "This territory is not assigned to you." }, { status: 403 });
+  }
   const territory = await getTerritory(id, permission.actor.organizationId);
   if (!territory) return NextResponse.json({ ok: false, error: "Territory not found." }, { status: 404 });
 
   const supabase = createSupabaseService();
-  const { data, error } = await supabase
+  let customerQuery = supabase
     .from("customers")
     .select("id, customer_name, shop_name, city, area, phone, assigned_territory_id, assigned_salesman_id, is_active")
     .eq("organization_id", permission.actor.organizationId)
-    .eq("assigned_territory_id", id)
-    .order("customer_name", { ascending: true });
+    .eq("assigned_territory_id", id);
+  if (!canViewTeam) {
+    if (!scope?.eligibleCustomerIds.length) return NextResponse.json({ ok: true, territory, customers: [] });
+    customerQuery = customerQuery.in("id", scope.eligibleCustomerIds);
+  }
+  const { data, error } = await customerQuery.order("customer_name", { ascending: true });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, territory, customers: data ?? [] });
 }

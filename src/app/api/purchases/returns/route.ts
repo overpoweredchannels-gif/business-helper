@@ -70,6 +70,17 @@ export async function POST(request: NextRequest) {
     );
 
     const supabase = createSupabaseUserClient(getAccessToken(request));
+    const supplierId = String(body?.supplierId ?? "");
+    const purchaseTransactionId = body?.purchaseTransactionId || null;
+    const { data: supplier } = await supabase.from("suppliers").select("id").eq("id", supplierId).eq("organization_id", organizationId).maybeSingle();
+    if (!supplier) return NextResponse.json({ ok: false, error: "Supplier not found in this organization" }, { status: 400 });
+
+    if (purchaseTransactionId) {
+      const { data: purchase } = await supabase.from("purchase_transactions").select("id, supplier_id").eq("id", purchaseTransactionId).eq("organization_id", organizationId).maybeSingle();
+      if (!purchase || String(purchase.supplier_id) !== supplierId) {
+        return NextResponse.json({ ok: false, error: "The selected purchase does not belong to this supplier" }, { status: 400 });
+      }
+    }
 
     const { data: products, error: productsError } = await supabase
       .from("products")
@@ -121,6 +132,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (purchaseTransactionId) {
+      const [{ data: purchasedItems, error: purchasedError }, { data: returnedItems, error: returnedError }] = await Promise.all([
+        supabase.from("purchase_items").select("product_id, quantity, unit_mode").eq("purchase_transaction_id", purchaseTransactionId),
+        supabase.from("purchase_return_items").select("product_id, quantity, unit_mode, purchase_returns!inner(purchase_transaction_id, status)")
+          .eq("purchase_returns.purchase_transaction_id", purchaseTransactionId).neq("purchase_returns.status", "cancelled"),
+      ]);
+      if (purchasedError || returnedError) return NextResponse.json({ ok: false, error: purchasedError?.message ?? returnedError?.message }, { status: 500 });
+      const toMain = (productId: unknown, quantity: unknown, mode: unknown) => {
+        const product = productsById.get(String(productId));
+        const pack = Number(product?.units_per_pack ?? 0);
+        return mode === "subunit" && pack > 0 ? Number(quantity ?? 0) / pack : Number(quantity ?? 0);
+      };
+      const purchasedByProduct = new Map<string, number>();
+      const returnedByProduct = new Map<string, number>();
+      for (const item of purchasedItems ?? []) purchasedByProduct.set(String(item.product_id), (purchasedByProduct.get(String(item.product_id)) ?? 0) + toMain(item.product_id, item.quantity, item.unit_mode));
+      for (const item of returnedItems ?? []) returnedByProduct.set(String(item.product_id), (returnedByProduct.get(String(item.product_id)) ?? 0) + toMain(item.product_id, item.quantity, item.unit_mode));
+      const quantityErrors: string[] = [];
+      for (const [productId, requested] of requestedQtyByProduct) {
+        const returnable = (purchasedByProduct.get(productId) ?? 0) - (returnedByProduct.get(productId) ?? 0);
+        if (returnable <= 0) quantityErrors.push(`Product ${productId} has no returnable quantity on this purchase.`);
+        else if (requested > returnable) quantityErrors.push(`Product ${productId}: cannot return ${requested} — only ${returnable} remains returnable.`);
+      }
+      if (quantityErrors.length) return NextResponse.json({ ok: false, error: quantityErrors.join(" ") }, { status: 400 });
+    }
+
     const returnNumber = await generateInvoiceNumberWithClient(supabase, organizationId, "purchase_return");
 
     const { data: returnData, error: returnError } = await supabase
@@ -128,8 +164,8 @@ export async function POST(request: NextRequest) {
       .insert({
         organization_id: organizationId,
         return_number: returnNumber,
-        supplier_id: body?.supplierId,
-        purchase_transaction_id: body?.purchaseTransactionId || null,
+        supplier_id: supplierId,
+        purchase_transaction_id: purchaseTransactionId,
         return_date: body?.returnDate || null,
         reason: typeof body?.reason === "string" ? body.reason.trim() || null : null,
         status: "confirmed",

@@ -37,8 +37,11 @@ export async function POST(request: NextRequest) {
 
   const { visitId, latitude, longitude, accuracy, createDraftSale, draftSaleData } = body;
 
-  if (!visitId || typeof latitude !== "number" || typeof longitude !== "number") {
+  if (!visitId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return NextResponse.json({ ok: false, error: "visitId, latitude, longitude are required" }, { status: 400 });
+  }
+  if (latitude! < -90 || latitude! > 90 || longitude! < -180 || longitude! > 180 || (accuracy != null && (!Number.isFinite(accuracy) || accuracy < 0))) {
+    return NextResponse.json({ ok: false, error: "Invalid location coordinates" }, { status: 400 });
   }
 
   if (createDraftSale && (!draftSaleData || !draftSaleData.customerId || !draftSaleData.items?.length)) {
@@ -48,8 +51,8 @@ export async function POST(request: NextRequest) {
   const service = getCustomerVisitService();
   const result = await service.finishVisit(permission.actor, {
     visitId,
-    latitude,
-    longitude,
+    latitude: Number(latitude),
+    longitude: Number(longitude),
     accuracy,
     createDraftSale,
     draftSaleData,

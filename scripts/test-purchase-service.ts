@@ -238,8 +238,9 @@ async function testCreatePurchaseCash() {
     supplier_id: "sup-1",
     purchase_date: "2026-02-01",
     payment_type: "cash",
+    created_by_profile_id: "spoofed-profile",
     notes: "Monthly restock",
-    lines: [{ product_id: 101, quantity: 2, purchase_price: 150 }],
+    lines: [{ product_id: 101, quantity: 2, purchase_price: 150, unit_mode: "subunit" }],
   });
 
   assertEqual(result.transaction.invoice_number, "P-50005", "Invoice number is server-generated (P-50005)");
@@ -249,7 +250,7 @@ async function testCreatePurchaseCash() {
   assertEqual(txInsert.invoice_type, "purchase", "Transaction invoice_type is purchase");
   assertEqual(txInsert.total_amount, 300, "Total amount is computed from lines");
   assertEqual(txInsert.payment_type, "cash", "Payment type is normalized to lowercase");
-  assertEqual(txInsert.created_by_profile_id, "profile-1", "Creator defaults to the actor profile");
+  assertEqual(txInsert.created_by_profile_id, "profile-1", "Creator is always the authenticated actor profile");
 
   const itemsInsert = lastCallOnTable(fromCalls, "purchase_items", "insert")?.args[0] as Array<Record<string, unknown>>;
   assertTrue(Array.isArray(itemsInsert), "Items are inserted in a single call");
@@ -257,6 +258,7 @@ async function testCreatePurchaseCash() {
   assertEqual(itemsInsert[0].organization_id, "org-1", "Items carry the organization id");
   assertEqual(itemsInsert[0].product_id, 101, "Item carries the product id");
   assertEqual(itemsInsert[0].quantity, 2, "Item carries the quantity");
+  assertEqual(itemsInsert[0].unit_mode, "subunit", "Item preserves subunit purchase mode");
 
   const audit = lastCallOnTable(fromCalls, "audit_logs", "insert")?.args[0] as Record<string, unknown>;
   assertEqual(audit.action, "purchase_created", "Audits the purchase creation");
@@ -277,6 +279,7 @@ async function testCreatePurchaseCreditUpdatesSupplierBalance() {
 
   await service.createPurchase(owner, {
     supplier_id: "sup-1",
+    purchase_date: "2026-02-01",
     payment_type: "credit",
     credit_days: 30,
     lines: [{ product_id: 101, quantity: 2, purchase_price: 150 }],
@@ -287,6 +290,7 @@ async function testCreatePurchaseCreditUpdatesSupplierBalance() {
 
   const txInsert = lastCallOnTable(fromCalls, "purchase_transactions", "insert")?.args[0] as Record<string, unknown>;
   assertTrue(typeof txInsert.credit_due_date === "string", "Credit purchase sets a credit due date");
+  assertEqual(String(txInsert.credit_due_date).slice(0, 10), "2026-03-03", "Credit due date is based on purchase date");
 }
 
 async function testCreatePurchaseValidationFailure() {

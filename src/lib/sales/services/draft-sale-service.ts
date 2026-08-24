@@ -44,8 +44,6 @@ export interface ApproveResult {
   invoiceNumber?: string;
 }
 
-const DRAFT_STATUSES = ["draft", "pending_approval", "approved", "rejected", "cancelled", "converted"];
-
 function addDaysToIsoDate(isoDate: string, days: number): string {
   const date = new Date(`${isoDate}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return isoDate;
@@ -350,6 +348,27 @@ export class DraftSaleService {
         ? addDaysToIsoDate(draft.order_date ?? now.split("T")[0], Number(draft.credit_days))
         : null;
 
+    // Claim the draft before creating financial records. The status predicate
+    // makes approval idempotent when two approvers click at the same time.
+    const { data: claimedDraft, error: claimError } = await supabase
+      .from("sales_orders")
+      .update({ status: "approved", updated_at: now })
+      .eq("id", draftId)
+      .eq("organization_id", actor.organizationId)
+      .eq("status", "pending_approval")
+      .select("id")
+      .maybeSingle();
+    if (claimError || !claimedDraft) {
+      return { ok: false, error: claimError?.message ?? "Draft was already processed by another approver" };
+    }
+
+    let paymentId: string | null = null;
+    let previousCustomerBalance: number | null = null;
+    const restorePending = async () => {
+      await supabase.from("sales_orders").update({ status: "pending_approval", updated_at: new Date().toISOString() })
+        .eq("id", draftId).eq("organization_id", actor.organizationId).eq("status", "approved");
+    };
+
     // Create sales_transaction (invoice)
     const { data: invoice, error: invoiceError } = await supabase
       .from("sales_transactions")
@@ -371,6 +390,7 @@ export class DraftSaleService {
       .single();
 
     if (invoiceError) {
+      await restorePending();
       return { ok: false, error: `Failed to create invoice: ${invoiceError.message}` };
     }
 
@@ -390,27 +410,63 @@ export class DraftSaleService {
     const { error: itemsError } = await supabase.from("sales_items").insert(salesItems);
 
     if (itemsError) {
-      // Rollback invoice
+      await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
       await supabase.from("sales_transactions").delete().eq("id", invoice.id);
+      await restorePending();
       return { ok: false, error: `Failed to create invoice items: ${itemsError.message}` };
     }
 
-    // Update customer outstanding balance (credit receivable)
-    const { data: customer } = await supabase
-      .from("customers")
-      .select("outstanding_balance")
-      .eq("id", draft.customer_id)
-      .maybeSingle();
-
-    const currentBalance = Number((customer as any)?.outstanding_balance ?? 0);
-    await supabase
-      .from("customers")
-      .update({
-        outstanding_balance: currentBalance + totalAmount,
+    if (paymentType === "cash") {
+      const { data: payment, error: paymentError } = await supabase.from("customer_payments").insert({
+        organization_id: actor.organizationId,
+        customer_id: draft.customer_id,
+        amount: totalAmount,
+        payment_date: draft.order_date ?? now.split("T")[0],
+        payment_method: "cash",
+        notes: `Payment received against invoice ${invoiceNumber}`,
+      }).select("id").single();
+      paymentId = payment?.id ?? null;
+      const { error: allocationError } = paymentId
+        ? await supabase.from("customer_payment_allocations").insert({
+            organization_id: actor.organizationId,
+            customer_payment_id: paymentId,
+            sales_transaction_id: invoice.id,
+            amount: totalAmount,
+          })
+        : { error: paymentError ?? new Error("Payment id was not returned") };
+      if (paymentError || allocationError) {
+        if (paymentId) await supabase.from("customer_payments").delete().eq("id", paymentId).eq("organization_id", actor.organizationId);
+        await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
+        await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
+        await restorePending();
+        return { ok: false, error: `Failed to record cash payment: ${paymentError?.message ?? allocationError?.message}` };
+      }
+    } else {
+      const { data: customer, error: customerError } = await supabase
+        .from("customers")
+        .select("outstanding_balance")
+        .eq("id", draft.customer_id)
+        .eq("organization_id", actor.organizationId)
+        .maybeSingle();
+      if (customerError || !customer) {
+        await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
+        await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
+        await restorePending();
+        return { ok: false, error: customerError?.message ?? "Customer not found" };
+      }
+      previousCustomerBalance = Number(customer.outstanding_balance ?? 0);
+      const { error: balanceError } = await supabase.from("customers").update({
+        outstanding_balance: previousCustomerBalance + totalAmount,
         last_sale_date: now,
         updated_at: now,
-      })
-      .eq("id", draft.customer_id);
+      }).eq("id", draft.customer_id).eq("organization_id", actor.organizationId);
+      if (balanceError) {
+        await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
+        await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
+        await restorePending();
+        return { ok: false, error: `Failed to update customer balance: ${balanceError.message}` };
+      }
+    }
 
     // Mark draft as converted
     const { error: updateDraftError } = await supabase
@@ -420,10 +476,23 @@ export class DraftSaleService {
         notes: `${draft.notes ?? ""} [Converted to invoice ${invoiceNumber}]`.trim(),
         updated_at: now,
       })
-      .eq("id", draftId);
+      .eq("id", draftId)
+      .eq("organization_id", actor.organizationId)
+      .eq("status", "approved");
 
     if (updateDraftError) {
-      console.error("Failed to mark draft as converted:", updateDraftError.message);
+      if (previousCustomerBalance !== null) {
+        await supabase.from("customers").update({ outstanding_balance: previousCustomerBalance, updated_at: new Date().toISOString() })
+          .eq("id", draft.customer_id).eq("organization_id", actor.organizationId);
+      }
+      if (paymentId) {
+        await supabase.from("customer_payment_allocations").delete().eq("customer_payment_id", paymentId).eq("organization_id", actor.organizationId);
+        await supabase.from("customer_payments").delete().eq("id", paymentId).eq("organization_id", actor.organizationId);
+      }
+      await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
+      await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
+      await restorePending();
+      return { ok: false, error: `Failed to finalize draft: ${updateDraftError.message}` };
     }
 
     // Notify the salesman who created the draft
@@ -490,11 +559,13 @@ export class DraftSaleService {
         updated_at: now,
       })
       .eq("id", draftId)
+      .eq("organization_id", actor.organizationId)
+      .eq("status", "pending_approval")
       .select()
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      return { ok: false, error: `Failed to reject draft: ${error.message}` };
+    if (error || !updated) {
+      return { ok: false, error: error ? `Failed to reject draft: ${error.message}` : "Draft was already processed by another approver" };
     }
 
     // Notify salesman

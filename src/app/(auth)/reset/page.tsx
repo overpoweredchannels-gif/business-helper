@@ -1,43 +1,53 @@
 "use client";
 
-import { useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Lock, Loader2, CheckCircle2, AlertCircle, ArrowLeft } from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
 
 function ResetForm() {
   const router = useRouter();
-  const params = useSearchParams();
-  const token = params.get("token") ?? "";
+  const [sessionReady, setSessionReady] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      setSessionReady(Boolean(data.session));
+      if (!data.session) setError("This password reset link is missing or has expired. Please request a new one.");
+    });
+    return () => { active = false; };
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!token) {
-      setError("Missing reset token. Please request a new password reset link.");
+    if (!sessionReady) {
+      setError("This password reset link is missing or has expired. Please request a new one.");
       return;
     }
     if (newPassword !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
+    if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      setError("Password must be at least 8 characters and contain a letter and a number.");
+      return;
+    }
     setLoading(true);
     try {
-      const res = await fetch("/api/identity/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, newPassword }),
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        setError(data.error || "Password reset failed.");
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) {
+        setError(updateError.message || "Password reset failed.");
         return;
       }
-      setSuccess(data.message || "Password updated.");
+      await supabase.auth.signOut();
+      setSuccess("Password updated. You can now sign in with your new password.");
       setTimeout(() => router.push("/login"), 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -134,9 +144,5 @@ function ResetForm() {
 }
 
 export default function ResetPasswordPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-panel" />}>
-      <ResetForm />
-    </Suspense>
-  );
+  return <ResetForm />;
 }

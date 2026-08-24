@@ -58,6 +58,7 @@ export class PurchaseService {
       selling_price?: string | number | null;
       batch_number?: string | null;
       expiry_date?: string | null;
+      unit_mode?: "main" | "subunit";
     }> = (Array.isArray(input.lines) ? input.lines : []).map((line) => {
       const record = line as Record<string, unknown>;
       return {
@@ -67,6 +68,7 @@ export class PurchaseService {
         selling_price: record.selling_price as string | number | null | undefined,
         batch_number: record.batch_number as string | null | undefined,
         expiry_date: record.expiry_date as string | null | undefined,
+        unit_mode: record.unit_mode === "subunit" ? "subunit" : "main",
       };
     });
 
@@ -114,13 +116,13 @@ export class PurchaseService {
       payment_type: paymentType,
       credit_due_date:
         paymentType === "credit" && creditDays !== null
-          ? new Date(Date.now() + creditDays * 86400000).toISOString()
+          ? new Date(new Date(`${purchaseDate}T00:00:00.000Z`).getTime() + creditDays * 86400000).toISOString()
           : null,
       notes: normalizeOptionalText(input.notes),
       total_amount: totalAmount,
       status: "confirmed",
       invoice_type: "purchase",
-      created_by_profile_id: (input.created_by_profile_id as string) || actor.profileId,
+      created_by_profile_id: actor.profileId,
       supplier_invoice_number: normalizeOptionalText(input.supplier_invoice_number),
     });
 
@@ -133,6 +135,7 @@ export class PurchaseService {
       selling_price: normalizeOptionalNumber(line.selling_price),
       batch_number: normalizeOptionalText(line.batch_number),
       expiry_date: normalizeOptionalDate(line.expiry_date),
+      unit_mode: line.unit_mode ?? "main",
     }));
 
     try {
@@ -144,7 +147,7 @@ export class PurchaseService {
 
     if (paymentType === "credit") {
       const newBalance = Number(supplier.outstanding_balance ?? 0) + totalAmount;
-      await this.repository.updateSupplierBalance(supplierId, newBalance);
+      await this.repository.updateSupplierBalance(actor.organizationId, supplierId, newBalance);
     }
 
     await this.audit.create({
@@ -174,6 +177,14 @@ export class PurchaseService {
 
     await this.repository.deleteItemsForTransaction(purchaseId);
     await this.repository.deleteTransaction(actor.organizationId, purchaseId);
+
+    if (transaction.payment_type === "credit" && transaction.supplier_id) {
+      const supplier = await this.repository.findSupplierById(actor.organizationId, transaction.supplier_id);
+      if (supplier) {
+        const nextBalance = Math.max(0, Number(supplier.outstanding_balance ?? 0) - Number(transaction.total_amount ?? 0));
+        await this.repository.updateSupplierBalance(actor.organizationId, transaction.supplier_id, nextBalance);
+      }
+    }
 
     await this.audit.create({
       organization_id: actor.organizationId,

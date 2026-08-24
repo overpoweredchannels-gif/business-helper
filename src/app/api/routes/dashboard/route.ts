@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { loadSalesmanAssignmentScope } from "@/lib/sales/salesman-workspace-service";
 
 export const runtime = "nodejs";
 
@@ -12,31 +13,42 @@ export async function GET(request: NextRequest) {
 
   const organizationId = permission.actor.organizationId;
   const supabase = createSupabaseService();
+  const canViewTeam = permission.actor.isOwner || permission.actor.role === "manager" || permission.actor.role === "supervisor" || Boolean(permission.actor.permissions?.includes("administration"));
+  const scope = canViewTeam ? null : await loadSalesmanAssignmentScope({ organizationId, profileId: permission.actor.profileId });
+  const assignedRouteId = String(scope?.route?.id ?? "");
+  const assignedEmployeeId = String(scope?.employee?.id ?? "");
 
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date();
   dayEnd.setHours(23, 59, 59, 999);
 
+  let routesQuery = supabase
+    .from("sales_routes")
+    .select("id, name, territory_id, description, route_frequency, is_active, created_at")
+    .eq("organization_id", organizationId);
+  let stopsQuery = supabase
+    .from("sales_route_stops")
+    .select("id, route_id, customer_id, stop_order")
+    .eq("organization_id", organizationId)
+    .order("stop_order", { ascending: true });
+  let visitsQuery = supabase
+    .from("customer_visits")
+    .select("id, route_id, customer_id, employee_id, visit_status, created_at")
+    .eq("organization_id", organizationId)
+    .gte("created_at", dayStart.toISOString())
+    .lte("created_at", dayEnd.toISOString());
+  if (!canViewTeam) {
+    routesQuery = routesQuery.eq("id", assignedRouteId || "00000000-0000-0000-0000-000000000000");
+    stopsQuery = stopsQuery.eq("route_id", assignedRouteId || "00000000-0000-0000-0000-000000000000");
+    visitsQuery = visitsQuery.eq("employee_id", assignedEmployeeId || "00000000-0000-0000-0000-000000000000");
+  }
+
   const [{ data: routes, error: routesError }, { data: stops, error: stopsError }, { data: visits, error: visitsError }] =
     await Promise.all([
-      supabase
-        .from("sales_routes")
-        .select("id, name, territory_id, description, route_frequency, is_active, created_at")
-        .eq("organization_id", organizationId),
-
-      supabase
-        .from("sales_route_stops")
-        .select("id, route_id, customer_id, stop_order")
-        .eq("organization_id", organizationId)
-        .order("stop_order", { ascending: true }),
-
-      supabase
-        .from("customer_visits")
-        .select("id, route_id, customer_id, employee_id, visit_status, created_at")
-        .eq("organization_id", organizationId)
-        .gte("created_at", dayStart.toISOString())
-        .lte("created_at", dayEnd.toISOString()),
+      routesQuery,
+      stopsQuery,
+      visitsQuery,
     ]);
 
   if (routesError || stopsError || visitsError) {

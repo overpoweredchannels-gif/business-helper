@@ -28,8 +28,11 @@ export async function POST(request: NextRequest) {
 
   const { employeeId, customerId, routeId, stopId, latitude, longitude, accuracy } = body;
 
-  if (!employeeId || !customerId || typeof latitude !== "number" || typeof longitude !== "number") {
+  if (!employeeId || !customerId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return NextResponse.json({ ok: false, error: "employeeId, customerId, latitude, longitude are required" }, { status: 400 });
+  }
+  if (latitude! < -90 || latitude! > 90 || longitude! < -180 || longitude! > 180 || (accuracy != null && (!Number.isFinite(accuracy) || accuracy < 0))) {
+    return NextResponse.json({ ok: false, error: "Invalid location coordinates" }, { status: 400 });
   }
 
   const service = getCustomerVisitService();
@@ -38,8 +41,8 @@ export async function POST(request: NextRequest) {
     customerId,
     routeId,
     stopId,
-    latitude,
-    longitude,
+    latitude: Number(latitude),
+    longitude: Number(longitude),
     accuracy,
   });
 

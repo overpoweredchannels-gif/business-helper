@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
 
   const { error: profileError } = await supabase.from("profiles").insert(profilePayload);
   if (profileError) {
+    await supabase.auth.admin.deleteUser(createdUser.user.id);
     return NextResponse.json(
       { ok: false, error: `Profile creation failed: ${profileError.message}` },
       { status: 500 },
@@ -99,6 +100,8 @@ export async function POST(request: NextRequest) {
     .upsert(permissionRow, { onConflict: "organization_id,profile_id" });
 
   if (permissionError) {
+    await supabase.from("profiles").delete().eq("id", createdUser.user.id).eq("organization_id", invitation.organizationId);
+    await supabase.auth.admin.deleteUser(createdUser.user.id);
     return NextResponse.json(
       { ok: false, error: `Permission assignment failed: ${permissionError.message}` },
       { status: 500 },
@@ -107,6 +110,9 @@ export async function POST(request: NextRequest) {
 
   const accepted = await invitationService.acceptInvitation(code, createdUser.user.id);
   if (accepted.error || !accepted.invitation) {
+    await supabase.from("staff_permissions").delete().eq("profile_id", createdUser.user.id).eq("organization_id", invitation.organizationId);
+    await supabase.from("profiles").delete().eq("id", createdUser.user.id).eq("organization_id", invitation.organizationId);
+    await supabase.auth.admin.deleteUser(createdUser.user.id);
     return NextResponse.json({ ok: false, error: accepted.error ?? "Invitation acceptance failed." }, { status: 500 });
   }
 

@@ -29,5 +29,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ ok: false, error: error?.message ?? "Visit not found" }, { status: 404 });
   }
 
+  if (!(permission.actor.isOwner || permission.actor.role === "manager" || permission.actor.role === "supervisor")) {
+    const { data: employee } = await supabase.from("employees").select("id").eq("organization_id", permission.actor.organizationId).eq("profile_id", permission.actor.profileId).maybeSingle();
+    if (!employee || employee.id !== visit.employee_id) {
+      return NextResponse.json({ ok: false, error: "You can only view your own visits" }, { status: 403 });
+    }
+  }
+
   return NextResponse.json({ ok: true, visit });
 }

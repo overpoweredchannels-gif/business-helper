@@ -75,6 +75,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const latitude = normalizeOptionalNumber(body?.latitude);
     const longitude = normalizeOptionalNumber(body?.longitude);
+    const hasLatitudeField = body?.latitude !== undefined;
+    const hasLongitudeField = body?.longitude !== undefined;
+    if (hasLatitudeField !== hasLongitudeField || ((hasLatitudeField || hasLongitudeField) && ((latitude === null) !== (longitude === null) || (latitude !== null && (latitude < -90 || latitude > 90 || longitude! < -180 || longitude! > 180))))) {
+      return NextResponse.json({ ok: false, error: "Valid latitude and longitude must be provided together." }, { status: 400 });
+    }
+
+    const supabase = createSupabaseUserClient(getAccessToken(request));
+    if (body?.assigned_salesman_id) {
+      const { data: employee } = await supabase.from("employees").select("id").eq("id", String(body.assigned_salesman_id)).eq("organization_id", organizationId).maybeSingle();
+      if (!employee) return NextResponse.json({ ok: false, error: "Assigned employee does not belong to this organization." }, { status: 400 });
+    }
+    if (body?.assigned_territory_id) {
+      const { data: territory } = await supabase.from("territories").select("id").eq("id", String(body.assigned_territory_id)).eq("organization_id", organizationId).maybeSingle();
+      if (!territory) return NextResponse.json({ ok: false, error: "Assigned territory does not belong to this organization." }, { status: 400 });
+    }
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     const optionalTextFields = [
@@ -109,14 +124,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (priority !== null) {
       updates.priority = priority;
     }
-    if (latitude !== null) {
+    if (body?.latitude !== undefined) {
       updates.latitude = latitude;
     }
-    if (longitude !== null) {
+    if (body?.longitude !== undefined) {
       updates.longitude = longitude;
     }
 
-    const supabase = createSupabaseUserClient(getAccessToken(request));
     const { data, error } = await supabase
       .from("customers")
       .update(updates)

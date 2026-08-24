@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseUserClient } from "@/lib/supabase/server";
-import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
+import { requirePermission } from "@/lib/identity/authorization";
 import {
   validateAdjustmentInput,
   normalizeOptionalText,
@@ -28,13 +28,12 @@ const getAccessToken = (request: NextRequest): string => {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { actor, error, status } = await resolveActor(request);
-    if (error || !actor) {
-      return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
+    const permission = await requirePermission(request, "inventory_manage");
+    if (!permission.allowed || !permission.actor) {
+      return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
     }
-
-    const organizationContext = buildOrganizationContext(actor);
-    const organizationId = organizationContext.actor.organizationId;
+    const actor = permission.actor;
+    const organizationId = actor.organizationId;
 
     const validation = validateAdjustmentInput({
       product_id: body?.productId,
@@ -57,8 +56,7 @@ export async function POST(request: NextRequest) {
       p_reason: normalizeOptionalText(body?.reason) ?? "",
       p_batch_number: normalizeOptionalText(body?.batchNumber),
       p_expiry_date: normalizeExpiryDate(body?.expiryDate),
-      p_created_by:
-        typeof body?.createdByProfileId === "string" ? body.createdByProfileId : null,
+      p_created_by: actor.profileId,
     });
 
     if (rpcError) {

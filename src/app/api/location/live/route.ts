@@ -14,26 +14,33 @@ export async function GET(request: NextRequest) {
   const supabase = createSupabaseService();
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const serverNow = Date.now();
+  const canViewTeam = permission.actor.isOwner || permission.actor.role === "manager" || permission.actor.role === "supervisor" || Boolean(permission.actor.permissions?.includes("administration"));
+  let locationsQuery = supabase
+    .from("staff_location_points")
+    .select("profile_id, latitude, longitude, accuracy, speed, heading, altitude, captured_at, duty_session_id")
+    .eq("organization_id", organizationId)
+    .gte("captured_at", cutoff)
+    .order("captured_at", { ascending: false });
+  let employeesQuery = supabase
+    .from("employees")
+    .select("id, profile_id, full_name, designation, status, is_active")
+    .eq("organization_id", organizationId);
+  let sessionsQuery = supabase
+    .from("staff_duty_sessions")
+    .select("profile_id, id, status")
+    .eq("organization_id", organizationId)
+    .eq("status", "on_duty");
+  if (!canViewTeam) {
+    locationsQuery = locationsQuery.eq("profile_id", permission.actor.profileId);
+    employeesQuery = employeesQuery.eq("profile_id", permission.actor.profileId);
+    sessionsQuery = sessionsQuery.eq("profile_id", permission.actor.profileId);
+  }
 
   const [{ data: locations, error: locError }, { data: employees, error: empError }, { data: sessions }] =
     await Promise.all([
-      supabase
-        .from("staff_location_points")
-        .select("profile_id, latitude, longitude, accuracy, speed, heading, altitude, captured_at, duty_session_id")
-        .eq("organization_id", organizationId)
-        .gte("captured_at", cutoff)
-        .order("captured_at", { ascending: false }),
-
-      supabase
-        .from("employees")
-        .select("id, profile_id, full_name, designation, status, is_active")
-        .eq("organization_id", organizationId),
-
-      supabase
-        .from("staff_duty_sessions")
-        .select("profile_id, id, status")
-        .eq("organization_id", organizationId)
-        .eq("status", "on_duty"),
+      locationsQuery,
+      employeesQuery,
+      sessionsQuery,
     ]);
 
   if (locError || empError) {

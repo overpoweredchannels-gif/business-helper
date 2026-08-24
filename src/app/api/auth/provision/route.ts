@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { buildLegacyPermissionRow } from "@/lib/identity/legacy";
+import { normalizeRole } from "@/lib/identity/permissions";
 import type { UserIdentity } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -185,7 +187,7 @@ export async function POST(request: NextRequest) {
   try {
     const result = await supabaseService
       .from("profiles")
-      .select("id, organization_id, auth_user_id")
+      .select("id, organization_id, auth_user_id, role, role_name")
       .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
       .maybeSingle();
     existingProfile = result.data;
@@ -226,7 +228,10 @@ export async function POST(request: NextRequest) {
         .eq("organization_id", existingProfile.organization_id);
     }
 
-    if (requestBodyOrgName) {
+    const existingRole = normalizeRole(existingProfile.role ?? existingProfile.role_name);
+    const isExistingOwner = existingRole === "owner";
+
+    if (requestBodyOrgName && isExistingOwner) {
       console.log(`${logTag} CHECKPOINT 5b2: updating organization name to "${requestBodyOrgName}"`);
       await supabaseService
         .from("organizations")
@@ -267,7 +272,14 @@ export async function POST(request: NextRequest) {
       console.log(`${logTag} CHECKPOINT 5d: creating missing permissions`);
       const { error: permissionError } = await supabaseService
         .from("staff_permissions")
-        .upsert(buildOwnerPermissionPayload(existingProfile.organization_id, existingProfile.id), {
+        .upsert(
+          isExistingOwner
+            ? buildOwnerPermissionPayload(existingProfile.organization_id, existingProfile.id)
+            : buildLegacyPermissionRow(
+                existingProfile.organization_id,
+                existingProfile.id,
+                existingRole ?? "viewer"
+              ), {
           onConflict: "organization_id,profile_id",
         });
 
@@ -338,6 +350,7 @@ export async function POST(request: NextRequest) {
     full_name: fullName,
     email: userEmail,
     display_name: fullName,
+    role: "owner",
     role_name: "owner",
     is_active: true,
   };

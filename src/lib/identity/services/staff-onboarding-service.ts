@@ -1,4 +1,5 @@
 import { createSupabaseService } from "@/lib/supabase/server";
+import { randomBytes } from "crypto";
 import { EmployeeRepository } from "../repositories/employee-repository";
 import {
   buildBaseLoginId,
@@ -80,10 +81,22 @@ export class StaffOnboardingService {
       return { ok: false, error: "This employee has already accepted their invitation." };
     }
 
-const supabase = createSupabaseService();
+    const supabase = createSupabaseService();
 
     // If already invited (pending), return existing invite data instead of creating duplicates.
     if (employee.invite_status === "pending" && employee.login_id && employee.hidden_email && employee.invite_code) {
+      const isExpired = Boolean(employee.invite_expires_at && new Date(employee.invite_expires_at).getTime() <= Date.now());
+      if (isExpired) {
+        const inviteCode = generateInviteCode();
+        const expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000).toISOString();
+        const { data: refreshed, error: refreshError } = await supabase.from("employees").update({
+          invite_code: inviteCode,
+          invite_expires_at: expiresAt,
+          updated_at: new Date().toISOString(),
+        }).eq("id", employee.id).eq("organization_id", actor.organizationId).select("*").single();
+        if (refreshError) return { ok: false, error: `Failed to renew invitation: ${refreshError.message}` };
+        return { ok: true, employee: refreshed as Employee, loginId: employee.login_id, code: inviteCode, expiresAt };
+      }
       return {
         ok: true,
         employee: employee as Employee,
@@ -144,7 +157,7 @@ const supabase = createSupabaseService();
     // the profiles + staff_permissions tables, so we provision the hidden auth account,
     // profile row, and permission row now (account stays inactive until the employee
     // activates it). The staff member only ever sees their Profile ID + password.
-    const tempPassword = `idp_${Math.random().toString(36).slice(2, 10)}X1`;
+    const tempPassword = `idp_${randomBytes(12).toString("base64url")}X1`;
     let userId = "";
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
@@ -186,6 +199,10 @@ const supabase = createSupabaseService();
       }
     }
 
+    if (!userId) {
+      return { ok: false, error: "Failed to prepare a unique staff account after multiple attempts." };
+    }
+
     const profilePayload = {
       id: userId,
       organization_id: actor.organizationId,
@@ -200,6 +217,7 @@ const supabase = createSupabaseService();
     };
     const { error: profileError } = await supabase.from("profiles").insert(profilePayload);
     if (profileError) {
+      await supabase.auth.admin.deleteUser(userId);
       return { ok: false, error: `Profile creation failed: ${profileError.message}` };
     }
 
@@ -208,6 +226,8 @@ const supabase = createSupabaseService();
       .from("staff_permissions")
       .upsert(permissionRow, { onConflict: "organization_id,profile_id" });
     if (permissionError) {
+      await supabase.from("profiles").delete().eq("id", userId).eq("organization_id", actor.organizationId);
+      await supabase.auth.admin.deleteUser(userId);
       return { ok: false, error: `Permission assignment failed: ${permissionError.message}` };
     }
 
@@ -229,6 +249,9 @@ const supabase = createSupabaseService();
       .single();
 
     if (error) {
+      await supabase.from("staff_permissions").delete().eq("profile_id", userId).eq("organization_id", actor.organizationId);
+      await supabase.from("profiles").delete().eq("id", userId).eq("organization_id", actor.organizationId);
+      await supabase.auth.admin.deleteUser(userId);
       return { ok: false, error: `Failed to create invitation: ${error.message}` };
     }
 

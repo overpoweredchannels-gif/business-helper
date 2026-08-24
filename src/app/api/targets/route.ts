@@ -8,7 +8,7 @@ const METRICS = ["revenue", "orders", "customers", "products", "collections"];
 const PERIODS = ["daily", "weekly", "monthly"];
 
 export async function GET(request: NextRequest) {
-  const permission = await requirePermission(request, "field_sales");
+  const permission = await requirePermission(request, "location_view");
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
@@ -19,6 +19,14 @@ export async function GET(request: NextRequest) {
   const metric = searchParams.get("metric") ?? undefined;
 
   const supabase = createSupabaseService();
+  const canViewTeam = permission.actor.isOwner || permission.actor.role === "manager" || permission.actor.role === "supervisor" || Boolean(permission.actor.permissions?.includes("settings_manage"));
+  let scopedEmployeeId = employeeId;
+  if (!canViewTeam) {
+    const { data: ownEmployee } = await supabase.from("employees").select("id").eq("organization_id", permission.actor.organizationId).eq("profile_id", permission.actor.profileId).maybeSingle();
+    if (!ownEmployee) return NextResponse.json({ ok: false, error: "No employee record linked to this profile" }, { status: 400 });
+    if (employeeId && employeeId !== ownEmployee.id) return NextResponse.json({ ok: false, error: "You can only view your own targets" }, { status: 403 });
+    scopedEmployeeId = ownEmployee.id;
+  }
   let query = supabase
     .from("sales_targets")
     .select(`
@@ -29,7 +37,7 @@ export async function GET(request: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(200);
 
-  if (employeeId) query = query.eq("employee_id", employeeId);
+  if (scopedEmployeeId) query = query.eq("employee_id", scopedEmployeeId);
   if (period && PERIODS.includes(period)) query = query.eq("period", period);
   if (metric && METRICS.includes(metric)) query = query.eq("metric", metric);
 

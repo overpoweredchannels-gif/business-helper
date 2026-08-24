@@ -7,14 +7,21 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const period = searchParams.get("period") || "monthly";
-  const employeeId = searchParams.get("employeeId");
+  let employeeId = searchParams.get("employeeId");
 
-  const permission = await requirePermission(request, employeeId ? "settings_manage" : "field_sales");
+  const permission = await requirePermission(request, "location_view");
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
 
   const supabase = createSupabaseService();
+  const canViewTeam = permission.actor.isOwner || permission.actor.role === "manager" || permission.actor.role === "supervisor" || Boolean(permission.actor.permissions?.includes("settings_manage"));
+  if (!canViewTeam) {
+    const { data: ownEmployee } = await supabase.from("employees").select("id").eq("organization_id", permission.actor.organizationId).eq("profile_id", permission.actor.profileId).maybeSingle();
+    if (!ownEmployee) return NextResponse.json({ ok: false, error: "No employee record linked to this profile" }, { status: 400 });
+    if (employeeId && employeeId !== ownEmployee.id) return NextResponse.json({ ok: false, error: "You can only view your own performance" }, { status: 403 });
+    employeeId = ownEmployee.id;
+  }
   let response: any;
 
   if (employeeId) {
@@ -47,10 +54,12 @@ export async function GET(request: NextRequest) {
       targetsRes,
     ] = await Promise.all([
       supabase
-        .from("sales_orders")
-        .select("id, total_amount, status, created_at")
+        .from("sales_transactions")
+        .select("id, total_amount, status, sale_date, created_at")
         .eq("organization_id", permission.actor.organizationId)
-        .eq("created_by_profile_id", employee.profile_id),
+        .eq("created_by_profile_id", employee.profile_id)
+        .neq("status", "cancelled")
+        .neq("status", "void"),
 
       supabase
         .from("customer_visits")
@@ -95,10 +104,10 @@ export async function GET(request: NextRequest) {
         total: sales.reduce((sum, s) => sum + Number(s.total_amount || 0), 0),
         count: sales.length,
         thisMonth: sales
-          .filter((s) => s.created_at?.startsWith(monthStartStr))
+          .filter((s) => String(s.sale_date ?? s.created_at ?? "").slice(0, 10) >= monthStartStr)
           .reduce((sum, s) => sum + Number(s.total_amount || 0), 0),
         thisWeek: sales
-          .filter((s) => s.created_at?.startsWith(weekStartStr))
+          .filter((s) => String(s.sale_date ?? s.created_at ?? "").slice(0, 10) >= weekStartStr)
           .reduce((sum, s) => sum + Number(s.total_amount || 0), 0),
       },
       visits: {
@@ -142,10 +151,12 @@ export async function GET(request: NextRequest) {
       targetsRes,
     ] = await Promise.all([
       supabase
-        .from("sales_orders")
-        .select("created_by_profile_id, total_amount, created_at")
+        .from("sales_transactions")
+        .select("created_by_profile_id, total_amount, sale_date, created_at, status")
         .eq("organization_id", permission.actor.organizationId)
-        .gte("created_at", monthStartStr),
+        .gte("sale_date", monthStartStr)
+        .neq("status", "cancelled")
+        .neq("status", "void"),
 
       supabase
         .from("customer_visits")
@@ -231,7 +242,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(response);
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   // Could be used to create/update performance targets/settings
   return NextResponse.json({ ok: false, error: "Not implemented" }, { status: 501 });
 }

@@ -79,6 +79,9 @@ export async function GET(request: NextRequest) {
   if (error || !actor) {
     return NextResponse.json({ ok: false, error }, { status: status ?? 401 });
   }
+  if (!actor.isOwner) {
+    return NextResponse.json({ ok: false, error: "Only the store owner can view invitations." }, { status: 403 });
+  }
   const invitationService = new InvitationService();
   const invitations = await invitationService.listForOrganization(actor.organizationId);
   return NextResponse.json({

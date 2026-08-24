@@ -68,6 +68,11 @@ export async function POST(request: NextRequest) {
   if (body.action !== "clock_in" && body.action !== "clock_out") {
     return NextResponse.json({ ok: false, error: "action must be clock_in or clock_out" }, { status: 400 });
   }
+  const hasLatitude = body.latitude != null;
+  const hasLongitude = body.longitude != null;
+  if (hasLatitude !== hasLongitude || (hasLatitude && (!Number.isFinite(body.latitude) || !Number.isFinite(body.longitude) || body.latitude! < -90 || body.latitude! > 90 || body.longitude! < -180 || body.longitude! > 180))) {
+    return NextResponse.json({ ok: false, error: "Valid latitude and longitude must be provided together" }, { status: 400 });
+  }
 
   const supabase = createSupabaseService();
 
@@ -108,7 +113,7 @@ export async function POST(request: NextRequest) {
           duty_start: dutyStart,
           scheduled_start: existing?.scheduled_start ?? null,
           scheduled_end: existing?.scheduled_end ?? null,
-          notes: body.latitude ? `Clock-in lat:${body.latitude}, lng:${body.longitude}` : null,
+          notes: hasLatitude ? `Clock-in lat:${body.latitude}, lng:${body.longitude}` : null,
         },
         { onConflict: "organization_id,employee_id,date" }
       )

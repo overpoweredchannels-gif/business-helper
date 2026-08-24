@@ -16,6 +16,11 @@ export default function AuthCallbackPage() {
         return;
       }
 
+      if (new URLSearchParams(window.location.search).get("type") === "recovery") {
+        router.replace("/reset");
+        return;
+      }
+
       const token = session.access_token;
       try {
         const provisionRes = await fetch("/api/auth/provision", {

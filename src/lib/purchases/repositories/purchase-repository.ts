@@ -28,6 +28,7 @@ export type PurchaseItemRecord = {
   selling_price?: number | null;
   batch_number?: string | null;
   expiry_date?: string | null;
+  unit_mode?: "main" | "subunit";
   created_at?: string;
 };
 
@@ -40,6 +41,7 @@ export type NewPurchaseItem = {
   selling_price?: number | null;
   batch_number?: string | null;
   expiry_date?: string | null;
+  unit_mode?: "main" | "subunit";
 };
 
 export class PurchaseRepository {
@@ -169,7 +171,7 @@ export class PurchaseRepository {
     return data as { id: string | number; name: string } | null;
   }
 
-  async updateSupplierBalance(supplierId: string, newBalance: number) {
+  async updateSupplierBalance(organizationId: string, supplierId: string, newBalance: number) {
     const { error } = await this.supabase
       .from("suppliers")
       .update({
@@ -177,7 +179,8 @@ export class PurchaseRepository {
         last_purchase_date: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq("id", supplierId);
+      .eq("id", supplierId)
+      .eq("organization_id", organizationId);
 
     if (error) {
       throw error;

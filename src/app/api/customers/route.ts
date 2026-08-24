@@ -95,6 +95,21 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createSupabaseUserClient(getAccessToken(request));
+    const latitude = normalizeOptionalNumber(body?.latitude);
+    const longitude = normalizeOptionalNumber(body?.longitude);
+    if ((latitude === null) !== (longitude === null) || (latitude !== null && (latitude < -90 || latitude > 90 || longitude! < -180 || longitude! > 180))) {
+      return NextResponse.json({ ok: false, error: "Valid latitude and longitude must be provided together." }, { status: 400 });
+    }
+    const assignedSalesmanId = body?.assigned_salesman_id ? String(body.assigned_salesman_id) : null;
+    const assignedTerritoryId = body?.assigned_territory_id ? String(body.assigned_territory_id) : null;
+    if (assignedSalesmanId) {
+      const { data: employee } = await supabase.from("employees").select("id").eq("id", assignedSalesmanId).eq("organization_id", organizationId).maybeSingle();
+      if (!employee) return NextResponse.json({ ok: false, error: "Assigned employee does not belong to this organization." }, { status: 400 });
+    }
+    if (assignedTerritoryId) {
+      const { data: territory } = await supabase.from("territories").select("id").eq("id", assignedTerritoryId).eq("organization_id", organizationId).maybeSingle();
+      if (!territory) return NextResponse.json({ ok: false, error: "Assigned territory does not belong to this organization." }, { status: 400 });
+    }
     const { data, error } = await supabase
       .from("customers")
       .insert({
@@ -117,12 +132,12 @@ export async function POST(request: NextRequest) {
         allow_over_limit: body?.allow_over_limit === true,
         allow_overdue_sales: body?.allow_overdue_sales === true,
         preferred_payment_method: normalizeOptionalText(body?.preferred_payment_method),
-        assigned_salesman_id: body?.assigned_salesman_id ? String(body.assigned_salesman_id) : null,
-        assigned_territory_id: body?.assigned_territory_id ? String(body.assigned_territory_id) : null,
+        assigned_salesman_id: assignedSalesmanId,
+        assigned_territory_id: assignedTerritoryId,
         visit_frequency,
         priority,
-        latitude: normalizeOptionalNumber(body?.latitude),
-        longitude: normalizeOptionalNumber(body?.longitude),
+        latitude,
+        longitude,
       })
       .select("id, customer_name, is_active")
       .single();

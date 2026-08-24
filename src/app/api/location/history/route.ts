@@ -24,6 +24,10 @@ export async function GET(request: NextRequest) {
   if (!profileId) {
     return NextResponse.json({ ok: false, error: "profile_id is required" }, { status: 400 });
   }
+  const canViewTeam = permission.actor.isOwner || permission.actor.role === "manager" || permission.actor.role === "supervisor" || Boolean(permission.actor.permissions?.includes("administration"));
+  if (!canViewTeam && profileId !== permission.actor.profileId) {
+    return NextResponse.json({ ok: false, error: "You can only view your own location history" }, { status: 403 });
+  }
 
   const minutes = Math.min(Math.max(Number(searchParams.get("minutes")) || 60, 5), 24 * 60);
   const since = new Date(Date.now() - minutes * 60 * 1000).toISOString();

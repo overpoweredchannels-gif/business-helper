@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { loadSalesmanAssignmentScope } from "@/lib/sales/salesman-workspace-service";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(Number(searchParams.get("limit") ?? 50), 200);
 
   const supabase = createSupabaseService();
-  const { data, error } = await supabase
+  let query = supabase
     .from("collections")
     .select(`
       id, employee_id, customer_id, visit_id, amount, method, reference_number,
@@ -23,9 +24,14 @@ export async function GET(request: NextRequest) {
       customers!inner(customer_name, shop_name),
       employees!inner(full_name)
     `)
-    .eq("organization_id", permission.actor.organizationId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+    .eq("organization_id", permission.actor.organizationId);
+  const canViewTeam = permission.actor.isOwner || permission.actor.role === "manager" || permission.actor.role === "supervisor" || Boolean(permission.actor.permissions?.includes("administration"));
+  if (!canViewTeam) {
+    const { data: ownEmployee } = await supabase.from("employees").select("id").eq("organization_id", permission.actor.organizationId).eq("profile_id", permission.actor.profileId).maybeSingle();
+    if (!ownEmployee) return NextResponse.json({ ok: true, collections: [] });
+    query = query.eq("employee_id", ownEmployee.id);
+  }
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
@@ -68,7 +74,8 @@ export async function POST(request: NextRequest) {
   // Resolve employee id for the actor if not provided
   let employeeId = body.employeeId;
   const supabase = createSupabaseService();
-  if (!employeeId && permission.actor.profileId) {
+  const canManageTeam = permission.actor.isOwner || permission.actor.role === "manager" || permission.actor.role === "supervisor" || Boolean(permission.actor.permissions?.includes("administration"));
+  if (!canManageTeam || !employeeId) {
     const { data: emp } = await supabase
       .from("employees")
       .select("id")
@@ -81,6 +88,13 @@ export async function POST(request: NextRequest) {
   if (!employeeId) {
     return NextResponse.json({ ok: false, error: "No employee record linked to this profile" }, { status: 400 });
   }
+  const { data: employee } = await supabase.from("employees").select("id").eq("id", employeeId).eq("organization_id", permission.actor.organizationId).maybeSingle();
+  if (!employee) return NextResponse.json({ ok: false, error: "Employee not found in this organization" }, { status: 400 });
+
+  if (!canManageTeam) {
+    const scope = await loadSalesmanAssignmentScope({ organizationId: permission.actor.organizationId, profileId: permission.actor.profileId });
+    if (!scope?.eligibleCustomerIds.includes(body.customerId)) return NextResponse.json({ ok: false, error: "This customer is not assigned to you" }, { status: 403 });
+  }
 
   // Verify customer belongs to org
   const { data: customer } = await supabase
@@ -91,6 +105,10 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   if (!customer) {
     return NextResponse.json({ ok: false, error: "Customer not found" }, { status: 400 });
+  }
+  if (body.visitId) {
+    const { data: visit } = await supabase.from("customer_visits").select("id").eq("id", body.visitId).eq("organization_id", permission.actor.organizationId).eq("employee_id", employeeId).eq("customer_id", body.customerId).maybeSingle();
+    if (!visit) return NextResponse.json({ ok: false, error: "Visit does not match this employee and customer" }, { status: 400 });
   }
 
   const { data: collection, error } = await supabase

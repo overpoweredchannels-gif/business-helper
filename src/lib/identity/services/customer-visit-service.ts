@@ -3,6 +3,7 @@ import { isWithinRadius } from "@/lib/maps/google-maps";
 import { logAuditEvent } from "@/lib/identity/audit";
 import { getInvoiceNumberService } from "@/lib/invoices/invoice-number-service";
 import type { ActorContext } from "@/lib/identity/types";
+import { loadSalesmanAssignmentScope } from "@/lib/sales/salesman-workspace-service";
 
 export interface VisitStartInput {
   employeeId: string;
@@ -54,6 +55,10 @@ export interface VisitListResult {
 const GPS_VERIFICATION_RADIUS_METERS = 100;
 
 export class CustomerVisitService {
+  private canManageTeam(actor: ActorContext): boolean {
+    return actor.isOwner || actor.role === "manager" || actor.role === "supervisor" || Boolean(actor.permissions?.includes("administration"));
+  }
+
   /**
    * Start a customer visit - GPS verified
    */
@@ -74,6 +79,22 @@ export class CustomerVisitService {
 
     if (!employee) {
       return { ok: false, error: "Employee not found in this organization" };
+    }
+
+    if (!this.canManageTeam(actor)) {
+      const scope = await loadSalesmanAssignmentScope({ organizationId: actor.organizationId, profileId: actor.profileId });
+      if (!scope || String(scope.employee.id) !== input.employeeId) {
+        return { ok: false, error: "You can only start your own customer visits" };
+      }
+      if (!scope.eligibleCustomerIds.includes(input.customerId)) {
+        return { ok: false, error: "This customer is not assigned to you" };
+      }
+      if (input.routeId && String(scope.route?.id ?? "") !== input.routeId) {
+        return { ok: false, error: "This route is not assigned to you" };
+      }
+      if (input.stopId && !scope.stops.some((stop) => String(stop.id) === input.stopId && String(stop.customer_id) === input.customerId)) {
+        return { ok: false, error: "This stop is not assigned to this customer" };
+      }
     }
 
     // Verify customer belongs to organization
@@ -179,7 +200,7 @@ export class CustomerVisitService {
     }
 
     // Verify employee owns this visit (or is owner)
-    const isOwner = actor.isOwner;
+    const isOwner = this.canManageTeam(actor);
     const isEmployee = await this.isEmployeeOfProfile(actor, visit.employee_id);
 
     if (!isOwner && !isEmployee) {
@@ -231,11 +252,14 @@ export class CustomerVisitService {
     }
 
     // Verify employee owns this visit (or is owner)
-    const isOwner = actor.isOwner;
+    const isOwner = this.canManageTeam(actor);
     const isEmployee = await this.isEmployeeOfProfile(actor, visit.employee_id);
 
     if (!isOwner && !isEmployee) {
       return { ok: false, error: "Not authorized to finish this visit" };
+    }
+    if (input.createDraftSale && input.draftSaleData?.customerId !== visit.customer_id) {
+      return { ok: false, error: "Draft sale customer must match the visited customer" };
     }
 
     // GPS verification for finish
@@ -315,6 +339,12 @@ export class CustomerVisitService {
     if (!targetEmployeeId) {
       return { ok: false, error: "No employee record linked to this profile" };
     }
+    if (!this.canManageTeam(actor)) {
+      const ownEmployeeId = await this.getEmployeeIdByProfile(actor);
+      if (!ownEmployeeId || targetEmployeeId !== ownEmployeeId) {
+        return { ok: false, error: "You can only view your own visits" };
+      }
+    }
     const supabase = createSupabaseService();
 
     const todayStart = new Date();
@@ -353,8 +383,8 @@ export class CustomerVisitService {
       limit?: number;
     } = {}
   ): Promise<VisitListResult> {
-    if (!actor.organizationId || !actor.isOwner) {
-      return { ok: false, error: "Owner access required" };
+    if (!actor.organizationId || !this.canManageTeam(actor)) {
+      return { ok: false, error: "Team monitoring access required" };
     }
 
     const supabase = createSupabaseService();
@@ -402,8 +432,8 @@ export class CustomerVisitService {
    * Mark a planned visit as missed (owner/supervisor action)
    */
   async markVisitMissed(actor: ActorContext, visitId: string): Promise<VisitResult> {
-    if (!actor.organizationId || !actor.isOwner) {
-      return { ok: false, error: "Owner access required" };
+    if (!actor.organizationId || !this.canManageTeam(actor)) {
+      return { ok: false, error: "Team monitoring access required" };
     }
 
     const supabase = createSupabaseService();

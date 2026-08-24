@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/identity/authorization";
+import { requirePermission } from "@/lib/identity/authorization";
 import { getDraftSaleService } from "@/lib/sales/services/draft-sale-service";
 
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ async function getDraftId(context: DraftContext): Promise<string> {
 }
 
 export async function POST(request: NextRequest, context: DraftContext) {
-  const permission = await requireOwner(request);
+  const permission = await requirePermission(request, "draft_approval");
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }

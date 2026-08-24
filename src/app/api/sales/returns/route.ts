@@ -69,13 +69,30 @@ export async function POST(request: NextRequest) {
 
     const supabase = createSupabaseUserClient(getAccessToken(request));
     const salesTransactionId = body?.salesTransactionId || null;
+    const customerId = String(body?.customerId ?? "");
+    const { data: customer } = await supabase.from("customers").select("id").eq("id", customerId).eq("organization_id", organizationId).maybeSingle();
+    if (!customer) return NextResponse.json({ ok: false, error: "Customer not found in this organization" }, { status: 400 });
+
+    const productIds = [...new Set(lines.map((line) => String(line.product_id)))];
+    const { data: products, error: productsError } = await supabase.from("products").select("id, units_per_pack").eq("organization_id", organizationId).in("id", productIds);
+    if (productsError) return NextResponse.json({ ok: false, error: productsError.message }, { status: 500 });
+    if ((products ?? []).length !== productIds.length) return NextResponse.json({ ok: false, error: "One or more products do not belong to this organization" }, { status: 400 });
+    const unitsPerPack = new Map((products ?? []).map((product) => [String(product.id), Number(product.units_per_pack ?? 0)]));
+    const toMainUnits = (productId: unknown, quantity: unknown, unitMode: unknown) => {
+      const pack = unitsPerPack.get(String(productId)) ?? 0;
+      return unitMode === "subunit" && pack > 0 ? Number(quantity ?? 0) / pack : Number(quantity ?? 0);
+    };
 
     // Guard: returned quantity per product may never exceed what was sold on
     // the referenced invoice, minus anything already returned.
     if (salesTransactionId) {
+      const { data: transaction } = await supabase.from("sales_transactions").select("id, customer_id").eq("id", salesTransactionId).eq("organization_id", organizationId).maybeSingle();
+      if (!transaction || String(transaction.customer_id) !== customerId) {
+        return NextResponse.json({ ok: false, error: "The selected invoice does not belong to this customer" }, { status: 400 });
+      }
       const { data: soldItems, error: soldError } = await supabase
         .from("sales_items")
-        .select("product_id, quantity")
+        .select("product_id, quantity, unit_mode")
         .eq("sales_transaction_id", salesTransactionId);
 
       if (soldError) {
@@ -84,7 +101,7 @@ export async function POST(request: NextRequest) {
 
       const { data: returnedItems, error: returnedError } = await supabase
         .from("sales_return_items")
-        .select("product_id, quantity, sales_returns!inner(sales_transaction_id)")
+        .select("product_id, quantity, unit_mode, sales_returns!inner(sales_transaction_id)")
         .eq("sales_returns.sales_transaction_id", salesTransactionId)
         .neq("sales_returns.status", "cancelled");
 
@@ -95,13 +112,13 @@ export async function POST(request: NextRequest) {
       const soldByProduct = new Map<string, number>();
       for (const item of soldItems ?? []) {
         const key = String(item.product_id);
-        soldByProduct.set(key, (soldByProduct.get(key) ?? 0) + Number(item.quantity || 0));
+        soldByProduct.set(key, (soldByProduct.get(key) ?? 0) + toMainUnits(item.product_id, item.quantity, item.unit_mode));
       }
 
       const returnedByProduct = new Map<string, number>();
       for (const item of returnedItems ?? []) {
         const key = String(item.product_id);
-        returnedByProduct.set(key, (returnedByProduct.get(key) ?? 0) + Number(item.quantity || 0));
+        returnedByProduct.set(key, (returnedByProduct.get(key) ?? 0) + toMainUnits(item.product_id, item.quantity, item.unit_mode));
       }
 
       const quantityErrors: string[] = [];
@@ -110,7 +127,7 @@ export async function POST(request: NextRequest) {
         const productId = String(line.product_id);
         requestedQtyByProduct.set(
           productId,
-          (requestedQtyByProduct.get(productId) ?? 0) + Number(line.quantity || 0)
+          (requestedQtyByProduct.get(productId) ?? 0) + toMainUnits(line.product_id, line.quantity, line.unit_mode)
         );
       }
       for (const [productId, requested] of requestedQtyByProduct) {
@@ -137,7 +154,7 @@ export async function POST(request: NextRequest) {
       .insert({
         organization_id: organizationId,
         return_number: returnNumber,
-        customer_id: body?.customerId,
+        customer_id: customerId,
         sales_transaction_id: salesTransactionId,
         return_date: body?.returnDate || null,
         reason: typeof body?.reason === "string" ? body.reason.trim() || null : null,

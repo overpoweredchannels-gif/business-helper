@@ -34,9 +34,10 @@ export const normalizeOptionalNumber = (value: unknown): number | null => {
 export const normalizeOptionalDate = (value: unknown): string | null => {
   const text = normalizeOptionalText(value);
   if (!text) return null;
-  const date = new Date(`${text}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const date = new Date(`${text}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== text) return null;
+  return text;
 };
 
 // ─── Purchase orders ────────────────────────────────────────────────────────
@@ -229,6 +230,7 @@ export interface PurchaseTransactionLineLike {
   selling_price?: string | number | null;
   batch_number?: string | null;
   expiry_date?: string | null;
+  unit_mode?: string | null;
 }
 
 export interface PurchaseTransactionInputLike {
@@ -288,6 +290,9 @@ export function validatePurchaseTransactionInput(input: PurchaseTransactionInput
       }
       if (line.expiry_date && !normalizeOptionalDate(line.expiry_date)) {
         errors.push(`${label}: expiry date is not a valid date.`);
+      }
+      if (line.unit_mode && !["main", "subunit"].includes(line.unit_mode)) {
+        errors.push(`${label}: unit mode must be main or subunit.`);
       }
     });
   }

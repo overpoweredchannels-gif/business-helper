@@ -76,6 +76,14 @@ async function savePhoto(
     .maybeSingle();
 
   if (!visit) return NextResponse.json({ ok: false, error: "Visit not found" }, { status: 404 });
+  const { data: employee } = await supabase
+    .from("employees")
+    .select("id")
+    .eq("id", visit.employee_id)
+    .eq("organization_id", organizationId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+  if (!employee) return NextResponse.json({ ok: false, error: "You can only add photos to your own visits" }, { status: 403 });
   if (visit.visit_status === "planned" || visit.visit_status === "cancelled") {
     return NextResponse.json({ ok: false, error: "Visit is not active; cannot add photos" }, { status: 400 });
   }

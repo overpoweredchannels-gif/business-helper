@@ -14,7 +14,7 @@ function errorResponse(message: string, status: number = 400) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, deviceToken, deviceName } = body;
+    const { action, deviceName } = body;
 
     if (!action || !["register", "signout", "status", "start"].includes(action)) {
       return errorResponse("action must be register, signout, status, or start");
@@ -37,6 +37,11 @@ export async function POST(request: NextRequest) {
 
     if (action === "start") {
       const { startLatitude, startLongitude, startAccuracy } = body;
+      const hasLatitude = startLatitude != null;
+      const hasLongitude = startLongitude != null;
+      if (hasLatitude !== hasLongitude || (hasLatitude && (!Number.isFinite(startLatitude) || !Number.isFinite(startLongitude) || startLatitude < -90 || startLatitude > 90 || startLongitude < -180 || startLongitude > 180)) || (startAccuracy != null && (!Number.isFinite(startAccuracy) || startAccuracy < 0))) {
+        return errorResponse("Valid start coordinates must be provided together");
+      }
 
       const { data: existingDuty, error: dutyError } = await supabase
         .from("staff_duty_sessions")
