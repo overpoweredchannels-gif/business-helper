@@ -73,16 +73,20 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
     let hasBounds = false;
 
     for (const emp of employees) {
-      if (!emp.hasLocation || !emp.latitude || !emp.longitude) continue;
+      if (!emp.hasLocation || emp.latitude == null || emp.longitude == null) continue;
+
+      const latitude = emp.latitude;
+      const longitude = emp.longitude;
+      const markerColor = trackingStatusColor(emp.trackingStatus, Boolean(emp.speed && emp.speed > 1));
 
       const marker = new window.google.maps.Marker({
-        position: { lat: emp.latitude, lng: emp.longitude },
+        position: { lat: latitude, lng: longitude },
         map: mapInstanceRef.current,
         title: emp.employeeName,
         icon: {
           path: window.google.maps.SymbolPath.CIRCLE,
           scale: emp.isOnDuty ? 10 : 7,
-          fillColor: emp.isOnDuty ? (emp.speed && emp.speed > 1 ? "#f59e0b" : "#22c55e") : "#9ca3af",
+          fillColor: markerColor,
           fillOpacity: emp.profileId === selectedEmployeeId ? 1 : 0.8,
           strokeColor: emp.profileId === selectedEmployeeId ? "#ef4444" : "#ffffff",
           strokeWeight: emp.profileId === selectedEmployeeId ? 3 : 2,
@@ -95,9 +99,9 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
         <div style="min-width:180px;font-family:sans-serif;font-size:13px;line-height:1.5">
           <strong>${emp.employeeName}</strong><br/>
           Role: ${emp.role || "N/A"}<br/>
-          Status: ${emp.isOnDuty ? "On Duty" : "Off Duty"}<br/>
+          Status: ${emp.trackingStatusLabel}<br/>
           Updated: ${age}${speed}<br/>
-          <a href="https://www.google.com/maps/dir/?api=1&destination=${emp.latitude},${emp.longitude}"
+          <a href="https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}"
              target="_blank" rel="noopener noreferrer"
              style="color:#2563eb;text-decoration:underline">
             Open in Google Maps
@@ -114,7 +118,7 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
       });
 
       markersRef.current.push(marker);
-      bounds.extend(new window.google.maps.LatLng(emp.latitude, emp.longitude));
+      bounds.extend(new window.google.maps.LatLng(latitude, longitude));
       hasBounds = true;
     }
 
@@ -148,4 +152,11 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
       )}
     </div>
   );
+}
+
+function trackingStatusColor(status: CurrentLocationView["trackingStatus"], moving: boolean): string {
+  if (status === "live") return moving ? "#f59e0b" : "#22c55e";
+  if (status === "delayed") return "#f59e0b";
+  if (status === "off_duty") return "#9ca3af";
+  return "#ef4444";
 }

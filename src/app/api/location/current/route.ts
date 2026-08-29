@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveActor } from "@/lib/identity/api-context";
+import { deriveTrackingStatus, trackingStatusLabel } from "@/lib/location/tracking-status";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,8 @@ export async function GET(request: NextRequest) {
     const supabase = createClient(supabaseUrl(), supabaseKey(), {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    await supabase.rpc("close_expired_duty_sessions", { p_now: new Date().toISOString() });
 
     const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
@@ -65,19 +68,23 @@ export async function GET(request: NextRequest) {
 
     const { data: sessions } = await supabase
       .from("staff_duty_sessions")
-      .select("profile_id, id, status")
+      .select("profile_id, id, status, scheduled_end_at, device_status, last_error")
       .eq("organization_id", organizationId)
       .eq("status", "on_duty");
 
-    const onDutySet = new Set((sessions || []).map((s) => s.profile_id));
-    const sessionMap = new Map((sessions || []).map((s) => [s.profile_id, s.id]));
+    const sessionMap = new Map((sessions || []).map((s) => [s.profile_id, s]));
 
     const result = filteredStaff
       .filter((e) => e.is_active !== false && e.status !== "archived")
       .map((s) => {
         const pid = s.profile_id;
         const latest = pid ? latestMap.get(pid) : undefined;
-        const age = latest ? Date.now() - new Date(latest.captured_at).getTime() : Infinity;
+        const activeSession = pid ? sessionMap.get(pid) : undefined;
+        const health = deriveTrackingStatus({
+          isOnDuty: Boolean(activeSession),
+          capturedAt: latest?.captured_at,
+          deviceStatus: activeSession?.device_status,
+        });
         return {
           profileId: pid ?? s.id,
           employeeName: s.full_name || "Unknown",
@@ -88,10 +95,15 @@ export async function GET(request: NextRequest) {
           speed: latest?.speed ?? null,
           heading: latest?.heading ?? null,
           capturedAt: latest?.captured_at ?? null,
-          isOnDuty: pid ? onDutySet.has(pid) : false,
-          dutySessionId: pid ? sessionMap.get(pid) || null : null,
+          isOnDuty: Boolean(activeSession),
+          dutySessionId: activeSession?.id ?? null,
+          scheduledEndAt: activeSession?.scheduled_end_at ?? null,
+          deviceStatus: activeSession?.device_status ?? null,
+          trackingStatus: health.trackingStatus,
+          trackingStatusLabel: trackingStatusLabel(health.trackingStatus),
+          trackingError: activeSession?.last_error ?? null,
           assignedArea: null,
-          lastUpdateAge: age,
+          lastUpdateAge: health.lastUpdateAge,
           hasLocation: !!latest,
         };
       });

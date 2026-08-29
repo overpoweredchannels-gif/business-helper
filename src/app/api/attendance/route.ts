@@ -4,11 +4,14 @@ import { createSupabaseService } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-const getOrgTZ = () => "Asia/Karachi";
+interface DutyRpcRow {
+  duty_session_id?: string | null;
+  attendance_record_id?: string | null;
+  ended_at?: string | null;
+}
 
-function toLocalDateString(d: Date, tz: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
-    .format(d);
+function rpcRow<T>(data: T[] | T | null): T | null {
+  return Array.isArray(data) ? data[0] ?? null : data;
 }
 
 export async function GET(request: NextRequest) {
@@ -86,72 +89,62 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "No employee record linked to this profile" }, { status: 400 });
   }
 
-  const now = new Date();
-  const date = toLocalDateString(now, getOrgTZ());
+  if (body.action === "clock_in") {
+    const startedAt = new Date().toISOString();
+    const { data, error } = await supabase.rpc("start_employee_duty", {
+      p_organization_id: permission.actor.organizationId,
+      p_profile_id: permission.actor.profileId,
+      p_started_at: startedAt,
+      p_start_latitude: body.latitude ?? null,
+      p_start_longitude: body.longitude ?? null,
+      p_start_accuracy: null,
+      p_device_name: "TradeOS web attendance",
+    });
+    if (error) {
+      const status = /already ended|after today|non-working day/i.test(error.message) ? 409 : 400;
+      return NextResponse.json({ ok: false, error: `Failed to clock in: ${error.message}` }, { status });
+    }
 
-  const { data: existing } = await supabase
+    const duty = rpcRow<DutyRpcRow>(data);
+    if (!duty?.attendance_record_id) {
+      return NextResponse.json({ ok: false, error: "Duty start did not create attendance." }, { status: 500 });
+    }
+
+    const { data: record, error: recordError } = await supabase
+      .from("attendance_records")
+      .select("*")
+      .eq("id", duty.attendance_record_id)
+      .single();
+    if (recordError) {
+      return NextResponse.json({ ok: false, error: `Attendance lookup failed: ${recordError.message}` }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, record, action: "clock_in", dutySessionId: duty.duty_session_id });
+  }
+
+  const endedAt = new Date().toISOString();
+  const { data, error } = await supabase.rpc("stop_employee_duty", {
+    p_organization_id: permission.actor.organizationId,
+    p_profile_id: permission.actor.profileId,
+    p_ended_at: endedAt,
+    p_reason: "manual_clock_out",
+  });
+  if (error) {
+    return NextResponse.json({ ok: false, error: `Failed to clock out: ${error.message}` }, { status: 500 });
+  }
+
+  const duty = rpcRow<DutyRpcRow>(data);
+  if (!duty?.attendance_record_id) {
+    return NextResponse.json({ ok: false, error: "You are not currently on duty." }, { status: 409 });
+  }
+
+  const { data: record, error: recordError } = await supabase
     .from("attendance_records")
     .select("*")
-    .eq("organization_id", permission.actor.organizationId)
-    .eq("employee_id", emp.id)
-    .eq("date", date)
-    .maybeSingle();
-
-  if (body.action === "clock_in") {
-    if (existing && existing.duty_start) {
-      return NextResponse.json({ ok: false, error: "You have already clocked in today." }, { status: 400 });
-    }
-    const dutyStart = now.toISOString();
-    const { data: record, error } = await supabase
-      .from("attendance_records")
-      .upsert(
-        {
-          organization_id: permission.actor.organizationId,
-          employee_id: emp.id,
-          date,
-          status: "present",
-          duty_start: dutyStart,
-          scheduled_start: existing?.scheduled_start ?? null,
-          scheduled_end: existing?.scheduled_end ?? null,
-          notes: hasLatitude ? `Clock-in lat:${body.latitude}, lng:${body.longitude}` : null,
-        },
-        { onConflict: "organization_id,employee_id,date" }
-      )
-      .select()
-      .single();
-    if (error) {
-      return NextResponse.json({ ok: false, error: `Failed to clock in: ${error.message}` }, { status: 400 });
-    }
-    return NextResponse.json({ ok: true, record, action: "clock_in" });
-  }
-
-  // clock_out
-  if (!existing || !existing.duty_start) {
-    return NextResponse.json({ ok: false, error: "You have not clocked in today." }, { status: 400 });
-  }
-  if (existing.duty_end) {
-    return NextResponse.json({ ok: false, error: "You have already clocked out today." }, { status: 400 });
-  }
-
-  const dutyEnd = now.toISOString();
-  const start = new Date(existing.duty_start);
-  const hours = (now.getTime() - start.getTime()) / (1000 * 60 * 60);
-
-  const { data: record, error } = await supabase
-    .from("attendance_records")
-    .update({
-      duty_end: dutyEnd,
-      total_hours: Math.round(hours * 100) / 100,
-      status: "present",
-      updated_at: now.toISOString(),
-    })
-    .eq("id", existing.id)
-    .select()
+    .eq("id", duty.attendance_record_id)
     .single();
-
-  if (error) {
-    return NextResponse.json({ ok: false, error: `Failed to clock out: ${error.message}` }, { status: 400 });
+  if (recordError) {
+    return NextResponse.json({ ok: false, error: `Attendance lookup failed: ${recordError.message}` }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, record, action: "clock_out" });
+  return NextResponse.json({ ok: true, record, action: "clock_out", dutySessionId: duty.duty_session_id });
 }

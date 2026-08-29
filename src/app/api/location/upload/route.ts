@@ -82,9 +82,14 @@ export async function POST(request: NextRequest) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    // The database cutoff is authoritative. Running it here as well as from
+    // Supabase Cron closes an expired session even if the scheduled worker is
+    // delayed by a minute.
+    await serviceClient.rpc("close_expired_duty_sessions", { p_now: new Date().toISOString() });
+
     const { data: dutySession, error: dutyError } = await serviceClient
       .from("staff_duty_sessions")
-      .select("id, status, started_at, ended_at")
+      .select("id, status, started_at, ended_at, scheduled_end_at")
       .eq("id", dutySessionId)
       .eq("organization_id", organizationId)
       .eq("profile_id", profileId)
@@ -95,15 +100,23 @@ export async function POST(request: NextRequest) {
 
     const sessionStart = new Date(dutySession.started_at).getTime();
     const sessionEnd = dutySession.ended_at ? new Date(dutySession.ended_at).getTime() : null;
+    const scheduledEnd = dutySession.scheduled_end_at ? new Date(dutySession.scheduled_end_at).getTime() : null;
     const captureTime = capturedAtDate.getTime();
     const clockToleranceMs = 5 * 60 * 1000;
     if (!Number.isFinite(sessionStart)) return errorResponse("Duty session has an invalid start time.", 500);
     if (sessionEnd != null && !Number.isFinite(sessionEnd)) return errorResponse("Duty session has an invalid end time.", 500);
-    if (captureTime < sessionStart - clockToleranceMs || (sessionEnd != null && captureTime > sessionEnd + clockToleranceMs)) {
-      return errorResponse("Location time falls outside this duty session.", 400);
+    if (scheduledEnd != null && !Number.isFinite(scheduledEnd)) return errorResponse("Duty session has an invalid cutoff time.", 500);
+    if (scheduledEnd != null && captureTime > scheduledEnd) {
+      return errorResponse("Duty session has reached its scheduled cutoff. Start duty again on the next working day.", 409);
+    }
+    if (captureTime < sessionStart - clockToleranceMs) {
+      return errorResponse("Location time falls before this duty session.", 400);
+    }
+    if (sessionEnd != null && captureTime > sessionEnd) {
+      return errorResponse("Duty session has ended. Stop tracking and start duty again when permitted.", 409);
     }
     if (dutySession.status !== "on_duty" && sessionEnd == null) {
-      return errorResponse("Duty session is not active.", 400);
+      return errorResponse("Duty session is not active.", 409);
     }
 
     const { data: existingPoint, error: duplicateError } = await serviceClient
@@ -132,6 +145,17 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await serviceClient.from("staff_location_points").insert(point).select("id").single();
     if (error) return errorResponse(`Database error: ${error.message}`, 500);
+
+    await serviceClient
+      .from("staff_duty_sessions")
+      .update({
+        last_location_at: capturedAtIso,
+        device_status: "tracking",
+        last_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", dutySessionId)
+      .or(`last_location_at.is.null,last_location_at.lt.${capturedAtIso}`);
 
     return NextResponse.json({ ok: true, pointId: data?.id });
   } catch (err) {

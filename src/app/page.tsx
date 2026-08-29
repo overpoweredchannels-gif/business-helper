@@ -389,6 +389,11 @@ export default function Home() {
   const [businessSettingsInvoiceFooterNote, setBusinessSettingsInvoiceFooterNote] = useState("");
   const [businessSettingsDefaultPaymentTerms, setBusinessSettingsDefaultPaymentTerms] = useState("");
   const [businessSettingsOversellingPolicy, setBusinessSettingsOversellingPolicy] = useState("allow");
+  const [businessSettingsDutyStart, setBusinessSettingsDutyStart] = useState("08:00");
+  const [businessSettingsDutyEnd, setBusinessSettingsDutyEnd] = useState("16:00");
+  const [dutyScheduleLoading, setDutyScheduleLoading] = useState(false);
+  const [dutyScheduleMessage, setDutyScheduleMessage] = useState<string | null>(null);
+  const [dutyScheduleError, setDutyScheduleError] = useState<string | null>(null);
   const [businessSettingsLoading, setBusinessSettingsLoading] = useState(false);
   const [businessSettingsMessage, setBusinessSettingsMessage] = useState<string | null>(null);
   const [businessSettingsError, setBusinessSettingsError] = useState<string | null>(null);
@@ -1341,6 +1346,8 @@ export default function Home() {
     setBusinessSettingsInvoiceFooterNote(organization?.invoice_footer_note ?? "");
     setBusinessSettingsDefaultPaymentTerms(organization?.default_payment_terms ?? "");
     setBusinessSettingsOversellingPolicy(organization?.overselling_policy ?? "allow");
+    setBusinessSettingsDutyStart(organization?.working_hours?.duty_start ?? "08:00");
+    setBusinessSettingsDutyEnd(organization?.working_hours?.duty_end ?? "16:00");
   };
 
   const fetchCurrentOrganization = async (organizationId?: string | null) => {
@@ -3596,23 +3603,34 @@ setCustomerOrganizationName("");
     }
 
     const payload = {
-      organization_id: currentOrganizationId,
-      profile_id: currentProfile.id,
-      duty_session_id: sessionId,
+      dutySessionId: sessionId,
       latitude: snapshot.latitude,
       longitude: snapshot.longitude,
       accuracy: snapshot.accuracy,
       speed: snapshot.speed,
       heading: snapshot.heading,
       altitude: snapshot.altitude,
-      captured_at: snapshot.captured_at,
+      capturedAt: snapshot.captured_at,
     };
 
-    const { error } = await supabase.from("staff_location_points").insert(payload);
+    const response = await authorizedFetch("/api/location/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
 
-    if (error) {
-      console.error("Supabase staff location point insert error:", JSON.stringify(error, null, 2));
-      setLocationTrackingError(`Could not save latest location: ${JSON.stringify(error, null, 2)}`);
+    if (!response.ok || !result.ok) {
+      if (response.status === 409) {
+        stopLocationWatch();
+        setActiveDutySession(null);
+        activeDutySessionIdRef.current = null;
+        setLocationTrackingMessage("Duty ended at the scheduled cutoff. Start duty again on the next working day.");
+        await fetchDutySessions(currentOrganizationId, currentProfile.id);
+        return;
+      }
+      console.error("TradeOS location upload error:", JSON.stringify(result, null, 2));
+      setLocationTrackingError(`Could not save latest location: ${result.error ?? "Unknown error"}`);
       return;
     }
 
@@ -3688,58 +3706,50 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const existingActiveSession = activeDutySession ?? dutySessions.find(
-      (session) => session.profile_id === currentProfile.id && session.status === "on_duty"
-    );
-    if (existingActiveSession) {
-      setActiveDutySession(existingActiveSession);
-      activeDutySessionIdRef.current = existingActiveSession.id;
-      startLocationWatch(existingActiveSession.id);
-      setLocationTrackingMessage("Existing active duty session found. Live tracking resumed.");
-      return;
-    }
-
     try {
       const position = await getGeolocationPosition();
       const startedAt = new Date().toISOString();
       const snapshot = positionToSnapshot(position, startedAt);
 
-      const { data: session, error: sessionError } = await supabase
-        .from("staff_duty_sessions")
-        .insert({
-          organization_id: currentOrganizationId,
-          profile_id: currentProfile.id,
-          status: "on_duty",
-          started_at: startedAt,
-          start_latitude: snapshot.latitude,
-          start_longitude: snapshot.longitude,
-          start_accuracy: snapshot.accuracy,
-          notes: null,
-        })
-        .select("*")
-        .single();
-
-      if (sessionError) {
-        console.error("Supabase staff duty session insert error:", JSON.stringify(sessionError, null, 2));
-        setLocationTrackingError(`Could not start duty: ${JSON.stringify(sessionError, null, 2)}`);
+      const response = await authorizedFetch("/api/location/device-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "start",
+          deviceName: "TradeOS web app",
+          startLatitude: snapshot.latitude,
+          startLongitude: snapshot.longitude,
+          startAccuracy: snapshot.accuracy,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok || !result.dutySessionId) {
+        setLocationTrackingError(result.error ?? "Could not start duty.");
         return;
       }
 
-      setActiveDutySession(session);
       setCurrentDutyLocation(snapshot);
-      activeDutySessionIdRef.current = session.id;
-      await saveLocationPoint(session.id, snapshot, { force: true });
-      startLocationWatch(session.id);
+      activeDutySessionIdRef.current = result.dutySessionId;
+      await saveLocationPoint(result.dutySessionId, snapshot, { force: true });
+      startLocationWatch(result.dutySessionId);
       await fetchDutySessions(currentOrganizationId, currentProfile.id);
       await createAuditLog({
         action: "created",
         entity_type: "staff_duty",
-        entity_id: session.id,
+        entity_id: result.dutySessionId,
         entity_label: currentProfile.display_name ?? currentProfile.email ?? currentProfile.id,
         description: "Started duty session",
-        new_values: { status: "on_duty", started_at: startedAt },
+        new_values: {
+          status: "on_duty",
+          started_at: result.startedAt ?? startedAt,
+          scheduled_end_at: result.scheduledEndAt ?? null,
+        },
       });
-      setLocationTrackingMessage("Duty started. Location tracking is active while TradeOS remains open.");
+      setLocationTrackingMessage(
+        `Duty started. Browser tracking remains active while TradeOS is open${
+          result.scheduledEndAt ? ` and ends automatically at ${formatDateTime(result.scheduledEndAt)}` : ""
+        }. Use the Workforce mobile app for background tracking.`
+      );
     } catch (err) {
       setLocationTrackingError(getLocationErrorMessage(err));
     }
@@ -3776,32 +3786,21 @@ setCustomerOrganizationName("");
       console.warn("Could not capture final duty location:", err);
     }
 
-    const endedAt = new Date().toISOString();
-    const updatePayload = {
-      status: "off_duty",
-      ended_at: endedAt,
-      end_latitude: endSnapshot?.latitude ?? null,
-      end_longitude: endSnapshot?.longitude ?? null,
-      end_accuracy: endSnapshot?.accuracy ?? null,
-      updated_at: endedAt,
-    };
-
-    const { error } = await supabase
-      .from("staff_duty_sessions")
-      .update(updatePayload)
-      .eq("id", sessionToEnd.id)
-      .eq("organization_id", currentOrganizationId)
-      .eq("profile_id", currentProfile.id);
-
-    if (error) {
-      console.error("Supabase staff duty session update error:", JSON.stringify(error, null, 2));
-      setLocationTrackingError(`Could not end duty: ${JSON.stringify(error, null, 2)}`);
-      return;
-    }
-
     if (endSnapshot) {
       setCurrentDutyLocation(endSnapshot);
       await saveLocationPoint(sessionToEnd.id, endSnapshot, { force: true });
+    }
+
+    const endedAt = new Date().toISOString();
+    const response = await authorizedFetch("/api/location/device-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "signout" }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      setLocationTrackingError(result.error ?? "Could not end duty.");
+      return;
     }
 
     stopLocationWatch();
@@ -3816,7 +3815,11 @@ setCustomerOrganizationName("");
       entity_label: currentProfile.display_name ?? currentProfile.email ?? currentProfile.id,
       description: "Ended duty session",
       old_values: { status: "on_duty" },
-      new_values: { status: "off_duty", ended_at: endedAt },
+      new_values: {
+        status: "off_duty",
+        ended_at: result.endedAt ?? endedAt,
+        ended_reason: result.endedReason ?? "manual_stop",
+      },
     });
     setLocationTrackingMessage("Duty ended successfully.");
   };
@@ -15268,6 +15271,32 @@ setCustomerOrganizationName("");
     }
   };
 
+  const handleSaveDutySchedule = async () => {
+    setDutyScheduleMessage(null);
+    setDutyScheduleError(null);
+    setDutyScheduleLoading(true);
+    try {
+      const response = await authorizedFetch("/api/identity/organization/working-hours", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dutyStart: businessSettingsDutyStart,
+          dutyEnd: businessSettingsDutyEnd,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error ?? "Failed to save duty schedule.");
+      }
+      await fetchCurrentOrganization(currentOrganizationId);
+      setDutyScheduleMessage(result.message ?? "Duty schedule saved successfully.");
+    } catch (err) {
+      setDutyScheduleError(err instanceof Error ? err.message : "Failed to save duty schedule.");
+    } finally {
+      setDutyScheduleLoading(false);
+    }
+  };
+
   const updateStaffProfileDraft = (
     profileId: string,
     field: "display_name" | "role" | "is_active",
@@ -23899,14 +23928,18 @@ setCustomerOrganizationName("");
               <p className="mt-2 text-sm text-muted-foreground">
                 {isTrackingLocation ? "Live tracking is active." : "Live tracking is not active."}
               </p>
+              {activeDutySession?.scheduled_end_at && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Automatic cutoff: {formatDateTime(activeDutySession.scheduled_end_at)}
+                </p>
+              )}
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={handleStartDuty}
-                  disabled={Boolean(activeDutySession)}
                   className="rounded bg-success px-4 py-2 text-sm text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-muted"
                 >
-                  Start Duty
+                  {activeDutySession ? "Resume Tracking" : "Start Duty"}
                 </button>
                 <button
                   type="button"
@@ -25148,6 +25181,45 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 Organization-wide default. Categories and products can override this.
               </span>
             </label>
+
+            {isOwnerOrAdmin() && (
+              <div className="rounded-lg border border-border bg-background p-4">
+                <h3 className="text-base font-semibold text-foreground">Employee Duty Schedule</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Controls attendance hours and the automatic location-tracking cutoff. Changes apply to duty sessions started after you save; an active employee keeps the cutoff assigned when their duty began.
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                    <span>Start Duty Time</span>
+                    <input
+                      type="time"
+                      value={businessSettingsDutyStart}
+                      onChange={(e) => setBusinessSettingsDutyStart(e.target.value)}
+                      className="rounded border border-border px-3 py-2"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                    <span>End Duty Time</span>
+                    <input
+                      type="time"
+                      value={businessSettingsDutyEnd}
+                      onChange={(e) => setBusinessSettingsDutyEnd(e.target.value)}
+                      className="rounded border border-border px-3 py-2"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveDutySchedule}
+                  disabled={dutyScheduleLoading}
+                  className="mt-4 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
+                >
+                  {dutyScheduleLoading ? "Saving Schedule..." : "Save Duty Schedule"}
+                </button>
+                {dutyScheduleMessage && <p className="mt-3 text-sm text-success">{dutyScheduleMessage}</p>}
+                {dutyScheduleError && <p className="mt-3 text-sm text-destructive">{dutyScheduleError}</p>}
+              </div>
+            )}
 
             <button
               type="button"

@@ -20,10 +20,24 @@ interface DutyStatusResponse {
   onDuty?: boolean;
   dutySessionId?: string | null;
   startedAt?: string | null;
+  scheduledEndAt?: string | null;
+  timezone?: string | null;
+  deviceStatus?: string | null;
+  lastLocationAt?: string | null;
+  lastEndedAt?: string | null;
+  lastEndedReason?: string | null;
+  message?: string | null;
 }
 
-interface StartDutyResponse {
-  dutySessionId?: string | null;
+interface StartDutyResponse extends DutyStatusResponse {
+  started?: boolean;
+}
+
+export class TradeOSApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "TradeOSApiError";
+  }
 }
 
 function requireConfiguration(): void {
@@ -79,7 +93,9 @@ export async function apiFetch(path: string, init: RequestInit = {}, retry = tru
 async function jsonRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await apiFetch(path, init);
   const data = await response.json();
-  if (!response.ok || data.ok === false) throw new Error(data.error ?? data.message ?? "TradeOS request failed.");
+  if (!response.ok || data.ok === false) {
+    throw new TradeOSApiError(data.error ?? data.message ?? "TradeOS request failed.", response.status);
+  }
   return data as T;
 }
 
@@ -99,10 +115,21 @@ export async function getDutyStatus(): Promise<DutyStatus> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "status" }),
   });
-  return { onDuty: Boolean(data.onDuty), dutySessionId: data.dutySessionId ?? null, startedAt: data.startedAt ?? null };
+  return {
+    onDuty: Boolean(data.onDuty),
+    dutySessionId: data.dutySessionId ?? null,
+    startedAt: data.startedAt ?? null,
+    scheduledEndAt: data.scheduledEndAt ?? null,
+    timezone: data.timezone ?? "Asia/Karachi",
+    deviceStatus: data.deviceStatus ?? null,
+    lastLocationAt: data.lastLocationAt ?? null,
+    lastEndedAt: data.lastEndedAt ?? null,
+    lastEndedReason: data.lastEndedReason ?? null,
+    message: data.message ?? null,
+  };
 }
 
-export async function startDuty(point: LocationSample): Promise<string> {
+export async function startDuty(point: LocationSample): Promise<DutyStatus> {
   const data = await jsonRequest<StartDutyResponse>("/api/location/device-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -115,7 +142,16 @@ export async function startDuty(point: LocationSample): Promise<string> {
     }),
   });
   if (!data.dutySessionId) throw new Error("TradeOS did not return a duty session.");
-  return String(data.dutySessionId);
+  if (!data.scheduledEndAt) throw new Error("TradeOS did not return the scheduled duty cutoff.");
+  return {
+    onDuty: true,
+    dutySessionId: String(data.dutySessionId),
+    startedAt: data.startedAt ?? point.capturedAt,
+    scheduledEndAt: data.scheduledEndAt,
+    timezone: data.timezone ?? "Asia/Karachi",
+    deviceStatus: "tracking",
+    message: data.message ?? null,
+  };
 }
 
 export async function stopDuty(): Promise<void> {
@@ -131,6 +167,17 @@ export async function uploadLocation(sessionId: string, point: LocationSample): 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dutySessionId: sessionId, ...point }),
+  });
+}
+
+export async function reportTrackingHealth(
+  health: "tracking" | "permission_denied" | "gps_disabled" | "battery_restricted" | "error",
+  error?: string
+): Promise<void> {
+  await jsonRequest("/api/location/device-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "health", health, error: error ?? null }),
   });
 }
 

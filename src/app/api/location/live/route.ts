@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { deriveTrackingStatus, trackingStatusLabel } from "@/lib/location/tracking-status";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,8 @@ export async function GET(request: NextRequest) {
 
   const organizationId = permission.actor.organizationId;
   const supabase = createSupabaseService();
+  await supabase.rpc("close_expired_duty_sessions", { p_now: new Date().toISOString() });
+
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const serverNow = Date.now();
   const canViewTeam = permission.actor.isOwner || permission.actor.role === "manager" || permission.actor.role === "supervisor" || Boolean(permission.actor.permissions?.includes("administration"));
@@ -27,7 +30,7 @@ export async function GET(request: NextRequest) {
     .eq("organization_id", organizationId);
   let sessionsQuery = supabase
     .from("staff_duty_sessions")
-    .select("profile_id, id, status")
+    .select("profile_id, id, status, scheduled_end_at, device_status, last_error")
     .eq("organization_id", organizationId)
     .eq("status", "on_duty");
   if (!canViewTeam) {
@@ -57,15 +60,20 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const onDutySet = new Set((sessions || []).map((s) => s.profile_id));
-  const sessionMap = new Map((sessions || []).map((s) => [s.profile_id, s.id]));
+  const sessionMap = new Map((sessions || []).map((s) => [s.profile_id, s]));
 
   const result = (employees || [])
     .filter((e) => e.is_active !== false && e.status !== "archived")
     .map((e) => {
       const pid = e.profile_id;
       const latest = pid ? latestMap.get(pid) : undefined;
-      const age = latest ? serverNow - new Date(latest.captured_at).getTime() : Infinity;
+      const activeSession = pid ? sessionMap.get(pid) : undefined;
+      const health = deriveTrackingStatus({
+        isOnDuty: Boolean(activeSession),
+        capturedAt: latest?.captured_at,
+        deviceStatus: activeSession?.device_status,
+        nowMs: serverNow,
+      });
       return {
         profileId: pid ?? e.id,
         employeeName: e.full_name || "Unknown",
@@ -76,10 +84,15 @@ export async function GET(request: NextRequest) {
         speed: latest?.speed ?? null,
         heading: latest?.heading ?? null,
         capturedAt: latest?.captured_at ?? null,
-        isOnDuty: pid ? onDutySet.has(pid) : false,
-        dutySessionId: pid ? sessionMap.get(pid) || null : null,
+        isOnDuty: Boolean(activeSession),
+        dutySessionId: activeSession?.id ?? null,
+        scheduledEndAt: activeSession?.scheduled_end_at ?? null,
+        deviceStatus: activeSession?.device_status ?? null,
+        trackingStatus: health.trackingStatus,
+        trackingStatusLabel: trackingStatusLabel(health.trackingStatus),
+        trackingError: activeSession?.last_error ?? null,
         assignedArea: null,
-        lastUpdateAge: age,
+        lastUpdateAge: health.lastUpdateAge,
         hasLocation: !!latest,
       };
     });

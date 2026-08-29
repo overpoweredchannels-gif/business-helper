@@ -9,7 +9,13 @@ Android-first employee duty tracking for the existing TradeOS backend. The app u
 - Android runs a location foreground service with a permanent notification, so updates can continue with the screen off or the app minimized.
 - Points are uploaded every 30 seconds or after approximately 25 metres of movement.
 - Failed uploads are queued locally and retried later.
-- **Stop duty** stops native collection immediately and closes the TradeOS duty session.
+- The server returns the organization cutoff (16:00 by default). At that time,
+  the server closes duty and attendance, the phone stops native collection,
+  and points captured after the cutoff are rejected.
+- **Stop duty** stops native collection immediately and closes both the TradeOS
+  duty session and that day's attendance record.
+- A previous day's session is never resumed automatically. The employee must
+  tap **Start duty tracking** again on the next configured working day.
 - Force-stopping the app, disabling GPS, revoking permission, or device-vendor battery restrictions can still stop location updates. No mobile operating system guarantees invisible, unstoppable tracking.
 
 ## Local setup

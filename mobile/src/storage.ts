@@ -4,12 +4,14 @@ import type { LocationSample, StoredSession } from "./types";
 
 export interface QueuedLocation {
   dutySessionId: string;
+  scheduledEndAt?: string | null;
   point: LocationSample;
 }
 
 const ACCESS_TOKEN_KEY = "tradeos_access_token";
 const REFRESH_TOKEN_KEY = "tradeos_refresh_token";
 const DUTY_SESSION_KEY = "tradeos_duty_session_id";
+const DUTY_SCHEDULED_END_KEY = "tradeos_duty_scheduled_end_at";
 const CONSENT_KEY = "tradeos_location_consent";
 const LOCATION_QUEUE_KEY = "tradeos_location_queue";
 const MAX_QUEUED_POINTS = 2000;
@@ -34,12 +36,18 @@ export async function clearSession(): Promise<void> {
     SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY),
     SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
     SecureStore.deleteItemAsync(DUTY_SESSION_KEY),
+    SecureStore.deleteItemAsync(DUTY_SCHEDULED_END_KEY),
   ]);
 }
 
 export const saveDutySessionId = (sessionId: string) => SecureStore.setItemAsync(DUTY_SESSION_KEY, sessionId);
 export const getDutySessionId = () => SecureStore.getItemAsync(DUTY_SESSION_KEY);
-export const clearDutySessionId = () => SecureStore.deleteItemAsync(DUTY_SESSION_KEY);
+export const saveDutyScheduledEndAt = (scheduledEndAt: string) => SecureStore.setItemAsync(DUTY_SCHEDULED_END_KEY, scheduledEndAt);
+export const getDutyScheduledEndAt = () => SecureStore.getItemAsync(DUTY_SCHEDULED_END_KEY);
+export const clearDutySessionId = () => Promise.all([
+  SecureStore.deleteItemAsync(DUTY_SESSION_KEY),
+  SecureStore.deleteItemAsync(DUTY_SCHEDULED_END_KEY),
+]).then(() => undefined);
 
 export async function setLocationConsent(consented: boolean): Promise<void> {
   await AsyncStorage.setItem(CONSENT_KEY, consented ? "yes" : "no");

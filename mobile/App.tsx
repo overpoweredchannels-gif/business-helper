@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import * as Location from "expo-location";
 import { StatusBar } from "expo-status-bar";
-import { getDutyStatus, loadStaffIdentity, login, revokeServerSession, startDuty, stopDuty, uploadLocation } from "./src/api";
+import { getDutyStatus, loadStaffIdentity, login, reportTrackingHealth, revokeServerSession, startDuty, stopDuty, uploadLocation } from "./src/api";
 import {
   flushQueuedLocations,
   getCurrentSample,
@@ -28,6 +28,7 @@ import {
   getSession,
   hasLocationConsent,
   saveDutySessionId,
+  saveDutyScheduledEndAt,
   setLocationConsent,
 } from "./src/storage";
 import type { StaffIdentity } from "./src/types";
@@ -41,6 +42,7 @@ export default function App() {
   const [identity, setIdentity] = useState<StaffIdentity | null>(null);
   const [onDuty, setOnDuty] = useState(false);
   const [dutyStartedAt, setDutyStartedAt] = useState<string | null>(null);
+  const [scheduledEndAt, setScheduledEndAt] = useState<string | null>(null);
   const [consented, setConsented] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,13 +57,24 @@ export default function App() {
     setConsented(storedConsent);
     setOnDuty(status.onDuty);
     setDutyStartedAt(status.startedAt);
-    if (!status.onDuty) {
+    setScheduledEndAt(status.scheduledEndAt);
+    if (!status.onDuty || !status.dutySessionId || !status.scheduledEndAt) {
       await stopBackgroundTracking();
       await clearDutySessionId();
+      // Valid points captured before a cutoff may still be queued because the
+      // phone was offline at the end of duty. Replay them against the closed
+      // session so the route history remains complete.
+      await flushQueuedLocations().catch(() => undefined);
+      if (status.lastEndedReason === "automatic_cutoff") {
+        setMessage("Duty ended automatically at the scheduled cutoff. Tap Start duty on the next working day.");
+      }
       return;
     }
-    if (status.onDuty && status.dutySessionId) {
-      await saveDutySessionId(status.dutySessionId);
+    if (status.onDuty && status.dutySessionId && status.scheduledEndAt) {
+      await Promise.all([
+        saveDutySessionId(status.dutySessionId),
+        saveDutyScheduledEndAt(status.scheduledEndAt),
+      ]);
       const [foreground, background] = await Promise.all([
         Location.getForegroundPermissionsAsync(),
         Location.getBackgroundPermissionsAsync(),
@@ -91,6 +104,25 @@ export default function App() {
       }
     })();
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (!onDuty || !scheduledEndAt) return;
+    const remaining = new Date(scheduledEndAt).getTime() - Date.now();
+    const stopAtCutoff = async () => {
+      await stopBackgroundTracking().catch(() => undefined);
+      await clearDutySessionId();
+      setOnDuty(false);
+      setDutyStartedAt(null);
+      setScheduledEndAt(null);
+      setMessage("Duty ended automatically at the scheduled cutoff. Start duty again on the next working day.");
+    };
+    if (remaining <= 0) {
+      void stopAtCutoff();
+      return;
+    }
+    const timer = setTimeout(() => void stopAtCutoff(), Math.min(remaining, 2_147_483_647));
+    return () => clearTimeout(timer);
+  }, [onDuty, scheduledEndAt]);
 
   const signIn = async () => {
     if (!loginId.trim() || !password) {
@@ -133,19 +165,29 @@ export default function App() {
     try {
       await requestTrackingPermissions();
       const point = await getCurrentSample();
-      createdSessionId = await startDuty(point);
-      await saveDutySessionId(createdSessionId);
+      const duty = await startDuty(point);
+      createdSessionId = duty.dutySessionId;
+      if (!createdSessionId || !duty.scheduledEndAt) throw new Error("TradeOS did not return a complete duty session.");
+      await Promise.all([
+        saveDutySessionId(createdSessionId),
+        saveDutyScheduledEndAt(duty.scheduledEndAt),
+      ]);
       await uploadLocation(createdSessionId, point);
       await startBackgroundTracking();
+      await reportTrackingHealth("tracking").catch(() => undefined);
       setOnDuty(true);
-      setDutyStartedAt(new Date().toISOString());
-      setMessage("Duty tracking is active. You may minimize the app; the Android notification must remain visible.");
+      setDutyStartedAt(duty.startedAt);
+      setScheduledEndAt(duty.scheduledEndAt);
+      setMessage("Duty tracking is active until the scheduled cutoff. You may minimize the app; the Android notification must remain visible.");
     } catch (reason) {
+      const reasonMessage = reason instanceof Error ? reason.message : "Could not start duty tracking.";
+      const health = /permission/i.test(reasonMessage) ? "permission_denied" : /location|gps/i.test(reasonMessage) ? "gps_disabled" : "error";
+      await reportTrackingHealth(health, reasonMessage).catch(() => undefined);
       if (createdSessionId) {
         await stopDuty().catch(() => undefined);
         await clearDutySessionId();
       }
-      setError(reason instanceof Error ? reason.message : "Could not start duty tracking.");
+      setError(reasonMessage);
       setMessage(null);
     } finally {
       setBusy(false);
@@ -157,19 +199,27 @@ export default function App() {
     setError(null);
     try {
       const status = await getDutyStatus();
-      if (!status.onDuty || !status.dutySessionId) {
+      if (!status.onDuty || !status.dutySessionId || !status.scheduledEndAt) {
         setOnDuty(false);
         throw new Error("No active duty session exists. Start duty again.");
       }
       await requestTrackingPermissions();
-      await saveDutySessionId(status.dutySessionId);
+      await Promise.all([
+        saveDutySessionId(status.dutySessionId),
+        saveDutyScheduledEndAt(status.scheduledEndAt),
+      ]);
       await startBackgroundTracking();
       await flushQueuedLocations();
+      await reportTrackingHealth("tracking").catch(() => undefined);
       setOnDuty(true);
       setDutyStartedAt(status.startedAt);
+      setScheduledEndAt(status.scheduledEndAt);
       setMessage("Background tracking resumed.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not resume tracking.");
+      const reasonMessage = reason instanceof Error ? reason.message : "Could not resume tracking.";
+      const health = /permission/i.test(reasonMessage) ? "permission_denied" : /location|gps/i.test(reasonMessage) ? "gps_disabled" : "error";
+      await reportTrackingHealth(health, reasonMessage).catch(() => undefined);
+      setError(reasonMessage);
     } finally {
       setBusy(false);
     }
@@ -180,15 +230,23 @@ export default function App() {
     setError(null);
     try {
       await stopBackgroundTracking();
-      await flushQueuedLocations();
+      let queueWarning: string | null = null;
+      try {
+        await flushQueuedLocations();
+      } catch (reason) {
+        queueWarning = reason instanceof Error ? reason.message : "Queued locations could not be uploaded yet.";
+      }
       await stopDuty();
       await clearDutySessionId();
       setOnDuty(false);
       setDutyStartedAt(null);
-      setMessage("Duty ended. Location sharing is off.");
+      setScheduledEndAt(null);
+      setMessage(queueWarning ? `Duty ended. Location sharing is off. ${queueWarning}` : "Duty ended. Location sharing is off.");
     } catch (reason) {
       await clearDutySessionId();
       setOnDuty(false);
+      setDutyStartedAt(null);
+      setScheduledEndAt(null);
       setError(reason instanceof Error ? `${reason.message} Location collection on this phone has been stopped.` : "Location collection stopped, but TradeOS could not close the server duty session.");
     } finally {
       setBusy(false);
@@ -208,6 +266,8 @@ export default function App() {
       setAuthenticated(false);
       setIdentity(null);
       setOnDuty(false);
+      setDutyStartedAt(null);
+      setScheduledEndAt(null);
       setMessage(null);
       setError(null);
     } finally {
@@ -249,11 +309,12 @@ export default function App() {
           <Text style={styles.muted}>Scheduled duty: {identity?.dutyStart ?? "08:00"}–{identity?.dutyEnd ?? "16:00"}</Text>
           <View style={styles.statusRow}><View style={[styles.dot, onDuty ? styles.dotOn : styles.dotOff]} /><Text style={styles.statusText}>{onDuty ? "On duty — background tracking active or ready to resume" : "Off duty — location sharing is off"}</Text></View>
           {dutyStartedAt && <Text style={styles.small}>Duty started {new Date(dutyStartedAt).toLocaleString()}</Text>}
+          {scheduledEndAt && <Text style={styles.small}>Automatic cutoff {new Date(scheduledEndAt).toLocaleString()}</Text>}
         </View>
 
         <View style={styles.disclosure}>
           <Text style={styles.disclosureTitle}>Background location disclosure</Text>
-          <Text style={styles.disclosureText}>TradeOS Workforce collects precise location data to show your organization your route and duty location even when the app is minimized or not in use. Tracking starts only after you tap Start duty, remains visible through a system notification, and ends when you tap Stop duty. Location data is not collected while you are off duty.</Text>
+          <Text style={styles.disclosureText}>TradeOS Workforce collects precise location data to show your organization your route and duty location when the app is minimized or the screen is off. Tracking starts only after you tap Start duty, remains visible through a system notification, and ends when you tap Stop duty or when your organization&apos;s scheduled cutoff is reached. Location data is not collected while you are off duty.</Text>
           <View style={styles.consentRow}><Switch value={consented} onValueChange={(value) => void changeConsent(value)} disabled={onDuty} /><Text style={styles.consentText}>I understand and consent to duty-session location sharing.</Text></View>
         </View>
 

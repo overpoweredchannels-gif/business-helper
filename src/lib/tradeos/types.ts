@@ -597,6 +597,14 @@ export interface StaffDutySession {
   end_longitude: number | null;
   start_accuracy: number | null;
   end_accuracy: number | null;
+  attendance_record_id?: string | null;
+  scheduled_end_at?: string | null;
+  timezone_snapshot?: string | null;
+  ended_reason?: string | null;
+  device_name?: string | null;
+  device_status?: string | null;
+  last_location_at?: string | null;
+  last_error?: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string | null;

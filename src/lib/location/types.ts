@@ -1,3 +1,5 @@
+import type { TrackingStatus } from "./tracking-status";
+
 export interface LocationUploadRequest {
   organizationId: string;
   profileId: string;
@@ -30,13 +32,18 @@ export interface CurrentLocationView {
   capturedAt: string;
   isOnDuty: boolean;
   dutySessionId: string | null;
+  scheduledEndAt: string | null;
+  deviceStatus: string | null;
+  trackingStatus: TrackingStatus;
+  trackingStatusLabel: string;
+  trackingError: string | null;
   assignedArea: string | null;
   lastUpdateAge: number;
   hasLocation: boolean;
 }
 
 export interface DeviceSessionRequest {
-  action: "register" | "signout" | "status";
+  action: "register" | "signout" | "status" | "start" | "health";
   organizationId: string;
   profileId: string;
   deviceToken?: string;

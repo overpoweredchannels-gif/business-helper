@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "TradeOS Workforce",
-    "slug": "tradeos-workforce",
+    "slug": "op-owner",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -10,7 +10,7 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "TradeOS uses your precise location while you are on duty so your organization can see your route progress.",
-          "locationAlwaysAndWhenInUsePermission": "TradeOS uses your precise location during an active duty session, including when the app is minimized or closed, so your organization can see your route progress.",
+          "locationAlwaysAndWhenInUsePermission": "TradeOS uses your precise location during an active duty session, including when the app is minimized or the screen is off, so your organization can see your route progress.",
           "isAndroidBackgroundLocationEnabled": true,
           "isIosBackgroundLocationEnabled": true
         }
@@ -30,8 +30,16 @@
     "ios": {
       "bundleIdentifier": "com.tradeos.workforce",
       "infoPlist": {
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "76aaa590-2bb0-454f-9475-2fc48b06a44f"
+      }
+    },
+    "owner": "oppresso"
   }
 }

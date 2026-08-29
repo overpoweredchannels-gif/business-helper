@@ -40,15 +40,16 @@ export default function LocationDashboard() {
   }, [fetchLocations, pollInterval]);
 
   const onDuty = employees.filter((e) => e.isOnDuty);
-  const withLocation = employees.filter((e) => e.hasLocation);
-  const moving = employees.filter((e) => e.speed && e.speed > 1);
+  const live = employees.filter((e) => e.trackingStatus === "live");
+  const stale = employees.filter((e) => e.isOnDuty && !["live", "delayed"].includes(e.trackingStatus));
 
   let filtered = employees;
   if (filterStatus === "on_duty") filtered = employees.filter((e) => e.isOnDuty);
   else if (filterStatus === "off_duty") filtered = employees.filter((e) => !e.isOnDuty);
   else if (filterStatus === "with_location") filtered = employees.filter((e) => e.hasLocation);
   else if (filterStatus === "moving") filtered = employees.filter((e) => e.speed && e.speed > 1);
-  else if (filterStatus === "stale") filtered = employees.filter((e) => e.isOnDuty && (!e.hasLocation || e.lastUpdateAge > 300000));
+  else if (filterStatus === "live") filtered = employees.filter((e) => e.trackingStatus === "live");
+  else if (filterStatus === "stale") filtered = stale;
 
   return (
     <div style={{ padding: "1.5rem" }}>
@@ -56,7 +57,7 @@ export default function LocationDashboard() {
         <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>Live Workforce Tracking</h2>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>
-            {employees.length} employees &middot; {onDuty.length} on duty &middot; {withLocation.length} with location &middot; {moving.length} moving
+            {employees.length} employees &middot; {onDuty.length} on duty &middot; {live.length} live &middot; {stale.length} stale
           </span>
           <select
             value={filterStatus}
@@ -68,6 +69,7 @@ export default function LocationDashboard() {
             <option value="off_duty">Off Duty</option>
             <option value="with_location">With Location</option>
             <option value="moving">Moving</option>
+            <option value="live">Live Now</option>
             <option value="stale">Stale / No Update</option>
           </select>
           <select
@@ -132,15 +134,15 @@ export default function LocationDashboard() {
                     <span style={{
                       display: "inline-block",
                       width: "8px", height: "8px", borderRadius: "50%",
-                      background: emp.isOnDuty ? (emp.hasLocation ? "#22c55e" : "#f59e0b") : "#9ca3af",
+                      background: trackingStatusColor(emp.trackingStatus),
                       marginRight: "0.375rem",
                     }} />
-                    <span style={{ fontSize: "0.75rem", color: emp.isOnDuty ? "#16a34a" : "#6b7280" }}>
-                      {emp.isOnDuty ? "On Duty" : "Off Duty"}
+                    <span style={{ fontSize: "0.75rem", color: trackingStatusColor(emp.trackingStatus) }}>
+                      {emp.trackingStatusLabel}
                     </span>
                   </div>
                 </div>
-                {emp.hasLocation && (
+                {emp.hasLocation && emp.latitude != null && emp.longitude != null && (
                   <div style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.25rem" }}>
                     {emp.latitude.toFixed(4)}, {emp.longitude.toFixed(4)}
                     {emp.speed && emp.speed > 1 ? ` - ${Math.round(emp.speed * 3.6)} km/h` : ""}
@@ -148,7 +150,14 @@ export default function LocationDashboard() {
                   </div>
                 )}
                 {!emp.hasLocation && emp.isOnDuty && (
-                  <div style={{ fontSize: "0.75rem", color: "#f59e0b", marginTop: "0.25rem" }}>No location data</div>
+                  <div style={{ fontSize: "0.75rem", color: "#f59e0b", marginTop: "0.25rem" }}>
+                    {emp.trackingError || "No location data received for this duty session."}
+                  </div>
+                )}
+                {emp.scheduledEndAt && emp.isOnDuty && (
+                  <div style={{ fontSize: "0.7rem", color: "#6b7280", marginTop: "0.25rem" }}>
+                    Scheduled end: {new Date(emp.scheduledEndAt).toLocaleTimeString()}
+                  </div>
                 )}
               </div>
             ))
@@ -156,7 +165,7 @@ export default function LocationDashboard() {
         </div>
       </div>
 
-      {selectedEmployee && selectedEmployee.hasLocation && (
+      {selectedEmployee && selectedEmployee.hasLocation && selectedEmployee.latitude != null && selectedEmployee.longitude != null && (
         <div style={{ marginTop: "1rem", padding: "0.75rem", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "0.375rem" }}>
           <a
             href={`https://www.google.com/maps/dir/?api=1&destination=${selectedEmployee.latitude},${selectedEmployee.longitude}`}
@@ -188,3 +197,10 @@ const buttonStyle: React.CSSProperties = {
   background: "#f9fafb",
   cursor: "pointer",
 };
+
+function trackingStatusColor(status: CurrentLocationView["trackingStatus"]): string {
+  if (status === "live") return "#16a34a";
+  if (status === "delayed") return "#d97706";
+  if (status === "off_duty") return "#6b7280";
+  return "#dc2626";
+}

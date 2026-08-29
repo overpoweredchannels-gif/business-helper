@@ -19,7 +19,7 @@ import type { CurrentLocationView } from "@/lib/location/types";
 import TraceModal, { type TracePoint } from "./TraceModal";
 import NavigateModal from "./NavigateModal";
 
-type FilterKey = "all" | "on_duty" | "off_duty" | "with_location" | "moving" | "stale";
+type FilterKey = "all" | "on_duty" | "off_duty" | "with_location" | "moving" | "live" | "stale";
 
 export default function LiveTrackingView({ compact = false }: { compact?: boolean }) {
   const [employees, setEmployees] = useState<CurrentLocationView[]>([]);
@@ -77,13 +77,15 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
   const onDuty = employees.filter((e) => e.isOnDuty);
   const withLocation = employees.filter((e) => e.hasLocation);
   const moving = employees.filter((e) => (e.speed ?? 0) > 1);
-  const stale = employees.filter((e) => e.isOnDuty && (!e.hasLocation || e.lastUpdateAge > 300000));
+  const live = employees.filter((e) => e.trackingStatus === "live");
+  const stale = employees.filter((e) => e.isOnDuty && !["live", "delayed"].includes(e.trackingStatus));
 
   let filtered = employees;
   if (filter === "on_duty") filtered = onDuty;
   else if (filter === "off_duty") filtered = employees.filter((e) => !e.isOnDuty);
   else if (filter === "with_location") filtered = withLocation;
   else if (filter === "moving") filtered = moving;
+  else if (filter === "live") filtered = live;
   else if (filter === "stale") filtered = stale;
 
   const counts: Record<FilterKey, number> = {
@@ -92,6 +94,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
     off_duty: employees.length - onDuty.length,
     with_location: withLocation.length,
     moving: moving.length,
+    live: live.length,
     stale: stale.length,
   };
 
@@ -138,10 +141,10 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
             <span className="font-semibold text-success">{onDuty.length}</span> on duty
           </span>
           <span>
-            <span className="font-semibold text-foreground">{withLocation.length}</span> with location
+            <span className="font-semibold text-success">{live.length}</span> live
           </span>
           <span>
-            <span className="font-semibold text-primary">{moving.length}</span> moving
+            <span className="font-semibold text-destructive">{stale.length}</span> stale
           </span>
         </div>
         <select
@@ -156,6 +159,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
               ["off_duty", "Off Duty"],
               ["with_location", "With Location"],
               ["moving", "Moving"],
+              ["live", "Live Now"],
               ["stale", "Stale / No Update"],
             ] as [FilterKey, string][]
           ).map(([key, label]) => (
@@ -241,16 +245,27 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                         </div>
                       </>
                     ) : (
-                      emp.isOnDuty && <div className="text-xs text-warning mt-0.5">No location data</div>
+                      emp.isOnDuty && <div className="text-xs text-warning mt-0.5">{emp.trackingError || "No location data"}</div>
+                    )}
+                    {emp.scheduledEndAt && emp.isOnDuty && (
+                      <div className="mt-0.5 text-[11px] text-light-text">
+                        Cutoff {new Date(emp.scheduledEndAt).toLocaleTimeString()}
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <span
                       className={`size-2.5 rounded-full ${
-                        emp.isOnDuty ? (emp.hasLocation ? "bg-success" : "bg-warning") : "bg-muted-foreground"
+                        emp.trackingStatus === "live"
+                          ? "bg-success"
+                          : emp.trackingStatus === "delayed"
+                            ? "bg-warning"
+                            : emp.trackingStatus === "off_duty"
+                              ? "bg-muted-foreground"
+                              : "bg-destructive"
                       }`}
                     />
-                    <span className="text-[11px] text-body">{emp.isOnDuty ? "On Duty" : "Off Duty"}</span>
+                    <span className="max-w-28 text-right text-[11px] text-body">{emp.trackingStatusLabel}</span>
                   </div>
                 </div>
 

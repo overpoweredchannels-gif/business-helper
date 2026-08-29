@@ -17,6 +17,13 @@ export interface DutyStatus {
   onDuty: boolean;
   dutySessionId: string | null;
   startedAt: string | null;
+  scheduledEndAt: string | null;
+  timezone: string;
+  deviceStatus?: string | null;
+  lastLocationAt?: string | null;
+  lastEndedAt?: string | null;
+  lastEndedReason?: string | null;
+  message?: string | null;
 }
 
 export interface StaffIdentity {

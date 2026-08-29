@@ -6,7 +6,9 @@
 -- Stores employee duty sessions with GPS start/end coordinates
 -- Columns: id, organization_id, profile_id, status, started_at, ended_at,
 --   start_latitude, start_longitude, end_latitude, end_longitude,
---   start_accuracy, end_accuracy, notes, created_at, updated_at
+--   start_accuracy, end_accuracy, attendance_record_id, scheduled_end_at,
+--   timezone_snapshot, ended_reason, device_name, device_status,
+--   last_location_at, last_error, notes, created_at, updated_at
 
 -- staff_location_points (already exists)
 -- Stores periodic GPS location uploads from employees
@@ -25,3 +27,9 @@
 -- CREATE INDEX IF NOT EXISTS idx_duty_sessions_active
 --   ON staff_duty_sessions (organization_id, status)
 --   WHERE status = 'on_duty';
+-- CREATE UNIQUE INDEX IF NOT EXISTS staff_duty_sessions_one_active_per_employee_idx
+--   ON staff_duty_sessions (organization_id, profile_id)
+--   WHERE status = 'on_duty';
+--
+-- The authoritative Phase 8 migration, RPC functions, and Supabase Cron job are
+-- in src/lib/migrations/production_phase8_duty_tracking.sql.
