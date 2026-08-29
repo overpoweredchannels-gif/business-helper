@@ -8,13 +8,12 @@ const API_URL = (process.env.EXPO_PUBLIC_TRADEOS_API_URL ?? "").replace(/\/$/, "
 
 type TradeOSWorkspaceProps = {
   destination: "/" | "/onboarding";
-  accountName: string;
   onSignOut: () => void;
   secondaryActionLabel?: string;
   onSecondaryAction?: () => void;
 };
 
-export function TradeOSWorkspace({ destination, accountName, onSignOut, secondaryActionLabel, onSecondaryAction }: TradeOSWorkspaceProps) {
+export function TradeOSWorkspace({ destination, onSignOut, secondaryActionLabel, onSecondaryAction }: TradeOSWorkspaceProps) {
   const webView = useRef<WebView>(null);
   const [request, setRequest] = useState<{
     uri: string;
@@ -30,7 +29,7 @@ export function TradeOSWorkspace({ destination, accountName, onSignOut, secondar
   useEffect(() => {
     void getSession().then((session) => {
       if (!session || !API_URL) {
-        setError("Your owner session is unavailable. Sign in again.");
+        setError("Your TradeOS session is unavailable. Sign in again.");
         return;
       }
       setRequest({
@@ -40,16 +39,26 @@ export function TradeOSWorkspace({ destination, accountName, onSignOut, secondar
           Authorization: `Bearer ${session.accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ refreshToken: session.refreshToken, destination }),
+        body: JSON.stringify({
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          destination,
+        }),
       });
-    }).catch(() => setError("Your owner session could not be opened."));
+    }).catch(() => setError("Your TradeOS session could not be opened."));
   }, [destination]);
 
   const allowNavigation = (navigation: WebViewNavigation) => {
     if (navigation.url === "about:blank") return true;
     try {
       const url = new URL(navigation.url);
-      if (url.origin === appOrigin) return true;
+      if (url.origin === appOrigin) {
+        if (url.pathname === "/login") {
+          onSignOut();
+          return false;
+        }
+        return true;
+      }
       if (url.protocol === "http:" || url.protocol === "https:") {
         void Linking.openURL(navigation.url);
       }
@@ -61,23 +70,6 @@ export function TradeOSWorkspace({ destination, accountName, onSignOut, secondar
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <View style={styles.titleBlock}>
-          <Text style={styles.title}>TradeOS</Text>
-          <Text numberOfLines={1} style={styles.subtitle}>{accountName}</Text>
-        </View>
-        {secondaryActionLabel && onSecondaryAction && (
-          <Pressable onPress={onSecondaryAction} style={styles.headerButton}>
-            <Text style={styles.headerButtonText}>{secondaryActionLabel}</Text>
-          </Pressable>
-        )}
-        <Pressable onPress={() => webView.current?.reload()} style={styles.headerButton}>
-          <Text style={styles.headerButtonText}>Reload</Text>
-        </Pressable>
-        <Pressable onPress={onSignOut} style={styles.headerButton}>
-          <Text style={styles.headerButtonText}>Sign out</Text>
-        </Pressable>
-      </View>
       {error ? (
         <View style={styles.center}>
           <Text style={styles.error}>{error}</Text>
@@ -86,21 +78,32 @@ export function TradeOSWorkspace({ destination, accountName, onSignOut, secondar
       ) : !request ? (
         <View style={styles.center}><ActivityIndicator size="large" color="#2563eb" /><Text style={styles.muted}>Opening your workspace…</Text></View>
       ) : (
-        <WebView
-          ref={webView}
-          source={request}
-          onShouldStartLoadWithRequest={allowNavigation}
-          onHttpError={(event) => setError(`TradeOS returned error ${event.nativeEvent.statusCode}. Reload or sign in again.`)}
-          onError={() => setError("The TradeOS workspace could not be reached. Check your connection and try again.")}
-          startInLoadingState
-          renderLoading={() => <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#2563eb" /></View>}
-          javaScriptEnabled
-          domStorageEnabled
-          sharedCookiesEnabled
-          thirdPartyCookiesEnabled={false}
-          setSupportMultipleWindows={false}
-          style={styles.webView}
-        />
+        <View style={styles.webContainer}>
+          <WebView
+            ref={webView}
+            source={request}
+            onShouldStartLoadWithRequest={allowNavigation}
+            onHttpError={(event) => {
+              if (event.nativeEvent.url.includes("/api/auth/mobile-session")) {
+                setError(`TradeOS returned error ${event.nativeEvent.statusCode}. Sign in again.`);
+              }
+            }}
+            onError={() => setError("The TradeOS workspace could not be reached. Check your connection and try again.")}
+            startInLoadingState
+            renderLoading={() => <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#2563eb" /></View>}
+            javaScriptEnabled
+            domStorageEnabled
+            sharedCookiesEnabled
+            thirdPartyCookiesEnabled={false}
+            setSupportMultipleWindows={false}
+            style={styles.webView}
+          />
+          {secondaryActionLabel && onSecondaryAction && (
+            <Pressable onPress={onSecondaryAction} style={styles.floatingAction}>
+              <Text style={styles.floatingActionText}>{secondaryActionLabel}</Text>
+            </Pressable>
+          )}
+        </View>
       )}
     </SafeAreaView>
   );
@@ -108,13 +111,10 @@ export function TradeOSWorkspace({ destination, accountName, onSignOut, secondar
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#ffffff" },
-  header: { minHeight: 58, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: "#e2e8f0", flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#ffffff" },
-  titleBlock: { flex: 1 },
-  title: { color: "#0f172a", fontSize: 18, fontWeight: "800" },
-  subtitle: { color: "#64748b", fontSize: 11 },
-  headerButton: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
-  headerButtonText: { color: "#2563eb", fontSize: 12, fontWeight: "700" },
+  webContainer: { flex: 1 },
   webView: { flex: 1 },
+  floatingAction: { position: "absolute", right: 16, bottom: 18, backgroundColor: "#2563eb", borderRadius: 999, paddingHorizontal: 18, paddingVertical: 12, shadowColor: "#000000", shadowOpacity: 0.2, shadowRadius: 7, elevation: 5 },
+  floatingActionText: { color: "#ffffff", fontWeight: "800", fontSize: 13 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24, gap: 14 },
   loadingOverlay: { position: "absolute", inset: 0, justifyContent: "center", alignItems: "center", backgroundColor: "#ffffff" },
   muted: { color: "#64748b", fontSize: 13 },

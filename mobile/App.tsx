@@ -8,12 +8,11 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import * as Location from "expo-location";
 import { StatusBar } from "expo-status-bar";
-import { getDutyStatus, loadOwnerIdentity, loadStaffIdentity, login, reportTrackingHealth, revokeServerSession, startDuty, stopDuty, uploadLocation } from "./src/api";
+import { getDutyStatus, loadOwnerIdentity, loadStaffIdentity, reportTrackingHealth, revokeServerSession, startDuty, stopDuty, uploadLocation } from "./src/api";
 import {
   flushQueuedLocations,
   getCurrentSample,
@@ -31,10 +30,13 @@ import {
   saveDutySessionId,
   saveDutyScheduledEndAt,
   saveAccountMode,
+  saveSession,
   setLocationConsent,
 } from "./src/storage";
 import { signInOwnerWithGoogle } from "./src/owner-auth";
 import { TradeOSWorkspace } from "./src/TradeOSWorkspace";
+import { TradeOSLogin } from "./src/TradeOSLogin";
+import type { WebLoginSession } from "./src/TradeOSLogin";
 import type { OwnerIdentity, StaffIdentity } from "./src/types";
 import type { AccountMode } from "./src/storage";
 
@@ -43,9 +45,6 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [accountMode, setAccountMode] = useState<AccountMode | null>(null);
-  const [loginMode, setLoginMode] = useState<AccountMode>("owner");
-  const [loginId, setLoginId] = useState("");
-  const [password, setPassword] = useState("");
   const [identity, setIdentity] = useState<StaffIdentity | null>(null);
   const [ownerIdentity, setOwnerIdentity] = useState<OwnerIdentity | null>(null);
   const [ownerDestination, setOwnerDestination] = useState<"/" | "/onboarding">("/");
@@ -141,23 +140,24 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [onDuty, scheduledEndAt]);
 
-  const signIn = async () => {
-    if (!loginId.trim() || !password) {
-      setError("Enter your TradeOS profile ID and password.");
-      return;
-    }
+  const acceptWebSession = async (session: WebLoginSession) => {
     setBusy(true);
     setError(null);
     try {
-      await login(loginId, password);
-      await saveAccountMode("employee");
-      setPassword("");
-      await loadWorkspace();
-      setAccountMode("employee");
+      await saveSession({ accessToken: session.accessToken, refreshToken: session.refreshToken });
+      await saveAccountMode(session.accountMode);
+      if (session.accountMode === "employee") {
+        await loadWorkspace();
+      } else {
+        const owner = await loadOwnerIdentity();
+        setOwnerIdentity(owner);
+      }
+      setAccountMode(session.accountMode);
       setAuthenticated(true);
       setMessage("Signed in successfully.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Sign in failed.");
+      await clearSession().catch(() => undefined);
+      Alert.alert("TradeOS sign-in error", reason instanceof Error ? reason.message : "Sign in failed.");
     } finally {
       setBusy(false);
     }
@@ -177,7 +177,7 @@ export default function App() {
       setMessage("Signed in successfully.");
     } catch (reason) {
       await clearSession().catch(() => undefined);
-      setError(reason instanceof Error ? reason.message : "Google sign in failed.");
+      Alert.alert("Google sign-in error", reason instanceof Error ? reason.message : "Google sign in failed.");
     } finally {
       setBusy(false);
     }
@@ -323,49 +323,17 @@ export default function App() {
   }
 
   if (!authenticated) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <StatusBar style="auto" />
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-          <View style={styles.brand}><Text style={styles.brandTitle}>TradeOS</Text><Text style={styles.muted}>Your complete business and workforce workspace</Text></View>
-          <View style={styles.card}>
-            <Text style={styles.heading}>Sign in</Text>
-            <View style={styles.modeRow}>
-              <Pressable disabled={busy} onPress={() => { setLoginMode("owner"); setError(null); }} style={[styles.modeButton, loginMode === "owner" && styles.modeButtonActive]}><Text style={[styles.modeButtonText, loginMode === "owner" && styles.modeButtonTextActive]}>Owner / Admin</Text></Pressable>
-              <Pressable disabled={busy} onPress={() => { setLoginMode("employee"); setError(null); }} style={[styles.modeButton, loginMode === "employee" && styles.modeButtonActive]}><Text style={[styles.modeButtonText, loginMode === "employee" && styles.modeButtonTextActive]}>Employee</Text></Pressable>
-            </View>
-            {loginMode === "owner" ? (
-              <>
-                <Text style={styles.muted}>Owners and administrators use their existing Google account to open the complete TradeOS workspace.</Text>
-                {error && <Text style={styles.error}>{error}</Text>}
-                <Pressable disabled={busy} onPress={() => void signInOwner()} style={[styles.googleButton, busy && styles.disabled]}><Text style={styles.googleButtonText}>{busy ? "Connecting…" : "Continue with Google"}</Text></Pressable>
-              </>
-            ) : (
-              <>
-                <Text style={styles.muted}>Employees use the profile ID and password assigned by their organization.</Text>
-                <Text style={styles.label}>Profile ID</Text>
-                <TextInput value={loginId} onChangeText={setLoginId} autoCapitalize="characters" autoCorrect={false} style={styles.input} placeholder="Your TradeOS profile ID" />
-                <Text style={styles.label}>Password</Text>
-                <TextInput value={password} onChangeText={setPassword} secureTextEntry style={styles.input} placeholder="Password" />
-                {error && <Text style={styles.error}>{error}</Text>}
-                <Pressable disabled={busy} onPress={signIn} style={[styles.primaryButton, busy && styles.disabled]}><Text style={styles.primaryButtonText}>{busy ? "Signing in…" : "Sign in as employee"}</Text></Pressable>
-              </>
-            )}
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
+    return <TradeOSLogin onGoogleSignIn={() => void signInOwner()} onSession={(session) => void acceptWebSession(session)} />;
   }
 
   if (accountMode === "owner" && ownerIdentity) {
-    return <TradeOSWorkspace destination={ownerDestination} accountName={ownerIdentity.displayName} onSignOut={() => void signOut()} />;
+    return <TradeOSWorkspace destination={ownerDestination} onSignOut={() => void signOut()} />;
   }
 
   if (accountMode === "employee" && identity && employeeView === "workspace") {
     return (
       <TradeOSWorkspace
         destination="/"
-        accountName={identity.employeeName}
         onSignOut={() => void signOut()}
         secondaryActionLabel="Duty"
         onSecondaryAction={() => setEmployeeView("duty")}
@@ -414,7 +382,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f8fafc" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, backgroundColor: "#f8fafc" },
   container: { padding: 20, gap: 16 },
-  brand: { marginTop: 48, marginBottom: 12 },
   brandTitle: { fontSize: 24, fontWeight: "800", color: "#0f172a" },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 14 },
@@ -422,17 +389,8 @@ const styles = StyleSheet.create({
   heading: { fontSize: 19, fontWeight: "700", color: "#0f172a" },
   muted: { color: "#64748b", fontSize: 13 },
   small: { color: "#64748b", fontSize: 12 },
-  label: { color: "#334155", fontWeight: "600", fontSize: 13, marginTop: 4 },
-  input: { backgroundColor: "#ffffff", borderColor: "#cbd5e1", borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12, color: "#0f172a" },
-  modeRow: { flexDirection: "row", backgroundColor: "#f1f5f9", borderRadius: 10, padding: 3, gap: 3 },
-  modeButton: { flex: 1, borderRadius: 8, paddingVertical: 10, alignItems: "center" },
-  modeButtonActive: { backgroundColor: "#ffffff", borderColor: "#cbd5e1", borderWidth: 1 },
-  modeButtonText: { color: "#64748b", fontWeight: "700", fontSize: 13 },
-  modeButtonTextActive: { color: "#0f172a" },
   primaryButton: { backgroundColor: "#2563eb", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
   primaryButtonText: { color: "#ffffff", fontWeight: "700" },
-  googleButton: { backgroundColor: "#ffffff", borderColor: "#cbd5e1", borderWidth: 1, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
-  googleButtonText: { color: "#0f172a", fontWeight: "700" },
   secondaryButton: { flex: 1, backgroundColor: "#ffffff", borderColor: "#2563eb", borderWidth: 1, borderRadius: 12, paddingVertical: 14, alignItems: "center" },
   secondaryButtonText: { color: "#2563eb", fontWeight: "700" },
   stopButton: { flex: 1, backgroundColor: "#dc2626", borderRadius: 12, paddingVertical: 14, alignItems: "center" },

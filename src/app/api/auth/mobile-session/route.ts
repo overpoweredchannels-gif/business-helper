@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 type MobileSessionBody = {
+  accessToken?: unknown;
   refreshToken?: unknown;
   destination?: unknown;
 };
@@ -12,10 +13,15 @@ const safeDestination = (value: unknown) => value === "/onboarding" ? "/onboardi
 
 export async function POST(request: NextRequest) {
   const authorization = request.headers.get("authorization") ?? "";
-  const accessToken = authorization.toLowerCase().startsWith("bearer ")
+  const headerAccessToken = authorization.toLowerCase().startsWith("bearer ")
     ? authorization.slice(7).trim()
     : "";
   const body = await request.json().catch(() => ({} as MobileSessionBody));
+  // Android WebView does not reliably retain custom headers on POST requests.
+  // Accept the access token in the HTTPS JSON body as well as the standard
+  // Authorization header so the same validated session can be bridged safely.
+  const bodyAccessToken = typeof body.accessToken === "string" ? body.accessToken.trim() : "";
+  const accessToken = headerAccessToken || bodyAccessToken;
   const refreshToken = typeof body.refreshToken === "string" ? body.refreshToken.trim() : "";
 
   if (!accessToken || !refreshToken) {

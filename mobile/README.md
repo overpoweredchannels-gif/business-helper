@@ -1,6 +1,6 @@
 # TradeOS mobile app
 
-Android-first access to the existing TradeOS backend. Owners and administrators can use Google authentication to open the complete TradeOS workspace, while employees retain the native staff login and background duty tracking flow. The app does not create a second business, employee, or tracking database.
+Android-first access to the existing TradeOS backend. The APK renders the existing TradeOS web login and permission-scoped workspace full-screen instead of maintaining a separately designed business interface. Owners and administrators use secure Google authentication, while employees retain native background duty tracking alongside the same web workspace. The app does not create a second business, employee, or tracking database.
 
 ## Behavior
 

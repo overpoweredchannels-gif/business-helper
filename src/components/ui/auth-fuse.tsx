@@ -15,6 +15,18 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 type LoginMethod = "email" | "staff";
 
+type NativeWebViewBridge = {
+  postMessage: (message: string) => void;
+};
+
+const postToTradeOSMobile = (payload: Record<string, unknown>): boolean => {
+  if (typeof window === "undefined") return false;
+  const bridge = (window as typeof window & { ReactNativeWebView?: NativeWebViewBridge }).ReactNativeWebView;
+  if (!bridge) return false;
+  bridge.postMessage(JSON.stringify(payload));
+  return true;
+};
+
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -290,6 +302,17 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
             deviceName: typeof navigator === "undefined" ? "Web browser" : navigator.userAgent.slice(0, 120),
             rememberDevice: rememberMe,
           }),
+        });
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData.session) {
+        postToTradeOSMobile({
+          type: "tradeos-auth-session",
+          accessToken: sessionData.session.access_token,
+          refreshToken: sessionData.session.refresh_token,
+          role,
+          accountMode: method === "staff" ? "employee" : "owner",
         });
       }
 
@@ -666,6 +689,10 @@ function GoogleButton() {
     setError(null);
     setLoading(true);
     try {
+      if (postToTradeOSMobile({ type: "tradeos-google-sign-in" })) {
+        setLoading(false);
+        return;
+      }
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo: `${window.location.origin}/auth/callback` },
