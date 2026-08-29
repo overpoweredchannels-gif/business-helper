@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "TradeOS Workforce",
+    "name": "TradeOS",
     "slug": "op-owner",
+    "scheme": "tradeos",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",

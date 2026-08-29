@@ -1,10 +1,11 @@
-# TradeOS Workforce mobile app
+# TradeOS mobile app
 
-Android-first employee duty tracking for the existing TradeOS backend. The app uses the existing staff login, duty-session, and location-upload APIs; it does not create a second employee or tracking database.
+Android-first access to the existing TradeOS backend. Owners and administrators can use Google authentication to open the complete TradeOS workspace, while employees retain the native staff login and background duty tracking flow. The app does not create a second business, employee, or tracking database.
 
 ## Behavior
 
-- An employee signs in using the same TradeOS profile ID and password.
+- An owner or administrator signs in with Google through the Android system browser and opens the existing TradeOS workspace in the app.
+- An employee signs in using the same TradeOS profile ID and password, opens the existing permission-scoped workspace, and can switch to the native duty tracker.
 - Tracking begins only after the employee reads the prominent disclosure, consents, grants foreground/background location permission, and taps **Start duty tracking**.
 - Android runs a location foreground service with a permanent notification, so updates can continue with the screen off or the app minimized.
 - Points are uploaded every 30 seconds or after approximately 25 metres of movement.

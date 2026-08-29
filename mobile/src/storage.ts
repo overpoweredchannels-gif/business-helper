@@ -2,6 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import type { LocationSample, StoredSession } from "./types";
 
+export type AccountMode = "employee" | "owner";
+
 export interface QueuedLocation {
   dutySessionId: string;
   scheduledEndAt?: string | null;
@@ -10,6 +12,7 @@ export interface QueuedLocation {
 
 const ACCESS_TOKEN_KEY = "tradeos_access_token";
 const REFRESH_TOKEN_KEY = "tradeos_refresh_token";
+const ACCOUNT_MODE_KEY = "tradeos_account_mode";
 const DUTY_SESSION_KEY = "tradeos_duty_session_id";
 const DUTY_SCHEDULED_END_KEY = "tradeos_duty_scheduled_end_at";
 const CONSENT_KEY = "tradeos_location_consent";
@@ -35,9 +38,16 @@ export async function clearSession(): Promise<void> {
   await Promise.all([
     SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY),
     SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
+    SecureStore.deleteItemAsync(ACCOUNT_MODE_KEY),
     SecureStore.deleteItemAsync(DUTY_SESSION_KEY),
     SecureStore.deleteItemAsync(DUTY_SCHEDULED_END_KEY),
   ]);
+}
+
+export const saveAccountMode = (mode: AccountMode) => SecureStore.setItemAsync(ACCOUNT_MODE_KEY, mode);
+export async function getAccountMode(): Promise<AccountMode | null> {
+  const mode = await SecureStore.getItemAsync(ACCOUNT_MODE_KEY);
+  return mode === "owner" || mode === "employee" ? mode : null;
 }
 
 export const saveDutySessionId = (sessionId: string) => SecureStore.setItemAsync(DUTY_SESSION_KEY, sessionId);

@@ -1,5 +1,5 @@
 import { clearSession, getSession, saveSession } from "./storage";
-import type { DutyStatus, LocationSample, StaffIdentity, StoredSession } from "./types";
+import type { DutyStatus, LocationSample, OwnerIdentity, StaffIdentity, StoredSession } from "./types";
 
 const API_URL = (process.env.EXPO_PUBLIC_TRADEOS_API_URL ?? "").replace(/\/$/, "");
 const SUPABASE_URL = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
@@ -27,6 +27,15 @@ interface DutyStatusResponse {
   lastEndedAt?: string | null;
   lastEndedReason?: string | null;
   message?: string | null;
+}
+
+interface CurrentProfileResponse {
+  profile?: {
+    full_name?: string | null;
+    display_name?: string | null;
+    email?: string | null;
+    role?: string | null;
+  } | null;
 }
 
 interface StartDutyResponse extends DutyStatusResponse {
@@ -106,6 +115,15 @@ export async function loadStaffIdentity(): Promise<StaffIdentity> {
     organizationName: data.me?.organization?.name ?? "TradeOS",
     dutyStart: data.me?.organization?.working_hours?.duty_start ?? "08:00",
     dutyEnd: data.me?.organization?.working_hours?.duty_end ?? "16:00",
+  };
+}
+
+export async function loadOwnerIdentity(): Promise<OwnerIdentity> {
+  const data = await jsonRequest<CurrentProfileResponse>("/api/identity/profile/current");
+  if (!data.profile) throw new Error("Your TradeOS owner profile could not be loaded.");
+  return {
+    displayName: data.profile.display_name ?? data.profile.full_name ?? data.profile.email ?? "TradeOS owner",
+    role: data.profile.role ?? "owner",
   };
 }
 

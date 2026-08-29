@@ -32,3 +32,8 @@ export interface StaffIdentity {
   dutyStart: string;
   dutyEnd: string;
 }
+
+export interface OwnerIdentity {
+  displayName: string;
+  role: string;
+}
