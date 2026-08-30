@@ -282,11 +282,12 @@ export default function App() {
       setScheduledEndAt(null);
       setMessage(queueWarning ? `Duty ended. Location sharing is off. ${queueWarning}` : "Duty ended. Location sharing is off.");
     } catch (reason) {
-      await clearDutySessionId();
-      setOnDuty(false);
-      setDutyStartedAt(null);
-      setScheduledEndAt(null);
-      setError(reason instanceof Error ? `${reason.message} Location collection on this phone has been stopped.` : "Location collection stopped, but TradeOS could not close the server duty session.");
+      setMessage(null);
+      setError(
+        reason instanceof Error
+          ? `${reason.message} Location collection on this phone is stopped, but the server duty session could not be closed. Tap Stop duty again when your connection returns.`
+          : "Location collection stopped, but TradeOS could not close the server duty session. Tap Stop duty again when your connection returns."
+      );
     } finally {
       setBusy(false);
     }

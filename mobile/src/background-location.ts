@@ -11,6 +11,7 @@ import {
 import type { LocationSample } from "./types";
 
 export const LOCATION_TASK_NAME = "tradeos-workforce-location";
+const PERMANENT_LOCATION_REJECTION_STATUSES = new Set([400, 404, 409, 410, 422]);
 
 const toSample = (location: Location.LocationObject): LocationSample => ({
   latitude: location.coords.latitude,
@@ -55,10 +56,7 @@ async function uploadOrQueue(points: LocationSample[]): Promise<void> {
     } catch (reason) {
       if (
         reason instanceof TradeOSApiError &&
-        reason.status >= 400 &&
-        reason.status < 500 &&
-        reason.status !== 401 &&
-        reason.status !== 403
+        PERMANENT_LOCATION_REJECTION_STATUSES.has(reason.status)
       ) {
         processed += 1;
         if (reason.status === 409 && item.dutySessionId === sessionId) {
@@ -96,11 +94,38 @@ export async function requestTrackingPermissions(): Promise<void> {
   if (background.status !== Location.PermissionStatus.GRANTED) {
     throw new Error("Choose Allow all the time so tracking can continue when the app is minimized.");
   }
+  if (!(await Location.hasServicesEnabledAsync())) {
+    throw new Error("GPS/location services are turned off. Turn on Location and try again.");
+  }
 }
 
 export async function getCurrentSample(): Promise<LocationSample> {
-  const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-  return toSample(location);
+  const lastKnown = await Location.getLastKnownPositionAsync({
+    maxAge: 120_000,
+    requiredAccuracy: 500,
+  }).catch(() => null);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const current = await Promise.race([
+      Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+        mayShowUserSettingsDialog: true,
+      }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("A fresh GPS fix is taking too long.")), 20_000);
+      }),
+    ]);
+    return toSample(current);
+  } catch (reason) {
+    if (lastKnown) return toSample(lastKnown);
+    throw new Error(
+      reason instanceof Error
+        ? `${reason.message} Turn on Location and try again near a window or outdoors.`
+        : "Could not acquire a GPS position. Turn on Location and try again near a window or outdoors."
+    );
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export async function startBackgroundTracking(): Promise<void> {

@@ -7,6 +7,7 @@ import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking } from "@/components/dashboard";
 import { cn } from "@/lib/utils";
+import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
 import type { ChatResponse } from "@/lib/conversation";
 import type { ChatContext } from "@/hooks/useAIChat";
@@ -3530,41 +3531,6 @@ setCustomerOrganizationName("");
     setVoiceAnswerError(null);
   };
 
-  const getGeolocationPosition = () =>
-    new Promise<GeolocationPosition>((resolve, reject) => {
-      if (typeof navigator === "undefined" || !navigator.geolocation) {
-        reject(new Error("This browser does not support location tracking."));
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 20000,
-        maximumAge: 30000,
-      });
-    });
-
-  const getLocationErrorMessage = (error: unknown) => {
-    const geoError =
-      typeof error === "object" && error !== null && "code" in error
-        ? (error as { code?: number; message?: string })
-        : null;
-
-    if (geoError?.code) {
-      if (geoError.code === 1) {
-        return "Location permission was denied. Please allow location access to start duty tracking.";
-      }
-      if (geoError.code === 2) {
-        return "Location is currently unavailable. Please check GPS/location settings and try again.";
-      }
-      if (geoError.code === 3) {
-        return "Location request timed out. Please try again.";
-      }
-    }
-
-    return error instanceof Error ? error.message : geoError?.message ?? "Could not read current location.";
-  };
-
   const positionToSnapshot = (position: GeolocationPosition, capturedAt = new Date().toISOString()): CurrentLocationSnapshot => ({
     latitude: position.coords.latitude,
     longitude: position.coords.longitude,
@@ -3673,12 +3639,16 @@ setCustomerOrganizationName("");
         }
       },
       (error) => {
-        setLocationTrackingError(getLocationErrorMessage(error));
+        if (error.code === error.TIMEOUT || error.code === 3) {
+          setLocationTrackingMessage("Live tracking is active and waiting for the next GPS update.");
+          return;
+        }
+        setLocationTrackingError(getBrowserLocationErrorMessage(error));
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 30000,
-        timeout: 20000,
+        maximumAge: 120000,
+        timeout: 30000,
       }
     );
 
@@ -3707,7 +3677,7 @@ setCustomerOrganizationName("");
     }
 
     try {
-      const position = await getGeolocationPosition();
+      const position = await acquireBrowserLocation();
       const startedAt = new Date().toISOString();
       const snapshot = positionToSnapshot(position, startedAt);
 
@@ -3751,7 +3721,7 @@ setCustomerOrganizationName("");
         }. Use the Workforce mobile app for background tracking.`
       );
     } catch (err) {
-      setLocationTrackingError(getLocationErrorMessage(err));
+      setLocationTrackingError(getBrowserLocationErrorMessage(err));
     }
   };
 
@@ -3780,7 +3750,7 @@ setCustomerOrganizationName("");
 
     let endSnapshot: CurrentLocationSnapshot | null = null;
     try {
-      const position = await getGeolocationPosition();
+      const position = await acquireBrowserLocation();
       endSnapshot = positionToSnapshot(position);
     } catch (err) {
       console.warn("Could not capture final duty location:", err);

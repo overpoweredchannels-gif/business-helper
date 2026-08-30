@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { getMapProvider } from "@/lib/maps/map-provider";
 import { getPlaceName } from "@/lib/maps/client-maps";
+import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 
 interface MeResponse {
   ok: boolean;
@@ -14,12 +15,6 @@ interface MeResponse {
     employee?: { full_name?: string | null; designation?: string | null } | null;
   };
   error?: string;
-}
-
-interface DutyStatus {
-  onDuty: boolean;
-  dutySessionId: string | null;
-  startedAt: string | null;
 }
 
 interface LocationPoint {
@@ -32,67 +27,6 @@ interface LocationPoint {
   capturedAt: string;
 }
 
-const getLocationErrorMessage = (error: unknown) => {
-  const geoError =
-    typeof error === "object" && error !== null && "code" in error
-      ? (error as { code?: number; message?: string })
-      : null;
-
-  if (geoError?.code) {
-    if (geoError.code === 1) {
-      return "Location permission was denied. Please allow location access to start live tracking.";
-    }
-    if (geoError.code === 2) {
-      return "Location is currently unavailable. Please check GPS/location settings and try again.";
-    }
-    if (geoError.code === 3) {
-      return "Location request timed out. Please try again.";
-    }
-  }
-
-  return error instanceof Error ? error.message : geoError?.message ?? "Could not read current location.";
-};
-
-/**
- * Get the most accurate fix available. The browser's very first position fix
- * is often a cached or coarse one (tens to hundreds of meters off). We keep
- * re-requesting with maximumAge 0 until accuracy is good enough (~100 m) or we
- * run out of attempts, so the duty session starts at the right spot.
- */
-function acquireAccurateFix(maxAttempts = 6): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      reject(new Error("This browser does not support location tracking."));
-      return;
-    }
-    let attempts = 0;
-    const tryOnce = () => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const accuracy = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
-          // Accept the fix once it is good, or on the final attempt (best effort).
-          if (accuracy <= 100 || attempts >= maxAttempts - 1) {
-            resolve(pos);
-          } else {
-            attempts += 1;
-            setTimeout(tryOnce, 1200);
-          }
-        },
-        (err) => {
-          attempts += 1;
-          if (attempts >= maxAttempts) {
-            reject(err);
-          } else {
-            setTimeout(tryOnce, 1200);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-      );
-    };
-    tryOnce();
-  });
-}
-
 export function EmployeeLiveTracking() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +35,6 @@ export function EmployeeLiveTracking() {
   const [booting, setBooting] = useState(false);
   const [lastLocation, setLastLocation] = useState<LocationPoint | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
-  const [dutySessionId, setDutySessionId] = useState<string | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -110,6 +43,7 @@ export function EmployeeLiveTracking() {
   const watchIdRef = useRef<number | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const lastSavedTimeRef = useRef(0);
+  const lastSavedLocationRef = useRef<LocationPoint | null>(null);
 
   const stopWatch = useCallback(() => {
     if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
@@ -137,14 +71,27 @@ export function EmployeeLiveTracking() {
           }),
         });
         const data = (await res.json()) as { ok?: boolean; error?: string };
+        if (res.status === 409) {
+          if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+          }
+          watchIdRef.current = null;
+          sessionIdRef.current = null;
+          setTracking(false);
+          setMessage(data.error || "Duty ended at the scheduled cutoff. Start duty again on the next working day.");
+          setError(null);
+          return;
+        }
         if (data.ok) {
           setLastSavedAt(point.capturedAt);
           lastSavedTimeRef.current = new Date(point.capturedAt).getTime();
+          lastSavedLocationRef.current = point;
+          setError(null);
         } else {
           throw new Error(data.error || "Upload failed");
         }
       } catch {
-        // transient failures are retried on the next geolocation update
+        setError("Your location was found, but the latest update could not be saved. TradeOS will retry on the next GPS update.");
       }
     },
     []
@@ -152,10 +99,12 @@ export function EmployeeLiveTracking() {
 
   // Reverse-geocode the employee's current location so they see a real street/shop
   // name instead of raw coordinates.
+  const lastLatitude = lastLocation?.latitude;
+  const lastLongitude = lastLocation?.longitude;
   useEffect(() => {
-    if (!lastLocation) return;
+    if (lastLatitude == null || lastLongitude == null) return;
     let alive = true;
-    getPlaceName(lastLocation.latitude, lastLocation.longitude)
+    getPlaceName(lastLatitude, lastLongitude)
       .then((place) => {
         if (alive && place?.label) setPlaceName(place.label);
       })
@@ -163,16 +112,11 @@ export function EmployeeLiveTracking() {
     return () => {
       alive = false;
     };
-  }, [lastLocation?.latitude, lastLocation?.longitude]);
+  }, [lastLatitude, lastLongitude]);
 
   const handlePosition = useCallback(
     (position: GeolocationPosition) => {
       const accuracy = position.coords.accuracy ?? null;
-      // Skip very imprecise GPS fixes (e.g. wifi/gps glitches > 100m) so the
-      // owner sees an accurate live location.
-      if (accuracy != null && accuracy > 100) {
-        return;
-      }
       const point: LocationPoint = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
@@ -188,11 +132,12 @@ export function EmployeeLiveTracking() {
       if (!sessionId) return;
 
       const now = new Date(point.capturedAt).getTime();
+      const lastSavedLocation = lastSavedLocationRef.current;
       const distanceMeters =
-        lastSavedTimeRef.current > 0 && lastLocation
+        lastSavedTimeRef.current > 0 && lastSavedLocation
           ? Math.hypot(
-              (point.latitude - lastLocation.latitude) * 111320,
-              (point.longitude - lastLocation.longitude) * 111320 * Math.max(0.2, Math.cos((point.latitude * Math.PI) / 180))
+              (point.latitude - lastSavedLocation.latitude) * 111320,
+              (point.longitude - lastSavedLocation.longitude) * 111320 * Math.max(0.2, Math.cos((point.latitude * Math.PI) / 180))
             )
           : Number.POSITIVE_INFINITY;
       const enoughTimePassed = now - lastSavedTimeRef.current >= 30000;
@@ -202,20 +147,26 @@ export function EmployeeLiveTracking() {
         void uploadPoint(sessionId, point);
       }
     },
-    [lastLocation, uploadPoint]
+    [uploadPoint]
   );
 
   const resumeWatch = useCallback(
     (sessionId: string) => {
       if (typeof navigator === "undefined" || !navigator.geolocation) return;
       if (watchIdRef.current !== null) return;
+      sessionIdRef.current = sessionId;
       const watchId = navigator.geolocation.watchPosition(
         handlePosition,
-        (geoError) => setError(getLocationErrorMessage(geoError)),
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+        (geoError) => {
+          if (geoError.code === geoError.TIMEOUT || geoError.code === 3) {
+            setMessage("Live tracking is active and waiting for the next GPS update.");
+            return;
+          }
+          setError(getBrowserLocationErrorMessage(geoError));
+        },
+        { enableHighAccuracy: true, maximumAge: 120000, timeout: 30000 }
       );
       watchIdRef.current = watchId;
-      sessionIdRef.current = sessionId;
       setTracking(true);
     },
     [handlePosition]
@@ -255,7 +206,6 @@ export function EmployeeLiveTracking() {
       });
       const data = (await res.json()) as { ok?: boolean; onDuty?: boolean; dutySessionId?: string | null; startedAt?: string | null };
       if (data.ok && data.onDuty && data.dutySessionId) {
-        setDutySessionId(data.dutySessionId);
         sessionIdRef.current = data.dutySessionId;
         setTracking(true);
         resumeWatch(data.dutySessionId);
@@ -291,7 +241,7 @@ export function EmployeeLiveTracking() {
     setBooting(true);
     setMessage("Acquiring accurate GPS fix…");
     try {
-      const position = await acquireAccurateFix();
+      const position = await acquireBrowserLocation();
 
       const startPoint: LocationPoint = {
         latitude: position.coords.latitude,
@@ -321,9 +271,9 @@ export function EmployeeLiveTracking() {
       }
 
       sessionIdRef.current = data.dutySessionId;
-      setDutySessionId(data.dutySessionId);
       setLastLocation(startPoint);
       lastSavedTimeRef.current = 0;
+      lastSavedLocationRef.current = null;
       void uploadPoint(data.dutySessionId, startPoint);
 
       setTracking(true);
@@ -331,7 +281,7 @@ export function EmployeeLiveTracking() {
 
       resumeWatch(data.dutySessionId);
     } catch (err) {
-      setError(getLocationErrorMessage(err));
+      setError(getBrowserLocationErrorMessage(err));
     } finally {
       setBooting(false);
     }
@@ -354,7 +304,7 @@ export function EmployeeLiveTracking() {
     }
 
     sessionIdRef.current = null;
-    setDutySessionId(null);
+    lastSavedLocationRef.current = null;
     setMessage("Live tracking stopped. Location sharing is off.");
   }, [profileId, organizationId, stopWatch]);
 

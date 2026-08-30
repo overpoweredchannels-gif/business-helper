@@ -92,6 +92,7 @@ export function TradeOSWorkspace({ destination, onSignOut, secondaryActionLabel,
             startInLoadingState
             renderLoading={() => <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#2563eb" /></View>}
             javaScriptEnabled
+            geolocationEnabled
             domStorageEnabled
             sharedCookiesEnabled
             thirdPartyCookiesEnabled={false}

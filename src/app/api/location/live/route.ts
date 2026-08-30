@@ -39,16 +39,20 @@ export async function GET(request: NextRequest) {
     sessionsQuery = sessionsQuery.eq("profile_id", permission.actor.profileId);
   }
 
-  const [{ data: locations, error: locError }, { data: employees, error: empError }, { data: sessions }] =
+  const [
+    { data: locations, error: locError },
+    { data: employees, error: empError },
+    { data: sessions, error: sessionError },
+  ] =
     await Promise.all([
       locationsQuery,
       employeesQuery,
       sessionsQuery,
     ]);
 
-  if (locError || empError) {
+  if (locError || empError || sessionError) {
     return NextResponse.json(
-      { ok: false, error: locError?.message || empError?.message || "Query error" },
+      { ok: false, error: locError?.message || empError?.message || sessionError?.message || "Query error" },
       { status: 500 }
     );
   }

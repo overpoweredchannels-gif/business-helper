@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, X, Navigation, MapPin, Clock, Route as RouteIcon, AlertCircle } from "lucide-react";
 import { getEta, getPlaceName, formatEta, type EtaResult } from "@/lib/maps/client-maps";
 import type { CurrentLocationView } from "@/lib/location/types";
+import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 
 interface NavigateModalProps {
   employee: CurrentLocationView;
@@ -28,26 +29,18 @@ export default function NavigateModal({ employee, onClose }: NavigateModalProps)
   }, [onClose]);
 
   useEffect(() => {
-    if (!navigator.geolocation) {
-      queueMicrotask(() =>
-        setOwnerError("Your browser does not support location. ETA is unavailable.")
-      );
-      return;
-    }
     let alive = true;
     // Ask for YOUR (owner's) location once so we can show real travel time.
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
+    acquireBrowserLocation()
+      .then((pos) => {
         if (!alive) return;
         const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setOwnerPos(p);
-      },
-      () => {
+      })
+      .catch((error) => {
         if (!alive) return;
-        setOwnerError("Location access was denied — ETA is unavailable. You can still navigate via Google Maps.");
-      },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
-    );
+        setOwnerError(`${getBrowserLocationErrorMessage(error)} ETA is unavailable, but Google Maps navigation is still available.`);
+      });
     return () => {
       alive = false;
     };

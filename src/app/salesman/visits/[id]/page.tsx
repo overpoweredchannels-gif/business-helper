@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import {
   Loader2, MapPin, Navigation, FileText, CheckCircle2, AlertCircle, ArrowLeft,
   Plus, Trash2, Search, Camera, Image as ImageIcon,
@@ -54,17 +55,15 @@ interface GeoPosition {
 }
 
 function getPosition(): Promise<GeoPosition> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("Geolocation is not available on this device."));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-      (err) => reject(new Error(`Location error: ${err.message}`)),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
-    );
-  });
+  return acquireBrowserLocation()
+    .then((pos) => ({
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude,
+      accuracy: pos.coords.accuracy,
+    }))
+    .catch((error) => {
+      throw new Error(getBrowserLocationErrorMessage(error));
+    });
 }
 
 export default function VisitDetailPage() {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Clock, Loader2, AlertCircle, CheckCircle2, LogIn, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 
 interface AttendanceRecord {
   id: string;
@@ -41,22 +42,13 @@ export default function AttendancePage() {
     load();
   }, [load]);
 
-  const getPosition = () =>
-    new Promise<{ latitude: number; longitude: number }>((resolve, reject) => {
-      if (!navigator.geolocation) { resolve({ latitude: 0, longitude: 0 }); return; }
-      navigator.geolocation.getCurrentPosition(
-        (p) => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
-        () => resolve({ latitude: 0, longitude: 0 }),
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    });
-
   const clock = async (action: "clock_in" | "clock_out") => {
     setActing(true);
     setMessage(null);
     setGpsStatus("Getting location...");
     try {
-      const pos = await getPosition();
+      const position = await acquireBrowserLocation();
+      const pos = { latitude: position.coords.latitude, longitude: position.coords.longitude };
       setGpsStatus(action === "clock_in" ? "Clocking in..." : "Clocking out...");
       const res = await authorizedFetch("/api/attendance", {
         method: "POST",
@@ -68,7 +60,7 @@ export default function AttendancePage() {
       setMessage({ type: "ok", text: action === "clock_in" ? "Clocked in. Have a great day!" : `Clocked out. Total today: ${data.record?.total_hours ?? "—"} hours.` });
       await load();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed" });
+      setMessage({ type: "error", text: getBrowserLocationErrorMessage(err) });
     } finally {
       setActing(false);
       setGpsStatus(null);
