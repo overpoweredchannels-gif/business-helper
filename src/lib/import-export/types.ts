@@ -65,6 +65,8 @@ export interface EntityImportConfig<TEntity = unknown> {
   allowCreateReferences?: boolean;
   /** Custom function to build upsert payload from parsed row. */
   buildUpsertPayload?: (row: ParsedRow, ctx: ImportContext) => Promise<Record<string, unknown>>;
+  /** Optional custom create flow for entities that also write child records. */
+  createRecord?: (row: ParsedRow, payload: Record<string, unknown>, ctx: ImportContext) => Promise<unknown>;
   /** Custom function to check if row matches existing record. */
   findExisting?: (row: ParsedRow, ctx: ImportContext) => Promise<unknown>;
   /** Custom function to apply updates (for update mode). */
@@ -73,6 +75,8 @@ export interface EntityImportConfig<TEntity = unknown> {
   postImportHook?: (created: unknown[], updated: unknown[], ctx: ImportContext) => Promise<void>;
   /** Maximum rows per file. */
   maxRows?: number;
+  /** Optional batch size for append-only entities with no duplicate keys. */
+  insertBatchSize?: number;
   /** Export configuration. */
   export?: EntityExportConfig;
 }

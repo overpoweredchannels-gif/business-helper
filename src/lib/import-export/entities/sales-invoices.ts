@@ -3,7 +3,8 @@
 // Imports full sales invoices with line items. This is the most complex entity
 // because it involves parent (sales_transactions) + children (sales_items).
 
-import type { EntityImportConfig, ParsedRow, ImportContext } from "../types";
+import type { EntityImportConfig, ImportContext } from "../types";
+import { generateInvoiceNumberWithClient } from "@/lib/invoices/invoice-number-service";
 
 function parseNumber(raw: string): number | null {
   if (!raw || !raw.trim()) return null;
@@ -74,9 +75,13 @@ export const salesInvoicesImportConfig: EntityImportConfig = {
     const v = row.values as Record<string, unknown>;
     const customerId = v.customer ? await resolveRef(ctx, "customers", v.customer as string, "customer_name") : null;
     const salesmanId = v.salesman ? await resolveRef(ctx, "employees", v.salesman as string, "full_name") : null;
+    if (!customerId) throw new Error(`Customer not found: ${String(v.customer ?? "")}`);
+    const invoiceNumber = v.invoice_number
+      ? String(v.invoice_number).trim()
+      : await generateInvoiceNumberWithClient(ctx.supabase as never, ctx.orgId, "sales");
     
     return {
-      invoice_number: v.invoice_number ? String(v.invoice_number).trim() : null, // null = auto-generate
+      invoice_number: invoiceNumber,
       customer_id: customerId,
       sale_date: v.sale_date as string,
       payment_type: v.payment_type as "cash" | "credit",
@@ -91,6 +96,36 @@ export const salesInvoicesImportConfig: EntityImportConfig = {
       invoice_type: "sales",
       organization_id: ctx.orgId,
     };
+  },
+
+  async createRecord(row, payload, ctx) {
+    const v = row.values as Record<string, unknown>;
+    const productId = v.line_product ? await resolveRef(ctx, "products", String(v.line_product), "name") : null;
+    if (!productId) throw new Error(`Product not found: ${String(v.line_product ?? "")}`);
+
+    const transaction = await ctx.supabase
+      .from("sales_transactions")
+      .insert({ ...payload, organization_id: ctx.orgId })
+      .select("id")
+      .single();
+    if (transaction.error || !transaction.data?.id) throw transaction.error ?? new Error("Failed to create sales invoice");
+
+    const item = await ctx.supabase.from("sales_items").insert({
+      sales_transaction_id: transaction.data.id,
+      organization_id: ctx.orgId,
+      product_id: productId,
+      quantity: Number(v.line_quantity),
+      selling_price: Number(v.line_price),
+      purchase_price_snapshot: null,
+      discount: Number(v.line_discount ?? 0),
+      bonus: Number(v.line_bonus ?? 0),
+      unit_mode: String(v.line_unit_mode ?? "main"),
+    });
+    if (item.error) {
+      await ctx.supabase.from("sales_transactions").delete().eq("id", transaction.data.id).eq("organization_id", ctx.orgId);
+      throw item.error;
+    }
+    return transaction.data;
   },
 
   async findExisting(row, ctx) {

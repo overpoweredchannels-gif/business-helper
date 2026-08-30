@@ -1,6 +1,6 @@
 // TradeOS ERP — Supplier Payments Import Config
 
-import type { EntityImportConfig, ImportFieldDef, ImportContext } from "../types";
+import type { EntityImportConfig, ImportContext } from "../types";
 
 function parseNumber(raw: string): number | null {
   if (!raw || !raw.trim()) return null;
@@ -42,7 +42,8 @@ export const supplierPaymentsImportConfig: EntityImportConfig = {
   uniqueKeys: [],
   defaultDuplicateMode: "error",
   allowCreateReferences: false,
-  maxRows: 5000,
+  maxRows: 10000,
+  insertBatchSize: 500,
 
   async buildUpsertPayload(row, ctx) {
     const v = row.values as Record<string, unknown>;

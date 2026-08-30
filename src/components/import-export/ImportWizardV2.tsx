@@ -11,12 +11,17 @@ import {
   type ColumnMapping,
   type ImportPreviewResult,
   type ImportRunResult,
-  type ParsedRow,
 } from "@/lib/import-export/registry";
-import type { ImportFieldDef } from "@/lib/import-export/types";
+import {
+  DEFAULT_MAX_IMPORT_ROWS,
+  PRESERVE_IN_NOTES,
+  getUnmappedTargetField,
+  normalizeImportHeader,
+  reconcileColumnMapping,
+} from "@/lib/import-export/mapping";
 
 const MAX_PREVIEW_ROWS = 100;
-const MAX_FILE_ROWS = 5000;
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
 const STATUS_LABEL: Record<string, string> = {
   new: "New",
@@ -25,9 +30,6 @@ const STATUS_LABEL: Record<string, string> = {
   error: "Error",
   warning: "Import (fix)",
 };
-
-const inputCls =
-  "w-full rounded border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
 interface ImportWizardV2Props {
   entityKey: string;
@@ -57,12 +59,7 @@ export default function ImportWizardV2(props: ImportWizardV2Props) {
 
 function ImportWizardContent({
   entityKey,
-  supabase,
-  organizationId,
-  actorProfileId,
-  createAuditLog,
   onImported,
-  extraContext,
   config,
 }: ImportWizardV2Props & { config: EntityImportConfig }) {
   const [step, setStep] = useState<Step>("file");
@@ -75,11 +72,11 @@ function ImportWizardContent({
   const [createMissingRefs, setCreateMissingRefs] = useState(true);
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<any | null>(null);
+  const [importResult, setImportResult] = useState<ImportRunResult | null>(null);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templateName, setTemplateName] = useState("");
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
-  const [defaultTemplateId, setDefaultTemplateIdState] = useState<string | null>(null);
+  const [defaultTemplateId, setDefaultTemplateIdState] = useState<string>("default");
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingTemplateName, setEditingTemplateName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,6 +93,7 @@ function ImportWizardContent({
       }
     } catch {
       setTemplates([]);
+      setDefaultTemplateIdState("default");
     }
   }, [entityKey]);
 
@@ -103,8 +101,11 @@ function ImportWizardContent({
     loadTemplates();
   }, [loadTemplates]);
 
-  const mappedFieldCount = headers.filter((header) => mapping[header] && mapping[header] !== "skip").length;
-  const hasNameMapping = headers.some((h) => mapping[h] === "name" || mapping[h] === "customer_name" || mapping[h] === "supplier_name" || mapping[h] === "full_name" || mapping[h] === "email");
+  const mappedFieldCount = headers.filter((header) => {
+    const target = mapping[header];
+    return target && target !== "skip" && target !== PRESERVE_IN_NOTES;
+  }).length;
+  const unmappedTargetField = getUnmappedTargetField(config.fields);
 
   const previewRows = useMemo(
     () => (preview ? preview.rows.slice(0, MAX_PREVIEW_ROWS) : []),
@@ -117,8 +118,12 @@ function ImportWizardContent({
       .filter(f => f.preview !== false)
       .map(f => f.key);
     const used = new Set(preview.rows[0] ? Object.keys(preview.rows[0].values) : []);
-    return order.filter(key => used.has(key));
-  }, [preview, config]);
+    const visible = order.filter(key => used.has(key));
+    if (unmappedTargetField && used.has(unmappedTargetField) && !visible.includes(unmappedTargetField)) {
+      visible.push(unmappedTargetField);
+    }
+    return visible;
+  }, [preview, config, unmappedTargetField]);
 
   const fieldLabel = (key: string) => {
     const field = config.fields.find(f => f.key === key);
@@ -147,6 +152,10 @@ function ImportWizardContent({
     const lower = file.name.toLowerCase();
     if (!/\.(csv|xlsx|xls|ods)$/.test(lower)) {
       setFileError("Unsupported file type. Use .csv, .xlsx, .xls, or .ods files.");
+      return;
+    }
+    if (file.size > MAX_IMPORT_BYTES) {
+      setFileError("Import files must be 10 MB or smaller.");
       return;
     }
 
@@ -179,8 +188,18 @@ function ImportWizardContent({
 
       const headerRow = nonEmptyRows[0].map((cell) => cell.trim());
       const body = nonEmptyRows.slice(1);
-      if (body.length > MAX_FILE_ROWS) {
-        setFileError(`The file has ${body.length} data rows; the limit is ${MAX_FILE_ROWS}.`);
+      if (headerRow.some((header) => !normalizeImportHeader(header))) {
+        setFileError("Every source column needs a non-empty header.");
+        return;
+      }
+      const normalizedHeaders = headerRow.map(normalizeImportHeader);
+      if (new Set(normalizedHeaders).size !== normalizedHeaders.length) {
+        setFileError("The file contains duplicate column headers. Rename duplicate columns and try again.");
+        return;
+      }
+      const maxRows = config.maxRows ?? DEFAULT_MAX_IMPORT_ROWS;
+      if (body.length > maxRows) {
+        setFileError(`The file has ${body.length} data rows; the ${config.entityName} import limit is ${maxRows}. This is a row limit, not a column limit.`);
         return;
       }
 
@@ -191,15 +210,11 @@ function ImportWizardContent({
       
       const defaultTemplate = templates.find((t) => t.id === defaultTemplateId);
       if (defaultTemplate) {
-        setMapping({ ...defaultTemplate.mapping });
+        setMapping(reconcileColumnMapping(headerRow, defaultTemplate.mapping, config.fields));
         setTemplateMessage(`Default template "${defaultTemplate.name}" applied.`);
-      } else if (defaultTemplateId === "default") {
-        const guessed = guessColumnMapping(headerRow, config.fields);
-        setMapping(guessed);
-        setTemplateMessage("Default (guessed) template applied.");
       } else {
-        setMapping({});
-        setTemplateMessage(null);
+        setMapping(reconcileColumnMapping(headerRow, null, config.fields));
+        setTemplateMessage("Default (guessed) template applied.");
       }
     } catch (err) {
       setFileError(err instanceof Error ? `Failed to read file: ${err.message}` : "Failed to read file.");
@@ -349,28 +364,6 @@ function ImportWizardContent({
     }
   }, [loadTemplates]);
 
-  // Simplified guessColumnMapping for client-side
-  function guessColumnMapping(headers: string[], fields: ImportFieldDef[]): ColumnMapping {
-    const mapping: ColumnMapping = {};
-    const fieldByLabel = new Map(fields.map(f => [f.label.toLowerCase(), f.key]));
-    const fieldByKey = new Map(fields.map(f => [f.key.toLowerCase(), f.key]));
-    
-    for (const header of headers) {
-      const h = header.toLowerCase();
-      let matched = fieldByLabel.get(h) ?? fieldByKey.get(h);
-      if (!matched) {
-        for (const [label, key] of fieldByLabel) {
-          if (h.includes(label) || label.includes(h)) {
-            matched = key;
-            break;
-          }
-        }
-      }
-      mapping[header] = matched ?? "skip";
-    }
-    return mapping;
-  }
-
   return (
     <div className="space-y-6">
       <div className="rounded border border-border bg-card p-4">
@@ -409,10 +402,9 @@ function ImportWizardContent({
                     const t = templates.find((t) => t.id === e.target.value);
                     if (t) {
                       if (t.id === "default") {
-                        const guessed = guessColumnMapping(headers, config.fields);
-                        setMapping(guessed);
+                        setMapping(reconcileColumnMapping(headers, null, config.fields));
                       } else {
-                        setMapping({ ...t.mapping });
+                        setMapping(reconcileColumnMapping(headers, t.mapping, config.fields));
                       }
                     }
                   }
@@ -472,10 +464,9 @@ function ImportWizardContent({
                           <span className="flex-1 font-medium text-foreground/90">{template.name}</span>
                           <button type="button" onClick={() => {
                             if (template.id === "default") {
-                              const guessed = guessColumnMapping(headers, config.fields);
-                              setMapping(guessed);
+                              setMapping(reconcileColumnMapping(headers, null, config.fields));
                             } else {
-                              setMapping({ ...template.mapping });
+                              setMapping(reconcileColumnMapping(headers, template.mapping, config.fields));
                             }
                           }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Load</button>
                           {!template.is_builtin && (
@@ -517,6 +508,9 @@ function ImportWizardContent({
                             {option.label}
                           </option>
                         ))}
+                        {unmappedTargetField && (
+                          <option value={PRESERVE_IN_NOTES}>Keep in {fieldLabel(unmappedTargetField)}</option>
+                        )}
                         <option value="skip">— Skip —</option>
                       </select>
                     </td>
@@ -549,7 +543,7 @@ function ImportWizardContent({
             <button
               type="button"
               onClick={handleRunPreview}
-              disabled={mappedFieldCount === 0 || !hasNameMapping}
+              disabled={mappedFieldCount === 0}
               className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
               Preview Import

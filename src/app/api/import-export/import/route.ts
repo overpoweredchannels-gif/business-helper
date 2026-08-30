@@ -2,10 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { getEntityConfig } from "@/lib/import-export/registry";
-import { readImportFile, guessColumnMapping, parseCellValue, validateParsedRow, buildPreviewResult, runImport, logAudit } from "@/lib/import-export/processor";
-import type { ColumnMapping, ImportContext, ParsedRow, ImportPreviewResult, ImportRunResult, ImportStats } from "@/lib/import-export/types";
+import { readImportFile, parseCellValue, validateParsedRow, buildPreviewResult, runImport } from "@/lib/import-export/processor";
+import {
+  DEFAULT_MAX_IMPORT_ROWS,
+  PRESERVE_IN_NOTES,
+  appendPreservedImportData,
+  normalizeImportHeader,
+  reconcileColumnMapping,
+} from "@/lib/import-export/mapping";
+import type { ColumnMapping, EntityImportConfig, ImportContext, ImportStats, ParsedRow } from "@/lib/import-export/types";
 
 export const runtime = "nodejs";
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
 /**
  * POST /api/import-export/import
@@ -28,16 +36,26 @@ export async function POST(request: NextRequest) {
 
   try {
     const formData = await request.formData();
-    const entityKey = formData.get("entity_key") as string;
-    const mode = (formData.get("mode") as string) ?? "preview";
-    const duplicateMode = (formData.get("duplicate_mode") as "skip" | "update" | "error") ?? "skip";
+    const entityKey = String(formData.get("entity_key") ?? "");
+    const mode = String(formData.get("mode") ?? "preview");
+    const duplicateModeValue = String(formData.get("duplicate_mode") ?? "skip");
+    const duplicateMode = duplicateModeValue as "skip" | "update" | "error";
     const createMissingRefs = formData.get("create_missing_refs") === "true";
     const mappingStr = formData.get("mapping") as string;
-    const file = formData.get("file") as File | null;
-    const fileName = formData.get("file_name") as string;
+    const file = formData.get("file");
+    const requestedFileName = String(formData.get("file_name") ?? "");
 
-    if (!entityKey || !file) {
+    if (!entityKey || !(file instanceof File)) {
       return NextResponse.json({ ok: false, error: "entity_key and file are required" }, { status: 400 });
+    }
+    if (mode !== "preview" && mode !== "run") {
+      return NextResponse.json({ ok: false, error: "mode must be preview or run" }, { status: 400 });
+    }
+    if (!(["skip", "update", "error"] as const).includes(duplicateMode)) {
+      return NextResponse.json({ ok: false, error: "duplicate_mode must be skip, update, or error" }, { status: 400 });
+    }
+    if (file.size > MAX_IMPORT_BYTES) {
+      return NextResponse.json({ ok: false, error: "Import files must be 10 MB or smaller" }, { status: 413 });
     }
 
     const config = getEntityConfig(entityKey);
@@ -47,23 +65,33 @@ export async function POST(request: NextRequest) {
 
     // Read and parse file
     const { headers, rows } = await readImportFile(file);
-    if (rows.length > (config.maxRows ?? 5000)) {
-      return NextResponse.json({ ok: false, error: `File exceeds max rows (${config.maxRows})` }, { status: 400 });
+    if (headers.some((header) => !normalizeImportHeader(header))) {
+      return NextResponse.json({ ok: false, error: "Every source column needs a non-empty header" }, { status: 400 });
+    }
+    const normalizedHeaders = headers.map(normalizeImportHeader);
+    if (new Set(normalizedHeaders).size !== normalizedHeaders.length) {
+      return NextResponse.json({ ok: false, error: "The file contains duplicate column headers" }, { status: 400 });
+    }
+    const maxRows = config.maxRows ?? DEFAULT_MAX_IMPORT_ROWS;
+    if (rows.length > maxRows) {
+      return NextResponse.json({
+        ok: false,
+        error: `The file has ${rows.length} data rows; the ${config.entityName} import limit is ${maxRows}. This is a row limit, not a column limit.`,
+      }, { status: 400 });
     }
 
-    let mapping: Record<string, string> = mappingStr ? JSON.parse(mappingStr) : guessColumnMapping(headers, config.fields);
-    let mappedCount = headers.filter(h => mapping[h] && mapping[h] !== "skip").length;
-
-    // The client parses the file with its own parser (BOM strip, quoting). If
-    // its header strings differ from ours (e.g. a UTF-8 BOM from Excel), the
-    // sent mapping will miss every column. Re-guess against our headers.
-    if (mappedCount === 0 && mappingStr) {
-      const reguessed = guessColumnMapping(headers, config.fields);
-      mappedCount = headers.filter(h => reguessed[h] && reguessed[h] !== "skip").length;
-      if (mappedCount > 0) {
-        mapping = reguessed;
+    let savedMapping: ColumnMapping | null = null;
+    if (mappingStr) {
+      try {
+        const parsed = JSON.parse(mappingStr);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) savedMapping = parsed;
+      } catch {
+        return NextResponse.json({ ok: false, error: "The column mapping is invalid. Return to mapping and try again." }, { status: 400 });
       }
     }
+    const mapping = reconcileColumnMapping(headers, savedMapping, config.fields);
+    const validFieldKeys = new Set(config.fields.map((field) => field.key));
+    const mappedCount = headers.filter((header) => validFieldKeys.has(mapping[header])).length;
 
     if (mappedCount === 0) {
       const recognized = config.fields.map(f => f.label).join(", ");
@@ -74,8 +102,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse all rows
-    const fileColumns = headers;
-    const parsedRows: any[] = [];
+    const parsedRows: ParsedRow[] = [];
+    const existingCache = new Map<string, unknown>();
+    const refCaches = new Map<string, Map<string, string>>();
+    const stats: ImportStats = { totalRows: rows.length, newCount: 0, updateCount: 0, skipCount: 0, errorCount: 0, warningCount: 0 };
+    const fileName = requestedFileName || file.name;
+    const importContext: ImportContext = {
+      orgId,
+      supabase,
+      actorProfileId: profileId,
+      createMissingRefs,
+      duplicateMode,
+      fileName,
+      fileHeaders: headers,
+      mapping,
+      existingCache,
+      refCaches,
+      stats,
+    };
     
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -87,14 +131,15 @@ export async function POST(request: NextRequest) {
       const values: Record<string, unknown> = {};
       for (const header of headers) {
         const fieldKey = mapping[header];
-        if (!fieldKey || fieldKey === "skip") continue;
+        if (!fieldKey || fieldKey === "skip" || fieldKey === PRESERVE_IN_NOTES) continue;
         const field = config.fields.find(f => f.key === fieldKey);
         if (!field) continue;
-        const value = await parseCellValue(raw[header], field, raw, {} as any);
+        const value = await parseCellValue(raw[header], field, raw, importContext);
         values[fieldKey] = value;
       }
+      appendPreservedImportData(values, raw, mapping, config.fields);
       
-      const { errors, warnings } = await validateParsedRow(values, config.fields, {} as any);
+      const { errors, warnings } = await validateParsedRow(values, config.fields, importContext);
       
       parsedRows.push({
         rowIndex: i + 2, // 1-based, +1 for header
@@ -108,10 +153,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve existing records for duplicate detection
-    const existingCache = new Map<string, any>();
-    const refCaches = new Map<string, Map<string, string>>();
-    const stats: ImportStats = { totalRows: parsedRows.length, newCount: 0, updateCount: 0, skipCount: 0, errorCount: 0, warningCount: 0 };
-    
     for (const row of parsedRows) {
       if (row.errors.length > 0) {
         row.status = "error";
@@ -123,21 +164,11 @@ export async function POST(request: NextRequest) {
       // Check for existing record
       let existingId = null;
       if (config.findExisting) {
-        const existing = await config.findExisting(row, {
-          orgId,
-          supabase,
-          actorProfileId: permission.actor.profileId,
-          createMissingRefs,
-          duplicateMode,
-          fileName: fileName ?? "",
-          fileHeaders: headers,
-          mapping,
-          existingCache,
-          refCaches,
-          stats,
-        });
+        const existing = await config.findExisting(row, importContext);
         if (existing) {
-          existingId = (existing as any).id;
+          existingId = typeof existing === "object" && existing !== null && "id" in existing
+            ? (existing as { id?: string | number | null }).id ?? null
+            : null;
           row.existingId = existingId;
           existingCache.set(buildRowKey(row, config), existingId);
         }
@@ -176,19 +207,7 @@ export async function POST(request: NextRequest) {
       .select("id")
       .single();
 
-    const importCtx = {
-      orgId,
-      supabase,
-      actorProfileId: profileId,
-      createMissingRefs,
-      duplicateMode,
-      fileName: fileName ?? "",
-      fileHeaders: headers,
-      mapping,
-      existingCache,
-      refCaches: new Map(),
-      stats,
-      auditLog: async (params: { action: string; entity_type: string; entity_id?: string | number | null; entity_label?: string | null; description?: string | null; old_values?: Record<string, unknown> | null; new_values?: Record<string, unknown> | null }) => {
+    importContext.auditLog = async (params) => {
         await supabase.from("audit_logs").insert({
           organization_id: orgId,
           action: params.action,
@@ -200,10 +219,9 @@ export async function POST(request: NextRequest) {
           new_values: params.new_values,
           actor_profile_id: profileId,
         });
-      },
-    };
+      };
 
-    const result = await runImport(config, preview, importCtx);
+    const result = await runImport(config, preview, importContext);
 
     // Update audit record
     await supabase
@@ -227,7 +245,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function buildRowKey(row: any, config: any): string {
+function buildRowKey(row: ParsedRow, config: EntityImportConfig): string {
   for (const keyCombo of config.uniqueKeys) {
     const parts = keyCombo.map((k: string) => String(row.values[k] ?? "").trim()).filter(Boolean);
     if (parts.length === keyCombo.length && parts.every((p: string) => p)) {

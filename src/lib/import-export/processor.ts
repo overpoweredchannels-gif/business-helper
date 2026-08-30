@@ -6,28 +6,23 @@
 import * as XLSX from "xlsx";
 import type {
   EntityImportConfig,
-  ColumnMapping,
   ImportContext,
   ParsedRow,
   ImportPreviewResult,
   ImportRunResult,
   ImportStats,
   AuditLogParams,
-  SupabaseClient,
 } from "./types";
-import { getEntityConfig } from "./registry";
 import { parseCsv } from "@/lib/import-wizard/csv";
+import { guessColumnMapping } from "./mapping";
 
-export { parseCsv };
-
-const MAX_PREVIEW_ROWS = 100;
-const DEFAULT_MAX_FILE_ROWS = 5000;
+export { parseCsv, guessColumnMapping };
 
 /** Read file (CSV/Excel/ODS) and return header row + data rows. */
 export async function readImportFile(file: File): Promise<{ headers: string[]; rows: string[][] }> {
   const lower = file.name.toLowerCase();
   let matrix: string[][];
-  
+
   if (lower.endsWith(".csv")) {
     const buffer = await file.arrayBuffer();
     const text = new TextDecoder("utf-8").decode(buffer);
@@ -56,29 +51,6 @@ export async function readImportFile(file: File): Promise<{ headers: string[]; r
   return { headers: headerRow, rows: body };
 }
 
-/** Guess column mapping from header names. */
-export function guessColumnMapping(headers: string[], fieldDefs: EntityImportConfig["fields"]): Record<string, string> {
-  const mapping: Record<string, string> = {};
-  const fieldByLabel = new Map(fieldDefs.map((f) => [f.label.toLowerCase(), f.key]));
-  const fieldByKey = new Map(fieldDefs.map((f) => [f.key.toLowerCase(), f.key]));
-  
-  for (const header of headers) {
-    const h = header.toLowerCase();
-    let matched = fieldByLabel.get(h) ?? fieldByKey.get(h);
-    if (!matched) {
-      // Fuzzy match
-      for (const [label, key] of fieldByLabel) {
-        if (h.includes(label) || label.includes(h)) {
-          matched = key;
-          break;
-        }
-      }
-    }
-    mapping[header] = matched ?? "skip";
-  }
-  return mapping;
-}
-
 /** Parse a single cell value based on field definition. */
 export async function parseCellValue(
   raw: string,
@@ -98,8 +70,7 @@ export async function parseCellValue(
   
   switch (field.type) {
     case "number":
-    case "decimal":
-    case "integer": {
+    case "decimal": {
       const cleaned = trimmed.replace(/,/g, "");
       const parsed = Number(cleaned);
       return Number.isFinite(parsed) ? parsed : null;
@@ -115,7 +86,7 @@ export async function parseCellValue(
       return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0];
     }
     case "integer": {
-      const parsed = Number(trimmed);
+      const parsed = Number(trimmed.replace(/,/g, ""));
       return Number.isFinite(parsed) && Number.isInteger(parsed) ? parsed : null;
     }
     default:
@@ -218,6 +189,12 @@ export async function runImport(
   const seenUniqueKeys = new Map<string, number>();
   const successfullyCreated: Array<{ id: unknown; rawValues: Record<string, unknown> }> = [];
   const successfullyUpdated: Array<{ id: unknown; rawValues: Record<string, unknown> }> = [];
+
+  if (config.insertBatchSize && config.uniqueKeys.length === 0) {
+    await runBatchedInserts(config, preview.rows, ctx, result, successfullyCreated);
+    await runPostImportHook(config, successfullyCreated, successfullyUpdated, ctx, result);
+    return result;
+  }
   
   for (const row of preview.rows) {
     if (row.errors.length > 0) {
@@ -260,6 +237,16 @@ export async function runImport(
         // Create new
         if (config.buildUpsertPayload) {
           const payload = await config.buildUpsertPayload(row, ctx);
+          if (config.createRecord) {
+            const created = await config.createRecord(row, payload, ctx);
+            const createdId = typeof created === "object" && created !== null && "id" in created
+              ? (created as { id?: unknown }).id
+              : null;
+            (row as ParsedRow & { createdId?: unknown }).createdId = createdId;
+            result.created++;
+            successfullyCreated.push({ id: createdId, rawValues: row.values });
+            continue;
+          }
           const { data, error } = await ctx.supabase
             .from(config.tableName)
             .insert({ ...payload, organization_id: ctx.orgId })
@@ -277,18 +264,83 @@ export async function runImport(
       result.failures.push({ rowLabel: `Row ${row.rowIndex}`, message: msg });
     }
   }
-  
-  // Run post-import hook if defined
-  if (config.postImportHook) {
+
+  await runPostImportHook(config, successfullyCreated, successfullyUpdated, ctx, result);
+
+  return result;
+}
+
+async function runBatchedInserts(
+  config: EntityImportConfig,
+  rows: ParsedRow[],
+  ctx: ImportContext,
+  result: ImportRunResult,
+  successfullyCreated: Array<{ id: unknown; rawValues: Record<string, unknown> }>,
+): Promise<void> {
+  const prepared: Array<{ row: ParsedRow; payload: Record<string, unknown> }> = [];
+
+  for (const row of rows) {
+    if (row.errors.length > 0) {
+      result.failed++;
+      result.failures.push({ rowLabel: `Row ${row.rowIndex}`, message: row.errors.join(" ") });
+      continue;
+    }
     try {
-      await config.postImportHook(successfullyCreated, successfullyUpdated, ctx);
+      const payload = await config.buildUpsertPayload!(row, ctx);
+      prepared.push({ row, payload: { ...payload, organization_id: ctx.orgId } });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      result.failures.push({ rowLabel: "Post-import hook", message: msg });
+      result.failed++;
+      result.failures.push({
+        rowLabel: `Row ${row.rowIndex}`,
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   }
-  
-  return result;
+
+  const batchSize = Math.max(1, Math.min(config.insertBatchSize ?? 250, 1000));
+  for (let offset = 0; offset < prepared.length; offset += batchSize) {
+    const batch = prepared.slice(offset, offset + batchSize);
+    const { data, error } = await ctx.supabase
+      .from(config.tableName)
+      .insert(batch.map((entry) => entry.payload))
+      .select("id");
+
+    if (!error) {
+      result.created += batch.length;
+      batch.forEach((entry, index) => {
+        successfullyCreated.push({ id: data?.[index]?.id, rawValues: entry.row.values });
+      });
+      continue;
+    }
+
+    // A bad row must not prevent the rest of its batch from importing.
+    for (const entry of batch) {
+      const single = await ctx.supabase.from(config.tableName).insert(entry.payload).select("id").single();
+      if (single.error) {
+        result.failed++;
+        result.failures.push({ rowLabel: `Row ${entry.row.rowIndex}`, message: single.error.message });
+      } else {
+        result.created++;
+        successfullyCreated.push({ id: single.data?.id, rawValues: entry.row.values });
+      }
+    }
+  }
+}
+
+async function runPostImportHook(
+  config: EntityImportConfig,
+  created: unknown[],
+  updated: unknown[],
+  ctx: ImportContext,
+  result: ImportRunResult,
+): Promise<void> {
+  if (!config.postImportHook) return;
+  try {
+    await config.postImportHook(created, updated, ctx);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    result.failures.push({ rowLabel: "Post-import hook", message: msg });
+  }
 }
 
 function buildUniqueKey(row: ParsedRow, config: EntityImportConfig): string | null {

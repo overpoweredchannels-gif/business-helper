@@ -1,6 +1,7 @@
 // TradeOS ERP — Purchases Import Config
 
-import type { EntityImportConfig, ParsedRow, ImportContext } from "../types";
+import type { EntityImportConfig, ImportContext } from "../types";
+import { generateInvoiceNumberWithClient } from "@/lib/invoices/invoice-number-service";
 
 function parseNumber(raw: string): number | null {
   if (!raw || !raw.trim()) return null;
@@ -72,9 +73,13 @@ export const purchasesImportConfig: EntityImportConfig = {
     const v = row.values as Record<string, unknown>;
     const supplierId = v.supplier ? await resolveRef(ctx, "suppliers", v.supplier as string, "supplier_name") : null;
     const createdById = v.created_by ? await resolveRef(ctx, "profiles", v.created_by as string, "display_name") : null;
+    if (!supplierId) throw new Error(`Supplier not found: ${String(v.supplier ?? "")}`);
+    const invoiceNumber = v.invoice_number
+      ? String(v.invoice_number).trim()
+      : await generateInvoiceNumberWithClient(ctx.supabase as never, ctx.orgId, "purchase");
     
     return {
-      invoice_number: v.invoice_number ? String(v.invoice_number).trim() : null,
+      invoice_number: invoiceNumber,
       supplier_invoice_number: v.supplier_invoice_number ? String(v.supplier_invoice_number).trim() : null,
       supplier_id: supplierId,
       purchase_date: v.purchase_date as string,
@@ -90,6 +95,36 @@ export const purchasesImportConfig: EntityImportConfig = {
       invoice_type: "purchase",
       organization_id: ctx.orgId,
     };
+  },
+
+  async createRecord(row, payload, ctx) {
+    const v = row.values as Record<string, unknown>;
+    const productId = v.line_product ? await resolveRef(ctx, "products", String(v.line_product), "name") : null;
+    if (!productId) throw new Error(`Product not found: ${String(v.line_product ?? "")}`);
+
+    const transaction = await ctx.supabase
+      .from("purchase_transactions")
+      .insert({ ...payload, organization_id: ctx.orgId })
+      .select("id")
+      .single();
+    if (transaction.error || !transaction.data?.id) throw transaction.error ?? new Error("Failed to create purchase invoice");
+
+    const item = await ctx.supabase.from("purchase_items").insert({
+      purchase_transaction_id: transaction.data.id,
+      organization_id: ctx.orgId,
+      product_id: productId,
+      quantity: Number(v.line_quantity),
+      purchase_price: Number(v.line_price),
+      selling_price: null,
+      unit_mode: String(v.line_unit_mode ?? "main"),
+      batch_number: v.line_batch ? String(v.line_batch) : null,
+      expiry_date: v.line_expiry ? String(v.line_expiry) : null,
+    });
+    if (item.error) {
+      await ctx.supabase.from("purchase_transactions").delete().eq("id", transaction.data.id).eq("organization_id", ctx.orgId);
+      throw item.error;
+    }
+    return transaction.data;
   },
 
   async findExisting(row, ctx) {
