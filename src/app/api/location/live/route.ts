@@ -13,7 +13,15 @@ export async function GET(request: NextRequest) {
 
   const organizationId = permission.actor.organizationId;
   const supabase = createSupabaseService();
-  await supabase.rpc("close_expired_duty_sessions", { p_now: new Date().toISOString() });
+  const { error: cutoffError } = await supabase.rpc("close_expired_duty_sessions", {
+    p_now: new Date().toISOString(),
+  });
+  if (cutoffError) {
+    return NextResponse.json(
+      { ok: false, error: `Duty cutoff failed: ${cutoffError.message}` },
+      { status: 500 }
+    );
+  }
 
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const serverNow = Date.now();

@@ -85,7 +85,10 @@ export async function POST(request: NextRequest) {
     // The database cutoff is authoritative. Running it here as well as from
     // Supabase Cron closes an expired session even if the scheduled worker is
     // delayed by a minute.
-    await serviceClient.rpc("close_expired_duty_sessions", { p_now: new Date().toISOString() });
+    const { error: cutoffError } = await serviceClient.rpc("close_expired_duty_sessions", {
+      p_now: new Date().toISOString(),
+    });
+    if (cutoffError) return errorResponse(`Duty cutoff failed: ${cutoffError.message}`, 500);
 
     const { data: dutySession, error: dutyError } = await serviceClient
       .from("staff_duty_sessions")

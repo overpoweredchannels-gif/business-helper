@@ -168,7 +168,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, dutySessionId: data?.id ?? null });
     }
 
-    await supabase.rpc("close_expired_duty_sessions", { p_now: new Date().toISOString() });
+    const { error: cutoffError } = await supabase.rpc("close_expired_duty_sessions", {
+      p_now: new Date().toISOString(),
+    });
+    if (cutoffError) return errorResponse(`Duty cutoff failed: ${cutoffError.message}`, 500);
 
     const { data: activeDuty, error: activeError } = await supabase
       .from("staff_duty_sessions")
@@ -184,7 +187,7 @@ export async function POST(request: NextRequest) {
 
     let latestDuty: DutySessionRow | null = activeDuty;
     if (!latestDuty) {
-      const { data: latest } = await supabase
+      const { data: latest, error: latestError } = await supabase
         .from("staff_duty_sessions")
         .select("id, status, started_at, ended_at, scheduled_end_at, timezone_snapshot, ended_reason, device_status, last_location_at")
         .eq("organization_id", organizationId)
@@ -192,6 +195,7 @@ export async function POST(request: NextRequest) {
         .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle<DutySessionRow>();
+      if (latestError) return errorResponse(`Latest duty lookup error: ${latestError.message}`, 500);
       latestDuty = latest;
     }
 

@@ -54,7 +54,7 @@ export async function GET(
     // Visits
     supabase
       .from("customer_visits")
-      .select("id, status, created_at")
+      .select("id, visit_status, created_at")
       .eq("organization_id", orgId)
       .eq("employee_id", id),
 
@@ -88,6 +88,25 @@ export async function GET(
       .eq("employee_id", id),
   ]);
 
+  const aggregationError =
+    visitsRes.error ??
+    collectionsRes.error ??
+    attendanceRes.error ??
+    targetsRes.error ??
+    feedbackRes.error;
+
+  if (aggregationError) {
+    console.error("Employee ledger aggregation failed", {
+      employeeId: id,
+      organizationId: orgId,
+      error: aggregationError.message,
+    });
+    return NextResponse.json(
+      { ok: false, error: "Failed to load employee activity." },
+      { status: 500 }
+    );
+  }
+
   // Process sales
   const sales = salesRes.data ?? [];
   const salesTotal = sales.reduce((sum, s) => sum + Number(s.total_amount ?? 0), 0);
@@ -104,9 +123,11 @@ export async function GET(
   // Process visits
   const visits = visitsRes.data ?? [];
   const visitsTotal = visits.length;
-  const visitsCompleted = visits.filter((v) => v.status === "completed").length;
-  const visitsMissed = visits.filter((v) => v.status === "missed").length;
-  const visitsPending = visits.filter((v) => v.status === "in_progress" || v.status === "scheduled").length;
+  const visitsCompleted = visits.filter((v) => v.visit_status === "completed").length;
+  const visitsMissed = visits.filter((v) => v.visit_status === "missed").length;
+  const visitsPending = visits.filter(
+    (v) => v.visit_status === "planned" || v.visit_status === "in_progress"
+  ).length;
   const visitsToday = visits.filter((v) => v.created_at?.startsWith(today)).length;
 
   // Process collections

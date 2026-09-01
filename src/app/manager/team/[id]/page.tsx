@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Children, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Loader2, AlertCircle, ArrowLeft, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, MessageSquareText, Users, Award, KeyRound, Route as RouteIcon, Store, Package, Radar } from "lucide-react";
@@ -34,7 +34,7 @@ interface LedgerData {
   aggregates: Aggregates;
   recent: {
     sales: Array<{ id: string; invoice_number?: string; total_amount: number; created_at: string; sale_date?: string | null; status: string; customers?: { customer_name?: string | null; shop_name?: string | null } | null }>;
-    visits: Array<{ id: string; status: string; created_at: string }>;
+    visits: Array<{ id: string; visit_status: string; created_at: string }>;
     collections: Array<{ id: string; amount: number; status: string; created_at: string }>;
   };
   assignment: {
@@ -221,7 +221,7 @@ export default function EmployeeLedgerPage() {
         <RecentPanel title="Recent Visits" icon={<MapPin className="size-4 text-warning" />} empty="No visits yet">
           {recent.visits.map((v) => (
             <div key={v.id} className="flex justify-between py-2 border-b border-border/40 last:border-0">
-              <span className="text-sm text-foreground capitalize">{v.status}</span>
+              <span className="text-sm text-foreground capitalize">{v.visit_status.replaceAll("_", " ")}</span>
               <span className="text-xs text-body">{formatDate(v.created_at)}</span>
             </div>
           ))}
@@ -274,10 +274,11 @@ function StatCard({ icon, label, value, sublabel }: { icon: React.ReactNode; lab
 }
 
 function RecentPanel({ title, icon, empty, children }: { title: string; icon: React.ReactNode; empty: string; children: React.ReactNode }) {
+  const hasContent = Children.count(children) > 0;
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">{icon} {title}</h4>
-      {children || <p className="text-sm text-body">{empty}</p>}
+      {hasContent ? children : <p className="text-sm text-body">{empty}</p>}
     </div>
   );
 }

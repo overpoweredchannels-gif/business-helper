@@ -38,9 +38,11 @@ export async function makeUniqueLoginId(
 
 /** 8-character invite code (same alphabet as role invitations). */
 export function generateInviteCode(): string {
+  const randomValues = new Uint32Array(8);
+  crypto.getRandomValues(randomValues);
   let code = "";
-  for (let i = 0; i < 8; i++) {
-    code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  for (const value of randomValues) {
+    code += CODE_CHARS[value % CODE_CHARS.length];
   }
   return code;
 }

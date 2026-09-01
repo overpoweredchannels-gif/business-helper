@@ -34,7 +34,10 @@ export async function GET(request: NextRequest) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    await supabase.rpc("close_expired_duty_sessions", { p_now: new Date().toISOString() });
+    const { error: cutoffError } = await supabase.rpc("close_expired_duty_sessions", {
+      p_now: new Date().toISOString(),
+    });
+    if (cutoffError) return errorResponse(`Duty cutoff failed: ${cutoffError.message}`, 500);
 
     const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
@@ -66,11 +69,13 @@ export async function GET(request: NextRequest) {
       filteredStaff = filteredStaff.filter((s) => s.profile_id === actorProfileId);
     }
 
-    const { data: sessions } = await supabase
+    const { data: sessions, error: sessionsError } = await supabase
       .from("staff_duty_sessions")
       .select("profile_id, id, status, scheduled_end_at, device_status, last_error")
       .eq("organization_id", organizationId)
       .eq("status", "on_duty");
+
+    if (sessionsError) return errorResponse(`Duty session query error: ${sessionsError.message}`, 500);
 
     const sessionMap = new Map((sessions || []).map((s) => [s.profile_id, s]));
 
