@@ -17,6 +17,7 @@ export type ProductImportField =
   | "track_expiry"
   | "overselling_policy"
   | "initial_stock"
+  | "initial_stock_subunit"
   | "skip";
 
 export type ColumnMapping = Record<string, ProductImportField>;
@@ -29,7 +30,7 @@ export interface ParsedImportRow {
   /** Raw (trimmed) cell values keyed by mapped field. */
   values: Record<Exclude<ProductImportField, "skip">, string>;
   /** Matched existing product id (by SKU or name+brand), when one exists. */
-  existingProductId: number | null;
+  existingProductId: string | null;
   errors: string[];
   warnings: string[];
 }

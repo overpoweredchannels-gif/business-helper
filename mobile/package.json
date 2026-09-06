@@ -21,11 +21,15 @@
     "expo-web-browser": "~57.0.2",
     "react": "19.2.3",
     "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
     "react-native-url-polyfill": "^4.0.0",
     "react-native-webview": "13.16.1"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
   }
 }

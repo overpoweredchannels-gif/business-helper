@@ -6,6 +6,7 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     rules: {
       // The legacy UI intentionally uses flexible Supabase payload shapes and
       // effect-driven hydration. Keep these visible during cleanup without
@@ -26,6 +27,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "mobile/dist*/**",
+    "mobile/.expo/**",
+    "mobile/android/**",
+    "mobile/ios/**",
+    "e2e/playwright-report/**",
+    "e2e/test-results/**",
   ]),
 ]);
 

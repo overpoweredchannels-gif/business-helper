@@ -8,7 +8,8 @@ import {
   BarChart3, MapPin, UserRound,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { MobileNavigation } from "@/components/dashboard/MobileNavigation";
 import { navigationItems } from "@/lib/tradeos/constants";
 
 interface SalesmanLayoutProps {
@@ -22,6 +23,7 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const closeMenu = useCallback(() => setMobileOpen(false), []);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -115,19 +117,16 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
           className="p-2 rounded-lg text-foreground hover:bg-muted transition-colors"
-          aria-label="Toggle menu"
+          aria-label="Open navigation menu"
+          aria-expanded={mobileOpen}
         >
           {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
         </button>
       </div>
 
-      {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-40 pt-14 bg-card">
-          <div className="h-full overflow-y-auto">{content}</div>
-        </div>
-      )}
+      <MobileNavigation open={mobileOpen} onClose={closeMenu}>{content}</MobileNavigation>
 
-      <main className="flex-1 lg:pt-0 pt-14 min-w-0">
+      <main className="responsive-content flex-1 lg:pt-0 pt-14 min-w-0 pb-20">
         <div className="p-4 md:p-6 max-w-6xl mx-auto">{children}</div>
       </main>
     </div>

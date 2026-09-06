@@ -465,16 +465,16 @@ export class IntentRouter {
     const normalized = message.toLowerCase().trim();
     this.lastNormalized = normalized;
 
-    const module = this.detectModule(normalized);
-    const isAction = this.detectAction(normalized, module);
-    const actionType = this.resolveActionType(module, isAction);
-    const queryType = isAction ? null : classifyQueryType(normalized, module);
+    const intentModule = this.detectModule(normalized);
+    const isAction = this.detectAction(normalized, intentModule);
+    const actionType = this.resolveActionType(intentModule, isAction);
+    const queryType = isAction ? null : classifyQueryType(normalized, intentModule);
 
     const entities = this.extractEntities(normalized);
-    const confidence = this.confidenceFor(module, normalized);
+    const confidence = this.confidenceFor(intentModule, normalized);
 
     return {
-      module,
+      module: intentModule,
       actionType,
       queryType,
       entities,

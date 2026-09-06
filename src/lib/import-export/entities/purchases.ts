@@ -1,3 +1,4 @@
+import { PurchaseRepository } from "@/lib/purchases/repositories/purchase-repository";
 // TradeOS ERP — Purchases Import Config
 
 import type { EntityImportConfig, ImportContext } from "../types";
@@ -74,9 +75,7 @@ export const purchasesImportConfig: EntityImportConfig = {
     const supplierId = v.supplier ? await resolveRef(ctx, "suppliers", v.supplier as string, "supplier_name") : null;
     const createdById = v.created_by ? await resolveRef(ctx, "profiles", v.created_by as string, "display_name") : null;
     if (!supplierId) throw new Error(`Supplier not found: ${String(v.supplier ?? "")}`);
-    const invoiceNumber = v.invoice_number
-      ? String(v.invoice_number).trim()
-      : await generateInvoiceNumberWithClient(ctx.supabase as never, ctx.orgId, "purchase");
+    const invoiceNumber = v.invoice_number ? String(v.invoice_number).trim() : null;
     
     return {
       invoice_number: invoiceNumber,
@@ -102,29 +101,29 @@ export const purchasesImportConfig: EntityImportConfig = {
     const productId = v.line_product ? await resolveRef(ctx, "products", String(v.line_product), "name") : null;
     if (!productId) throw new Error(`Product not found: ${String(v.line_product ?? "")}`);
 
-    const transaction = await ctx.supabase
-      .from("purchase_transactions")
-      .insert({ ...payload, organization_id: ctx.orgId })
-      .select("id")
-      .single();
-    if (transaction.error || !transaction.data?.id) throw transaction.error ?? new Error("Failed to create purchase invoice");
-
-    const item = await ctx.supabase.from("purchase_items").insert({
-      purchase_transaction_id: transaction.data.id,
-      organization_id: ctx.orgId,
-      product_id: productId,
-      quantity: Number(v.line_quantity),
-      purchase_price: Number(v.line_price),
-      selling_price: null,
-      unit_mode: String(v.line_unit_mode ?? "main"),
-      batch_number: v.line_batch ? String(v.line_batch) : null,
-      expiry_date: v.line_expiry ? String(v.line_expiry) : null,
-    });
-    if (item.error) {
-      await ctx.supabase.from("purchase_transactions").delete().eq("id", transaction.data.id).eq("organization_id", ctx.orgId);
-      throw item.error;
+    if (!ctx.actorProfileId) throw new Error("Authenticated import actor required");
+    if (payload.status && payload.status !== "confirmed") throw new Error("Only confirmed purchases can be imported; use the purchase workflow for drafts.");
+    const quantity = Number(v.line_quantity), price = Number(v.line_price);
+    const discount = Number(v.line_discount || 0) + Number(payload.discount_amount || 0);
+    const tax = Number(payload.tax_amount || 0);
+    const computed = quantity * price - discount + tax;
+    if (payload.total_amount != null && Math.abs(Number(payload.total_amount) - computed) > 0.01) {
+      throw new Error("Invoice total does not match its line and adjustments. Import each invoice as a complete record.");
     }
-    return transaction.data;
+    if (Number(v.expense_amount || 0) !== 0) throw new Error("Record linked expenses through the expense workflow after importing the purchase.");
+    const result = await new PurchaseRepository(ctx.supabase).createAtomic(ctx.orgId, ctx.actorProfileId, {
+      supplier_id: payload.supplier_id, import_invoice_number: payload.invoice_number,
+      supplier_invoice_number: payload.supplier_invoice_number, purchase_date: payload.purchase_date,
+      payment_type: payload.payment_type, credit_due_date: payload.credit_due_date,
+      notes: payload.notes, discount_amount: discount, tax_amount: tax,
+      lines: [{ product_id: productId, quantity, purchase_price: price, unit_mode: String(v.line_unit_mode || "main"),
+        batch_number: v.line_batch || null, expiry_date: v.line_expiry || null }],
+    });
+    return { id: result.transaction.id };
+  },
+
+  async applyUpdate() {
+    throw new Error("Existing purchase invoices cannot be overwritten by import. Use skip or correct the invoice through its workflow.");
   },
 
   async findExisting(row, ctx) {

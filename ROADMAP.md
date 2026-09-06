@@ -2,6 +2,8 @@
 
 > **This is the single authoritative planning document. Updated each sprint. "Planned" = designed, not implemented.**
 
+> **2026-09-05 verification update:** Status entries below contain historical plans. See [the development audit](docs/DEVELOPMENT_AUDIT_2026-09-05.md) for verified checks, implemented fixes, and remaining release gates. Current assessment: late MVP / pre-production hardening.
+
 ---
 
 ## ✅ Completed

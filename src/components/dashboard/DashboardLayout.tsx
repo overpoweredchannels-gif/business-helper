@@ -3,7 +3,8 @@
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { FloatingAI } from "./FloatingAI";
-import { useState } from "react";
+import { MobileNavigation } from "./MobileNavigation";
+import { useCallback, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
 
 interface Notification {
@@ -67,9 +68,10 @@ customizeMode,
   onResetNavOrder,
 }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMobileMenuOpen(false), []);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-dvh w-full min-w-0 bg-background">
       <Sidebar
         items={navigationItems}
         activeSection={activeSection}
@@ -89,10 +91,7 @@ customizeMode,
       />
 
       {/* Mobile sidebar overlay */}
-      {mobileMenuOpen && (
-        <>
-          <div className="fixed inset-0 z-40 bg-black/30 lg:hidden" onClick={() => setMobileMenuOpen(false)} />
-          <div className="fixed inset-y-0 left-0 z-50 w-[19rem] bg-card border-r border-border lg:hidden animate-slideInLeft">
+      <MobileNavigation open={mobileMenuOpen} onClose={closeMenu}>
             <Sidebar
               items={navigationItems}
               activeSection={activeSection}
@@ -112,11 +111,9 @@ customizeMode,
               onToggleHidden={onToggleNavHidden}
               onResetOrder={onResetNavOrder}
             />
-          </div>
-        </>
-      )}
+      </MobileNavigation>
 
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="min-w-0 flex-1 flex flex-col min-h-dvh">
         <Header
           userName={userName}
           organizationName={organizationName}
@@ -130,7 +127,7 @@ customizeMode,
           onSearchSubmit={onSearchSubmit}
           onSearchChange={onSearchChange}
         />
-        <main className="flex-1">
+        <main className="responsive-content min-w-0 flex-1 pb-24 lg:pb-8">
           {children}
         </main>
       </div>

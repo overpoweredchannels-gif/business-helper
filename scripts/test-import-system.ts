@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import { importedInitialStock } from "../src/lib/import-wizard/initial-stock";
+import { assignImportColumn, validateImportRows } from "../src/lib/import-wizard/validation";
+import { saveImportedInitialStock } from "../src/lib/import-wizard/save-initial-stock";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Product } from "../src/lib/tradeos/types";
 import { salesInvoicesImportConfig } from "../src/lib/import-export/entities/sales-invoices";
 import { customerPaymentsImportConfig } from "../src/lib/import-export/entities/customer-payments";
 import { supplierPaymentsImportConfig } from "../src/lib/import-export/entities/supplier-payments";
@@ -14,6 +19,52 @@ import { runImport } from "../src/lib/import-export/processor";
 import type { EntityImportConfig, ImportContext, ImportPreviewResult, ParsedRow } from "../src/lib/import-export/types";
 
 async function main() {
+  const corrected = assignImportColumn({ Product: "name", Cotton: "skip", Stock: "initial_stock" }, "Cotton", "initial_stock");
+  assert.equal(corrected.Stock, "skip");
+  const cottonPreview = validateImportRows({ fileColumns: ["Product", "Cotton", "Stock"], mapping: corrected,
+    rows: [["Warehouse Product", "35", ""]], mode: "skip", categories: [], brands: [], products: [] });
+  assert.equal(cottonPreview.errorCount, 0);
+  assert.equal(importedInitialStock(cottonPreview.rows[0].values), 35, "Blank later column cannot erase explicitly selected Cotton stock");
+  const conflictPreview = validateImportRows({ fileColumns: ["Product", "Cotton", "Stock"],
+    mapping: { Product: "name", Cotton: "initial_stock", Stock: "initial_stock" },
+    rows: [["Warehouse Product", "35", ""]], mode: "skip", categories: [], brands: [], products: [] });
+  assert.ok(conflictPreview.errorCount > 0, "Conflicting saved mappings must not silently save zero stock");
+  const existingUuid = "ee028d74-6963-4181-8c77-55f41dc979dd";
+  const existingPreview = validateImportRows({ fileColumns: ["Product", "Cotton"],
+    mapping: { Product: "name", Cotton: "initial_stock" }, rows: [["Warehouse Product", "35"]], mode: "skip",
+    categories: [], brands: [], products: [{ id: existingUuid, name: "Warehouse Product", sku: null } as Product] });
+  assert.equal(existingPreview.rows[0].existingProductId, existingUuid, "UUIDs must survive duplicate matching without conversion to NaN");
+  assert.equal(existingPreview.skipCount, 1);
+  let stockArgs: Record<string, unknown> = {};
+  const stockClient = { rpc: async (name: string, args: Record<string, unknown>) => {
+    assert.equal(name, "adjust_inventory"); stockArgs = args; return { data: "ledger-id", error: null };
+  }} as unknown as SupabaseClient;
+  await saveImportedInitialStock(stockClient, "org", "product", importedInitialStock(cottonPreview.rows[0].values), "actor");
+  assert.equal(stockArgs.p_quantity_delta, 35);
+  assert.equal(stockArgs.p_product_id, "product");
+  const deniedClient = { rpc: async () => ({ data: null, error: { message: "Permission denied" } }) } as unknown as SupabaseClient;
+  await assert.rejects(saveImportedInitialStock(deniedClient, "org", "product", 35, "actor"), /Permission denied/);
+  const emptyClient = { rpc: async () => ({ data: null, error: null }) } as unknown as SupabaseClient;
+  await assert.rejects(saveImportedInitialStock(emptyClient, "org", "product", 35, "actor"), /no inventory record/);
+  await assert.rejects(saveImportedInitialStock(stockClient, "org", "product", 35, null), /Sign in again/);
+  const stockPreview = validateImportRows({
+    fileColumns: ["External Name", "Cotton", "Packing"],
+    mapping: { "External Name": "name", Cotton: "initial_stock_subunit", Packing: "units_per_pack" },
+    rows: [["Test Product", "120", "12"]], mode: "skip", categories: [], brands: [], products: [],
+  });
+  assert.equal(stockPreview.errorCount, 0);
+  assert.equal(importedInitialStock(stockPreview.rows[0].values), 10, "Selected pieces mapping overrides a Cotton header");
+  assert.equal(importedInitialStock({ initial_stock: "120", units_per_pack: "12" }), 120, "Main-unit quantities are not converted");
+  assert.equal(importedInitialStock({ initial_stock: "2", initial_stock_subunit: "6", units_per_pack: "12" }), 2.5);
+  assert.equal(importedInitialStock({ initial_stock_subunit: "1,200", units_per_pack: "12" }), 100);
+  assert.throws(() => importedInitialStock({ initial_stock_subunit: "120" }), /Units Per Pack/);
+  assert.throws(() => importedInitialStock({ initial_stock: "bad" }), /valid non-negative/);
+  assert.throws(() => importedInitialStock({ initial_stock_subunit: "-1", units_per_pack: 12 }), /valid non-negative/);
+  const invalidStockPreview = validateImportRows({
+    fileColumns: ["Product", "Stock"], mapping: { Product: "name", Stock: "initial_stock_subunit" },
+    rows: [["Test Product", "120"]], mode: "skip", categories: [], brands: [], products: [],
+  });
+  assert.ok(invalidStockPreview.errorCount > 0, "Missing pack size is blocked before writes");
   const invoiceHeaders = ["Invoice Number", "Organization Number", "Client", "Name", "Reference", "Created Date"];
   const invoiceMapping = guessColumnMapping(invoiceHeaders, salesInvoicesImportConfig.fields);
   assert.equal(invoiceMapping["Invoice Number"], "invoice_number");

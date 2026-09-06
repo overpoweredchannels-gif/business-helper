@@ -1,3 +1,4 @@
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 type PurchaseInput = {
   supplier_id: string;
   product_id: string;
@@ -56,7 +57,7 @@ export async function executePurchaseDraft(
   };
 
   try {
-    const response = await fetch("/api/ai/purchases/create", {
+    const response = await authorizedFetch("/api/ai/purchases/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(purchaseInput),

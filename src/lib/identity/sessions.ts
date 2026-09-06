@@ -1,4 +1,5 @@
 import { SessionInfo } from "./types";
+import { randomBytes } from "crypto";
 
 export interface SessionPolicy {
   sessionTimeoutMinutes: number;
@@ -15,18 +16,11 @@ export const DEFAULT_SESSION_POLICY: SessionPolicy = {
 const SESSION_STORAGE_KEY = "tradeos_active_sessions";
 
 function generateId(prefix: string): string {
-  const random = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-  return `${prefix}_${random}`;
+  return `${prefix}_${randomBytes(12).toString("hex")}`;
 }
 
 function generateToken(): string {
-  const bytes = new Uint8Array(24);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Math.floor(Math.random() * 256);
-  }
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return randomBytes(32).toString("hex");
 }
 
 class SessionManager {

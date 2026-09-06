@@ -1,5 +1,9 @@
 "use client";
 
+import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
+import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
+import { createPurchase } from "@/lib/purchases/client";
+
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
@@ -3176,58 +3180,21 @@ setCustomerOrganizationName("");
       const quantity = Number(parsedData.quantity);
       const purchasePrice = Number(parsedData.purchase_price);
       const sellingPrice = Number(parsedData.selling_price);
-      const invoiceNumber = generateAiInvoiceNumber("AI-PUR");
-
-      const transactionResult = await supabase
-        .from("purchase_transactions")
-        .insert({
-          supplier_id: supplierId,
-          invoice_number: invoiceNumber,
-          purchase_date: toDateInputValue(new Date()),
-          notes: "Created from AI Assistant draft",
-          expense_review_status: "pending",
-          organization_id: currentOrganizationId,
-          total_amount: quantity * purchasePrice,
-        })
-        .select()
-        .single();
-
-      if (transactionResult.error) {
-        console.error("Supabase AI purchase transaction insert error:", JSON.stringify(transactionResult.error, null, 2));
-        await markDraftFailed("Failed to create purchase invoice from draft.", transactionResult.error);
+      let purchaseTransactionId: string;
+      let invoiceNumber: string;
+      try {
+        const result = await createPurchase({
+          supplier_id: supplierId, purchase_date: toDateInputValue(new Date()),
+          payment_type: String(parsedData.payment_type || "cash").toLowerCase(),
+          notes: "Created from AI Assistant draft", request_key: "ai-draft:" + draft.id,
+          lines: [{ product_id: productId, quantity, purchase_price: purchasePrice,
+            selling_price: Number.isFinite(sellingPrice) ? sellingPrice : null }],
+        });
+        purchaseTransactionId = result.transaction.id;
+        invoiceNumber = result.transaction.invoice_number;
+      } catch (error) {
+        await markDraftFailed(error instanceof Error ? error.message : "Could not create purchase");
         return;
-      }
-
-      const purchaseTransactionId = transactionResult.data?.id;
-      if (!purchaseTransactionId) {
-        await markDraftFailed("Failed to create purchase invoice from draft.");
-        return;
-      }
-
-      const { error: itemError } = await supabase.from("purchase_items").insert({
-        purchase_transaction_id: purchaseTransactionId,
-        organization_id: currentOrganizationId,
-        product_id: productId,
-        quantity,
-        purchase_price: purchasePrice,
-        selling_price: sellingPrice,
-        batch_number: null,
-        expiry_date: null,
-      });
-
-      if (itemError) {
-        console.error("Supabase AI purchase item insert error:", JSON.stringify(itemError, null, 2));
-        await markDraftFailed("Purchase invoice was created, but purchase item could not be saved.", itemError);
-        return;
-      }
-
-      const { error: productUpdateError } = await supabase
-        .from("products")
-        .update({ default_selling_price: sellingPrice })
-        .eq("id", productId)
-        .eq("organization_id", currentOrganizationId);
-      if (productUpdateError) {
-        console.error("Supabase AI product selling price update error:", JSON.stringify(productUpdateError, null, 2));
       }
 
       const { error: draftError } = await supabase
@@ -3795,6 +3762,7 @@ setCustomerOrganizationName("");
   };
 
   const handleCreateSalesInvoice = async (overrideConfirmed = false) => {
+    const invoiceLines = enteredInvoiceLines(salesLines);
     if (salesInvoiceLoading) {
       return;
     }
@@ -3807,13 +3775,13 @@ setCustomerOrganizationName("");
       return;
     }
 
-    if (salesLines.length === 0 || salesLines.some((line) => !line.product_id)) {
+    if (invoiceLines.length === 0 || invoiceLines.some((line) => !line.product_id)) {
       setSalesError("Please add at least one product line");
       setSalesMessage(null);
       return;
     }
 
-    for (const line of salesLines) {
+    for (const line of invoiceLines) {
       if (!line.product_id) continue;
       const product = products.find((p) => String(p.id) === String(line.product_id));
       if (!product) continue;
@@ -3863,7 +3831,7 @@ setCustomerOrganizationName("");
       return;
     }
 
-    for (const line of salesLines) {
+    for (const line of invoiceLines) {
       if (!line.product_id) continue;
       const lineDiscount = line.discount.trim() === "" ? 0 : Number(line.discount);
       if (line.discount.trim() !== "" && (!Number.isFinite(lineDiscount) || lineDiscount < 0)) {
@@ -3990,7 +3958,7 @@ setCustomerOrganizationName("");
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             customerId: selectedCustomerIdForSale,
-            items: salesLines
+            items: invoiceLines
               .filter((line) => line.product_id)
               .map((line) => ({
                 productId: line.product_id,
@@ -4051,7 +4019,7 @@ setCustomerOrganizationName("");
         return;
       }
 
-      const lineSubtotal = salesLines.reduce((sum, line) => {
+      const lineSubtotal = invoiceLines.reduce((sum, line) => {
         if (!line.product_id) return sum;
         const lineDiscount = line.discount.trim() === "" ? 0 : safeNumber(line.discount);
         return sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - lineDiscount;
@@ -4096,7 +4064,7 @@ setCustomerOrganizationName("");
       const salesTransactionId = tx.data?.id;
       if (!salesTransactionId) throw new Error("Failed to create sales transaction");
 
-      for (const line of salesLines) {
+      for (const line of invoiceLines) {
         if (!line.product_id) continue;
         const latestPurchaseItem = purchaseItems
           .filter(
@@ -7127,6 +7095,7 @@ setCustomerOrganizationName("");
   };
 
   const handleCreatePurchaseInvoice = async () => {
+    const invoiceLines = enteredInvoiceLines(purchaseLines);
     if (invoiceLoading) {
       return;
     }
@@ -7137,19 +7106,19 @@ setCustomerOrganizationName("");
       return;
     }
 
-    if (purchaseLines.length === 0 || purchaseLines.some((line) => !line.product_id)) {
+    if (invoiceLines.length === 0 || invoiceLines.some((line) => !line.product_id)) {
       setInvoiceError("Please add at least one product line");
       setInvoiceMessage(null);
       return;
     }
 
-    if (purchaseLines.some((line) => Number(line.quantity) <= 0)) {
+    if (invoiceLines.some((line) => Number(line.quantity) <= 0)) {
       setInvoiceError("Each line needs a quantity greater than zero");
       setInvoiceMessage(null);
       return;
     }
 
-    if (purchaseLines.some((line) => Number(line.purchase_price) < 0)) {
+    if (invoiceLines.some((line) => Number(line.purchase_price) < 0)) {
       setInvoiceError("Purchase price cannot be negative");
       setInvoiceMessage(null);
       return;
@@ -7172,103 +7141,13 @@ setCustomerOrganizationName("");
         return;
       }
 
-      let systemInvoiceNumber: string;
-      try {
-        systemInvoiceNumber = await generatePurchaseInvoiceWithClient(supabase, currentOrganizationId);
-      } catch (numberErr) {
-        setInvoiceError(
-          numberErr instanceof Error ? numberErr.message : "Failed to generate invoice number"
-        );
-        setInvoiceLoading(false);
-        return;
-      }
-
-      const supplierRef = supplierInvoiceNumber.trim() || null;
-
-      const purchaseTotal = purchaseLines.reduce(
-        (sum, line) => sum + Number(line.quantity || 0) * Number(line.purchase_price || 0),
-        0
-      );
-
-      const transactionResult = await supabase
-        .from("purchase_transactions")
-        .insert({
-          supplier_id: selectedSupplierId,
-          invoice_number: systemInvoiceNumber,
-          supplier_invoice_number: supplierRef,
-          notes: null,
-          organization_id: currentOrganizationId,
-          total_amount: purchaseTotal,
-          purchase_date: toDateInputValue(new Date()),
-          payment_type: "cash",
-          created_by_profile_id: currentProfile?.id ?? null,
-        })
-        .select()
-        .single();
-
-      if (transactionResult.error) {
-        console.error(
-          "purchase_transactions error",
-          JSON.stringify(transactionResult.error, null, 2)
-        );
-        throw transactionResult.error;
-      }
-
-      const transactionId = transactionResult.data?.id;
-      if (!transactionId) throw new Error("Failed to create purchase transaction");
-
-      // Create purchase items and update product selling prices
-      for (const line of purchaseLines) {
-        if (!line.product_id) continue;
-
-        // Insert purchase item
-        const { error: itemError } = await supabase.from("purchase_items").insert({
-          purchase_transaction_id: transactionId,
-          organization_id: currentOrganizationId,
-          product_id: line.product_id,
-          quantity: Number(line.quantity),
-          purchase_price: Number(line.purchase_price),
-          selling_price: line.selling_price ? Number(line.selling_price) : null,
-          unit_mode: line.unit_mode ?? "main",
-          batch_number: line.batch_number || null,
-          expiry_date: line.expiry_date || null,
-        });
-
-        if (itemError) throw itemError;
-
-        // Update product default_selling_price
-        if (line.selling_price) {
-          console.log("Updating product selling price", {
-            productId: line.product_id,
-            sellingPrice: line.selling_price,
-          });
-
-          const { error: updateError } = await supabase
-            .from("products")
-            .update({ default_selling_price: Number(line.selling_price) })
-            .eq("id", line.product_id)
-            .eq("organization_id", currentOrganizationId);
-
-          if (updateError) {
-            console.error("Product update error:", JSON.stringify(updateError, null, 2));
-          }
-        }
-      }
-
-      const purchaseSupplier = suppliers.find((supplier) => supplier.id === selectedSupplierId);
-      await createAuditLog({
-        action: "created",
-        entity_type: "purchase_invoice",
-        entity_id: transactionId,
-        entity_label: systemInvoiceNumber,
-        description: `Created purchase invoice ${systemInvoiceNumber}${supplierRef ? ` (supplier ref ${supplierRef})` : ""} for ${purchaseSupplier?.supplier_name ?? "Unknown Supplier"}`,
-        new_values: {
-          supplier_id: selectedSupplierId,
-          invoice_number: systemInvoiceNumber,
-          supplier_invoice_number: supplierRef,
-          line_count: purchaseLines.length,
-        },
+      const result = await createPurchase({
+        supplier_id: selectedSupplierId,
+        supplier_invoice_number: supplierInvoiceNumber.trim() || null,
+        purchase_date: toDateInputValue(new Date()), payment_type: "cash", lines: invoiceLines,
       });
+      const transactionId = result.transaction.id;
+      const systemInvoiceNumber = result.transaction.invoice_number;
 
       setInvoiceMessage("Purchase invoice created successfully");
       setNewPurchaseExpenseReminder({
@@ -7549,88 +7428,18 @@ setCustomerOrganizationName("");
     setReceiveLoading(true);
 
     try {
-      const invoiceNumber = await generatePurchaseInvoiceWithClient(supabase, currentOrganizationId);
-
-      const receiveTotal = receiveLines.reduce((sum, line) => {
-        const receiveQuantity = Number(line.receiveQuantity);
-        if (!Number.isFinite(receiveQuantity) || receiveQuantity <= 0) return sum;
-        const unitPrice = Number(line.unitPrice || 0);
-        return sum + receiveQuantity * (Number.isFinite(unitPrice) ? unitPrice : 0);
-      }, 0);
-
-      const { data: txData, error: txError } = await supabase
-        .from("purchase_transactions")
-        .insert({
-          supplier_id: po.supplier_id,
-          invoice_number: invoiceNumber,
-          supplier_invoice_number: null,
-          purchase_date: toDateInputValue(new Date()),
-          notes: `Received from purchase order ${po.po_number}`,
-          expense_review_status: "pending",
-          organization_id: currentOrganizationId,
-          created_by_profile_id: currentProfile?.id ?? null,
-          total_amount: receiveTotal,
-        })
-        .select("id")
-        .single();
-
-      if (txError) throw txError;
-      const transactionId = txData?.id;
-      if (!transactionId) throw new Error("Failed to create purchase invoice from PO");
-
-      let allReceived = true;
-      for (const line of receiveLines) {
-        const receiveQuantity = Number(line.receiveQuantity);
-        if (!Number.isFinite(receiveQuantity) || receiveQuantity <= 0) continue;
-        allReceived = false;
-
-        const { error: itemError } = await supabase.from("purchase_items").insert({
-          purchase_transaction_id: transactionId,
-          organization_id: currentOrganizationId,
-          product_id: line.productId,
-          quantity: receiveQuantity,
-          purchase_price: line.unitPrice ? Number(line.unitPrice) : null,
-          selling_price: null,
-          unit_mode: line.unitMode ?? "main",
-          batch_number: line.batchNumber || null,
-          expiry_date: line.expiryDate || null,
-        });
-        if (itemError) throw itemError;
-
-        const { error: updateError } = await supabase
-          .from("purchase_order_items")
-          .update({
-            quantity_received: line.quantityReceived + receiveQuantity,
-            unit_price: line.unitPrice ? Number(line.unitPrice) : null,
-            batch_number: line.batchNumber || null,
-            expiry_date: line.expiryDate || null,
-          })
-          .eq("id", line.itemId);
-        if (updateError) throw updateError;
-      }
-
-      allReceived = receiveLines.every(
-        (line) => line.quantityReceived + Number(line.receiveQuantity) >= line.quantityOrdered
-      );
-      const nextStatus = allReceived ? "received" : "partial";
-
-      const { error: statusError } = await supabase
-        .from("purchase_orders")
-        .update({ status: nextStatus, updated_at: new Date().toISOString() })
-        .eq("id", receivePoId)
-        .eq("organization_id", currentOrganizationId);
-      if (statusError) throw statusError;
-
-      await createAuditLog({
-        action: "created",
-        entity_type: "purchase_invoice",
-        entity_id: transactionId,
-        entity_label: invoiceNumber,
-        description: `Received purchase order ${po.po_number} into purchase invoice ${invoiceNumber}`,
-        old_values: { purchase_order_id: po.id },
-        new_values: { purchase_order_id: po.id, invoice_number: invoiceNumber, status: nextStatus },
+      const result = await createPurchase({
+        supplier_id: po.supplier_id, purchase_order_id: receivePoId,
+        purchase_date: toDateInputValue(new Date()), payment_type: "cash",
+        notes: "Received purchase order " + po.po_number,
+        lines: receiveLines.filter((line) => Number(line.receiveQuantity) > 0).map((line) => ({
+          order_item_id: line.itemId, product_id: line.productId, quantity: Number(line.receiveQuantity),
+          purchase_price: Number(line.unitPrice || 0), unit_mode: line.unitMode || "main",
+          batch_number: line.batchNumber || null, expiry_date: line.expiryDate || null,
+        })),
       });
-
+      const invoiceNumber = result.transaction.invoice_number;
+      const nextStatus = result.purchase_order_status;
       setReceiveMessage(`Purchase order received (${nextStatus === "received" ? "fully" : "partially"}). Invoice ${invoiceNumber} created and stock updated.`);
       setReceivePoId(null);
       setReceiveLines([]);
@@ -10933,7 +10742,7 @@ setCustomerOrganizationName("");
       businessIntelligenceAnalytics.productAnalytics.length > 0;
     setAiAnalyticsLoading(true);
     try {
-      const response = await fetch("/api/ai-business-query", {
+      const response = await authorizedFetch("/api/ai-business-query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -12888,7 +12697,7 @@ setCustomerOrganizationName("");
       let rawAiResponse: unknown = null;
 
       try {
-        const response = await fetch("/api/ai-business-query", {
+        const response = await authorizedFetch("/api/ai-business-query", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -13066,7 +12875,7 @@ setCustomerOrganizationName("");
     setAiBusinessQueryLoading(true);
 
     try {
-      const response = await fetch("/api/ai-business-query", {
+      const response = await authorizedFetch("/api/ai-business-query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -13629,7 +13438,7 @@ setCustomerOrganizationName("");
     const queryType = detectAiBusinessQueryType(question);
     const language = aiVoiceLanguage === "auto" ? detectAiBusinessLanguage(question) : aiVoiceLanguage;
     const summaryData = buildAiBusinessSummary(question, dateRange, queryType);
-    const response = await fetch("/api/ai-business-query", {
+    const response = await authorizedFetch("/api/ai-business-query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -14902,7 +14711,7 @@ setCustomerOrganizationName("");
 
     setMarketAiAnalysisLoadingId(loadingId);
     try {
-      const response = await fetch("/api/market-intelligence/analyze", {
+      const response = await authorizedFetch("/api/market-intelligence/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -17780,17 +17589,18 @@ setCustomerOrganizationName("");
 
             <div className="border-t pt-4">
               <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
+              <p className="mb-3 text-sm text-muted-foreground">Press Enter for the next field. At the end of a line, Enter opens the next product. Shift+Enter goes back. Use Save when the invoice is ready.</p>
 
               {salesLines.length === 0 ? (
                 <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
               ) : (
-                <div className="mb-4 space-y-3">
+                <InvoiceLineNavigation onAddLine={handleAddSalesLine}>
                   {salesLines.map((line, index) => {
                     const lineProduct = line.product_id
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} className="rounded border border-border bg-card p-3">
+                    <div key={index} data-invoice-line className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
                         <button
@@ -17806,13 +17616,14 @@ setCustomerOrganizationName("");
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
+                            required
                             value={line.product_id ?? ""}
                             onChange={(e) => handleSalesLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
                             <option value="">Select Product</option>
                             {activeProducts.map((product) => (
-                              <option key={product.id} value={String(product.id)}>{product.name}</option>
+                              <option key={product.id} value={String(product.id)}>{product.name}{product.brand_id ? ` — ${brands.find(brand => brand.id === product.brand_id)?.name ?? ""}` : ""}{product.sku ? ` (${product.sku})` : ""}</option>
                             ))}
                           </select>
                         </label>
@@ -17842,6 +17653,7 @@ setCustomerOrganizationName("");
                           <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
                           <input
                             type="number"
+                            required min="0.000001" step="any"
                             value={line.quantity}
                             onChange={(e) => handleSalesLineChange(index, "quantity", e.target.value)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
@@ -17852,6 +17664,7 @@ setCustomerOrganizationName("");
                           <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
                           <input
                             type="number"
+                            required min="0" step="any"
                             value={line.selling_price}
                             onChange={(e) => handleSalesLineChange(index, "selling_price", e.target.value)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
@@ -17885,7 +17698,7 @@ setCustomerOrganizationName("");
                     </div>
                     );
                   })}
-                </div>
+                </InvoiceLineNavigation>
               )}
 
               <button
@@ -18091,6 +17904,7 @@ setCustomerOrganizationName("");
 
             <div className="border-t pt-4">
               <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
+              <p className="mb-3 text-sm text-muted-foreground">Press Enter for the next field. At the end of a line, Enter opens the next product. Shift+Enter goes back. Use Save when the invoice is ready.</p>
 
               {soLines.length === 0 ? (
                 <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
@@ -21445,17 +21259,18 @@ setCustomerOrganizationName("");
 
             <div className="border-t pt-4">
               <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
+              <p className="mb-3 text-sm text-muted-foreground">Press Enter for the next field. At the end of a line, Enter opens the next product. Shift+Enter goes back. Use Save when the invoice is ready.</p>
 
               {purchaseLines.length === 0 ? (
                 <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
               ) : (
-                <div className="mb-4 space-y-3">
+                <InvoiceLineNavigation onAddLine={handleAddPurchaseLine}>
                   {purchaseLines.map((line, index) => {
                     const lineProduct = line.product_id
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} className="rounded border border-border bg-card p-3">
+                    <div key={index} data-invoice-line className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
                         <button
@@ -21471,6 +21286,7 @@ setCustomerOrganizationName("");
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
+                            required
                             value={line.product_id ?? ""}
                             onChange={(e) =>
                               handlePurchaseLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)
@@ -21480,7 +21296,7 @@ setCustomerOrganizationName("");
                             <option value="">Select Product</option>
                             {activeProducts.map((product) => (
                               <option key={product.id} value={product.id}>
-                                {product.name}
+                                {product.name}{product.brand_id ? ` — ${brands.find(brand => brand.id === product.brand_id)?.name ?? ""}` : ""}{product.sku ? ` (${product.sku})` : ""}
                               </option>
                             ))}
                           </select>
@@ -21511,6 +21327,7 @@ setCustomerOrganizationName("");
                           <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
                           <input
                             type="number"
+                            required min="0.000001" step="any"
                             value={line.quantity}
                             onChange={(e) => handlePurchaseLineChange(index, "quantity", e.target.value)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
@@ -21521,6 +21338,7 @@ setCustomerOrganizationName("");
                           <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
                           <input
                             type="number"
+                            required min="0" step="any"
                             value={line.purchase_price}
                             onChange={(e) => handlePurchaseLineChange(index, "purchase_price", e.target.value)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
@@ -21562,7 +21380,7 @@ setCustomerOrganizationName("");
                     </div>
                     );
                   })}
-                </div>
+                </InvoiceLineNavigation>
               )}
 
               <button
@@ -22005,6 +21823,7 @@ setCustomerOrganizationName("");
 
             <div className="border-t pt-4">
               <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
+              <p className="mb-3 text-sm text-muted-foreground">Press Enter for the next field. At the end of a line, Enter opens the next product. Shift+Enter goes back. Use Save when the invoice is ready.</p>
 
               {poLines.length === 0 ? (
                 <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
@@ -22483,6 +22302,7 @@ setCustomerOrganizationName("");
 
             <div className="border-t pt-4">
               <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
+              <p className="mb-3 text-sm text-muted-foreground">Press Enter for the next field. At the end of a line, Enter opens the next product. Shift+Enter goes back. Use Save when the invoice is ready.</p>
 
               {returnLines.length === 0 ? (
                 <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>

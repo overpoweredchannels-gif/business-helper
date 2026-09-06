@@ -298,11 +298,11 @@ When all providers fail, deterministic summary generated from `business_summary`
 |--------|----------|------|
 | `NEXT_PUBLIC_SUPABASE_URL` | `.env.local` | Low (public) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `.env.local` | Low (public, RLS enforced) |
-| `GEMINI_API_KEY` | `.env.local` | **HIGH** — committed in repo |
-| `OPENAI_API_KEY` | `.env.local` | **HIGH** — committed in repo |
-| `XAI_API_KEY` | `.env.local` | **HIGH** — committed in repo |
-| `GROQ_API_KEY` | `.env.local` | **HIGH** — committed in repo |
-| `ZAI_API_KEY` | `.env.local` | **HIGH** — committed in repo |
+| `GEMINI_API_KEY` | `.env.local` | Local secret; ignored and not tracked |
+| `OPENAI_API_KEY` | `.env.local` | Local secret; ignored and not tracked |
+| `XAI_API_KEY` | `.env.local` | Local secret; ignored and not tracked |
+| `GROQ_API_KEY` | `.env.local` | Local secret; ignored and not tracked |
+| `ZAI_API_KEY` | `.env.local` | Local secret; ignored and not tracked |
 
 ### Required Production Migration
 
@@ -322,11 +322,11 @@ When all providers fail, deterministic summary generated from `business_summary`
 ### Immediate Action Required
 
 ```bash
-# 1. Rotate ALL keys exposed in .env.local
-# 2. Remove .env.local from git history (BFG Repo-Cleaner or filter-branch)
-# 3. Add to Vercel: Project Settings → Environment Variables
-# 4. Enable "Server-side only" for all AI keys
-# 5. Verify .gitignore includes .env.local
+# 1. Keep .env.local ignored and never print or commit its values
+# 2. Rotate any key that was shared outside approved secret storage
+# 3. Add production secrets in Vercel Project Settings → Environment Variables
+# 4. Keep all AI keys server-side only
+# 5. Recheck tracked files and git history before every production release
 ```
 
 ### Build-Time vs Runtime

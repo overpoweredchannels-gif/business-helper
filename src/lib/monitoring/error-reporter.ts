@@ -59,14 +59,15 @@ function buildEvent(input: ProductionErrorInput): ProductionErrorEvent {
 function shouldSendAlert(event: ProductionErrorEvent): boolean {
   const key = [event.source, event.message, event.path, event.routePath].join("|");
   const now = Date.now();
-  const lastSent = recentAlerts.get(key) ?? 0;
-  recentAlerts.set(key, now);
+  const lastSent = recentAlerts.get(key);
 
   for (const [entry, timestamp] of recentAlerts) {
     if (now - timestamp > DEDUPE_WINDOW_MS * 2) recentAlerts.delete(entry);
   }
 
-  return now - lastSent >= DEDUPE_WINDOW_MS;
+  if (lastSent !== undefined && now - lastSent < DEDUPE_WINDOW_MS) return false;
+  recentAlerts.set(key, now);
+  return true;
 }
 
 export async function reportProductionError(input: ProductionErrorInput): Promise<void> {
@@ -77,8 +78,9 @@ export async function reportProductionError(input: ProductionErrorInput): Promis
   console.error("[tradeos-runtime-error]", JSON.stringify(event));
 
   const webhookUrl = process.env.TRADEOS_ALERT_WEBHOOK_URL?.trim();
-  if (!webhookUrl || !shouldSendAlert(event)) return;
+  if (!webhookUrl) return;
   if (process.env.NODE_ENV !== "production" && process.env.TRADEOS_ALERTS_IN_DEVELOPMENT !== "true") return;
+  if (!shouldSendAlert(event)) return;
 
   const summary = `[TradeOS ${event.environment}] ${event.source} error: ${event.message}`;
   try {

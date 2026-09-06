@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiProviderRouter } from "@/lib/ai/provider-router";
+import { requirePermission } from "@/lib/identity/authorization";
 
 export const runtime = "nodejs";
 
@@ -137,6 +138,10 @@ const sanitizeAnalysis = (analysis: any): AnalysisResult => ({
 
 export async function POST(request: NextRequest) {
   try {
+    const permission = await requirePermission(request, "ai_assistant");
+    if (!permission.allowed) {
+      return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
+    }
     const body = await request.json();
     const inputTitle = safeLimitedText(body?.title, 300);
     const inputSummary = safeLimitedText(body?.summary, 1200);

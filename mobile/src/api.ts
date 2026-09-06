@@ -1,6 +1,18 @@
 import { clearSession, getSession, saveSession } from "./storage";
 import type { DutyStatus, LocationSample, OwnerIdentity, StaffIdentity, StoredSession } from "./types";
 
+let refreshInFlight: Promise<StoredSession> | null = null;
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  init.signal?.addEventListener("abort", abort);
+  if (init.signal?.aborted) controller.abort();
+  const timer = setTimeout(abort, 20_000);
+  try { return await fetch(url, { ...init, signal: controller.signal }); }
+  finally { clearTimeout(timer); init.signal?.removeEventListener("abort", abort); }
+}
+
 const API_URL = (process.env.EXPO_PUBLIC_TRADEOS_API_URL ?? "").replace(/\/$/, "");
 const SUPABASE_URL = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? "").replace(/\/$/, "");
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -57,7 +69,7 @@ function requireConfiguration(): void {
 
 export async function login(loginId: string, password: string): Promise<void> {
   requireConfiguration();
-  const response = await fetch(`${API_URL}/api/identity/staff/login`, {
+  const response = await fetchWithTimeout(`${API_URL}/api/identity/staff/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ loginId: loginId.trim(), password }),
@@ -71,17 +83,20 @@ export async function login(loginId: string, password: string): Promise<void> {
 
 async function refreshSession(refreshToken: string): Promise<StoredSession> {
   requireConfiguration();
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+  const response = await fetchWithTimeout(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
   const data = await response.json();
   if (!response.ok || !data.access_token || !data.refresh_token) {
-    await clearSession();
+    // Connectivity, rate limits and provider failures must not erase a valid login.
+    if (response.status >= 500 || response.status === 429) throw new Error("Session service unavailable. Please retry when connected.");
+    if ((await getSession())?.refreshToken === refreshToken) await clearSession();
     throw new Error("Your TradeOS session expired. Open the app and sign in again.");
   }
   const session = { accessToken: String(data.access_token), refreshToken: String(data.refresh_token) };
+  if ((await getSession())?.refreshToken !== refreshToken) throw new Error("Session changed. Please retry.");
   await saveSession(session);
   return session;
 }
@@ -92,11 +107,17 @@ export async function apiFetch(path: string, init: RequestInit = {}, retry = tru
   if (!session) throw new Error("Sign in is required.");
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${session.accessToken}`);
-  const response = await fetch(`${API_URL}${path}`, { ...init, headers });
+  const response = await fetchWithTimeout(`${API_URL}${path}`, { ...init, headers });
   if (response.status !== 401 || !retry) return response;
-  session = await refreshSession(session.refreshToken);
+  const latest = await getSession();
+  if (!latest) throw new Error("Sign in is required.");
+  if (latest.accessToken !== session.accessToken) session = latest;
+  else {
+    if (!refreshInFlight) refreshInFlight = refreshSession(latest.refreshToken).finally(() => { refreshInFlight = null; });
+    session = await refreshInFlight;
+  }
   headers.set("Authorization", `Bearer ${session.accessToken}`);
-  return fetch(`${API_URL}${path}`, { ...init, headers });
+  return fetchWithTimeout(`${API_URL}${path}`, { ...init, headers });
 }
 
 async function jsonRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -202,7 +223,7 @@ export async function reportTrackingHealth(
 export async function revokeServerSession(): Promise<void> {
   const session = await getSession();
   if (!session || !SUPABASE_URL || !SUPABASE_ANON_KEY) return;
-  await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+  await fetchWithTimeout(`${SUPABASE_URL}/auth/v1/logout`, {
     method: "POST",
     headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.accessToken}` },
   }).catch(() => undefined);

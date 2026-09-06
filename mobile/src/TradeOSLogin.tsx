@@ -1,4 +1,6 @@
-import { Linking, SafeAreaView, StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
 import { WebView } from "react-native-webview";
 import type { WebViewMessageEvent, WebViewNavigation } from "react-native-webview";
 
@@ -17,6 +19,8 @@ type TradeOSLoginProps = {
 };
 
 export function TradeOSLogin({ onGoogleSignIn, onSession }: TradeOSLoginProps) {
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   const appOrigin = (() => {
     try { return new URL(API_URL).origin; } catch { return ""; }
   })();
@@ -37,6 +41,7 @@ export function TradeOSLogin({ onGoogleSignIn, onSession }: TradeOSLoginProps) {
 
   const receiveMessage = (event: WebViewMessageEvent) => {
     try {
+      if (new URL(event.nativeEvent.url).origin !== appOrigin) return;
       const message = JSON.parse(event.nativeEvent.data) as Record<string, unknown>;
       if (message.type === "tradeos-google-sign-in") {
         onGoogleSignIn();
@@ -61,17 +66,23 @@ export function TradeOSLogin({ onGoogleSignIn, onSession }: TradeOSLoginProps) {
 
   return (
     <SafeAreaView style={styles.safe}>
+      {error ? <View style={{ padding: 24, gap: 16 }}><Text>{error}</Text><Pressable onPress={() => { setError(null); setRetry((value) => value + 1); }} style={{ padding: 16, backgroundColor: "#e2e8f0" }}><Text>Retry connection</Text></Pressable></View> :
       <WebView
+        key={retry}
         source={{ uri: `${API_URL}/login?tradeosMobile=1` }}
         onShouldStartLoadWithRequest={allowNavigation}
         onMessage={receiveMessage}
+        onError={() => setError("TradeOS could not be reached. Check your connection, then retry.")}
+        onHttpError={(event) => { if (event.nativeEvent.statusCode >= 500) setError("TradeOS is temporarily unavailable. Please retry."); }}
         javaScriptEnabled
         domStorageEnabled
         sharedCookiesEnabled
         thirdPartyCookiesEnabled={false}
         setSupportMultipleWindows={false}
+        setBuiltInZoomControls={false}
+        setDisplayZoomControls={false}
         style={styles.webView}
-      />
+      />}
     </SafeAreaView>
   );
 }

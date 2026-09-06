@@ -98,6 +98,56 @@ body {
   font-family: var(--font-ui);
 }
 
+.mobile-navigation {
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-foreground);
+}
+.mobile-navigation::backdrop { background: rgb(0 0 0 / 40%); }
+.mobile-navigation-panel {
+  position: relative;
+  width: min(20rem, calc(100vw - 2rem));
+  height: 100%;
+  background: var(--color-card);
+}
+.mobile-navigation-panel aside { width: 100%; height: 100%; padding-bottom: env(safe-area-inset-bottom); }
+.mobile-navigation-close {
+  position: absolute;
+  z-index: 1;
+  top: .75rem;
+  right: .5rem;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: .75rem;
+  background: var(--color-card);
+}
+.responsive-content :where(.grid, .flex) > :where(div, section, article, form) { min-width: 0; }
+.responsive-content :where(img, video, canvas, iframe) { max-width: 100%; }
+.responsive-content :where(.overflow-x-auto) { max-width: 100%; overscroll-behavior-x: contain; }
+
+@media (max-width: 639px) {
+  /* A phone uses its actual viewport; forms never require pinch-to-zoom. */
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; max-width: 100%; }
+  .responsive-content :where(button, select, input:not([type="checkbox"]):not([type="radio"])) { min-height: 44px; }
+  .responsive-content :where(h1, h2, h3, p) { overflow-wrap: anywhere; }
+  .responsive-content table { display: block; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+  .responsive-content :where(.flex.items-center.justify-between) { flex-wrap: wrap; gap: .75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {

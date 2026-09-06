@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiProviderRouter } from "@/lib/ai/provider-router";
+import { requirePermission } from "@/lib/identity/authorization";
 
 export const runtime = "nodejs";
 
@@ -93,6 +94,10 @@ const localFallbackEnabled = () => safeText(process.env.AI_ENABLE_LOCAL_FALLBACK
 
 export async function POST(request: NextRequest) {
   try {
+    const permission = await requirePermission(request, "ai_assistant");
+    if (!permission.allowed) {
+      return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
+    }
     const body = await request.json();
     const question = safeText(body?.question, 1000);
     const language = safeText(body?.language, 50) || "auto";

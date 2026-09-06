@@ -1,13 +1,15 @@
 import { Invitation, RoleType } from "./types";
+import { randomBytes } from "crypto";
 
 const INVITATION_STORAGE_KEY = "tradeos_invitations";
 const INVITATION_TTL_HOURS = 72;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 function generateCode(): string {
+  const bytes = randomBytes(8);
   let code = "";
   for (let i = 0; i < 8; i++) {
-    code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+    code += CODE_CHARS[bytes[i] % CODE_CHARS.length];
   }
   return code;
 }

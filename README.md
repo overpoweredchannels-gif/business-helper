@@ -2,7 +2,9 @@
 
 > **Business Operating System for Pakistani Wholesalers, Traders & Distributors**
 
-OP OWNER is a production-grade, AI-powered business operating system designed specifically for Pakistani wholesale and trading businesses. It combines comprehensive ERP functionality with advanced AI analytics, voice interaction, and market intelligence to give business owners complete control and actionable insights.
+OP OWNER is an AI-powered business operating system under active development for Pakistani wholesale and trading businesses. It combines ERP functionality with AI analytics, voice interaction, and market intelligence.
+
+**Current assessment (2026-09-05): late MVP / pre-production hardening.** Local build and regression checks pass, but production readiness is not yet verified. See [the development audit](docs/DEVELOPMENT_AUDIT_2026-09-05.md) for evidence, fixes, and outstanding release gates.
 
 ---
 
@@ -40,6 +42,7 @@ Create `.env.local` in the project root:
 # Supabase (Required)
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
 
 # AI Providers (At least one required)
 GEMINI_API_KEY=your-gemini-key
@@ -78,7 +81,7 @@ AI_ENABLE_LOCAL_FALLBACK=true
 
 | Layer | Technology |
 |-------|------------|
-| **Framework** | Next.js 16.2.9 (App Router, Turbopack) |
+| **Framework** | Next.js 16.3.3 (App Router, Turbopack) |
 | **Runtime** | React 19.2.4, Node.js (API routes) |
 | **Styling** | Tailwind CSS 4 (PostCSS) |
 | **Database** | Supabase (PostgreSQL) with Row Level Security |

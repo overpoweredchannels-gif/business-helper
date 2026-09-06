@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { PurchaseService } from "@/lib/purchases/services/purchase-service";
-import { createSupabaseUserClient } from "@/lib/supabase/server";
+import { createSupabaseService } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: auth.reason ?? "Forbidden" }, { status: 403 });
   }
 
-  const service = PurchaseService.withSupabase(createSupabaseUserClient(getAccessToken(request)));
+  const service = PurchaseService.withSupabase(createSupabaseService());
   const purchases = await service.listPurchases(auth.actor);
 
   return NextResponse.json({ purchases });
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const service = PurchaseService.withSupabase(createSupabaseUserClient(getAccessToken(request)));
+  const service = PurchaseService.withSupabase(createSupabaseService());
 
   try {
     const result = await service.createPurchase(auth.actor, body);

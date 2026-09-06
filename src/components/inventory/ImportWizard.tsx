@@ -5,6 +5,8 @@ import * as XLSX from "xlsx";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Brand, Category, Product } from "@/lib/tradeos/types";
 import { parseCsv } from "@/lib/import-wizard/csv";
+import { importedInitialStock } from "@/lib/import-wizard/initial-stock";
+import { saveImportedInitialStock } from "@/lib/import-wizard/save-initial-stock";
 import type {
   ColumnMapping,
   DuplicateMode,
@@ -15,6 +17,7 @@ import type {
 } from "@/lib/import-wizard/types";
 import {
   IMPORT_FIELD_OPTIONS,
+  assignImportColumn,
   guessColumnMapping,
   validateImportRows,
 } from "@/lib/import-wizard/validation";
@@ -72,7 +75,8 @@ const PREVIEW_FIELD_LABELS: Partial<Record<ProductImportField, string>> = {
   default_selling_price: "Selling",
   minimum_stock_level: "Min Stock",
   reorder_level: "Reorder",
-  initial_stock: "Initial Stock",
+  initial_stock: "Initial Stock (Main Units)",
+  initial_stock_subunit: "Initial Stock (Pieces/Subunits)",
   track_batch: "Track Batch",
   track_expiry: "Track Expiry",
   overselling_policy: "Oversell",
@@ -132,6 +136,7 @@ export default function ImportWizard({
       "minimum_stock_level",
       "reorder_level",
       "initial_stock",
+      "initial_stock_subunit",
       "track_batch",
       "track_expiry",
       "overselling_policy",
@@ -221,7 +226,7 @@ export default function ImportWizard({
   };
 
   const setFieldForColumn = (column: string, field: ProductImportField) => {
-    setMapping((prev) => ({ ...prev, [column]: field }));
+    setMapping((prev) => assignImportColumn(prev, column, field));
   };
 
   const handleRunPreview = () => {
@@ -339,6 +344,7 @@ export default function ImportWizard({
         continue;
       }
       const v = row.values;
+      if (row.existingProductId && mode === "skip") continue;
       const brandId = v.brand ? (brandIdByName.get(v.brand.trim().toLowerCase()) ?? null) : null;
       const categoryId = v.category ? categoryIdByName.get(v.category.trim().toLowerCase()) ?? null : null;
 
@@ -402,9 +408,9 @@ export default function ImportWizard({
         overselling_policy: toPolicyOrNull(v.overselling_policy),
       };
 
-      const initialStock = toNumberOrNull(v.initial_stock) ?? 0;
-
       try {
+        const initialStock = importedInitialStock(v);
+        if (initialStock > 0 && !actorProfileId) throw new Error("Sign in again before importing initial stock.");
         if (row.existingProductId) {
           // In update mode, only overwrite fields the file actually provides —
           // empty cells must not wipe existing product data.
@@ -452,17 +458,13 @@ export default function ImportWizard({
           if (skuKey) importedSkuKeys.add(skuKey);
 
           if (initialStock > 0 && inserted?.id) {
-            const { error: adjustError } = await supabase.rpc("adjust_inventory", {
-              p_organization_id: organizationId,
-              p_product_id: String(inserted.id),
-              p_quantity_delta: initialStock,
-              p_reason: "Initial stock imported from product import file",
-              p_created_by: actorProfileId,
-            });
-            if (adjustError) {
+            try {
+              await saveImportedInitialStock(supabase, organizationId, String(inserted.id), initialStock, actorProfileId);
+            } catch (adjustError) {
+              result.failed += 1;
               result.failures.push({
                 rowLabel: `Row ${row.rowIndex}`,
-                message: `Product created but initial stock failed: ${adjustError.message}`,
+                message: `Product "${v.name}" (${inserted.id}) was created, but opening stock ${initialStock} was NOT confirmed: ${adjustError instanceof Error ? adjustError.message : String(adjustError)}. Check its inventory ledger before retrying; importing an existing product does not add opening stock.`,
               });
             }
           }
@@ -510,6 +512,8 @@ export default function ImportWizard({
         updated: result.updated,
         skipped: result.skipped,
         failed: result.failed,
+        failures: result.failures,
+        column_mapping: mapping,
       },
     });
 
@@ -752,9 +756,9 @@ export default function ImportWizard({
                 Auto-create brands that don&apos;t exist yet
               </label>
               <p className="text-xs text-muted-foreground">
-                Price per piece/cotton, purchase value, on-hand qty and packing are detected automatically from
-                headers like &quot;Price per Piece&quot;, &quot;Units Per Pack&quot;, &quot;Company&quot; or
-                &quot;Qty on Hand&quot;.
+                Your “Import As” selection determines what each column means, regardless of its file heading.
+                Choose Main Units for cartons/boxes, or Pieces / Subunits for loose quantities and map Units Per Pack.
+                For example, 120 pieces with 12 pieces per carton adds 10 cartons. Prices are per main unit.
               </p>
             </div>
             <button
@@ -901,7 +905,7 @@ export default function ImportWizard({
 
       {step === "done" && importResult && (
         <div className="rounded border border-border bg-card p-4">
-          <h3 className="mb-3 text-lg font-medium text-foreground">Import Complete</h3>
+          <h3 className="mb-3 text-lg font-medium text-foreground">{importResult.failed > 0 ? "Import Needs Attention — Some Rows or Stock Failed" : "Import Complete"}</h3>
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <span className="rounded bg-success/10 px-2 py-1 text-success">Created: {importResult.created}</span>
             <span className="rounded bg-primary/10 px-2 py-1 text-primary">Updated: {importResult.updated}</span>

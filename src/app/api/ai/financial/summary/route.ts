@@ -4,17 +4,17 @@ import { buildFinancialLedger } from "@/lib/ai/financial-ledger";
 import { processFinancialQuery, FinancialQueryKind } from "@/lib/ai/financial-intelligence";
 import { loadRawBusinessData } from "@/lib/brain/supabase-loader";
 import { UnifiedAssistant } from "@/lib/assistant/assistant";
+import { requirePermission } from "@/lib/identity/authorization";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { organizationId } = body;
-
-    if (!organizationId) {
-      return NextResponse.json({ ok: false, error: "organizationId is required" }, { status: 400 });
+    const permission = await requirePermission(req, "reports_view");
+    if (!permission.allowed || !permission.actor?.organizationId) {
+      return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
     }
+    const organizationId = permission.actor.organizationId;
 
     const supabase = createSupabaseService();
     const rawData = await loadRawBusinessData(supabase, organizationId);

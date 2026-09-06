@@ -3,6 +3,7 @@
 // unit-tested without a database.
 
 import type { Category, Brand, Product } from "@/lib/tradeos/types";
+import { importedInitialStock } from "./initial-stock";
 import type {
   ColumnMapping,
   DuplicateMode,
@@ -18,6 +19,7 @@ export const IMPORT_FIELD_OPTIONS: { value: ProductImportField; label: string }[
   { value: "brand", label: "Brand" },
   { value: "category", label: "Category" },
   { value: "unit_type", label: "Unit Type" },
+  { value: "subunit_type", label: "Subunit Type (e.g. Pieces)" },
   { value: "units_per_pack", label: "Units Per Pack" },
   { value: "default_purchase_price", label: "Purchase Price" },
   { value: "default_selling_price", label: "Selling Price" },
@@ -26,11 +28,13 @@ export const IMPORT_FIELD_OPTIONS: { value: ProductImportField; label: string }[
   { value: "track_batch", label: "Track Batch" },
   { value: "track_expiry", label: "Track Expiry" },
   { value: "overselling_policy", label: "Overselling Policy" },
-  { value: "initial_stock", label: "Initial Stock" },
+  { value: "initial_stock", label: "Initial Stock — Main Units (e.g. Cartons)" },
+  { value: "initial_stock_subunit", label: "Initial Stock — Pieces / Subunits" },
   { value: "skip", label: "Do not import" },
 ];
 
 const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
+  initial_stock_subunit: ["initial stock pieces", "initial stock subunits", "opening stock pieces"],
   name: [
     "name",
     "product",
@@ -219,6 +223,18 @@ export function guessColumnMapping(headers: string[]): ColumnMapping {
   return mapping;
 }
 
+/** A user's explicit selection replaces any earlier assignment of that destination. */
+export function assignImportColumn(mapping: ColumnMapping, column: string, field: ProductImportField): ColumnMapping {
+  const next = { ...mapping };
+  if (field !== "skip") {
+    for (const key of Object.keys(next)) {
+      if (key !== column && next[key] === field) next[key] = "skip";
+    }
+  }
+  next[column] = field;
+  return next;
+}
+
 export function parseBoolValue(value: string): boolean | null {
   const normalized = value.trim().toLowerCase();
   if (!normalized) return null;
@@ -318,6 +334,10 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
 
     const errors: string[] = [];
     const warnings: string[] = [];
+    for (const field of mappedFields) {
+      const columns = fileColumns.filter(column => mapping[column] === field);
+      if (columns.length > 1) errors.push(`Multiple columns (${columns.join(", ")}) map to ${field}. Select one source column so its quantity cannot be overwritten.`);
+    }
 
     if (mappedFields.has("name")) {
       const name = values.name;
@@ -358,11 +378,10 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
       }
     }
 
-    if (mappedFields.has("initial_stock") && values.initial_stock) {
-      const parsed = parseNumberValue(values.initial_stock);
-      if (parsed === null || parsed < 0) {
-        warnings.push(`Initial stock "${values.initial_stock}" is invalid; imported as not available.`);
-      }
+    try {
+      importedInitialStock(values);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Invalid initial stock.");
     }
 
     for (const field of ["track_batch", "track_expiry"] as const) {
@@ -407,7 +426,7 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
           skipCount += 1;
         } else {
           updateCount += 1;
-          if (values.initial_stock) {
+          if (values.initial_stock || values.initial_stock_subunit) {
             warnings.push("Initial stock is ignored when updating an existing product (stock is only set on create).");
           }
         }
@@ -425,7 +444,7 @@ export function validateImportRows(params: ValidateImportRowsParams): ImportPrev
     parsedRows.push({
       rowIndex,
       values,
-      existingProductId: existing.product ? Number(existing.product.id) : null,
+      existingProductId: existing.product ? String(existing.product.id) : null,
       errors,
       warnings,
     });

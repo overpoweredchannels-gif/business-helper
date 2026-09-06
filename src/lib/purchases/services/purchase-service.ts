@@ -1,4 +1,4 @@
-import { PurchaseRepository, NewPurchaseItem } from "../repositories/purchase-repository";
+import { PurchaseRepository } from "../repositories/purchase-repository";
 import { AuditRepository } from "@/lib/audit/audit-repository";
 import { InvoiceNumberService } from "@/lib/invoices/invoice-number-service";
 import {
@@ -11,18 +11,10 @@ import type { ActorContext } from "../../identity/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export class PurchaseService {
-  constructor(
-    private readonly repository = new PurchaseRepository(),
-    private readonly audit = new AuditRepository(),
-    private readonly invoiceNumbers = new InvoiceNumberService(),
-  ) {}
+  constructor(private readonly repository = new PurchaseRepository()) {}
 
   static withSupabase(supabase: SupabaseClient): PurchaseService {
-    return new PurchaseService(
-      new PurchaseRepository(supabase),
-      new AuditRepository(supabase),
-      new InvoiceNumberService(supabase),
-    );
+    return new PurchaseService(new PurchaseRepository(supabase));
   }
 
   async listPurchases(actor: ActorContext) {
@@ -59,9 +51,17 @@ export class PurchaseService {
       batch_number?: string | null;
       expiry_date?: string | null;
       unit_mode?: "main" | "subunit";
+      order_item_id?: string;
     }> = (Array.isArray(input.lines) ? input.lines : []).map((line) => {
+      if (!line || typeof line !== "object" || Array.isArray(line)) {
+        throw new Error("Each purchase line must be an object.");
+      }
       const record = line as Record<string, unknown>;
+      if (record.unit_mode != null && !["main", "subunit"].includes(String(record.unit_mode))) {
+        throw new Error("Unit mode must be main or subunit.");
+      }
       return {
+        order_item_id: typeof record.order_item_id === "string" ? record.order_item_id : undefined,
         product_id: record.product_id as string | number | null,
         quantity: record.quantity as string | number | null,
         purchase_price: record.purchase_price as string | number | null,
@@ -83,6 +83,12 @@ export class PurchaseService {
       throw new Error(validation.errors.join("; "));
     }
 
+    const creditDays = normalizeOptionalNumber(input.credit_days);
+    if (input.credit_days !== undefined && input.credit_days !== null && input.credit_days !== "" &&
+        (creditDays === null || !Number.isInteger(creditDays) || creditDays < 0 || creditDays > 36500)) {
+      throw new Error("Credit days must be a whole number between 0 and 36500.");
+    }
+
     const supplierId = String(input.supplier_id);
     const supplier = await this.repository.findSupplierById(actor.organizationId, supplierId);
     if (!supplier) {
@@ -99,70 +105,31 @@ export class PurchaseService {
 
     const paymentType = normalizeOptionalText(input.payment_type)?.toLowerCase() ?? "cash";
     const purchaseDate = normalizeOptionalDate(input.purchase_date) ?? new Date().toISOString().slice(0, 10);
-    const creditDays = normalizeOptionalNumber(input.credit_days);
 
     const totalAmount = lines.reduce(
       (sum, line) => sum + Number(line.quantity) * Number(line.purchase_price),
       0,
     );
 
-    const invoiceNumber = await this.invoiceNumbers.generatePurchaseInvoice(actor.organizationId);
+    if (!Number.isFinite(totalAmount)) {
+      throw new Error("Purchase total exceeds the supported numeric range.");
+    }
 
-    const transaction = await this.repository.createTransaction({
-      organization_id: actor.organizationId,
+    return this.repository.createAtomic(actor.organizationId, actor.profileId, {
       supplier_id: supplierId,
-      invoice_number: invoiceNumber,
       purchase_date: purchaseDate,
       payment_type: paymentType,
-      credit_due_date:
-        paymentType === "credit" && creditDays !== null
-          ? new Date(new Date(`${purchaseDate}T00:00:00.000Z`).getTime() + creditDays * 86400000).toISOString()
-          : null,
+      credit_days: creditDays,
       notes: normalizeOptionalText(input.notes),
-      total_amount: totalAmount,
-      status: "confirmed",
-      invoice_type: "purchase",
-      created_by_profile_id: actor.profileId,
       supplier_invoice_number: normalizeOptionalText(input.supplier_invoice_number),
+      request_key: normalizeOptionalText(input.request_key),
+      purchase_order_id: normalizeOptionalText(input.purchase_order_id),
+      lines: lines.map((line) => ({ ...line,
+        quantity: Number(line.quantity), purchase_price: Number(line.purchase_price),
+        selling_price: normalizeOptionalNumber(line.selling_price),
+        batch_number: normalizeOptionalText(line.batch_number), expiry_date: normalizeOptionalDate(line.expiry_date),
+      })),
     });
-
-    const items: NewPurchaseItem[] = lines.map((line) => ({
-      purchase_transaction_id: transaction.id,
-      organization_id: actor.organizationId,
-      product_id: line.product_id as string,
-      quantity: Number(line.quantity),
-      purchase_price: Number(line.purchase_price),
-      selling_price: normalizeOptionalNumber(line.selling_price),
-      batch_number: normalizeOptionalText(line.batch_number),
-      expiry_date: normalizeOptionalDate(line.expiry_date),
-      unit_mode: line.unit_mode ?? "main",
-    }));
-
-    try {
-      await this.repository.addItems(items);
-    } catch (err) {
-      await this.repository.deleteTransaction(actor.organizationId, transaction.id);
-      throw err;
-    }
-
-    if (paymentType === "credit") {
-      const newBalance = Number(supplier.outstanding_balance ?? 0) + totalAmount;
-      await this.repository.updateSupplierBalance(actor.organizationId, supplierId, newBalance);
-    }
-
-    await this.audit.create({
-      organization_id: actor.organizationId,
-      actor_profile_id: actor.profileId,
-      actor_email: actor.email,
-      action: "purchase_created",
-      entity_type: "purchase_transaction",
-      entity_id: transaction.id,
-      entity_label: invoiceNumber,
-      description: `Created purchase ${invoiceNumber}`,
-      new_values: { supplier_id: supplierId, total_amount: totalAmount },
-    });
-
-    return { transaction, items };
   }
 
   async deletePurchase(actor: ActorContext, purchaseId: string) {
@@ -170,32 +137,6 @@ export class PurchaseService {
       throw new Error("Organization context required");
     }
 
-    const transaction = await this.repository.findTransactionById(actor.organizationId, purchaseId);
-    if (!transaction) {
-      throw new Error("Purchase not found");
-    }
-
-    await this.repository.deleteItemsForTransaction(purchaseId);
-    await this.repository.deleteTransaction(actor.organizationId, purchaseId);
-
-    if (transaction.payment_type === "credit" && transaction.supplier_id) {
-      const supplier = await this.repository.findSupplierById(actor.organizationId, transaction.supplier_id);
-      if (supplier) {
-        const nextBalance = Math.max(0, Number(supplier.outstanding_balance ?? 0) - Number(transaction.total_amount ?? 0));
-        await this.repository.updateSupplierBalance(actor.organizationId, transaction.supplier_id, nextBalance);
-      }
-    }
-
-    await this.audit.create({
-      organization_id: actor.organizationId,
-      actor_profile_id: actor.profileId,
-      actor_email: actor.email,
-      action: "purchase_deleted",
-      entity_type: "purchase_transaction",
-      entity_id: purchaseId,
-      entity_label: transaction.invoice_number,
-      description: `Deleted purchase ${transaction.invoice_number}`,
-      old_values: { invoice_number: transaction.invoice_number },
-    });
+    await this.repository.deleteAtomic(actor.organizationId, actor.profileId, purchaseId);
   }
 }

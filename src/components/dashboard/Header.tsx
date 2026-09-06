@@ -92,10 +92,12 @@ export function Header({
     <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border">
       <div className="flex items-center justify-between h-14 px-4 sm:px-6 lg:px-8">
         {/* Mobile menu + Logo */}
-        <div className="flex items-center gap-3 lg:hidden">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-3 lg:hidden">
           <button
             onClick={onToggleMobileMenu}
-            className="size-9 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
+            aria-label="Open navigation menu"
+            aria-expanded={mobileMenuOpen}
+            className="size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
           >
             {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
@@ -103,7 +105,7 @@ export function Header({
             <div className="size-7 rounded-md bg-primary flex items-center justify-center">
               <span className="text-primary-foreground font-brand font-bold text-[10px]">T</span>
             </div>
-            <span className="font-brand font-bold text-sm text-foreground">TradeOS</span>
+            <span className="font-brand font-bold text-sm text-foreground hidden min-[375px]:inline">TradeOS</span>
           </div>
         </div>
 
@@ -153,7 +155,8 @@ export function Header({
           </div>
           <button
             onClick={() => setSearchOpen(!searchOpen)}
-            className="sm:hidden size-9 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
+            aria-label="Search sections and products"
+            className="sm:hidden size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
           >
             {searchOpen ? <X className="size-4" /> : <Search className="size-4" />}
           </button>
@@ -161,7 +164,7 @@ export function Header({
           {/* AI Assistant */}
           <button
             onClick={onOpenAiAssistant}
-            className="size-9 flex items-center justify-center rounded-lg text-primary hover:bg-primary-light transition-colors"
+            className="size-11 shrink-0 flex items-center justify-center rounded-lg text-primary hover:bg-primary-light transition-colors"
             title="AI Assistant"
           >
             <Sparkles className="size-4.5" />
@@ -171,7 +174,8 @@ export function Header({
           <div ref={notifRef} className="relative">
             <button
               onClick={() => setNotifOpen(!notifOpen)}
-              className="relative size-9 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
+              aria-label="Notifications"
+              className="relative size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
             >
               <Bell className="size-4.5" />
               {notificationCount > 0 && (
@@ -179,7 +183,7 @@ export function Header({
               )}
             </button>
             {notifOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
+              <div className="fixed right-3 left-3 top-16 z-50 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:w-80 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
                 <div className="px-3 py-2 border-b border-border mb-1">
                   <p className="text-sm font-semibold text-foreground">Notifications</p>
                 </div>

@@ -16,6 +16,7 @@ const ACCOUNT_MODE_KEY = "tradeos_account_mode";
 const DUTY_SESSION_KEY = "tradeos_duty_session_id";
 const DUTY_SCHEDULED_END_KEY = "tradeos_duty_scheduled_end_at";
 const CONSENT_KEY = "tradeos_location_consent";
+const STOP_PENDING_KEY = "tradeos_stop_pending";
 const LOCATION_QUEUE_KEY = "tradeos_location_queue";
 const MAX_QUEUED_POINTS = 2000;
 
@@ -41,6 +42,7 @@ export async function clearSession(): Promise<void> {
     SecureStore.deleteItemAsync(ACCOUNT_MODE_KEY),
     SecureStore.deleteItemAsync(DUTY_SESSION_KEY),
     SecureStore.deleteItemAsync(DUTY_SCHEDULED_END_KEY),
+    SecureStore.deleteItemAsync(STOP_PENDING_KEY),
   ]);
 }
 
@@ -52,6 +54,9 @@ export async function getAccountMode(): Promise<AccountMode | null> {
 
 export const saveDutySessionId = (sessionId: string) => SecureStore.setItemAsync(DUTY_SESSION_KEY, sessionId);
 export const getDutySessionId = () => SecureStore.getItemAsync(DUTY_SESSION_KEY);
+export const setStopPending = (pending: boolean) => pending
+  ? SecureStore.setItemAsync(STOP_PENDING_KEY, "yes") : SecureStore.deleteItemAsync(STOP_PENDING_KEY);
+export const isStopPending = async () => (await SecureStore.getItemAsync(STOP_PENDING_KEY)) === "yes";
 export const saveDutyScheduledEndAt = (scheduledEndAt: string) => SecureStore.setItemAsync(DUTY_SCHEDULED_END_KEY, scheduledEndAt);
 export const getDutyScheduledEndAt = () => SecureStore.getItemAsync(DUTY_SCHEDULED_END_KEY);
 export const clearDutySessionId = () => Promise.all([

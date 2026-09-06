@@ -51,6 +51,23 @@ export class PurchaseRepository {
     this.supabase = supabase;
   }
 
+  async createAtomic(organizationId: string, actorProfileId: string, input: Record<string, unknown>) {
+    const { data, error } = await this.supabase.rpc("create_purchase_atomic", {
+      p_organization_id: organizationId, p_actor_profile_id: actorProfileId, p_input: input,
+    });
+    if (error) throw new Error(error.code === "PGRST202"
+      ? "Purchase database upgrade is required. Apply production_phase10_atomic_purchases.sql before recording purchases."
+      : error.message);
+    return data as { transaction: PurchaseTransactionRecord; items: PurchaseItemRecord[]; purchase_order_status?: string; replayed?: boolean };
+  }
+
+  async deleteAtomic(organizationId: string, actorProfileId: string, purchaseId: string) {
+    const { error } = await this.supabase.rpc("delete_purchase_atomic", {
+      p_organization_id: organizationId, p_actor_profile_id: actorProfileId, p_purchase_id: purchaseId,
+    });
+    if (error) throw new Error(error.message);
+  }
+
   async listTransactions(organizationId: string) {
     const { data, error } = await this.supabase
       .from("purchase_transactions")

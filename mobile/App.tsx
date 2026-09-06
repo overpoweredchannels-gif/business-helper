@@ -1,9 +1,10 @@
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Pressable,
-  SafeAreaView,
+  AppState,
   ScrollView,
   StyleSheet,
   Switch,
@@ -32,6 +33,8 @@ import {
   saveAccountMode,
   saveSession,
   setLocationConsent,
+  isStopPending,
+  setStopPending,
 } from "./src/storage";
 import { signInOwnerWithGoogle } from "./src/owner-auth";
 import { TradeOSWorkspace } from "./src/TradeOSWorkspace";
@@ -41,6 +44,10 @@ import type { OwnerIdentity, StaffIdentity } from "./src/types";
 import type { AccountMode } from "./src/storage";
 
 export default function App() {
+  return <SafeAreaProvider><TradeOSApp /></SafeAreaProvider>;
+}
+
+function TradeOSApp() {
   const [booting, setBooting] = useState(true);
   const [busy, setBusy] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -57,6 +64,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const loadWorkspace = useCallback(async () => {
+    if (await isStopPending()) {
+      await stopBackgroundTracking();
+      await stopDuty();
+      await setStopPending(false);
+      await clearDutySessionId();
+    }
     const [staff, status, storedConsent] = await Promise.all([
       loadStaffIdentity(),
       getDutyStatus(),
@@ -140,6 +153,14 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [onDuty, scheduledEndAt]);
 
+  useEffect(() => {
+    if (!authenticated || accountMode !== "employee") return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void loadWorkspace().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not refresh duty status."));
+    });
+    return () => subscription.remove();
+  }, [authenticated, accountMode, loadWorkspace]);
+
   const acceptWebSession = async (session: WebLoginSession) => {
     setBusy(true);
     setError(null);
@@ -202,6 +223,7 @@ export default function App() {
     setMessage("Requesting location permission and acquiring a precise GPS fix…");
     let createdSessionId: string | null = null;
     try {
+      if (await isStopPending()) { await stopDuty(); await setStopPending(false); }
       await requestTrackingPermissions();
       const point = await getCurrentSample();
       const duty = await startDuty(point);
@@ -223,7 +245,9 @@ export default function App() {
       const health = /permission/i.test(reasonMessage) ? "permission_denied" : /location|gps/i.test(reasonMessage) ? "gps_disabled" : "error";
       await reportTrackingHealth(health, reasonMessage).catch(() => undefined);
       if (createdSessionId) {
-        await stopDuty().catch(() => undefined);
+        await stopBackgroundTracking().catch(() => undefined);
+        await setStopPending(true);
+        await stopDuty().then(() => setStopPending(false)).catch(() => undefined);
         await clearDutySessionId();
       }
       setError(reasonMessage);
@@ -234,6 +258,8 @@ export default function App() {
   };
 
   const resumeDuty = async () => {
+    if (!consented) { setError("Location consent is required before resuming."); return; }
+    if (await isStopPending()) { setError("Stop duty is waiting to sync. Tap Stop duty again when online."); return; }
     setBusy(true);
     setError(null);
     try {
@@ -268,6 +294,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
+      await setStopPending(true);
       await stopBackgroundTracking();
       let queueWarning: string | null = null;
       try {
@@ -276,6 +303,7 @@ export default function App() {
         queueWarning = reason instanceof Error ? reason.message : "Queued locations could not be uploaded yet.";
       }
       await stopDuty();
+      await setStopPending(false);
       await clearDutySessionId();
       setOnDuty(false);
       setDutyStartedAt(null);
@@ -384,7 +412,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, backgroundColor: "#f8fafc" },
   container: { padding: 20, gap: 16 },
   brandTitle: { fontSize: 24, fontWeight: "800", color: "#0f172a" },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12 },
+  headerRow: { flexWrap: "wrap", gap: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 14 },
   card: { backgroundColor: "#ffffff", borderColor: "#e2e8f0", borderWidth: 1, borderRadius: 16, padding: 18, gap: 10 },
   heading: { fontSize: 19, fontWeight: "700", color: "#0f172a" },

@@ -1,5 +1,6 @@
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
+import { appendDutyPoints, createSerialQueue, validDutyCutoff } from "./tracking-queue";
 import { TradeOSApiError, uploadLocation } from "./api";
 import {
   clearDutySessionId,
@@ -7,11 +8,14 @@ import {
   getDutySessionId,
   getQueuedLocations,
   saveQueuedLocations,
+  hasLocationConsent,
+  isStopPending,
 } from "./storage";
 import type { LocationSample } from "./types";
 
 export const LOCATION_TASK_NAME = "tradeos-workforce-location";
 const PERMANENT_LOCATION_REJECTION_STATUSES = new Set([400, 404, 409, 410, 422]);
+const serialize = createSerialQueue();
 
 const toSample = (location: Location.LocationObject): LocationSample => ({
   latitude: location.coords.latitude,
@@ -23,24 +27,19 @@ const toSample = (location: Location.LocationObject): LocationSample => ({
   capturedAt: new Date(location.timestamp).toISOString(),
 });
 
-async function uploadOrQueue(points: LocationSample[]): Promise<void> {
+async function processPoints(points: LocationSample[]): Promise<void> {
   const [sessionId, scheduledEndAt, queued] = await Promise.all([
     getDutySessionId(),
     getDutyScheduledEndAt(),
     getQueuedLocations(),
   ]);
   const scheduledEndMs = scheduledEndAt ? new Date(scheduledEndAt).getTime() : Number.NaN;
-  const cutoffReached = Number.isFinite(scheduledEndMs) && Date.now() >= scheduledEndMs;
-  const validNewPoints = points.filter((point) => {
-    if (!Number.isFinite(scheduledEndMs)) return true;
-    return new Date(point.capturedAt).getTime() <= scheduledEndMs;
-  });
-  const pending = [
-    ...queued,
-    ...(sessionId
-      ? validNewPoints.map((point) => ({ dutySessionId: sessionId, scheduledEndAt, point }))
-      : []),
-  ];
+  const cutoffReached = !Number.isFinite(scheduledEndMs) || Date.now() >= scheduledEndMs;
+  const mayCollect = await hasLocationConsent() && !(await isStopPending());
+  const pending = appendDutyPoints(queued, mayCollect ? points : [], sessionId, scheduledEndAt);
+  // Persist first: an OS termination during a slow request must not lose new points.
+  await saveQueuedLocations(pending);
+  if (cutoffReached || !mayCollect) await stopBackgroundTracking();
 
   let processed = 0;
   let serverEndedCurrentDuty = false;
@@ -76,6 +75,8 @@ async function uploadOrQueue(points: LocationSample[]): Promise<void> {
     await clearDutySessionId();
   }
 }
+
+const uploadOrQueue = (points: LocationSample[]) => serialize(() => processPoints(points));
 
 if (!TaskManager.isTaskDefined(LOCATION_TASK_NAME)) {
   TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
@@ -130,7 +131,10 @@ export async function getCurrentSample(): Promise<LocationSample> {
 
 export async function startBackgroundTracking(): Promise<void> {
   const scheduledEndAt = await getDutyScheduledEndAt();
-  if (!scheduledEndAt || Date.now() >= new Date(scheduledEndAt).getTime()) {
+  if (!(await hasLocationConsent()) || await isStopPending()) {
+    throw new Error("Tracking is stopped. Confirm consent and finish the pending Stop duty request before resuming.");
+  }
+  if (!validDutyCutoff(scheduledEndAt)) {
     await clearDutySessionId();
     throw new Error("This duty session has ended. Start duty again on the next working day.");
   }

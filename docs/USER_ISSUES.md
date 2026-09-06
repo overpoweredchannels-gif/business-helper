@@ -1,0 +1,15 @@
+# User meeting issue log
+
+Keep this file current as issues are reported, reproduced, fixed, verified, and released. Distinguish confirmed observations from suspected causes. Never invent missing business quantities.
+
+| ID | Report | Findings and change | Verification / next step |
+| --- | --- | --- | --- |
+| UAT-001 | Product column named Cotton mapped to Initial Stock saved as zero | Seven recent products were observed with zero stock and no ledger entries. Exact source failure is still unconfirmed without the submitted file/error. Fixed duplicate destination mappings overwriting quantities, UUID duplicate detection, skipped-row handling, and unreported stock failures. Stock RPC now includes its full argument set and requires a ledger ID. | Mapping and stock RPC regressions pass. Needs live re-import with a new test product and the original file to reconcile historical quantities. |
+| UAT-002 | Product imports need explicit unit meaning | Main-unit and pieces/subunit mappings are explicit and obey the user's selection regardless of the source heading. Pieces require Units Per Pack. | Conversion and missing-pack regressions pass. |
+| UAT-003 | Invoice entry requires clicking every field | Sales and purchase lines advance on Enter, skip disabled fields, support Shift+Enter, and add/focus a new line at the end. Save ignores untouched placeholder rows and validates partial entries. Product options show brand/SKU. | Browser fixtures passed for both invoice types: required quantity blocks progression, Shift+Enter returns, last-field Enter opens/focuses Product 2, and Enter does not save. Explicit Save includes only entered rows. Production build passed. |
+| UAT-004 | Phone screens should fit without zooming | Shared navigation and viewport containment fixes recovered from the interrupted task. | 20 responsive role/width fixture checks passed. Android real-device acceptance remains. |
+| RELEASE-001 | Purchase transaction reliability | Invoice, items, stock triggers, supplier balance, receipt status and audit commit in one PostgreSQL transaction. Migration also supplies fields absent in the inspected production schema. | Isolated PostgreSQL rollback/retry/tenant/receipt tests pass, including an upgrade from the old schema and repeat application. Both production RPCs were observed after the user's manual SQL step on 6 September. |
+
+## Release state
+
+Release checks passed: full validation (lint: zero errors, 632 warnings; TypeScript; default test suites), production build, and invoice keyboard browser fixtures. The main-branch push uses the repository's existing Vercel integration; its deployment status is tracked against the release commit. Previously missing inventory quantities have not been changed.

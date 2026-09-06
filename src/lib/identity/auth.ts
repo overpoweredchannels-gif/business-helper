@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "crypto";
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { RoleType, SessionInfo } from "./types";
 import { validateEmail, validatePassword } from "./invitations";
 import { sessionManager } from "./sessions";
@@ -12,6 +12,7 @@ export interface StaffAccount {
   email: string;
   passwordHash: string;
   passwordSalt: string;
+  passwordHashVersion?: "scrypt-v1";
   role: RoleType | null;
   displayName: string;
   isActive: boolean;
@@ -29,7 +30,28 @@ const LOCKOUT_MINUTES = 15;
 const RESET_TOKEN_TTL_MINUTES = 30;
 
 function hashPassword(password: string, salt: string): string {
+  return scryptSync(password, salt, 64).toString("hex");
+}
+
+function legacyHashPassword(password: string, salt: string): string {
   return createHash("sha256").update(`${salt}::${password}`).digest("hex");
+}
+
+function hashesMatch(actualHex: string, expectedHex: string): boolean {
+  try {
+    const actual = Buffer.from(actualHex, "hex");
+    const expected = Buffer.from(expectedHex, "hex");
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
+}
+
+function verifyPassword(account: StaffAccount, password: string): boolean {
+  const computed = account.passwordHashVersion === "scrypt-v1"
+    ? hashPassword(password, account.passwordSalt)
+    : legacyHashPassword(password, account.passwordSalt);
+  return hashesMatch(computed, account.passwordHash);
 }
 
 function generateProfileId(): string {
@@ -110,6 +132,7 @@ class AuthManager {
       email,
       passwordHash: hashPassword(input.password, salt),
       passwordSalt: salt,
+      passwordHashVersion: "scrypt-v1",
       role: input.role ?? null,
       displayName: input.displayName.trim() || email.split("@")[0],
       isActive: true,
@@ -183,8 +206,7 @@ class AuthManager {
       return { error: "Too many failed attempts. Account locked for 15 minutes." };
     }
 
-    const hash = hashPassword(input.password, account.passwordSalt);
-    if (hash !== account.passwordHash) {
+    if (!verifyPassword(account, input.password)) {
       account.failedAttempts += 1;
       if (account.failedAttempts >= MAX_FAILED_ATTEMPTS) {
         account.lockedUntil = new Date(
@@ -209,6 +231,11 @@ class AuthManager {
     account.failedAttempts = 0;
     account.lockedUntil = null;
     account.lastLoginAt = new Date().toISOString();
+    if (account.passwordHashVersion !== "scrypt-v1") {
+      account.passwordSalt = randomBytes(16).toString("hex");
+      account.passwordHash = hashPassword(input.password, account.passwordSalt);
+      account.passwordHashVersion = "scrypt-v1";
+    }
     this.persist();
 
     const session = sessionManager.createSession({
@@ -259,8 +286,7 @@ class AuthManager {
     if (!account) {
       return { success: false, error: "Account not found." };
     }
-    const hash = hashPassword(input.currentPassword, account.passwordSalt);
-    if (hash !== account.passwordHash) {
+    if (!verifyPassword(account, input.currentPassword)) {
       return { success: false, error: "Current password is incorrect." };
     }
     const passwordError = validatePassword(input.newPassword);
@@ -269,6 +295,7 @@ class AuthManager {
     }
     account.passwordSalt = randomBytes(16).toString("hex");
     account.passwordHash = hashPassword(input.newPassword, account.passwordSalt);
+    account.passwordHashVersion = "scrypt-v1";
     account.mustChangePassword = false;
     this.persist();
     void logAuditEvent({
@@ -332,6 +359,7 @@ class AuthManager {
     }
     account.passwordSalt = randomBytes(16).toString("hex");
     account.passwordHash = hashPassword(newPassword, account.passwordSalt);
+    account.passwordHashVersion = "scrypt-v1";
     account.failedAttempts = 0;
     account.lockedUntil = null;
     delete this.resetTokens[token];
