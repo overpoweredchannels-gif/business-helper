@@ -13,4 +13,6 @@ Keep this file current as issues are reported, reproduced, fixed, verified, and 
 
 ## Release state
 
+Staff profile session expiry: reported PGRST303 / JWT expired during Save. The profile update now refreshes the session and retries once only after explicit JWT expiry rejection. Failed renewal preserves the draft and requests sign-in; retries are blocked if the account changes. Regression checks cover recovery, repeat expiry, failed renewal, account switching, missing sessions and permission errors.
+
 Release checks passed: full validation (lint: zero errors, 632 warnings; TypeScript; default test suites), production build, and invoice keyboard browser fixtures. The main-branch push uses the repository's existing Vercel integration; its deployment status is tracked against the release commit. Previously missing inventory quantities have not been changed.

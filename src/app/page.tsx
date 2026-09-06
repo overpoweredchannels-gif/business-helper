@@ -7,6 +7,7 @@ import { createPurchase } from "@/lib/purchases/client";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { withSessionRetry } from "@/lib/supabase/session-retry";
 import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking } from "@/components/dashboard";
@@ -15137,15 +15138,15 @@ setCustomerOrganizationName("");
       is_active: Boolean(draft.is_active),
     };
 
-    const { error } = await supabase
-      .from("profiles")
-      .update(updatePayload)
-      .eq("id", profileId)
-      .eq("organization_id", currentOrganizationId);
-
-    if (error) {
-      console.error("Supabase staff profile update error:", JSON.stringify(error, null, 2));
-      setStaffPermissionError(`Failed to update staff profile: ${JSON.stringify(error, null, 2)}`);
+    try {
+      const { error } = await withSessionRetry(supabase.auth, () => supabase
+        .from("profiles")
+        .update(updatePayload)
+        .eq("id", profileId)
+        .eq("organization_id", currentOrganizationId));
+      if (error) throw new Error(error.message);
+    } catch (error) {
+      setStaffPermissionError(error instanceof Error ? error.message : "Could not update staff profile. Please retry Save.");
       return;
     }
 
