@@ -322,6 +322,8 @@ alter table public.sales_items
 -- load form and summed into its Bonus Value footer total.
 alter table public.sales_items
   add column if not exists bonus numeric(14, 2) not null default 0 check (bonus >= 0);
+alter table public.sales_order_items
+  add column if not exists bonus numeric(14, 2) not null default 0 check (bonus >= 0);
 
 -- ===========================================================================
 -- PART H — PAYMENTS: METHOD + DATE (cash/bank, backdated entry)

@@ -18,7 +18,12 @@ function advance(root: HTMLElement, target: Field, backwards = false) {
     root.querySelector<HTMLButtonElement>("button[data-entry-add]")?.click();
   }
 }
+export function focusNextEntryField(target: HTMLInputElement) {
+  const root = target.closest<HTMLElement>("[data-entry-navigation], [data-invoice-line]");
+  if (root) advance(root, target);
+}
 export const entryNavigationHandlers = {
+  "data-entry-navigation": true,
   onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.defaultPrevented || event.key !== "Enter" || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
     const target = event.target;

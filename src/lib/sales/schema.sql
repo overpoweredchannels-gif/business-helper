@@ -37,6 +37,7 @@ create table if not exists public.sales_order_items (
   product_id integer not null references public.products(id) on delete cascade,
   quantity_ordered numeric(14, 2) not null check (quantity_ordered > 0),
   quantity_delivered numeric(14, 2) not null default 0 check (quantity_delivered >= 0),
+  bonus numeric(14, 2) not null default 0 check (bonus >= 0),
   unit_price numeric(14, 2) check (unit_price is null or unit_price >= 0),
   discount numeric(14, 2) not null default 0 check (discount >= 0),
   unit_mode text not null default 'main' check (unit_mode in ('main', 'subunit')),
