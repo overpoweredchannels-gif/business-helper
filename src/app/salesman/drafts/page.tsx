@@ -90,7 +90,7 @@ export default function DraftsPage() {
     try {
       const response = await authorizedFetch("/api/identity/staff/sales-options");
       const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error ?? "Could not load assigned customers and products");
+      if (!response.ok || !data.ok) throw new Error(data.error ?? "Could not load customers and products");
       setCustomers(Array.isArray(data.customers) ? data.customers : []);
       setProducts(Array.isArray(data.products) ? data.products : []);
       setAssignment(data.assignment ?? null);
@@ -189,7 +189,7 @@ export default function DraftsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-heading font-bold text-2xl text-foreground">My Sales</h1>
-          <p className="text-sm text-body mt-1">Create sales for your assigned customers. Your manager approves them before invoicing.</p>
+          <p className="text-sm text-body mt-1">Create sales for any active customer in your organization. The owner approves them before invoicing.</p>
         </div>
         <button
           onClick={() => setShowNew(!showNew)}
@@ -237,7 +237,7 @@ export default function DraftsPage() {
                 ))}
               </select>
             </div>
-            {customers.length === 0 && <p className="mt-2 text-xs text-destructive">No customers are assigned to your route, territory, or employee profile. Ask your manager to assign them first.</p>}
+            {customers.length === 0 && <p className="mt-2 text-xs text-destructive">No active customers are available. Ask the owner to add a customer.</p>}
           </div>
 
           <div>

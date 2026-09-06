@@ -1,5 +1,7 @@
 "use client";
 
+import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
+import { allPages } from "@/lib/supabase/all-pages";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { createPurchase } from "@/lib/purchases/client";
@@ -3964,6 +3966,7 @@ setCustomerOrganizationName("");
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             customerId: selectedCustomerIdForSale,
+            saleDate: salesInvoiceDate,
             items: invoiceLines
               .filter((line) => line.product_id)
               .map((line) => ({
@@ -4712,11 +4715,11 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await allPages((from, to) => supabase
       .from("products")
       .select("id, name, brand_id, category_id, unit_type, subunit_type, units_per_pack, sku, barcode, last_purchase_price, default_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, current_stock, overselling_policy, is_active, created_at, updated_at")
       .eq("organization_id", orgId)
-      .order("name", { ascending: true });
+      .order("name", { ascending: true }).order("id", { ascending: true }).range(from, to));
 
     setProductsLoading(false);
 
@@ -4737,13 +4740,13 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await allPages((from, to) => supabase
       .from("customers")
       .select(
         "id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, assigned_salesman_id, assigned_territory_id"
       )
       .eq("organization_id", orgId)
-      .order("customer_name", { ascending: true });
+      .order("customer_name", { ascending: true }).order("id", { ascending: true }).range(from, to));
 
     setCustomersLoading(false);
 
@@ -6086,11 +6089,11 @@ setCustomerOrganizationName("");
     }
 
     setInventoryTransactionsLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await allPages((from, to) => supabase
       .from("inventory_transactions")
       .select("id, organization_id, product_id, movement_type, quantity_delta, reason, batch_number, expiry_date, reference_type, reference_id, created_by, created_at")
       .eq("organization_id", orgId)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true }).order("id", { ascending: true }).range(from, to));
 
     setInventoryTransactionsLoading(false);
 
@@ -9590,6 +9593,7 @@ setCustomerOrganizationName("");
           brandName: brands.find((brand) => brand.id === product.brand_id)?.name ?? "",
           categoryName: categories.find((category) => category.id === product.category_id)?.name ?? "",
           unitType: product.unit_type,
+          currentStock: safeNumber(product.current_stock ?? 0),
           reorderLevel: product.reorder_level ?? product.minimum_stock_level,
         })),
         inventoryTransactions
@@ -17322,6 +17326,7 @@ setCustomerOrganizationName("");
               createAuditLog={createAuditLog}
               onImported={() => {
                 fetchProducts();
+                fetchInventoryTransactions();
                 fetchCategories();
                 fetchBrands();
               }}
@@ -17355,20 +17360,11 @@ setCustomerOrganizationName("");
               />
             )}
           </div>
-          <div className="space-y-4">
+          <div className="space-y-4" {...entryNavigationHandlers}>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Customer</span>
-                <select
-                  value={selectedCustomerIdForSale ?? ""}
-                  onChange={(e) => handleSalesCustomerChange(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                >
-                  <option value="">Select Customer</option>
-                  {activeCustomers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.customer_name}</option>
-                  ))}
-                </select>
+                <ProductSearchSelect label="Customer" searchPlaceholder="Search customer, shop or phone" value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} products={activeCustomers.map(customer => ({ id: customer.id, label: [customer.customer_name, customer.shop_name, customer.phone].filter(Boolean).join(" — ") }))} />
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
@@ -17651,7 +17647,7 @@ setCustomerOrganizationName("");
 
               <button
                 type="button"
-                onClick={handleAddSalesLine}
+                data-entry-add onClick={handleAddSalesLine}
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
                 + Add Product Line
@@ -19839,7 +19835,7 @@ setCustomerOrganizationName("");
               />
             )}
           </div>
-          <div className="space-y-4">
+          <div className="space-y-4" {...entryNavigationHandlers}>
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Category Name</span>
               <input
@@ -19958,7 +19954,7 @@ setCustomerOrganizationName("");
                 organizationId={currentOrganizationId}
                 actorProfileId={currentProfile?.id ?? null}
                 createAuditLog={createAuditLog}
-                onImported={() => { fetchProducts(); fetchCategories(); fetchBrands(); }}
+                onImported={() => { fetchProducts(); fetchInventoryTransactions(); fetchCategories(); fetchBrands(); }}
               />
             )}
             {editingProductId && (
@@ -19976,7 +19972,7 @@ setCustomerOrganizationName("");
         {message && <p className="mb-4 text-sm text-success">{message}</p>}
         {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" {...entryNavigationHandlers}>
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground/80">
               Product Name
@@ -21177,7 +21173,7 @@ setCustomerOrganizationName("");
               />
             )}
           </div>
-          <div className="space-y-4">
+          <div className="space-y-4" {...entryNavigationHandlers}>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Supplier</span>
@@ -21338,7 +21334,7 @@ setCustomerOrganizationName("");
 
               <button
                 type="button"
-                onClick={handleAddPurchaseLine}
+                data-entry-add onClick={handleAddPurchaseLine}
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
                 + Add Product Line

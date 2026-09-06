@@ -20,6 +20,7 @@ export interface CreateDraftSaleInput {
   items: DraftSaleItemInput[];
   notes?: string;
   expectedDate?: string;
+  saleDate?: string;
   paymentType?: "cash" | "credit";
   creditDays?: number;
 }
@@ -52,6 +53,7 @@ function addDaysToIsoDate(isoDate: string, days: number): string {
 }
 
 export class DraftSaleService {
+  constructor(private readonly draftDependencies = { createSupabaseService, loadSalesmanAssignmentScope, getInvoiceNumberService, logAuditEvent }) {}
   /**
    * Salesman creates a draft sale (status: draft → pending_approval)
    */
@@ -64,21 +66,22 @@ export class DraftSaleService {
       return { ok: false, error: "Customer and at least one item are required" };
     }
 
-    const supabase = createSupabaseService();
+    if (input.saleDate && (!/^\d{4}-\d{2}-\d{2}$/.test(input.saleDate) || Number.isNaN(Date.parse(input.saleDate)) || new Date(input.saleDate).toISOString().slice(0, 10) !== input.saleDate)) {
+      return { ok: false, error: "Enter a valid sale date." };
+    }
+
+    const supabase = this.draftDependencies.createSupabaseService();
 
     const canManageAllSales = actor.isOwner
       || actor.permissions?.includes("sales_manage")
       || actor.permissions?.includes("administration");
     if (!canManageAllSales) {
-      const scope = await loadSalesmanAssignmentScope({
+      const scope = await this.draftDependencies.loadSalesmanAssignmentScope({
         organizationId: actor.organizationId,
         profileId: actor.profileId,
       });
       if (!scope || scope.employee.is_active === false) {
         return { ok: false, error: "An active employee profile is required to create a sale" };
-      }
-      if (!scope.eligibleCustomerIds.includes(input.customerId)) {
-        return { ok: false, error: "You can create sales only for customers assigned directly to you or included in your assigned route and territory" };
       }
       if (input.routeId && String(scope.route?.id ?? "") !== input.routeId) {
         return { ok: false, error: "The selected route is not assigned to you" };
@@ -91,6 +94,7 @@ export class DraftSaleService {
       .select("id, customer_name")
       .eq("id", input.customerId)
       .eq("organization_id", actor.organizationId)
+      .eq("is_active", true)
       .maybeSingle();
 
     if (!customer) {
@@ -100,7 +104,7 @@ export class DraftSaleService {
     // Generate sales order number
     let soNumber: string;
     try {
-      soNumber = await getInvoiceNumberService().generateSalesOrder(actor.organizationId);
+      soNumber = await this.draftDependencies.getInvoiceNumberService().generateSalesOrder(actor.organizationId);
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : "Failed to generate order number" };
     }
@@ -134,7 +138,7 @@ export class DraftSaleService {
         organization_id: actor.organizationId,
         so_number: soNumber,
         customer_id: input.customerId,
-        order_date: new Date().toISOString().split("T")[0],
+        order_date: input.saleDate ?? new Date().toISOString().split("T")[0],
         expected_date: input.expectedDate ?? null,
         notes: input.notes ?? null,
         status: "pending_approval",
@@ -174,7 +178,7 @@ export class DraftSaleService {
     // Create notification for owner (approval required)
     await this.notifyOwnerOfDraft(actor, draft.id, customer.customer_name, totalAmount);
 
-    await logAuditEvent({
+    await this.draftDependencies.logAuditEvent({
       organizationId: actor.organizationId,
       actorProfileId: actor.profileId,
       actorEmail: actor.email,
@@ -624,7 +628,7 @@ export class DraftSaleService {
   }
 
   private async notifyOwnerOfDraft(actor: ActorContext, draftId: string, customerName: string, totalAmount: number) {
-    const supabase = createSupabaseService();
+    const supabase = this.draftDependencies.createSupabaseService();
 
     // Find owner profile
     const { data: owner } = await supabase

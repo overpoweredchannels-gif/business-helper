@@ -1,0 +1,41 @@
+import type { ChangeEvent, KeyboardEvent } from "react";
+
+type Field = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+function fields(root: HTMLElement): Field[] {
+  return Array.from(root.querySelectorAll<Field>("input, select, textarea")).filter(field =>
+    !field.disabled && !("readOnly" in field && field.readOnly) &&
+    !(field instanceof HTMLInputElement && ["hidden", "checkbox", "radio", "file", "submit", "button"].includes(field.type)) && field.getClientRects().length > 0);
+}
+function advance(root: HTMLElement, target: Field, backwards = false) {
+  const all = fields(root);
+  const index = all.indexOf(target);
+  if (index < 0) return;
+  const next = all[index + (backwards ? -1 : 1)];
+  if (next) {
+    next.focus();
+    if (next instanceof HTMLInputElement && ["text", "search", "tel"].includes(next.type)) next.select();
+  } else if (!backwards) {
+    root.querySelector<HTMLButtonElement>("button[data-entry-add]")?.click();
+  }
+}
+export const entryNavigationHandlers = {
+  onKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.defaultPrevented || event.key !== "Enter" || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+    if (target instanceof HTMLInputElement && ["checkbox", "radio", "file", "submit", "button"].includes(target.type)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.repeat || (!event.shiftKey && !target.reportValidity())) return;
+    advance(event.currentTarget, target, event.shiftKey);
+  },
+  onChange(event: ChangeEvent<HTMLElement>) {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement) || !target.checkValidity()) return;
+    const root = event.currentTarget;
+    // Let React apply dependent fields first; never steal focus if the user moved on.
+    requestAnimationFrame(() => {
+      if (target.isConnected && document.activeElement === target) advance(root, target);
+    });
+  },
+};

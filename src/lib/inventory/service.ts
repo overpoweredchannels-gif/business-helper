@@ -1,7 +1,7 @@
 // Inventory Management (Phase 1) — pure ledger/snapshot logic.
 //
-// No database access here: everything is derived from the list of
-// inventory_transactions rows fetched by the client. These functions are the
+// No database access here: stock comes from the saved product balance and
+// movement details from the fetched inventory transactions. These functions are the
 // display + decision layer for the Inventory Dashboard, Stock Ledger and
 // Stock Adjustment screens. The database schema lives in
 // src/lib/inventory/schema.sql; the fetch/write calls live in
@@ -70,6 +70,8 @@ export interface SnapshotProduct {
   categoryName?: string;
   unitType?: string | null;
   reorderLevel?: number | null;
+  /** Saved stock is authoritative; loaded ledger rows may be partial or stale. */
+  currentStock?: number | null;
 }
 
 export const stockStatusFor = (
@@ -112,7 +114,7 @@ export const buildInventorySnapshots = (
     const totalOut = productTransactions
       .filter((transaction) => Number(transaction.quantity_delta) < 0)
       .reduce((sum, transaction) => sum + Math.abs(Number(transaction.quantity_delta)), 0);
-    const currentStock = totalIn - totalOut;
+    const currentStock = product.currentStock ?? totalIn - totalOut;
     const { status, missingReorderLevel } = stockStatusFor(currentStock, product.reorderLevel);
     const lastMovementAt =
       productTransactions.length > 0

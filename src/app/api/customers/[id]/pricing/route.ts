@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveActor } from "@/lib/identity/api-context";
 import { createSupabaseService } from "@/lib/supabase/server";
-import { loadSalesmanAssignmentScope } from "@/lib/sales/salesman-workspace-service";
+import { hasSalesTool } from "@/lib/sales/access";
 
 export const runtime = "nodejs";
 
@@ -29,11 +29,8 @@ export async function GET(
     || context.actor.permissions?.includes("sales_view")
     || context.actor.permissions?.includes("sales_manage")
     || context.actor.permissions?.includes("administration");
-  if (!canViewAllSales) {
-    const scope = await loadSalesmanAssignmentScope({ organizationId, profileId: context.actor.profileId });
-    if (!scope?.eligibleCustomerIds.includes(customerId)) {
-      return NextResponse.json({ ok: false, error: "This customer is not assigned to you." }, { status: 403 });
-    }
+  if (!canViewAllSales && !hasSalesTool(context.actor.salesAccess ?? {}, "invoice") && !hasSalesTool(context.actor.salesAccess ?? {}, "orders")) {
+    return NextResponse.json({ ok: false, error: "Sales permission is required." }, { status: 403 });
   }
 
   const { data: customer, error: customerError } = await supabase
