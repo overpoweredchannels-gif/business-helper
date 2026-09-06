@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
-import { requirePermission } from "@/lib/identity/authorization";
+import { requireSalesTool } from "@/lib/sales/authorization";
+import { canViewAllSales } from "@/lib/sales/access";
 import { querySalesLedger } from "@/lib/invoices/invoice-ledger-service";
 import type { InvoiceStatus } from "@/lib/invoices/types";
 
@@ -25,7 +26,7 @@ export const runtime = "nodejs";
  *   offset        page offset (default 0)
  */
 export async function GET(request: NextRequest) {
-  const permission = await requirePermission(request, "sales_view");
+  const permission = await requireSalesTool(request, "history");
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
       dateFrom: searchParams.get("date_from"),
       dateTo: searchParams.get("date_to"),
       customerId: searchParams.get("customer_id"),
-      salesmanProfileId: searchParams.get("salesman_id"),
+      salesmanProfileId: canViewAllSales(actor.role) ? searchParams.get("salesman_id") : actor.profileId,
       paymentType: searchParams.get("payment_type"),
       status: (searchParams.get("status") as InvoiceStatus | null) ?? null,
       limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,

@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useCallback, useState } from "react";
 import { MobileNavigation } from "@/components/dashboard/MobileNavigation";
 import { navigationItems } from "@/lib/tradeos/constants";
+import { hasSalesTool } from "@/lib/sales/access";
 
 interface SalesmanLayoutProps {
   organizationName?: string | null;
@@ -38,8 +39,8 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
 
   const navItems = [
     { href: "/salesman", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/salesman/drafts?new=1", label: "New Sale", icon: PlusCircle },
-    { href: "/salesman#sales", label: "My Sales", icon: BarChart3 },
+    ...(hasSalesTool({ granted_sections: grantedSections }, "invoice") ? [{ href: "/#sales", label: "New Sales Invoice", icon: PlusCircle }] : []),
+    { href: "/salesman/profile#my-sales", label: "My Sales", icon: BarChart3 },
     { href: "/salesman#customers", label: "My Customers", icon: Users },
     { href: "/salesman/routes", label: "My Route", icon: RouteIcon },
     { href: "/salesman#tracking", label: "Live Tracking", icon: MapPin },

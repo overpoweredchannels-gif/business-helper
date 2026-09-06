@@ -12,7 +12,7 @@ interface MeResponse {
     profile: any;
     employee: any;
     organization: { name?: string | null; working_hours?: any };
-    permissions?: { granted_sections?: string[] | null } | null;
+    permissions?: { granted_sections?: string[] | null; can_create_sales?: boolean | null } | null;
   };
   error?: string;
 }
@@ -77,7 +77,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <SalesmanLayout
       organizationName={me?.organization?.name}
       userName={name}
-      grantedSections={me?.permissions?.granted_sections ?? []}
+      grantedSections={me?.permissions?.granted_sections?.length ? me.permissions.granted_sections : me?.permissions?.can_create_sales ? ["sales"] : []}
     >
       {children}
     </SalesmanLayout>

@@ -75,6 +75,7 @@ export async function resolveActor(
   // in Staff & Permissions) so staff on custom roles (e.g. "staff", "sales")
   // can actually exercise the API actions their granted sections allow.
   const extraPermissions: string[] = [];
+  let salesAccess: import("../sales/access").SalesAccess = { role };
   try {
     const service = createSupabaseService();
     const { data: staffPermRow } = await service
@@ -85,6 +86,7 @@ export async function resolveActor(
       .maybeSingle();
 
     const row = staffPermRow as Record<string, unknown> | null;
+    salesAccess = { role, granted_sections: Array.isArray(row?.granted_sections) ? row.granted_sections as string[] : [], can_create_sales: row?.can_create_sales === true };
     for (const [legacyField, permission] of Object.entries(LEGACY_PERMISSION_MAP)) {
       if (row && row[legacyField] === true) {
         extraPermissions.push(permission);
@@ -100,13 +102,6 @@ export async function resolveActor(
         if (mapped) {
           extraPermissions.push(mapped);
         }
-      }
-      // The Sales section represents the organization-wide ledger in the UI.
-      // A salesman can always create assignment-scoped drafts through the
-      // dedicated self-service APIs, while this explicit grant also unlocks
-      // viewing the complete ledger.
-      if (sectionId === "sales") {
-        extraPermissions.push("sales_view");
       }
     }
   } catch {
@@ -135,6 +130,7 @@ export async function resolveActor(
       isOwner: role === "owner",
       isActive: profile.is_active !== false,
       permissions: mergedPermissions,
+      salesAccess,
     },
   };
 }

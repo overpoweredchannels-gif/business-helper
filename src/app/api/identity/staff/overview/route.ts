@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     if (!workspace) {
       return NextResponse.json({ ok: false, error: "No employee profile found for this account." }, { status: 404 });
     }
-    return NextResponse.json({ ok: true, workspace });
+    return NextResponse.json({ ok: true, workspace: { ...workspace, salesAccess: context.actor.salesAccess } });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "Could not load salesman workspace." },

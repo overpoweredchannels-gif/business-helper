@@ -40,6 +40,7 @@ export type RoleType = BuiltInRole | string;
 export type PermissionAction = ModulePermission;
 
 export interface ActorContext {
+  salesAccess?: import("../sales/access").SalesAccess;
   profileId: string;
   organizationId: string;
   email: string | null;

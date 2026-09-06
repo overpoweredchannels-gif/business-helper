@@ -1,4 +1,5 @@
 "use client";
+import { hasSalesTool, type SalesAccess } from "@/lib/sales/access";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 
 type Workspace = {
+  salesAccess?: SalesAccess;
   employee: {
     id: string; employee_id?: string | null; full_name: string; phone?: string | null;
     designation?: string | null; department?: string | null; joining_date?: string | null;
@@ -100,7 +102,7 @@ export default function SalesmanDashboard() {
     <div className="grid gap-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div><p className="text-sm text-body">Welcome back</p><h1 className="font-heading font-bold text-2xl text-foreground">{employee.full_name}</h1><p className="text-xs text-light-text mt-1">Your assigned customers, sales performance, route, and duty tracking.</p></div>
-        <Link href="/salesman/drafts?new=1" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"><Plus className="size-5" /> New Sale</Link>
+        {hasSalesTool(workspace.salesAccess ?? {}, "invoice") && <Link href="/#sales" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"><Plus className="size-5" /> New Sales Invoice</Link>}
       </header>
 
       <section className="rounded-2xl border border-border bg-card p-5 flex flex-col sm:flex-row sm:items-center gap-4">

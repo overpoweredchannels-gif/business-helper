@@ -1,5 +1,6 @@
 "use client";
 
+import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { EmployeeLiveTracking } from "@/components/dashboard";
@@ -95,6 +96,7 @@ export default function ProfilePage() {
         )}
       </div>
 
+      <div id="my-sales"><MySalesPerformance /></div>
       <EmployeeLiveTracking />
     </div>
   );

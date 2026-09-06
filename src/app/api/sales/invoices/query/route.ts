@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePermission } from "@/lib/identity/authorization";
+import { requireSalesTool } from "@/lib/sales/authorization";
+import { canViewAllSales } from "@/lib/sales/access";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { buildSalesInvoices, SalesInvoiceFilters } from "@/lib/sales/sales-invoice-service";
 
@@ -20,7 +21,7 @@ export const runtime = "nodejs";
  * Response: { ok, docs: [...] } where each doc is a ready-to-print invoice.
  */
 export async function GET(request: NextRequest) {
-  const permission = await requirePermission(request, "sales_view");
+  const permission = await requireSalesTool(request, "invoices");
   if (!permission.allowed || !permission.actor?.organizationId) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
   const filters: SalesInvoiceFilters = {
     organizationId: permission.actor.organizationId,
     customerIds: split(searchParams.get("customer_ids")),
-    salesmanIds: split(searchParams.get("salesman_ids")),
+    salesmanIds: canViewAllSales(permission.actor.role) ? split(searchParams.get("salesman_ids")) : [permission.actor.profileId],
     routeIds: split(searchParams.get("route_ids")),
     areas: split(searchParams.get("areas")),
     cities: split(searchParams.get("cities")),

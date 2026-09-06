@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePermission } from "@/lib/identity/authorization";
+import { requireSalesTool } from "@/lib/sales/authorization";
+import { canViewAllSales } from "@/lib/sales/access";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { buildLoadForm, LoadFormFilters } from "@/lib/sales/load-form-service";
 
@@ -24,7 +25,7 @@ export const runtime = "nodejs";
  * packing/cartons/pcs/bonus/total_value/bonus_value.
  */
 export async function GET(request: NextRequest) {
-  const permission = await requirePermission(request, "sales_view");
+  const permission = await requireSalesTool(request, "loadform");
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
   const filters: LoadFormFilters = {
     organizationId: actor.organizationId ?? "",
     customerIds: splitIds(searchParams.get("customer_ids")),
-    salesmanIds: splitIds(searchParams.get("salesman_ids")),
+    salesmanIds: canViewAllSales(actor.role) ? splitIds(searchParams.get("salesman_ids")) : [actor.profileId],
     brandIds: splitIds(searchParams.get("brand_ids")),
     dateFrom: searchParams.get("date_from"),
     dateTo: searchParams.get("date_to"),

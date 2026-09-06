@@ -1,12 +1,13 @@
+import { hasSalesTool, canViewAllSales } from "@/lib/sales/access";
+import { requireSalesTool } from "@/lib/sales/authorization";
 import { NextRequest, NextResponse } from "next/server";
-import { requirePermission } from "@/lib/identity/authorization";
 import { resolveActor } from "@/lib/identity/api-context";
 import { getDraftSaleService } from "@/lib/sales/services/draft-sale-service";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const permission = await requirePermission(request, "sales_manage");
+  const permission = await requireSalesTool(request, "orders");
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
   const result = await service.listDrafts(permission.actor, {
     status: searchParams.get("status") ?? undefined,
     customerId: searchParams.get("customerId") ?? undefined,
-    createdBy: searchParams.get("createdBy") ?? undefined,
+    createdBy: canViewAllSales(permission.actor.role) ? searchParams.get("createdBy") ?? undefined : permission.actor.profileId,
     dateFrom: searchParams.get("dateFrom") ?? undefined,
     dateTo: searchParams.get("dateTo") ?? undefined,
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
@@ -33,6 +34,10 @@ export async function POST(request: NextRequest) {
   const context = await resolveActor(request);
   if (!context.actor) {
     return NextResponse.json({ ok: false, error: context.error ?? "Unauthorized" }, { status: context.status ?? 401 });
+  }
+
+  if (!hasSalesTool({ ...context.actor.salesAccess, role: context.actor.role }, "invoice") && !hasSalesTool({ ...context.actor.salesAccess, role: context.actor.role }, "orders")) {
+    return NextResponse.json({ ok: false, error: "Sales invoice or order permission is required." }, { status: 403 });
   }
 
   let body: {

@@ -7,6 +7,10 @@ import { createPurchase } from "@/lib/purchases/client";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@/lib/sales/access";
+import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
+import { MyPendingSales } from "@/components/salesman/MyPendingSales";
+import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
 import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
@@ -747,7 +751,7 @@ export default function Home() {
     const selectedPermission = staffPermissions.find(
       (permission) => permission.profile_id === selectedStaffProfileId
     );
-    setStaffSectionDraft([...(selectedPermission?.granted_sections ?? [])]);
+    setStaffSectionDraft(configureSalesTools([...(selectedPermission?.granted_sections ?? [])]));
   }, [selectedStaffProfileId, staffPermissions]);
 
   const fetchExpenses = async (organizationId: string | null) => {
@@ -1455,13 +1459,13 @@ export default function Home() {
     fetchPurchaseReturns(resolvedProfile.organization_id).then(() =>
       fetchPurchaseReturnItems(resolvedProfile.organization_id)
     );
-    fetchSalesOrders(resolvedProfile.organization_id).then(() =>
+    fetchSalesOrders(resolvedProfile.organization_id, resolvedProfile).then(() =>
       fetchSalesOrderItems(resolvedProfile.organization_id)
     );
     fetchSalesReturns(resolvedProfile.organization_id).then(() =>
       fetchSalesReturnItems(resolvedProfile.organization_id)
     );
-    fetchSalesTransactions(resolvedProfile.organization_id);
+    fetchSalesTransactions(resolvedProfile.organization_id, resolvedProfile);
     fetchCustomerPayments(resolvedProfile.organization_id);
     fetchCustomerPaymentAllocations(resolvedProfile.organization_id);
     fetchSupplierPayments(resolvedProfile.organization_id);
@@ -1485,7 +1489,7 @@ export default function Home() {
     fetchDutySessions(resolvedProfile.organization_id, resolvedProfile.id);
     fetchLocationPoints(resolvedProfile.organization_id);
     fetchPurchaseItems(resolvedProfile.organization_id);
-    fetchSalesItems(resolvedProfile.organization_id);
+    fetchSalesItems(resolvedProfile.organization_id, resolvedProfile);
     fetchInventoryTransactions(resolvedProfile.organization_id);
   };
 
@@ -3763,6 +3767,7 @@ setCustomerOrganizationName("");
   };
 
   const handleCreateSalesInvoice = async (overrideConfirmed = false) => {
+    if (!canUseSalesTool("invoice")) { setSalesError("Sales invoice permission is required."); return; }
     const invoiceLines = enteredInvoiceLines(salesLines);
     if (salesInvoiceLoading) {
       return;
@@ -3965,6 +3970,8 @@ setCustomerOrganizationName("");
                 productId: line.product_id,
                 quantity: Number(line.quantity),
                 unitPrice: Number(line.selling_price),
+                unitMode: line.unit_mode ?? "main",
+                bonus: Number(line.bonus || 0),
                 discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
               })),
             paymentType: salesPaymentType,
@@ -4940,7 +4947,7 @@ setCustomerOrganizationName("");
     setPurchaseReturnItems(data ?? []);
   };
 
-  const fetchSalesOrders = async (organizationId?: string | null) => {
+  const fetchSalesOrders = async (organizationId?: string | null, actor = currentProfile) => {
     setSalesOrdersLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -4949,12 +4956,13 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("sales_orders")
       .select("id, organization_id, so_number, customer_id, order_date, expected_date, notes, status, payment_type, credit_days, created_by_profile_id, created_at, updated_at")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
-
+    if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
+    const { data, error } = await query;
     setSalesOrdersLoading(false);
 
     if (error) {
@@ -4965,6 +4973,7 @@ setCustomerOrganizationName("");
 
     setSalesOrdersError(null);
     setSalesOrders(data ?? []);
+
   };
 
   const fetchSalesOrderItems = async (
@@ -5235,7 +5244,7 @@ setCustomerOrganizationName("");
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
 
   // Sales Management (Phase 4) — sales orders + returns + reporting
-  const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform" | "invoices">("invoice");
+  const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform" | "invoices" | "history">("invoice");
   const [salesOrderStatusFilter, setSalesOrderStatusFilter] = useState<"all" | "pending_approval">("all");
 
   const refreshSalesOrders = async () => {
@@ -5317,6 +5326,13 @@ setCustomerOrganizationName("");
     if (isOwnerOrAdmin()) return true;
     return Boolean(currentStaffPermission?.[permissionKey]);
   };
+  const canUseSalesTool = (tool: SalesTool) => hasSalesTool({ ...currentStaffPermission, role: currentProfile?.role }, tool);
+  useEffect(() => {
+    const access = { ...currentStaffPermission, role: currentProfile?.role };
+    if (hasSalesTool(access, salesTab)) return;
+    const first = salesTools.find(tool => hasSalesTool(access, tool.id));
+    if (first) setSalesTab(first.id);
+  }, [currentStaffPermission, currentProfile?.role, salesTab]);
   const canImportExport = isOwnerOrAdmin() || hasRolePermission(currentProfile?.role ?? null, "import_export");
   const canManageInventory = hasPermission("can_manage_inventory");
   // ── Customizable navigation menu ──────────────────────────────────────────
@@ -6039,25 +6055,27 @@ setCustomerOrganizationName("");
     setSupplierPaymentAllocations(data ?? []);
   };
 
-  const fetchSalesItems = async (organizationId?: string | null) => {
+  const fetchSalesItems = async (organizationId?: string | null, actor = currentProfile) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setSalesItems([]);
       return;
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("sales_items")
-      .select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot, discount, unit_mode")
+      .select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot, discount, unit_mode, sales_transactions!inner(created_by_profile_id)")
       .eq("organization_id", orgId)
       .order("id", { ascending: true });
-
+    if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("sales_transactions.created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
+    const { data, error } = await query;
     if (error) {
       console.error("Supabase fetch sales items error:", error);
       return;
     }
 
     setSalesItems(data ?? []);
+
   };
 
   const fetchInventoryTransactions = async (organizationId?: string | null) => {
@@ -6295,7 +6313,7 @@ setCustomerOrganizationName("");
     }
   };
 
-  const fetchSalesTransactions = async (organizationId?: string | null) => {
+  const fetchSalesTransactions = async (organizationId?: string | null, actor = currentProfile) => {
     setSalesLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -6304,12 +6322,13 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("sales_transactions")
       .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
-
+    if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
+    const { data, error } = await query;
     setSalesLoading(false);
 
     if (error) {
@@ -6318,6 +6337,7 @@ setCustomerOrganizationName("");
     }
 
     setSalesTransactions(data ?? []);
+
   };
 
   const handleAddBrand = async () => {
@@ -7806,6 +7826,7 @@ setCustomerOrganizationName("");
   // ── Sales Orders (Phase 4) ────────────────────────────────────────────────
 
   const handleSaveSalesOrder = async () => {
+    if (!canUseSalesTool("orders")) { setSoError("Sales order permission is required."); return; }
     const validation = validateSalesOrderInput({
       customer_id: soCustomerId || null,
       order_date: soOrderDate,
@@ -15188,7 +15209,7 @@ setCustomerOrganizationName("");
     }
 
     const now = new Date().toISOString();
-    const grantedSections = [...new Set(staffSectionDraft.filter(Boolean))];
+    const grantedSections = [...new Set(configureSalesTools(staffSectionDraft.filter(Boolean)))].filter(id => staffSectionDraft.includes("sales") || !id.startsWith("sales:"));
     const mapLegacy = (key: StaffPermissionKey) =>
       grantedSections.some(
         (sectionId) => sectionPermissionMap[sectionId as SectionId] === key
@@ -15659,9 +15680,7 @@ setCustomerOrganizationName("");
             myCustomers={staffDashboardData.myCustomers}
             myRecentSales={staffDashboardData.myRecentSales}
             myPendingTasks={staffDashboardData.myPendingTasks}
-            onQuickAction={(label) => {
-              if (label === "New Sale") handleSectionChange("sales");
-            }}
+            onQuickAction={canUseSalesTool("invoice") ? () => { setSalesTab("invoice"); handleSectionChange("sales"); } : undefined}
             onKPIClick={(title) => {
               if (title === "My Sales" || title === "My Sales Total") handleSectionChange("sales");
               else if (title === "My Customers") handleSectionChange("customers");
@@ -15670,6 +15689,8 @@ setCustomerOrganizationName("");
             }}
           />
         )}
+
+        {activeSection === "dashboard" && staffDashboardData.isStaff && (<MySalesPerformance />)}
 
         {activeSection === "dashboard" && staffDashboardData.isStaff && (
           <EmployeeLiveTracking />
@@ -17313,77 +17334,13 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "sales" && (
         <>
         <div className="mb-5 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setSalesTab("invoice")}
-            className={`rounded px-4 py-2 text-sm font-medium ${
-              salesTab === "invoice"
-                ? "bg-primary text-white"
-                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
-            }`}
-          >
-            Sales Invoice
-          </button>
-          <button
-            type="button"
-            onClick={() => setSalesTab("orders")}
-            className={`rounded px-4 py-2 text-sm font-medium ${
-              salesTab === "orders"
-                ? "bg-primary text-white"
-                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
-            }`}
-          >
-            Sales Orders
-          </button>
-          <button
-            type="button"
-            onClick={() => setSalesTab("returns")}
-            className={`rounded px-4 py-2 text-sm font-medium ${
-              salesTab === "returns"
-                ? "bg-primary text-white"
-                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
-            }`}
-          >
-            Returns
-          </button>
-          <button
-            type="button"
-            onClick={() => setSalesTab("report")}
-            className={`rounded px-4 py-2 text-sm font-medium ${
-              salesTab === "report"
-                ? "bg-primary text-white"
-                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
-            }`}
-          >
-            Sales Report
-          </button>
-          <button
-            type="button"
-            onClick={() => setSalesTab("loadform")}
-            className={`rounded px-4 py-2 text-sm font-medium ${
-              salesTab === "loadform"
-                ? "bg-primary text-white"
-                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
-            }`}
-          >
-            Load Form
-          </button>
-          <button
-            type="button"
-            onClick={() => setSalesTab("invoices")}
-            className={`rounded px-4 py-2 text-sm font-medium ${
-              salesTab === "invoices"
-                ? "bg-primary text-white"
-                : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
-            }`}
-          >
-            Invoice Generator
-          </button>
+          {salesTools.filter(tool => canUseSalesTool(tool.id)).map(tool => <button key={tool.id} type="button" onClick={() => setSalesTab(tool.id)} className={`rounded px-4 py-2 text-sm font-medium ${salesTab === tool.id ? "bg-primary text-white" : "border border-border bg-card"}`}>{tool.label}</button>)}
         </div>
-
-        {salesTab === "invoice" && (
+        {!canUseSalesTool(salesTab) && <p className="text-sm text-muted-foreground">Select one of your permitted sales options above.</p>}
+        {salesTab === "history" && canUseSalesTool("history") && !isOwnerOrAdmin() && <MySalesPerformance />}
+        {((salesTab === "invoice" && canUseSalesTool("invoice")) || (salesTab === "history" && isOwnerOrAdmin())) && (
         <>
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        {salesTab === "invoice" && (<section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">Sales Invoice</h2>
             {canImportExport && (
@@ -17616,17 +17573,7 @@ setCustomerOrganizationName("");
                       <div className="grid gap-2 sm:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
-                          <select
-                            required
-                            value={line.product_id ?? ""}
-                            onChange={(e) => handleSalesLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
-                          >
-                            <option value="">Select Product</option>
-                            {activeProducts.map((product) => (
-                              <option key={product.id} value={String(product.id)}>{product.name}{product.brand_id ? ` — ${brands.find(brand => brand.id === product.brand_id)?.name ?? ""}` : ""}{product.sku ? ` (${product.sku})` : ""}</option>
-                            ))}
-                          </select>
+                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={activeProducts.map(product => ({ id: String(product.id), label: [product.name, brands.find(brand => brand.id === product.brand_id)?.name, product.sku].filter(Boolean).join(" — ") }))} />
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -17736,14 +17683,17 @@ setCustomerOrganizationName("");
               disabled={salesInvoiceLoading}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
-              {salesInvoiceLoading ? "Saving..." : "Save Sales Invoice"}
+              {salesInvoiceLoading ? "Saving..." : isOwnerOrAdmin() ? "Save Sales Invoice" : "Send for owner approval"}
             </button>
 
             {salesMessage && <p className="mt-4 text-sm text-success">{salesMessage}</p>}
             {salesError && <p className="mt-4 text-sm text-destructive">{salesError}</p>}
+            {!isOwnerOrAdmin() && <MyPendingSales key={salesMessage ?? "pending"} />}
           </div>
         </section>
 
+        )}
+        {isOwnerOrAdmin() && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">Sales History</h2>
           <p className="mb-3 text-xs text-muted-foreground/80">
@@ -17845,10 +17795,11 @@ setCustomerOrganizationName("");
             </ul>
           )}
         </section>
+        )}
         </>
         )}
 
-        {salesTab === "orders" && (
+        {salesTab === "orders" && canUseSalesTool("orders") && (
         <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">
@@ -18294,7 +18245,7 @@ setCustomerOrganizationName("");
         </>
         )}
 
-        {salesTab === "returns" && (
+        {salesTab === "returns" && canUseSalesTool("returns") && (
         <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">Sales Return</h2>
@@ -18609,7 +18560,8 @@ setCustomerOrganizationName("");
         </>
         )}
 
-        {salesTab === "report" && (() => {
+        {salesTab === "report" && canUseSalesTool("report") && !isOwnerOrAdmin() && <MySalesPerformance />}
+        {salesTab === "report" && canUseSalesTool("report") && isOwnerOrAdmin() && (() => {
           const todayValue = toDateInputValue(new Date());
           let startValue: string;
           switch (salesReportRange) {
@@ -18860,7 +18812,7 @@ setCustomerOrganizationName("");
             </>
           );
         })()}
-        {salesTab === "loadform" && (
+        {salesTab === "loadform" && canUseSalesTool("loadform") && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">Load Form Summary</h2>
           <p className="mb-4 text-sm text-muted-foreground">
@@ -18870,7 +18822,7 @@ setCustomerOrganizationName("");
           <LoadFormGenerator />
         </section>
         )}
-        {salesTab === "invoices" && (
+        {salesTab === "invoices" && canUseSalesTool("invoices") && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">Sales Invoice Generator</h2>
           <p className="mb-4 text-sm text-muted-foreground">
@@ -22766,6 +22718,17 @@ setCustomerOrganizationName("");
                     })}
                   </div>
 
+                  {staffSectionDraft.includes("sales") && <fieldset className="mt-4 rounded border border-border p-4">
+                    <legend className="px-2 font-medium">Sales access</legend>
+                    <p className="mb-3 text-sm text-muted-foreground">Choose only what this employee needs. Employees see their own sales. Invoice submissions still need owner approval.</p>
+                    <div className="grid gap-3 sm:grid-cols-2">{salesTools.map(tool => <label key={tool.id} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={configureSalesTools(staffSectionDraft).includes(`sales:${tool.id}`)} onChange={event => setStaffSectionDraft(current => {
+                        const grants = configureSalesTools(current).filter(id => id !== `sales:${tool.id}`);
+                        return event.target.checked ? [...grants, `sales:${tool.id}`] : grants;
+                      })} />{tool.label}
+                    </label>)}</div>
+                  </fieldset>}
+
                   <button
                     type="button"
                     onClick={saveStaffPermissions}
@@ -25182,5 +25145,3 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
     </DashboardLayout>
   );
 }
-
-

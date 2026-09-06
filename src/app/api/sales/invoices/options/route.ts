@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
-import { requirePermission } from "@/lib/identity/authorization";
+import { requireSalesTool } from "@/lib/sales/authorization";
+import { canViewAllSales } from "@/lib/sales/access";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,7 @@ const SALES_DESIGNATIONS = ["salesman", "field_officer", "collection_officer", "
  *   routes     [{ id, label }]  — sales routes
  */
 export async function GET(request: NextRequest) {
-  const permission = await requirePermission(request, "sales_view");
+  const permission = await requireSalesTool(request, "invoices");
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
   }
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
       .select("profile_id, full_name")
       .eq("organization_id", organizationId)
       .in("designation", SALES_DESIGNATIONS)
+      .filter("profile_id", canViewAllSales(permission.actor.role) ? "not.is" : "eq", canViewAllSales(permission.actor.role) ? null : permission.actor.profileId)
       .eq("is_active", true)
       .order("full_name", { ascending: true }),
     supabase

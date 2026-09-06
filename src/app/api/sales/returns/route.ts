@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseUserClient } from "@/lib/supabase/server";
 import { buildOrganizationContext } from "@/lib/identity/api-context";
-import { requirePermission } from "@/lib/identity/authorization";
+import { requireSalesTool } from "@/lib/sales/authorization";
+import { canViewAllSales } from "@/lib/sales/access";
 import { validateSalesReturnInput } from "@/lib/sales/validation";
 import { generateInvoiceNumberWithClient } from "@/lib/invoices/invoice-number-service";
 
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const permission = await requirePermission(request, "sales_create");
+    const permission = await requireSalesTool(request, "returns");
     if (!permission.allowed || !permission.actor) {
       return NextResponse.json(
         { ok: false, error: permission.reason ?? "Forbidden" },
