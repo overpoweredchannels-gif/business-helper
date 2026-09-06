@@ -1,14 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
-import type { LocationSample, StoredSession } from "./types";
+import type { QueuedLocation, StoredSession } from "./types";
+export type { QueuedLocation } from "./types";
 
 export type AccountMode = "employee" | "owner";
-
-export interface QueuedLocation {
-  dutySessionId: string;
-  scheduledEndAt?: string | null;
-  point: LocationSample;
-}
 
 const ACCESS_TOKEN_KEY = "tradeos_access_token";
 const REFRESH_TOKEN_KEY = "tradeos_refresh_token";

@@ -1,5 +1,4 @@
-import type { LocationSample } from "./types";
-import type { QueuedLocation } from "./storage";
+import type { LocationSample, QueuedLocation } from "./types";
 
 export function createSerialQueue() {
   let tail: Promise<unknown> = Promise.resolve();

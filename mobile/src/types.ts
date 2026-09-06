@@ -13,6 +13,12 @@ export interface LocationSample {
   capturedAt: string;
 }
 
+export interface QueuedLocation {
+  dutySessionId: string;
+  scheduledEndAt?: string | null;
+  point: LocationSample;
+}
+
 export interface DutyStatus {
   onDuty: boolean;
   dutySessionId: string | null;
