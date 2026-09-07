@@ -2,6 +2,7 @@
 
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { focusNextEntryField } from "./entry-navigation";
+import { activeSuggestionIndex } from "./search-selection";
 
 export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU" }: {
   value: string;
@@ -14,11 +15,11 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
+  const [active, setActive] = useState<number | null>(null);
   const selected = products.find(product => product.id === value);
   const terms = (query ?? "").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   const matches = products.filter(product => terms.every(term => product.label.toLocaleLowerCase().includes(term)));
-  const activeIndex = Math.min(active, Math.max(0, matches.length - 1));
+  const activeIndex = activeSuggestionIndex(matches, value, active);
   useLayoutEffect(() => {
     input.current?.setCustomValidity(selected ? "" : `Choose a ${label.toLowerCase()} from the suggestions.`);
   }, [selected, label]);
@@ -30,7 +31,7 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
     onChange(id);
     setQuery(null);
     setOpen(false);
-    setActive(0);
+    setActive(null);
     requestAnimationFrame(() => {
       if (input.current && document.activeElement === input.current) focusNextEntryField(input.current);
     });
@@ -40,14 +41,14 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
     <input ref={input} type="text" role="combobox" aria-label={label} aria-autocomplete="list"
       aria-expanded={open} aria-controls={listId} aria-activedescendant={open && matches.length ? `${listId}-${activeIndex}` : undefined}
       autoComplete="off" required placeholder={searchPlaceholder} value={query ?? selected?.label ?? ""}
-      onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
+      onFocus={() => { setActive(null); setOpen(true); }} onBlur={() => setOpen(false)}
       onChange={event => { setQuery(event.target.value); setOpen(true); setActive(0); if (value) onChange(""); }}
       onKeyDown={event => {
         if (event.nativeEvent.isComposing || event.ctrlKey || event.altKey || event.metaKey) return;
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault(); event.stopPropagation();
           const direction = event.key === "ArrowDown" ? 1 : -1;
-          setActive(open ? Math.max(0, Math.min(matches.length - 1, activeIndex + direction)) : 0);
+          setActive(open ? activeSuggestionIndex(matches, value, activeIndex + direction) : null);
           setOpen(true);
         } else if (event.key === "Enter" && !event.shiftKey && open) {
           event.preventDefault(); event.stopPropagation();
