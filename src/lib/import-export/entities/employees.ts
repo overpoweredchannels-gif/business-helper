@@ -1,3 +1,4 @@
+import { resolveImportReference, suppliedUpdatePayload } from "../references";
 // TradeOS ERP — Employees Import Config
 
 import type { EntityImportConfig, ImportContext } from "../types";
@@ -74,6 +75,17 @@ export const employeesImportConfig: EntityImportConfig = {
   },
 
   async applyUpdate(existing, payload, ctx) {
+    const values = (existing as { rawValues: Record<string, unknown> }).rawValues;
+    payload = suppliedUpdatePayload(payload, values);
+    if (Object.hasOwn(payload, "emergency_contact")) {
+      const { data, error } = await ctx.supabase.from("employees").select("emergency_contact").eq("id", (existing as any).id).eq("organization_id", ctx.orgId).single();
+      if (error) throw error;
+      const contact = { ...(data.emergency_contact ?? {}) };
+      for (const key of ["name", "phone", "relation"]) {
+        if (Object.hasOwn(values, `emergency_contact_${key}`)) contact[key] = (payload.emergency_contact as Record<string, unknown> | null)?.[key] ?? null;
+      }
+      payload.emergency_contact = contact;
+    }
     const { error } = await ctx.supabase
       .from("employees")
       .update(payload)
@@ -148,24 +160,5 @@ export const employeesImportConfig: EntityImportConfig = {
 };
 
 async function resolveRef(ctx: ImportContext, table: string, name: string, nameColumn = "name"): Promise<string | null> {
-  if (!name?.trim()) return null;
-  const key = name.trim().toLowerCase();
-  
-  let cache = ctx.refCaches.get(table);
-  if (!cache) {
-    cache = new Map();
-    ctx.refCaches.set(table, cache);
-    const selectCol = table === "employees" ? "id, full_name" : "id, name";
-    const { data } = await ctx.supabase
-      .from(table)
-      .select(selectCol)
-      .eq("organization_id", ctx.orgId);
-    for (const row of data ?? []) {
-      cache.set(String(row[nameColumn]).trim().toLowerCase(), row.id);
-    }
-  }
-  
-  if (cache.has(key)) return cache.get(key)!;
-  
-  return null;
+  return resolveImportReference(ctx, table, name, nameColumn, true);
 }

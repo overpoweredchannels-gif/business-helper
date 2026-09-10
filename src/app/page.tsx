@@ -29,6 +29,8 @@ import PermissionMatrix from "@/components/identity/PermissionMatrix";
 import InvitationPanel from "@/components/identity/InvitationPanel";
 import SessionManagement from "@/components/identity/SessionManagement";
 import AuditLogPanel from "@/components/identity/AuditLogPanel";
+import { SetupReview } from "@/components/import-export/SetupReview";
+import { BusinessRecordsExport } from "@/components/dashboard/BusinessRecordsExport";
 import ImportWizard from "@/components/inventory/ImportWizard";
 import ImportExportSection from "@/components/import-export/ImportExportSection";
 import LoadFormGenerator from "@/components/sales/LoadFormGenerator";
@@ -15700,6 +15702,7 @@ setCustomerOrganizationName("");
           <EmployeeLiveTracking />
         )}
 
+        {activeSection === "dashboard" && currentProfile?.role === "owner" && <BusinessRecordsExport />}
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
             userName={currentProfile?.full_name ?? currentUser.email}
@@ -19941,6 +19944,7 @@ setCustomerOrganizationName("");
 
         {activeSectionAllowed && activeSection === "products" && (
         <>
+        {currentProfile?.role === "owner" && <SetupReview entity="products" onSaved={() => { void fetchProducts(); }} />}
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-xl font-medium text-foreground">
             {editingProductId ? `Edit Product: ${name}` : "Add Product"}
@@ -20587,6 +20591,7 @@ setCustomerOrganizationName("");
 
         {activeSectionAllowed && activeSection === "customers" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          {currentProfile?.role === "owner" && <SetupReview entity="customers" onSaved={() => { void fetchCustomers(); }} />}
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">
               {customerEditingId ? "Edit Customer" : "Customer Management"}

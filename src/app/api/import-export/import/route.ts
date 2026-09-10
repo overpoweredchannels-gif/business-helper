@@ -137,6 +137,9 @@ export async function POST(request: NextRequest) {
         const value = await parseCellValue(raw[header], field, raw, importContext);
         values[fieldKey] = value;
       }
+      for (const field of config.fields) {
+        if (field.required && field.defaultValue !== undefined && !Object.hasOwn(values, field.key)) values[field.key] = field.defaultValue;
+      }
       appendPreservedImportData(values, raw, mapping, config.fields);
       
       const { errors, warnings } = await validateParsedRow(values, config.fields, importContext);
@@ -164,7 +167,10 @@ export async function POST(request: NextRequest) {
       // Check for existing record
       let existingId = null;
       if (config.findExisting) {
-        const existing = await config.findExisting(row, importContext);
+        let existing;
+        try { existing = await config.findExisting(row, importContext); } catch (error) {
+          row.errors.push(error instanceof Error ? error.message : "Could not resolve record"); row.status = "error"; stats.errorCount++; continue;
+        }
         if (existing) {
           existingId = typeof existing === "object" && existing !== null && "id" in existing
             ? (existing as { id?: string | number | null }).id ?? null

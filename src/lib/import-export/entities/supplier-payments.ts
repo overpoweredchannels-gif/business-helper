@@ -1,3 +1,4 @@
+import { resolveImportReference } from "../references";
 // TradeOS ERP — Supplier Payments Import Config
 
 import type { EntityImportConfig, ImportContext } from "../types";
@@ -31,7 +32,7 @@ export const supplierPaymentsImportConfig: EntityImportConfig = {
   
   fields: [
     { key: "supplier", label: "Supplier", type: "select", required: true, preview: true, width: 180, options: async () => [], help: "Supplier name (required)." },
-    { key: "amount", label: "Amount", type: "decimal", required: true, preview: true, width: 120, parse: parseNumber, help: "Payment amount." },
+    { key: "amount", label: "Amount", type: "decimal", required: true, preview: true, width: 120, parse: parseNumber, validate: value => Number.isFinite(Number(value)) && Number(value) > 0 ? null : "Amount must be greater than zero", help: "Payment amount." },
     { key: "payment_date", label: "Payment Date", type: "date", required: true, preview: true, width: 110, parse: (s) => { if (!s) return null; const d = new Date(s); return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0]; } },
     { key: "payment_method", label: "Method", type: "select", required: true, preview: true, width: 100, parse: (s) => { const n = s?.trim().toLowerCase(); if (n === "cash") return "cash"; if (n === "bank") return "bank"; if (n === "other") return "other"; return null; }, options: ["cash", "bank", "other"], defaultValue: "cash" },
     { key: "reference_number", label: "Reference #", type: "text", required: false, preview: true, width: 140, help: "Bank ref, cheque no, etc." },
@@ -39,7 +40,7 @@ export const supplierPaymentsImportConfig: EntityImportConfig = {
     { key: "created_by", label: "Recorded By", type: "select", required: false, preview: true, width: 140, options: async () => [], help: "Staff who recorded payment." },
   ],
 
-  uniqueKeys: [],
+  uniqueKeys: [["supplier", "reference_number"]],
   defaultDuplicateMode: "error",
   allowCreateReferences: false,
   maxRows: 10000,
@@ -65,8 +66,13 @@ export const supplierPaymentsImportConfig: EntityImportConfig = {
   },
 
   async findExisting(row, ctx) {
-    return null;
+    if (!row.values.reference_number || !row.values.supplier) return null;
+    const id = await resolveRef(ctx, "suppliers", String(row.values.supplier), "supplier_name");
+    const { data, error } = await ctx.supabase.from("supplier_payments").select("id").eq("organization_id", ctx.orgId).eq("supplier_id", id).eq("reference_number", String(row.values.reference_number).trim()).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data;
   },
+  async applyUpdate() { throw new Error("A payment with this reference already exists. Use Skip; correct financial history in the payment ledger."); },
 
   export: {
     filenamePrefix: "supplier_payments_export",
@@ -103,23 +109,5 @@ export const supplierPaymentsImportConfig: EntityImportConfig = {
 };
 
 async function resolveRef(ctx: ImportContext, table: string, name: string, nameColumn = "name"): Promise<string | null> {
-  if (!name?.trim()) return null;
-  const key = name.trim().toLowerCase();
-  
-  let cache = ctx.refCaches.get(table);
-  if (!cache) {
-    cache = new Map();
-    ctx.refCaches.set(table, cache);
-    const { data } = await ctx.supabase
-      .from(table)
-      .select(`id, ${nameColumn}`)
-      .eq("organization_id", ctx.orgId);
-    for (const row of data ?? []) {
-      cache.set(String(row[nameColumn]).trim().toLowerCase(), row.id);
-    }
-  }
-  
-  if (cache.has(key)) return cache.get(key)!;
-  
-  return null;
+  return resolveImportReference(ctx, table, name, nameColumn, false);
 }

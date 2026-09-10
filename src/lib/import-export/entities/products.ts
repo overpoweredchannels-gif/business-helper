@@ -1,3 +1,4 @@
+import { resolveImportReference, suppliedUpdatePayload } from "../references";
 // TradeOS ERP — Products Import Config
 //
 // Extends the existing product import logic with the universal architecture.
@@ -174,6 +175,7 @@ export const productsImportConfig: EntityImportConfig = {
   },
 
   async applyUpdate(existing, payload, ctx) {
+    payload = suppliedUpdatePayload(payload, (existing as { rawValues: Record<string, unknown> }).rawValues);
     const supabase = ctx.supabase;
     const { error } = await supabase
       .from("products")
@@ -282,37 +284,6 @@ export const productsImportConfig: EntityImportConfig = {
   },
 };
 
-async function resolveRef(ctx: ImportContext, table: string, name: string): Promise<string | null> {
-  if (!name?.trim()) return null;
-  const key = name.trim().toLowerCase();
-  
-  let cache = ctx.refCaches.get(table);
-  if (!cache) {
-    cache = new Map();
-    ctx.refCaches.set(table, cache);
-    // Preload cache
-    const { data } = await ctx.supabase
-      .from(table)
-      .select("id, name")
-      .eq("organization_id", ctx.orgId);
-    for (const row of data ?? []) {
-      cache.set(String(row.name).trim().toLowerCase(), row.id);
-    }
-  }
-  
-  if (cache.has(key)) return cache.get(key)!;
-  
-  if (ctx.createMissingRefs) {
-    const { data, error } = await ctx.supabase
-      .from(table)
-      .insert({ organization_id: ctx.orgId, name: name.trim() })
-      .select("id")
-      .single();
-    if (!error && data) {
-      cache.set(key, data.id);
-      return data.id;
-    }
-  }
-  
-  return null;
+async function resolveRef(ctx: ImportContext, table: string, name: string, nameColumn = "name"): Promise<string | null> {
+  return resolveImportReference(ctx, table, name, nameColumn, true);
 }

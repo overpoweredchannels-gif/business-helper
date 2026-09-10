@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Worksheet ss:Name="Invoice"><Table>
+    <Row><Cell><Data ss:Type="String">Sales Invoice</Data></Cell></Row>
+    <Row><Cell><Data ss:Type="String">Product</Data></Cell><Cell><Data ss:Type="String">Quantity</Data></Cell><Cell><Data ss:Type="String">Price</Data></Cell></Row>
+  </Table></Worksheet>
+</Workbook>

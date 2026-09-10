@@ -54,11 +54,12 @@ export default function ImportWizardV2(props: ImportWizardV2Props) {
     );
   }
 
-  return <ImportWizardContent {...props} config={config} />;
+  return <ImportWizardContent key={`${props.organizationId}:${props.entityKey}`} {...props} config={config} />;
 }
 
 function ImportWizardContent({
   entityKey,
+  organizationId,
   onImported,
   config,
 }: ImportWizardV2Props & { config: EntityImportConfig }) {
@@ -73,6 +74,8 @@ function ImportWizardContent({
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportRunResult | null>(null);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templateName, setTemplateName] = useState("");
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
@@ -83,19 +86,21 @@ function ImportWizardContent({
   const fileRef = useRef<File | null>(null);
 
   const loadTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    setTemplatesError(null);
     try {
       const res = await authorizedFetch(`/api/import-export/templates?entity_key=${encodeURIComponent(entityKey)}`);
       const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Could not load saved templates");
       if (data.ok) {
         setTemplates(data.templates ?? []);
         const def = (data.templates ?? []).find((t: any) => t.is_default);
         setDefaultTemplateIdState(def ? def.id : "default");
       }
-    } catch {
-      setTemplates([]);
-      setDefaultTemplateIdState("default");
-    }
-  }, [entityKey]);
+    } catch (error) {
+      setTemplatesError(error instanceof Error ? error.message : "Could not load saved templates");
+    } finally { setTemplatesLoading(false); }
+  }, [entityKey, organizationId]);
 
   useEffect(() => {
     loadTemplates();
@@ -150,8 +155,8 @@ function ImportWizardContent({
 
     fileRef.current = file;
     const lower = file.name.toLowerCase();
-    if (!/\.(csv|xlsx|xls|ods)$/.test(lower)) {
-      setFileError("Unsupported file type. Use .csv, .xlsx, .xls, or .ods files.");
+    if (!/\.(csv|xlsx|xls|ods|xml)$/.test(lower)) {
+      setFileError("Unsupported file type. Use .csv, .xlsx, .xls, .ods, or Excel XML files.");
       return;
     }
     if (file.size > MAX_IMPORT_BYTES) {
@@ -287,6 +292,7 @@ function ImportWizardContent({
       setImportResult(data.result);
       setStep("done");
       onImported();
+      window.dispatchEvent(new CustomEvent("tradeos:import-complete"));
     } catch (err) {
       setFileError(err instanceof Error ? `Import failed: ${err.message}` : "Import failed");
     } finally {
@@ -325,18 +331,12 @@ function ImportWizardContent({
     if (!name || !editingTemplateId) return;
     try {
       if (name !== template.name) {
-        await authorizedFetch("/api/import-export/templates", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            entity_key: entityKey,
-            name,
-            mapping: template.mapping,
-          }),
+        const response = await authorizedFetch("/api/import-export/templates", {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: template.id, name }),
         });
-        await authorizedFetch(`/api/import-export/templates?id=${template.id}`, {
-          method: "DELETE",
-        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || "Rename failed");
       }
       setEditingTemplateId(null);
       setEditingTemplateName("");
@@ -376,12 +376,16 @@ function ImportWizardContent({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.xlsx,.xls,.ods"
+            accept=".csv,.xlsx,.xls,.ods,.xml"
+            disabled={templatesLoading || Boolean(templatesError)}
             onChange={(e) => handleFileChange(e.target.files?.[0])}
             className="block w-full text-sm text-foreground file:mr-3 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:text-white hover:file:bg-primary/90 sm:w-auto"
           />
           {fileName && <span className="text-sm text-muted-foreground">Selected: {fileName}</span>}
         </div>
+        {templatesLoading && <p role="status">Loading saved templates…</p>}
+        {templatesError && <p role="alert" className="text-destructive">{templatesError} <button type="button" onClick={loadTemplates}>Retry loading templates</button></p>}
+        {!templatesLoading && !templatesError && <p className="text-sm">{templates.filter(t => !t.is_builtin).length} saved templates for {config.entityName}. {templates.find(t => t.id === defaultTemplateId)?.name} will be applied to the next file.</p>}
         {fileError && <p className="mt-3 text-sm text-destructive">{fileError}</p>}
       </div>
 
@@ -396,9 +400,10 @@ function ImportWizardContent({
             <label className="flex flex-col gap-1 text-sm text-foreground/80">
               <span>Load template</span>
               <select
-                defaultValue=""
+                value={defaultTemplateId}
                 onChange={(e) => {
                   if (e.target.value) {
+                    setDefaultTemplateIdState(e.target.value);
                     const t = templates.find((t) => t.id === e.target.value);
                     if (t) {
                       if (t.id === "default") {
@@ -412,7 +417,6 @@ function ImportWizardContent({
                 className="rounded border border-border px-3 py-2"
               >
                 <option value="">Select a template...</option>
-                <option value="default">Default (guessed)</option>
                 {templates.map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.name}
@@ -461,7 +465,7 @@ function ImportWizardContent({
                         </>
                       ) : (
                         <>
-                          <span className="flex-1 font-medium text-foreground/90">{template.name}</span>
+                          <span className="flex-1 font-medium text-foreground/90">{template.name}{template.is_default ? " (preferred)" : ""}</span>
                           <button type="button" onClick={() => {
                             if (template.id === "default") {
                               setMapping(reconcileColumnMapping(headers, null, config.fields));
@@ -471,6 +475,13 @@ function ImportWizardContent({
                           }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Load</button>
                           {!template.is_builtin && (
                             <>
+                              <button type="button" onClick={async () => {
+                                try {
+                                  const res = await authorizedFetch("/api/import-export/templates", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: template.id, set_default: true }) });
+                                  const result = await res.json(); if (!res.ok || !result.ok) throw new Error(result.error || "Could not set preferred template");
+                                  await loadTemplates(); setTemplateMessage("Preferred template saved for future imports.");
+                                } catch (error) { setTemplateMessage(error instanceof Error ? error.message : "Failed to save preference"); }
+                              }} className="rounded border px-2 py-1 text-xs">Use for future imports</button>
                               <button type="button" onClick={() => { setEditingTemplateId(template.id); setEditingTemplateName(template.name); }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Rename</button>
                               <button type="button" onClick={() => handleDeleteTemplate(template)} className="rounded border border-destructive px-2 py-1 text-xs text-destructive hover:bg-destructive/5">Delete</button>
                             </>
@@ -485,6 +496,14 @@ function ImportWizardContent({
             {templateMessage && <p className="text-xs text-muted-foreground">{templateMessage}</p>}
           </div>
 
+          <div className="mb-3 rounded border border-amber-300 p-3 text-sm">
+            <strong>Settings not supplied by this file</strong>
+            <p>{config.fields.filter(field => !Object.values(mapping).includes(field.key)).map(field => field.label + (field.defaultValue !== undefined ? " (new records: " + String(field.defaultValue) + ")" : "")).join(", ") || "All fields are mapped."}</p>
+            <p>For product/customer/employee updates, omitted fields keep their existing values. Review new product/customer settings using Review and bulk edit after importing.</p>
+            {entityKey === "employees" && <p>Importing employees does not create login accounts. Invite/link their accounts and grant permissions separately. Missing assignments are not guessed.</p>}
+            {entityKey === "customers" && <p>Customers without an assigned salesman remain unassigned. Permitted salesmen can sell to any active customer in this organization.</p>}
+            {["customer_payments", "supplier_payments"].includes(entityKey) && <p>Import parties first and use unique names. Add reference numbers to detect repeat imports. Without a reference, separate payments may look identical; re-importing can duplicate history. These history records do not automatically allocate to invoices or reconstruct opening balances.</p>}
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>

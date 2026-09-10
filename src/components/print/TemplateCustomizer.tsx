@@ -7,6 +7,7 @@ import {
   type PrintDocumentType,
   type PrintTemplate,
 } from "@/lib/print/print-template-types";
+import { ReferenceTemplateReview } from "./ReferenceTemplateReview";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
 
 export interface TemplateCustomizerProps {
@@ -162,7 +163,8 @@ export default function TemplateCustomizer({
           const def = (data.templates as TemplateOption[]).find((t) => t.is_default);
           if (def) {
             setSelectedId(def.id);
-            setName(`${def.name} (Custom)`);
+            setName(def.is_builtin ? `${def.name} (Custom)` : def.name);
+            setHeaderOrder(def.config.header.headerOrder ?? ["orgName", "contact", "heading", "meta"]);
           }
         }
       })
@@ -327,6 +329,13 @@ export default function TemplateCustomizer({
 
   return (
     <div className="fixed inset-0 z-[120] flex flex-col bg-background">
+      <ReferenceTemplateReview docType={docType} previewRenderer={previewRenderer} onAccept={template => {
+        const option = { id: template.id, name: template.name, description: "Created from reference; reviewed by user", config: template, is_default: false, is_builtin: true };
+        setTemplates(previous => [...previous.filter(t => t.id !== template.id), option]);
+        setSelectedId(template.id); setName(template.name); setDescription(option.description);
+        setHeaderOrder(template.header.headerOrder ?? ["orgName", "contact", "heading", "meta"]);
+        setMessage("Reference settings confirmed. Review or adjust, then Save Template to use for future prints.");
+      }} />
       {/* ------------------------------- Toolbar ------------------------------ */}
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
         <h2 className="text-lg font-semibold text-foreground">

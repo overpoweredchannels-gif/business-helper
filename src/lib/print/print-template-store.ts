@@ -20,7 +20,7 @@ export class PrintTemplateRepository {
       .from("print_templates")
       .select(COLUMNS)
       .eq("organization_id", organizationId)
-      .order("name", { ascending: true });
+      .order("updated_at", { ascending: false }).order("id");
     if (docType) {
       query = query.eq("doc_type", docType);
     }
@@ -63,7 +63,7 @@ export class PrintTemplateRepository {
           name,
           description: input.description ?? null,
           config: input.config,
-          is_default: false,
+          is_default: true,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "organization_id,doc_type,name" },
@@ -73,7 +73,7 @@ export class PrintTemplateRepository {
     if (error) {
       throw error;
     }
-    return data as PrintTemplateRow;
+    return { ...data, config: { ...data.config, id: data.id } } as PrintTemplateRow;
   }
 
   async delete(id: string, organizationId: string): Promise<void> {

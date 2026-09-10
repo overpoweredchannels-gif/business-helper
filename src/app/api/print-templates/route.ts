@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       name: DEFAULT_PRINT_TEMPLATES[t].name,
       description: DEFAULT_PRINT_TEMPLATES[t].description ?? null,
       config: cloneDefaultTemplate(t),
-      is_default: true,
+      is_default: !saved.some(row => row.doc_type === t),
       is_builtin: true,
     }));
 
@@ -48,8 +48,8 @@ export async function GET(request: NextRequest) {
       doc_type: row.doc_type,
       name: row.name,
       description: row.description ?? null,
-      config: row.config as PrintTemplate,
-      is_default: false,
+      config: { ...row.config, id: row.id } as PrintTemplate,
+      is_default: saved.find(candidate => candidate.doc_type === row.doc_type)?.id === row.id,
       is_builtin: false,
       updated_at: row.updated_at,
     }));

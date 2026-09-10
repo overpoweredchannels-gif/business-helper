@@ -29,17 +29,18 @@ export async function GET(request: NextRequest) {
       .select("id, entity_key, name, description, mapping, is_default, created_at, updated_at")
       .eq("organization_id", organizationId)
       .eq("entity_key", entityKey)
-      .order("name", { ascending: true });
+      .order("updated_at", { ascending: false }).order("id");
 
     if (error) throw error;
 
+    const preferred = (data ?? []).find(row => row.is_default) ?? data?.[0];
     const templates = (data ?? []).map(row => ({
       id: row.id,
       entity_key: row.entity_key,
       name: row.name,
       description: row.description,
       mapping: row.mapping,
-      is_default: row.is_default,
+      is_default: row.id === preferred?.id,
       is_builtin: false,
       updated_at: row.updated_at,
     }));
@@ -76,11 +77,11 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => ({}));
   const entityKey = body.entity_key;
-  const name = body.name?.trim();
-  const description = body.description?.trim() ?? null;
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const description = typeof body.description === "string" ? body.description.trim() : null;
   const mapping = body.mapping;
 
-  if (!entityKey || !name || !mapping) {
+  if (typeof entityKey !== "string" || !entityKey || !name || !mapping || typeof mapping !== "object" || Array.isArray(mapping)) {
     return NextResponse.json({ ok: false, error: "entity_key, name, and mapping are required" }, { status: 400 });
   }
 
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
         name,
         description,
         mapping,
-        is_default: false,
+        is_default: true,
         updated_at: new Date().toISOString(),
       }, { onConflict: "organization_id,entity_key,name" })
       .select("id, entity_key, name, description, mapping, is_default, created_at, updated_at")
@@ -109,6 +110,20 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : "Failed to save template";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
+}
+
+// Rename in place: a failed rename must never delete the saved mapping.
+export async function PATCH(request: NextRequest) {
+  const permission = await requirePermission(request, "import_export");
+  if (!permission.allowed || !permission.actor?.organizationId) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  const body = await request.json().catch(() => ({}));
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (typeof body.id !== "string" || (!name && body.set_default !== true)) return NextResponse.json({ ok: false, error: "Template ID and name or default selection required" }, { status: 400 });
+  const { data, error } = await createSupabaseService().from("import_export_templates")
+    .update({ ...(name ? { name } : {}), ...(body.set_default === true ? { is_default: true, updated_at: new Date().toISOString() } : {}) })
+    .eq("id", body.id).eq("organization_id", permission.actor.organizationId).select("id").maybeSingle();
+  if (error || !data) return NextResponse.json({ ok: false, error: error?.code === "23505" ? "A template already has this name. Choose another name." : error?.message ?? "Template not found" }, { status: error ? 400 : 404 });
+  return NextResponse.json({ ok: true });
 }
 
 /**

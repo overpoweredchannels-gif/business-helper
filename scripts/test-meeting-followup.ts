@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import { missingSetup, validateSetupValue } from "../src/lib/tradeos/data-quality";
+import { suppliedUpdatePayload, resolveImportReference } from "../src/lib/import-export/references";
+import { businessReportHtml, reportRange } from "../src/lib/print/business-report";
+import { reviewReferenceTemplate } from "../src/lib/print/reference-template";
+import type { ImportContext } from "../src/lib/import-export/types";
+
+async function main() {
+  assert(!missingSetup("products", { reorder_level: 0, track_batch: false }).some(x => ["reorder_level", "track_batch"].includes(x.key)));
+  for (const value of [[], {}, true, " ", "NaN", -1, Infinity]) assert.throws(() => validateSetupValue("products", "reorder_level", value));
+  assert.equal(validateSetupValue("products", "reorder_level", "5"), 5);
+  assert.equal(validateSetupValue("products", "track_batch", "false"), false);
+  assert.throws(() => validateSetupValue("products", "organization_id", "other"));
+  assert.throws(() => validateSetupValue("products", "units_per_pack", 0));
+  assert.throws(() => validateSetupValue("customers", "credit_days", 1.5));
+  assert.deepEqual(suppliedUpdatePayload({ name: "Changed", reorder_level: 0, brand_id: null, track_batch: false }, { name: "Changed" }), { name: "Changed" });
+  assert.deepEqual(suppliedUpdatePayload({ assigned_salesman_id: "employee", credit_limit: 0 }, { assigned_salesman: "Employee" }), { assigned_salesman_id: "employee" });
+  const records = Array.from({ length: 1501 }, (_, i) => ({ id: String(i), name: `Product ${i}` }));
+  const ranges: number[] = [];
+  const query = { select() { return this; }, eq(key: string, value: string) { assert.equal(key, "organization_id"); assert.equal(value, "test-org"); return this; }, order() { return this; }, range(from: number, to: number) { ranges.push(from); return Promise.resolve({ data: records.slice(from, to + 1), error: null }); } };
+  const ctx = { orgId: "test-org", refCaches: new Map(), createMissingRefs: false, supabase: { from() { return query; } } } as unknown as ImportContext;
+  assert.equal(await resolveImportReference(ctx, "products", " Product 1500 "), "1500");
+  assert.deepEqual(ranges, [0, 500, 1000, 1500]);
+  await assert.rejects(resolveImportReference(ctx, "products", "Missing"), /not found/);
+  records.push({ id: "duplicate", name: "Product 1500" }); ctx.refCaches.clear();
+  await assert.rejects(resolveImportReference(ctx, "products", "Product 1500"), /More than one/);
+  assert.deepEqual(reportRange("2026-09-09", "2026-09-10"), { from: "2026-09-09", to: "2026-09-10", start: "2026-09-08T19:00:00.000Z", end: "2026-09-10T19:00:00.000Z" });
+  assert.throws(() => reportRange("2026-02-30", "2026-03-01"));
+  assert.throws(() => reportRange("2026-09-11", "2026-09-10"));
+  const html = businessReportHtml("2026-09-10", "2026-09-10", [{ title: "<script>unsafe</script>", columns: ["name"], rows: [{ name: '<img src=x onerror="alert(1)">' }] }]);
+  assert(!html.includes("<script>")); assert(!html.includes("<img")); assert(html.includes("&lt;img"));
+  const reviewed = reviewReferenceTemplate("sales_invoice", { fontFamily: "unknown", page: { ink: "url(evil)" }, header: { headerOrder: ["meta", "meta", "invalid"] }, columns: { labels: [{ key: "unknown", label: "Unsupported" }] } });
+  assert.equal(reviewed.template.page.ink, "#000000");
+  assert.deepEqual(reviewed.template.header.headerOrder, ["meta", "orgName", "contact", "heading"]);
+  assert(reviewed.warnings.some(x => x.includes("Unsupported")));
+  assert(reviewed.template.columns.labels.length > 0);
+  const setupRoute = await import("../src/app/api/data-quality/route");
+  const reportRoute = await import("../src/app/api/reports/business-records/route");
+  const referenceRoute = await import("../src/app/api/print-templates/reference/route");
+  assert.equal((await setupRoute.GET(new Request("http://fixture/api/data-quality?entity=products"))).status, 403);
+  assert.equal((await setupRoute.PATCH(new Request("http://fixture/api/data-quality", { method: "PATCH" }))).status, 403);
+  assert.equal((await reportRoute.GET(new Request("http://fixture/api/reports/business-records"))).status, 403);
+  assert.equal((await referenceRoute.POST(new Request("http://fixture/api/print-templates/reference", { method: "POST" }))).status, 403);
+  console.log("Meeting follow-up regressions passed: bulk validation, sparse updates, 1,501 references, ambiguous references, report boundaries/escaping, print review.");
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });
