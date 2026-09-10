@@ -8,9 +8,11 @@ export function ReferenceTemplateReview({ docType, onAccept, previewRenderer }: 
   return <section className="border-b p-3">
     <button type="button" className="underline" onClick={() => setShow(!show)}>Create from a reference PDF, image or spreadsheet</button>
     {show && <div className="space-y-3">
-      <p className="text-sm">Upload a reference. Its layout is sent to the configured recognition provider. Review the settings and sample preview, then confirm. Saving remains a separate action.</p>
+      <p className="text-sm">Upload a reference up to 3 MB. Spreadsheets are analyzed directly; PDFs and images use the configured recognition provider. Review the detected columns, settings and preview, then confirm and save.</p>
       <input type="file" aria-label="Reference print template" accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.xml,.ods" disabled={busy} onChange={async event => {
-        const file = event.target.files?.[0]; if (!file) return; setBusy(true); setError(""); setPending(null);
+        const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setError(""); setPending(null);
+        if (!file.size || file.size > 3 * 1024 * 1024) { setError("Choose a non-empty reference file up to 3 MB."); return; }
+        setBusy(true);
         try { const form = new FormData(); form.set("doc_type", docType); form.set("file", file); const res = await authorizedFetch("/api/print-templates/reference", { method: "POST", body: form }); const data = await res.json(); if (!res.ok || !data.ok) throw new Error(data.error || "Recognition failed"); setPending(data); }
         catch (err) { setError(err instanceof Error ? err.message : "Could not analyze reference"); } finally { setBusy(false); }
       }} />

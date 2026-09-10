@@ -1,5 +1,13 @@
 # User meeting issue log
 
+## 11 September — automatic reference recognition
+
+Spreadsheet references (Excel, Excel XML and ODS) now recognize their product-table columns directly, without an external AI key or sending worksheet data to a provider. The detector scans up to ten worksheets and fifty rows per sheet, preserving recognized column order/labels and available widths. Unsupported columns are reported. Fonts and header/footer styling remain editable defaults and are explicitly identified for review; arbitrary spreadsheets are not claimed to be exact copies.
+
+PDF/image recognition now prefers the existing Gemini credentials, following the user's approval to check a configured alternative. The primary model and fallback model are tried within the route time budget. Experiential remains available only when Gemini is not configured. No environment files or global AI routing were changed. The existing Experiential key still returned 401. Real synthetic PNG and PDF invoice recognition both succeeded through Gemini on 11 September, detecting Product, Quantity, Rate and Amount. PNG used gemini-3.1-flash-lite after a transient primary failure; PDF used gemini-flash-latest. Production still requires its own configured GEMINI_API_KEY; local credential success alone does not verify production environment variables.
+
+Recognition refuses incomplete output and responses without a supported table. Users can retry the same uploaded file, see size errors before upload, review the preview and explicitly confirm before saving. Tests: `npx tsx scripts/test-reference-recognition.ts` covers XML, multiple worksheets, unsupported columns, sample-data exclusion, provider fallback, PDF request shape and rejection of unfinished/empty responses. Optional live checks use a synthetic file through TRADEOS_REFERENCE_TEST_FILE, never real customer documents. Existing saved-template and permission regressions remain applicable.
+
 ## 10 September follow-up — implementation and acceptance checks
 
 - Saved import mappings: entity/organization changes reset the wizard correctly; loading failures show a retry instead of silently guessing. Latest preferred saved mapping loads before file selection. Rename updates the same record, preserves its preference order, and never deletes a mapping on failure. "Use for future imports" selects a saved mapping. Test customers and employees by saving a mapping, closing the importer, reopening, and importing a second file. No customer/employee mappings existed in the inspected database, so nonexistent historical templates cannot be recovered.
