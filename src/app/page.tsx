@@ -4,6 +4,8 @@ import { entryNavigationHandlers } from "@/components/invoices/entry-navigation"
 import { allPages } from "@/lib/supabase/all-pages";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
+import { BarcodeInput } from "@/components/invoices/BarcodeInput";
+import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
 import { createPurchase } from "@/lib/purchases/client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1884,11 +1886,13 @@ setCustomerOrganizationName("");
   };
 
   const handleSalesCustomerChange = async (customerId: string) => {
+    const requestVersion = ++salesPricingRequest.current;
     setSelectedCustomerIdForSale(customerId === "" ? null : customerId);
     setSalesPaymentType("cash");
     clearCreditOverrideState();
     if (!customerId) return;
     const prices = await loadRecentCustomerPrices(customerId);
+    if (requestVersion !== salesPricingRequest.current) return;
     setSalesLines((current) => current.map((line) => {
       if (!line.product_id) return line;
       return applyRecentPrice(line, products.find((product) => String(product.id) === String(line.product_id)), prices.get(String(line.product_id)));
@@ -3986,7 +3990,8 @@ setCustomerOrganizationName("");
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "Failed to create draft sale");
         setSalesMessage(`Sales order ${data.draft?.so_number ?? ""} created and sent for approval.`);
-        setSelectedCustomerIdForSale(null);
+        if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(null);
+        setSaleScanFocus(value => value + 1);
         setSalesInvoiceNumber("");
         setSalesInvoiceDate(toDateInputValue(new Date()));
         setSalesPaymentType("cash");
@@ -4186,7 +4191,8 @@ setCustomerOrganizationName("");
       }
 
       setSalesMessage(`Sales invoice ${systemInvoiceNumber} saved successfully`);
-      setSelectedCustomerIdForSale(null);
+      if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(null);
+      setSaleScanFocus(value => value + 1);
       setSalesInvoiceNumber("");
       setSalesInvoiceDate(toDateInputValue(new Date()));
       setSalesPaymentType("cash");
@@ -5243,6 +5249,11 @@ setCustomerOrganizationName("");
     last_sold_at: string;
   }
   const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
+  const [quickSaleMode, setQuickSaleMode] = useState(false);
+  const [keepSaleCustomer, setKeepSaleCustomer] = useState(false);
+  const [saleScanUnit, setSaleScanUnit] = useState<UnitMode>("subunit");
+  const [saleScanFocus, setSaleScanFocus] = useState(0);
+  const salesPricingRequest = useRef(0);
   const [recentCustomerPrices, setRecentCustomerPrices] = useState<Record<string, RecentCustomerPrice>>({});
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
   const [salesError, setSalesError] = useState<string | null>(null);
@@ -15670,6 +15681,13 @@ setCustomerOrganizationName("");
         </section>
         )}
 
+        {activeSection === "dashboard" && canUseSalesTool("invoice") && (
+          <section className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-5" data-help-topic="quick sale">
+            <h2 className="text-xl font-semibold">Quick sale</h2>
+            <p className="my-2 text-sm">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
+            <button type="button" className="rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); }}>Create a sale / Scan products</button>
+          </section>
+        )}
         {activeSection === "dashboard" && staffDashboardData.isStaff && (
           <StaffDashboardView
             userName={currentProfile?.full_name ?? currentUser.email}
@@ -15822,7 +15840,7 @@ setCustomerOrganizationName("");
             onViewAllActivity={() => handleSectionChange("activity-logs")}
             topProducts={topSellingProducts.slice(0, 5).map((p) => ({ name: p.productName, value: String(p.quantitySold) }))}
             onQuickAction={(label) => {
-              if (label === "New Sale") handleSectionChange("sales");
+              if (label === "New Sale") { setSalesTab("invoice"); setQuickSaleMode(true); handleSectionChange("sales"); }
               else if (label === "New Purchase") handleSectionChange("purchases");
               else if (label === "Add Product") handleSectionChange("products");
               else if (label === "Record Payment") handleSectionChange("customer-payments");
@@ -17364,6 +17382,23 @@ setCustomerOrganizationName("");
             )}
           </div>
           <div className="space-y-4" {...entryNavigationHandlers}>
+            <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
+              <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? "Quick sale — barcode counter" : "Scan a product"}</h3>
+              <label className="mb-3 block text-sm">Each scan adds one <select aria-label="Main unit or sub-unit per scan" value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">Sub-unit (piece, if configured)</option><option value="main">Main unit (box, carton, etc.)</option></select></label>
+              <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} onScan={code => {
+                try {
+                  const product = findBarcodeProduct(products, code);
+                  const recent = selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined;
+                  clearCreditOverrideState();
+                  setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, recent));
+                  setSalesError(null);
+                  setSalesMessage(`Added ${product.name}. Check the unit, quantity and price before saving.`);
+                } catch (error) { setSalesError(error instanceof Error ? error.message : "Barcode could not be matched."); }
+              }} />
+              <p className="mt-2 text-sm">Repeated scans increase quantity on the matching product/unit line. Products without a configured sub-unit use their main unit.</p>
+              <label className="mt-3 block text-sm"><input type="checkbox" checked={quickSaleMode} onChange={event => setQuickSaleMode(event.target.checked)} /> Keep quick-sale mode open for the next sale</label>
+              {quickSaleMode && <label className="mt-2 block text-sm"><input type="checkbox" checked={keepSaleCustomer} onChange={event => setKeepSaleCustomer(event.target.checked)} /> Keep the selected customer for the next cash sale (for example, your walk-in customer)</label>}
+            </section>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Customer</span>
@@ -20041,17 +20076,7 @@ setCustomerOrganizationName("");
               />
             </div>
 
-            <div>
-              <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Barcode
-              </label>
-              <input
-                type="text"
-                value={productBarcode}
-                onChange={(e) => setProductBarcode(e.target.value)}
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-              />
-            </div>
+            <BarcodeInput label="Product barcode" value={productBarcode} onChange={setProductBarcode} onScan={setProductBarcode} />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">

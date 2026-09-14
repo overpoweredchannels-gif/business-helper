@@ -1,5 +1,15 @@
 # User meeting issue log
 
+## 15 September — tutorial, contextual help and barcode counter
+
+Added an authenticated first-visit tutorial with twelve workflow topics, searchable topic navigation and per-account/browser completion. Users can reopen Help & tutorial and hide/show question-mark icons. Visible form controls, navigation/actions and section headings receive contextual help; native select choices appear in the selector's popup. Specialized controls without a dedicated explanation use general action/field guidance rather than invented business behavior. Help does not change records or permissions. The icon layer reserves space and cleans up its layout changes when disabled.
+
+Products now expose scanner-friendly barcode entry using the existing barcode field and duplicate validation. Dashboard Quick sale opens the existing permitted invoice workflow. Exact barcode matching retains leading zeroes and rejects inactive, unknown or ambiguous products. Each scan adds one selected main/sub-unit, repeated scans increase the matching line quantity, and edited prices remain on that line. Suggested pricing uses existing product/customer pricing and pack conversion. Owner approval is still required for employee submissions. Customer retention for consecutive sales is optional; product lines, discounts and tax entries reset on successful save. A request-version guard prevents an earlier customer's delayed pricing response from overriding a later customer selection.
+
+Validation: barcode/guide unit regressions passed; full existing npm test suite completed successfully; production build and TypeScript checks passed before final UI refinements, with a final TypeScript check repeated for those refinements. Browser fixture confirmed tutorial navigation/dismissal/reopen, dismissal after reload, unit explanations without selection changes, repeat scanning (quantity 1 to 2), leading-zero product barcode capture and no invoice save from scanner Enter. Explicit Save alone increased the synthetic save count. At a 390px viewport, page width remained 390px and the tutorial dialog was 352px. No production invoices/products were created during tests. Physical scanner and signed-in production acceptance remain necessary. No SQL migration is required.
+
+Customer-facing pitch and feature details: `docs/TRADEOS_CUSTOMER_FEATURES.md`. Source-based implemented/remaining assessment and acceptance checklist: `docs/TRADEOS_IMPLEMENTATION_STATUS.md`.
+
 ## 11 September — automatic reference recognition
 
 Spreadsheet references (Excel, Excel XML and ODS) now recognize their product-table columns directly, without an external AI key or sending worksheet data to a provider. The detector scans up to ten worksheets and fifty rows per sheet, preserving recognized column order/labels and available widths. Unsupported columns are reported. Fonts and header/footer styling remain editable defaults and are explicitly identified for review; arbitrary spreadsheets are not claimed to be exact copies.
