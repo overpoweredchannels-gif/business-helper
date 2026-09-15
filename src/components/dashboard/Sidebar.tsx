@@ -272,7 +272,7 @@ export function Sidebar({
             {!collapsed && <span>Reorder / hide sections</span>}
           </button>
         )}
-        {!collapsed && <div data-workspace-help-slot className="space-y-2 px-1 py-2" />}
+        <div data-workspace-help-slot data-workspace-help-compact={collapsed ? "" : undefined} className="space-y-2 px-1 py-2" />
         {!disableCollapse && (
         <button
           type="button"

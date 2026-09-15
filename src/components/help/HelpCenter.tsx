@@ -9,10 +9,11 @@ export function HelpCenter({ userId }: { userId: string }) {
   const [icons, setIcons] = useState(true); const [items, setItems] = useState<HelpItem[]>([]);
   const [iconHost, setIconHost] = useState<HTMLDialogElement | null>(null);
   const [controlsHost, setControlsHost] = useState<HTMLElement | null>(null);
+  const [compactControls, setCompactControls] = useState(false);
   useEffect(() => {
-    const locate = () => setControlsHost([...document.querySelectorAll<HTMLElement>("[data-workspace-help-slot]")].find(node => node.getClientRects().length > 0) ?? null);
+    const locate = () => { const host = [...document.querySelectorAll<HTMLElement>("[data-workspace-help-slot]")].find(node => node.getClientRects().length > 0) ?? null; setControlsHost(host); setCompactControls(!host || host.hasAttribute("data-workspace-help-compact")); };
     const observer = new MutationObserver(locate);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open", "hidden", "class"] });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open", "hidden", "class", "data-workspace-help-compact"] });
     window.addEventListener("resize", locate); locate();
     return () => { observer.disconnect(); window.removeEventListener("resize", locate); };
   }, []);
@@ -20,6 +21,7 @@ export function HelpCenter({ userId }: { userId: string }) {
   const dialog = useRef<HTMLDialogElement>(null); const signature = useRef(""); const previousFocus = useRef<HTMLElement | null>(null);
   const isOpen = selected !== null || tour !== null;
   useEffect(() => {
+    try { setIcons(localStorage.getItem(`tradeos-help-icons:${userId}`) !== "hidden"); } catch { /* Browser storage is optional. */ }
     try { if (!localStorage.getItem(`tradeos-guide-v1:${userId}`)) setTour(0); } catch { setTour(0); }
   }, [userId]);
   useEffect(() => {
@@ -33,7 +35,7 @@ export function HelpCenter({ userId }: { userId: string }) {
     signature.current = "";
     const measure = () => {
       frame = 0;
-      marked.forEach(element => { if (!element.isConnected) { element.removeAttribute("data-context-help-target"); element.style.removeProperty("--tradeos-help-padding"); marked.delete(element); } });
+      marked.forEach(element => { if (!element.isConnected || element.getBoundingClientRect().width < 96 || element.closest("[data-context-help-skip]")) { element.removeAttribute("data-context-help-target"); element.style.removeProperty("--tradeos-help-padding"); marked.delete(element); } });
       const result: HelpItem[] = [];
       const dialogs = [...document.querySelectorAll<HTMLElement>('dialog[open], [role="dialog"]')].filter(element => !element.closest("[data-app-help]") && element.getClientRects().length);
       const root = dialogs.at(-1) ?? document;
@@ -43,7 +45,9 @@ export function HelpCenter({ userId }: { userId: string }) {
         const toggle = element instanceof HTMLInputElement && ["checkbox", "radio"].includes(element.type);
         const anchor = toggle ? element.labels?.[0] ?? element.closest("label") ?? element : element;
         let rect = anchor.getBoundingClientRect();
-        if (rect.width < 8 || rect.height < 8 || rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) return;
+        // Compact action buttons keep their existing labels/tooltips. A second
+        // clickable target inside them would intercept the original action.
+        if (rect.width < 96 || rect.height < 24 || rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) return;
         // Ignore elements scrolled out of a nested panel, or covered by another panel.
         const hit = document.elementsFromPoint(Math.max(1, Math.min(innerWidth - 1, rect.left + Math.min(rect.width / 2, 12))), Math.max(1, Math.min(innerHeight - 1, rect.top + Math.min(rect.height / 2, 12)))).find(node => !node.closest("[data-app-help]"));
         if (hit && hit !== anchor && !anchor.contains(hit) && !hit.contains(anchor)) return;
@@ -78,16 +82,17 @@ export function HelpCenter({ userId }: { userId: string }) {
     return () => { observer.disconnect(); cancelAnimationFrame(frame); document.removeEventListener("scroll", schedule, true); window.removeEventListener("resize", schedule); marked.forEach(element => { element.removeAttribute("data-context-help-target"); element.style.removeProperty("--tradeos-help-padding"); }); };
   }, [icons, isOpen]);
   const close = () => { setSelected(null); setTour(null); setSearch(""); };
+  const toggleIcons = () => setIcons(current => { try { localStorage.setItem(`tradeos-help-icons:${userId}`, current ? "hidden" : "visible"); } catch { /* Browser storage is optional. */ } return !current; });
   const complete = () => { try { localStorage.setItem(`tradeos-guide-v1:${userId}`, "complete"); } catch { /* Help stays usable when browser storage is unavailable. */ } close(); };
   const iconLayer = icons && !isOpen ? <div data-app-help className="pointer-events-none fixed inset-0 z-[70] print:hidden">{items.map(item => <button key={item.id} type="button" aria-label={`Help: ${item.label}`} title={`Help: ${item.label}`} onClick={() => setSelected(item)} style={{ position: "absolute", left: item.x, top: item.y }} className="pointer-events-auto flex size-5 items-center justify-center rounded-full border border-primary bg-background text-xs font-bold text-primary shadow-sm focus:ring-2 focus:ring-primary">?</button>)}</div> : null;
-  const controls = <div data-app-help className={controlsHost ? "flex flex-col gap-2" : "fixed bottom-3 left-3 z-[75] flex gap-2 rounded-lg border bg-background p-2 shadow-lg print:hidden"}><button type="button" onClick={() => { setSelected(null); setTour(0); }} className="min-h-11 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus-visible:ring-2 focus-visible:ring-primary">Help &amp; tutorial</button><button type="button" aria-pressed={icons} onClick={() => setIcons(value => !value)} className="min-h-11 rounded-lg border px-3 py-2 text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary">{icons ? "Hide tutorial icons" : "Show tutorial icons"}</button></div>;
+  const controls = <div data-app-help className={controlsHost ? "flex flex-col gap-2" : "fixed bottom-3 left-3 z-[75] flex gap-2 rounded-lg border bg-background p-2 shadow-lg print:hidden"}><button type="button" onClick={() => { setSelected(null); setTour(0); }} className="min-h-11 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus-visible:ring-2 focus-visible:ring-primary" aria-label="Help & tutorial">{compactControls ? "Help" : "Help & tutorial"}</button>{!compactControls && <button type="button" aria-pressed={icons} onClick={toggleIcons} className="min-h-11 rounded-lg border px-3 py-2 text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary">{icons ? "Hide tutorial icons" : "Show tutorial icons"}</button>}</div>;
   return <div data-app-help className="print:hidden">
     <style>{"@media screen{[data-context-help-target]{padding-right:var(--tradeos-help-padding,26px)!important}}@media print{[data-app-help],[data-app-help]::backdrop{display:none!important}}"}</style>
     {iconHost ? createPortal(iconLayer, iconHost) : iconLayer}
     {controlsHost ? createPortal(controls, controlsHost) : controls}
     <dialog ref={dialog} aria-labelledby="tradeos-help-title" data-app-help onCancel={close} className="m-auto max-h-[85dvh] w-[min(680px,94vw)] overflow-y-auto rounded-xl border border-border bg-background p-6 text-foreground shadow-xl backdrop:bg-black/40">
       <div className="flex items-start justify-between gap-4"><h2 id="tradeos-help-title" className="text-xl font-semibold">{selected?.label ?? guideTopics[tour ?? 0].title}</h2><button type="button" aria-label="Close help" onClick={close}>✕</button></div>
-      {selected ? <div className="mt-4 space-y-4"><p>{selected.description}</p>{selected.choices.length > 0 && <div><h3 className="font-medium">Available choices</h3><ul className="list-disc pl-5">{selected.choices.map((choice, index) => <li key={index}>{choice}</li>)}</ul><p className="mt-2 text-sm">Choose the value appropriate to this record. Help does not change the selection.</p></div>}<button type="button" className="underline" onClick={() => { setSelected(null); setTour(0); }}>Open complete app tutorial</button></div> : <div className="mt-4 space-y-4">
+      <button type="button" aria-pressed={icons} onClick={toggleIcons} className="mt-4 min-h-11 rounded-lg border px-4 py-2 text-sm">{icons ? "Hide tutorial icons" : "Show tutorial icons"}</button>{selected ? <div className="mt-4 space-y-4"><p>{selected.description}</p>{selected.choices.length > 0 && <div><h3 className="font-medium">Available choices</h3><ul className="list-disc pl-5">{selected.choices.map((choice, index) => <li key={index}>{choice}</li>)}</ul><p className="mt-2 text-sm">Choose the value appropriate to this record. Help does not change the selection.</p></div>}<button type="button" className="underline" onClick={() => { setSelected(null); setTour(0); }}>Open complete app tutorial</button></div> : <div className="mt-4 space-y-4">
         <p>{guideTopics[tour ?? 0].description}</p><ol className="list-decimal space-y-3 pl-6">{guideTopics[tour ?? 0].steps.map(step => <li key={step}>{step}</li>)}</ol>
         <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={(tour ?? 0) === 0} onClick={() => setTour(value => Math.max(0, (value ?? 0) - 1))} className="rounded border px-3 py-2 disabled:opacity-40">Previous</button><span>{(tour ?? 0) + 1} / {guideTopics.length}</span>{(tour ?? 0) < guideTopics.length - 1 ? <button type="button" onClick={() => setTour(value => (value ?? 0) + 1)} className="rounded bg-primary px-3 py-2 text-primary-foreground">Next</button> : <button type="button" onClick={complete} className="rounded bg-primary px-3 py-2 text-primary-foreground">Finish tutorial</button>}<button type="button" onClick={complete} className="text-sm underline">Do not show automatically again</button></div>
         <details><summary className="cursor-pointer font-medium">Find a topic</summary><input aria-label="Search tutorial" value={search} onChange={event => setSearch(event.target.value)} className="my-3 w-full rounded border bg-background p-2" placeholder="Search units, payments, staff…" /><div className="flex flex-wrap gap-2">{guideTopics.map((topic, index) => ({ topic, index })).filter(({ topic }) => `${topic.title} ${topic.description} ${topic.steps.join(" ")}`.toLowerCase().includes(search.toLowerCase())).map(({ topic, index }) => <button key={topic.title} type="button" className="rounded border p-2 text-sm" onClick={() => setTour(index)}>{topic.title}</button>)}</div></details>

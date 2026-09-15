@@ -95,6 +95,10 @@ function ImportWizardContent({
   const [importResult, setImportResult] = useState<ImportRunResult | null>(null);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [useManualMapping, setUseManualMapping] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const previewLock = useRef(false);
+  const runLock = useRef(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templateName, setTemplateName] = useState("");
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
@@ -155,6 +159,7 @@ function ImportWizardContent({
   };
 
   const resetFile = useCallback(() => {
+    fileRef.current = null;
     aiRequest.current++; setAiBusy(false); setSuggestions([]); setAiNotice("");
     setStep("file");
     setFileName("");
@@ -187,6 +192,7 @@ function ImportWizardContent({
 
     try {
       const buffer = await file.arrayBuffer();
+      if (fileRef.current !== file) return;
       let matrix: string[][];
       if (lower.endsWith(".csv")) {
         const text = new TextDecoder("utf-8").decode(buffer);
@@ -243,7 +249,7 @@ function ImportWizardContent({
         setTemplateMessage("Default (guessed) template applied.");
       }
     } catch (err) {
-      setFileError(err instanceof Error ? `Failed to read file: ${err.message}` : "Failed to read file.");
+      if (fileRef.current === file) setFileError(err instanceof Error ? `Failed to read file: ${err.message}` : "Failed to read file.");
     }
   }, [config, templates, defaultTemplateId]);
 
@@ -252,10 +258,14 @@ function ImportWizardContent({
   }, []);
 
   const handleRunPreview = useCallback(async () => {
+    if (previewLock.current) return;
     if (!fileRef.current) {
       setFileError("Please select a file first.");
       return;
     }
+    previewLock.current = true;
+    setPreviewBusy(true);
+    onImportingChange?.(true);
     setFileError(null);
     try {
       const formData = new FormData();
@@ -282,11 +292,16 @@ function ImportWizardContent({
       setStep("preview");
     } catch (err) {
       setFileError(err instanceof Error ? `Preview failed: ${err.message}` : "Preview failed");
+    } finally {
+      previewLock.current = false;
+      setPreviewBusy(false);
+      onImportingChange?.(false);
     }
-  }, [entityKey, mapping, mode, createMissingRefs, fileName]);
+  }, [entityKey, mapping, mode, createMissingRefs, fileName, onImportingChange]);
 
   const handleRunImport = useCallback(async () => {
-    if (!fileRef.current || !preview) return;
+    if (!fileRef.current || !preview || runLock.current) return;
+    runLock.current = true;
     setImporting(true);
     onImportingChange?.(true);
     setFileError(null);
@@ -319,6 +334,7 @@ function ImportWizardContent({
       setFileError(err instanceof Error ? `Import failed: ${err.message}` : "Import failed");
     } finally {
       setImporting(false);
+      runLock.current = false;
       onImportingChange?.(false);
     }
   }, [entityKey, mapping, mode, createMissingRefs, fileName, preview, onImported, onImportingChange]);
@@ -389,10 +405,10 @@ function ImportWizardContent({
 
   return (
     <div className="space-y-6">
-      <div className="rounded border border-border bg-card p-4">
+      <fieldset disabled={previewBusy || importing} className="min-w-0 rounded border border-border bg-card p-4">
         <h3 className="mb-1 text-lg font-medium text-foreground">Import {config.entityName}</h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          Upload a CSV, Excel (.xlsx / .xls), or OpenDocument (.ods) file. Map columns, preview, then import.
+          Upload CSV, Excel (.xlsx / .xls), OpenDocument (.ods), or Excel XML. Map columns, preview, then confirm the import.
         </p>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -400,20 +416,20 @@ function ImportWizardContent({
             ref={fileInputRef}
             type="file"
             accept=".csv,.xlsx,.xls,.ods,.xml"
-            disabled={templatesLoading || Boolean(templatesError)}
+            disabled={templatesLoading || (Boolean(templatesError) && !useManualMapping)}
             onChange={(e) => handleFileChange(e.target.files?.[0])}
             className="block w-full text-sm text-foreground file:mr-3 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:text-white hover:file:bg-primary/90 sm:w-auto"
           />
           {fileName && <span className="text-sm text-muted-foreground">Selected: {fileName}</span>}
         </div>
         {templatesLoading && <p role="status">Loading saved templates…</p>}
-        {templatesError && <p role="alert" className="text-destructive">{templatesError} <button type="button" onClick={loadTemplates}>Retry loading templates</button></p>}
+        {templatesError && <div role="alert" className="rounded-lg border border-warning/40 p-3 text-sm"><p>Saved templates could not be loaded. Retry, or choose manual mapping for this file. Your saved templates are not deleted.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="min-h-11 rounded-lg border px-3 py-2" onClick={loadTemplates}>Retry loading templates</button><button type="button" className="min-h-11 rounded-lg border px-3 py-2" onClick={() => setUseManualMapping(true)}>Continue with manual mapping</button></div></div>}
         {!templatesLoading && !templatesError && <p className="text-sm">{templates.filter(t => !t.is_builtin).length} saved templates for {config.entityName}. {templates.find(t => t.id === defaultTemplateId)?.name} will be applied to the next file.</p>}
-        {fileError && <p className="mt-3 text-sm text-destructive">{fileError}</p>}
-      </div>
+        {fileError && <p role="alert" className="mt-3 text-sm text-destructive">{fileError}</p>}
+      </fieldset>
 
       {step === "mapping" && (
-        <div className="rounded border border-border bg-card p-4">
+        <fieldset disabled={previewBusy} aria-busy={previewBusy} className="min-w-0 rounded border border-border bg-card p-4">
           <h3 className="mb-3 text-lg font-medium text-foreground">Map Columns</h3>
           <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
             <h4 className="font-semibold">AI mapping guide</h4><p className="my-2 text-sm">Get suggestions using your column headings only. Record rows stay out of the AI request. Review every suggestion, especially stock and payment fields.</p>
@@ -591,13 +607,13 @@ function ImportWizardContent({
             <button
               type="button"
               onClick={handleRunPreview}
-              disabled={mappedFieldCount === 0}
+              disabled={previewBusy || mappedFieldCount === 0}
               className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
-              Preview Import
+              {previewBusy ? "Checking your file…" : "Preview Import"}
             </button>
           </div>
-        </div>
+        </fieldset>
       )}
 
       {step === "preview" && preview && (
