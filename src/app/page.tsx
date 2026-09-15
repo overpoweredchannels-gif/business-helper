@@ -36,6 +36,7 @@ import { SetupReview } from "@/components/import-export/SetupReview";
 import { BusinessRecordsExport } from "@/components/dashboard/BusinessRecordsExport";
 import ImportWizard from "@/components/inventory/ImportWizard";
 import ImportExportSection from "@/components/import-export/ImportExportSection";
+import SetupImportHub from "@/components/import-export/SetupImportHub";
 import LoadFormGenerator from "@/components/sales/LoadFormGenerator";
 import SalesInvoiceGenerator from "@/components/sales/SalesInvoiceGenerator";
 import EmployeeManagement from "@/components/fsm/EmployeeManagement";
@@ -15681,6 +15682,8 @@ setCustomerOrganizationName("");
         </section>
         )}
 
+        {activeSection === "setup-import" && isOwnerOrAdmin() && currentOrganizationId && <SetupImportHub key={currentOrganizationId} supabase={supabase} organizationId={currentOrganizationId} userId={currentUser.id} actorProfileId={currentProfile?.id ?? null} createAuditLog={createAuditLog} onNavigate={handleSectionChange} onImported={() => { void fetchProducts(); void fetchCustomers(); }} />}
+        {activeSection === "dashboard" && isOwnerOrAdmin() && <button type="button" onClick={() => handleSectionChange("setup-import")} className="mb-4 w-full rounded-xl border border-primary/30 bg-card p-5 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary"><span className="block text-lg font-semibold">Setup &amp; Data Import</span><span className="mt-1 block text-sm text-muted-foreground">Follow the setup guide, import your external records and review missing settings.</span></button>}
         {activeSection === "dashboard" && canUseSalesTool("invoice") && (
           <section className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-5" data-help-topic="quick sale">
             <h2 className="text-xl font-semibold">Quick sale</h2>

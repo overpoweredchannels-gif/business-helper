@@ -524,6 +524,7 @@ export interface SupplierLedgerDisplayEntry extends SupplierLedgerEntry {
 }
 
 export type SectionId =
+  | "setup-import"
   | "dashboard"
   | "products"
   | "brands"

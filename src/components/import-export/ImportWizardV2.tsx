@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import type { MappingSuggestion } from "@/lib/import-export/ai-guidance";
 import { parseCsv } from "@/lib/import-wizard/csv";
 import {
   getEntityConfig,
@@ -38,6 +39,7 @@ interface ImportWizardV2Props {
   actorProfileId: string | null;
   createAuditLog: (params: any) => Promise<void>;
   onImported: () => void;
+  onImportingChange?: (busy: boolean) => void;
   /** Optional: extra context passed to config functions. */
   extraContext?: Record<string, any>;
 }
@@ -61,9 +63,26 @@ function ImportWizardContent({
   entityKey,
   organizationId,
   onImported,
+  onImportingChange,
   config,
 }: ImportWizardV2Props & { config: EntityImportConfig }) {
   const [step, setStep] = useState<Step>("file");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNotice, setAiNotice] = useState("");
+  const [suggestions, setSuggestions] = useState<MappingSuggestion[]>([]);
+  const aiRequest = useRef(0);
+  useEffect(() => () => { aiRequest.current++; }, []);
+  const requestGuidance = async () => {
+    const version = ++aiRequest.current; setAiBusy(true); setAiNotice(""); setSuggestions([]);
+    try {
+      const response = await authorizedFetch("/api/import-export/guidance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity_key: entityKey, headers }) });
+      const result = await response.json();
+      if (version !== aiRequest.current) return;
+      if (!response.ok || !result.ok) throw new Error(result.error || "AI guidance unavailable");
+      setSuggestions(result.suggestions); setAiNotice(result.suggestions.length ? "Review these suggestions. Your current mapping has not changed." : "No confident matches. Use the mapping fields below.");
+    } catch (error) { if (version === aiRequest.current) setAiNotice(error instanceof Error ? error.message : "AI guidance unavailable. Continue manually."); }
+    finally { if (version === aiRequest.current) setAiBusy(false); }
+  };
   const [fileName, setFileName] = useState("");
   const [fileError, setFileError] = useState<string | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -136,6 +155,7 @@ function ImportWizardContent({
   };
 
   const resetFile = useCallback(() => {
+    aiRequest.current++; setAiBusy(false); setSuggestions([]); setAiNotice("");
     setStep("file");
     setFileName("");
     setFileError(null);
@@ -148,6 +168,7 @@ function ImportWizardContent({
   }, []);
 
   const handleFileChange = useCallback(async (file: File | undefined) => {
+    aiRequest.current++; setAiBusy(false); setSuggestions([]); setAiNotice("");
     setFileError(null);
     setPreview(null);
     setImportResult(null);
@@ -267,6 +288,7 @@ function ImportWizardContent({
   const handleRunImport = useCallback(async () => {
     if (!fileRef.current || !preview) return;
     setImporting(true);
+    onImportingChange?.(true);
     setFileError(null);
     try {
       const formData = new FormData();
@@ -297,8 +319,9 @@ function ImportWizardContent({
       setFileError(err instanceof Error ? `Import failed: ${err.message}` : "Import failed");
     } finally {
       setImporting(false);
+      onImportingChange?.(false);
     }
-  }, [entityKey, mapping, mode, createMissingRefs, fileName, preview, onImported]);
+  }, [entityKey, mapping, mode, createMissingRefs, fileName, preview, onImported, onImportingChange]);
 
   const handleSaveTemplate = useCallback(async () => {
     const name = templateName.trim();
@@ -392,6 +415,12 @@ function ImportWizardContent({
       {step === "mapping" && (
         <div className="rounded border border-border bg-card p-4">
           <h3 className="mb-3 text-lg font-medium text-foreground">Map Columns</h3>
+          <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
+            <h4 className="font-semibold">AI mapping guide</h4><p className="my-2 text-sm">Get suggestions using your column headings only. Record rows stay out of the AI request. Review every suggestion, especially stock and payment fields.</p>
+            <button type="button" disabled={aiBusy} onClick={() => void requestGuidance()} className="min-h-11 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary disabled:opacity-50">{aiBusy ? "Analyzing headings…" : "Suggest column mappings"}</button>
+            {aiNotice && <p role="status" className="mt-3 text-sm">{aiNotice}</p>}
+            {suggestions.length > 0 && <><ul className="my-3 space-y-1 text-sm">{suggestions.map(item => <li key={item.header}>{item.header} → {config.fields.find(field => field.key === item.field)?.label ?? item.field}</li>)}</ul><button type="button" className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" onClick={() => { setMapping(current => { const next = { ...current }; for (const item of suggestions) { if (next[item.header] && next[item.header] !== "skip") continue; if (Object.values(next).includes(item.field)) continue; next[item.header] = item.field; } return next; }); setSuggestions([]); setAiNotice("Suggestions applied to unmapped columns only. Existing mappings were preserved. Review the mapping and preview before importing."); }}>Apply to unmapped columns</button></>}
+          </div>
           <p className="mb-4 text-sm text-muted-foreground">
             {headers.length} columns, {dataRows.length} data rows. Tell TradeOS what each column means.
           </p>

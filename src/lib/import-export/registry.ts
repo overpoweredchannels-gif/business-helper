@@ -10,6 +10,7 @@ import type { EntityImportConfig, EntityExportConfig, ImportFieldDef, ColumnMapp
 
 // Import entity configs (will create these next)
 import { productsImportConfig } from "./entities/products";
+import { suppliersImportConfig } from "./entities/suppliers";
 import { customersImportConfig } from "./entities/customers";
 import { brandsImportConfig } from "./entities/brands";
 import { categoriesImportConfig } from "./entities/categories";
@@ -24,6 +25,7 @@ import { supplierPaymentsImportConfig } from "./entities/supplier-payments";
 import { customerCreditImportConfig } from "./entities/customer-credit";
 
 export const ENTITY_REGISTRY: Record<string, EntityImportConfig> = {
+  suppliers: suppliersImportConfig,
   products: productsImportConfig,
   customers: customersImportConfig,
   brands: brandsImportConfig,

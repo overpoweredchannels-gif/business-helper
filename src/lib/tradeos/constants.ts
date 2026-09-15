@@ -2,6 +2,7 @@ import type { SectionId, StaffPermissionKey } from "./types";
 
 export const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "setup-import", label: "Setup & Data Import" },
   { id: "products", label: "Products" },
   { id: "brands", label: "Brands" },
   { id: "categories", label: "Categories" },
@@ -41,6 +42,7 @@ export const navigationItems: Array<{ id: SectionId; label: string }> = [
 // owner/admin only). Grants in staff_permissions.granted_sections take
 // precedence; this map is the fallback for legacy boolean permission rows.
 export const sectionPermissionMap: Partial<Record<SectionId, StaffPermissionKey | "owner_admin">> = {
+  "setup-import": "owner_admin",
   products: "can_manage_products",
   brands: "can_manage_products",
   categories: "can_manage_products",

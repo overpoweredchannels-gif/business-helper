@@ -13,6 +13,7 @@ import type { SectionId } from "@/lib/tradeos/types";
 
 const navIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   dashboard: LayoutDashboard,
+  "setup-import": BookOpen,
   products: Package,
   brands: Tag,
   categories: FolderTree,
@@ -144,7 +145,7 @@ export function Sidebar({
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+      <nav data-context-help-skip={customizing ? "" : undefined} className="flex-1 overflow-y-auto p-2 space-y-0.5">
         {displayItems.map((item, index) => {
           const Icon = navIconMap[item.id];
           const isHidden = hiddenSet.has(item.id);
@@ -236,8 +237,9 @@ export function Sidebar({
 
       {/* Footer: customize + collapse */}
       <div className="border-t border-border p-2 space-y-1">
+        {!collapsed && <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customize your workspace</p>}
         {customizing && (
-          <div className="flex items-center justify-between rounded-lg px-3 py-2 text-xs text-light-text">
+          <div data-context-help-skip className="flex items-center justify-between rounded-lg px-3 py-2 text-xs text-light-text">
             <span className="truncate">Drag with mouse / finger to reorder, arrows fine-tune, eye shows &amp; hides</span>
             <div className="flex shrink-0 gap-1">
               <button
@@ -262,17 +264,20 @@ export function Sidebar({
         {!customizing && canCustomize && (
           <button
             type="button"
-            onClick={onToggleCustomize}
+            onClick={() => { setCollapsed(false); onToggleCustomize?.(); }}
+            aria-label="Reorder or hide menu sections"
             className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-light-text hover:text-foreground hover:bg-muted transition-colors"
           >
             <Pencil className="size-3.5" />
-            {!collapsed && <span>Customize Menu</span>}
+            {!collapsed && <span>Reorder / hide sections</span>}
           </button>
         )}
+        {!collapsed && <div data-workspace-help-slot className="space-y-2 px-1 py-2" />}
         {!disableCollapse && (
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs text-light-text hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}

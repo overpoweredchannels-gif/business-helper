@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
 
     // Run actual import
     // Create audit record
-    const { data: auditRecord } = await supabase
+    const { data: auditRecord, error: auditError } = await supabase
       .from("import_exports")
       .insert({
         organization_id: orgId,
@@ -212,6 +212,8 @@ export async function POST(request: NextRequest) {
       })
       .select("id")
       .single();
+
+    if (auditError || !auditRecord?.id) throw new Error("Could not record this import in your business history. No records were imported. Try again or ask the owner to check import history setup.");
 
     importContext.auditLog = async (params) => {
         await supabase.from("audit_logs").insert({
