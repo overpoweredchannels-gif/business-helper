@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { describeControl, guideTopics } from "@/lib/help/guide";
 
 type HelpItem = { id: number; label: string; description: string; choices: string[]; x: number; y: number };
 
 export function HelpCenter({ userId }: { userId: string }) {
   const [icons, setIcons] = useState(true); const [items, setItems] = useState<HelpItem[]>([]);
+  const [iconHost, setIconHost] = useState<HTMLDialogElement | null>(null);
   const [selected, setSelected] = useState<HelpItem | null>(null); const [tour, setTour] = useState<number | null>(null); const [search, setSearch] = useState("");
   const dialog = useRef<HTMLDialogElement>(null); const signature = useRef(""); const previousFocus = useRef<HTMLElement | null>(null);
   const isOpen = selected !== null || tour !== null;
@@ -27,6 +29,7 @@ export function HelpCenter({ userId }: { userId: string }) {
       const result: HelpItem[] = [];
       const dialogs = [...document.querySelectorAll<HTMLElement>('dialog[open], [role="dialog"]')].filter(element => !element.closest("[data-app-help]") && element.getClientRects().length);
       const root = dialogs.at(-1) ?? document;
+      setIconHost(root instanceof HTMLDialogElement ? root : null);
       root.querySelectorAll<HTMLElement>('input:not([type="hidden"]), select, textarea, button, a[href], h1, h2, h3, [role="tab"]').forEach(element => {
         if (element.closest('[data-app-help], [aria-hidden="true"], [hidden]') || !element.getClientRects().length) return;
         const toggle = element instanceof HTMLInputElement && ["checkbox", "radio"].includes(element.type);
@@ -34,7 +37,7 @@ export function HelpCenter({ userId }: { userId: string }) {
         let rect = anchor.getBoundingClientRect();
         if (rect.width < 8 || rect.height < 8 || rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) return;
         // Ignore elements scrolled out of a nested panel, or covered by another panel.
-        const hit = document.elementFromPoint(Math.max(1, Math.min(innerWidth - 1, rect.left + Math.min(rect.width / 2, 12))), Math.max(1, Math.min(innerHeight - 1, rect.top + Math.min(rect.height / 2, 12))));
+        const hit = document.elementsFromPoint(Math.max(1, Math.min(innerWidth - 1, rect.left + Math.min(rect.width / 2, 12))), Math.max(1, Math.min(innerHeight - 1, rect.top + Math.min(rect.height / 2, 12)))).find(node => !node.closest("[data-app-help]"));
         if (hit && hit !== anchor && !anchor.contains(hit) && !hit.contains(anchor)) return;
         if (!marked.has(anchor)) {
           const reserve = element.tagName === "SELECT" || (element as HTMLInputElement).type === "number" ? 44 : 26;
@@ -68,9 +71,10 @@ export function HelpCenter({ userId }: { userId: string }) {
   }, [icons, isOpen]);
   const close = () => { setSelected(null); setTour(null); setSearch(""); };
   const complete = () => { try { localStorage.setItem(`tradeos-guide-v1:${userId}`, "complete"); } catch { /* Help stays usable when browser storage is unavailable. */ } close(); };
-  return <div data-app-help>
-    <style>{"[data-context-help-target]{padding-right:var(--tradeos-help-padding,26px)!important}@media print{[data-context-help-target]{padding-right:initial!important}}"}</style>
-    {icons && !isOpen && <div className="pointer-events-none fixed inset-0 z-[70] print:hidden">{items.map(item => <button key={item.id} type="button" aria-label={`Help: ${item.label}`} title={`Help: ${item.label}`} onClick={() => setSelected(item)} style={{ position: "absolute", left: item.x, top: item.y }} className="pointer-events-auto flex size-5 items-center justify-center rounded-full border border-primary bg-background text-xs font-bold text-primary shadow-sm focus:ring-2 focus:ring-primary">?</button>)}</div>}
+  const iconLayer = icons && !isOpen ? <div data-app-help className="pointer-events-none fixed inset-0 z-[70] print:hidden">{items.map(item => <button key={item.id} type="button" aria-label={`Help: ${item.label}`} title={`Help: ${item.label}`} onClick={() => setSelected(item)} style={{ position: "absolute", left: item.x, top: item.y }} className="pointer-events-auto flex size-5 items-center justify-center rounded-full border border-primary bg-background text-xs font-bold text-primary shadow-sm focus:ring-2 focus:ring-primary">?</button>)}</div> : null;
+  return <div data-app-help className="print:hidden">
+    <style>{"@media screen{[data-context-help-target]{padding-right:var(--tradeos-help-padding,26px)!important}}@media print{[data-app-help],[data-app-help]::backdrop{display:none!important}}"}</style>
+    {iconHost ? createPortal(iconLayer, iconHost) : iconLayer}
     <div className="fixed bottom-3 left-3 z-[75] flex gap-2 rounded-lg border bg-background p-2 shadow-lg print:hidden">
       <button type="button" onClick={() => { setSelected(null); setTour(0); }} className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">Help & tutorial</button>
       <button type="button" aria-pressed={icons} onClick={() => setIcons(value => !value)} className="px-2 text-xs">{icons ? "Hide ? icons" : "Show ? icons"}</button>

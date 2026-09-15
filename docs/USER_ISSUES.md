@@ -57,3 +57,11 @@ Sales employee simplicity and access: Sales now has separate owner-configured in
 Staff profile session expiry: reported PGRST303 / JWT expired during Save. The profile update now refreshes the session and retries once only after explicit JWT expiry rejection. Failed renewal preserves the draft and requests sign-in; retries are blocked if the account changes. Regression checks cover recovery, repeat expiry, failed renewal, account switching, missing sessions and permission errors.
 
 Release checks passed: full validation (lint: zero errors, 632 warnings; TypeScript; default test suites), production build, and invoice keyboard browser fixtures. The main-branch push uses the repository's existing Vercel integration; its deployment status is tracked against the release commit. Previously missing inventory quantities have not been changed.
+# New-feature bug review — 15 September 2026
+
+- Customer price lookup now converts the price into the invoice line's selected unit instead of switching pieces to boxes while leaving quantity unchanged. Late responses skip lines edited or added while the request was pending.
+- Barcode entry recognizes a configured pack size even when the sub-unit label is missing, matching manual invoice entry. Invalid pack conversions no longer replace a usable default price with an empty price.
+- Contextual help icons render inside native modal dialogs so they remain clickable. Visibility checks ignore the help overlays themselves.
+- Help padding applies only on screen; printing retains the original document spacing and excludes tutorial dialogs, icons and backdrops.
+- Validation: barcode/unit/price regression cases, invoice-entry, sales-access and search-selection tests; browser fixture confirmed modal help opens/closes, the underlying form remains editable, and barcode Enter adds a piece without submitting the invoice. No production records modified; physical scanner acceptance remains a user check.
+- No SQL migration required.

@@ -6,6 +6,7 @@ import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigati
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
+import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
 import { createPurchase } from "@/lib/purchases/client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1818,9 +1819,7 @@ setCustomerOrganizationName("");
   };
 
   const applyRecentPrice = (line: SalesLine, product: Product | undefined, recent: RecentCustomerPrice | undefined) => {
-    if (!product || !recent) return line;
-    const mode: UnitMode = recent.unit_mode === "subunit" && hasSubunit(product) ? "subunit" : "main";
-    return { ...line, unit_mode: mode, selling_price: String(recent.last_selling_price) };
+    return applyRecentLinePrice(line, product, recent);
   };
 
   const handleSalesLineChange = (
@@ -1887,6 +1886,7 @@ setCustomerOrganizationName("");
 
   const handleSalesCustomerChange = async (customerId: string) => {
     const requestVersion = ++salesPricingRequest.current;
+    const unchangedLines = new Set(salesLines);
     setSelectedCustomerIdForSale(customerId === "" ? null : customerId);
     setSalesPaymentType("cash");
     clearCreditOverrideState();
@@ -1894,7 +1894,7 @@ setCustomerOrganizationName("");
     const prices = await loadRecentCustomerPrices(customerId);
     if (requestVersion !== salesPricingRequest.current) return;
     setSalesLines((current) => current.map((line) => {
-      if (!line.product_id) return line;
+      if (!line.product_id || !unchangedLines.has(line)) return line;
       return applyRecentPrice(line, products.find((product) => String(product.id) === String(line.product_id)), prices.get(String(line.product_id)));
     }));
   };

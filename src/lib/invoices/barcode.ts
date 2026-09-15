@@ -10,12 +10,12 @@ export function findBarcodeProduct<T extends BarcodeProduct>(products: T[], raw:
 }
 export function addBarcodeLine<T extends BarcodeLine>(lines: T[], product: BarcodeProduct, requestedMode: "main" | "subunit", recent?: { last_selling_price: number; unit_mode: "main" | "subunit" }): (T | BarcodeLine)[] {
   const pack = Number(product.units_per_pack);
-  const mode = requestedMode === "subunit" && product.subunit_type && Number.isFinite(pack) && pack > 0 ? "subunit" : "main";
+  const mode = requestedMode === "subunit" && Number.isFinite(pack) && pack > 0 ? "subunit" : "main";
   const matched = lines.findIndex(line => line.product_id === String(product.id) && (line.unit_mode ?? "main") === mode);
   if (matched >= 0) return lines.map((line, index) => index === matched ? { ...line, quantity: String((Number(line.quantity) || 0) + 1) } : line);
   let price = Number(product.default_selling_price) || 0;
   if (mode === "subunit") price /= pack;
-  if (recent && Number.isFinite(recent.last_selling_price)) {
+  if (recent && Number.isFinite(recent.last_selling_price) && recent.last_selling_price >= 0 && (recent.unit_mode === mode || (Number.isFinite(pack) && pack > 0))) {
     price = recent.last_selling_price;
     if (recent.unit_mode !== mode) price = mode === "subunit" ? price / pack : price * pack;
   }
