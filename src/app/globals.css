@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+.bulk-setup-review button, .import-workflow button {
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--color-border, #e4e1da);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.bulk-setup-review button:disabled, .import-workflow button:disabled { opacity: 0.45; cursor: not-allowed; }
+.bulk-setup-review button:focus-visible, .import-workflow button:focus-visible { outline: 2px solid #b25232; outline-offset: 2px; }
+.bulk-setup-review input:not([type="checkbox"]), .bulk-setup-review select {
+  min-height: 44px; padding: 0.5rem 0.75rem; border: 1px solid #8b857b; border-radius: 0.5rem;
+  background: var(--color-card, #fff); color: inherit;
+}
+
 @theme inline {
   --color-background: #f4f3ee;
   --color-foreground: #2d2926;

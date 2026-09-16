@@ -61,7 +61,7 @@ export default function ImportExportSection({
                 type="button"
                 onClick={() => setOpen(null)}
                 disabled={busy}
-                className="rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted/30"
+                className="min-h-11 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/30 disabled:opacity-50"
               >
                 Close
               </button>

@@ -6,6 +6,14 @@ const bundle = await build({ entryPoints: [new URL(`./fixtures/${fixture}.tsx`, 
 const stylesDirectory = new URL("../.next/static/chunks/", import.meta.url);
 const css = ["tutorial-barcode", "setup-import"].includes(fixture) ? readdirSync(stylesDirectory).filter(name => name.endsWith(".css")).map(name => readFileSync(new URL(name, stylesDirectory), "utf8")).join("\n").replace(/@font-face\{[^}]*\}/g, "") : "";
 http.createServer((request, response) => {
+  if (fixture === "setup-import" && request.url.startsWith("/api/data-quality")) {
+    response.setHeader("Content-Type", "application/json");
+    if (request.method === "PATCH") {
+      let body = ""; request.on("data", chunk => { body += chunk; });
+      request.on("end", () => { const data = JSON.parse(body); setTimeout(() => response.end(JSON.stringify({ ok: true, requested: data.ids.length, updated: data.ids.length })), 1500); });
+    } else response.end(JSON.stringify({ ok: true, options: {}, rows: Array.from({ length: 55 }, (_, index) => ({ id: String(index + 1), label: `Fixture product ${index + 1}`, missing: [{ key: "reorder_level", label: "Reorder level" }] })) }));
+    return;
+  }
   if (fixture === "setup-import" && request.url === "/api/import-export/import") {
     request.resume();
     setTimeout(() => { response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify({ ok: false, error: "Synthetic preview validation error" })); }, 3000);

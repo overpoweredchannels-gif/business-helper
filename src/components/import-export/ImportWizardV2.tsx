@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import type { MappingSuggestion } from "@/lib/import-export/ai-guidance";
+import { PreparedFileReview } from "./PreparedFileReview";
 import { parseCsv } from "@/lib/import-wizard/csv";
 import {
   getEntityConfig,
@@ -254,7 +255,14 @@ function ImportWizardContent({
   }, [config, templates, defaultTemplateId]);
 
   const setFieldForColumn = useCallback((column: string, field: string) => {
-    setMapping((prev) => ({ ...prev, [column]: field }));
+    setMapping(prev => {
+      const next = { ...prev };
+      if (field !== "skip" && field !== PRESERVE_IN_NOTES) {
+        for (const source of Object.keys(next)) if (source !== column && next[source] === field) next[source] = "skip";
+      }
+      next[column] = field;
+      return next;
+    });
   }, []);
 
   const handleRunPreview = useCallback(async () => {
@@ -404,7 +412,7 @@ function ImportWizardContent({
   }, [loadTemplates]);
 
   return (
-    <div className="space-y-6">
+    <div className="import-workflow space-y-6">
       <fieldset disabled={previewBusy || importing} className="min-w-0 rounded border border-border bg-card p-4">
         <h3 className="mb-1 text-lg font-medium text-foreground">Import {config.entityName}</h3>
         <p className="mb-4 text-sm text-muted-foreground">
@@ -563,6 +571,7 @@ function ImportWizardContent({
                     <td className="py-2 pr-4 font-medium text-foreground">{header}</td>
                     <td className="py-2">
                       <select
+                        aria-label={`Mapping for ${header}`}
                         value={mapping[header] ?? "skip"}
                         onChange={(e) => setFieldForColumn(header, e.target.value)}
                         className="rounded border border-border px-2 py-1.5"
@@ -584,6 +593,7 @@ function ImportWizardContent({
             </table>
           </div>
 
+          <PreparedFileReview headers={headers} rows={dataRows} mapping={mapping} fields={config.fields} entity={entityKey} />
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-1 text-sm text-foreground/80">
               <span className="font-medium">Duplicate handling</span>
