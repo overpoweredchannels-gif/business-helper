@@ -113,17 +113,17 @@ export class DraftSaleService {
     let totalAmount = 0;
     const verifiedItems: DraftSaleItemInput[] = [];
     for (const item of input.items) {
-      if (!item.productId || !item.quantity || item.quantity <= 0 || item.unitPrice < 0) {
+      if (!item.productId || !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.unitPrice) || item.unitPrice < 0 || !Number.isFinite(item.bonus ?? 0) || (item.bonus ?? 0) < 0 || !Number.isFinite(item.discount ?? 0) || (item.discount ?? 0) < 0 || (item.discount ?? 0) > item.quantity * item.unitPrice || (item.unitMode !== undefined && !["main", "subunit"].includes(item.unitMode))) {
         return { ok: false, error: `Invalid item for product ${item.productId ?? "unknown"}` };
       }
       const { data: product } = await supabase
         .from("products")
-        .select("id, name, current_stock")
+        .select("id, name, current_stock, is_active")
         .eq("id", item.productId)
         .eq("organization_id", actor.organizationId)
         .maybeSingle();
 
-      if (!product) {
+      if (!product || product.is_active === false) {
         return { ok: false, error: `Product ${item.productId} not found` };
       }
 
@@ -302,28 +302,32 @@ export class DraftSaleService {
       return { ok: false, error: "Draft has no items" };
     }
 
-    // Check stock availability for all items
+    // Include free units and repeated product lines in stock validation.
+    const requestedByProduct = new Map<string, number>();
     for (const item of items) {
       const { data: product } = await supabase
         .from("products")
-        .select("id, current_stock, units_per_pack")
+        .select("id, current_stock, units_per_pack, is_active")
         .eq("id", item.product_id)
         .eq("organization_id", actor.organizationId)
         .maybeSingle();
 
-      if (!product) {
+      if (!product || product.is_active === false) {
         return { ok: false, error: `Product ${item.product_id} not found` };
       }
 
       // Normalize subunit quantities to main units before comparing to stock.
-      const requestedMain = item.unit_mode === "subunit" && Number(product.units_per_pack ?? 0) > 0
-        ? Number(item.quantity_ordered) / Number(product.units_per_pack)
-        : Number(item.quantity_ordered);
+      const lineMain = item.unit_mode === "subunit" && Number(product.units_per_pack ?? 0) > 0
+        ? (Number(item.quantity_ordered) + Number(item.bonus ?? 0)) / Number(product.units_per_pack)
+        : Number(item.quantity_ordered) + Number(item.bonus ?? 0);
+      const requestedMain = (requestedByProduct.get(String(item.product_id)) ?? 0) + lineMain;
+      requestedByProduct.set(String(item.product_id), requestedMain);
 
-      const { data: effectivePolicy } = await supabase.rpc(
+      const { data: effectivePolicy, error: policyError } = await supabase.rpc(
         "resolve_overselling_policy",
         { p_organization_id: actor.organizationId, p_product_id: item.product_id }
       );
+      if (policyError) return { ok: false, error: "Could not verify stock policy. Retry approval." };
       const oversellingAllowed = String(effectivePolicy ?? "allow") !== "block";
       if (!oversellingAllowed && Number(product.current_stock ?? 0) < requestedMain) {
         return { ok: false, error: `Insufficient stock for product ${item.product_id}: ${product.current_stock} available, ${requestedMain} requested` };

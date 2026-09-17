@@ -65,3 +65,12 @@ Release checks passed: full validation (lint: zero errors, 632 warnings; TypeScr
 - Help padding applies only on screen; printing retains the original document spacing and excludes tutorial dialogs, icons and backdrops.
 - Validation: barcode/unit/price regression cases, invoice-entry, sales-access and search-selection tests; browser fixture confirmed modal help opens/closes, the underlying form remains editable, and barcode Enter adds a piece without submitting the invoice. No production records modified; physical scanner acceptance remains a user check.
 - No SQL migration required.
+
+# Retail counter and help review — 17 September 2026
+
+- Retail POS adds compact barcode/product entry, Walk-in customer, editable lines, cash/change, browser-local Hold/Resume and receipt preview. Uses existing invoice records and preserves employee approval.
+- Tutorial symbols reduced to 14px and anchored to control parents; browser scrolling retained their exact field offset.
+- Combined line/bonus stock checks, invalid employee amounts, repeated save clicks, partial item insertion, payment-failure reporting and employee pending-list loading corrected.
+- Employee approval cannot preserve invoice-level tax/discount today. Those fields are disabled with an explanation; line discounts remain available.
+- Manual SQL pending: `src/lib/migrations/20260917_sales_bonus_stock.sql` fixes database bonus deductions and unit-change deltas. No production SQL executed. Existing stock is not recalculated; historical bonus records require reconciliation.
+- Build, full regression suite and isolated SQL tests passed. Browser verified held-sale persistence, resume, next-sale clearing, employee approval wording, receipt preview and help behavior. See `RETAIL_POS_REVIEW_2026_09_17.md` for acceptance steps and remaining limits.

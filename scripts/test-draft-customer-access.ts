@@ -44,6 +44,12 @@ async function main() {
     assert.equal(inserted.length, before, "Invalid customer must be rejected before writes");
   }
   assert.equal((await service.createDraft(actor, { ...input, saleDate: "2026-02-31" })).ok, false);
+  for (const invalid of [{ quantity: Infinity }, { unitPrice: NaN }, { unitPrice: -1 }, { discount: -1 }, { discount: 101 }, { bonus: -1 }, { bonus: Infinity }]) {
+    const before = inserted.length;
+    const rejected = await service.createDraft(actor, { ...input, items: [{ ...input.items[0], ...invalid }] });
+    assert.equal(rejected.ok, false, `Invalid amounts must fail: ${JSON.stringify(invalid)}`);
+    assert.equal(inserted.length, before, "Invalid amounts must be rejected before writes");
+  }
   console.log("Unassigned organization customer allowed; foreign/inactive customers denied; approval and entered date preserved.");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

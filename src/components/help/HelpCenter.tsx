@@ -3,11 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { describeControl, guideTopics } from "@/lib/help/guide";
 
-type HelpItem = { id: number; label: string; description: string; choices: string[]; x: number; y: number };
+type HelpItem = { id: number; label: string; description: string; choices: string[]; host: HTMLElement };
 
 export function HelpCenter({ userId }: { userId: string }) {
   const [icons, setIcons] = useState(true); const [items, setItems] = useState<HelpItem[]>([]);
-  const [iconHost, setIconHost] = useState<HTMLDialogElement | null>(null);
   const [controlsHost, setControlsHost] = useState<HTMLElement | null>(null);
   const [compactControls, setCompactControls] = useState(false);
   useEffect(() => {
@@ -31,7 +30,7 @@ export function HelpCenter({ userId }: { userId: string }) {
   }, [isOpen]);
   useEffect(() => {
     if (!icons || isOpen) return;
-    const ids = new WeakMap<Element, number>(); const marked = new Set<HTMLElement>(); let nextId = 0; let frame = 0;
+    const ids = new WeakMap<Element, number>(); const marked = new Set<HTMLElement>(); const hosts = new Map<HTMLElement, HTMLSpanElement>(); const parents = new Map<HTMLElement, string>(); let nextId = 0; let frame = 0;
     signature.current = "";
     const measure = () => {
       frame = 0;
@@ -39,7 +38,7 @@ export function HelpCenter({ userId }: { userId: string }) {
       const result: HelpItem[] = [];
       const dialogs = [...document.querySelectorAll<HTMLElement>('dialog[open], [role="dialog"]')].filter(element => !element.closest("[data-app-help]") && element.getClientRects().length);
       const root = dialogs.at(-1) ?? document;
-      setIconHost(root instanceof HTMLDialogElement ? root : null);
+      const seen = new Set<HTMLElement>();
       root.querySelectorAll<HTMLElement>('input:not([type="hidden"]), select, textarea, button, a[href], h1, h2, h3, [role="tab"]').forEach(element => {
         if (element.closest('[data-app-help], [data-context-help-skip], [aria-hidden="true"], [hidden]') || !element.getClientRects().length) return;
         const toggle = element instanceof HTMLInputElement && ["checkbox", "radio"].includes(element.type);
@@ -47,10 +46,18 @@ export function HelpCenter({ userId }: { userId: string }) {
         let rect = anchor.getBoundingClientRect();
         // Compact action buttons keep their existing labels/tooltips. A second
         // clickable target inside them would intercept the original action.
-        if (rect.width < 96 || rect.height < 24 || rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) return;
-        // Ignore elements scrolled out of a nested panel, or covered by another panel.
-        const hit = document.elementsFromPoint(Math.max(1, Math.min(innerWidth - 1, rect.left + Math.min(rect.width / 2, 12))), Math.max(1, Math.min(innerHeight - 1, rect.top + Math.min(rect.height / 2, 12)))).find(node => !node.closest("[data-app-help]"));
-        if (hit && hit !== anchor && !anchor.contains(hit) && !hit.contains(anchor)) return;
+        if (rect.width < 96 || rect.height < 24) return;
+        const parent = anchor.parentElement;
+        if (!parent) return;
+        seen.add(anchor);
+        let host = hosts.get(anchor);
+        if (!host) {
+          host = document.createElement("span");
+          host.setAttribute("data-app-help", "");
+          host.style.cssText = "position:absolute;width:24px;height:24px;z-index:1;pointer-events:none";
+          if (getComputedStyle(parent).position === "static") { parents.set(parent, parent.style.position); parent.style.position = "relative"; }
+          parent.appendChild(host); hosts.set(anchor, host); ids.set(element, ++nextId);
+        }
         if (!marked.has(anchor)) {
           const reserve = element.tagName === "SELECT" || (element as HTMLInputElement).type === "number" ? 44 : 26;
           anchor.style.setProperty("--tradeos-help-padding", `${(parseFloat(getComputedStyle(anchor).paddingRight) || 0) + reserve}px`);
@@ -62,7 +69,7 @@ export function HelpCenter({ userId }: { userId: string }) {
         const siblingLabel = element.previousElementSibling?.tagName === "LABEL" ? element.previousElementSibling : null;
         const labelNode = field.labels?.[0] ?? element.closest("label") ?? (isField ? siblingLabel ?? element.parentElement?.querySelector(":scope > label") : null);
         const clone = labelNode?.cloneNode(true) as HTMLElement | undefined;
-        clone?.querySelectorAll("input,select,textarea,button,small,.text-xs").forEach(node => node.remove());
+        clone?.querySelectorAll("input,select,textarea,button,small,.text-xs,[data-app-help]").forEach(node => node.remove());
         const label = (element.getAttribute("aria-label") || clone?.textContent || element.getAttribute("placeholder") || element.getAttribute("title") || element.textContent || element.getAttribute("name") || "Option").replace(/\s+/g, " ").trim().slice(0, 120);
         if (!label) return;
         const context = element.closest("section")?.querySelector("h1,h2,h3")?.textContent?.trim() ?? "";
@@ -70,25 +77,30 @@ export function HelpCenter({ userId }: { userId: string }) {
         const choices = element.tagName === "SELECT" ? [...(element as HTMLSelectElement).options].filter(option => option.value).slice(0, 25).map(option => option.text) : [];
         if (!ids.has(element)) ids.set(element, ++nextId);
         const rightInset = element.tagName === "SELECT" || field.type === "number" ? 42 : 24;
-        result.push({ id: ids.get(element)!, label, description: describeControl(label, element.tagName === "SELECT" ? "select" : field.type, context || topic || ""), choices, x: Math.round(Math.max(1, Math.min(innerWidth - 24, rect.right - rightInset))), y: Math.round(Math.max(1, rect.top + (rect.height - 20) / 2)) });
+        const parentRect = parent.getBoundingClientRect();
+        host.style.left = `${rect.right - parentRect.left + parent.scrollLeft - parent.clientLeft - rightInset}px`;
+        host.style.top = `${rect.top - parentRect.top + parent.scrollTop - parent.clientTop + (rect.height - 24) / 2}px`;
+        result.push({ id: ids.get(element)!, label, description: describeControl(label, element.tagName === "SELECT" ? "select" : field.type, context || topic || ""), choices, host });
       });
-      const next = JSON.stringify(result);
+      hosts.forEach((host, anchor) => { if (!seen.has(anchor)) { host.remove(); hosts.delete(anchor); } });
+      const next = JSON.stringify(result.map(({ host, ...item }) => ({ ...item, connected: host.isConnected })));
       if (next !== signature.current) { signature.current = next; setItems(result); }
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
     const observer = new MutationObserver(records => { if (records.some(record => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest("[data-app-help]"))) schedule(); });
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "aria-hidden", "open", "class"] });
-    document.addEventListener("scroll", schedule, { capture: true, passive: true }); window.addEventListener("resize", schedule); schedule();
-    return () => { observer.disconnect(); cancelAnimationFrame(frame); document.removeEventListener("scroll", schedule, true); window.removeEventListener("resize", schedule); marked.forEach(element => { element.removeAttribute("data-context-help-target"); element.style.removeProperty("--tradeos-help-padding"); }); };
+    const resize = new ResizeObserver(schedule); resize.observe(document.body);
+    window.addEventListener("resize", schedule); schedule();
+    return () => { observer.disconnect(); resize.disconnect(); cancelAnimationFrame(frame); hosts.forEach(host => host.remove()); parents.forEach((position, parent) => { parent.style.position = position; }); window.removeEventListener("resize", schedule); marked.forEach(element => { element.removeAttribute("data-context-help-target"); element.style.removeProperty("--tradeos-help-padding"); }); };
   }, [icons, isOpen]);
   const close = () => { setSelected(null); setTour(null); setSearch(""); };
   const toggleIcons = () => setIcons(current => { try { localStorage.setItem(`tradeos-help-icons:${userId}`, current ? "hidden" : "visible"); } catch { /* Browser storage is optional. */ } return !current; });
   const complete = () => { try { localStorage.setItem(`tradeos-guide-v1:${userId}`, "complete"); } catch { /* Help stays usable when browser storage is unavailable. */ } close(); };
-  const iconLayer = icons && !isOpen ? <div data-app-help className="pointer-events-none fixed inset-0 z-[70] print:hidden">{items.map(item => <button key={item.id} type="button" aria-label={`Help: ${item.label}`} title={`Help: ${item.label}`} onClick={() => setSelected(item)} style={{ position: "absolute", left: item.x, top: item.y }} className="pointer-events-auto flex size-5 items-center justify-center rounded-full border border-primary bg-background text-xs font-bold text-primary shadow-sm focus:ring-2 focus:ring-primary">?</button>)}</div> : null;
+  const iconLayer = icons && !isOpen ? items.filter(item => item.host.isConnected).map(item => createPortal(<button data-app-help type="button" aria-label={`Help: ${item.label}`} title={`Help: ${item.label}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSelected(item); }} style={{ width: 24, height: 24, minWidth: 24, minHeight: 24, padding: 4, border: 0, background: "transparent", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ width: 14, height: 14, fontSize: 10, lineHeight: "12px" }} className="rounded-full border border-primary bg-background text-center font-semibold text-primary">?</span></button>, item.host, String(item.id))) : null;
   const controls = <div data-app-help className={controlsHost ? "flex flex-col gap-2" : "fixed bottom-3 left-3 z-[75] flex gap-2 rounded-lg border bg-background p-2 shadow-lg print:hidden"}><button type="button" onClick={() => { setSelected(null); setTour(0); }} className="min-h-11 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus-visible:ring-2 focus-visible:ring-primary" aria-label="Help & tutorial">{compactControls ? "Help" : "Help & tutorial"}</button>{!compactControls && <button type="button" aria-pressed={icons} onClick={toggleIcons} className="min-h-11 rounded-lg border px-3 py-2 text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary">{icons ? "Hide tutorial icons" : "Show tutorial icons"}</button>}</div>;
   return <div data-app-help className="print:hidden">
     <style>{"@media screen{[data-context-help-target]{padding-right:var(--tradeos-help-padding,26px)!important}}@media print{[data-app-help],[data-app-help]::backdrop{display:none!important}}"}</style>
-    {iconHost ? createPortal(iconLayer, iconHost) : iconLayer}
+    {iconLayer}
     {controlsHost ? createPortal(controls, controlsHost) : controls}
     <dialog ref={dialog} aria-labelledby="tradeos-help-title" data-app-help onCancel={close} className="m-auto max-h-[85dvh] w-[min(680px,94vw)] overflow-y-auto rounded-xl border border-border bg-background p-6 text-foreground shadow-xl backdrop:bg-black/40">
       <div className="flex items-start justify-between gap-4"><h2 id="tradeos-help-title" className="text-xl font-semibold">{selected?.label ?? guideTopics[tour ?? 0].title}</h2><button type="button" aria-label="Close help" onClick={close}>✕</button></div>

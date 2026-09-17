@@ -1,10 +1,10 @@
 import { build } from "esbuild";
 import http from "node:http";
 import { readdirSync, readFileSync } from "node:fs";
-const fixture = ["entry-navigation", "meeting-followup", "tutorial-barcode", "setup-import"].includes(process.env.TRADEOS_FIXTURE_NAME) ? process.env.TRADEOS_FIXTURE_NAME : "sales-access";
+const fixture = ["entry-navigation", "meeting-followup", "tutorial-barcode", "setup-import", "retail-pos"].includes(process.env.TRADEOS_FIXTURE_NAME) ? process.env.TRADEOS_FIXTURE_NAME : "sales-access";
 const bundle = await build({ entryPoints: [new URL(`./fixtures/${fixture}.tsx`, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")], bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic", define: { "process.env.NEXT_PUBLIC_SUPABASE_URL": '"https://fixture.supabase.co"', "process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY": '"fixture-public-key"' } });
 const stylesDirectory = new URL("../.next/static/chunks/", import.meta.url);
-const css = ["tutorial-barcode", "setup-import"].includes(fixture) ? readdirSync(stylesDirectory).filter(name => name.endsWith(".css")).map(name => readFileSync(new URL(name, stylesDirectory), "utf8")).join("\n").replace(/@font-face\{[^}]*\}/g, "") : "";
+const css = ["tutorial-barcode", "setup-import", "retail-pos"].includes(fixture) ? readdirSync(stylesDirectory).filter(name => name.endsWith(".css")).map(name => readFileSync(new URL(name, stylesDirectory), "utf8")).join("\n").replace(/@font-face\{[^}]*\}/g, "") : "";
 http.createServer((request, response) => {
   if (fixture === "setup-import" && request.url.startsWith("/api/data-quality")) {
     response.setHeader("Content-Type", "application/json");

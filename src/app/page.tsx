@@ -4,6 +4,8 @@ import { entryNavigationHandlers } from "@/components/invoices/entry-navigation"
 import { allPages } from "@/lib/supabase/all-pages";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
+import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
+import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
@@ -3776,6 +3778,12 @@ setCustomerOrganizationName("");
   };
 
   const handleCreateSalesInvoice = async (overrideConfirmed = false) => {
+    if (saleSubmitLock.current) return;
+    saleSubmitLock.current = true;
+    try { await saveSalesInvoice(overrideConfirmed); }
+    finally { saleSubmitLock.current = false; }
+  };
+  const saveSalesInvoice = async (overrideConfirmed = false) => {
     if (!canUseSalesTool("invoice")) { setSalesError("Sales invoice permission is required."); return; }
     const invoiceLines = enteredInvoiceLines(salesLines);
     if (salesInvoiceLoading) {
@@ -3796,17 +3804,24 @@ setCustomerOrganizationName("");
       return;
     }
 
+    const requestedByProduct = new Map<string, number>();
     for (const line of invoiceLines) {
       if (!line.product_id) continue;
       const product = products.find((p) => String(p.id) === String(line.product_id));
-      if (!product) continue;
+      if (!product || product.is_active === false) { setSalesError("A product is unavailable. Remove it or choose an active product."); return; }
+      const price = Number(line.selling_price);
+      const bonus = Number(line.bonus || 0);
+      if (line.selling_price.trim() === "" || !Number.isFinite(price) || price < 0 || !Number.isFinite(bonus) || bonus < 0) { setSalesError(`Enter a valid price and bonus for ${product.name}.`); return; }
       const quantity = Number(line.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0) {
         setSalesError(`Invalid quantity for ${product.name}.`);
         setSalesMessage(null);
         return;
       }
-      const violation = getOversellingViolationMessage(product, quantity, line.unit_mode);
+      if (line.unit_mode === "subunit" && !(Number(product.units_per_pack) > 0)) { setSalesError(`Configure units per pack for ${product.name} before selling sub-units.`); return; }
+      const requestedMain = (requestedByProduct.get(product.id) ?? 0) + quantityToMainUnits(quantity + bonus, line.unit_mode ?? "main", product.units_per_pack);
+      requestedByProduct.set(product.id, requestedMain);
+      const violation = getOversellingViolationMessage(product, requestedMain, "main");
       if (violation) {
         setSalesError(violation);
         setSalesMessage(null);
@@ -3840,6 +3855,11 @@ setCustomerOrganizationName("");
     }
 
     const parsedTaxRate = salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate);
+    if (!isOwnerOrAdmin() && (rawInvoiceDiscount !== 0 || parsedTaxRate !== 0)) {
+      setSalesError("Employee approval currently supports line discounts only. Clear invoice discount and tax before submitting.");
+      return;
+    }
+
     if (salesTaxRate.trim() !== "" && (!Number.isFinite(parsedTaxRate) || parsedTaxRate < 0)) {
       setSalesError("Tax rate must be a valid percentage greater than or equal to zero");
       setSalesMessage(null);
@@ -3849,8 +3869,8 @@ setCustomerOrganizationName("");
     for (const line of invoiceLines) {
       if (!line.product_id) continue;
       const lineDiscount = line.discount.trim() === "" ? 0 : Number(line.discount);
-      if (line.discount.trim() !== "" && (!Number.isFinite(lineDiscount) || lineDiscount < 0)) {
-        setSalesError("Line discount must be a valid amount greater than or equal to zero");
+      if (line.discount.trim() !== "" && (!Number.isFinite(lineDiscount) || lineDiscount < 0 || lineDiscount > Number(line.quantity) * Number(line.selling_price))) {
+        setSalesError("Line discount must be between zero and the line subtotal");
         setSalesMessage(null);
         return;
       }
@@ -3991,7 +4011,7 @@ setCustomerOrganizationName("");
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "Failed to create draft sale");
         setSalesMessage(`Sales order ${data.draft?.so_number ?? ""} created and sent for approval.`);
-        if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(null);
+        if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
         setSaleScanFocus(value => value + 1);
         setSalesInvoiceNumber("");
         setSalesInvoiceDate(toDateInputValue(new Date()));
@@ -4083,8 +4103,7 @@ setCustomerOrganizationName("");
       const salesTransactionId = tx.data?.id;
       if (!salesTransactionId) throw new Error("Failed to create sales transaction");
 
-      for (const line of invoiceLines) {
-        if (!line.product_id) continue;
+      const itemsToSave = invoiceLines.map(line => {
         const latestPurchaseItem = purchaseItems
           .filter(
             (item) =>
@@ -4125,7 +4144,7 @@ setCustomerOrganizationName("");
             ? productLastPurchasePrice
             : null);
 
-        const { error: itemError } = await supabase.from("sales_items").insert({
+        return {
           sales_transaction_id: salesTransactionId,
           product_id: line.product_id,
           quantity: Number(line.quantity),
@@ -4135,10 +4154,16 @@ setCustomerOrganizationName("");
           bonus: line.bonus?.trim() === "" || line.bonus == null ? 0 : safeNumber(line.bonus),
           unit_mode: line.unit_mode ?? "main",
           organization_id: currentOrganizationId,
-        });
-
-        if (itemError) throw itemError;
+        };
+      });
+      // One database statement: a failed line cannot leave half an invoice's items.
+      const { error: itemError } = await supabase.from("sales_items").insert(itemsToSave);
+      if (itemError) {
+        const rollback = await supabase.from("sales_transactions").delete().eq("id", salesTransactionId).eq("organization_id", currentOrganizationId);
+        if (rollback.error) throw new Error(`Invoice ${systemInvoiceNumber} needs owner review: items were not saved and its empty header could not be removed. Do not retry until it is checked.`);
+        throw itemError;
       }
+      let paymentWarning = "";
 
       await createAuditLog({
         action: "created",
@@ -4169,6 +4194,7 @@ setCustomerOrganizationName("");
           .single();
 
         if (autoPaymentError) {
+          paymentWarning = " Cash payment could not be recorded. Open this invoice in the ledger and reconcile its payment; do not create the sale again.";
           console.error(
             "Auto customer payment insert error:",
             JSON.stringify(autoPaymentError, null, 2)
@@ -4183,6 +4209,7 @@ setCustomerOrganizationName("");
               organization_id: currentOrganizationId,
             });
           if (autoAllocationError) {
+            paymentWarning = " Payment was recorded but could not be linked. Review payment allocation in the customer ledger; do not create the sale again.";
             console.error(
               "Auto customer payment allocation insert error:",
               JSON.stringify(autoAllocationError, null, 2)
@@ -4191,8 +4218,9 @@ setCustomerOrganizationName("");
         }
       }
 
-      setSalesMessage(`Sales invoice ${systemInvoiceNumber} saved successfully`);
-      if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(null);
+      if (quickSaleMode) setLastPOSReceipt({ scope: `${currentOrganizationId}:${currentProfile?.id}`, business: currentOrganization?.name || "TradeOS", number: systemInvoiceNumber, date: salesInvoiceDate, customer: selectedSalesCustomer?.customer_name ?? "Customer", total: taxableBase + computedTaxAmount, payment: paymentWarning ? "unreconciled" : salesPaymentType, lines: invoiceLines.map(line => { const product = products.find(product => String(product.id) === line.product_id); return { name: product?.name ?? "Product", quantity: line.quantity, unit: product ? unitLabelFor(product, line.unit_mode ?? "main") : "", price: line.selling_price, discount: line.discount, bonus: line.bonus }; }) });
+      setSalesMessage(`Sales invoice ${systemInvoiceNumber} saved successfully${paymentWarning}`);
+      if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
       setSaleScanFocus(value => value + 1);
       setSalesInvoiceNumber("");
       setSalesInvoiceDate(toDateInputValue(new Date()));
@@ -5251,9 +5279,36 @@ setCustomerOrganizationName("");
   }
   const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
   const [quickSaleMode, setQuickSaleMode] = useState(false);
+  const [lastPOSReceipt, setLastPOSReceipt] = useState<Receipt | null>(null);
+  const saleSubmitLock = useRef(false);
+  const walkInCustomerId = useRef<string | null>(null);
+  const [walkInBusy, setWalkInBusy] = useState(false);
   const [keepSaleCustomer, setKeepSaleCustomer] = useState(false);
   const [saleScanUnit, setSaleScanUnit] = useState<UnitMode>("subunit");
   const [saleScanFocus, setSaleScanFocus] = useState(0);
+  const restoreCounterSale = (sale: CounterSale) => {
+    salesPricingRequest.current += 1;
+    setSalesLines(sale.lines); setSelectedCustomerIdForSale(sale.customerId);
+    setSalesInvoiceDate(sale.date); setSalesPaymentType(sale.paymentType);
+    setSalesDiscountAmount(sale.discount); setSalesDiscountType(sale.discountType); setSalesTaxRate(sale.tax);
+    clearCreditOverrideState(); setSaleScanFocus(value => value + 1);
+    void fetchProducts();
+  };
+  const clearCounterSale = () => {
+    restoreCounterSale({ lines: [], customerId: selectedCustomerIdForSale, date: toDateInputValue(new Date()), paymentType: "cash", discount: "", discountType: "flat", tax: "" });
+  };
+  useEffect(() => {
+    if (!quickSaleMode || !currentOrganizationId || !currentProfile?.id) return;
+    walkInCustomerId.current = null;
+    let cancelled = false;
+    setWalkInBusy(true);
+    authorizedFetch("/api/sales/walk-in", { method: "POST" }).then(async response => {
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "Could not prepare Walk-in customer.");
+      if (!cancelled) { walkInCustomerId.current = result.customer.id; setCustomers(current => current.some(customer => customer.id === result.customer.id) ? current : [...current, result.customer]); setSelectedCustomerIdForSale(current => current ?? result.customer.id); }
+    }).catch(error => { if (!cancelled) setSalesError(error.message); }).finally(() => { if (!cancelled) setWalkInBusy(false); });
+    return () => { cancelled = true; };
+  }, [quickSaleMode, currentOrganizationId, currentProfile?.id]);
   const salesPricingRequest = useRef(0);
   const [recentCustomerPrices, setRecentCustomerPrices] = useState<Record<string, RecentCustomerPrice>>({});
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
@@ -15688,7 +15743,7 @@ setCustomerOrganizationName("");
           <section className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-5" data-help-topic="quick sale">
             <h2 className="text-xl font-semibold">Quick sale</h2>
             <p className="my-2 text-sm">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
-            <button type="button" className="rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); }}>Create a sale / Scan products</button>
+            <button type="button" className="rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); }}>Retail POS / Create a sale</button>
           </section>
         )}
         {activeSection === "dashboard" && staffDashboardData.isStaff && (
@@ -17371,7 +17426,7 @@ setCustomerOrganizationName("");
         <>
         {salesTab === "invoice" && (<section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Sales Invoice</h2>
+            <h2 className="text-xl font-medium text-foreground">{quickSaleMode ? "Retail POS" : "Sales Invoice"}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="sales_invoices"
@@ -17385,6 +17440,14 @@ setCustomerOrganizationName("");
             )}
           </div>
           <div className="space-y-4" {...entryNavigationHandlers}>
+            {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
+              sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
+              products={activeProducts} customers={activeCustomers} total={currentSalesInvoiceTotal} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} focusSignal={saleScanFocus}
+              onScan={code => { try { const product = findBarcodeProduct(products, code); clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); } catch (error) { setSalesError(error instanceof Error ? error.message : "Barcode not found."); } }}
+              onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSaleScanFocus(value => value + 1); } }}
+              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
+            <div className={quickSaleMode ? "hidden" : "space-y-4"}>
+            <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">Open Retail POS</button>
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
               <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? "Quick sale — barcode counter" : "Scan a product"}</h3>
               <label className="mb-3 block text-sm">Each scan adds one <select aria-label="Main unit or sub-unit per scan" value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">Sub-unit (piece, if configured)</option><option value="main">Main unit (box, carton, etc.)</option></select></label>
@@ -17447,7 +17510,7 @@ setCustomerOrganizationName("");
               </label>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <fieldset disabled={!isOwnerOrAdmin()} className="grid gap-4 sm:grid-cols-2 disabled:opacity-60">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span className="flex items-center gap-2">
                   Invoice Discount (Optional)
@@ -17511,8 +17574,9 @@ setCustomerOrganizationName("");
                   Tax is computed on the subtotal after discount (future-ready GST/VAT).
                 </span>
               </label>
-            </div>
+            </fieldset>
 
+            {!isOwnerOrAdmin() && <p className="text-sm text-muted-foreground">Employee submissions support discounts on each product line. Invoice-level discount and tax are not available in the approval flow.</p>}
             {salesPaymentType === "credit" && selectedSalesCustomer && (
               <div className="rounded border border-primary/10 bg-primary/5 p-4 text-sm text-primary/90">
                 <h3 className="mb-2 text-base font-medium text-primary/90">Credit Summary</h3>
@@ -17723,6 +17787,8 @@ setCustomerOrganizationName("");
               {salesInvoiceLoading ? "Saving..." : isOwnerOrAdmin() ? "Save Sales Invoice" : "Send for owner approval"}
             </button>
 
+            </div>
+            {quickSaleMode && lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} />}
             {salesMessage && <p className="mt-4 text-sm text-success">{salesMessage}</p>}
             {salesError && <p className="mt-4 text-sm text-destructive">{salesError}</p>}
             {!isOwnerOrAdmin() && <MyPendingSales key={salesMessage ?? "pending"} />}
@@ -17730,7 +17796,7 @@ setCustomerOrganizationName("");
         </section>
 
         )}
-        {isOwnerOrAdmin() && (
+        {isOwnerOrAdmin() && (!quickSaleMode || salesTab === "history") && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">Sales History</h2>
           <p className="mb-3 text-xs text-muted-foreground/80">
