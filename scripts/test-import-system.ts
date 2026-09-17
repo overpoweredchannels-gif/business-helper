@@ -14,11 +14,16 @@ import {
   guessColumnMapping,
   reconcileColumnMapping,
 } from "../src/lib/import-export/mapping";
-import { parseCellValue } from "../src/lib/import-export/processor";
+import { importErrorMessage, parseCellValue } from "../src/lib/import-export/processor";
 import { runImport } from "../src/lib/import-export/processor";
 import type { EntityImportConfig, ImportContext, ImportPreviewResult, ParsedRow } from "../src/lib/import-export/types";
 
 async function main() {
+  assert.equal(
+    importErrorMessage({ message: "Column supplier_code does not exist", details: "schema cache is stale", hint: "Run the migration", code: "PGRST204" }),
+    "Column supplier_code does not exist — schema cache is stale — Run the migration — Code: PGRST204",
+  );
+  assert.equal(importErrorMessage({ code: "PGRST204" }), "Could not import this row.");
   const corrected = assignImportColumn({ Product: "name", Cotton: "skip", Stock: "initial_stock" }, "Cotton", "initial_stock");
   assert.equal(corrected.Stock, "skip");
   const cottonPreview = validateImportRows({ fileColumns: ["Product", "Cotton", "Stock"], mapping: corrected,

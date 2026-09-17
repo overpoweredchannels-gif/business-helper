@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { getEntityConfig } from "@/lib/import-export/registry";
-import { readImportFile, parseCellValue, validateParsedRow, buildPreviewResult, runImport } from "@/lib/import-export/processor";
+import { readImportFile, parseCellValue, validateParsedRow, buildPreviewResult, importErrorMessage, runImport } from "@/lib/import-export/processor";
 import {
   DEFAULT_MAX_IMPORT_ROWS,
   PRESERVE_IN_NOTES,
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
       if (config.findExisting) {
         let existing;
         try { existing = await config.findExisting(row, importContext); } catch (error) {
-          row.errors.push(error instanceof Error ? error.message : "Could not resolve record"); row.status = "error"; stats.errorCount++; continue;
+          row.errors.push(importErrorMessage(error, "Could not resolve this existing record.")); row.status = "error"; stats.errorCount++; continue;
         }
         if (existing) {
           existingId = typeof existing === "object" && existing !== null && "id" in existing
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, result });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Import failed";
+    const message = importErrorMessage(err, "Import failed. No rows were saved.");
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

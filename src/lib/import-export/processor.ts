@@ -18,6 +18,21 @@ import { guessColumnMapping } from "./mapping";
 
 export { parseCsv, guessColumnMapping };
 
+/** Convert database and network failures into messages users can act on. */
+export function importErrorMessage(error: unknown, fallback = "Could not import this row."): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (error && typeof error === "object") {
+    const value = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const message = typeof value.message === "string" ? value.message.trim() : "";
+    const details = typeof value.details === "string" ? value.details.trim() : "";
+    const hint = typeof value.hint === "string" ? value.hint.trim() : "";
+    const code = typeof value.code === "string" ? value.code.trim() : "";
+    if (message) return [message, details && details !== message ? details : "", hint, code ? `Code: ${code}` : ""].filter(Boolean).join(" — ");
+  }
+  if (typeof error === "string" && error.trim()) return error.trim();
+  return fallback;
+}
+
 /** Read file (CSV/Excel/ODS) and return header row + data rows. */
 export async function readImportFile(file: File): Promise<{ headers: string[]; rows: string[][] }> {
   const lower = file.name.toLowerCase();
@@ -264,7 +279,7 @@ export async function runImport(
       }
     } catch (err) {
       result.failed++;
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = importErrorMessage(err);
       result.failures.push({ rowLabel: `Row ${row.rowIndex}`, message: msg });
     }
   }
@@ -296,7 +311,7 @@ async function runBatchedInserts(
       result.failed++;
       result.failures.push({
         rowLabel: `Row ${row.rowIndex}`,
-        message: err instanceof Error ? err.message : String(err),
+        message: importErrorMessage(err),
       });
     }
   }
@@ -342,7 +357,7 @@ async function runPostImportHook(
   try {
     await config.postImportHook(created, updated, ctx);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = importErrorMessage(err, "The post-import step failed.");
     result.failures.push({ rowLabel: "Post-import hook", message: msg });
   }
 }
