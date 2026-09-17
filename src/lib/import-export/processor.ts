@@ -154,6 +154,7 @@ export function buildPreviewResult(
   const errorRows: { rowIndex: number; message: string }[] = [];
   
   for (const row of rows) {
+    if (row.warnings.length > 0) stats.warningCount++;
     if (row.errors.length > 0) {
       stats.errorCount++;
       errorRows.push({ rowIndex: row.rowIndex, message: row.errors.join("; ") });
@@ -166,7 +167,7 @@ export function buildPreviewResult(
       } else stats.updateCount++;
     }
     else if (row.status === "skip") stats.skipCount++;
-    else if (row.status === "warning") stats.warningCount++;
+    else if (row.status === "warning") stats.newCount++;
   }
   
   return { fileColumns, rows, stats, errorRows };
@@ -227,6 +228,7 @@ export async function runImport(
           continue;
         }
         // Update mode
+        if (!config.applyUpdate) throw new Error("This record does not support updates through import. Review the existing record in its ledger.");
         if (config.applyUpdate) {
           const payload = await config.buildUpsertPayload!(row, ctx);
           await config.applyUpdate({ id: row.existingId, rawValues: row.values }, payload, ctx);

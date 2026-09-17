@@ -1,3 +1,4 @@
+import { reviewImportDuplicates } from "@/lib/import-export/review";
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const entityKey = String(formData.get("entity_key") ?? "");
     const mode = String(formData.get("mode") ?? "preview");
-    const duplicateModeValue = String(formData.get("duplicate_mode") ?? "skip");
+    const duplicateModeValue = String(formData.get("duplicate_mode") ?? "error");
     const duplicateMode = duplicateModeValue as "skip" | "update" | "error";
     const createMissingRefs = formData.get("create_missing_refs") === "true";
     const mappingStr = formData.get("mapping") as string;
@@ -109,6 +110,7 @@ export async function POST(request: NextRequest) {
     const fileName = requestedFileName || file.name;
     const importContext: ImportContext = {
       orgId,
+      previewOnly: true,
       supabase,
       actorProfileId: profileId,
       createMissingRefs,
@@ -187,6 +189,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    reviewImportDuplicates(parsedRows, config, duplicateMode);
     // Build preview result
     const preview = buildPreviewResult(headers, parsedRows, duplicateMode);
 
@@ -194,6 +197,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, preview });
     }
 
+    if (preview.stats.errorCount > 0 || preview.stats.newCount + preview.stats.updateCount === 0) {
+      return NextResponse.json({ ok: false, error: "Nothing was saved. Resolve the review issues or duplicate handling and preview again.", preview }, { status: 409 });
+    }
+    importContext.previewOnly = false;
     // Run actual import
     // Create audit record
     const { data: auditRecord, error: auditError } = await supabase

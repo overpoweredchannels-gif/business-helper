@@ -125,23 +125,25 @@ export const productsImportConfig: EntityImportConfig = {
     
     // Try SKU first
     if (v.sku) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("products")
         .select("id")
         .eq("organization_id", ctx.orgId)
         .eq("sku", String(v.sku).trim())
         .maybeSingle();
+      if (error) throw new Error(`Could not identify a unique existing record: ${error.message}`);
       if (data) return data as any;
     }
     
     // Try barcode
     if (v.barcode) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("products")
         .select("id")
         .eq("organization_id", ctx.orgId)
         .eq("barcode", String(v.barcode).trim())
         .maybeSingle();
+      if (error) throw new Error(`Could not identify a unique existing record: ${error.message}`);
       if (data) return data as any;
     }
     
@@ -149,25 +151,28 @@ export const productsImportConfig: EntityImportConfig = {
     if (v.name && v.brand) {
       const brandId = await resolveRef(ctx, "brands", v.brand as string);
       if (brandId) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("products")
           .select("id")
           .eq("organization_id", ctx.orgId)
           .eq("name", String(v.name).trim())
           .eq("brand_id", brandId)
           .maybeSingle();
+        if (error) throw new Error(`Could not identify a unique existing record: ${error.message}`);
         if (data) return data as any;
       }
     }
     
+    if (v.brand) return null; // A different or newly created brand must not match another brand by name.
     // Try name only (if unique within org)
     if (v.name) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("products")
         .select("id")
         .eq("organization_id", ctx.orgId)
         .eq("name", String(v.name).trim())
         .maybeSingle();
+      if (error) throw new Error(`Could not identify a unique existing record: ${error.message}`);
       if (data) return data as any;
     }
     

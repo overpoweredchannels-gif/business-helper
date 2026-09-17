@@ -1,3 +1,4 @@
+import { resolveImportReference } from "../references";
 import { PurchaseRepository } from "@/lib/purchases/repositories/purchase-repository";
 // TradeOS ERP — Purchases Import Config
 
@@ -178,23 +179,5 @@ export const purchasesImportConfig: EntityImportConfig = {
 };
 
 async function resolveRef(ctx: ImportContext, table: string, name: string, nameColumn = "name"): Promise<string | null> {
-  if (!name?.trim()) return null;
-  const key = name.trim().toLowerCase();
-  
-  let cache = ctx.refCaches.get(table);
-  if (!cache) {
-    cache = new Map();
-    ctx.refCaches.set(table, cache);
-    const { data } = await ctx.supabase
-      .from(table)
-      .select(`id, ${nameColumn}`)
-      .eq("organization_id", ctx.orgId);
-    for (const row of data ?? []) {
-      cache.set(String(row[nameColumn]).trim().toLowerCase(), row.id);
-    }
-  }
-  
-  if (cache.has(key)) return cache.get(key)!;
-  
-  return null;
+  return resolveImportReference(ctx, table, name, nameColumn, false, table === "employees" ? "profile_id" : "id");
 }

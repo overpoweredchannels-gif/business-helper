@@ -1,3 +1,4 @@
+import { resolveImportReference } from "../references";
 // TradeOS ERP — Sales Invoices Import Config
 //
 // Imports full sales invoices with line items. This is the most complex entity
@@ -183,25 +184,5 @@ export const salesInvoicesImportConfig: EntityImportConfig = {
 };
 
 async function resolveRef(ctx: ImportContext, table: string, name: string, nameColumn = "name"): Promise<string | null> {
-  if (!name?.trim()) return null;
-  const key = name.trim().toLowerCase();
-  
-  let cache = ctx.refCaches.get(table);
-  if (!cache) {
-    cache = new Map();
-    ctx.refCaches.set(table, cache);
-    const selectCol = table === "employees" ? "profile_id, full_name" : `id, ${nameColumn}`;
-    const { data } = await ctx.supabase
-      .from(table)
-      .select(selectCol)
-      .eq("organization_id", ctx.orgId);
-    for (const row of data ?? []) {
-      const referencedId = table === "employees" ? row.profile_id : row.id;
-      if (referencedId) cache.set(String(row[nameColumn]).trim().toLowerCase(), referencedId);
-    }
-  }
-  
-  if (cache.has(name.trim().toLowerCase())) return cache.get(name.trim().toLowerCase())!;
-  
-  return null;
+  return resolveImportReference(ctx, table, name, nameColumn, false, table === "employees" ? "profile_id" : "id");
 }

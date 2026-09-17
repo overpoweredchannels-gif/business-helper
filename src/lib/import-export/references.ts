@@ -1,18 +1,19 @@
 import { allPages } from "@/lib/supabase/all-pages";
 import type { ImportContext } from "./types";
 
-export async function resolveImportReference(ctx: ImportContext, table: string, name: string, nameColumn = "name", allowCreate = false): Promise<string | null> {
+export async function resolveImportReference(ctx: ImportContext, table: string, name: string, nameColumn = "name", allowCreate = false, idColumn = "id"): Promise<string | null> {
   if (!name?.trim()) return null;
   const key = name.trim().toLocaleLowerCase();
-  const cacheKey = `${table}:${nameColumn}`;
+  const cacheKey = `${table}:${nameColumn}:${idColumn}`;
   let cache = ctx.refCaches.get(cacheKey);
   if (!cache) {
-    const result = await allPages<Record<string, any>>((from, to) => ctx.supabase.from(table).select(`id,${nameColumn}`).eq("organization_id", ctx.orgId).order("id").range(from, to));
+    const result = await allPages<Record<string, any>>((from, to) => ctx.supabase.from(table).select(`${idColumn},${nameColumn}`).eq("organization_id", ctx.orgId).order(idColumn).range(from, to));
     if (result.error) throw new Error(result.error.message);
     cache = new Map();
     for (const row of result.data ?? []) {
+      if (!row[idColumn]) continue;
       const label = String(row[nameColumn] ?? "").trim().toLocaleLowerCase();
-      cache.set(label, cache.has(label) ? "" : row.id);
+      cache.set(label, cache.has(label) ? "" : row[idColumn]);
     }
     ctx.refCaches.set(cacheKey, cache);
   }
@@ -22,6 +23,7 @@ export async function resolveImportReference(ctx: ImportContext, table: string, 
     return id;
   }
   if (allowCreate && ctx.createMissingRefs && ["brands", "categories", "territories"].includes(table)) {
+    if (ctx.previewOnly) return null;
     const { data, error } = await ctx.supabase.from(table).insert({ organization_id: ctx.orgId, [nameColumn]: name.trim() }).select("id").single();
     if (error) throw new Error(error.message);
     cache.set(key, data.id);

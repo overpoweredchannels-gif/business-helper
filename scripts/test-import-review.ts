@@ -1,0 +1,43 @@
+import assert from "node:assert/strict";
+import * as XLSX from "xlsx";
+import { prepareImportFile } from "../src/lib/import-export/prepare-file";
+import { readImportFile, buildPreviewResult, guessColumnMapping } from "../src/lib/import-export/processor";
+import { reviewImportDuplicates } from "../src/lib/import-export/review";
+import { resolveImportReference } from "../src/lib/import-export/references";
+import { productsImportConfig as config } from "../src/lib/import-export/entities/products";
+import type { ParsedRow, ImportContext } from "../src/lib/import-export/types";
+
+async function main() {
+  const prepared = prepareImportFile(["Product", "Code", "Cotton"], [["Soap", "00123", "35"]], {Product:"name",Code:"barcode",Cotton:"initial_stock"}, config.fields);
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([prepared.keys, ...prepared.rows]), "Import");
+  const file = new File([XLSX.write(book, {type:"buffer",bookType:"xlsx"})], "prepared.xlsx");
+  const parsed = await readImportFile(file);
+  const mapping = guessColumnMapping(parsed.headers, config.fields);
+  assert.equal(mapping.initial_stock, "initial_stock");
+  assert.equal(parsed.rows[0][parsed.headers.indexOf("barcode")], "00123");
+  assert.equal(parsed.rows[0][parsed.headers.indexOf("initial_stock")], "35");
+  const row = (i=2): ParsedRow => ({ rowIndex:i,raw:{},values:{name:"Soap",barcode:"00123",initial_stock:35}, errors:[],warnings:[],status:"update",existingId:"product-1" });
+  assert.equal(buildPreviewResult(parsed.headers,[row()],"skip").stats.skipCount,1, "Reproduces previous all-skipped behavior on existing records");
+  const reviewed=[row()]; reviewImportDuplicates(reviewed,config,"error");
+  const preview=buildPreviewResult(parsed.headers,reviewed,"error");
+  assert.equal(preview.stats.errorCount,1); assert.equal(preview.stats.skipCount,0); assert.equal(preview.rows.length,1);
+  const update=[row()]; reviewImportDuplicates(update,config,"update");
+  assert(update[0].errors.some(e=>e.includes("Opening stock")));
+  const duplicates=[row(),row(3)]; duplicates.forEach(r=>{r.existingId=null;r.status="new";});
+  reviewImportDuplicates(duplicates,config,"error");
+  assert(duplicates.every(r=>r.errors.some(e=>e.includes("duplicate source")))); assert.equal(duplicates.length,2);
+  const unique=row(); unique.existingId=null;unique.status="new";
+  reviewImportDuplicates([unique],config,"error");assert.equal(buildPreviewResult([], [unique],"error").stats.newCount,1);
+  let writes=0;
+  const context={orgId:"org",previewOnly:true,createMissingRefs:true,refCaches:new Map(),supabase:{from:()=>({select(){return this;},eq(){return this;},order(){return this;},range:async()=>({data:[],error:null}),insert(){writes++;throw Error("unexpected write");}})}} as unknown as ImportContext;
+  assert.equal(await resolveImportReference(context,"brands","New brand","name",true),null);assert.equal(writes,0);
+  context.refCaches.set("customers:customer_name:id",new Map([["same name",""]]));
+  await assert.rejects(()=>resolveImportReference(context,"customers","Same name","customer_name"),/More than one/);
+  const offsets: number[] = [];
+  const paged={...context,refCaches:new Map(),supabase:{from:()=>({select(){return this;},eq(){return this;},order(){return this;},range:async(from:number)=>{offsets.push(from);return {error:null,data:from===0?Array.from({length:500},(_,i)=>({id:`customer-${i}`,customer_name:`Customer ${i}`})):[{id:"last",customer_name:"Beyond first page"}]};}})}} as unknown as ImportContext;
+  assert.equal(await resolveImportReference(paged,"customers","Beyond first page","customer_name"),"last");
+  assert.deepEqual(offsets,[0,500]);
+  console.log("Import review tests passed: prepared workbook round trip, explicit duplicate review, no lost rows, repeat-stock protection, read-only preview and ambiguous links.");
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});

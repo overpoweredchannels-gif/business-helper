@@ -89,8 +89,10 @@ function ImportWizardContent({
   const [headers, setHeaders] = useState<string[]>([]);
   const [dataRows, setDataRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<ColumnMapping>({});
-  const [mode, setMode] = useState<"skip" | "update" | "error">("skip");
+  const [mode, setMode] = useState<"skip" | "update" | "error">("error");
   const [createMissingRefs, setCreateMissingRefs] = useState(true);
+  const [previewPage, setPreviewPage] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportRunResult | null>(null);
@@ -137,8 +139,8 @@ function ImportWizardContent({
   const unmappedTargetField = getUnmappedTargetField(config.fields);
 
   const previewRows = useMemo(
-    () => (preview ? preview.rows.slice(0, MAX_PREVIEW_ROWS) : []),
-    [preview]
+    () => (preview ? preview.rows.slice(previewPage * MAX_PREVIEW_ROWS, (previewPage + 1) * MAX_PREVIEW_ROWS) : []),
+    [preview, previewPage]
   );
 
   const previewFields = useMemo(() => {
@@ -171,7 +173,7 @@ function ImportWizardContent({
     setPreview(null);
     setImportResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-  }, []);
+  }, [setDataRows, setFileError, setFileName, setHeaders, setImportResult, setMapping, setPreview]);
 
   const handleFileChange = useCallback(async (file: File | undefined) => {
     aiRequest.current++; setAiBusy(false); setSuggestions([]); setAiNotice("");
@@ -252,7 +254,7 @@ function ImportWizardContent({
     } catch (err) {
       if (fileRef.current === file) setFileError(err instanceof Error ? `Failed to read file: ${err.message}` : "Failed to read file.");
     }
-  }, [config, templates, defaultTemplateId]);
+  }, [config, templates, defaultTemplateId, setDataRows, setFileError, setFileName, setHeaders, setImportResult, setMapping, setPreview, setTemplateMessage]);
 
   const setFieldForColumn = useCallback((column: string, field: string) => {
     setMapping(prev => {
@@ -263,7 +265,7 @@ function ImportWizardContent({
       next[column] = field;
       return next;
     });
-  }, []);
+  }, [setMapping]);
 
   const handleRunPreview = useCallback(async () => {
     if (previewLock.current) return;
@@ -296,6 +298,7 @@ function ImportWizardContent({
         return;
       }
 
+      setPreviewPage(0);
       setPreview(data.preview);
       setStep("preview");
     } catch (err) {
@@ -305,10 +308,10 @@ function ImportWizardContent({
       setPreviewBusy(false);
       onImportingChange?.(false);
     }
-  }, [entityKey, mapping, mode, createMissingRefs, fileName, onImportingChange]);
+  }, [entityKey, mapping, mode, createMissingRefs, fileName, onImportingChange, setFileError, setPreview, setPreviewBusy, setPreviewPage]);
 
   const handleRunImport = useCallback(async () => {
-    if (!fileRef.current || !preview || runLock.current) return;
+    if (!fileRef.current || !preview || preview.stats.errorCount > 0 || runLock.current) return;
     runLock.current = true;
     setImporting(true);
     onImportingChange?.(true);
@@ -331,6 +334,7 @@ function ImportWizardContent({
       const data = await res.json();
       if (!data.ok) {
         setFileError(data.error || "Import failed");
+        if (data.preview) { setPreview(data.preview); setPreviewPage(0); setStep("preview"); }
         return;
       }
 
@@ -345,7 +349,7 @@ function ImportWizardContent({
       runLock.current = false;
       onImportingChange?.(false);
     }
-  }, [entityKey, mapping, mode, createMissingRefs, fileName, preview, onImported, onImportingChange]);
+  }, [entityKey, mapping, mode, createMissingRefs, fileName, preview, onImported, onImportingChange, setFileError, setImportResult, setImporting, setPreview, setPreviewPage]);
 
   const handleSaveTemplate = useCallback(async () => {
     const name = templateName.trim();
@@ -371,7 +375,7 @@ function ImportWizardContent({
     } catch (err) {
       setTemplateMessage(err instanceof Error ? `Failed to save template: ${err.message}` : "Failed to save template");
     }
-  }, [entityKey, templateName, mapping, mappedFieldCount, loadTemplates]);
+  }, [entityKey, templateName, mapping, mappedFieldCount, loadTemplates, setTemplateMessage, setTemplateName]);
 
   const handleRenameTemplate = useCallback(async (template: any) => {
     const name = editingTemplateName.trim();
@@ -409,7 +413,7 @@ function ImportWizardContent({
     } catch (err) {
       setTemplateMessage(err instanceof Error ? `Failed to delete template: ${err.message}` : "Failed to delete template");
     }
-  }, [loadTemplates]);
+  }, [loadTemplates, setTemplateMessage]);
 
   return (
     <div className="import-workflow space-y-6">
@@ -419,7 +423,8 @@ function ImportWizardContent({
           Upload CSV, Excel (.xlsx / .xls), OpenDocument (.ods), or Excel XML. Map columns, preview, then confirm the import.
         </p>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div onDragOver={event => { event.preventDefault(); if (!previewBusy && !importing) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (previewBusy || importing || templatesLoading || (templatesError && !useManualMapping)) return; if (event.dataTransfer.files.length !== 1) { setFileError("Drop one file for this record type at a time. Every file needs its own review."); return; } void handleFileChange(event.dataTransfer.files[0]); }} className={`flex flex-col gap-3 rounded-xl border-2 border-dashed p-5 ${dragging ? "border-primary bg-primary/10" : "border-border"}`}>
+          <p className="font-medium">Drag a file here, or choose it below</p>
           <input
             ref={fileInputRef}
             type="file"
@@ -603,11 +608,11 @@ function ImportWizardContent({
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="radio" checked={mode === "update"} onChange={() => setMode("update")} className="h-4 w-4" />
-                Update existing (by unique keys)
+                Update matching records — only supplied fields
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="radio" checked={mode === "error"} onChange={() => setMode("error")} className="h-4 w-4" />
-                Error on duplicates
+                Review duplicates before saving (recommended)
               </label>
               <label className="mt-1 flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={createMissingRefs} onChange={(e) => setCreateMissingRefs(e.target.checked)} className="h-4 w-4 accent-primary" />
@@ -639,7 +644,7 @@ function ImportWizardContent({
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
               {preview.stats.errorCount > 0
-                ? "Rows with an error are omitted. Everything else will be imported."
+                ? "Nothing will be saved until these review issues are resolved. All source rows remain visible."
                 : `Ready to import ${preview.stats.newCount + preview.stats.updateCount} rows.`}
             </p>
           </div>
@@ -670,7 +675,7 @@ function ImportWizardContent({
               </thead>
               <tbody>
                 {previewRows.map((row) => {
-                  const status = row.errors.length > 0 ? "error" : row.existingId ? (mode === "update" ? "update" : "skipped") : row.warnings.length > 0 ? "warning" : "new";
+                  const status = row.errors.length > 0 ? "error" : row.existingId ? (mode === "update" ? "update" : mode === "error" ? "error" : "skipped") : row.warnings.length > 0 ? "warning" : "new";
                   return (
                     <tr key={row.rowIndex} className="border-b border-border/50 align-top">
                       <td className="px-3 py-2 text-muted-foreground">{row.rowIndex}</td>
@@ -692,17 +697,16 @@ function ImportWizardContent({
                     </tr>
                   );
                 })}
-                {preview.rows.length > MAX_PREVIEW_ROWS && (
-                  <tr>
-                    <td colSpan={previewFields.length + 3} className="px-3 py-2 text-sm text-muted-foreground">...and {preview.rows.length - MAX_PREVIEW_ROWS} more rows</td>
-                  </tr>
-                )}
+
               </tbody>
             </table>
           </div>
 
+          <div className="flex items-center gap-3 text-sm"><button type="button" className="rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" disabled={previewPage === 0 || importing} onClick={() => setPreviewPage(page => page - 1)}>Previous rows</button><span>Page {previewPage + 1} of {Math.max(1, Math.ceil(preview.rows.length / MAX_PREVIEW_ROWS))} · {preview.rows.length} source rows</span><button type="button" className="rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" disabled={(previewPage + 1) * MAX_PREVIEW_ROWS >= preview.rows.length || importing} onClick={() => setPreviewPage(page => page + 1)}>Next rows</button></div>
+          {preview.stats.skipCount > 0 && <div role="status" className="rounded-lg border border-warning p-4 text-sm"><strong>Why are rows skipped?</strong><p>These rows matched records already in your business and Skip existing was selected. Generating an Excel file does not create records. Review the matches below and return to mapping to choose the appropriate action.</p></div>}
+          <p className="text-sm">You can import this reviewed source file directly. Downloading and uploading the prepared Excel again is optional.</p>
           <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={handleRunImport} disabled={importing || preview.stats.newCount + preview.stats.updateCount === 0} className="rounded bg-success px-4 py-2 text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30">
+            <button type="button" onClick={handleRunImport} disabled={importing || preview.stats.errorCount > 0 || preview.stats.newCount + preview.stats.updateCount === 0} className="rounded bg-success px-4 py-2 text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30">
               {importing ? "Importing..." : `Import ${preview.stats.newCount + preview.stats.updateCount} rows`}
             </button>
             <button type="button" onClick={() => setStep("mapping")} disabled={importing} className="rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30">Back to Mapping</button>

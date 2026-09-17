@@ -107,6 +107,7 @@ export interface ExportFilters {
 }
 
 export interface ImportContext {
+  previewOnly?: boolean;
   orgId: string;
   supabase: any;
   actorProfileId?: string;

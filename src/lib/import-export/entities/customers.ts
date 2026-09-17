@@ -108,22 +108,24 @@ export const customersImportConfig: EntityImportConfig = {
     const supabase = ctx.supabase;
     
     if (v.customer_name) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("customers")
         .select("id")
         .eq("organization_id", ctx.orgId)
         .eq("customer_name", String(v.customer_name).trim())
         .maybeSingle();
+      if (error) throw new Error(`Could not identify a unique existing record: ${error.message}`);
       if (data) return data as any;
     }
     
     if (v.phone) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("customers")
         .select("id")
         .eq("organization_id", ctx.orgId)
         .eq("phone", String(v.phone).trim())
         .maybeSingle();
+      if (error) throw new Error(`Could not identify a unique existing record: ${error.message}`);
       if (data) return data as any;
     }
     
