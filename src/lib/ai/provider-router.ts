@@ -75,11 +75,8 @@ const getModelsForProvider = (provider: AiProviderName) => {
   }
 
   if (provider === "openai") {
-    if (!envText("OPENAI_API_KEY")) return [];
-    return uniqueTexts([
-      envText("OPENAI_PRIMARY_MODEL") || envText("OPENAI_MODEL") || "gpt-5.4-mini",
-      envText("OPENAI_FALLBACK_MODEL"),
-    ]);
+    if (!envText("EXPLABS_API_KEY")) return [];
+    return ["gpt-5.6-luna"];
   }
 
   if (provider === "groq") {
@@ -263,6 +260,29 @@ const callOpenAiResponses = async (model: string, prompt: string, temperature: n
   return { ok: true as const, status: response.status, text: extractOpenAiResponseText(raw), raw };
 };
 
+const callExperientialChatCompletions = async (model: string, prompt: string, temperature: number) => {
+  const response = await fetchWithTimeout("https://api.experientiallabs.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + envText("EXPLABS_API_KEY"),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      temperature,
+    }),
+  });
+
+  const responseText = await response.text();
+  const raw = parseResponseText(responseText);
+  if (!response.ok) {
+    return { ok: false as const, status: response.status, error: extractProviderError(response.status, responseText), raw };
+  }
+
+  return { ok: true as const, status: response.status, text: extractChatCompletionText(raw), raw };
+};
+
 const callChatCompletions = async (
   provider: Exclude<AiProviderName, "gemini" | "openai">,
   model: string,
@@ -314,7 +334,7 @@ const callProvider = async (
   temperature: number
 ) => {
   if (provider === "gemini") return callGemini(model, prompt, jsonMode, temperature);
-  if (provider === "openai") return callOpenAiResponses(model, prompt, temperature);
+  if (provider === "openai") return callExperientialChatCompletions(model, prompt, temperature);
   return callChatCompletions(provider, model, prompt, temperature);
 };
 
