@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
     const importContext: ImportContext = {
       orgId,
       previewOnly: true,
+      cutoverDate: String(formData.get("cutover_date") ?? ""),
       supabase,
       actorProfileId: profileId,
       createMissingRefs,
@@ -189,6 +190,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (config.reviewRows) await config.reviewRows(parsedRows, importContext);
     reviewImportDuplicates(parsedRows, config, duplicateMode);
     // Build preview result
     const preview = buildPreviewResult(headers, parsedRows, duplicateMode);

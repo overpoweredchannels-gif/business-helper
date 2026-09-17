@@ -8,11 +8,14 @@ export function prepareImportFile(headers: string[], rows: string[][], mapping: 
   if (!targets.length) throw new Error("Map at least one column before preparing the file.");
   const notes = getUnmappedTargetField(fields);
   const keys = fields.filter(field => field.required || targets.includes(field.key) || (field.key === notes && headers.some(header => mapping[header] === PRESERVE_IN_NOTES))).map(field => field.key);
-  const missing = fields.filter(field => field.required && !targets.includes(field.key)).map(field => field.label);
+  const missing = fields.filter(field => field.required && field.defaultValue === undefined && !targets.includes(field.key)).map(field => field.label);
   const prepared = rows.map(row => {
     const raw = Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""]));
     const values: Record<string, unknown> = {};
     headers.forEach(header => { if (allowed.has(mapping[header])) values[mapping[header]] = raw[header]; });
+    for (const field of fields) {
+      if (field.required && field.defaultValue !== undefined && !String(values[field.key] ?? "").trim()) values[field.key] = field.defaultValue;
+    }
     appendPreservedImportData(values, raw, mapping, fields);
     return keys.map(key => String(values[key] ?? ""));
   });

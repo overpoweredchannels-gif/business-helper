@@ -18,3 +18,6 @@ assert.equal(missing.rows[0][0], "");
 const preserved = prepareImportFile(["Product", "Extra"], [["Soap", "Fragile"]], { Product: "name", Extra: "__preserve_in_notes__" }, fields);
 assert(preserved.rows[0].some(value => value.includes("Extra: Fragile")));
 console.log("Prepared-file tests passed: mapped order, missing required values, sparse optional fields, duplicate rejection, preserved notes, leading zeroes and non-executable string cells.");
+
+const defaults = prepareImportFile(["Code"], [["00123"]], { Code: "barcode" }, [{key:"source_system",label:"Source",type:"text",required:true,defaultValue:"External records"},{key:"barcode",label:"Barcode",type:"text"}]);
+assert.equal(defaults.incompleteRows,0);assert.equal(defaults.rows[0][0],"External records");

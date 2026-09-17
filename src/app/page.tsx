@@ -46,6 +46,7 @@ import NotificationCenter from "@/components/fsm/NotificationCenter";
 import TerritoriesManager from "@/components/fsm/TerritoriesManager";
 import RoutesManager from "@/components/fsm/RoutesManager";
 import LiveTrackingView from "@/components/fsm/LiveTrackingView";
+import HistoricalRecords from "@/components/import-export/HistoricalRecords";
 import CustomerHistory from "@/components/sales/CustomerHistory";
 import {
   aiAssistantExampleCommands,
@@ -21061,6 +21062,7 @@ setCustomerOrganizationName("");
           <h2 className="mb-4 text-xl font-medium text-foreground">
             {supplierEditingId ? "Edit Supplier" : "Supplier Management"}
           </h2>
+          <details className="mb-5 rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium">View imported supplier history</summary><div className="mt-3"><HistoricalRecords organizationId={currentOrganizationId} partyType="supplier" /></div></details>
           <div className="space-y-4">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>Supplier Name</span>

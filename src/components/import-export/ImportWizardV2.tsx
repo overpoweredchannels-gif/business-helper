@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import type { MappingSuggestion } from "@/lib/import-export/ai-guidance";
+import { historicalReviewSummary } from "@/lib/import-export/entities/historical-sales";
 import { PreparedFileReview } from "./PreparedFileReview";
 import { parseCsv } from "@/lib/import-wizard/csv";
 import {
@@ -30,7 +31,7 @@ const STATUS_LABEL: Record<string, string> = {
   update: "Update",
   skipped: "Skipped",
   error: "Error",
-  warning: "Import (fix)",
+  warning: "New (review notes)",
 };
 
 interface ImportWizardV2Props {
@@ -89,6 +90,9 @@ function ImportWizardContent({
   const [headers, setHeaders] = useState<string[]>([]);
   const [dataRows, setDataRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<ColumnMapping>({});
+  const historical = entityKey.startsWith("historical_");
+  const [cutoverDate, setCutoverDate] = useState("");
+  const [historyConfirmed, setHistoryConfirmed] = useState(false);
   const [mode, setMode] = useState<"skip" | "update" | "error">("error");
   const [createMissingRefs, setCreateMissingRefs] = useState(true);
   const [previewPage, setPreviewPage] = useState(0);
@@ -142,6 +146,8 @@ function ImportWizardContent({
     () => (preview ? preview.rows.slice(previewPage * MAX_PREVIEW_ROWS, (previewPage + 1) * MAX_PREVIEW_ROWS) : []),
     [preview, previewPage]
   );
+
+  const historySummary = historical && preview && preview.stats.errorCount === 0 ? historicalReviewSummary(entityKey, preview.rows) : null;
 
   const previewFields = useMemo(() => {
     if (!preview) return [] as string[];
@@ -269,6 +275,7 @@ function ImportWizardContent({
 
   const handleRunPreview = useCallback(async () => {
     if (previewLock.current) return;
+    if (historical && (!cutoverDate || !historyConfirmed)) { setFileError("Choose your stock/balance start date and confirm history-only importing."); return; }
     if (!fileRef.current) {
       setFileError("Please select a file first.");
       return;
@@ -280,6 +287,7 @@ function ImportWizardContent({
     try {
       const formData = new FormData();
       formData.set("entity_key", entityKey);
+      formData.set("cutover_date", cutoverDate);
       formData.set("mode", "preview");
       formData.set("duplicate_mode", mode);
       formData.set("create_missing_refs", String(createMissingRefs));
@@ -308,7 +316,7 @@ function ImportWizardContent({
       setPreviewBusy(false);
       onImportingChange?.(false);
     }
-  }, [entityKey, mapping, mode, createMissingRefs, fileName, onImportingChange, setFileError, setPreview, setPreviewBusy, setPreviewPage]);
+  }, [entityKey, mapping, mode, createMissingRefs, fileName, cutoverDate, onImportingChange, setFileError, setPreview, setPreviewBusy, setPreviewPage, historical, historyConfirmed]);
 
   const handleRunImport = useCallback(async () => {
     if (!fileRef.current || !preview || preview.stats.errorCount > 0 || runLock.current) return;
@@ -319,6 +327,7 @@ function ImportWizardContent({
     try {
       const formData = new FormData();
       formData.set("entity_key", entityKey);
+      formData.set("cutover_date", cutoverDate);
       formData.set("mode", "run");
       formData.set("duplicate_mode", mode);
       formData.set("create_missing_refs", String(createMissingRefs));
@@ -349,7 +358,7 @@ function ImportWizardContent({
       runLock.current = false;
       onImportingChange?.(false);
     }
-  }, [entityKey, mapping, mode, createMissingRefs, fileName, preview, onImported, onImportingChange, setFileError, setImportResult, setImporting, setPreview, setPreviewPage]);
+  }, [entityKey, mapping, mode, createMissingRefs, fileName, cutoverDate, preview, onImported, onImportingChange, setFileError, setImportResult, setImporting, setPreview, setPreviewPage]);
 
   const handleSaveTemplate = useCallback(async () => {
     const name = templateName.trim();
@@ -423,6 +432,7 @@ function ImportWizardContent({
           Upload CSV, Excel (.xlsx / .xls), OpenDocument (.ods), or Excel XML. Map columns, preview, then confirm the import.
         </p>
 
+        {["sales_invoices", "purchases", "customer_payments", "supplier_payments"].includes(entityKey) && <p className="rounded-lg border border-amber-300 bg-amber-50/10 p-3 text-sm"><strong>Live records import.</strong> These records can affect current inventory or financial ledgers. For old records already included in your opening stock/balances, use the Historical options in Setup &amp; Data Import.</p>}
         <div onDragOver={event => { event.preventDefault(); if (!previewBusy && !importing) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (previewBusy || importing || templatesLoading || (templatesError && !useManualMapping)) return; if (event.dataTransfer.files.length !== 1) { setFileError("Drop one file for this record type at a time. Every file needs its own review."); return; } void handleFileChange(event.dataTransfer.files[0]); }} className={`flex flex-col gap-3 rounded-xl border-2 border-dashed p-5 ${dragging ? "border-primary bg-primary/10" : "border-border"}`}>
           <p className="font-medium">Drag a file here, or choose it below</p>
           <input
@@ -437,7 +447,7 @@ function ImportWizardContent({
         </div>
         {templatesLoading && <p role="status">Loading saved templates…</p>}
         {templatesError && <div role="alert" className="rounded-lg border border-warning/40 p-3 text-sm"><p>Saved templates could not be loaded. Retry, or choose manual mapping for this file. Your saved templates are not deleted.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="min-h-11 rounded-lg border px-3 py-2" onClick={loadTemplates}>Retry loading templates</button><button type="button" className="min-h-11 rounded-lg border px-3 py-2" onClick={() => setUseManualMapping(true)}>Continue with manual mapping</button></div></div>}
-        {!templatesLoading && !templatesError && <p className="text-sm">{templates.filter(t => !t.is_builtin).length} saved templates for {config.entityName}. {templates.find(t => t.id === defaultTemplateId)?.name} will be applied to the next file.</p>}
+        {!templatesLoading && !templatesError && <p className="text-sm">{templates.filter(t => !t.is_builtin).length} saved templates for {config.entityName}. {templates.find(t => t.id === defaultTemplateId)?.name ?? "Suggested column mapping"} will be applied to the next file.</p>}
         {fileError && <p role="alert" className="mt-3 text-sm text-destructive">{fileError}</p>}
       </fieldset>
 
@@ -560,7 +570,7 @@ function ImportWizardContent({
             <p>For product/customer/employee updates, omitted fields keep their existing values. Review new product/customer settings using Review and bulk edit after importing.</p>
             {entityKey === "employees" && <p>Importing employees does not create login accounts. Invite/link their accounts and grant permissions separately. Missing assignments are not guessed.</p>}
             {entityKey === "customers" && <p>Customers without an assigned salesman remain unassigned. Permitted salesmen can sell to any active customer in this organization.</p>}
-            {["customer_payments", "supplier_payments"].includes(entityKey) && <p>Import parties first and use unique names. Add reference numbers to detect repeat imports. Without a reference, separate payments may look identical; re-importing can duplicate history. These history records do not automatically allocate to invoices or reconstruct opening balances.</p>}
+            {["customer_payments", "supplier_payments"].includes(entityKey) && <p>Import parties first and use unique names. Add reference numbers to detect repeat imports. Without a reference, separate payments may look identical; re-importing can duplicate history. These live payment records do not automatically allocate to invoices or reconstruct opening balances. Use Historical payments in Setup for archive-only records.</p>}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -598,6 +608,12 @@ function ImportWizardContent({
             </table>
           </div>
 
+          {historical && <div className="space-y-3 rounded-xl border border-primary/40 bg-primary/5 p-4">
+            <h4 className="font-semibold">Import as history only</h4><p className="text-sm">Products contain your current stock. These older invoices and payments will not change stock, cash or current balances. Repeat an invoice number for all its product lines; use a unique payment reference for each payment. Import customers/suppliers and products first, then invoices, then payments.</p>
+            <label className="grid gap-1 text-sm">Stock / balance start date<input type="date" className="min-h-11 rounded-lg border border-border bg-background px-3 py-2" value={cutoverDate} onChange={event=>{setCutoverDate(event.target.value);setHistoryConfirmed(false);}} /></label>
+            <p className="text-sm">Only records earlier than this date are accepted. Use the same date for all historical files. Invoice totals, tax, discount and paid amounts are invoice-level values; leave paid amount blank if unknown.</p>
+            <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1 h-4 w-4" checked={historyConfirmed} onChange={event=>setHistoryConfirmed(event.target.checked)}/>I reviewed the start date. Save these records as history without changing current stock or balances.</label>
+          </div>}
           <PreparedFileReview headers={headers} rows={dataRows} mapping={mapping} fields={config.fields} entity={entityKey} />
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-1 text-sm text-foreground/80">
@@ -607,7 +623,7 @@ function ImportWizardContent({
                 Skip rows that already exist
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <input type="radio" checked={mode === "update"} onChange={() => setMode("update")} className="h-4 w-4" />
+                <input type="radio" disabled={historical} checked={mode === "update"} onChange={() => setMode("update")} className="h-4 w-4" />
                 Update matching records — only supplied fields
               </label>
               <label className="flex items-center gap-2 text-sm">
@@ -615,7 +631,7 @@ function ImportWizardContent({
                 Review duplicates before saving (recommended)
               </label>
               <label className="mt-1 flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={createMissingRefs} onChange={(e) => setCreateMissingRefs(e.target.checked)} className="h-4 w-4 accent-primary" />
+                <input type="checkbox" disabled={historical} checked={!historical && createMissingRefs} onChange={(e) => setCreateMissingRefs(e.target.checked)} className="h-4 w-4 accent-primary" />
                 Auto-create missing reference records (brands, categories, etc.)
               </label>
             </div>
@@ -704,7 +720,8 @@ function ImportWizardContent({
 
           <div className="flex items-center gap-3 text-sm"><button type="button" className="rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" disabled={previewPage === 0 || importing} onClick={() => setPreviewPage(page => page - 1)}>Previous rows</button><span>Page {previewPage + 1} of {Math.max(1, Math.ceil(preview.rows.length / MAX_PREVIEW_ROWS))} · {preview.rows.length} source rows</span><button type="button" className="rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" disabled={(previewPage + 1) * MAX_PREVIEW_ROWS >= preview.rows.length || importing} onClick={() => setPreviewPage(page => page + 1)}>Next rows</button></div>
           {preview.stats.skipCount > 0 && <div role="status" className="rounded-lg border border-warning p-4 text-sm"><strong>Why are rows skipped?</strong><p>These rows matched records already in your business and Skip existing was selected. Generating an Excel file does not create records. Review the matches below and return to mapping to choose the appropriate action.</p></div>}
-          <p className="text-sm">You can import this reviewed source file directly. Downloading and uploading the prepared Excel again is optional.</p>
+          <p className="text-sm">{historical && `History only, before ${cutoverDate}. Counts below are source rows; invoice lines are grouped into documents. `}You can import this reviewed source file directly. Downloading and uploading the prepared Excel again is optional.</p>
+          {historySummary && <p className="rounded-lg border border-primary/40 bg-primary/5 p-4 text-sm"><strong>{historySummary.documents} new historical documents · total {historySummary.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>. Repeated invoice header totals are counted once. Confirm this matches your source before saving.</p>}
           <div className="flex flex-wrap gap-3">
             <button type="button" onClick={handleRunImport} disabled={importing || preview.stats.errorCount > 0 || preview.stats.newCount + preview.stats.updateCount === 0} className="rounded bg-success px-4 py-2 text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30">
               {importing ? "Importing..." : `Import ${preview.stats.newCount + preview.stats.updateCount} rows`}
@@ -719,7 +736,7 @@ function ImportWizardContent({
         <div className="rounded border border-border bg-card p-4">
           <h3 className="mb-3 text-lg font-medium text-foreground">Import Complete</h3>
           <div className="flex flex-wrap items-center gap-4 text-sm">
-            <span className="rounded bg-success/10 px-2 py-1 text-success">Created: {importResult.created}</span>
+            <span className="rounded bg-success/10 px-2 py-1 text-success">{historical ? "Saved source rows" : "Created"}: {importResult.created}</span>
             <span className="rounded bg-primary/10 px-2 py-1 text-primary">Updated: {importResult.updated}</span>
             <span className="rounded bg-muted px-2 py-1 text-muted-foreground">Skipped: {importResult.skipped}</span>
             <span className="rounded bg-destructive/10 px-2 py-1 text-destructive">Failed: {importResult.failed}</span>

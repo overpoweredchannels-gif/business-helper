@@ -187,6 +187,8 @@ export async function runImport(
     failures: [],
   };
   
+  if (config.runRows) return config.runRows(preview.rows, ctx);
+
   const seenUniqueKeys = new Map<string, number>();
   const successfullyCreated: Array<{ id: unknown; rawValues: Record<string, unknown> }> = [];
   const successfullyUpdated: Array<{ id: unknown; rawValues: Record<string, unknown> }> = [];

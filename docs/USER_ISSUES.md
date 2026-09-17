@@ -74,3 +74,6 @@ Release checks passed: full validation (lint: zero errors, 632 warnings; TypeScr
 - Employee approval cannot preserve invoice-level tax/discount today. Those fields are disabled with an explanation; line discounts remain available.
 - Manual SQL pending: `src/lib/migrations/20260917_sales_bonus_stock.sql` fixes database bonus deductions and unit-change deltas. No production SQL executed. Existing stock is not recalculated; historical bonus records require reconciliation.
 - Build, full regression suite and isolated SQL tests passed. Browser verified held-sale persistence, resume, next-sale clearing, employee approval wording, receipt preview and help behavior. See `RETAIL_POS_REVIEW_2026_09_17.md` for acceptance steps and remaining limits.
+
+## 2026-09-18 — Historical financial imports
+Implemented archive-only sales, purchases, customer payments and supplier payments, with grouped invoice lines, source provenance, validated links, explicit cutover date, atomic per-file saving and repeat-import protection. Current stock/cash/balances stay unchanged. Full SQL must be run manually: `src/lib/migrations/20260918_historical_records.sql`. Details and limitations: `docs/HISTORICAL_IMPORTS_2026_09_18.md`.

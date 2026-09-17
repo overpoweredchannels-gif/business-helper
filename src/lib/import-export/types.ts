@@ -59,6 +59,9 @@ export interface EntityImportConfig<TEntity = unknown> {
   fields: ImportFieldDef[];
   /** Fields that uniquely identify a record for duplicate detection (SKU, name+brand, etc.). */
   uniqueKeys: string[][];
+  /** Optional read-only whole-file validation and atomic custom execution. */
+  reviewRows?: (rows: ParsedRow[], ctx: ImportContext) => Promise<void>;
+  runRows?: (rows: ParsedRow[], ctx: ImportContext) => Promise<ImportRunResult>;
   /** Default duplicate handling mode. */
   defaultDuplicateMode: "skip" | "update" | "error";
   /** Whether to allow creating missing reference records (e.g. brands, categories). */
@@ -108,6 +111,7 @@ export interface ExportFilters {
 
 export interface ImportContext {
   previewOnly?: boolean;
+  cutoverDate?: string;
   orgId: string;
   supabase: any;
   actorProfileId?: string;

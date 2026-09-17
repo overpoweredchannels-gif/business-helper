@@ -1,3 +1,4 @@
+import { historicalSalesImportConfig, historicalPurchasesImportConfig, historicalCustomerPaymentsImportConfig, historicalSupplierPaymentsImportConfig } from "./entities/historical-sales";
 // TradeOS ERP — Entity Import/Export Registry
 //
 // Central registry of all entity import/export configurations. Each entity
@@ -25,6 +26,10 @@ import { supplierPaymentsImportConfig } from "./entities/supplier-payments";
 import { customerCreditImportConfig } from "./entities/customer-credit";
 
 export const ENTITY_REGISTRY: Record<string, EntityImportConfig> = {
+  historical_sales: historicalSalesImportConfig,
+  historical_purchases: historicalPurchasesImportConfig,
+  historical_customer_payments: historicalCustomerPaymentsImportConfig,
+  historical_supplier_payments: historicalSupplierPaymentsImportConfig,
   suppliers: suppliersImportConfig,
   products: productsImportConfig,
   customers: customersImportConfig,

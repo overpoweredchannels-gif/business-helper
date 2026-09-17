@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import HistoricalRecords from "@/components/import-export/HistoricalRecords";
 import { formatPKR } from "@/lib/tradeos/formatters";
 
 interface Props { organizationId: string | null; customerId?: string | null }
@@ -191,6 +192,7 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
         <section className="rounded border border-border bg-card p-4"><h4 className="mb-3 font-medium">Monthly sales</h4>{summary.monthly.length ? summary.monthly.slice(0, 12).map(([month, amount]) => <div key={month} className="flex justify-between border-b border-border/60 py-2 text-sm"><span>{month}</span><strong>{formatPKR(amount)}</strong></div>) : <p className="text-sm text-muted-foreground">No monthly sales.</p>}</section>
       </div>
       <section className="overflow-x-auto rounded border border-border bg-card p-4"><h4 className="mb-3 font-medium">Sales invoice history</h4><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="py-2 pr-3">Invoice</th><th>Date</th><th>Salesman</th><th>Payment</th><th>Status</th><th>Total</th></tr></thead><tbody>{history.transactions.map((tx) => { const profile = profiles.get(String(tx.created_by_profile_id)); return <tr key={tx.id} className="border-b border-border/60"><td className="py-2 pr-3 font-medium">{tx.invoice_number}</td><td>{showDate(tx.sale_date ?? tx.created_at)}</td><td>{profile?.display_name ?? profile?.email ?? "—"}</td><td className="capitalize">{tx.payment_type ?? "cash"}</td><td className="capitalize">{tx.status ?? "confirmed"}</td><td>{formatPKR(tx.total_amount)}</td></tr>; })}</tbody></table>{!history.transactions.length && <p className="py-3 text-sm text-muted-foreground">No invoices in this period.</p>}</section>
+      <HistoricalRecords key={selectedId} organizationId={organizationId} partyId={selectedId} partyType="customer" />
       <section className="overflow-x-auto rounded border border-border bg-card p-4"><h4 className="mb-3 font-medium">Orders</h4><table className="w-full min-w-[620px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="py-2 pr-3">Order</th><th>Date</th><th>Expected</th><th>Status</th><th>Items</th></tr></thead><tbody>{history.orders.map((order) => <tr key={order.id} className="border-b border-border/60"><td className="py-2 pr-3 font-medium">{order.so_number}</td><td>{showDate(order.order_date ?? order.created_at)}</td><td>{showDate(order.expected_date)}</td><td className="capitalize">{String(order.status).replaceAll("_", " ")}</td><td>{history.orderItems.filter((item) => String(item.sales_order_id) === String(order.id)).length}</td></tr>)}</tbody></table>{!history.orders.length && <p className="py-3 text-sm text-muted-foreground">No orders in this period.</p>}</section>
     </>}
   </div>;
