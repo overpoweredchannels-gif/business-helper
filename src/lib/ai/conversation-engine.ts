@@ -278,7 +278,7 @@ export const VALID_TRANSITIONS: Record<ConversationState, ConversationState[]> =
 };
 
 export function canTransition(from: ConversationState, to: ConversationState): boolean {
-  return VALID_TRANSITIONS[from]?.includes(to) ?? false;
+  return from === to || (VALID_TRANSITIONS[from]?.includes(to) ?? false);
 }
 
 export function isTerminalState(state: ConversationState): boolean {

@@ -75,11 +75,10 @@ const getModelsForProvider = (provider: AiProviderName) => {
   }
 
   if (provider === "openai") {
-    if (!envText("OPENAI_API_KEY")) return [];
     return uniqueTexts([
       envText("OPENAI_PRIMARY_MODEL") || envText("OPENAI_MODEL") || "gpt-5.4-mini",
       envText("OPENAI_FALLBACK_MODEL"),
-    ]);
+    ]).filter((model) => model === "gpt-5.6-luna" || Boolean(envText("OPENAI_API_KEY")));
   }
 
   if (provider === "groq") {
@@ -264,12 +263,16 @@ const callOpenAiResponses = async (model: string, prompt: string, temperature: n
 };
 
 const callChatCompletions = async (
-  provider: Exclude<AiProviderName, "gemini" | "openai">,
+  provider: Exclude<AiProviderName, "gemini" | "openai"> | "explabs",
   model: string,
   prompt: string,
   temperature: number
 ) => {
   const config = {
+    explabs: {
+      url: "https://api.experientiallabs.ai/v1/chat/completions",
+      key: envText("EXPLABS_API_KEY"),
+    },
     groq: {
       url: "https://api.groq.com/openai/v1/chat/completions",
       key: envText("GROQ_API_KEY"),
@@ -313,6 +316,7 @@ const callProvider = async (
   jsonMode: boolean,
   temperature: number
 ) => {
+  if (model === "gpt-5.6-luna") return callChatCompletions("explabs", model, prompt, temperature);
   if (provider === "gemini") return callGemini(model, prompt, jsonMode, temperature);
   if (provider === "openai") return callOpenAiResponses(model, prompt, temperature);
   return callChatCompletions(provider, model, prompt, temperature);
@@ -337,6 +341,9 @@ export async function callAiProviderRouter({
   for (const provider of providerOrder()) {
     const models = getModelsForProvider(provider);
     for (const model of models) {
+      if (model === "gpt-5.6-luna" && !envText("EXPLABS_API_KEY")) {
+        return { ok: false, attempts, error: "EXPLABS_API_KEY is required for gpt-5.6-luna. Create a key under Settings -> API Keys and export it." };
+      }
       const tries = maxRetries() + 1;
       for (let tryIndex = 0; tryIndex < tries; tryIndex += 1) {
         try {
