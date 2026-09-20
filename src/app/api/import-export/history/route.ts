@@ -11,11 +11,16 @@ export async function GET(request: NextRequest) {
   const kind=params.get("kind");
   const party=params.get("party");
   const partyType=params.get("party_type");
+  const keyword=params.get("keyword")?.trim();
   const from=params.get("from"),to=params.get("to");
-  if (!Number.isInteger(page)||page<0||page>100000 || (kind&&!['sale','purchase','customer_payment','supplier_payment'].includes(kind)) || (party&&!/^[0-9a-f-]{36}$/i.test(party)) || (partyType&&!['customer','supplier'].includes(partyType)) || (from&&!validHistoryDate(from)) || (to&&!validHistoryDate(to)) || (from&&to&&from>to)) return NextResponse.json({error:"Invalid history filters"},{status:400});
+  if (!Number.isInteger(page)||page<0||page>100000 || (kind&&!['sale','purchase','customer_payment','supplier_payment'].includes(kind)) || (party&&!/^[0-9a-f-]{36}$/i.test(party)) || (partyType&&!['customer','supplier'].includes(partyType)) || (keyword && keyword.length > 200) || (from&&!validHistoryDate(from)) || (to&&!validHistoryDate(to)) || (from&&to&&from>to)) return NextResponse.json({error:"Invalid history filters"},{status:400});
   let query=createSupabaseService().from("historical_records").select("id,kind,source_system,record_number,party_id,party_name,record_date,cutover_date,total_amount,related_id,source_file,payload,imported_at",{count:"exact"}).eq("organization_id",access.actor.organizationId);
   const partyName=params.get("party_name")?.trim();
   if(partyName) query=query.ilike("party_name",`%${partyName.replace(/[\\%_]/g,"\\$&")}%`);
+  if(keyword) {
+    const safe=keyword.replace(/[\\%_]/g,"\\$&");
+    query=query.or(`party_name.ilike.%${safe}%,record_number.ilike.%${safe}%,source_system.ilike.%${safe}%,source_file.ilike.%${safe}%,payload::text.ilike.%${safe}%`);
+  }
   if(kind) query=query.eq("kind",kind);
   if(party) query=query.eq("party_id",party);
   if(partyType) query=query.in("kind",partyType==="customer"?["sale","customer_payment"]:["purchase","supplier_payment"]);
