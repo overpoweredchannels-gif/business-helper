@@ -4219,7 +4219,7 @@ setCustomerOrganizationName("");
         }
       }
 
-      if (quickSaleMode) setLastPOSReceipt({ scope: `${currentOrganizationId}:${currentProfile?.id}`, business: currentOrganization?.name || "TradeOS", number: systemInvoiceNumber, date: salesInvoiceDate, customer: selectedSalesCustomer?.customer_name ?? "Customer", total: taxableBase + computedTaxAmount, payment: paymentWarning ? "unreconciled" : salesPaymentType, lines: invoiceLines.map(line => { const product = products.find(product => String(product.id) === line.product_id); return { name: product?.name ?? "Product", quantity: line.quantity, unit: product ? unitLabelFor(product, line.unit_mode ?? "main") : "", price: line.selling_price, discount: line.discount, bonus: line.bonus }; }) });
+      if (quickSaleMode) { const total = taxableBase + computedTaxAmount; const received = salesPaymentType === "cash" ? (Number(posCashReceived) || total) : 0; const returnAmount = salesPaymentType === "cash" ? Math.max(0, received - total) : 0; setLastPOSReceipt({ scope: `${currentOrganizationId}:${currentProfile?.id}`, business: currentOrganization?.name || "TradeOS", number: systemInvoiceNumber, date: salesInvoiceDate, customer: selectedSalesCustomer?.customer_name ?? "Customer", total, received, change: returnAmount, returnAmount, payment: paymentWarning ? "unreconciled" : salesPaymentType, lines: invoiceLines.map(line => { const product = products.find(product => String(product.id) === line.product_id); return { name: product?.name ?? "Product", quantity: line.quantity, unit: product ? unitLabelFor(product, line.unit_mode ?? "main") : "", price: line.selling_price, discount: line.discount, bonus: line.bonus }; }) }); }
       setSalesMessage(`Sales invoice ${systemInvoiceNumber} saved successfully${paymentWarning}`);
       if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
       setSaleScanFocus(value => value + 1);
@@ -5249,6 +5249,7 @@ setCustomerOrganizationName("");
   const [salesInvoiceNumber, setSalesInvoiceNumber] = useState("");
   const [salesInvoiceDate, setSalesInvoiceDate] = useState(toDateInputValue(new Date()));
   const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "credit">("cash");
+  const [posCashReceived, setPosCashReceived] = useState(0);
   const [salesDiscountAmount, setSalesDiscountAmount] = useState("");
   const [salesDiscountType, setSalesDiscountType] = useState<"flat" | "percent">("flat");
   const [salesTaxRate, setSalesTaxRate] = useState("");
@@ -17446,7 +17447,7 @@ setCustomerOrganizationName("");
               products={activeProducts} customers={activeCustomers} total={currentSalesInvoiceTotal} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} focusSignal={saleScanFocus}
               onScan={code => { try { const product = findBarcodeProduct(products, code); clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); } catch (error) { setSalesError(error instanceof Error ? error.message : "Barcode not found."); } }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSaleScanFocus(value => value + 1); } }}
-              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
+              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">Open Retail POS</button>
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">

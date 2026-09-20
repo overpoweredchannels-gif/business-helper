@@ -17,6 +17,8 @@ import {
 import { importErrorMessage, parseCellValue } from "../src/lib/import-export/processor";
 import { runImport } from "../src/lib/import-export/processor";
 import type { EntityImportConfig, ImportContext, ImportPreviewResult, ParsedRow } from "../src/lib/import-export/types";
+import { buildHistoricalSummary } from "../src/lib/import-export/historical-ai-summary";
+import { buildRetailDrawerSummary } from "../src/lib/sales/retail-summary";
 
 async function main() {
   assert.equal(
@@ -183,6 +185,58 @@ async function main() {
   } as ImportContext);
   assert.equal(batchResult.created, 1201);
   assert.deepEqual(batchSizes, [500, 500, 201]);
+
+  const summaryRow = {
+    kind: "sale",
+    record_number: "INV-1009",
+    party_name: "Northside Market",
+    record_date: "2026-03-12",
+    total_amount: 27540,
+    source_system: "Legacy POS",
+    source_file: "march-import.csv",
+    payload: {
+      related_invoice: "INV-1008",
+      lines: [
+        { product_name: "Premium Rice 5kg", quantity: 12, unit_mode: "main", unit_price: 1800, bonus: 0, discount: 300, source_row: 3 },
+        { product_name: "Cooking Oil 2L", quantity: 6, unit_mode: "main", unit_price: 1900, bonus: 0, discount: 100, source_row: 5 },
+      ],
+    },
+  };
+  const summary = buildHistoricalSummary(summaryRow, "rice oil market");
+  assert.match(summary, /Northside Market/i);
+  assert.match(summary, /Premium Rice 5kg/i);
+  assert.match(summary, /Legacy POS/i);
+
+  const drawerSummary = buildRetailDrawerSummary({ total: 1000, received: 1500, paymentType: "cash" });
+  assert.equal(drawerSummary.expected, 1000);
+  assert.equal(drawerSummary.received, 1500);
+  assert.equal(drawerSummary.returnAmount, 500);
+  assert.equal(drawerSummary.change, 500);
+
+  const paymentSummary = buildHistoricalSummary({
+    kind: "customer_payment",
+    record_number: "PAY-440",
+    party_name: "Northside Market",
+    record_date: "2026-03-13",
+    total_amount: 19000,
+    source_system: "Legacy POS",
+    source_file: "payments.csv",
+    payload: { related_invoice: "INV-1009", lines: [] },
+  }, "payment");
+  assert.match(paymentSummary, /payment/i);
+  assert.match(paymentSummary, /INV-1009/i);
+
+  const drawer = buildRetailDrawerSummary({ total: 1800, received: 2000 });
+  assert.equal(drawer.change, 200);
+  assert.equal(drawer.received, 2000);
+  assert.equal(drawer.expected, 1800);
+  assert.equal(drawer.status, "cash-ready");
+  assert.match(drawer.closingMessage, /Change due/i);
+
+  const shortDrawer = buildRetailDrawerSummary({ total: 2500, received: 2000 });
+  assert.equal(shortDrawer.shortfall, 500);
+  assert.equal(shortDrawer.status, "cash-short");
+  assert.match(shortDrawer.closingMessage, /short by/i);
 
   console.log("Import mapping, preservation, and parsing tests passed.");
 }
