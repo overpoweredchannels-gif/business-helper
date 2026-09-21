@@ -17,7 +17,7 @@ const money = (value: number) => new Intl.NumberFormat("en-PK", { style: "curren
 
 export function RetailPOS({ scope, sale, products, customers, total, busy, owner, scanUnit, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onAdvanced, onRestore, onClear }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; total: number; busy: boolean; owner: boolean;
-  scanUnit: "main" | "subunit"; focusSignal: number; onScan: (code: string) => void; onAdd: (id: string) => void;
+  scanUnit: "main" | "subunit"; focusSignal: number; onScan: (code: string) => string | null; onAdd: (id: string) => void;
   onUnit: (unit: "main" | "subunit") => void; onCustomer: (id: string) => void;
   onLine: (index: number, field: keyof BarcodeLine, value: string) => void; onRemove: (index: number) => void;
   onSave: () => void; onCashReceived?: (amount: number) => void; onAdvanced: () => void; onRestore: (sale: CounterSale) => void; onClear: () => void;
@@ -74,8 +74,11 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
   useEffect(() => { if (!sale.lines.length) { setReceived(""); holdLock.current = false; } }, [sale.lines.length]);
   useEffect(() => {
     if (focusQuantityFor === null) return;
-    const field = document.querySelector<HTMLInputElement>(`[data-pos-quantity="${focusQuantityFor}"]`);
-    if (field) { field.focus(); field.select(); setFocusQuantityFor(null); }
+    const frame = requestAnimationFrame(() => {
+      const field = document.querySelector<HTMLInputElement>(`[data-pos-quantity="${focusQuantityFor}"]`);
+      if (field) { field.focus(); field.select(); setFocusQuantityFor(null); }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [focusQuantityFor, sale.lines.length]);
   useEffect(() => {
     if (!sale.lines.length) return;
@@ -144,7 +147,7 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
       <button type="button" disabled={busy} onClick={onAdvanced} className="min-h-11 rounded-lg border px-4 text-sm font-medium">Full invoice / Advanced options</button>
     </div>
     <fieldset disabled={busy} className="grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
-      <div><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={onScan} /></div>
+      <div><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={code => { const productId = onScan(code); if (!productId) return; const lineIndex = sale.lines.findIndex(line => String(line.product_id) === productId && (line.unit_mode ?? "main") === scanUnit); setFocusQuantityFor(lineIndex >= 0 ? lineIndex : sale.lines.length); }} /></div>
       <div className="space-y-3"><label className="block text-sm font-medium">Find product</label><ProductSearchSelect key={searchKey} value="" products={products.map(p => ({ id: String(p.id), label: [p.name, p.sku, p.barcode].filter(Boolean).join(" — ") }))} onChange={id => { if (id) { setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} />
         <label className="flex items-center gap-3 text-sm">Add one<select value={scanUnit} onChange={event => onUnit(event.target.value as "main" | "subunit")} className="min-h-11 rounded border bg-background px-3"><option value="subunit">Piece / sub-unit</option><option value="main">Box / main unit</option></select></label>
         <label className="block text-sm font-medium">Customer</label><ProductSearchSelect label="Customer" value={sale.customerId ?? ""} products={customers.map(c => ({ id: c.id, label: [c.customer_name, c.shop_name, c.phone].filter(Boolean).join(" — ") }))} onChange={onCustomer} />
