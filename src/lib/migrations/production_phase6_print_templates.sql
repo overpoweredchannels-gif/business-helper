@@ -12,7 +12,7 @@
 create table if not exists public.print_templates (
   id uuid not null default gen_random_uuid() primary key,
   organization_id uuid not null references public.organizations(id) on delete cascade,
-  doc_type text not null check (doc_type in ('sales_invoice', 'load_form')),
+  doc_type text not null check (doc_type in ('sales_invoice', 'load_form', 'retail_receipt')),
   name text not null check (char_length(trim(name)) between 1 and 120),
   description text,
   config jsonb not null,

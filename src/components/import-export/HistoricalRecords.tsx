@@ -81,7 +81,8 @@ export default function HistoricalRecords({organizationId,partyId,partyType}:{or
       const response = await authorizedFetch("/api/import-export/history/archive", { method: "POST", body: form });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Archive upload failed");
-      setArchiveNotice(`${result.files.length} file${result.files.length === 1 ? "" : "s"} saved to the historical archive. Current stock and balances were not changed.`);
+      const extraction = (result.files ?? []).map((file: { fileName?: string; recognition?: string }) => file.recognition ? `${file.fileName}: ${file.recognition}` : "").filter(Boolean).join(" ");
+      setArchiveNotice(`${result.files.length} file${result.files.length === 1 ? "" : "s"} saved to the historical archive. Current stock and balances were not changed.${extraction ? ` ${extraction}` : ""}`);
       await loadArchiveFiles();
     } catch (reason) { setArchiveError(reason instanceof Error ? reason.message : "Archive upload failed"); }
     finally { setArchiveBusy(false); }

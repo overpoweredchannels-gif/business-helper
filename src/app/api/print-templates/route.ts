@@ -6,7 +6,7 @@ import type { PrintDocumentType, PrintTemplate } from "@/lib/print/print-templat
 
 export const runtime = "nodejs";
 
-const DOC_TYPES: PrintDocumentType[] = ["sales_invoice", "load_form"];
+const DOC_TYPES: PrintDocumentType[] = ["sales_invoice", "load_form", "retail_receipt"];
 
 function parseDocType(value: string | null): PrintDocumentType | null {
   return value && DOC_TYPES.includes(value as PrintDocumentType)
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const docType = parseDocType((body.doc_type as string) ?? null);
   if (!docType) {
-    return NextResponse.json({ ok: false, error: "doc_type must be sales_invoice or load_form." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "doc_type must be sales_invoice, load_form or retail_receipt." }, { status: 400 });
   }
   const name = (body.name as string)?.trim();
   if (!name) {

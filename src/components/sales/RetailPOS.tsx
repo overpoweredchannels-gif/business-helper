@@ -30,6 +30,7 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
   const [notice, setNotice] = useState("");
   const [received, setReceived] = useState("");
   const [searchKey, setSearchKey] = useState(0);
+  const [focusQuantityFor, setFocusQuantityFor] = useState<number | null>(null);
   const holdLock = useRef(false);
   const storageKey = `tradeos-pos-held-v1:${scope}`;
   const templateStorageKey = `tradeos-pos-baskets-v1:${scope}`;
@@ -71,6 +72,11 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
   useEffect(() => { if (!sale.lines.length) { setReceived(""); holdLock.current = false; } }, [sale.lines.length]);
+  useEffect(() => {
+    if (focusQuantityFor === null) return;
+    const field = document.querySelector<HTMLInputElement>(`[data-pos-quantity="${focusQuantityFor}"]`);
+    if (field) { field.focus(); field.select(); setFocusQuantityFor(null); }
+  }, [focusQuantityFor, sale.lines.length]);
   useEffect(() => {
     if (!sale.lines.length) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
@@ -139,7 +145,7 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
     </div>
     <fieldset disabled={busy} className="grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
       <div><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={onScan} /></div>
-      <div className="space-y-3"><label className="block text-sm font-medium">Find product</label><ProductSearchSelect key={searchKey} value="" products={products.map(p => ({ id: String(p.id), label: [p.name, p.sku, p.barcode].filter(Boolean).join(" — ") }))} onChange={id => { if (id) { onAdd(id); setSearchKey(key => key + 1); } }} />
+      <div className="space-y-3"><label className="block text-sm font-medium">Find product</label><ProductSearchSelect key={searchKey} value="" products={products.map(p => ({ id: String(p.id), label: [p.name, p.sku, p.barcode].filter(Boolean).join(" — ") }))} onChange={id => { if (id) { setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} />
         <label className="flex items-center gap-3 text-sm">Add one<select value={scanUnit} onChange={event => onUnit(event.target.value as "main" | "subunit")} className="min-h-11 rounded border bg-background px-3"><option value="subunit">Piece / sub-unit</option><option value="main">Box / main unit</option></select></label>
         <label className="block text-sm font-medium">Customer</label><ProductSearchSelect label="Customer" value={sale.customerId ?? ""} products={customers.map(c => ({ id: c.id, label: [c.customer_name, c.shop_name, c.phone].filter(Boolean).join(" — ") }))} onChange={onCustomer} />
       </div>
@@ -148,14 +154,14 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
       <tbody>{sale.lines.map((line, index) => { const product = products.find(p => String(p.id) === line.product_id); return <tr key={index} className="border-t">
         <td className="p-3 font-medium">{product?.name ?? "Product unavailable"}{Number(line.bonus) > 0 && <small className="block">+ {line.bonus} free</small>}</td>
         <td className="p-2"><select aria-label={`Unit for ${product?.name ?? index + 1}`} value={line.unit_mode ?? "main"} disabled={busy} onChange={event => onLine(index, "unit_mode", event.target.value)} className="min-h-11 rounded border bg-background px-2"><option value="main">{product?.unit_type || "Main"}</option>{Number(product?.units_per_pack) > 0 && <option value="subunit">{product?.subunit_type || "Piece"}</option>}</select></td>
-        {(["quantity", "selling_price", "discount"] as const).map(field => <td key={field} className="p-2"><input aria-label={`${field === "selling_price" ? "Price" : field} for ${product?.name ?? index + 1}`} type="number" min={field === "quantity" ? "0.000001" : "0"} step="any" value={line[field]} disabled={busy} onChange={event => onLine(index, field, event.target.value)} className="min-h-11 w-24 rounded border bg-background px-2" /></td>)}
+        {(["quantity", "selling_price", "discount"] as const).map(field => <td key={field} className="p-2"><input data-pos-quantity={field === "quantity" ? index : undefined} aria-label={`${field === "selling_price" ? "Price" : field} for ${product?.name ?? index + 1}`} type="number" min={field === "quantity" ? "0.000001" : "0"} step="any" value={line[field]} disabled={busy} onChange={event => onLine(index, field, event.target.value)} className="min-h-11 w-24 rounded border bg-background px-2" /></td>)}
         <td className="p-3 font-medium">{money((Number(line.quantity) || 0) * (Number(line.selling_price) || 0) - (Number(line.discount) || 0))}</td>
         <td className="p-2"><button type="button" disabled={busy} aria-label={`Remove ${product?.name ?? "product"}`} onClick={() => onRemove(index)} className="min-h-11 rounded border border-destructive/40 px-3 text-destructive">Remove</button></td>
       </tr>; })}{!sale.lines.length && <tr><td colSpan={7} className="p-10 text-center text-muted-foreground">Ready for the next customer. Scan a product to begin.</td></tr>}</tbody></table></div>
     <div className="sticky bottom-2 z-10 flex flex-wrap items-end justify-between gap-4 rounded-xl border border-primary/30 bg-card p-4 shadow-lg">
       <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType}</span><div className="text-3xl font-bold">{money(total)}</div>{(Number(sale.discount) > 0 || Number(sale.tax) > 0) && <small>Includes invoice discount / tax from advanced options.</small>}</div>
       {owner && sale.paymentType === "cash" && <div><label className="block text-sm">Cash received<input aria-label="Cash received" type="number" min="0" step="0.01" value={received} placeholder={String(total)} onChange={event => { setReceived(event.target.value); onCashReceived?.(Number(event.target.value) || 0); }} disabled={busy} className="mt-1 block min-h-11 w-40 rounded border bg-background px-3" /></label><div className="mt-2 flex flex-wrap gap-2">{quickCashPresets.map(preset => <button key={preset.label} type="button" className="min-h-9 rounded border px-2 text-xs" onClick={() => { setReceived(String(preset.value)); onCashReceived?.(preset.value); }}>{preset.label}</button>)}</div><p className="mt-1 text-sm">Return to customer: {money(returnAmount)}</p><p className="mt-1 text-xs text-muted-foreground">Received {money(drawerSummary.received)} / total {money(drawerSummary.expected)}.</p></div>}
-      <div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">Hold sale</button><button type="button" disabled={busy || !sale.lines.length || !sale.customerId || shortCash} onClick={onSave} className="min-h-12 rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40">{busy ? "Saving…" : owner ? sale.paymentType === "credit" ? "Save credit sale" : "Pay & Save" : "Send for approval"}</button></div>
+      <div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">Hold sale</button><button data-entry-add type="button" disabled={busy || !sale.lines.length || !sale.customerId || shortCash} onClick={onSave} className="min-h-12 rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40">{busy ? "Saving…" : owner ? sale.paymentType === "credit" ? "Save credit sale" : "Pay & Save" : "Send for approval"}</button></div>
       {shortCash && <p className="w-full text-sm text-destructive">Enter enough cash to cover this sale, or use the full invoice for a credit sale.</p>}
     </div>
     <div className="rounded-xl border border-border bg-card p-4">

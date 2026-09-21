@@ -174,6 +174,21 @@ export const DEFAULT_PRINT_TEMPLATES: Record<PrintDocumentType, PrintTemplate> =
 
     boldBody: false,
   },
+  retail_receipt: {
+    id: "default-retail-receipt",
+    name: "Default Retail Receipt",
+    description: "A compact counter-sale receipt with barcode-friendly product lines, total, cash received and change.",
+    docType: "retail_receipt",
+    fontFamily: "Arial, Helvetica, sans-serif",
+    page: { background: "#ffffff", ink: "#000000", rule: "#000000" },
+    header: { showOrgName: true, orgNameSizePx: 18, orgNamePosition: "top", showOrgAddress: false, showOrgPhone: false, contactSizePx: 9, headingText: "Sales Receipt", headingSizePx: 12, metaSizePx: 9, showSalesman: false, showCustomer: true, showCustomerCity: false, showDate: true, showInvoiceNo: true, dateLabel: "Date" },
+    columns: { labels: [{ key: "product", label: "Item", widthPct: 46 }, { key: "quantity", label: "Qty", widthPct: 14 }, { key: "price", label: "Rate", widthPct: 18 }, { key: "total", label: "Amount", widthPct: 22 }], headerSizePx: 8, rowSizePx: 9, uppercaseHeaders: false },
+    groups: { groupSizePx: 10, showPrefix: false, showGroupTotal: false, groupTotalLabel: "Total" },
+    salesman: { showSalesmanSection: false, sizePx: 9, label: "Cashier", showSalesmanTotal: false, salesmanTotalLabel: "Total" },
+    footer: { showTotals: true, labelSizePx: 10, valueSizePx: 12, totalLabel: "Total", bonusLabel: "Cash received", netLabel: "Change", valueSuffix: "", showFootnote: true, footnoteText: "Thank you for your business.", footnoteSizePx: 8 },
+    spacing: { salesmanGapPx: 4, groupGapPx: 2, rowPadYPx: 2 },
+    boldBody: false,
+  },
 };
 
 /** Deep clone a default template so custom edits never mutate the shared default. */

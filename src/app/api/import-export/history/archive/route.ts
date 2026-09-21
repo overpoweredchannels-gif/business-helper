@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { readImportFile } from "@/lib/import-export/processor";
+import { recognizeHistoricalArchive } from "@/lib/import-export/historical-archive-recognition";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_FILES = 20;
 const ALLOWED = /\.(csv|xlsx|xls|ods|xml|txt|pdf|png|jpg|jpeg|webp)$/i;
@@ -21,19 +23,29 @@ export async function POST(request: NextRequest) {
     if (files.length > MAX_FILES) return NextResponse.json({ ok: false, error: `Upload up to ${MAX_FILES} files at a time.` }, { status: 400 });
 
     const supabase = createSupabaseService();
-    const saved: Array<{ id: string; fileName: string; rowCount: number }> = [];
+    const saved: Array<{ id: string; fileName: string; rowCount: number; recognition: string }> = [];
+    let scannedFiles = 0;
     for (const file of files) {
       if (!file.name || !ALLOWED.test(file.name)) throw new Error(`Unsupported archive file: ${file.name}`);
       if (file.size <= 0 || file.size > MAX_FILE_BYTES) throw new Error(`${file.name} must be larger than 0 and no more than 50 MB.`);
       const buffer = Buffer.from(await file.arrayBuffer());
       let searchText = file.name;
       let rowCount = 0;
+      let recognitionLabel = "Search index created";
       if (/\.(csv|xlsx|xls|ods|xml)$/i.test(file.name)) {
         const parsed = await readImportFile(file);
         rowCount = parsed.rows.length;
         searchText = [file.name, ...parsed.headers, ...parsed.rows.flat()].join(" ").slice(0, 2_000_000);
       } else if (/\.txt$/i.test(file.name)) {
         searchText = `${file.name} ${(await file.text()).slice(0, 2_000_000)}`;
+      } else if (/\.(pdf|png|jpg|jpeg|webp)$/i.test(file.name)) {
+        const mime = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+        if (scannedFiles < 5) {
+          scannedFiles += 1;
+          const recognition = await recognizeHistoricalArchive(buffer, mime);
+          searchText = `${file.name} ${recognition.text}`.slice(0, 100_000);
+          recognitionLabel = recognition.method === "unavailable" ? (recognition.warning ?? "Text extraction unavailable") : `Search text extracted with ${recognition.method}`;
+        } else recognitionLabel = "This batch extracts text from its first 5 scans. This file is searchable by filename; upload it in the next batch for text extraction.";
       }
       const path = `${access.actor.organizationId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
       const upload = await supabase.storage.from("historical-archive").upload(path, buffer, { contentType: file.type || "application/octet-stream", upsert: false });
@@ -43,7 +55,7 @@ export async function POST(request: NextRequest) {
         await supabase.storage.from("historical-archive").remove([path]);
         throw new Error(`Could not index ${file.name}. Run the historical archive migration, then retry.`);
       }
-      saved.push({ id: inserted.data.id, fileName: file.name, rowCount });
+      saved.push({ id: inserted.data.id, fileName: file.name, rowCount, recognition: recognitionLabel });
     }
     return NextResponse.json({ ok: true, files: saved });
   } catch (error) {

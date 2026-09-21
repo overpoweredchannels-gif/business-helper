@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   if (!permission.allowed || !permission.actor) return NextResponse.json({ ok: false, error: "Print template management permission required" }, { status: 403 });
   try {
     const form = await request.formData(); const docType = form.get("doc_type") as PrintDocumentType; const file = form.get("file");
-    if (!["sales_invoice", "load_form"].includes(docType) || !(file instanceof File) || file.size > 3 * 1024 * 1024 || file.size === 0) throw new Error("Choose an invoice/load form reference up to 3 MB");
+    if (!["sales_invoice", "load_form", "retail_receipt"].includes(docType) || !(file instanceof File) || file.size > 3 * 1024 * 1024 || file.size === 0) throw new Error("Choose an invoice, load form or retail receipt reference up to 3 MB");
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (!["pdf", "png", "jpg", "jpeg", "webp", "xlsx", "xls", "xml", "ods"].includes(ext ?? "")) throw new Error("Use PDF, PNG, JPEG, WebP, Excel, ODS or Excel XML");
     const buffer = Buffer.from(await file.arrayBuffer());

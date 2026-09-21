@@ -10,7 +10,7 @@
 // customizer UI can edit either document. Templates are persisted per
 // organization (print_templates table, config jsonb).
 
-export type PrintDocumentType = "sales_invoice" | "load_form";
+export type PrintDocumentType = "sales_invoice" | "load_form" | "retail_receipt";
 
 /** A single table column definition. */
 export interface PrintColumn {
