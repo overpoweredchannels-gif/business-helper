@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
@@ -35,8 +35,10 @@ function printableHtml(receipt: Receipt, template: PrintTemplate) {
 export function POSReceipt({ receipt }: { receipt: Receipt }) {
   const [open, setOpen] = useState(false); const [customizing, setCustomizing] = useState(false); const [error, setError] = useState("");
   const [template, setTemplate] = useState<PrintTemplate>(() => cloneDefaultTemplate("retail_receipt"));
+  const latest = useRef({ receipt, template });
+  useEffect(() => { latest.current = { receipt, template }; }, [receipt, template]);
   useEffect(() => { let live = true; authorizedFetch("/api/print-templates?doc_type=retail_receipt").then(response => response.json()).then(data => { const selected = data?.templates?.find((item: { is_default?: boolean }) => item.is_default); if (live && selected?.config) setTemplate(selected.config); }).catch(() => undefined); return () => { live = false; }; }, [receipt.scope]);
-  const print = () => {
+  const print = useCallback(() => {
     setError("");
     const frame = document.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
@@ -45,10 +47,10 @@ export function POSReceipt({ receipt }: { receipt: Receipt }) {
       try { frame.contentWindow?.focus(); frame.contentWindow?.print(); window.setTimeout(() => frame.remove(), 1000); }
       catch { frame.remove(); setError("The receipt is ready below. Use Print receipt after allowing browser printing."); }
     };
-    frame.srcdoc = printableHtml(receipt, template);
+    frame.srcdoc = printableHtml(latest.current.receipt, latest.current.template);
     document.body.appendChild(frame);
-  };
-  useEffect(() => { setOpen(true); const timer = window.setTimeout(print, 250); return () => window.clearTimeout(timer); }, [receipt.number]);
+  }, []);
+  useEffect(() => { const timer = window.setTimeout(() => { setOpen(true); print(); }, 250); return () => window.clearTimeout(timer); }, [receipt.number, print]);
   const preview = useMemo(() => <POSReceiptPreview receipt={receipt} template={template} />, [receipt, template]);
   return <><button type="button" onClick={() => { setOpen(true); print(); }} className="min-h-11 rounded-lg border border-primary px-4 font-medium text-primary">Receipt for {receipt.number}</button>{error && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}{open && createPortal(<div data-context-help-skip role="dialog" aria-label={`Receipt ${receipt.number}`} className="fixed inset-0 z-[100] overflow-auto bg-black/30 p-4"><div className="mx-auto max-w-md rounded-xl bg-white p-4 shadow-xl"><div className="mb-3 flex justify-end gap-2"><button type="button" onClick={() => setCustomizing(true)} className="rounded border px-3 py-2 text-sm">Edit POS receipt template</button><button type="button" onClick={print} className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">Print receipt</button><button type="button" onClick={() => setOpen(false)} className="rounded border px-3 py-2 text-sm">Close</button></div>{preview}</div></div>, document.body)}{customizing && <TemplateCustomizer docType="retail_receipt" previewRenderer={next => <POSReceiptPreview receipt={receipt} template={next} />} onSaved={next => { setTemplate(next); setCustomizing(false); }} onClose={() => setCustomizing(false)} />}</>;
 }
