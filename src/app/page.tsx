@@ -21,7 +21,7 @@ import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
 import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
-import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking } from "@/components/dashboard";
+import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, CollapsibleBanner } from "@/components/dashboard";
 import { cn } from "@/lib/utils";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -15740,13 +15740,13 @@ setCustomerOrganizationName("");
         )}
 
         {activeSection === "setup-import" && isOwnerOrAdmin() && currentOrganizationId && <SetupImportHub key={currentOrganizationId} supabase={supabase} organizationId={currentOrganizationId} userId={currentUser.id} actorProfileId={currentProfile?.id ?? null} createAuditLog={createAuditLog} onNavigate={handleSectionChange} onImported={() => { void fetchProducts(); void fetchCustomers(); }} />}
-        {activeSection === "dashboard" && isOwnerOrAdmin() && <button type="button" onClick={() => handleSectionChange("setup-import")} className="mb-4 w-full rounded-xl border border-primary/30 bg-card p-5 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary"><span className="block text-lg font-semibold">Setup &amp; Data Import</span><span className="mt-1 block text-sm text-muted-foreground">Follow the setup guide, import your external records and review missing settings.</span></button>}
+        {activeSection === "dashboard" && isOwnerOrAdmin() && <CollapsibleBanner id="setup-import" profileId={currentProfile?.id ?? currentUser?.id} title="Setup & Data Import" subtitle="Follow the setup guide, import your external records and review missing settings." className="mb-4 rounded-xl border border-primary/30 bg-card p-5">
+          <button type="button" onClick={() => handleSectionChange("setup-import")} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Open Setup &amp; Data Import</button>
+        </CollapsibleBanner>}
         {activeSection === "dashboard" && canUseSalesTool("invoice") && (
-          <section className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-5" data-help-topic="quick sale">
-            <h2 className="text-xl font-semibold">Quick sale</h2>
-            <p className="my-2 text-sm">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
+          <CollapsibleBanner id="quick-sale" profileId={currentProfile?.id ?? currentUser?.id} title="Quick sale" subtitle="Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval." topic="quick sale" className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-5">
             <button type="button" className="rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); }}>Retail POS / Create a sale</button>
-          </section>
+          </CollapsibleBanner>
         )}
         {activeSection === "dashboard" && staffDashboardData.isStaff && (
           <StaffDashboardView
@@ -15780,7 +15780,7 @@ setCustomerOrganizationName("");
           <EmployeeLiveTracking />
         )}
 
-        {activeSection === "dashboard" && currentProfile?.role === "owner" && <BusinessRecordsExport />}
+        {activeSection === "dashboard" && currentProfile?.role === "owner" && <CollapsibleBanner id="business-records-export" profileId={currentProfile?.id ?? currentUser?.id} title="Export business records" subtitle="Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF." className="mb-4 rounded-xl border border-primary/30 bg-card p-5"><BusinessRecordsExport /></CollapsibleBanner>}
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
             userName={currentProfile?.full_name ?? currentUser.email}
