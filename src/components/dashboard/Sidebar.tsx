@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
+import { DisplayZoomControl } from "./DisplayZoomControl";
 
 const navIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   dashboard: LayoutDashboard,
@@ -272,6 +273,7 @@ export function Sidebar({
             {!collapsed && <span>Reorder / hide sections</span>}
           </button>
         )}
+        <DisplayZoomControl collapsed={collapsed} />
         <div data-workspace-help-slot data-workspace-help-compact={collapsed ? "" : undefined} className="space-y-2 px-1 py-2" />
         {!disableCollapse && (
         <button

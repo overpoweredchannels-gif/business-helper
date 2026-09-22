@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Libre_Baskerville } from "next/font/google";
 import "./globals.css";
 import AppHelp from "@/components/help/AppHelp";
+import { DISPLAY_ZOOM_BOOTSTRAP_SCRIPT } from "@/lib/preferences/display-zoom";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -45,7 +46,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${plusJakartaSans.variable} ${libreBaskerville.variable} h-full antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${plusJakartaSans.variable} ${libreBaskerville.variable} h-full antialiased`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: DISPLAY_ZOOM_BOOTSTRAP_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}<AppHelp /></body>
     </html>
   );

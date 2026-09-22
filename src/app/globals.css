@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* User-selected display scale, set at runtime through --app-zoom
+   (see src/lib/preferences/display-zoom.ts). Unsupported browsers ignore it. */
+html { zoom: var(--app-zoom, 1); }
+
 .bulk-setup-review button, .import-workflow button {
   min-height: 44px;
   padding: 0.5rem 0.875rem;
