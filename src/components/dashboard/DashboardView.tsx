@@ -11,6 +11,7 @@ import {
 } from "./widgets";
 import { TrendingUp, TrendingDown, DollarSign, Package, Users, Receipt, AlertTriangle, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CollapsibleBanner } from "./CollapsibleBanner";
 
 interface SmartModuleConfig {
   id: string;
@@ -29,6 +30,7 @@ interface LowStockItem {
 }
 
 interface DashboardViewProps {
+  profileId?: string | null;
   userName: string;
   todaySales?: { value: string; trend?: { value: number; label: string }; sparkline?: number[] };
   todayProfit?: { value: string; trend?: { value: number; label: string }; sparkline?: number[] };
@@ -72,6 +74,7 @@ interface DashboardViewProps {
 }
 
 export function DashboardView({
+  profileId,
   userName,
   todaySales,
   todayProfit,
@@ -128,14 +131,7 @@ export function DashboardView({
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Welcome Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground font-heading">
-            {greeting}, <span className="text-primary">{userName}</span>
-          </h1>
-          <p className="text-sm text-light-text mt-0.5">{dateStr}</p>
-        </div>
-      </div>
+      <CollapsibleBanner id="greeting" profileId={profileId} label="Greeting" heading="h1" titleClassName="text-2xl font-bold text-foreground font-heading" title={<>{greeting}, <span className="text-primary">{userName}</span></>} subtitle={dateStr} />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">

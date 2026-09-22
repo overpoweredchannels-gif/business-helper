@@ -5,23 +5,17 @@ import type { SectionId } from "@/lib/tradeos/types";
 import HistoricalRecords from "./HistoricalRecords";
 import ImportExportSection from "./ImportExportSection";
 import { cn } from "@/lib/utils";
+import { SETUP_STEPS as steps } from "@/lib/setup/setup-steps";
+import { readSetupReviewedSteps, setupProgressStorageKey } from "@/lib/setup/setup-progress";
 
-const steps: { title: string; description: string; section: SectionId; entities: string[]; optional?: boolean }[] = [
-  { title: "Business settings and units", description: "Check your business details, currency and invoice preferences. Decide how you buy and sell: for example, one box contains 12 pieces.", section: "business-settings", entities: [] },
-  { title: "Brands and categories", description: "Organize your catalog. Use consistent names so imported products link to the correct brand and category.", section: "brands", entities: ["brands", "categories"] },
-  { title: "Customers and suppliers", description: "Add the people you sell to and buy from before importing transactions. Use unique names and contact details. Customer assignment is optional; importing employees does not create login accounts.", section: "customers", entities: ["customers", "suppliers"] },
-  { title: "Products and opening stock", description: "Add product names, units, pack sizes and prices. Opening stock is the quantity on your chosen start date. Review reorder levels, barcode, batch and expiry settings before selling.", section: "products", entities: ["products"] },
-  { title: "Historical data archive", description: "Optional: search older sales, purchases and payments in the Historical Data Hub without forcing a mapping step. This archive stays read-only, does not change stock or balances, and is meant for review by date, customer, invoice number or product keyword.", section: "sales", entities: [], optional: true },
-  { title: "Team and final review", description: "Optional: import your team, territories and routes. Invite employees and assign permissions separately. Check stock, balances and a sample invoice before starting daily work.", section: "staff-permissions", entities: ["employees", "staff", "territories", "routes"], optional: true },
-];
 const labels: Record<string, string> = { historical_sales: "Historical sales", historical_purchases: "Historical purchases", historical_customer_payments: "Historical customer payments", historical_supplier_payments: "Historical supplier payments", brands: "Brands", categories: "Categories", customers: "Customers", suppliers: "Suppliers", products: "Products", purchases: "Purchases", sales_invoices: "Sales invoices", customer_payments: "Customer payments", supplier_payments: "Supplier payments", customer_credit: "Customer credit settings", employees: "Employees", staff: "Staff records", territories: "Territories", routes: "Routes" };
 const button = "min-h-11 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50";
 export default function SetupImportHub({ supabase, organizationId, userId, actorProfileId, createAuditLog, onNavigate, onImported }: { supabase: SupabaseClient; organizationId: string; userId: string; actorProfileId: string | null; createAuditLog: (params: any) => Promise<void>; onNavigate: (section: SectionId) => void; onImported: () => void }) {
   const [step, setStep] = useState(0); const [reviewed, setReviewed] = useState<number[]>([]); const [counts, setCounts] = useState<Record<string, number | null>>({}); const [notice, setNotice] = useState(""); const [loading, setLoading] = useState(false);
-  const storageKey = `tradeos-setup-v1:${organizationId}:${userId}`;
+  const storageKey = setupProgressStorageKey(organizationId, userId);
   const [history, setHistory] = useState<{ id: string; entity_key: string; file_name: string; status: string; created_count: number; failed_count: number; started_at: string }[]>([]);
   const [historyError, setHistoryError] = useState("");
-  useEffect(() => { try { const saved = JSON.parse(localStorage.getItem(storageKey) || "[]"); const valid = Array.isArray(saved) ? [...new Set<number>(saved.filter(n => Number.isInteger(n) && n >= 0 && n < steps.length))] : []; setReviewed(valid); const next = steps.findIndex((_, index) => !valid.includes(index)); setStep(next < 0 ? steps.length - 1 : next); } catch { setReviewed([]); } }, [storageKey]);
+  useEffect(() => { const valid = readSetupReviewedSteps(organizationId, userId); setReviewed(valid); const next = steps.findIndex((_, index) => !valid.includes(index)); setStep(next < 0 ? steps.length - 1 : next); }, [organizationId, userId, storageKey]);
   const refresh = useCallback(async () => {
     setLoading(true);
     const entries = await Promise.all(["products", "customers", "suppliers", "brands", "categories"].map(async table => {

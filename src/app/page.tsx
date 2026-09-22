@@ -23,6 +23,9 @@ import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, CollapsibleBanner } from "@/components/dashboard";
 import { cn } from "@/lib/utils";
+import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
+import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerAutoFolded, rememberSetupBannerAutoFolded } from "@/lib/setup/setup-progress";
+import { writeCollapsedBanner } from "@/lib/preferences/dashboard-banners";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
 import type { ChatResponse } from "@/lib/conversation";
@@ -5440,6 +5443,16 @@ setCustomerOrganizationName("");
       // storage may be unavailable
     }
   };
+
+  const setupStage = useSetupCompletion(currentOrganizationId, currentUser?.id);
+  useEffect(() => {
+    // Fold the completed Setup banner once; the user can still expand it, and it
+    // disappears on its own after SETUP_BANNER_RETENTION_DAYS.
+    if (setupStage !== "complete" || !currentOrganizationId || !currentUser?.id) return;
+    if (hasSetupBannerAutoFolded(currentOrganizationId, currentUser.id)) return;
+    writeCollapsedBanner(currentProfile?.id ?? currentUser.id, "setup-import", true);
+    rememberSetupBannerAutoFolded(currentOrganizationId, currentUser.id);
+  }, [setupStage, currentOrganizationId, currentUser?.id, currentProfile?.id]);
 
   const handleNavReset = () => {
     setNavOrder(null);
@@ -15740,7 +15753,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSection === "setup-import" && isOwnerOrAdmin() && currentOrganizationId && <SetupImportHub key={currentOrganizationId} supabase={supabase} organizationId={currentOrganizationId} userId={currentUser.id} actorProfileId={currentProfile?.id ?? null} createAuditLog={createAuditLog} onNavigate={handleSectionChange} onImported={() => { void fetchProducts(); void fetchCustomers(); }} />}
-        {activeSection === "dashboard" && isOwnerOrAdmin() && <CollapsibleBanner id="setup-import" profileId={currentProfile?.id ?? currentUser?.id} title="Setup & Data Import" subtitle="Follow the setup guide, import your external records and review missing settings." className="mb-4 rounded-xl border border-primary/30 bg-card p-5">
+        {activeSection === "dashboard" && isOwnerOrAdmin() && setupStage !== "expired" && <CollapsibleBanner id="setup-import" profileId={currentProfile?.id ?? currentUser?.id} title="Setup & Data Import" subtitle={setupStage === "complete" ? `Setup complete. This reminder stays folded and disappears in ${SETUP_BANNER_RETENTION_DAYS} days; you can still open Setup & Data Import from the sidebar.` : "Follow the setup guide, import your external records and review missing settings."} className="mb-4 rounded-xl border border-primary/30 bg-card p-5">
           <button type="button" onClick={() => handleSectionChange("setup-import")} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Open Setup &amp; Data Import</button>
         </CollapsibleBanner>}
         {activeSection === "dashboard" && canUseSalesTool("invoice") && (
@@ -15783,6 +15796,7 @@ setCustomerOrganizationName("");
         {activeSection === "dashboard" && currentProfile?.role === "owner" && <CollapsibleBanner id="business-records-export" profileId={currentProfile?.id ?? currentUser?.id} title="Export business records" subtitle="Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF." className="mb-4 rounded-xl border border-primary/30 bg-card p-5"><BusinessRecordsExport /></CollapsibleBanner>}
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
+            profileId={currentProfile?.id ?? currentUser?.id}
             userName={currentProfile?.full_name ?? currentUser.email}
             todaySales={{ value: formatPKR(todaySalesAmount) }}
             todayProfit={{ value: formatPKR(todayProfitAmount) }}
