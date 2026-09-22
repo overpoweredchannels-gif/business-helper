@@ -10,13 +10,18 @@ function advance(root: HTMLElement, target: Field, backwards = false) {
   const all = fields(root);
   const index = all.indexOf(target);
   if (index < 0) return;
-  const next = all[index + (backwards ? -1 : 1)];
-  if (next) {
+  // Fields marked data-entry-skip stay editable by click or Tab, but are stepped
+  // over here so a pre-filled value such as today's sale date never demands an
+  // extra Enter before the user reaches the next real entry field.
+  for (let offset = 1; offset <= all.length; offset += 1) {
+    const next = all[index + (backwards ? -offset : offset)];
+    if (!next) break;
+    if (next.hasAttribute("data-entry-skip")) continue;
     next.focus();
     if (next instanceof HTMLInputElement && ["text", "search", "tel"].includes(next.type)) next.select();
-  } else if (!backwards) {
-    root.querySelector<HTMLButtonElement>("button[data-entry-add]")?.click();
+    return;
   }
+  if (!backwards) root.querySelector<HTMLButtonElement>("button[data-entry-add]")?.click();
 }
 export function focusNextEntryField(target: HTMLInputElement) {
   const root = target.closest<HTMLElement>("[data-entry-navigation], [data-invoice-line]");

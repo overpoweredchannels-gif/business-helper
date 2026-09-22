@@ -17495,6 +17495,7 @@ setCustomerOrganizationName("");
                   value={salesInvoiceDate}
                   onChange={(e) => handleSalesInvoiceDateChange(e.target.value)}
                   required
+                  data-entry-skip
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
