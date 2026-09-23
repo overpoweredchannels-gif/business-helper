@@ -7,9 +7,12 @@ import {
   QuickActions,
   SmartModule,
   RecentActivity,
-  ChartsSection,
+  RevenueTrendCard,
+  ProfitTrendCard,
+  TopProductsCard,
+  TopCustomersCard,
 } from "./widgets";
-import { TrendingUp, TrendingDown, DollarSign, Package, Users, Receipt, AlertTriangle } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Package, Users, Receipt, AlertTriangle, Pencil, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DashboardWidget } from "./DashboardWidget";
 import type { DashboardWidgetId } from "@/lib/preferences/dashboard-widgets";
@@ -70,6 +73,9 @@ interface DashboardViewProps {
   /** True while the user is arranging the dashboard. */
   customizingWidgets?: boolean;
   onRemoveWidget?: (id: DashboardWidgetId) => void;
+  onToggleCustomize?: () => void;
+  /** Summary cards the user dropped onto the dashboard from the sidebar. */
+  droppedCards?: Array<{ id: DashboardWidgetId; label: string; node: React.ReactNode }>;
 }
 
 export function DashboardView({
@@ -103,6 +109,8 @@ export function DashboardView({
   hiddenWidgets = [],
   customizingWidgets = false,
   onRemoveWidget,
+  onToggleCustomize,
+  droppedCards = [],
 }: DashboardViewProps) {
   const now = new Date();
   const hour = now.getHours();
@@ -169,17 +177,40 @@ export function DashboardView({
     }] : []),
   ].filter((card) => !widgetHidden(card.id));
 
+  const chartCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
+    ...(revenueData && revenueData.length > 0 ? [{ id: "chart-revenue" as DashboardWidgetId, node: <RevenueTrendCard data={revenueData} /> }] : []),
+    ...(profitData && profitData.length > 0 ? [{ id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData} /> }] : []),
+    ...(topProducts && topProducts.length > 0 ? [{ id: "chart-top-products" as DashboardWidgetId, node: <TopProductsCard items={topProducts} /> }] : []),
+    ...(topCustomers && topCustomers.length > 0 ? [{ id: "chart-top-customers" as DashboardWidgetId, node: <TopCustomersCard items={topCustomers} /> }] : []),
+  ].filter((chart) => !widgetHidden(chart.id));
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="mx-auto w-full max-w-7xl px-4 pb-8 pt-4 sm:px-6 lg:px-8 space-y-5">
       {/* Welcome Section */}
-      <DashboardWidget id="greeting" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-        <div>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <DashboardWidget id="greeting" customizing={customizingWidgets} onRemove={onRemoveWidget} className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold text-foreground font-heading">
             {greeting}, <span className="text-primary">{userName}</span>
           </h1>
           <p className="text-sm text-light-text mt-0.5">{dateStr}</p>
-        </div>
-      </DashboardWidget>
+        </DashboardWidget>
+        {onToggleCustomize && (
+          <button
+            type="button"
+            onClick={onToggleCustomize}
+            aria-pressed={customizingWidgets}
+            className={cn(
+              "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              customizingWidgets
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-card text-foreground hover:bg-muted",
+            )}
+          >
+            {customizingWidgets ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
+            {customizingWidgets ? "Done" : "Edit home"}
+          </button>
+        )}
+      </header>
 
       {/* KPI Cards */}
       {kpiCards.length > 0 && (
@@ -259,15 +290,14 @@ export function DashboardView({
       )}
 
       {/* Charts */}
-      {(revenueData || profitData || topProducts || topCustomers) && (
-        <DashboardWidget id="charts" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <ChartsSection
-            revenueData={revenueData}
-            profitData={profitData}
-            topProducts={topProducts}
-            topCustomers={topCustomers}
-          />
-        </DashboardWidget>
+      {chartCards.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {chartCards.map((chart) => (
+            <DashboardWidget key={chart.id} id={chart.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
+              {chart.node}
+            </DashboardWidget>
+          ))}
+        </div>
       )}
 
       {/* Recent Activity */}
@@ -275,6 +305,17 @@ export function DashboardView({
         <DashboardWidget id="recent-activity" customizing={customizingWidgets} onRemove={onRemoveWidget}>
           <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} />
         </DashboardWidget>
+      )}
+
+      {/* Cards dropped here from the sidebar */}
+      {droppedCards.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {droppedCards.map((card) => (
+            <DashboardWidget key={card.id} id={card.id} label={card.label} customizing={customizingWidgets} onRemove={onRemoveWidget}>
+              {card.node}
+            </DashboardWidget>
+          ))}
+        </div>
       )}
     </div>
   );

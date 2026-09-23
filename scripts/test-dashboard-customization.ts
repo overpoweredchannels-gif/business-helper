@@ -1,13 +1,24 @@
 import assert from "node:assert/strict";
 import {
   DASHBOARD_WIDGETS,
+  addDashboardSectionCard,
   dashboardWidgetDefinition,
   normalizeHiddenWidgets,
   readDashboardWidgetPrefs,
+  removeDashboardSectionCard,
+  removeDashboardWidget,
   removedDashboardWidgets,
   resetDashboardWidgets,
   setDashboardWidgetHidden,
 } from "../src/lib/preferences/dashboard-widgets";
+import {
+  DASHBOARD_SECTION_CARDS,
+  availableSectionCards,
+  dashboardSectionCardDefinition,
+  dashboardSectionFromWidgetId,
+  dashboardSectionWidgetId,
+  normalizeSectionCards,
+} from "../src/lib/dashboard/section-cards";
 import { SETUP_STEPS } from "../src/lib/setup/setup-steps";
 import {
   SETUP_BANNER_RETENTION_DAYS,
@@ -53,6 +64,8 @@ assert.equal(new Set(ids).size, ids.length, "Every dashboard card id is unique")
 assert.ok(ids.includes("setup-import") && ids.includes("business-records-export"), "The removable setup and export cards are registered");
 assert.ok(DASHBOARD_WIDGETS.every((widget) => widget.label.length > 0 && widget.whereToFind.length > 0), "Every card explains where to find it after removal");
 assert.equal(dashboardWidgetDefinition("kpi-today-sales")?.label, "Today's Sales", "Key-number cards can be looked up for the edit panel");
+assert.ok(ids.includes("chart-revenue") && ids.includes("chart-profit") && ids.includes("ai-insight"), "Each chart and the AI recommendation is its own removable card");
+assert.deepEqual(normalizeHiddenWidgets(["charts"]), ["chart-revenue", "chart-profit", "chart-top-products", "chart-top-customers"], "Hiding the old grouped charts card still hides every chart");
 
 // ── Remove / add back / reset ──────────────────────────────────────────────
 assert.deepEqual(readDashboardWidgetPrefs(profileId).hidden, [], "A fresh dashboard shows every card");
@@ -73,6 +86,33 @@ store.set(`tradeos_dashboard_banners_${profileId}`, JSON.stringify({ "setup-impo
 assert.deepEqual(readDashboardWidgetPrefs(profileId).hidden, ["setup-import"], "A banner folded in the earlier release starts removed");
 assert.deepEqual(removedDashboardWidgets(readDashboardWidgetPrefs(profileId).hidden).map((widget) => widget.label), ["Setup & Data Import"], "The edit panel lists removed cards by name");
 store.delete(`tradeos_dashboard_banners_${profileId}`);
+
+// ── Cards dropped in from the sidebar ──────────────────────────────────────
+const sections = DASHBOARD_SECTION_CARDS.map((card) => card.section);
+assert.equal(new Set(sections).size, sections.length, "Every droppable section appears once");
+assert.ok(sections.includes("brands") && sections.includes("categories") && sections.includes("customers") && sections.includes("suppliers") && sections.includes("task-manager") && sections.includes("activity-logs"), "The sections the user wants to drag in are available");
+assert.equal(dashboardSectionWidgetId("sales"), "section:sales", "A dropped card gets a stable id");
+assert.equal(dashboardSectionFromWidgetId("section:sales"), "sales", "A dropped card id maps back to its section");
+assert.equal(dashboardSectionFromWidgetId("section:not-a-section"), null, "An unknown dropped id is ignored");
+assert.deepEqual(normalizeSectionCards(["sales", "sales", "nope", 4, null]), ["sales"], "Invalid or repeated dropped sections are ignored");
+assert.equal(dashboardSectionCardDefinition("task-manager")?.label, "Task Manager", "Dropped cards keep a readable name");
+assert.equal(availableSectionCards(["sales"]).some((card) => card.section === "sales"), false, "An added section is no longer offered again");
+
+assert.deepEqual(addDashboardSectionCard(profileId, "customers").added, ["customers"], "A section dropped on the dashboard is remembered");
+addDashboardSectionCard(profileId, "sales");
+assert.deepEqual(readDashboardWidgetPrefs(profileId).added, ["customers", "sales"], "Dropped cards are stored in the order they were added");
+assert.deepEqual(removeDashboardSectionCard(profileId, "customers").added, ["sales"], "A dropped card can be taken off again");
+assert.deepEqual(removeDashboardWidget(profileId, "section:sales").added, [], "Removing a dropped card routes to the dropped list, not the hidden list");
+assert.deepEqual(readDashboardWidgetPrefs(profileId).hidden, [], "Removing a dropped card leaves the built-in cards alone");
+removeDashboardWidget(profileId, "greeting");
+assert.deepEqual(readDashboardWidgetPrefs(profileId).hidden, ["greeting"], "Removing a built-in card still hides it");
+resetDashboardWidgets(profileId);
+addDashboardSectionCard(profileId, "sales");
+resetDashboardWidgets(profileId);
+assert.deepEqual(readDashboardWidgetPrefs(profileId).added, ["sales"], "Reset restores built-in cards without discarding dropped ones");
+assert.deepEqual(readDashboardWidgetPrefs(profileId).hidden, [], "Reset brings every built-in card back");
+store.set(`tradeos_dashboard_widgets_${profileId}`, JSON.stringify({ hidden: [], added: ["ghost"] }));
+assert.deepEqual(readDashboardWidgetPrefs(profileId).added, [], "A dropped card that is no longer supported is dropped from storage");
 
 // ── Setup reminder retirement ──────────────────────────────────────────────
 const allSteps = SETUP_STEPS.map((_, index) => index);

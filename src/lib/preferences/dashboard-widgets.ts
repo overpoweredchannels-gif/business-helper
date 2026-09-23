@@ -1,3 +1,10 @@
+import {
+  dashboardSectionFromWidgetId,
+  normalizeSectionCards,
+  type DashboardSectionWidgetId,
+} from "@/lib/dashboard/section-cards";
+import type { SectionId } from "@/lib/tradeos/types";
+
 /**
  * The home dashboard is a user-owned layout: every card can be removed from the
  * dashboard and restored later. Hidden cards never lose their data - the same
@@ -22,8 +29,12 @@ export type DashboardWidgetId =
   | "quick-actions"
   | "smart-modules"
   | "needs-attention"
-  | "charts"
-  | "recent-activity";
+  | "chart-revenue"
+  | "chart-profit"
+  | "chart-top-products"
+  | "chart-top-customers"
+  | "recent-activity"
+  | DashboardSectionWidgetId;
 
 export type DashboardWidgetGroup = "Header" | "Key numbers" | "Insight and actions" | "Activity";
 
@@ -57,7 +68,10 @@ export const DASHBOARD_WIDGETS: DashboardWidgetDefinition[] = [
   { id: "quick-actions", label: "Quick actions", description: "Shortcuts for common daily tasks.", group: "Insight and actions", whereToFind: "the sidebar sections each action opens" },
   { id: "smart-modules", label: "Business Overview", description: "Products, customers, suppliers, sales, purchases and inventory summaries.", group: "Insight and actions", whereToFind: "Products, Customers, Suppliers, Sales, Purchases and Inventory" },
   { id: "needs-attention", label: "Needs Your Attention", description: "Invoices due, payments due, follow-ups and expiring products.", group: "Insight and actions", whereToFind: "Task Manager" },
-  { id: "charts", label: "Analytics charts", description: "Revenue, profit, top products and top customers.", group: "Activity", whereToFind: "Business Intelligence" },
+  { id: "chart-revenue", label: "Revenue Trend", description: "Sales over your recent periods.", group: "Activity", whereToFind: "Business Intelligence" },
+  { id: "chart-profit", label: "Profit Trend", description: "Estimated profit over your recent periods.", group: "Activity", whereToFind: "Profit & Loss" },
+  { id: "chart-top-products", label: "Top Products", description: "Your best selling products.", group: "Activity", whereToFind: "Products" },
+  { id: "chart-top-customers", label: "Top Customers", description: "The customers buying the most.", group: "Activity", whereToFind: "Customers" },
   { id: "recent-activity", label: "Recent activity", description: "Your latest sales and purchases.", group: "Activity", whereToFind: "Activity Logs" },
 ];
 
@@ -68,10 +82,17 @@ export const DASHBOARD_WIDGETS_CHANGE_EVENT = "tradeos:dashboard-widgets-change"
 const LEGACY_BANNER_STORAGE_PREFIX = "tradeos_dashboard_banners_";
 const LEGACY_BANNER_WIDGET_IDS: DashboardWidgetId[] = ["greeting", "setup-import", "quick-sale", "business-records-export"];
 
+/** Cards that used to be grouped and are now separate, so an existing choice still applies. */
+const LEGACY_WIDGET_ALIASES: Record<string, DashboardWidgetId[]> = {
+  charts: ["chart-revenue", "chart-profit", "chart-top-products", "chart-top-customers"],
+};
+
 const WIDGET_IDS = new Set<string>(DASHBOARD_WIDGETS.map((widget) => widget.id));
 
 export interface DashboardWidgetPrefs {
   hidden: DashboardWidgetId[];
+  /** Sidebar sections the user dropped onto the dashboard as summary cards. */
+  added: SectionId[];
 }
 
 export function dashboardWidgetsStorageKey(profileId?: string | null) {
@@ -82,7 +103,9 @@ export function normalizeHiddenWidgets(value: unknown): DashboardWidgetId[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<DashboardWidgetId>();
   for (const entry of value) {
-    if (typeof entry === "string" && WIDGET_IDS.has(entry)) seen.add(entry as DashboardWidgetId);
+    if (typeof entry !== "string") continue;
+    if (WIDGET_IDS.has(entry)) seen.add(entry as DashboardWidgetId);
+    else for (const replacement of LEGACY_WIDGET_ALIASES[entry] ?? []) seen.add(replacement);
   }
   return DASHBOARD_WIDGETS.filter((widget) => seen.has(widget.id)).map((widget) => widget.id);
 }
@@ -103,11 +126,11 @@ function readLegacyHiddenWidgets(profileId?: string | null): DashboardWidgetId[]
 export function readDashboardWidgetPrefs(profileId?: string | null): DashboardWidgetPrefs {
   try {
     const raw = localStorage.getItem(dashboardWidgetsStorageKey(profileId));
-    if (!raw) return { hidden: readLegacyHiddenWidgets(profileId) };
-    const parsed = JSON.parse(raw) as { hidden?: unknown };
-    return { hidden: normalizeHiddenWidgets(parsed?.hidden) };
+    if (!raw) return { hidden: readLegacyHiddenWidgets(profileId), added: [] };
+    const parsed = JSON.parse(raw) as { hidden?: unknown; added?: unknown };
+    return { hidden: normalizeHiddenWidgets(parsed?.hidden), added: normalizeSectionCards(parsed?.added) };
   } catch {
-    return { hidden: [] };
+    return { hidden: [], added: [] };
   }
 }
 
@@ -117,7 +140,7 @@ function publishDashboardWidgetPrefs(profileId: string | null | undefined, prefs
 }
 
 export function writeDashboardWidgetPrefs(profileId: string | null | undefined, prefs: DashboardWidgetPrefs): DashboardWidgetPrefs {
-  const next: DashboardWidgetPrefs = { hidden: normalizeHiddenWidgets(prefs.hidden) };
+  const next: DashboardWidgetPrefs = { hidden: normalizeHiddenWidgets(prefs.hidden), added: normalizeSectionCards(prefs.added) };
   try {
     localStorage.setItem(dashboardWidgetsStorageKey(profileId), JSON.stringify(next));
   } catch {
@@ -128,13 +151,30 @@ export function writeDashboardWidgetPrefs(profileId: string | null | undefined, 
 }
 
 export function setDashboardWidgetHidden(profileId: string | null | undefined, id: DashboardWidgetId, hidden: boolean): DashboardWidgetPrefs {
-  const current = readDashboardWidgetPrefs(profileId).hidden;
-  const next = hidden ? [...current, id] : current.filter((entry) => entry !== id);
-  return writeDashboardWidgetPrefs(profileId, { hidden: next });
+  const current = readDashboardWidgetPrefs(profileId);
+  const next = hidden ? [...current.hidden, id] : current.hidden.filter((entry) => entry !== id);
+  return writeDashboardWidgetPrefs(profileId, { hidden: next, added: current.added });
 }
 
+/** Reset restores the cards that ship with the dashboard; dropped cards stay. */
 export function resetDashboardWidgets(profileId: string | null | undefined): DashboardWidgetPrefs {
-  return writeDashboardWidgetPrefs(profileId, { hidden: [] });
+  return writeDashboardWidgetPrefs(profileId, { hidden: [], added: readDashboardWidgetPrefs(profileId).added });
+}
+
+export function addDashboardSectionCard(profileId: string | null | undefined, section: SectionId): DashboardWidgetPrefs {
+  const current = readDashboardWidgetPrefs(profileId);
+  return writeDashboardWidgetPrefs(profileId, { hidden: current.hidden, added: [...current.added, section] });
+}
+
+export function removeDashboardSectionCard(profileId: string | null | undefined, section: SectionId): DashboardWidgetPrefs {
+  const current = readDashboardWidgetPrefs(profileId);
+  return writeDashboardWidgetPrefs(profileId, { hidden: current.hidden, added: current.added.filter((entry) => entry !== section) });
+}
+
+/** Routes a removal from any card, whether it ships with the dashboard or was dropped on. */
+export function removeDashboardWidget(profileId: string | null | undefined, id: DashboardWidgetId): DashboardWidgetPrefs {
+  const section = dashboardSectionFromWidgetId(id);
+  return section ? removeDashboardSectionCard(profileId, section) : setDashboardWidgetHidden(profileId, id, true);
 }
 
 export function isDashboardWidgetHidden(prefs: DashboardWidgetPrefs | undefined, id: DashboardWidgetId) {

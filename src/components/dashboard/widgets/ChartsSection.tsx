@@ -61,48 +61,52 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
   );
 }
 
-interface ChartsSectionProps {
-  revenueData?: { label: string; value: number }[];
-  profitData?: { label: string; value: number }[];
-  topProducts?: { name: string; value: string; trend?: "up" | "down" | "flat" }[];
-  topCustomers?: { name: string; value: string; trend?: "up" | "down" | "flat" }[];
+type TrendPoint = { label: string; value: number };
+type RankedItem = { name: string; value: string; trend?: "up" | "down" | "flat" };
+
+const card = "rounded-xl border border-border bg-card p-5";
+
+// Each chart is its own card so the home dashboard can add or remove one at a time.
+export function RevenueTrendCard({ data }: { data: TrendPoint[] }) {
+  return (
+    <div className={card}>
+      <h3 className="text-sm font-semibold text-foreground mb-3">Revenue Trend</h3>
+      <BarChart data={data} />
+    </div>
+  );
 }
 
-export function ChartsSection({ revenueData = [], profitData = [], topProducts = [], topCustomers = [] }: ChartsSectionProps) {
+export function ProfitTrendCard({ data }: { data: TrendPoint[] }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {revenueData.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Revenue Trend</h3>
-          <BarChart data={revenueData} />
-        </div>
-      )}
-      {profitData.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Profit Trend</h3>
-          <BarChart data={profitData} />
-        </div>
-      )}
-      {topProducts.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Top Products</h3>
-          <div className="divide-y divide-border">
-            {topProducts.map((p, i) => (
-              <TopItem key={p.name} rank={i + 1} name={p.name} value={p.value} trend={p.trend} />
-            ))}
-          </div>
-        </div>
-      )}
-      {topCustomers.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Top Customers</h3>
-          <div className="divide-y divide-border">
-            {topCustomers.map((c, i) => (
-              <TopItem key={c.name} rank={i + 1} name={c.name} value={c.value} trend={c.trend} />
-            ))}
-          </div>
-        </div>
-      )}
+    <div className={card}>
+      <h3 className="text-sm font-semibold text-foreground mb-3">Profit Trend</h3>
+      <BarChart data={data} />
+    </div>
+  );
+}
+
+export function TopProductsCard({ items }: { items: RankedItem[] }) {
+  return (
+    <div className={card}>
+      <h3 className="text-sm font-semibold text-foreground mb-3">Top Products</h3>
+      <div className="divide-y divide-border">
+        {items.map((item, index) => (
+          <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} trend={item.trend} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function TopCustomersCard({ items }: { items: RankedItem[] }) {
+  return (
+    <div className={card}>
+      <h3 className="text-sm font-semibold text-foreground mb-3">Top Customers</h3>
+      <div className="divide-y divide-border">
+        {items.map((item, index) => (
+          <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} trend={item.trend} />
+        ))}
+      </div>
     </div>
   );
 }

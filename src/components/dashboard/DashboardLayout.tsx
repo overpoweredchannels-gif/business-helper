@@ -40,6 +40,8 @@ interface DashboardLayoutProps {
   onDropNavItem?: (fromId: string, toId: string) => void;
   onToggleNavHidden?: (id: string) => void;
   onResetNavOrder?: () => void;
+  /** Home dashboard edit mode: sidebar sections become draggable cards. */
+  dragSectionsToDashboard?: boolean;
 }
 
 export function DashboardLayout({
@@ -66,6 +68,7 @@ customizeMode,
   onDropNavItem,
   onToggleNavHidden,
   onResetNavOrder,
+  dragSectionsToDashboard,
 }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMobileMenuOpen(false), []);
@@ -88,6 +91,7 @@ customizeMode,
         onDropItem={onDropNavItem}
         onToggleHidden={onToggleNavHidden}
         onResetOrder={onResetNavOrder}
+        dragToDashboard={dragSectionsToDashboard}
       />
 
       {/* Mobile sidebar overlay */}
@@ -110,6 +114,7 @@ customizeMode,
               onDropItem={onDropNavItem}
               onToggleHidden={onToggleNavHidden}
               onResetOrder={onResetNavOrder}
+              dragToDashboard={dragSectionsToDashboard}
             />
       </MobileNavigation>
 

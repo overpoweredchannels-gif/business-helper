@@ -21,11 +21,12 @@ import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
 import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
-import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizeBar, DashboardWidget } from "@/components/dashboard";
+import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, type SectionSummary } from "@/components/dashboard";
 import { cn } from "@/lib/utils";
 import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
 import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerRetired, rememberSetupBannerRetired } from "@/lib/setup/setup-progress";
 import { useDashboardWidgets } from "@/lib/preferences/use-dashboard-widgets";
+import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardSectionWidgetId } from "@/lib/dashboard/section-cards";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
 import type { ChatResponse } from "@/lib/conversation";
@@ -5446,6 +5447,7 @@ setCustomerOrganizationName("");
 
   const setupStage = useSetupCompletion(currentOrganizationId, currentUser?.id);
   const homeWidgets = useDashboardWidgets(currentProfile?.id ?? currentUser?.id);
+  const [sectionCardDragOver, setSectionCardDragOver] = useState(false);
   const hideHomeWidget = homeWidgets.hide;
   useEffect(() => {
     // Once setup has been complete for SETUP_BANNER_RETENTION_DAYS the reminder
@@ -15568,6 +15570,192 @@ setCustomerOrganizationName("");
     );
   }
 
+  // ── Home dashboard: cards the user dropped in from the sidebar ────────────
+  const buildSectionSummary = (section: SectionId): SectionSummary => {
+    const money = (value: unknown) => formatPKR(safeNumber(value));
+    switch (section) {
+      case "sales":
+        return {
+          title: "Sales",
+          description: "Most recent sales invoices.",
+          onOpen: () => handleSectionChange("sales"),
+          metrics: [
+            { label: "Invoices", value: String(salesTransactions.length) },
+            { label: "Total value", value: money(salesTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)) },
+          ],
+          rowsLabel: "Latest invoices",
+          rows: recentSalesInvoices.slice(0, 4).map((tx) => ({ label: `#${tx.invoice_number}`, value: money(tx.total_amount) })),
+          emptyText: "No sales recorded yet.",
+        };
+      case "purchases":
+        return {
+          title: "Purchases",
+          description: "Most recent supplier bills.",
+          onOpen: () => handleSectionChange("purchases"),
+          metrics: [
+            { label: "Bills", value: String(purchaseTransactions.length) },
+            { label: "Total value", value: money(purchaseTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)) },
+          ],
+          rowsLabel: "Latest bills",
+          rows: recentPurchaseInvoices.slice(0, 4).map((tx) => ({ label: `#${tx.invoice_number}`, value: money(tx.total_amount) })),
+          emptyText: "No purchases recorded yet.",
+        };
+      case "customer-payments":
+        return {
+          title: "Customer Payments",
+          description: "Money received from customers.",
+          onOpen: () => handleSectionChange("customer-payments"),
+          metrics: [
+            { label: "Payments", value: String(customerPayments.length) },
+            { label: "Total received", value: money(customerPayments.reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
+          ],
+          rowsLabel: "Recent payments",
+          rows: [...customerPayments].reverse().slice(0, 4).map((payment) => ({ label: formatDateTime(payment?.payment_date ?? payment?.created_at), value: money(payment?.amount) })),
+          emptyText: "No customer payments recorded yet.",
+        };
+      case "supplier-payments":
+        return {
+          title: "Supplier Payments",
+          description: "Money paid out to suppliers.",
+          onOpen: () => handleSectionChange("supplier-payments"),
+          metrics: [
+            { label: "Payments", value: String(supplierPayments.length) },
+            { label: "Total paid", value: money(supplierPayments.reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
+          ],
+          rowsLabel: "Recent payments",
+          rows: [...supplierPayments].reverse().slice(0, 4).map((payment) => ({ label: formatDateTime(payment?.payment_date ?? payment?.created_at), value: money(payment?.amount) })),
+          emptyText: "No supplier payments recorded yet.",
+        };
+      case "expenses":
+        return {
+          title: "Expenses",
+          description: "What the business has spent.",
+          onOpen: () => handleSectionChange("expenses"),
+          metrics: [
+            { label: "Entries", value: String(expenses.length) },
+            { label: "Total spent", value: money(expenses.reduce((total, expense) => total + safeNumber(expense?.amount), 0)) },
+          ],
+          rowsLabel: "Recent expenses",
+          rows: [...expenses].reverse().slice(0, 4).map((expense) => ({ label: String(expense?.expense_type ?? "Expense"), value: money(expense?.amount) })),
+          emptyText: "No expenses recorded yet.",
+        };
+      case "customers":
+        return {
+          title: "Customers",
+          description: "Who you sell to.",
+          onOpen: () => handleSectionChange("customers"),
+          metrics: [{ label: "Customers", value: String(totalCustomers) }],
+          rowsLabel: "Newest customers",
+          rows: [...customers].reverse().slice(0, 4).map((customer) => ({ label: customer.customer_name, value: customer.city ?? customer.phone ?? "" })),
+          emptyText: "No customers added yet.",
+        };
+      case "suppliers":
+        return {
+          title: "Suppliers",
+          description: "Who you buy from.",
+          onOpen: () => handleSectionChange("suppliers"),
+          metrics: [
+            { label: "Suppliers", value: String(totalSuppliers) },
+            { label: "You owe", value: money(totalPayables), tone: totalPayables > 0 ? "warning" : "success" },
+          ],
+          rowsLabel: "Newest suppliers",
+          rows: [...suppliers].reverse().slice(0, 4).map((supplier) => ({ label: supplier.supplier_name, value: supplier.city ?? supplier.phone ?? "" })),
+          emptyText: "No suppliers added yet.",
+        };
+      case "products":
+        return {
+          title: "Products",
+          description: "Your catalogue and stock attention.",
+          onOpen: () => handleSectionChange("products"),
+          metrics: [
+            { label: "Products", value: String(totalProducts) },
+            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success" },
+          ],
+          rowsLabel: "Needs reorder",
+          rows: lowStockProducts.slice(0, 4).map((item) => ({ label: item.productName, value: `${item.currentStock} in stock` })),
+          emptyText: "No stock attention needed.",
+        };
+      case "brands": {
+        const counts = brands
+          .map((brand) => ({ name: brand.name, count: products.filter((product) => product.brand_id === brand.id).length }))
+          .sort((left, right) => right.count - left.count);
+        return {
+          title: "Brands",
+          description: "How your catalogue splits by brand.",
+          onOpen: () => handleSectionChange("brands"),
+          metrics: [{ label: "Brands", value: String(brands.length) }],
+          rowsLabel: "Most products",
+          rows: counts.slice(0, 4).map((entry) => ({ label: entry.name, value: `${entry.count} products` })),
+          emptyText: "No brands added yet.",
+        };
+      }
+      case "categories": {
+        const counts = categories
+          .map((category) => ({ name: category.name, count: products.filter((product) => product.category_id === category.id).length }))
+          .sort((left, right) => right.count - left.count);
+        return {
+          title: "Categories",
+          description: "How your catalogue splits by category.",
+          onOpen: () => handleSectionChange("categories"),
+          metrics: [{ label: "Categories", value: String(categories.length) }],
+          rowsLabel: "Most products",
+          rows: counts.slice(0, 4).map((entry) => ({ label: entry.name, value: `${entry.count} products` })),
+          emptyText: "No categories added yet.",
+        };
+      }
+      case "inventory":
+        return {
+          title: "Inventory",
+          description: "Stock value and what needs attention.",
+          onOpen: () => handleSectionChange("inventory"),
+          metrics: [
+            { label: "Stock value", value: money(inventoryValue) },
+            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success" },
+            { label: "Out of stock", value: String(reorderRecommendationSummary.outOfStockCount), tone: reorderRecommendationSummary.outOfStockCount > 0 ? "danger" : "success" },
+          ],
+          rows: lowStockProducts.slice(0, 4).map((item) => ({ label: item.productName, value: `${item.currentStock} in stock` })),
+          emptyText: "Stock levels look healthy.",
+        };
+      case "task-manager": {
+        const open = tasks.filter((task) => task.status === "pending" || task.status === "in_progress");
+        const overdue = open.filter((task) => {
+          const due = getDateOnly(task.due_date);
+          return Boolean(due && due < todayDateValue);
+        });
+        return {
+          title: "Task Manager",
+          description: "Open work and anything overdue.",
+          onOpen: () => handleSectionChange("task-manager"),
+          metrics: [
+            { label: "Open tasks", value: String(open.length) },
+            { label: "Overdue", value: String(overdue.length), tone: overdue.length > 0 ? "danger" : "success" },
+          ],
+          rowsLabel: "Open tasks",
+          rows: open.slice(0, 4).map((task) => ({ label: task.title, value: getDateOnly(task.due_date) ?? task.priority })),
+          emptyText: "Nothing open right now.",
+        };
+      }
+      case "activity-logs":
+        return {
+          title: "Activity Logs",
+          description: "The most recent recorded actions.",
+          onOpen: () => handleSectionChange("activity-logs"),
+          metrics: [{ label: "Recorded actions", value: String(auditLogs.length) }],
+          rowsLabel: "Latest activity",
+          rows: [...auditLogs].reverse().slice(0, 4).map((log) => ({ label: log.description ?? log.action, value: formatDateTime(log.created_at) })),
+          emptyText: "No activity recorded yet.",
+        };
+      default:
+        return { title: section, onOpen: () => handleSectionChange(section), metrics: [] };
+    }
+  };
+
+  const droppedSectionCards = homeWidgets.added.map((section) => ({
+    id: dashboardSectionWidgetId(section),
+    label: dashboardSectionCardDefinition(section)?.label ?? section,
+    node: <SectionSummaryCard summary={buildSectionSummary(section)} />,
+  }));
+
   return (
     <DashboardLayout
         navigationItems={orderedNavItems}
@@ -15586,7 +15774,8 @@ setCustomerOrganizationName("");
         onMoveNavItem={handleNavMove}
         onDropNavItem={handleNavDrop}
         onToggleNavHidden={handleNavToggleHidden}
-        onResetNavOrder={handleNavReset}
+      onResetNavOrder={handleNavReset}
+      dragSectionsToDashboard={activeSection === "dashboard" && homeWidgets.customizing}
         onSearchSubmit={(query) => {
           const q = query.toLowerCase().replace(/&/g, " and ");
           const match = visibleNavigationItems.find((item) => {
@@ -15756,17 +15945,35 @@ setCustomerOrganizationName("");
         )}
 
         {activeSection === "setup-import" && isOwnerOrAdmin() && currentOrganizationId && <SetupImportHub key={currentOrganizationId} supabase={supabase} organizationId={currentOrganizationId} userId={currentUser.id} actorProfileId={currentProfile?.id ?? null} createAuditLog={createAuditLog} onNavigate={handleSectionChange} onImported={() => { void fetchProducts(); void fetchCustomers(); }} />}
-        {activeSection === "dashboard" && !staffDashboardData.isStaff && (
-          <DashboardCustomizeBar
-            customizing={homeWidgets.customizing}
-            onToggle={() => homeWidgets.setCustomizing((value) => !value)}
-            removed={homeWidgets.removed}
-            onShow={homeWidgets.show}
-            onReset={homeWidgets.reset}
-          />
+        {activeSection === "dashboard" && homeWidgets.customizing && (
+          <div className="mx-auto w-full max-w-7xl space-y-3 px-4 pt-4 sm:px-6 lg:px-8">
+            <DashboardCustomizePanel
+              removed={homeWidgets.removed}
+              onShow={homeWidgets.show}
+              onReset={homeWidgets.reset}
+              availableSections={homeWidgets.available}
+              onAddSection={homeWidgets.addSection}
+            />
+            <div
+              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setSectionCardDragOver(true); }}
+              onDragLeave={() => setSectionCardDragOver(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                setSectionCardDragOver(false);
+                const section = event.dataTransfer.getData(DASHBOARD_SECTION_DRAG_TYPE);
+                if (section) homeWidgets.addSection(section as SectionId);
+              }}
+              className={cn(
+                "rounded-xl border-2 border-dashed p-4 text-center text-xs transition-colors",
+                sectionCardDragOver ? "border-primary bg-primary/10 text-foreground" : "border-border bg-card/60 text-muted-foreground",
+              )}
+            >
+              {sectionCardDragOver ? "Drop it here to add this section as a card." : "Drag any section from the sidebar and drop it here to add it as a summary card. On a phone, tap a section above instead."}
+            </div>
+          </div>
         )}
         {activeSection === "dashboard" && isOwnerOrAdmin() && (
-          <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.hide} className="mb-4">
+          <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
             <section data-help-topic="setup and data import" className="rounded-xl border border-primary/30 bg-card p-5">
               <h2 className="text-lg font-semibold">Setup &amp; Data Import</h2>
               <p className="mt-1 text-sm text-muted-foreground">{setupStage === "complete" ? `Setup complete. This reminder retires itself after ${SETUP_BANNER_RETENTION_DAYS} days; you can still open Setup & Data Import from the sidebar.` : "Follow the setup guide, import your external records and review missing settings."}</p>
@@ -15777,7 +15984,7 @@ setCustomerOrganizationName("");
           </DashboardWidget>
         )}
         {activeSection === "dashboard" && canUseSalesTool("invoice") && (
-          <DashboardWidget id="quick-sale" hidden={homeWidgets.isHidden("quick-sale")} customizing={homeWidgets.customizing} onRemove={homeWidgets.hide} className="mb-5">
+          <DashboardWidget id="quick-sale" hidden={homeWidgets.isHidden("quick-sale")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
             <section data-help-topic="quick sale" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
               <h2 className="text-lg font-semibold">Quick sale</h2>
               <p className="mt-1 text-sm text-muted-foreground">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
@@ -15820,7 +16027,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSection === "dashboard" && currentProfile?.role === "owner" && (
-          <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.hide} className="mb-4">
+          <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
             <section className="rounded-xl border border-primary/30 bg-card p-5">
               <h2 className="text-lg font-semibold">Export business records</h2>
               <p className="mt-1 text-sm text-muted-foreground">Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF.</p>
@@ -15832,7 +16039,9 @@ setCustomerOrganizationName("");
           <DashboardView
             hiddenWidgets={homeWidgets.hidden}
             customizingWidgets={homeWidgets.customizing}
-            onRemoveWidget={homeWidgets.hide}
+            onRemoveWidget={homeWidgets.removeWidget}
+            onToggleCustomize={() => homeWidgets.setCustomizing((value) => !value)}
+            droppedCards={droppedSectionCards}
             userName={currentProfile?.full_name ?? currentUser.email}
             todaySales={{ value: formatPKR(todaySalesAmount) }}
             todayProfit={{ value: formatPKR(todayProfitAmount) }}

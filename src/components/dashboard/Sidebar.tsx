@@ -11,6 +11,7 @@ import {
 import { useRef, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
 import { DisplayZoomControl } from "./DisplayZoomControl";
+import { DASHBOARD_SECTION_DRAG_TYPE, isDashboardSectionCard } from "@/lib/dashboard/section-cards";
 
 const navIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   dashboard: LayoutDashboard,
@@ -66,6 +67,8 @@ interface SidebarProps {
   onToggleHidden?: (id: string) => void;
   onResetOrder?: () => void;
   disableCollapse?: boolean;
+  /** True while the home dashboard is in edit mode, so sections can be dragged onto it. */
+  dragToDashboard?: boolean;
 }
 
 export function Sidebar({
@@ -83,6 +86,7 @@ export function Sidebar({
   onToggleHidden,
   onResetOrder,
   disableCollapse,
+  dragToDashboard,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const hiddenSet = new Set(hiddenIds || []);
@@ -122,6 +126,8 @@ export function Sidebar({
       onDropItem?.(fromId, targetId);
     }
   };
+
+  const canDropOnDashboard = (id: SectionId) => Boolean(dragToDashboard) && isDashboardSectionCard(id);
 
   return (
     <aside
@@ -191,16 +197,23 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={() => onSectionChange(item.id)}
+                draggable={canDropOnDashboard(item.id)}
+                onDragStart={(event) => {
+                  if (!canDropOnDashboard(item.id)) return;
+                  event.dataTransfer.setData(DASHBOARD_SECTION_DRAG_TYPE, item.id);
+                  event.dataTransfer.effectAllowed = "copy";
+                }}
                 className={cn(
                   "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   activeSection === item.id
                     ? "bg-primary text-primary-foreground font-medium"
                     : "text-foreground/70 hover:text-foreground hover:bg-muted",
+                  canDropOnDashboard(item.id) && "cursor-grab active:cursor-grabbing",
                   isHidden && !customizing && "opacity-40",
                   collapsed && "justify-center px-0",
                 )}
-                title={collapsed ? item.label : undefined}
+                title={canDropOnDashboard(item.id) ? `${item.label} - drag onto the home dashboard to add it as a card` : collapsed ? item.label : undefined}
               >
                 {Icon && <Icon className="size-4.5 shrink-0" />}
                 {!collapsed && <span className="truncate">{item.label}</span>}

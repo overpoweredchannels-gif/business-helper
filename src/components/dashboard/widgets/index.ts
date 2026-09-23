@@ -4,4 +4,4 @@ export { BusinessHealthCard } from "./BusinessHealthCard";
 export { QuickActions } from "./QuickActions";
 export { SmartModule } from "./SmartModule";
 export { RecentActivity } from "./RecentActivity";
-export { ChartsSection } from "./ChartsSection";
+export { RevenueTrendCard, ProfitTrendCard, TopProductsCard, TopCustomersCard } from "./ChartsSection";
