@@ -80,12 +80,12 @@ function ChatBubble({ message, onRetry }: { message: ChatMessage; onRetry: () =>
         </div>
 
         {!isUser && hasContent && (
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity px-1">
-            <button onClick={handleCopy} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors" title={copiedId === message.id ? "Copied" : "Copy response"}>
-              {copiedId === message.id ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
+          <div className="hover-reveal flex items-center gap-0.5 px-1">
+            <button onClick={handleCopy} className="flex min-h-6 items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={copiedId === message.id ? "Copied" : "Copy response"}>
+              {copiedId === message.id ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
               <span>{copiedId === message.id ? "Copied" : "Copy"}</span>
             </button>
-            <button onClick={onRetry} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors" title="Retry">
+            <button onClick={onRetry} className="flex min-h-6 items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title="Retry">
               <RotateCcw className="size-3" />
               <span>Retry</span>
             </button>
@@ -202,7 +202,7 @@ export function AIAssistant({ onChat, brainAvailable }: AIAssistantProps) {
           )}
         </div>
         {messages.length > 0 && (
-          <button onClick={clearHistory} className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+          <button onClick={clearHistory} className="flex min-h-6 items-center gap-1 rounded-md px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Trash2 className="size-3" />
             Clear chat
           </button>

@@ -224,7 +224,7 @@ function LeftPanel() {
               style={{ animationDelay: `${200 + i * 100}ms` }}
             >
               <div className="size-9 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
-                <item.icon className="size-4.5 text-primary" />
+                <item.icon className="size-4.5 text-primary-on-dark" />
               </div>
               <div>
                 <p className="font-medium text-sm text-white/90">{item.title}</p>

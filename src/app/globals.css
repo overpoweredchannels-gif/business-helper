@@ -13,9 +13,9 @@ html { zoom: var(--app-zoom, 1); }
   font-weight: 600;
 }
 .bulk-setup-review button:disabled, .import-workflow button:disabled { opacity: 0.45; cursor: not-allowed; }
-.bulk-setup-review button:focus-visible, .import-workflow button:focus-visible { outline: 2px solid #b25232; outline-offset: 2px; }
+.bulk-setup-review button:focus-visible, .import-workflow button:focus-visible { outline: 2px solid var(--color-primary, #a44a2b); outline-offset: 2px; }
 .bulk-setup-review input:not([type="checkbox"]), .bulk-setup-review select {
-  min-height: 44px; padding: 0.5rem 0.75rem; border: 1px solid #8b857b; border-radius: 0.5rem;
+  min-height: 44px; padding: 0.5rem 0.75rem; border: 1px solid var(--color-input, #8b857b); border-radius: 0.5rem;
   background: var(--color-card, #fff); color: inherit;
 }
 
@@ -24,9 +24,10 @@ html { zoom: var(--app-zoom, 1); }
   --color-foreground: #2d2926;
   --color-card: #ffffff;
   --color-card-foreground: #2d2926;
-  --color-primary: #b25232;
+  --color-primary: #a44a2b;
   --color-primary-foreground: #ffffff;
-  --color-primary-hover: #a84f2f;
+  --color-primary-hover: #934026;
+  --color-primary-on-dark: #e8a98c;
   --color-primary-light: #f5ece7;
   --color-secondary: #eed9d0;
   --color-secondary-foreground: #7a3a22;
@@ -38,15 +39,15 @@ html { zoom: var(--app-zoom, 1); }
   --color-destructive: #b03a2e;
   --color-destructive-foreground: #ffffff;
   --color-destructive-bg: #fdf3f2;
-  --color-success: #3d7a5a;
+  --color-success: #35704f;
   --color-success-foreground: #ffffff;
-  --color-warning: #92622a;
+  --color-warning: #8a5c27;
   --color-warning-foreground: #ffffff;
   --color-body: #4a4540;
   --color-light-text: #6c665d;
   --color-panel: #1e1712;
   --color-border: #e4e1da;
-  --color-input: #e4e1da;
+  --color-input: #8f8b84;
   --color-ring: #c15f3c;
   --font-ui: var(--font-plus-jakarta);
   --font-heading: var(--font-plus-jakarta);
@@ -101,14 +102,23 @@ html { zoom: var(--app-zoom, 1); }
   --color-foreground: #f4f3ee;
   --color-card: #1c1a18;
   --color-card-foreground: #f4f3ee;
+  --color-primary: #f0b79a;
+  --color-primary-foreground: #2d1a12;
+  --color-primary-hover: #e0a488;
+  --color-primary-light: #3a241c;
   --color-secondary: #3a2a24;
   --color-secondary-foreground: #e8d5cb;
   --color-muted: #2a2825;
   --color-muted-foreground: #b0aaa0;
   --color-accent: #2a2825;
   --color-accent-foreground: #e8d5cb;
+  --color-success: #7fbf98;
+  --color-warning: #e0b070;
+  --color-body: #cfc9c1;
+  --color-light-text: #b0aaa0;
+  --color-destructive-bg: #3a201d;
   --color-border: #3a3835;
-  --color-input: #3a3835;
+  --color-input: #6f6a62;
 }
 
 body {
@@ -153,6 +163,15 @@ body {
 .responsive-content :where(.grid, .flex) > :where(div, section, article, form) { min-width: 0; }
 .responsive-content :where(img, video, canvas, iframe) { max-width: 100%; }
 .responsive-content :where(.overflow-x-auto) { max-width: 100%; overscroll-behavior-x: contain; }
+
+/* Row actions that fade in on hover must stay reachable on touch screens and
+   for keyboard users, where :hover never fires. */
+.hover-reveal { opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .hover-reveal { opacity: 0; transition: opacity 0.15s ease; }
+  .group:hover .hover-reveal,
+  .hover-reveal:focus-within { opacity: 1; }
+}
 
 @media (max-width: 639px) {
   /* A phone uses its actual viewport; forms never require pinch-to-zoom. */

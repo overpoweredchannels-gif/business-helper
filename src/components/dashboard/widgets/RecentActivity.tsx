@@ -40,7 +40,7 @@ export function RecentActivity({ activities, onViewAll }: RecentActivityProps) {
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-foreground">Recent Activity</h3>
         {onViewAll && (
-          <button onClick={onViewAll} className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary-hover transition-colors">
+          <button onClick={onViewAll} className="flex min-h-6 items-center gap-1 -mr-1.5 rounded px-1.5 text-xs font-medium text-primary hover:text-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             View all
             <ArrowRight className="size-3" />
           </button>
@@ -54,7 +54,7 @@ export function RecentActivity({ activities, onViewAll }: RecentActivityProps) {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", typeStyles[a.type])}>
+                  <span className={cn("text-[11px] font-medium px-1.5 py-0.5 rounded", typeStyles[a.type])}>
                     {typeLabels[a.type]}
                   </span>
                   <span className="text-xs text-light-text flex items-center gap-1">
@@ -64,7 +64,7 @@ export function RecentActivity({ activities, onViewAll }: RecentActivityProps) {
                 </div>
                 <p className="text-sm text-foreground mt-1">{a.description}</p>
               </div>
-              {a.amount && <span className="text-sm font-semibold text-foreground shrink-0">{a.amount}</span>}
+              {a.amount && <span className="text-sm font-semibold tabular-nums text-foreground shrink-0">{a.amount}</span>}
             </div>
           </div>
         ))}

@@ -260,7 +260,7 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={onResetOrder}
-                className="inline-flex items-center gap-1 rounded p-1 text-light-text hover:text-foreground hover:bg-muted/40"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded p-1.5 text-light-text hover:text-foreground hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:min-w-8"
                 title="Reset to default order"
               >
                 <RotateCcw className="size-3.5" />
@@ -268,7 +268,7 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={onToggleCustomize}
-                className="inline-flex items-center gap-1 rounded p-1 text-primary hover:bg-muted/40"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded p-1.5 text-primary hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:min-w-8"
                 title="Done customizing"
               >
                 <X className="size-3.5" />

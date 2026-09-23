@@ -185,11 +185,11 @@ export function DashboardView({
   ].filter((chart) => !widgetHidden(chart.id));
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 pb-8 pt-4 sm:px-6 lg:px-8 space-y-5">
+    <div className="mx-auto w-full max-w-7xl px-4 pb-8 pt-3 sm:px-6 sm:pt-4 lg:px-8 space-y-5">
       {/* Welcome Section */}
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      <header className="flex flex-wrap items-start justify-between gap-2 sm:items-center sm:gap-3">
         <DashboardWidget id="greeting" customizing={customizingWidgets} onRemove={onRemoveWidget} className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold text-foreground font-heading">
+          <h1 className="text-2xl font-bold leading-tight text-foreground font-heading">
             {greeting}, <span className="text-primary">{userName}</span>
           </h1>
           <p className="text-sm text-light-text mt-0.5">{dateStr}</p>
@@ -214,7 +214,7 @@ export function DashboardView({
 
       {/* KPI Cards */}
       {kpiCards.length > 0 && (
-        <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", customizingWidgets ? "gap-6" : "gap-3")}>
+        <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", customizingWidgets ? "gap-6" : "gap-3 sm:gap-4")}>
           {kpiCards.map((card) => (
             <DashboardWidget key={card.id} id={card.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
               {card.node}

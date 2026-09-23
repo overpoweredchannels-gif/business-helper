@@ -62,7 +62,7 @@ export function KPICard({ title, value, trend, icon, sparklineData, onClick }: K
       </div>
       <div className="flex items-end justify-between">
         <div>
-          <div className="text-2xl font-semibold text-foreground font-heading">{value}</div>
+          <div className="text-2xl font-semibold tabular-nums text-foreground font-heading">{value}</div>
           {trend && (
             <div className={cn("flex items-center gap-1 mt-1 text-xs font-medium", isUp ? "text-success" : "text-destructive")}>
               {isUp ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
