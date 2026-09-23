@@ -35,7 +35,7 @@ light on purpose: decorative card outlines are not UI component boundaries.
 
 `src/components/ui/auth-fuse.tsx:227` drew a primary icon on the dark auth panel where it
 measured 2.87:1, and darkening the primary would have made it 2.56:1. Added a dedicated
-`--color-primary-on-dark` token (`#e8a98c`, 7.25:1) for primary-coloured content on dark
+`--color-primary-on-dark` token (`#e8a98c`, 7.25:1) for primary-colored content on dark
 fills.
 
 **Hover-only actions were unreachable on touch and invisible to keyboard users**
@@ -95,7 +95,7 @@ internally consistent.
 - Card padding has no single rhythm: `p-2` (41), `p-3` (117), `p-4` (232), `p-5` (105),
   `p-6` (36), `p-8` (9). A canonical scale would be `p-4` compact, `p-5` default and `p-6`
   feature cards, but that is a large sweep and should be done screen by screen.
-- Roughly 15 hardcoded palette colours remain in components (`text-orange-700` x4,
+- Roughly 15 hardcoded palette colors remain in components (`text-orange-700` x4,
   `text-amber-500` x2, plus `text-teal-500`, `text-pink-500`, `text-cyan-500`,
   `text-indigo-500`, `text-violet-500`, `text-orange-500`). They bypass the token system and
   should become semantic tokens.

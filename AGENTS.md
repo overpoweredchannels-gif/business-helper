@@ -1,7 +1,7 @@
 # AGENTS.md - OP OWNER / TradeOS
 
 Applies to the whole repository. See `ARCHITECTURE.md`, `PROJECT_CONTEXT.md` and
-`docs/developer-guide.md` for system context, and `AI_RULES.md` for AI behaviour rules.
+`docs/developer-guide.md` for system context, and `AI_RULES.md` for AI behavior rules.
 Design decisions and their measured evidence live in `docs/UI_UX_REVIEW_2026_09_23.md`.
 
 ## UI and design system
@@ -9,10 +9,10 @@ Design decisions and their measured evidence live in `docs/UI_UX_REVIEW_2026_09_
 Read this before changing any component. These rules were derived from a measured audit,
 not preference; deviating reintroduces accessibility regressions that were already fixed.
 
-### Tokens are the only source of colour
+### Tokens are the only source of color
 
-All colour tokens live in `src/app/globals.css` under `@theme inline`. Never hardcode a hex
-value and never use a raw Tailwind palette colour (`text-orange-700`, `bg-emerald-500`) in a
+All color tokens live in `src/app/globals.css` under `@theme inline`. Never hardcode a hex
+value and never use a raw Tailwind palette color (`text-orange-700`, `bg-emerald-500`) in a
 component. If you need a new shade, add a semantic token and reference it.
 
 Contrast is a requirement, not a nicety:
