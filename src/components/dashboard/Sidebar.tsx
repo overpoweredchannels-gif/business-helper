@@ -6,7 +6,7 @@ import {
   Banknote, ArrowLeftRight, CreditCard, TrendingUp, Brain, Bot, BookOpen, Settings,
   CheckSquare, History, Shield, Lock, Clock, Sparkles, MessageSquare, Mic, Globe, Smartphone,
   ChevronLeft, ChevronRight, Eye, EyeOff, ArrowDown, ArrowUp, Pencil, RotateCcw, X, MapPin, Bell, Package, Rocket,
-  GripVertical,
+  GripVertical, FileDown,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
@@ -28,6 +28,7 @@ const navIconMap: Record<string, React.ComponentType<{ className?: string }>> = 
   expenses: CreditCard,
   "profit-loss": TrendingUp,
   "business-intelligence": Brain,
+  "business-records": FileDown,
   "ai-analytics": Bot,
   "customer-credit": BookOpen,
   "supplier-ledger": BookOpen,

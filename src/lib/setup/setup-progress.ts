@@ -2,9 +2,11 @@ import { SETUP_STEPS } from "./setup-steps";
 
 const PROGRESS_PREFIX = "tradeos-setup-v1";
 const COMPLETED_AT_PREFIX = "tradeos-setup-completed-v1";
-const AUTO_FOLDED_PREFIX = "tradeos-setup-banner-folded-v1";
+// The key keeps its earlier name so a browser that already retired the banner
+// does not retire it a second time.
+const RETIRED_PREFIX = "tradeos-setup-banner-folded-v1";
 
-/** How long the completed Setup banner stays on the dashboard before it disappears. */
+/** How long the completed Setup card stays on the dashboard before it disappears. */
 export const SETUP_BANNER_RETENTION_DAYS = 3;
 
 export type SetupStage = "active" | "complete" | "expired";
@@ -16,7 +18,7 @@ function setupCompletedAtStorageKey(organizationId: string, userId: string) {
   return `${COMPLETED_AT_PREFIX}:${organizationId}:${userId}`;
 }
 function setupAutoFoldedStorageKey(organizationId: string, userId: string) {
-  return `${AUTO_FOLDED_PREFIX}:${organizationId}:${userId}`;
+  return `${RETIRED_PREFIX}:${organizationId}:${userId}`;
 }
 
 export function normalizeReviewedSteps(value: unknown): number[] {
@@ -66,15 +68,15 @@ export function hasSetupBannerExpired(completedAt: number | null, now: number = 
   return completedAt !== null && now - completedAt >= SETUP_BANNER_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 }
 
-export function hasSetupBannerAutoFolded(organizationId: string, userId: string) {
+export function hasSetupBannerRetired(organizationId: string, userId: string) {
   return readStoredNumber(setupAutoFoldedStorageKey(organizationId, userId)) !== null;
 }
 
-export function rememberSetupBannerAutoFolded(organizationId: string, userId: string) {
+export function rememberSetupBannerRetired(organizationId: string, userId: string) {
   try {
     localStorage.setItem(setupAutoFoldedStorageKey(organizationId, userId), String(Date.now()));
   } catch {
-    // Storage may be unavailable; the banner simply folds again next visit.
+    // Storage may be unavailable; the card simply hides again next visit.
   }
 }
 

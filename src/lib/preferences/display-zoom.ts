@@ -1,19 +1,33 @@
 export const DISPLAY_ZOOM_STORAGE_KEY = "tradeos_display_zoom";
-export const DISPLAY_ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.25, 1.5] as const;
-export type DisplayZoom = (typeof DISPLAY_ZOOM_STEPS)[number];
+/** Suggested ratios; any whole percentage inside the allowed range also works. */
+export const DISPLAY_ZOOM_PRESETS = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2] as const;
+export const MIN_DISPLAY_ZOOM_PERCENT = 50;
+export const MAX_DISPLAY_ZOOM_PERCENT = 200;
+export type DisplayZoom = number;
 export const DEFAULT_DISPLAY_ZOOM: DisplayZoom = 1;
 
+/** Keeps any typed percentage inside the supported range, rounded to whole percent. */
 export function normalizeDisplayZoom(value: unknown): DisplayZoom {
   const numeric = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(numeric)) return DEFAULT_DISPLAY_ZOOM;
-  return DISPLAY_ZOOM_STEPS.reduce<DisplayZoom>(
-    (closest, step) => (Math.abs(step - numeric) < Math.abs(closest - numeric) ? step : closest),
-    DEFAULT_DISPLAY_ZOOM,
-  );
+  if (!Number.isFinite(numeric) || numeric <= 0) return DEFAULT_DISPLAY_ZOOM;
+  const clamped = Math.min(MAX_DISPLAY_ZOOM_PERCENT / 100, Math.max(MIN_DISPLAY_ZOOM_PERCENT / 100, numeric));
+  return Math.round(clamped * 100) / 100;
 }
 
 export function formatDisplayZoom(value: number) {
   return `${Math.round(value * 100)}%`;
+}
+
+/** Turns a percentage typed by the user (72) into the stored ratio (0.72). */
+export function displayZoomFromPercent(percent: unknown): DisplayZoom {
+  const numeric = typeof percent === "number" ? percent : Number(percent);
+  if (!Number.isFinite(numeric)) return DEFAULT_DISPLAY_ZOOM;
+  return normalizeDisplayZoom(numeric / 100);
+}
+
+/** The whole-percent value shown back to the user for a stored ratio. */
+export function displayZoomPercent(value: unknown) {
+  return Math.round(normalizeDisplayZoom(value) * 100);
 }
 
 export function readDisplayZoom(): DisplayZoom {

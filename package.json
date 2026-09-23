@@ -19,7 +19,7 @@
     "test:invoice-ledger": "tsx scripts/test-invoice-flow.ts",
     "test:salesman-scope": "tsx scripts/test-salesman-scope.ts",
     "test:duty-tracking": "tsx scripts/test-duty-tracking.ts",
-    "test": "npm run test:identity && npm run test:session && npm run test:credentials && npm run test:tenant && npm run test:purchase && npm run test:purchase-atomicity && npm run test:supplier && npm run test:invoice-number && npm run test:invoice-ledger && npm run test:invoice-entry && npm run test:salesman-scope && npm run test:sales-access && npm run test:draft-customer && npm run test:draft-bonus && npm run test:search-selection && npm run test:setup-banner && npm run test:duty-tracking && npm run test:mobile-tracking && npm run test:imports && npm run test:inventory-snapshots && npm run test:collections && npm run test:geolocation && npm run test:monitoring && npm run test:brain && npm run test:gateway",
+    "test": "npm run test:identity && npm run test:session && npm run test:credentials && npm run test:tenant && npm run test:purchase && npm run test:purchase-atomicity && npm run test:supplier && npm run test:invoice-number && npm run test:invoice-ledger && npm run test:invoice-entry && npm run test:salesman-scope && npm run test:sales-access && npm run test:draft-customer && npm run test:draft-bonus && npm run test:search-selection && npm run test:dashboard && npm run test:duty-tracking && npm run test:mobile-tracking && npm run test:imports && npm run test:inventory-snapshots && npm run test:collections && npm run test:geolocation && npm run test:monitoring && npm run test:brain && npm run test:gateway",
     "validate": "npm run lint && npm run typecheck && npm test",
     "validate:supplier": "npm run typecheck && npm run test:supplier",
     "validate:invoice": "npm run typecheck && npm run test:invoice-number && npm run test:invoice-ledger",
@@ -36,7 +36,7 @@
     "test:draft-customer": "tsx scripts/test-draft-customer-access.ts",
     "test:draft-bonus": "tsx scripts/test-draft-bonus-schema.ts",
     "test:search-selection": "tsx scripts/test-search-selection.ts",
-    "test:setup-banner": "tsx scripts/test-setup-banner.ts"
+    "test:dashboard": "tsx scripts/test-dashboard-customization.ts"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.15",

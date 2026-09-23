@@ -21,11 +21,11 @@ import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
 import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
-import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, CollapsibleBanner } from "@/components/dashboard";
+import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizeBar, DashboardWidget } from "@/components/dashboard";
 import { cn } from "@/lib/utils";
 import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
-import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerAutoFolded, rememberSetupBannerAutoFolded } from "@/lib/setup/setup-progress";
-import { writeCollapsedBanner } from "@/lib/preferences/dashboard-banners";
+import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerRetired, rememberSetupBannerRetired } from "@/lib/setup/setup-progress";
+import { useDashboardWidgets } from "@/lib/preferences/use-dashboard-widgets";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
 import type { ChatResponse } from "@/lib/conversation";
@@ -5445,14 +5445,17 @@ setCustomerOrganizationName("");
   };
 
   const setupStage = useSetupCompletion(currentOrganizationId, currentUser?.id);
+  const homeWidgets = useDashboardWidgets(currentProfile?.id ?? currentUser?.id);
+  const hideHomeWidget = homeWidgets.hide;
   useEffect(() => {
-    // Fold the completed Setup banner once; the user can still expand it, and it
-    // disappears on its own after SETUP_BANNER_RETENTION_DAYS.
-    if (setupStage !== "complete" || !currentOrganizationId || !currentUser?.id) return;
-    if (hasSetupBannerAutoFolded(currentOrganizationId, currentUser.id)) return;
-    writeCollapsedBanner(currentProfile?.id ?? currentUser.id, "setup-import", true);
-    rememberSetupBannerAutoFolded(currentOrganizationId, currentUser.id);
-  }, [setupStage, currentOrganizationId, currentUser?.id, currentProfile?.id]);
+    // Once setup has been complete for SETUP_BANNER_RETENTION_DAYS the reminder
+    // retires itself. The user can always add it back from Edit home, and the
+    // sidebar keeps Setup & Data Import.
+    if (setupStage !== "expired" || !currentOrganizationId || !currentUser?.id) return;
+    if (hasSetupBannerRetired(currentOrganizationId, currentUser.id)) return;
+    hideHomeWidget("setup-import");
+    rememberSetupBannerRetired(currentOrganizationId, currentUser.id);
+  }, [setupStage, currentOrganizationId, currentUser?.id, hideHomeWidget]);
 
   const handleNavReset = () => {
     setNavOrder(null);
@@ -15753,13 +15756,36 @@ setCustomerOrganizationName("");
         )}
 
         {activeSection === "setup-import" && isOwnerOrAdmin() && currentOrganizationId && <SetupImportHub key={currentOrganizationId} supabase={supabase} organizationId={currentOrganizationId} userId={currentUser.id} actorProfileId={currentProfile?.id ?? null} createAuditLog={createAuditLog} onNavigate={handleSectionChange} onImported={() => { void fetchProducts(); void fetchCustomers(); }} />}
-        {activeSection === "dashboard" && isOwnerOrAdmin() && setupStage !== "expired" && <CollapsibleBanner id="setup-import" profileId={currentProfile?.id ?? currentUser?.id} title="Setup & Data Import" subtitle={setupStage === "complete" ? `Setup complete. This reminder stays folded and disappears in ${SETUP_BANNER_RETENTION_DAYS} days; you can still open Setup & Data Import from the sidebar.` : "Follow the setup guide, import your external records and review missing settings."} className="mb-4 rounded-xl border border-primary/30 bg-card p-5">
-          <button type="button" onClick={() => handleSectionChange("setup-import")} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Open Setup &amp; Data Import</button>
-        </CollapsibleBanner>}
+        {activeSection === "dashboard" && !staffDashboardData.isStaff && (
+          <DashboardCustomizeBar
+            customizing={homeWidgets.customizing}
+            onToggle={() => homeWidgets.setCustomizing((value) => !value)}
+            removed={homeWidgets.removed}
+            onShow={homeWidgets.show}
+            onReset={homeWidgets.reset}
+          />
+        )}
+        {activeSection === "dashboard" && isOwnerOrAdmin() && (
+          <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.hide} className="mb-4">
+            <section data-help-topic="setup and data import" className="rounded-xl border border-primary/30 bg-card p-5">
+              <h2 className="text-lg font-semibold">Setup &amp; Data Import</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{setupStage === "complete" ? `Setup complete. This reminder retires itself after ${SETUP_BANNER_RETENTION_DAYS} days; you can still open Setup & Data Import from the sidebar.` : "Follow the setup guide, import your external records and review missing settings."}</p>
+              <div className="mt-3">
+                <button type="button" onClick={() => handleSectionChange("setup-import")} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Open Setup &amp; Data Import</button>
+              </div>
+            </section>
+          </DashboardWidget>
+        )}
         {activeSection === "dashboard" && canUseSalesTool("invoice") && (
-          <CollapsibleBanner id="quick-sale" profileId={currentProfile?.id ?? currentUser?.id} title="Quick sale" subtitle="Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval." topic="quick sale" className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-5">
-            <button type="button" className="rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); }}>Retail POS / Create a sale</button>
-          </CollapsibleBanner>
+          <DashboardWidget id="quick-sale" hidden={homeWidgets.isHidden("quick-sale")} customizing={homeWidgets.customizing} onRemove={homeWidgets.hide} className="mb-5">
+            <section data-help-topic="quick sale" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
+              <h2 className="text-lg font-semibold">Quick sale</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
+              <div className="mt-3">
+                <button type="button" className="rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); }}>Retail POS / Create a sale</button>
+              </div>
+            </section>
+          </DashboardWidget>
         )}
         {activeSection === "dashboard" && staffDashboardData.isStaff && (
           <StaffDashboardView
@@ -15793,10 +15819,20 @@ setCustomerOrganizationName("");
           <EmployeeLiveTracking />
         )}
 
-        {activeSection === "dashboard" && currentProfile?.role === "owner" && <CollapsibleBanner id="business-records-export" profileId={currentProfile?.id ?? currentUser?.id} title="Export business records" subtitle="Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF." className="mb-4 rounded-xl border border-primary/30 bg-card p-5"><BusinessRecordsExport /></CollapsibleBanner>}
+        {activeSection === "dashboard" && currentProfile?.role === "owner" && (
+          <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.hide} className="mb-4">
+            <section className="rounded-xl border border-primary/30 bg-card p-5">
+              <h2 className="text-lg font-semibold">Export business records</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF.</p>
+              <BusinessRecordsExport />
+            </section>
+          </DashboardWidget>
+        )}
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
-            profileId={currentProfile?.id ?? currentUser?.id}
+            hiddenWidgets={homeWidgets.hidden}
+            customizingWidgets={homeWidgets.customizing}
+            onRemoveWidget={homeWidgets.hide}
             userName={currentProfile?.full_name ?? currentUser.email}
             todaySales={{ value: formatPKR(todaySalesAmount) }}
             todayProfit={{ value: formatPKR(todayProfitAmount) }}
@@ -16475,6 +16511,17 @@ setCustomerOrganizationName("");
               </div>
             ))}
           </div>
+        </section>
+        )}
+
+        {activeSectionAllowed && activeSection === "business-records" && (
+        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
+          <h2 className="text-xl font-medium text-foreground">Export business records</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Choose any date range to review transactions, payments, stock movements and recorded activity, then save the PDF. This stays available even if you
+            remove the dashboard card.
+          </p>
+          <BusinessRecordsExport />
         </section>
         )}
 
