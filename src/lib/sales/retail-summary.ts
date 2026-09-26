@@ -8,7 +8,7 @@ export type RetailDrawerSummary = {
   closingMessage: string;
 };
 
-export function buildRetailDrawerSummary({ total, received, paymentType = "cash" }: { total: number; received: number; paymentType?: "cash" | "credit" }): RetailDrawerSummary {
+export function buildRetailDrawerSummary({ total, received, paymentType = "cash" }: { total: number; received: number | string; paymentType?: "cash" | "credit" }): RetailDrawerSummary {
   if (paymentType !== "cash") {
     return {
       expected: total,
@@ -21,8 +21,10 @@ export function buildRetailDrawerSummary({ total, received, paymentType = "cash"
     };
   }
 
-  const expected = Number.isFinite(total) ? total : 0;
-  const cashReceived = Number.isFinite(received) ? received : 0;
+  const rawExpected = Number.isFinite(total) ? Math.max(0, total) : 0;
+  const expected = Math.round((rawExpected + Number.EPSILON) * 100) / 100;
+  const entered = typeof received === "string" && received.trim() === "" ? expected : Number(received);
+  const cashReceived = Number.isFinite(entered) ? Math.max(0, entered) : 0;
   const shortfall = Math.max(0, expected - cashReceived);
   const returnAmount = Math.max(0, cashReceived - expected);
   const change = returnAmount;

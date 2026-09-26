@@ -52,5 +52,22 @@ export function POSReceipt({ receipt }: { receipt: Receipt }) {
   }, []);
   useEffect(() => { const timer = window.setTimeout(() => { setOpen(true); print(); }, 250); return () => window.clearTimeout(timer); }, [receipt.number, print]);
   const preview = useMemo(() => <POSReceiptPreview receipt={receipt} template={template} />, [receipt, template]);
-  return <><button type="button" onClick={() => { setOpen(true); print(); }} className="min-h-11 rounded-lg border border-primary px-4 font-medium text-primary">Receipt for {receipt.number}</button>{error && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}{open && createPortal(<div data-context-help-skip role="dialog" aria-label={`Receipt ${receipt.number}`} className="fixed inset-0 z-[100] overflow-auto bg-black/30 p-4"><div className="mx-auto max-w-md rounded-xl bg-white p-4 shadow-xl"><div className="mb-3 flex justify-end gap-2"><button type="button" onClick={() => setCustomizing(true)} className="rounded border px-3 py-2 text-sm">Edit POS receipt template</button><button type="button" onClick={print} className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground">Print receipt</button><button type="button" onClick={() => setOpen(false)} className="rounded border px-3 py-2 text-sm">Close</button></div>{preview}</div></div>, document.body)}{customizing && <TemplateCustomizer docType="retail_receipt" previewRenderer={next => <POSReceiptPreview receipt={receipt} template={next} />} onSaved={next => { setTemplate(next); setCustomizing(false); }} onClose={() => setCustomizing(false)} />}</>;
+  return <>
+    <button type="button" onClick={() => { setOpen(true); print(); }} className="min-h-11 rounded-lg border border-primary px-4 font-medium text-primary">Receipt for {receipt.number}</button>
+    {error && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
+    {open && createPortal(
+      <div data-context-help-skip role="dialog" aria-modal="true" aria-label={`Receipt ${receipt.number}`} className="fixed inset-0 z-[100] overflow-auto bg-black/30 p-4">
+        <div className="mx-auto max-w-md rounded-xl bg-white p-4 shadow-xl">
+          <div className="mb-3 flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setCustomizing(true)} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Edit POS receipt template</button>
+            <button type="button" onClick={print} className="min-h-11 min-w-11 rounded bg-primary px-3 py-2 text-sm text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Print receipt</button>
+            <button type="button" onClick={() => setOpen(false)} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Close</button>
+          </div>
+          {preview}
+        </div>
+      </div>,
+      document.body,
+    )}
+    {customizing && <TemplateCustomizer docType="retail_receipt" previewRenderer={next => <POSReceiptPreview receipt={receipt} template={next} />} onSaved={next => { setTemplate(next); setCustomizing(false); }} onClose={() => setCustomizing(false)} />}
+  </>;
 }

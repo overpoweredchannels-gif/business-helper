@@ -57,12 +57,12 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
         } else if (event.key === "Escape") {
           event.preventDefault(); event.stopPropagation(); setOpen(false);
         }
-      }} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" />
+      }} className="w-full rounded border border-input px-3 py-2 focus:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
     {open && <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded border border-border bg-card shadow-lg">
       <ul id={listId} role="listbox" aria-label={`${label} suggestions`}>
         {matches.map((product, index) => <li key={product.id} id={`${listId}-${index}`} role="option" aria-selected={index === activeIndex}
           onMouseDown={event => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => choose(product.id)}
-          className={`cursor-pointer px-3 py-2 text-sm ${index === activeIndex ? "bg-primary/10 text-primary" : "text-foreground"}`}>
+          className={`flex min-h-11 cursor-pointer items-center px-3 py-2 text-sm ${index === activeIndex ? "bg-primary/10 text-primary" : "text-foreground"}`}>
           {product.label}
         </li>)}
       </ul>

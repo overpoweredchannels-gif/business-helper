@@ -6,6 +6,8 @@ import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigati
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
+import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
+import { createAtomicSale, readPendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
@@ -173,7 +175,6 @@ import {
 import {
   generatePurchaseInvoiceWithClient,
   generatePurchaseOrderWithClient,
-  generateSalesInvoiceWithClient,
   generateSalesOrderWithClient,
   generateSalesReturnInvoiceWithClient,
   generatePurchaseReturnInvoiceWithClient,
@@ -3809,6 +3810,15 @@ setCustomerOrganizationName("");
       return;
     }
 
+    if (quickSaleMode && isOwnerOrAdmin() && salesPaymentType === "cash") {
+      const cashSummary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal, received: posCashReceived });
+      if (cashSummary.status === "cash-short") {
+        setSalesError(`Cash is short by ${pkrFormatter.format(cashSummary.shortfall)}.`);
+        setSalesMessage(null);
+        return;
+      }
+    }
+
     const requestedByProduct = new Map<string, number>();
     for (const line of invoiceLines) {
       if (!line.product_id) continue;
@@ -3880,10 +3890,6 @@ setCustomerOrganizationName("");
         return;
       }
     }
-
-    let creditDueDate: string | null = null;
-    let creditLimitSnapshot: number | null = null;
-    let creditDaysSnapshot: number | null = null;
 
     if (salesPaymentType === "credit") {
       if (!selectedSalesCustomer) {
@@ -3962,25 +3968,11 @@ setCustomerOrganizationName("");
           return;
         }
 
-        creditDueDate = addDaysToDateInputValue(salesInvoiceDate, selectedCustomerCreditDays);
-        if (!creditDueDate) {
+        if (!addDaysToDateInputValue(salesInvoiceDate, selectedCustomerCreditDays)) {
           setSalesError("Could not calculate a valid credit due date.");
           setSalesMessage(null);
           return;
         }
-        creditDaysSnapshot = selectedCustomerCreditDays;
-      }
-
-      if (
-        selectedCustomerCreditPolicy === "limit_only" ||
-        selectedCustomerCreditPolicy === "limit_and_days"
-      ) {
-        if (!Number.isFinite(selectedCustomerCreditLimit) || selectedCustomerCreditLimit < 0) {
-          setSalesError("Customer credit limit is invalid.");
-          setSalesMessage(null);
-          return;
-        }
-        creditLimitSnapshot = selectedCustomerCreditLimit;
       }
     }
 
@@ -4047,196 +4039,84 @@ setCustomerOrganizationName("");
         setSalesInvoiceLoading(false);
         return;
       }
+      if (!currentOrganizationId || !currentProfile?.id || !selectedCustomerIdForSale) {
+        throw new Error("Organization, owner profile, and customer must be loaded before saving.");
+      }
 
-      // Generate invoice number server-side (S-100001, S-100002, ...)
-      let systemInvoiceNumber: string;
-      try {
-        if (!currentOrganizationId) {
-          throw new Error("Organization not loaded");
-        }
-        systemInvoiceNumber = await generateSalesInvoiceWithClient(supabase, currentOrganizationId);
-      } catch (numberErr) {
-        setSalesError(
-          numberErr instanceof Error ? numberErr.message : "Failed to generate invoice number"
-        );
-        setSalesInvoiceLoading(false);
+      const input = {
+        customer_id: selectedCustomerIdForSale,
+        sale_date: salesInvoiceDate,
+        payment_type: salesPaymentType,
+        invoice_discount: rawInvoiceDiscount,
+        invoice_discount_type: salesDiscountType,
+        tax_rate: parsedTaxRate,
+        cash_received: salesPaymentType === "cash"
+          ? (quickSaleMode
+            ? (posCashReceived.trim() === "" ? Math.round((currentSalesInvoiceTotal + Number.EPSILON) * 100) / 100 : safeNumber(posCashReceived))
+            : null)
+          : 0,
+        credit_override_confirmed: overrideConfirmed,
+        lines: invoiceLines.map((line) => ({
+          product_id: String(line.product_id),
+          quantity: safeNumber(line.quantity),
+          selling_price: safeNumber(line.selling_price),
+          discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
+          bonus: line.bonus?.trim() ? safeNumber(line.bonus) : 0,
+          unit_mode: line.unit_mode ?? "main",
+        })),
+      };
+      const scope = `${currentOrganizationId}:${currentProfile.id}`;
+      const { result, previousPendingConfirmed } = await createAtomicSale(supabase, scope, input);
+      const transaction = result.transaction;
+      const invoiceNumber = String(transaction.invoice_number ?? "");
+      const confirmedLines = result.items.map((item) => ({
+        name: String(item.product_name ?? "Product"),
+        quantity: String(item.quantity ?? "0"),
+        unit: String(item.unit_mode === "subunit" ? item.subunit_type ?? "Pcs" : item.unit_type ?? "Units"),
+        price: String(item.selling_price ?? "0"),
+        discount: String(item.discount ?? "0"),
+        bonus: String(item.bonus ?? "0"),
+      }));
+      if (quickSaleMode) {
+        const total = Number(transaction.total_amount ?? 0);
+        const change = Number(transaction.change_due ?? 0);
+        setLastPOSReceipt({
+          scope,
+          business: currentOrganization?.name || "TradeOS",
+          number: invoiceNumber,
+          date: String(transaction.sale_date ?? salesInvoiceDate),
+          customer: result.customer_name || "Customer",
+          total,
+          received: Number(transaction.cash_received ?? 0),
+          change,
+          returnAmount: change,
+          payment: String(transaction.payment_type ?? salesPaymentType),
+          lines: confirmedLines,
+        });
+      }
+      if (previousPendingConfirmed) {
+        setSalesMessage(`Earlier sale ${invoiceNumber} was confirmed. Your current basket is unchanged; review it before saving another sale.`);
+        fetchSalesTransactions();
+        fetchSalesItems();
+        fetchProducts();
+        fetchCustomerPayments();
+        fetchCustomerPaymentAllocations();
         return;
       }
 
-      const lineSubtotal = invoiceLines.reduce((sum, line) => {
-        if (!line.product_id) return sum;
-        const lineDiscount = line.discount.trim() === "" ? 0 : safeNumber(line.discount);
-        return sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - lineDiscount;
-      }, 0);
-      const parsedInvoiceDiscount =
-        salesDiscountType === "percent"
-          ? (lineSubtotal * rawInvoiceDiscount) / 100
-          : rawInvoiceDiscount;
-      const taxableBase = Math.max(0, lineSubtotal - parsedInvoiceDiscount);
-      const computedTaxAmount = (taxableBase * parsedTaxRate) / 100;
-
-      const tx = await supabase
-        .from("sales_transactions")
-        .insert({
-          customer_id: selectedCustomerIdForSale,
-          invoice_number: systemInvoiceNumber,
-          sale_date: salesInvoiceDate,
-          payment_type: salesPaymentType,
-          credit_due_date: salesPaymentType === "credit" ? creditDueDate : null,
-          credit_limit_snapshot: salesPaymentType === "credit" ? creditLimitSnapshot : null,
-          credit_days_snapshot: salesPaymentType === "credit" ? creditDaysSnapshot : null,
-          notes: null,
-          organization_id: currentOrganizationId,
-          total_amount: taxableBase + computedTaxAmount,
-          discount_amount: parsedInvoiceDiscount,
-          tax_rate: parsedTaxRate,
-          tax_amount: computedTaxAmount,
-          status: salesPaymentType === "cash" ? "paid" : "confirmed",
-          invoice_type: "sales",
-          created_by_profile_id: currentProfile?.id ?? null,
-        })
-        .select()
-        .single();
-
-      console.log("sales transaction result", tx);
-
-      if (tx.error) {
-        console.error("sales_transactions error", JSON.stringify(tx.error, null, 2));
-        throw tx.error;
-      }
-
-      const salesTransactionId = tx.data?.id;
-      if (!salesTransactionId) throw new Error("Failed to create sales transaction");
-
-      const itemsToSave = invoiceLines.map(line => {
-        const latestPurchaseItem = purchaseItems
-          .filter(
-            (item) =>
-              String(item.product_id) === String(line.product_id) &&
-              Number.isFinite(Number(item.purchase_price)) &&
-              Number(item.purchase_price) > 0
-          )
-          .sort((a, b) => {
-            const aTransaction = purchaseTransactions.find(
-              (tx) => tx.id === a.purchase_transaction_id
-            );
-            const bTransaction = purchaseTransactions.find(
-              (tx) => tx.id === b.purchase_transaction_id
-            );
-            const aTime = aTransaction?.created_at
-              ? new Date(aTransaction.created_at).getTime()
-              : 0;
-            const bTime = bTransaction?.created_at
-              ? new Date(bTransaction.created_at).getTime()
-              : 0;
-            return bTime - aTime;
-          })[0];
-        const product = products.find((p) => String(p.id) === String(line.product_id));
-        const latestPurchasePrice = Number(latestPurchaseItem?.purchase_price);
-        const productLastPurchasePrice = Number(product?.last_purchase_price);
-        // Cost is always stored per main unit so COGS math is unit-safe even
-        // when the purchase was recorded in subunit mode.
-        const normalizeCostToMainUnit = (price: number): number | null => {
-          if (!Number.isFinite(price) || price <= 0) return null;
-          if (latestPurchaseItem?.unit_mode === "subunit" && Number(product?.units_per_pack ?? 0) > 0) {
-            return price * Number(product?.units_per_pack);
-          }
-          return price;
-        };
-        const purchasePriceSnapshot =
-          normalizeCostToMainUnit(latestPurchasePrice) ??
-          (Number.isFinite(productLastPurchasePrice) && productLastPurchasePrice > 0
-            ? productLastPurchasePrice
-            : null);
-
-        return {
-          sales_transaction_id: salesTransactionId,
-          product_id: line.product_id,
-          quantity: Number(line.quantity),
-          selling_price: Number(line.selling_price),
-          purchase_price_snapshot: purchasePriceSnapshot,
-          discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
-          bonus: line.bonus?.trim() === "" || line.bonus == null ? 0 : safeNumber(line.bonus),
-          unit_mode: line.unit_mode ?? "main",
-          organization_id: currentOrganizationId,
-        };
-      });
-      // One database statement: a failed line cannot leave half an invoice's items.
-      const { error: itemError } = await supabase.from("sales_items").insert(itemsToSave);
-      if (itemError) {
-        const rollback = await supabase.from("sales_transactions").delete().eq("id", salesTransactionId).eq("organization_id", currentOrganizationId);
-        if (rollback.error) throw new Error(`Invoice ${systemInvoiceNumber} needs owner review: items were not saved and its empty header could not be removed. Do not retry until it is checked.`);
-        throw itemError;
-      }
-      let paymentWarning = "";
-
-      await createAuditLog({
-        action: "created",
-        entity_type: "sales_invoice",
-        entity_id: salesTransactionId,
-        entity_label: systemInvoiceNumber,
-        description: `Created sales invoice ${systemInvoiceNumber} for ${selectedSalesCustomer?.customer_name ?? "Unknown Customer"}`,
-        new_values: {
-          customer_id: selectedCustomerIdForSale,
-          invoice_number: systemInvoiceNumber,
-          sale_date: salesInvoiceDate,
-          payment_type: salesPaymentType,
-        },
-      });
-
-      if (salesPaymentType === "cash") {
-        const { data: autoPayment, error: autoPaymentError } = await supabase
-          .from("customer_payments")
-          .insert({
-            customer_id: selectedCustomerIdForSale,
-            amount: taxableBase + computedTaxAmount,
-            payment_date: salesInvoiceDate,
-            payment_method: "cash",
-            notes: `Payment received against invoice ${systemInvoiceNumber}`,
-            organization_id: currentOrganizationId,
-          })
-          .select("id")
-          .single();
-
-        if (autoPaymentError) {
-          paymentWarning = " Cash payment could not be recorded. Open this invoice in the ledger and reconcile its payment; do not create the sale again.";
-          console.error(
-            "Auto customer payment insert error:",
-            JSON.stringify(autoPaymentError, null, 2)
-          );
-        } else if (autoPayment?.id) {
-          const { error: autoAllocationError } = await supabase
-            .from("customer_payment_allocations")
-            .insert({
-              customer_payment_id: autoPayment.id,
-              sales_transaction_id: salesTransactionId,
-              amount: taxableBase + computedTaxAmount,
-              organization_id: currentOrganizationId,
-            });
-          if (autoAllocationError) {
-            paymentWarning = " Payment was recorded but could not be linked. Review payment allocation in the customer ledger; do not create the sale again.";
-            console.error(
-              "Auto customer payment allocation insert error:",
-              JSON.stringify(autoAllocationError, null, 2)
-            );
-          }
-        }
-      }
-
-      if (quickSaleMode) { const total = taxableBase + computedTaxAmount; const received = salesPaymentType === "cash" ? (Number(posCashReceived) || total) : 0; const returnAmount = salesPaymentType === "cash" ? Math.max(0, received - total) : 0; setLastPOSReceipt({ scope: `${currentOrganizationId}:${currentProfile?.id}`, business: currentOrganization?.name || "TradeOS", number: systemInvoiceNumber, date: salesInvoiceDate, customer: selectedSalesCustomer?.customer_name ?? "Customer", total, received, change: returnAmount, returnAmount, payment: paymentWarning ? "unreconciled" : salesPaymentType, lines: invoiceLines.map(line => { const product = products.find(product => String(product.id) === line.product_id); return { name: product?.name ?? "Product", quantity: line.quantity, unit: product ? unitLabelFor(product, line.unit_mode ?? "main") : "", price: line.selling_price, discount: line.discount, bonus: line.bonus }; }) }); }
-      setSalesMessage(`Sales invoice ${systemInvoiceNumber} saved successfully${paymentWarning}`);
+      setSalesMessage(`Sales invoice ${invoiceNumber} saved successfully${result.replayed ? " (confirmed retry)" : ""}.`);
       if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
       setSaleScanFocus(value => value + 1);
       setSalesInvoiceNumber("");
       setSalesInvoiceDate(toDateInputValue(new Date()));
       setSalesPaymentType("cash");
+      setPosCashReceived("");
       setSalesDiscountAmount("");
       setSalesDiscountType("flat");
       setSalesTaxRate("");
       clearCreditOverrideState();
       setSalesLines([]);
 
-      // Refresh dashboard and history
       fetchSalesTransactions();
       fetchSalesItems();
       fetchPurchaseItems();
@@ -5253,7 +5133,7 @@ setCustomerOrganizationName("");
   const [salesInvoiceNumber, setSalesInvoiceNumber] = useState("");
   const [salesInvoiceDate, setSalesInvoiceDate] = useState(toDateInputValue(new Date()));
   const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "credit">("cash");
-  const [posCashReceived, setPosCashReceived] = useState(0);
+  const [posCashReceived, setPosCashReceived] = useState("");
   const [salesDiscountAmount, setSalesDiscountAmount] = useState("");
   const [salesDiscountType, setSalesDiscountType] = useState<"flat" | "percent">("flat");
   const [salesTaxRate, setSalesTaxRate] = useState("");
@@ -5320,6 +5200,32 @@ setCustomerOrganizationName("");
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
   const [salesError, setSalesError] = useState<string | null>(null);
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
+  useEffect(() => {
+    if (!currentOrganizationId || !currentProfile?.id) return;
+    try {
+      const pending = readPendingAtomicSale(`${currentOrganizationId}:${currentProfile.id}`);
+      if (!pending) return;
+      setSelectedCustomerIdForSale(pending.input.customer_id);
+      setSalesInvoiceDate(pending.input.sale_date);
+      setSalesPaymentType(pending.input.payment_type);
+      setSalesDiscountAmount(String(pending.input.invoice_discount));
+      setSalesDiscountType(pending.input.invoice_discount_type);
+      setSalesTaxRate(String(pending.input.tax_rate));
+      setPosCashReceived(pending.input.cash_received == null ? "" : String(pending.input.cash_received));
+      setSalesLines(pending.input.lines.map((line) => ({
+        product_id: line.product_id,
+        quantity: String(line.quantity),
+        selling_price: String(line.selling_price),
+        discount: String(line.discount),
+        bonus: String(line.bonus),
+        unit_mode: line.unit_mode,
+      })));
+      setSalesError("A saved sale request is waiting for confirmation. Retry it to reconcile the same sale.");
+    } catch (error) {
+      console.error("Could not restore pending sale:", error);
+      setSalesError("A saved sale request could not be read. Keep this session open and contact an owner before submitting another sale.");
+    }
+  }, [currentOrganizationId, currentProfile?.id]);
 
   // Sales Management (Phase 4) — sales orders + returns + reporting
   const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform" | "invoices" | "history">("invoice");
@@ -8684,19 +8590,20 @@ setCustomerOrganizationName("");
     {}
   );
   const currentSalesInvoiceTotal = (() => {
+    const cents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
     const rawInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
-    const parsedTaxRate = salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate);
+    const parsedTaxRate = cents(salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate));
     const lineSubtotal = salesLines.reduce(
-      (sum, line) =>
-        sum +
-        safeNumber(line.quantity) * safeNumber(line.selling_price) -
-        (line.discount.trim() === "" ? 0 : safeNumber(line.discount)),
+      (sum, line) => sum +
+        cents(safeNumber(line.quantity)) * cents(safeNumber(line.selling_price)) -
+        cents(line.discount.trim() === "" ? 0 : safeNumber(line.discount)),
       0
     );
-    const parsedInvoiceDiscount =
+    const parsedInvoiceDiscount = cents(
       salesDiscountType === "percent"
         ? (lineSubtotal * (Number.isFinite(rawInvoiceDiscount) ? rawInvoiceDiscount : 0)) / 100
-        : rawInvoiceDiscount;
+        : rawInvoiceDiscount
+    );
     const taxableBase = Math.max(
       0,
       lineSubtotal -
@@ -8704,12 +8611,10 @@ setCustomerOrganizationName("");
           ? parsedInvoiceDiscount
           : 0)
     );
-    return (
-      taxableBase +
-      (Number.isFinite(parsedTaxRate) && parsedTaxRate >= 0
-        ? (taxableBase * parsedTaxRate) / 100
-        : 0)
-    );
+    const computedTax = Number.isFinite(parsedTaxRate) && parsedTaxRate >= 0
+      ? cents((taxableBase * parsedTaxRate) / 100)
+      : 0;
+    return cents(taxableBase + computedTax);
   })();
   const todayDateValue = toDateInputValue(new Date());
   const filteredSalesTransactions = (() => {
@@ -17714,7 +17619,7 @@ setCustomerOrganizationName("");
           <div className="space-y-4" {...entryNavigationHandlers}>
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
-              products={activeProducts} customers={activeCustomers} total={currentSalesInvoiceTotal} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} focusSignal={saleScanFocus}
+              products={activeProducts} customers={activeCustomers} total={currentSalesInvoiceTotal} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
               onScan={code => { try { const product = findBarcodeProduct(products, code); clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); return String(product.id); } catch (error) { setSalesError(error instanceof Error ? error.message : "Barcode not found."); return null; } }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSaleScanFocus(value => value + 1); } }}
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
