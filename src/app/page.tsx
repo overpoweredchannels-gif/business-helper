@@ -5,6 +5,7 @@ import { allPages } from "@/lib/supabase/all-pages";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
+import { buildAtomicSaleReceipt } from "@/lib/print/retail-receipt";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
 import { calculateSaleAmounts, hasAllowedPrecision, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
@@ -3807,26 +3808,12 @@ setCustomerOrganizationName("");
           const transaction = recovered.result.transaction;
           const invoiceNumber = String(transaction.invoice_number ?? "");
           if (quickSaleMode) {
-            setLastPOSReceipt({
+            setLastPOSReceipt(buildAtomicSaleReceipt(recovered.result, {
               scope: pendingScope,
               business: currentOrganization?.name || "TradeOS",
-              number: invoiceNumber,
-              date: String(transaction.sale_date ?? salesInvoiceDate),
-              customer: recovered.result.customer_name || "Customer",
-              total: Number(transaction.total_amount ?? 0),
-              received: Number(transaction.cash_received ?? 0),
-              change: Number(transaction.change_due ?? 0),
-              returnAmount: Number(transaction.change_due ?? 0),
-              payment: String(transaction.payment_type ?? salesPaymentType),
-              lines: recovered.result.items.map((item) => ({
-                name: String(item.product_name ?? "Product"),
-                quantity: String(item.quantity ?? "0"),
-                unit: String(item.unit_mode === "subunit" ? item.subunit_type ?? "Pcs" : item.unit_type ?? "Units"),
-                price: String(item.selling_price ?? "0"),
-                discount: String(item.discount ?? "0"),
-                bonus: String(item.bonus ?? "0"),
-              })),
-            });
+              fallbackDate: salesInvoiceDate,
+              fallbackPayment: salesPaymentType,
+            }));
           }
           setSalesError(null);
           setCreditWarning(null);
@@ -4135,30 +4122,13 @@ setCustomerOrganizationName("");
       const { result, previousPendingConfirmed } = await createAtomicSale(supabase, scope, input);
       const transaction = result.transaction;
       const invoiceNumber = String(transaction.invoice_number ?? "");
-      const confirmedLines = result.items.map((item) => ({
-        name: String(item.product_name ?? "Product"),
-        quantity: String(item.quantity ?? "0"),
-        unit: String(item.unit_mode === "subunit" ? item.subunit_type ?? "Pcs" : item.unit_type ?? "Units"),
-        price: String(item.selling_price ?? "0"),
-        discount: String(item.discount ?? "0"),
-        bonus: String(item.bonus ?? "0"),
-      }));
       if (quickSaleMode) {
-        const total = Number(transaction.total_amount ?? 0);
-        const change = Number(transaction.change_due ?? 0);
-        setLastPOSReceipt({
+        setLastPOSReceipt(buildAtomicSaleReceipt(result, {
           scope,
           business: currentOrganization?.name || "TradeOS",
-          number: invoiceNumber,
-          date: String(transaction.sale_date ?? salesInvoiceDate),
-          customer: result.customer_name || "Customer",
-          total,
-          received: Number(transaction.cash_received ?? 0),
-          change,
-          returnAmount: change,
-          payment: String(transaction.payment_type ?? salesPaymentType),
-          lines: confirmedLines,
-        });
+          fallbackDate: salesInvoiceDate,
+          fallbackPayment: salesPaymentType,
+        }));
       }
       if (previousPendingConfirmed) {
         setSalesMessage(`Earlier sale ${invoiceNumber} was confirmed. Your current basket is unchanged; review it before saving another sale.`);
