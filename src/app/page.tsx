@@ -7,7 +7,7 @@ import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
-import { createAtomicSale, readPendingAtomicSale } from "@/lib/sales/atomic-sale-client";
+import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
@@ -3791,10 +3791,65 @@ setCustomerOrganizationName("");
   };
   const saveSalesInvoice = async (overrideConfirmed = false) => {
     if (!canUseSalesTool("invoice")) { setSalesError("Sales invoice permission is required."); return; }
-    const invoiceLines = enteredInvoiceLines(salesLines);
     if (salesInvoiceLoading) {
       return;
     }
+
+    const pendingScope = currentOrganizationId && currentProfile?.id
+      ? `${currentOrganizationId}:${currentProfile.id}`
+      : null;
+    if (isOwnerOrAdmin() && pendingScope && readPendingAtomicSale(pendingScope)) {
+      setSalesInvoiceLoading(true);
+      try {
+        const recovered = await reconcilePendingAtomicSale(supabase, pendingScope);
+        if (recovered) {
+          const transaction = recovered.result.transaction;
+          const invoiceNumber = String(transaction.invoice_number ?? "");
+          if (quickSaleMode) {
+            setLastPOSReceipt({
+              scope: pendingScope,
+              business: currentOrganization?.name || "TradeOS",
+              number: invoiceNumber,
+              date: String(transaction.sale_date ?? salesInvoiceDate),
+              customer: recovered.result.customer_name || "Customer",
+              total: Number(transaction.total_amount ?? 0),
+              received: Number(transaction.cash_received ?? 0),
+              change: Number(transaction.change_due ?? 0),
+              returnAmount: Number(transaction.change_due ?? 0),
+              payment: String(transaction.payment_type ?? salesPaymentType),
+              lines: recovered.result.items.map((item) => ({
+                name: String(item.product_name ?? "Product"),
+                quantity: String(item.quantity ?? "0"),
+                unit: String(item.unit_mode === "subunit" ? item.subunit_type ?? "Pcs" : item.unit_type ?? "Units"),
+                price: String(item.selling_price ?? "0"),
+                discount: String(item.discount ?? "0"),
+                bonus: String(item.bonus ?? "0"),
+              })),
+            });
+          }
+          setSalesError(null);
+          setCreditWarning(null);
+          setSalesMessage(`Earlier sale ${invoiceNumber} was confirmed. Your current basket is unchanged; review it before saving another sale.`);
+          fetchSalesTransactions();
+          fetchSalesItems();
+          fetchProducts();
+          fetchCustomerPayments();
+          fetchCustomerPaymentAllocations();
+          return;
+        }
+        setSalesError("An earlier sale changed in another window. Reload and review the current basket before continuing.");
+        setSalesMessage(null);
+        return;
+      } catch (err) {
+        setSalesError(err instanceof Error ? err.message : "The earlier sale request could not be reconciled.");
+        setSalesMessage(null);
+        return;
+      } finally {
+        setSalesInvoiceLoading(false);
+      }
+    }
+
+    const invoiceLines = enteredInvoiceLines(salesLines);
 
     setCreditWarning(null);
 

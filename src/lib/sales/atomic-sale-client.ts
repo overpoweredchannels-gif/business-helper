@@ -30,8 +30,14 @@ type PendingSale = { requestId: string; input: AtomicSaleInput };
 type SaleStatus = { status: "unknown" | "confirmed"; result?: AtomicSaleResult };
 
 const storageKey = (scope: string) => `tradeos:pending-sale:v1:${scope}`;
-const clearPending = (scope: string) => {
-  try { window.localStorage.removeItem(storageKey(scope)); } catch { /* Replaying a confirmed request is safe. */ }
+const clearPending = (scope: string, requestId: string) => {
+  try {
+    const key = storageKey(scope);
+    const current = window.localStorage.getItem(key);
+    if (current && (JSON.parse(current) as PendingSale).requestId === requestId) {
+      window.localStorage.removeItem(key);
+    }
+  } catch { /* Replaying a confirmed request is safe. */ }
 };
 
 export function readPendingAtomicSale(scope: string): PendingSale | null {
@@ -39,11 +45,6 @@ export function readPendingAtomicSale(scope: string): PendingSale | null {
   const stored = window.localStorage.getItem(storageKey(scope));
   return stored ? JSON.parse(stored) as PendingSale : null;
 }
-
-const sameSale = (a: AtomicSaleInput, b: AtomicSaleInput) => {
-  return JSON.stringify({ ...a, credit_override_confirmed: false }) ===
-    JSON.stringify({ ...b, credit_override_confirmed: false });
-};
 
 async function readSaleStatus(supabase: SupabaseClient, requestId: string) {
   try {
@@ -56,25 +57,12 @@ async function readSaleStatus(supabase: SupabaseClient, requestId: string) {
   }
 }
 
-export async function createAtomicSale(
+async function submitAtomicSale(
   supabase: SupabaseClient,
   scope: string,
-  input: AtomicSaleInput,
+  attempt: PendingSale,
+  isRecovery: boolean,
 ): Promise<{ result: AtomicSaleResult; previousPendingConfirmed: boolean }> {
-  const pending = readPendingAtomicSale(scope);
-  if (pending && !sameSale(pending.input, input)) {
-    const status = await readSaleStatus(supabase, pending.requestId);
-    if (status.error) throw new Error("An earlier sale is still being checked. Your basket is saved; retry after reconnecting.");
-    if (status.data?.status !== "confirmed" || !status.data.result) {
-      throw new Error("An earlier sale is unresolved. Reload to restore its saved basket, then retry that sale before starting another.");
-    }
-    clearPending(scope);
-    return { result: status.data.result, previousPendingConfirmed: true };
-  }
-
-  const attempt = pending ?? { requestId: crypto.randomUUID(), input };
-  if (!pending) window.localStorage.setItem(storageKey(scope), JSON.stringify(attempt));
-
   let data: AtomicSaleResult | null = null;
   let error: { code?: string; message?: string } | null = null;
   try {
@@ -87,20 +75,59 @@ export async function createAtomicSale(
   }
 
   if (!error && data?.transaction) {
-    clearPending(scope);
-    return { result: data, previousPendingConfirmed: false };
+    clearPending(scope, attempt.requestId);
+    return { result: data, previousPendingConfirmed: isRecovery };
   }
 
   const status = await readSaleStatus(supabase, attempt.requestId);
   if (!status.error && status.data?.status === "confirmed" && status.data.result) {
-    clearPending(scope);
-    return { result: status.data.result, previousPendingConfirmed: false };
+    clearPending(scope, attempt.requestId);
+    return { result: status.data.result, previousPendingConfirmed: isRecovery };
   }
 
-  if (!status.error && /^[0-9A-Z]{5}$/.test(error?.code ?? "")) {
-    clearPending(scope);
+  if (!status.error && status.data?.status === "unknown" && /^[0-9A-Z]{5}$/.test(error?.code ?? "")) {
+    clearPending(scope, attempt.requestId);
     throw new Error(error?.message || "Sale was rejected. Correct the sale details and try again.");
   }
 
   throw new Error("Sale status could not be confirmed. Your basket and request are saved; retry to reconcile the same sale.");
+}
+
+export async function reconcilePendingAtomicSale(
+  supabase: SupabaseClient,
+  scope: string,
+): Promise<{ result: AtomicSaleResult; previousPendingConfirmed: true } | null> {
+  const pending = readPendingAtomicSale(scope);
+  if (!pending) return null;
+
+  const status = await readSaleStatus(supabase, pending.requestId);
+  if (status.error) {
+    throw new Error("An earlier sale is still being checked. Your basket and request are saved; retry after reconnecting.");
+  }
+  if (status.data?.status === "confirmed" && status.data.result) {
+    clearPending(scope, pending.requestId);
+    return { result: status.data.result, previousPendingConfirmed: true };
+  }
+  if (status.data?.status !== "unknown") {
+    throw new Error("An earlier sale is unresolved. Its saved request is preserved; retry after reconnecting.");
+  }
+
+  return submitAtomicSale(supabase, scope, pending, true);
+}
+
+export async function createAtomicSale(
+  supabase: SupabaseClient,
+  scope: string,
+  input: AtomicSaleInput,
+): Promise<{ result: AtomicSaleResult; previousPendingConfirmed: boolean }> {
+  const pending = readPendingAtomicSale(scope);
+  if (pending) {
+    const recovered = await reconcilePendingAtomicSale(supabase, scope);
+    if (recovered) return recovered;
+    throw new Error("An earlier sale request changed in another window. Reload before submitting another sale.");
+  }
+
+  const attempt = { requestId: crypto.randomUUID(), input };
+  window.localStorage.setItem(storageKey(scope), JSON.stringify(attempt));
+  return submitAtomicSale(supabase, scope, attempt, false);
 }

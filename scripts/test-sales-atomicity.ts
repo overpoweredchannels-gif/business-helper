@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createAtomicSale, type AtomicSaleInput, type AtomicSaleResult } from "../src/lib/sales/atomic-sale-client";
+import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale, type AtomicSaleInput, type AtomicSaleResult } from "../src/lib/sales/atomic-sale-client";
 
 const org = "10000000-0000-4000-8000-000000000001";
 const otherOrg = "10000000-0000-4000-8000-000000000002";
@@ -339,6 +339,68 @@ async function main() {
       lines: [{ product_id: otherProduct, quantity: 1, selling_price: 10 }],
     }), otherOwner);
     assert.equal(otherOrgSale.transaction.invoice_number, "S-100001", "Request identifiers are unique within each organization");
+
+    const recoveryInput = base({
+      cash_received: 10,
+      lines: [{ product_id: cashProduct, quantity: 1, selling_price: 10, discount: 0, bonus: 0, unit_mode: "main" }],
+    }) as AtomicSaleInput;
+    await db.query("update products set current_stock=1 where id=$1", [cashProduct]);
+    const storage = new Map<string, string>();
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    const installWindow = () => Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value); },
+      removeItem: (key: string) => { storage.delete(key); },
+    } } });
+    let createCalls = 0;
+    let statusCalls = 0;
+    let recoveryRequestId = "";
+    const recoveryClient = {
+      rpc: async (name: string, args: Record<string, unknown>) => {
+        if (name === "create_sales_invoice_atomic") {
+          createCalls += 1;
+          recoveryRequestId = String(args.p_request_id);
+          assert.equal(args.p_request_id, recoveryRequestId, "The persisted request identifier is preserved on initial submission");
+          await create(String(args.p_request_id), args.p_input as Record<string, unknown>);
+          throw new Error("simulated lost creation response after database commit");
+        }
+        statusCalls += 1;
+        if (statusCalls === 1) throw new Error("simulated lost immediate status response");
+        assert.equal(args.p_request_id, recoveryRequestId, "Recovery checks the original request identifier");
+        return { data: await status(String(args.p_request_id)), error: null };
+      },
+    } as unknown as SupabaseClient;
+    try {
+      installWindow();
+      await assert.rejects(createAtomicSale(recoveryClient, `${org}:${owner}`, recoveryInput), /status could not be confirmed/);
+      const pendingAfterReload = readPendingAtomicSale(`${org}:${owner}`);
+      assert.equal(pendingAfterReload?.requestId, recoveryRequestId);
+      assert.equal(Number((await db.query<{ current_stock: string }>("select current_stock from products where id=$1", [cashProduct])).rows[0].current_stock), 0, "The first request consumed the last stock unit");
+      await db.query("update products set is_active=false where id=$1", [cashProduct]);
+      await db.query("update customers set is_active=false where id=$1", [cashCustomer]);
+      const afterCommit = await db.query<{ invoices: number; items: number; movements: number; stock: string }>(`select
+        (select count(*)::int from sales_transactions where request_id=$1) invoices,
+        (select count(*)::int from sales_items si join sales_transactions st on st.id=si.sales_transaction_id where st.request_id=$1) items,
+        (select count(*)::int from inventory_transactions where reference_id=(select id from sales_transactions where request_id=$1)) movements,
+        (select current_stock from products where id=$2) stock`, [recoveryRequestId, cashProduct]);
+      const committedInvoice = (await db.query<{ invoice_number: string }>("select invoice_number from sales_transactions where request_id=$1", [recoveryRequestId])).rows[0].invoice_number;
+      installWindow(); // New browser context, same durable local storage.
+      const recovered = await reconcilePendingAtomicSale(recoveryClient, `${org}:${owner}`);
+      assert.equal(recovered?.result.transaction.invoice_number, committedInvoice);
+      assert.equal(recovered?.previousPendingConfirmed, true);
+      assert.equal(createCalls, 1, "A confirmed request is recovered without another sale RPC");
+      assert.equal(statusCalls, 2, "The initial status response is lost and the reloaded page reconciles it");
+      assert.equal(readPendingAtomicSale(`${org}:${owner}`), null);
+      const afterRecovery = await db.query<{ invoices: number; items: number; movements: number; stock: string }>(`select
+        (select count(*)::int from sales_transactions where request_id=$1) invoices,
+        (select count(*)::int from sales_items si join sales_transactions st on st.id=si.sales_transaction_id where st.request_id=$1) items,
+        (select count(*)::int from inventory_transactions where reference_id=(select id from sales_transactions where request_id=$1)) movements,
+        (select current_stock from products where id=$2) stock`, [recoveryRequestId, cashProduct]);
+      assert.deepEqual(afterRecovery.rows[0], afterCommit.rows[0], "Recovery after product/customer changes adds no invoice, item, movement, or stock change");
+    } finally {
+      if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+      else Reflect.deleteProperty(globalThis, "window");
+    }
 
     await db.exec("set role authenticated");
     await setActor(employee);
