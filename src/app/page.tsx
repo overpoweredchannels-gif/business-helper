@@ -3876,6 +3876,11 @@ setCustomerOrganizationName("");
       const bonus = Number(line.bonus || 0);
       if (line.selling_price.trim() === "" || !Number.isFinite(price) || price < 0 || !hasAllowedPrecision(line.selling_price, SALE_MONEY_DECIMAL_PLACES) || !Number.isFinite(bonus) || bonus < 0 || !hasAllowedPrecision(line.bonus || "0", SALE_QUANTITY_DECIMAL_PLACES)) { setSalesError(`Enter a price with up to two decimal places and a bonus with up to three decimal places for ${product.name}.`); return; }
       const quantity = Number(line.quantity);
+      if (!hasAllowedPrecision(line.quantity, SALE_QUANTITY_DECIMAL_PLACES)) {
+        setSalesError(`Quantity for ${product.name} supports up to three decimal places. Adjust the entered value before saving.`);
+        setSalesMessage(null);
+        return;
+      }
       if (!Number.isFinite(quantity) || quantity <= 0) {
         setSalesError(`Invalid quantity for ${product.name}.`);
         setSalesMessage(null);
@@ -4085,11 +4090,6 @@ setCustomerOrganizationName("");
       if (!requireOrganization("create sales invoice")) {
         setSalesError("Organization not loaded. Please login again.");
         setSalesInvoiceLoading(false);
-        return;
-      }
-      if (!hasAllowedPrecision(line.quantity, SALE_QUANTITY_DECIMAL_PLACES)) {
-        setSalesError(`Quantity for ${product.name} supports up to three decimal places. Adjust the entered value before saving.`);
-        setSalesMessage(null);
         return;
       }
       if (!currentOrganizationId || !currentProfile?.id || !selectedCustomerIdForSale) {

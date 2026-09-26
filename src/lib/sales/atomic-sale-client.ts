@@ -112,7 +112,8 @@ export async function reconcilePendingAtomicSale(
     throw new Error("An earlier sale is unresolved. Its saved request is preserved; retry after reconnecting.");
   }
 
-  return submitAtomicSale(supabase, scope, pending, true);
+  const recovered = await submitAtomicSale(supabase, scope, pending, true);
+  return { ...recovered, previousPendingConfirmed: true };
 }
 
 export async function createAtomicSale(

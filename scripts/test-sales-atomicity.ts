@@ -65,7 +65,7 @@ async function testAtomicSaleClientRetry() {
 type SaleResult = {
   transaction: { id: string; invoice_number: string; payment_type: string; total_amount: string; cash_received: string; change_due: string; credit_due_date: string | null };
   customer_name: string;
-  items: Array<{ product_name: string; purchase_price_snapshot: string; inventory_bonus_main: string }>;
+  items: Array<{ product_name: string; quantity: string; purchase_price_snapshot: string; inventory_bonus_main: string }>;
   replayed: boolean;
 };
 
