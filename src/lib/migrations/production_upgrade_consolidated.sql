@@ -146,7 +146,7 @@ create table if not exists public.products (
   default_selling_price numeric(14, 2) check (default_selling_price is null or default_selling_price >= 0),
   minimum_stock_level numeric(14, 2) check (minimum_stock_level is null or minimum_stock_level >= 0),
   reorder_level numeric(14, 2) check (reorder_level is null or reorder_level >= 0),
-  current_stock numeric(14, 2) not null default 0 check (current_stock >= 0),
+  current_stock numeric(18, 6) not null default 0 check (current_stock >= 0),
   track_batch boolean not null default false,
   track_expiry boolean not null default false,
   is_active boolean not null default true,
@@ -165,7 +165,7 @@ alter table public.products add column if not exists default_purchase_price nume
 alter table public.products add column if not exists default_selling_price numeric(14, 2);
 alter table public.products add column if not exists minimum_stock_level numeric(14, 2);
 alter table public.products add column if not exists reorder_level numeric(14, 2);
-alter table public.products add column if not exists current_stock numeric(14, 2) not null default 0;
+alter table public.products add column if not exists current_stock numeric(18, 6) not null default 0;
 alter table public.products add column if not exists track_batch boolean not null default false;
 alter table public.products add column if not exists track_expiry boolean not null default false;
 alter table public.products add column if not exists is_active boolean not null default true;
@@ -598,7 +598,7 @@ create table if not exists public.inventory_transactions (
   movement_type text not null check (
     movement_type in ('purchase_in', 'sale_out', 'adjustment_in', 'adjustment_out', 'return_in', 'return_out')
   ),
-  quantity_delta numeric(14, 2) not null check (quantity_delta <> 0),
+  quantity_delta numeric(18, 6) not null check (quantity_delta <> 0),
   reason text check (reason is null or char_length(trim(reason)) <= 500),
   batch_number text check (batch_number is null or char_length(trim(batch_number)) <= 100),
   expiry_date date,

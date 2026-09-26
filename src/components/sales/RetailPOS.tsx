@@ -6,6 +6,7 @@ import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import type { BarcodeLine } from "@/lib/invoices/barcode";
 import type { Product, Customer } from "@/lib/tradeos/types";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
+import { calculateSaleAmounts, calculateSaleLineTotal } from "@/lib/sales/sale-amounts";
 
 export type CounterSale = {
   lines: BarcodeLine[]; customerId: string | null; date: string;
@@ -109,9 +110,13 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
   };
   const drawerSummary = buildRetailDrawerSummary({ total, received: cashReceived, paymentType: sale.paymentType });
   const shortCash = owner && sale.paymentType === "cash" && drawerSummary.status === "cash-short";
+  const getSaleTotal = (draft: CounterSale) => calculateSaleAmounts(
+    draft.lines.map(line => ({ quantity: Number(line.quantity) || 0, sellingPrice: Number(line.selling_price) || 0, discount: Number(line.discount) || 0 })),
+    { invoiceDiscount: Number(draft.discount) || 0, invoiceDiscountType: draft.discountType, taxRate: Number(draft.tax) || 0 },
+  ).total;
   const saleRows = sale.lines.map((line, index) => {
     const product = products.find(item => String(item.id) === line.product_id);
-    const lineTotal = (Number(line.quantity) || 0) * (Number(line.selling_price) || 0) - (Number(line.discount) || 0);
+    const lineTotal = calculateSaleLineTotal({ quantity: Number(line.quantity) || 0, sellingPrice: Number(line.selling_price) || 0, discount: Number(line.discount) || 0 });
     return { line, index, product, lineTotal, productName: product?.name ?? "Product unavailable" };
   });
   const quickCashPresets = [
@@ -125,7 +130,7 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
     if (!query) return true;
     const customerName = customers.find(c => c.id === row.sale.customerId)?.customer_name ?? "Walk-in customer";
     const productNames = row.sale.lines.map(line => products.find(p => String(p.id) === line.product_id)?.name ?? "").filter(Boolean).join(" ");
-    const summary = [customerName, productNames, row.sale.paymentType, new Date(row.savedAt).toLocaleDateString(), String(row.sale.lines.reduce((sum, line) => sum + ((Number(line.quantity) || 0) * (Number(line.selling_price) || 0) - (Number(line.discount) || 0)), 0)), row.id].join(" ").toLowerCase();
+    const summary = [customerName, productNames, row.sale.paymentType, new Date(row.savedAt).toLocaleDateString(), String(getSaleTotal(row.sale)), row.id].join(" ").toLowerCase();
     return summary.includes(query);
   });
   const saveBasket = () => {
@@ -198,7 +203,7 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
     </details>
     <details className="rounded-xl border bg-card p-4"><summary className="cursor-pointer font-semibold">Held sales ({held.length})</summary><p className="my-3 text-sm text-muted-foreground">Saved only on this browser for your account and business. Hold or finish the current sale before resuming another. Stock is checked again when saving.</p>
       <label className="mb-3 block text-sm">Search held sales<input type="search" value={storedSearch} onChange={event => setStoredSearch(event.target.value)} placeholder="Customer, product, amount, date" className="mt-1 min-h-11 w-full rounded border border-input bg-background px-3" /></label>
-      {visibleHeld.length === 0 ? <p className="text-sm text-muted-foreground">No held sales match this filter.</p> : visibleHeld.map(row => <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 border-t py-3"><span>{customers.find(c => c.id === row.sale.customerId)?.customer_name ?? "Customer"} · {row.sale.lines.length} lines · {new Date(row.savedAt).toLocaleString()} · {money(row.sale.lines.reduce((sum, line) => sum + ((Number(line.quantity) || 0) * (Number(line.selling_price) || 0) - (Number(line.discount) || 0)), 0))}</span><button type="button" disabled={busy || sale.lines.length > 0} onClick={() => resume(row)} className="min-h-11 rounded border border-primary px-4 text-primary disabled:opacity-40">Resume</button></div>)}
+      {visibleHeld.length === 0 ? <p className="text-sm text-muted-foreground">No held sales match this filter.</p> : visibleHeld.map(row => <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 border-t py-3"><span>{customers.find(c => c.id === row.sale.customerId)?.customer_name ?? "Customer"} · {row.sale.lines.length} lines · {new Date(row.savedAt).toLocaleString()} · {money(getSaleTotal(row.sale))}</span><button type="button" disabled={busy || sale.lines.length > 0} onClick={() => resume(row)} className="min-h-11 rounded border border-primary px-4 text-primary disabled:opacity-40">Resume</button></div>)}
     </details>
   </div>;
 }

@@ -146,18 +146,22 @@ begin
   for v_line in select value from jsonb_array_elements(p_input->'lines') loop
     if jsonb_typeof(v_line) is distinct from 'object' then raise exception 'Invalid sale line' using errcode = '22023'; end if;
     v_product_id := (v_line->>'product_id')::uuid;
-    v_quantity := round((v_line->>'quantity')::numeric, 2);
-    v_price := round((v_line->>'selling_price')::numeric, 2);
-    v_discount := round(coalesce(nullif(v_line->>'discount', '')::numeric, 0), 2);
-    v_bonus := round(coalesce(nullif(v_line->>'bonus', '')::numeric, 0), 2);
+    v_quantity := (v_line->>'quantity')::numeric;
+    v_price := (v_line->>'selling_price')::numeric;
+    v_discount := coalesce(nullif(v_line->>'discount', '')::numeric, 0);
+    v_bonus := coalesce(nullif(v_line->>'bonus', '')::numeric, 0);
     v_unit_mode := coalesce(nullif(v_line->>'unit_mode', ''), 'main');
     if v_quantity is null or v_quantity <= 0 or v_quantity::text in ('NaN','Infinity','-Infinity')
+      or v_quantity <> round(v_quantity, 3)
       or v_price is null or v_price < 0 or v_price::text in ('NaN','Infinity','-Infinity')
+      or v_price <> round(v_price, 2)
       or v_discount < 0 or v_discount::text in ('NaN','Infinity','-Infinity')
+      or v_discount <> round(v_discount, 2)
       or v_bonus < 0 or v_bonus::text in ('NaN','Infinity','-Infinity')
+      or v_bonus <> round(v_bonus, 3)
       or v_unit_mode not in ('main','subunit')
       or v_discount > v_quantity * v_price then
-      raise exception 'Invalid quantity, price, unit, bonus, or line discount' using errcode = '22023';
+      raise exception 'Invalid sale line: quantity and bonus support three decimals; price and discount support two' using errcode = '22023';
     end if;
     select * into v_product from public.products
     where id = v_product_id and organization_id = v_org and is_active is distinct from false;
@@ -165,20 +169,21 @@ begin
     if v_unit_mode = 'subunit' and coalesce(v_product.units_per_pack, 0) <= 0 then
       raise exception 'Configure units per pack before selling sub-units' using errcode = '22023';
     end if;
-    v_line_subtotal := v_line_subtotal + (v_quantity * v_price) - v_discount;
+    v_line_subtotal := v_line_subtotal + round((v_quantity * v_price) - v_discount, 2);
   end loop;
 
   v_invoice_discount_input := coalesce(nullif(p_input->>'invoice_discount', '')::numeric, 0);
   v_invoice_discount_type := coalesce(nullif(p_input->>'invoice_discount_type', ''), 'flat');
   v_tax_rate := coalesce(nullif(p_input->>'tax_rate', '')::numeric, 0);
   if v_invoice_discount_input < 0 or v_invoice_discount_input::text in ('NaN','Infinity','-Infinity')
+    or v_invoice_discount_input <> round(v_invoice_discount_input, 2)
     or v_invoice_discount_type not in ('flat','percent')
     or (v_invoice_discount_type = 'percent' and v_invoice_discount_input > 100)
     or (v_invoice_discount_type = 'flat' and v_invoice_discount_input > v_line_subtotal)
-    or v_tax_rate < 0 or v_tax_rate > 999.99 or v_tax_rate::text in ('NaN','Infinity','-Infinity') then
+    or v_tax_rate < 0 or v_tax_rate > 999.99 or v_tax_rate::text in ('NaN','Infinity','-Infinity')
+    or v_tax_rate <> round(v_tax_rate, 2) then
     raise exception 'Invalid invoice discount or tax rate' using errcode = '22023';
   end if;
-  v_tax_rate := round(v_tax_rate, 2);
   v_invoice_discount := round(case when v_invoice_discount_type = 'percent'
     then v_line_subtotal * v_invoice_discount_input / 100 else v_invoice_discount_input end, 2);
   v_taxable := greatest(0, v_line_subtotal - v_invoice_discount);
@@ -189,11 +194,11 @@ begin
     -- The advanced invoice form has no tender input; treat its cash invoice as exact.
     -- The quick POS always sends an explicit amount (including zero for blank input).
     v_cash_received := coalesce(nullif(p_input->>'cash_received', '')::numeric, v_total);
-    if v_cash_received < 0 or v_cash_received::text in ('NaN','Infinity','-Infinity') then
+    if v_cash_received < 0 or v_cash_received::text in ('NaN','Infinity','-Infinity')
+      or v_cash_received <> round(v_cash_received, 2) then
       raise exception 'Invalid cash received amount' using errcode = '22023';
     end if;
     if v_cash_received < v_total then raise exception 'Cash received is less than the sale total' using errcode = '22023'; end if;
-    v_cash_received := round(v_cash_received, 2);
     v_change_due := round(v_cash_received - v_total, 2);
   end if;
 
@@ -272,10 +277,10 @@ begin
 
   for v_line in select value from jsonb_array_elements(p_input->'lines') loop
     v_product_id := (v_line->>'product_id')::uuid;
-    v_quantity := round((v_line->>'quantity')::numeric, 2);
-    v_price := round((v_line->>'selling_price')::numeric, 2);
-    v_discount := round(coalesce(nullif(v_line->>'discount', '')::numeric, 0), 2);
-    v_bonus := round(coalesce(nullif(v_line->>'bonus', '')::numeric, 0), 2);
+    v_quantity := (v_line->>'quantity')::numeric;
+    v_price := (v_line->>'selling_price')::numeric;
+    v_discount := coalesce(nullif(v_line->>'discount', '')::numeric, 0);
+    v_bonus := coalesce(nullif(v_line->>'bonus', '')::numeric, 0);
     v_unit_mode := coalesce(nullif(v_line->>'unit_mode', ''), 'main');
     select * into v_product from public.products
     where id = v_product_id and organization_id = v_org;

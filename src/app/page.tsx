@@ -7,6 +7,7 @@ import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
+import { calculateSaleAmounts, hasAllowedPrecision, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
@@ -3866,6 +3867,11 @@ setCustomerOrganizationName("");
     }
 
     if (quickSaleMode && isOwnerOrAdmin() && salesPaymentType === "cash") {
+      if (posCashReceived.trim() !== "" && !hasAllowedPrecision(posCashReceived, SALE_MONEY_DECIMAL_PLACES)) {
+        setSalesError("Cash received supports up to two decimal places.");
+        setSalesMessage(null);
+        return;
+      }
       const cashSummary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal, received: posCashReceived });
       if (cashSummary.status === "cash-short") {
         setSalesError(`Cash is short by ${pkrFormatter.format(cashSummary.shortfall)}.`);
@@ -3881,7 +3887,7 @@ setCustomerOrganizationName("");
       if (!product || product.is_active === false) { setSalesError("A product is unavailable. Remove it or choose an active product."); return; }
       const price = Number(line.selling_price);
       const bonus = Number(line.bonus || 0);
-      if (line.selling_price.trim() === "" || !Number.isFinite(price) || price < 0 || !Number.isFinite(bonus) || bonus < 0) { setSalesError(`Enter a valid price and bonus for ${product.name}.`); return; }
+      if (line.selling_price.trim() === "" || !Number.isFinite(price) || price < 0 || !hasAllowedPrecision(line.selling_price, SALE_MONEY_DECIMAL_PLACES) || !Number.isFinite(bonus) || bonus < 0 || !hasAllowedPrecision(line.bonus || "0", SALE_QUANTITY_DECIMAL_PLACES)) { setSalesError(`Enter a price with up to two decimal places and a bonus with up to three decimal places for ${product.name}.`); return; }
       const quantity = Number(line.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0) {
         setSalesError(`Invalid quantity for ${product.name}.`);
@@ -3908,12 +3914,12 @@ setCustomerOrganizationName("");
     const rawInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
     if (
       salesDiscountAmount.trim() !== "" &&
-      (!Number.isFinite(rawInvoiceDiscount) || rawInvoiceDiscount < 0)
+      (!Number.isFinite(rawInvoiceDiscount) || rawInvoiceDiscount < 0 || !hasAllowedPrecision(salesDiscountAmount, SALE_MONEY_DECIMAL_PLACES))
     ) {
       setSalesError(
         salesDiscountType === "percent"
-          ? "Invoice discount must be a valid percentage greater than or equal to zero"
-          : "Invoice discount must be a valid amount greater than or equal to zero"
+          ? "Invoice discount must be a valid percentage with up to two decimal places"
+          : "Invoice discount must be a valid amount with up to two decimal places"
       );
       setSalesMessage(null);
       return;
@@ -3930,8 +3936,8 @@ setCustomerOrganizationName("");
       return;
     }
 
-    if (salesTaxRate.trim() !== "" && (!Number.isFinite(parsedTaxRate) || parsedTaxRate < 0)) {
-      setSalesError("Tax rate must be a valid percentage greater than or equal to zero");
+    if (salesTaxRate.trim() !== "" && (!Number.isFinite(parsedTaxRate) || parsedTaxRate < 0 || !hasAllowedPrecision(salesTaxRate, SALE_MONEY_DECIMAL_PLACES))) {
+      setSalesError("Tax rate must be a valid percentage with up to two decimal places");
       setSalesMessage(null);
       return;
     }
@@ -3939,8 +3945,8 @@ setCustomerOrganizationName("");
     for (const line of invoiceLines) {
       if (!line.product_id) continue;
       const lineDiscount = line.discount.trim() === "" ? 0 : Number(line.discount);
-      if (line.discount.trim() !== "" && (!Number.isFinite(lineDiscount) || lineDiscount < 0 || lineDiscount > Number(line.quantity) * Number(line.selling_price))) {
-        setSalesError("Line discount must be between zero and the line subtotal");
+      if (line.discount.trim() !== "" && (!Number.isFinite(lineDiscount) || lineDiscount < 0 || !hasAllowedPrecision(line.discount, SALE_MONEY_DECIMAL_PLACES) || lineDiscount > Number(line.quantity) * Number(line.selling_price))) {
+        setSalesError("Line discount must use up to two decimal places and stay between zero and the line subtotal");
         setSalesMessage(null);
         return;
       }
@@ -4092,6 +4098,11 @@ setCustomerOrganizationName("");
       if (!requireOrganization("create sales invoice")) {
         setSalesError("Organization not loaded. Please login again.");
         setSalesInvoiceLoading(false);
+        return;
+      }
+      if (!hasAllowedPrecision(line.quantity, SALE_QUANTITY_DECIMAL_PLACES)) {
+        setSalesError(`Quantity for ${product.name} supports up to three decimal places. Adjust the entered value before saving.`);
+        setSalesMessage(null);
         return;
       }
       if (!currentOrganizationId || !currentProfile?.id || !selectedCustomerIdForSale) {
@@ -8644,33 +8655,19 @@ setCustomerOrganizationName("");
     },
     {}
   );
-  const currentSalesInvoiceTotal = (() => {
-    const cents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-    const rawInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
-    const parsedTaxRate = cents(salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate));
-    const lineSubtotal = salesLines.reduce(
-      (sum, line) => sum +
-        cents(safeNumber(line.quantity)) * cents(safeNumber(line.selling_price)) -
-        cents(line.discount.trim() === "" ? 0 : safeNumber(line.discount)),
-      0
-    );
-    const parsedInvoiceDiscount = cents(
-      salesDiscountType === "percent"
-        ? (lineSubtotal * (Number.isFinite(rawInvoiceDiscount) ? rawInvoiceDiscount : 0)) / 100
-        : rawInvoiceDiscount
-    );
-    const taxableBase = Math.max(
-      0,
-      lineSubtotal -
-        (Number.isFinite(parsedInvoiceDiscount) && parsedInvoiceDiscount >= 0
-          ? parsedInvoiceDiscount
-          : 0)
-    );
-    const computedTax = Number.isFinite(parsedTaxRate) && parsedTaxRate >= 0
-      ? cents((taxableBase * parsedTaxRate) / 100)
-      : 0;
-    return cents(taxableBase + computedTax);
-  })();
+  const currentSaleAmounts = calculateSaleAmounts(
+    salesLines.map((line) => ({
+      quantity: safeNumber(line.quantity),
+      sellingPrice: safeNumber(line.selling_price),
+      discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
+    })),
+    {
+      invoiceDiscount: salesDiscountAmount.trim() === "" ? 0 : safeNumber(salesDiscountAmount),
+      invoiceDiscountType: salesDiscountType,
+      taxRate: salesTaxRate.trim() === "" ? 0 : safeNumber(salesTaxRate),
+    },
+  );
+  const currentSalesInvoiceTotal = currentSaleAmounts.total;
   const todayDateValue = toDateInputValue(new Date());
   const filteredSalesTransactions = (() => {
     const searchTerm = salesHistorySearch.trim().toLowerCase();
@@ -17994,15 +17991,15 @@ setCustomerOrganizationName("");
 
             {salesLines.length > 0 && (
               <div className="rounded border border-border bg-card p-4 text-sm text-foreground/80">
-                <div className="flex justify-between"><span>Line Subtotal</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price), 0))}</span></div>
+                <div className="flex justify-between"><span>Line Subtotal</span><span>{pkrFormatter.format(currentSaleAmounts.lineSubtotal)}</span></div>
                 {(salesLines.some((line) => Number(line.discount) > 0) || salesDiscountAmount.trim() !== "") && (
-                  <div className="flex justify-between"><span>Line Discounts</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + (Number(line.discount) || 0), 0))}</span></div>
+                  <div className="flex justify-between"><span>Line Discounts</span><span>{pkrFormatter.format(currentSaleAmounts.lineDiscount)}</span></div>
                 )}
                 {salesDiscountAmount.trim() !== "" && (
-                  <div className="flex justify-between"><span>Invoice Discount{salesDiscountType === "percent" ? ` (${Number(salesDiscountAmount)}%)` : ""}</span><span>{pkrFormatter.format(salesDiscountType === "percent" ? (salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) * Number(salesDiscountAmount)) / 100 : (Number(salesDiscountAmount) || 0))}</span></div>
+                  <div className="flex justify-between"><span>Invoice Discount{salesDiscountType === "percent" ? ` (${Number(salesDiscountAmount)}%)` : ""}</span><span>{pkrFormatter.format(currentSaleAmounts.invoiceDiscount)}</span></div>
                 )}
                 {salesTaxRate.trim() !== "" && Number(salesTaxRate) > 0 && (
-                  <div className="flex justify-between"><span>Tax ({Number(salesTaxRate)}%)</span><span>{pkrFormatter.format((Math.max(0, salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) - (salesDiscountType === "percent" ? (salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) * Number(salesDiscountAmount)) / 100 : (Number(salesDiscountAmount) || 0))) * Number(salesTaxRate)) / 100)}</span></div>
+                  <div className="flex justify-between"><span>Tax ({Number(salesTaxRate)}%)</span><span>{pkrFormatter.format(currentSaleAmounts.tax)}</span></div>
                 )}
                 <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium text-foreground">
                   <span>Invoice Total</span>

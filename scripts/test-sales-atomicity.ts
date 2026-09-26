@@ -16,6 +16,7 @@ const product = "40000000-0000-4000-8000-000000000001";
 const limitedProduct = "40000000-0000-4000-8000-000000000002";
 const otherProduct = "40000000-0000-4000-8000-000000000003";
 const cashProduct = "40000000-0000-4000-8000-000000000004";
+const fractionalProduct = "40000000-0000-4000-8000-000000000005";
 
 async function testAtomicSaleClientRetry() {
   const values = new Map<string, string>();
@@ -155,7 +156,8 @@ async function main() {
         ('${product}','${org}','Main Product','Case','Piece',12,20,99,true,'block',now()),
         ('${limitedProduct}','${org}','Limited Product','Unit','Piece',1,3,10,true,'block',now()),
         ('${otherProduct}','${otherOrg}','Other Org Product','Unit','Piece',1,10,10,true,'block',now()),
-        ('${cashProduct}','${org}','Cash Product','Unit','Piece',1,100,10,true,'block',now());
+        ('${cashProduct}','${org}','Cash Product','Unit','Piece',1,100,10,true,'block',now()),
+        ('${fractionalProduct}','${org}','Fractional Product','Case','Piece',12,1,1000,true,'block',now());
       insert into purchase_transactions(id,organization_id) values('50000000-0000-4000-8000-000000000001','${org}');
       insert into purchase_items(purchase_transaction_id,organization_id,product_id,purchase_price,unit_mode)
         values('50000000-0000-4000-8000-000000000001','${org}','${product}',2,'subunit');
@@ -169,6 +171,16 @@ async function main() {
     await db.exec(readFileSync("src/lib/migrations/20260917_sales_bonus_stock.sql", "utf8"));
     await db.exec(readFileSync("src/lib/migrations/production_phase13_atomic_sales.sql", "utf8"));
     await db.exec(readFileSync("src/lib/migrations/production_phase13_atomic_sales.sql", "utf8"));
+    await db.exec(readFileSync("src/lib/migrations/20260926_sales_quantity_precision.sql", "utf8"));
+
+    const precision = await db.query<{ table_name: string; column_name: string; numeric_scale: number }>(`select table_name, column_name, numeric_scale::int
+      from information_schema.columns where table_schema='public' and (table_name,column_name) in
+        (('sales_items','quantity'),('sales_items','bonus'),('products','current_stock'),('inventory_transactions','quantity_delta'))
+      order by table_name,column_name`);
+    assert.deepEqual(precision.rows.map(row => [row.table_name, row.column_name, Number(row.numeric_scale)]), [
+      ["inventory_transactions", "quantity_delta", 6], ["products", "current_stock", 6],
+      ["sales_items", "bonus", 3], ["sales_items", "quantity", 3],
+    ], "The migration widens persisted quantities and stock conversions to their documented scales");
 
     const setActor = (actor = owner) => db.query("select set_config('request.jwt.claim.sub',$1,false)", [actor]);
     const create = async (requestId: string, input: Record<string, unknown>, actor = owner) => {
@@ -248,6 +260,31 @@ async function main() {
     assert.equal(Number(subunit.items[0].inventory_bonus_main), 0.5);
     assert.equal(Number((await db.query<{ current_stock: string }>("select current_stock from products where id=$1", [product])).rows[0].current_stock), 15.5);
 
+    const fractionalMain = await create("70000000-0000-4000-8000-000000000044", base({
+      cash_received: 135, invoice_discount: 5, invoice_discount_type: "percent", tax_rate: 10,
+      lines: [{ product_id: fractionalProduct, quantity: 0.125, selling_price: 1000, discount: 0.01, bonus: 0, unit_mode: "main" }],
+    }));
+    assert.equal(Number(fractionalMain.items[0].quantity), 0.125, "The persisted line keeps the cashier's 0.125 quantity");
+    assert.equal(Number(fractionalMain.transaction.total_amount), 130.61, "0.125 × 1000 uses the same line, invoice discount, tax, and total rounding");
+    assert.equal(Number(fractionalMain.transaction.change_due), 4.39);
+    assert.equal(Number((await db.query<{ quantity_delta: string }>("select quantity_delta from inventory_transactions where reference_id=$1", [fractionalMain.transaction.id])).rows[0].quantity_delta), -0.125);
+    assert.equal(Number((await db.query<{ current_stock: string }>("select current_stock from products where id=$1", [fractionalProduct])).rows[0].current_stock), 0.875);
+
+    const fractionalSubunit = await create("70000000-0000-4000-8000-000000000045", base({
+      cash_received: 135, invoice_discount: 5, invoice_discount_type: "percent", tax_rate: 10,
+      lines: [{ product_id: fractionalProduct, quantity: 0.125, selling_price: 1000, discount: 0.01, bonus: 0.125, unit_mode: "subunit" }],
+    }));
+    assert.equal(Number(fractionalSubunit.items[0].quantity), 0.125, "Sub-unit sales keep the entered fractional quantity");
+    assert.equal(Number(fractionalSubunit.transaction.total_amount), 130.61);
+    assert.equal(Number((await db.query<{ quantity_delta: string }>("select quantity_delta from inventory_transactions where reference_id=$1", [fractionalSubunit.transaction.id])).rows[0].quantity_delta), -0.020833);
+    assert.equal(Number((await db.query<{ current_stock: string }>("select current_stock from products where id=$1", [fractionalProduct])).rows[0].current_stock), 0.854167, "Sub-unit quantity and bonus convert to main units at six decimal places");
+
+    const lineRound = await create("70000000-0000-4000-8000-000000000046", base({
+      cash_received: 0.01,
+      lines: [{ product_id: fractionalProduct, quantity: 0.333, selling_price: 0.05, discount: 0.01, bonus: 0, unit_mode: "main" }],
+    }));
+    assert.equal(Number(lineRound.transaction.total_amount), 0.01, "A fractional line rounds to cents before invoice totals");
+
     state = await snapshot();
     for (const [key, input] of [
       ["70000000-0000-4000-8000-000000000011", base({ cash_received: 0 })],
@@ -258,7 +295,10 @@ async function main() {
     const exactNoTenderField = await create("70000000-0000-4000-8000-000000000010", base({ cash_received: null }));
     assert.equal(Number(exactNoTenderField.transaction.cash_received), 10, "Advanced cash invoice without a tender field is treated as exact payment");
     state = await snapshot();
-    await assert.rejects(create("70000000-0000-4000-8000-000000000013", base({ lines: [{ product_id: limitedProduct, quantity: 0, selling_price: 10 }] })), /Invalid quantity/);
+    await assert.rejects(create("70000000-0000-4000-8000-000000000013", base({ lines: [{ product_id: limitedProduct, quantity: 0, selling_price: 10 }] })), /Invalid sale line/);
+    await assert.rejects(create("70000000-0000-4000-8000-000000000016", base({ lines: [{ product_id: cashProduct, quantity: 0.1251, selling_price: 1000 }] })), /quantity and bonus support three decimals/);
+    await assert.rejects(create("70000000-0000-4000-8000-000000000017", base({ lines: [{ product_id: cashProduct, quantity: 1, selling_price: 10.001 }] })), /quantity and bonus support three decimals/);
+    await assert.rejects(create("70000000-0000-4000-8000-000000000018", base({ cash_received: 10.001 })), /Invalid cash received/);
     await assert.rejects(create("70000000-0000-4000-8000-000000000014", base({ invoice_discount: 11 })), /Invalid invoice discount/);
     await assert.rejects(create("70000000-0000-4000-8000-000000000015", base({ tax_rate: 1000 })), /Invalid invoice discount or tax rate/);
     assert.deepEqual(await snapshot(), state, "Blank/zero/short cash and invalid sale inputs write nothing");
