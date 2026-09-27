@@ -1,4 +1,4 @@
-import { calculateSaleLineTotal, roundMoney } from "@/lib/sales/sale-amounts";
+import { calculateSaleAmounts, calculateSaleLineTotal, roundMoney } from "@/lib/sales/sale-amounts";
 import type { PrintTemplate } from "./print-template-types";
 
 export type ReceiptLine = {
@@ -100,14 +100,7 @@ export function buildAtomicSaleReceipt(
     sellingPrice: Number(item.selling_price ?? 0),
     discount: Number(item.discount ?? 0),
   }));
-  const calculated = amounts.reduce((sum, line) => {
-    const gross = roundMoney(line.quantity * line.sellingPrice);
-    return {
-      lineSubtotal: roundMoney(sum.lineSubtotal + gross),
-      lineDiscount: roundMoney(sum.lineDiscount + roundMoney(line.discount)),
-      subtotal: roundMoney(sum.subtotal + calculateSaleLineTotal(line)),
-    };
-  }, { lineSubtotal: 0, lineDiscount: 0, subtotal: 0 });
+  const calculated = calculateSaleAmounts(amounts);
   return {
     ...details,
     number: String(transaction.invoice_number ?? ""),

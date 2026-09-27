@@ -77,6 +77,10 @@ Then compare the isolated clone's PostgreSQL version, relevant table column type
 
 The executable release harness is `npm run test:sales-release-postgres`. It uses only explicitly named `POS_RELEASE_*` process variables and never loads `.env.local`. It requires `psql`, a disposable PostgreSQL/Supabase clone that has already been prepared with the application's real migrations and triggers, an app server connected to that same clone, and real test-user access tokens. It does not apply or deploy migrations.
 
+The harness now checks the test app's Supabase URL through the read-only, test-gated `/api/pos-release-environment` route before running tests. Start the app in development mode with `POS_RELEASE_TEST_TARGET=disposable-pos-atomic-sales`, `SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_URL` set to the disposable API. It checks each JWT subject, session ID and expiry, validates each token with the Auth API, and matches each subject/profile/organization and live `auth.sessions` row through the direct database connection before any test mutation. It also requires a block-overselling product and exactly 10.00 remaining credit under the `limit_only` customer policy. Stock is restored to its starting value during cleanup.
+
+Fixture provisioning is not automated from a clean Supabase database yet. This repository does not contain the initial TradeOS schema migration: `production_upgrade_consolidated.sql` documents that it upgrades an existing v0.3.0 schema, and `src/lib/identity/schema.sql` describes core tables as pre-existing. Do not use PGlite's test schema as a substitute. A fresh isolated runner needs Docker Desktop, the Supabase CLI and PostgreSQL client, plus the actual TradeOS baseline schema/migration source before the scoped application migrations and synthetic fixture setup can run.
+
 Add this one-row guard only inside the disposable clone, using an account that can create a test-only table:
 
 ```sql

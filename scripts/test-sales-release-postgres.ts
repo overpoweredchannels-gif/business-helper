@@ -18,7 +18,21 @@ if (process.env.POS_RELEASE_TEST_TARGET !== "disposable-pos-atomic-sales") {
   missing.unshift("POS_RELEASE_TEST_TARGET=disposable-pos-atomic-sales (explicit opt-in)");
 }
 
-type Session = { result: Promise<Record<string, unknown>>; done: Promise<string>; };
+type SqlOutcome = {
+  ok: boolean;
+  value?: Record<string, unknown>;
+  error?: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  timedOut: boolean;
+};
+type Session = {
+  result: Promise<SqlOutcome>;
+  done: Promise<SqlOutcome>;
+  terminate: () => void;
+  isClosed: () => boolean;
+};
 const env = process.env;
 const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const uuid = (name: string) => {
@@ -40,52 +54,152 @@ function verifyExplicitProjectTarget() {
   }
   assert.ok(supabase.protocol === "https:" || localTarget, "non-local Supabase API must use HTTPS");
 }
-function assertAuthenticatedUserToken(name: string) {
+type UserToken = { token: string; userId: string; sessionId: string; expiresAt: number };
+function assertAuthenticatedUserToken(name: string): UserToken {
   const token = env[name]!;
   const payload = token.split(".")[1];
   assert.ok(payload, `${name} must be a JWT access token`);
-  const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { role?: string };
+  const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+    role?: string; sub?: string; session_id?: string; exp?: number;
+  };
   assert.equal(claims.role, "authenticated", `${name} must be a user JWT, not a service-role or anon key`);
+  assert.match(String(claims.sub ?? ""), /^[0-9a-f-]{36}$/i, `${name} must contain a user UUID`);
+  assert.match(String(claims.session_id ?? ""), /^[0-9a-f-]{36}$/i, `${name} must contain a session UUID`);
+  assert.ok(Number.isInteger(claims.exp) && claims.exp! > Math.floor(Date.now() / 1000), `${name} must be unexpired`);
+  return { token, userId: claims.sub!, sessionId: claims.session_id!, expiresAt: claims.exp! };
 }
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-function startPsql(sql: string): Session {
-  const child = spawn("psql", ["--no-psqlrc", "--quiet", "--tuples-only", "--no-align", "--set", "ON_ERROR_STOP=1", "--dbname", env.POS_RELEASE_TEST_DATABASE_URL!], {
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-  });
+function startPsql(sql: string, timeoutMs = 30_000): Session {
   let stdout = "";
   let stderr = "";
-  let firstResult: ((value: Record<string, unknown>) => void) | undefined;
-  let resultError: ((error: Error) => void) | undefined;
-  const result = new Promise<Record<string, unknown>>((resolve, reject) => { firstResult = resolve; resultError = reject; });
-  child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
-    stdout += chunk;
-    for (const line of stdout.split(/\r?\n/)) {
-      if (!line.startsWith("{")) continue;
-      try { firstResult?.(JSON.parse(line) as Record<string, unknown>); firstResult = undefined; }
-      catch (error) { resultError?.(error instanceof Error ? error : new Error(String(error))); }
-      break;
+  let lineBuffer = "";
+  let closed = false;
+  let timedOut = false;
+  let resultSettled = false;
+  let doneSettled = false;
+  let resultResolve!: (outcome: SqlOutcome) => void;
+  let doneResolve!: (outcome: SqlOutcome) => void;
+  const result = new Promise<SqlOutcome>(resolve => { resultResolve = resolve; });
+  const done = new Promise<SqlOutcome>(resolve => { doneResolve = resolve; });
+  let child: ReturnType<typeof spawn> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
+  let exitCode: number | null = null;
+  let spawnError = "";
+  const outcome = (ok: boolean, error?: string): SqlOutcome => ({ ok, error, stdout, stderr, exitCode, timedOut });
+  const settleResult = (value: SqlOutcome) => {
+    if (resultSettled) return;
+    resultSettled = true;
+    resultResolve(value);
+  };
+  const settleDone = (value: SqlOutcome) => {
+    if (doneSettled) return;
+    doneSettled = true;
+    doneResolve(value);
+  };
+  const parseLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) return;
+    try {
+      const value = JSON.parse(trimmed) as Record<string, unknown>;
+      const parsed = outcome(true);
+      parsed.value = value;
+      settleResult(parsed);
+    } catch (error) {
+      spawnError = `Invalid JSON output from psql: ${error instanceof Error ? error.message : String(error)}`;
     }
-  });
-  child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
-  const done = new Promise<string>((resolve, reject) => {
-    child.once("error", error => { resultError?.(error); reject(error); });
-    child.once("close", code => {
-      if (code === 0) resolve(stdout);
-      else {
-        const error = new Error(`psql exited ${code}: ${stderr.trim()}`);
-        resultError?.(error);
-        reject(error);
-      }
+  };
+  const flushLines = (final = false) => {
+    if (final) {
+      if (lineBuffer) parseLine(lineBuffer);
+      lineBuffer = "";
+      return;
+    }
+    const lines = lineBuffer.split(/\r?\n/);
+    lineBuffer = lines.pop() ?? "";
+    for (const line of lines) parseLine(line);
+  };
+  const finish = (code: number | null, error?: string) => {
+    if (closed) return;
+    closed = true;
+    exitCode = code;
+    if (timer) clearTimeout(timer);
+    if (killTimer) clearTimeout(killTimer);
+    flushLines(true);
+    const finalError = error ?? spawnError ?? (timedOut ? `psql timed out after ${timeoutMs}ms` : code === 0 ? undefined : `psql exited ${code}: ${stderr.trim()}`);
+    const successful = code === 0 && !timedOut && !finalError;
+    if (!resultSettled) {
+      settleResult(outcome(successful, finalError));
+    }
+    settleDone(outcome(successful, finalError));
+  };
+  try {
+    child = spawn("psql", ["--no-psqlrc", "--quiet", "--tuples-only", "--no-align", "--set", "ON_ERROR_STOP=1", "--dbname", env.POS_RELEASE_TEST_DATABASE_URL!], {
+      stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
     });
-  });
-  child.stdin.end(sql);
-  return { result, done };
+  } catch (error) {
+    finish(null, `Unable to start psql: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (child) {
+    if (!child.stdout || !child.stderr || !child.stdin) {
+      finish(null, "psql child process did not provide the configured pipes");
+    } else {
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      stdout += chunk;
+      lineBuffer += chunk;
+      flushLines();
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+    child.stdin.on("error", () => { /* psql may close stdin after an expected SQL error */ });
+    child.once("error", error => { spawnError = error.message; finish(null, `Unable to run psql: ${error.message}`); });
+    child.once("close", code => finish(code));
+    timer = setTimeout(() => {
+      timedOut = true;
+      child?.kill("SIGTERM");
+      killTimer = setTimeout(() => {
+        child?.kill("SIGKILL");
+        killTimer = setTimeout(() => finish(null, `psql did not exit after its ${timeoutMs}ms timeout`), 1_000);
+        killTimer.unref?.();
+      }, 1_000);
+      killTimer.unref?.();
+    }, timeoutMs);
+    timer.unref?.();
+    child.stdin.end(sql);
+    }
+  }
+  return {
+    result,
+    done,
+    terminate: () => {
+      if (closed) return;
+      child?.kill("SIGTERM");
+      killTimer = setTimeout(() => {
+        child?.kill("SIGKILL");
+        killTimer = setTimeout(() => finish(null, "psql was terminated after a harness failure"), 1_000);
+        killTimer.unref?.();
+      }, 1_000);
+      killTimer.unref?.();
+    },
+    isClosed: () => closed,
+  };
 }
 
 async function sql(sqlText: string): Promise<string> {
-  return startPsql(sqlText).done;
+  const session = startPsql(sqlText);
+  const [result, done] = await Promise.all([session.result, session.done]);
+  assert.equal(result.ok, true, result.error ?? "psql produced no result");
+  assert.equal(done.ok, true, done.error ?? "psql execution failed");
+  return done.stdout;
+}
+
+async function waitSession(session: Session): Promise<[SqlOutcome, SqlOutcome]> {
+  return Promise.all([session.result, session.done]);
+}
+
+async function settleSession(session: Session): Promise<[SqlOutcome, SqlOutcome]> {
+  if (!session.isClosed()) session.terminate();
+  return waitSession(session);
 }
 
 function atomicSql(actor: string, requestId: string, input: Record<string, unknown>, holdSeconds = 0): string {
@@ -112,27 +226,39 @@ async function racePair(actor: string, input: Record<string, unknown>, expectRep
   track(aId);
   track(bId);
   const a = startPsql(atomicSql(actor, aId, input, 3));
-  await a.result;
-  const b = startPsql(atomicSql(actor, bId, input));
-  const finishedBeforeCommit = await Promise.race([b.done.then(() => true, () => true), delay(250).then(() => false)]);
-  assert.equal(finishedBeforeCommit, false, "the second independent psql connection must wait while session A holds its transaction");
-  const aOutput = await a.done;
-  const aResult = JSON.parse(aOutput.trim().split(/\r?\n/).find(line => line.startsWith("{"))!) as { transaction: { id: string } };
-  if (expectReject) {
-    await assert.rejects(b.done, expectReject);
-    return { requestIds: [aId, bId], saleIds: [String(aResult.transaction.id)] };
+  let b: Session | undefined;
+  try {
+    const aResult = await a.result;
+    assert.equal(aResult.ok, true, aResult.error ?? "first independent session failed");
+    assert.ok(aResult.value, "first psql session returned complete JSON");
+    b = startPsql(atomicSql(actor, bId, input));
+    const finishedBeforeCommit = await Promise.race([b.done.then(() => true), delay(250).then(() => false)]);
+    assert.equal(finishedBeforeCommit, false, "the second independent psql connection must wait while session A holds its transaction");
+    const [, aDone] = await waitSession(a);
+    assert.equal(aDone.ok, true, aDone.error ?? "first session did not commit");
+    const [bResult, bDone] = await waitSession(b);
+    if (expectReject) {
+      assert.equal(bDone.ok, false, "the competing SQL operation must be rejected");
+      assert.match(`${bResult.error ?? ""}\n${bDone.error ?? ""}\n${bDone.stderr}`, expectReject, "rejection must match the intended database policy");
+      return { requestIds: [aId, bId], saleIds: [String((aResult.value as { transaction: { id: string } }).transaction.id)] };
+    }
+    assert.equal(bDone.ok, true, bDone.error ?? "second session failed");
+    assert.equal(bResult.ok, true, bResult.error ?? "second session returned no JSON");
+    assert.ok(bResult.value, "second psql session returned complete JSON");
+    const aSale = (aResult.value as { transaction: { id: string } }).transaction.id;
+    const bSale = (bResult.value as { replayed: boolean; transaction: { id: string } }).transaction.id;
+    if (expectReplay) {
+      assert.equal((bResult.value as { replayed: boolean }).replayed, true);
+      assert.equal(bSale, aSale);
+    }
+    return { requestIds: [aId, bId], saleIds: [String(aSale)] };
+  } finally {
+    await Promise.all([settleSession(a), ...(b ? [settleSession(b)] : [])]);
   }
-  const bOutput = await b.done;
-  const bResult = JSON.parse(bOutput.trim().split(/\r?\n/).find(line => line.startsWith("{"))!) as { replayed: boolean; transaction: { id: string } };
-  if (expectReplay) {
-    assert.equal(bResult.replayed, true);
-    assert.equal(bResult.transaction.id, aResult.transaction.id);
-  }
-  return { requestIds: [aId, bId], saleIds: [String(aResult.transaction.id)] };
 }
 
 async function rpc(name: string, token: string, args: Record<string, unknown>) {
-  const response = await fetch(`${env.POS_RELEASE_SUPABASE_URL}/rest/v1/rpc/${name}`, {
+  const response = await fetchWithTimeout(`${env.POS_RELEASE_SUPABASE_URL}/rest/v1/rpc/${name}`, {
     method: "POST", headers: {
       apikey: env.POS_RELEASE_SUPABASE_ANON_KEY!,
       authorization: `Bearer ${token}`,
@@ -143,26 +269,117 @@ async function rpc(name: string, token: string, args: Record<string, unknown>) {
   return { status: response.status, body };
 }
 
-async function appRequest(path: string, token: string, method: "POST" | "DELETE", body?: unknown) {
-  const response = await fetch(new URL(path, env.POS_RELEASE_APP_URL), {
+async function appRequest(path: string, token: string, method: "GET" | "POST" | "DELETE", body?: unknown) {
+  const response = await fetchWithTimeout(new URL(path, env.POS_RELEASE_APP_URL), {
     method,
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json", prefer: "return=minimal" },
+    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), "content-type": "application/json", prefer: "return=minimal" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   return { status: response.status, body: await response.text() };
 }
 
 async function supabaseRequest(path: string, token: string, method: "GET" | "DELETE") {
-  const response = await fetch(new URL(path, env.POS_RELEASE_SUPABASE_URL), {
+  const response = await fetchWithTimeout(new URL(path, env.POS_RELEASE_SUPABASE_URL), {
     method,
     headers: { apikey: env.POS_RELEASE_SUPABASE_ANON_KEY!, authorization: `Bearer ${token}`, prefer: "return=minimal" },
   });
   return { status: response.status, body: await response.text() };
 }
 
-async function assertRejectedCreate(token: string, requestId: string, input: Record<string, unknown>) {
+async function fetchWithTimeout(input: string | URL, init: RequestInit = {}, timeoutMs = 15_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function assertSameSupabaseProject(actual: string, expected: string, label: string) {
+  const actualUrl = new URL(actual);
+  const expectedUrl = new URL(expected);
+  const loopback = new Set(["localhost", "127.0.0.1", "::1"]);
+  if (loopback.has(actualUrl.hostname) || loopback.has(expectedUrl.hostname)) {
+    assert.equal(actualUrl.origin, expectedUrl.origin, `${label} must use the exact isolated Supabase API origin`);
+    return;
+  }
+  const actualRef = /^([a-z0-9-]+)\.supabase\.co$/i.exec(actualUrl.hostname)?.[1];
+  const expectedRef = /^([a-z0-9-]+)\.supabase\.co$/i.exec(expectedUrl.hostname)?.[1];
+  assert.ok(actualRef && expectedRef && actualRef === expectedRef, `${label} must address the same Supabase project`);
+}
+
+async function validateTokenAgainstAuthApi(name: string, identity: UserToken): Promise<void> {
+  const response = await fetchWithTimeout(`${env.POS_RELEASE_SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: env.POS_RELEASE_SUPABASE_ANON_KEY!, authorization: `Bearer ${identity.token}` },
+  });
+  const body = await response.text();
+  assert.equal(response.status, 200, `${name} session must be accepted by the target Auth API: ${body}`);
+  const user = JSON.parse(body) as { id?: string };
+  assert.equal(user.id, identity.userId, `${name} Auth API identity must match its signed JWT subject`);
+}
+
+async function assertRejectedCreate(token: string, requestId: string, input: Record<string, unknown>, expectedMessage: RegExp) {
   const response = await rpc("create_sales_invoice_atomic", token, { p_request_id: requestId, p_input: input });
-  assert.ok(response.status >= 400, `expected create RPC rejection; got ${response.status} ${response.body}`);
+  assert.ok([400, 401, 403].includes(response.status), `expected an authorization rejection; got ${response.status} ${response.body}`);
+  const error = JSON.parse(response.body) as { code?: string; message?: string; details?: string };
+  assert.ok(error.code && error.code !== "PGRST000", `expected a specific database/API rejection code: ${response.body}`);
+  assert.match(error.message ?? "", expectedMessage, `unexpected authorization rejection: ${response.body}`);
+  return { status: response.status, code: error.code, message: error.message };
+}
+
+async function assertNoBusinessRecords(requestIds: string[]): Promise<void> {
+  const ids = `array[${requestIds.map(id => `${literal(id)}::uuid`).join(",")}]::uuid[]`;
+  const output = await sql(`select json_build_object(
+    'sales',(select count(*) from public.sales_transactions where request_id=any(${ids})),
+    'items',(select count(*) from public.sales_items si join public.sales_transactions st on st.id=si.sales_transaction_id where st.request_id=any(${ids})),
+    'movements',(select count(*) from public.inventory_transactions it join public.sales_transactions st on st.id=it.reference_id where st.request_id=any(${ids})),
+    'payments',(select count(*) from public.customer_payments cp join public.customer_payment_allocations a on a.customer_payment_id=cp.id join public.sales_transactions st on st.id=a.sales_transaction_id where st.request_id=any(${ids})),
+    'allocations',(select count(*) from public.customer_payment_allocations a join public.sales_transactions st on st.id=a.sales_transaction_id where st.request_id=any(${ids})),
+    'audits',(select count(*) from public.audit_logs where entity_id in (select id from public.sales_transactions where request_id=any(${ids})))
+  );`);
+  assert.deepEqual(JSON.parse(output.trim()), { sales: 0, items: 0, movements: 0, payments: 0, allocations: 0, audits: 0 }, "rejected request IDs leave business records unchanged");
+}
+
+async function validateFixtureIdentities(identities: Array<{ name: string; identity: UserToken; profileId: string; organizationId: string; kind: "owner" | "employee" | "inactive" }>) {
+  for (const item of identities) await validateTokenAgainstAuthApi(item.name, item.identity);
+  const profileIds = identities.map(item => item.profileId);
+  const sessionIds = identities.map(item => item.identity.sessionId);
+  const userIds = identities.map(item => item.identity.userId);
+  const expectedOrg = new Map(identities.map(item => [item.profileId, item.organizationId]));
+  const jsonRows = await sql(`select json_build_object(
+    'profiles',(select json_agg(json_build_object('id',p.id,'auth_user_id',p.auth_user_id,'organization_id',p.organization_id,'role',p.role,'is_active',p.is_active) order by p.id) from public.profiles p where p.id=any(array[${profileIds.map(id => `${literal(id)}::uuid`).join(",")}]::uuid[])),
+    'sessions',(select json_agg(json_build_object('id',s.id,'user_id',s.user_id,'valid',s.not_after is null or s.not_after>now()) order by s.id) from auth.sessions s where s.id=any(array[${sessionIds.map(id => `${literal(id)}::uuid`).join(",")}]::uuid[])),
+    'users',(select count(*) from auth.users u where u.id=any(array[${userIds.map(id => `${literal(id)}::uuid`).join(",")}]::uuid[]))
+  );`);
+  const validation = JSON.parse(jsonRows.trim()) as {
+    profiles: Array<{ id: string; auth_user_id: string; organization_id: string; role: string; is_active: boolean }>;
+    sessions: Array<{ id: string; user_id: string; valid: boolean }>;
+    users: number;
+  };
+  assert.equal(validation.users, identities.length, "every test JWT subject exists in the isolated auth.users table");
+  assert.equal(validation.profiles?.length, identities.length, "each test profile exists exactly once");
+  assert.equal(validation.sessions?.length, identities.length, "each test JWT session exists in auth.sessions");
+  for (const item of identities) {
+    const profile = validation.profiles.find(row => row.id === item.profileId);
+    const session = validation.sessions.find(row => row.id === item.identity.sessionId);
+    assert.ok(profile, `${item.name} profile exists`);
+    assert.equal(profile.id, item.identity.userId, `${item.name} JWT subject is the profile ID used by auth.uid()`);
+    if (profile.auth_user_id) assert.equal(profile.auth_user_id, item.identity.userId, `${item.name} profile auth_user_id matches its JWT subject when populated`);
+    assert.equal(profile.organization_id, expectedOrg.get(item.profileId), `${item.name} profile belongs to its intended organization`);
+    assert.ok(session, `${item.name} session exists in auth.sessions`);
+    assert.equal(session.user_id, item.identity.userId, `${item.name} session belongs to its JWT subject`);
+    assert.equal(session.valid, true, `${item.name} database session has not expired`);
+    if (item.kind === "owner") {
+      assert.ok(["owner", "admin"].includes(profile.role.toLowerCase()), `${item.name} fixture has owner/admin permissions`);
+      assert.notEqual(profile.is_active, false, `${item.name} profile is active`);
+    } else if (item.kind === "employee") {
+      assert.notEqual(profile.is_active, false, `${item.name} employee profile is active`);
+      assert.ok(!["owner", "admin"].includes(profile.role.toLowerCase()), `${item.name} fixture is restricted from owner/admin permissions`);
+    } else {
+      assert.equal(profile.is_active, false, `${item.name} fixture is inactive`);
+    }
+  }
 }
 
 async function cleanup(requestIds: string[], returnIds: string[], organizationId: string) {
@@ -184,9 +401,6 @@ async function cleanup(requestIds: string[], returnIds: string[], organizationId
 
 async function main() {
   verifyExplicitProjectTarget();
-  for (const name of ["POS_RELEASE_OWNER_ACCESS_TOKEN", "POS_RELEASE_EMPLOYEE_ACCESS_TOKEN", "POS_RELEASE_INACTIVE_ACCESS_TOKEN", "POS_RELEASE_OTHER_ORG_OWNER_ACCESS_TOKEN"]) {
-    assertAuthenticatedUserToken(name);
-  }
   const org = uuid("POS_RELEASE_ORGANIZATION_ID");
   const owner = uuid("POS_RELEASE_OWNER_PROFILE_ID");
   const employee = uuid("POS_RELEASE_EMPLOYEE_PROFILE_ID");
@@ -198,9 +412,29 @@ async function main() {
   const stockProduct = uuid("POS_RELEASE_STOCK_PRODUCT_ID");
   const creditProduct = uuid("POS_RELEASE_CREDIT_PRODUCT_ID");
   const authProduct = uuid("POS_RELEASE_AUTH_PRODUCT_ID");
+  const ownerToken = assertAuthenticatedUserToken("POS_RELEASE_OWNER_ACCESS_TOKEN");
+  const employeeToken = assertAuthenticatedUserToken("POS_RELEASE_EMPLOYEE_ACCESS_TOKEN");
+  const inactiveToken = assertAuthenticatedUserToken("POS_RELEASE_INACTIVE_ACCESS_TOKEN");
+  const otherOwnerToken = assertAuthenticatedUserToken("POS_RELEASE_OTHER_ORG_OWNER_ACCESS_TOKEN");
+  assert.equal(new Set([ownerToken.userId, employeeToken.userId, inactiveToken.userId, otherOwnerToken.userId]).size, 4, "permission fixtures must use independent auth users");
+  assert.equal(new Set([ownerToken.sessionId, employeeToken.sessionId, inactiveToken.sessionId, otherOwnerToken.sessionId]).size, 4, "permission fixtures must use independent auth sessions");
   const executed: string[] = [];
   const returnIds: string[] = [];
+  let stockBaseline: number | undefined;
   try {
+    const appEnvironment = await appRequest("/api/pos-release-environment", "", "GET");
+    assert.equal(appEnvironment.status, 200, `app server must expose its test-only target preflight: ${appEnvironment.status} ${appEnvironment.body}`);
+    const appTarget = JSON.parse(appEnvironment.body) as { supabaseUrls?: string[] };
+    assert.ok(Array.isArray(appTarget.supabaseUrls) && appTarget.supabaseUrls.length > 0, "app server must report its configured Supabase API origin");
+    for (const appSupabaseUrl of appTarget.supabaseUrls) {
+      assertSameSupabaseProject(appSupabaseUrl, env.POS_RELEASE_SUPABASE_URL!, "app server");
+    }
+    await validateFixtureIdentities([
+      { name: "active owner/admin", identity: ownerToken, profileId: owner, organizationId: org, kind: "owner" },
+      { name: "restricted employee", identity: employeeToken, profileId: employee, organizationId: org, kind: "employee" },
+      { name: "inactive user", identity: inactiveToken, profileId: inactive, organizationId: org, kind: "inactive" },
+      { name: "cross-organization owner/admin", identity: otherOwnerToken, profileId: otherOwner, organizationId: otherOrg, kind: "owner" },
+    ]);
     const evidence = await sql(`select json_build_object(
       'database', current_database(),
       'marker', (select marker from public.pos_release_test_marker where marker='disposable-pos-atomic-sales'),
@@ -255,8 +489,14 @@ async function main() {
     assert.deepEqual(JSON.parse(duplicateRows.trim()), { transactions: 1, items: 1, movements: 1, payments: 1, allocations: 1, audits: 1 });
     console.log("PASS duplicate request ID: separate psql processes, one replayed invoice.");
 
+    const stockPreflight = await sql(`select json_build_object('policy',overselling_policy,'active',is_active,'stock',current_stock) from public.products where id=${literal(stockProduct)}::uuid and organization_id=${literal(org)}::uuid;`);
+    const stockConfig = JSON.parse(stockPreflight.trim()) as { policy: string; active: boolean; stock: string };
+    assert.equal(stockConfig.policy, "block", "last-stock race fixture must use the configured block-overselling policy");
+    assert.equal(stockConfig.active, true, "last-stock race product must be active");
+    stockBaseline = Number(stockConfig.stock);
     await sql(`update public.products set current_stock=1 where id=${literal(stockProduct)}::uuid and organization_id=${literal(org)}::uuid;`);
     const stock = await racePair(owner, saleInput(cashCustomer, stockProduct, "cash", 10), false, /stock|oversell|available/i, id => executed.push(id));
+    await assertNoBusinessRecords([stock.requestIds[1]!]);
     const stockRows = await sql(`select json_build_object('sales',(select count(*) from public.sales_transactions where request_id=any(array[${stock.requestIds.map(literal).join(",")}]::uuid[])),'items',(select count(*) from public.sales_items where sales_transaction_id=any(array[${stock.saleIds.map(literal).join(",")}]::uuid[])),'movements',(select count(*) from public.inventory_transactions where reference_id=any(array[${stock.saleIds.map(literal).join(",")}]::uuid[]) and movement_type='sale_out'),'stock',(select current_stock from public.products where id=${literal(stockProduct)}::uuid));`);
     const stockState = JSON.parse(stockRows.trim());
     assert.equal(stockState.sales, 1);
@@ -265,7 +505,12 @@ async function main() {
     assert.equal(Number(stockState.stock), 0);
     console.log("PASS last-stock race: stock policy allowed one sale and rejected the second.");
 
+    const creditLimit = await sql(`select json_build_object('policy',c.credit_policy,'limit',c.credit_limit,'outstanding',coalesce((select sum(st.total_amount-coalesce(a.allocated,0)) from public.sales_transactions st left join lateral (select sum(amount) allocated from public.customer_payment_allocations where sales_transaction_id=st.id) a on true where st.organization_id=c.organization_id and st.customer_id=c.id and st.payment_type='credit' and st.status in ('confirmed','paid','partially_paid')),0),'remaining',c.credit_limit-coalesce((select sum(st.total_amount-coalesce(a.allocated,0)) from public.sales_transactions st left join lateral (select sum(amount) allocated from public.customer_payment_allocations where sales_transaction_id=st.id) a on true where st.organization_id=c.organization_id and st.customer_id=c.id and st.payment_type='credit' and st.status in ('confirmed','paid','partially_paid')),0)) from public.customers c where c.id=${literal(creditCustomer)}::uuid and c.organization_id=${literal(org)}::uuid;`);
+    const beforeCreditRace = JSON.parse(creditLimit.trim()) as { policy: string; limit: string; outstanding: string; remaining: string };
+    assert.equal(beforeCreditRace.policy, "limit_only", "credit race fixture must use the configured limit_only policy");
+    assert.equal(Number(beforeCreditRace.remaining), 10, "credit fixture must have exactly 10.00 of remaining customer credit before competing sales");
     const credit = await racePair(owner, saleInput(creditCustomer, creditProduct, "credit", 10), false, /credit limit/i, id => executed.push(id));
+    await assertNoBusinessRecords([credit.requestIds[1]!]);
     const creditRows = await sql(`select json_build_object('sales',(select count(*) from public.sales_transactions where request_id=any(array[${credit.requestIds.map(literal).join(",")}]::uuid[])),'outstanding',(select coalesce(sum(st.total_amount-coalesce(a.allocated,0)),0) from public.sales_transactions st left join lateral (select sum(amount) allocated from public.customer_payment_allocations where sales_transaction_id=st.id) a on true where st.organization_id=${literal(org)}::uuid and st.customer_id=${literal(creditCustomer)}::uuid and st.payment_type='credit' and st.status in ('confirmed','paid','partially_paid')));`);
     const creditState = JSON.parse(creditRows.trim());
     assert.equal(creditState.sales, 1);
@@ -276,8 +521,11 @@ async function main() {
     executed.push(fractionRequest);
     const fractionInput = saleInput(cashCustomer, authProduct, "cash", 15, 0.125, "subunit", 120);
     const fractionSession = startPsql(atomicSql(owner, fractionRequest, fractionInput));
-    const fractionResult = await fractionSession.result as { transaction: { id: string } };
-    await fractionSession.done;
+    const [fractionOutcome, fractionDone] = await waitSession(fractionSession);
+    assert.equal(fractionDone.ok, true, fractionDone.error ?? "fractional sale SQL failed");
+    assert.equal(fractionOutcome.ok, true, fractionOutcome.error ?? "fractional sale returned no result");
+    assert.ok(fractionOutcome.value, "fractional sale returned complete JSON");
+    const fractionResult = fractionOutcome.value as unknown as { transaction: { id: string } };
     const fractionSaleId = String(fractionResult.transaction.id);
     const fractionBeforeReturn = await sql(`select json_build_object('quantity',(select quantity from public.sales_items where sales_transaction_id=${literal(fractionSaleId)}::uuid),'unit_mode',(select unit_mode from public.sales_items where sales_transaction_id=${literal(fractionSaleId)}::uuid),'movement',(select quantity_delta from public.inventory_transactions where reference_id=${literal(fractionSaleId)}::uuid and movement_type='sale_out'),'stock',(select current_stock from public.products where id=${literal(authProduct)}::uuid));`);
     const soldFraction = JSON.parse(fractionBeforeReturn.trim());
@@ -324,14 +572,16 @@ async function main() {
     assert.equal(ownerStatus.status, 200);
     assert.match(ownerStatus.body, /confirmed/);
     const employeeRequest = randomUUID();
-    await assertRejectedCreate(env.POS_RELEASE_EMPLOYEE_ACCESS_TOKEN!, employeeRequest, saleInput(cashCustomer, authProduct, "cash", 10));
+    await assertRejectedCreate(employeeToken.token, employeeRequest, saleInput(cashCustomer, authProduct, "cash", 10), /owner|admin|permission|authoriz|role/i);
     const inactiveRequest = randomUUID();
-    await assertRejectedCreate(env.POS_RELEASE_INACTIVE_ACCESS_TOKEN!, inactiveRequest, saleInput(cashCustomer, authProduct, "cash", 10));
+    await assertRejectedCreate(inactiveToken.token, inactiveRequest, saleInput(cashCustomer, authProduct, "cash", 10), /active|inactive|profile/i);
     const crossRequest = randomUUID();
-    await assertRejectedCreate(env.POS_RELEASE_OTHER_ORG_OWNER_ACCESS_TOKEN!, crossRequest, saleInput(cashCustomer, authProduct, "cash", 10));
+    await assertRejectedCreate(otherOwnerToken.token, crossRequest, saleInput(cashCustomer, authProduct, "cash", 10), /organization|customer/i);
     executed.push(employeeRequest, inactiveRequest, crossRequest);
-    const crossStatus = await rpc("get_sales_invoice_request_status", env.POS_RELEASE_OTHER_ORG_OWNER_ACCESS_TOKEN!, { p_request_id: ownerRequest });
-    assert.ok(crossStatus.status >= 400 || /unknown/i.test(crossStatus.body), "cross-organization status lookup must not disclose the sale");
+    await assertNoBusinessRecords([employeeRequest, inactiveRequest, crossRequest]);
+    const crossStatus = await rpc("get_sales_invoice_request_status", otherOwnerToken.token, { p_request_id: ownerRequest });
+    assert.equal(crossStatus.status, 200, `cross-organization status lookup should return a non-disclosing result: ${crossStatus.body}`);
+    assert.equal((JSON.parse(crossStatus.body) as { status?: string }).status, "unknown", "cross-organization status lookup does not disclose another organization's sale");
     assert.notEqual(otherOrg, org);
     assert.notEqual(otherOwner, owner);
     assert.notEqual(employee, owner);
@@ -339,7 +589,13 @@ async function main() {
     console.log("PASS real Supabase JWT authorization: active owner, restricted employee, inactive profile, and cross-organization owner.");
     console.log("NOT RUN: browser history/export display and native print-dialog cases need a real browser session; repository HTML and data checks are separate.");
   } finally {
-    if (executed.length || returnIds.length) await cleanup([...new Set(executed)], returnIds, org);
+    try {
+      if (executed.length || returnIds.length) await cleanup([...new Set(executed)], returnIds, org);
+    } finally {
+      if (stockBaseline !== undefined) {
+        await sql(`update public.products set current_stock=${stockBaseline} where id=${literal(stockProduct)}::uuid and organization_id=${literal(org)}::uuid;`);
+      }
+    }
   }
 }
 

@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale, type AtomicSaleInput, type AtomicSaleResult } from "../src/lib/sales/atomic-sale-client";
+import { buildRetailDrawerSummary } from "../src/lib/sales/retail-summary";
+import { calculateSaleAmounts, roundMoney } from "../src/lib/sales/sale-amounts";
+import { buildAtomicSaleReceipt, getReceiptLineRows } from "../src/lib/print/retail-receipt";
+import { buildSalesInvoices } from "../src/lib/sales/sales-invoice-service";
+import { salesInvoicesImportConfig } from "../src/lib/import-export/entities/sales-invoices";
 
 const org = "10000000-0000-4000-8000-000000000001";
 const otherOrg = "10000000-0000-4000-8000-000000000002";
@@ -63,7 +68,7 @@ async function testAtomicSaleClientRetry() {
 }
 
 type SaleResult = {
-  transaction: { id: string; invoice_number: string; payment_type: string; total_amount: string; cash_received: string; change_due: string; credit_due_date: string | null };
+  transaction: { id: string; invoice_number: string; payment_type: string; total_amount: string; discount_amount: string; tax_amount: string; cash_received: string; change_due: string; credit_due_date: string | null };
   customer_name: string;
   items: Array<{ product_name: string; quantity: string; purchase_price_snapshot: string; inventory_bonus_main: string }>;
   replayed: boolean;
@@ -270,6 +275,114 @@ async function main() {
     assert.equal(Number(fractionalMain.transaction.change_due), 4.39);
     assert.equal(Number((await db.query<{ quantity_delta: string }>("select quantity_delta from inventory_transactions where reference_id=$1", [fractionalMain.transaction.id])).rows[0].quantity_delta), -0.125);
     assert.equal(Number((await db.query<{ current_stock: string }>("select current_stock from products where id=$1", [fractionalProduct])).rows[0].current_stock), 0.875);
+
+    const sqlHalfCentLine = await create("70000000-0000-4000-8000-000000000048", base({
+      cash_received: 10.08,
+      lines: [{ product_id: cashProduct, quantity: 0.125, selling_price: 80.60, discount: 0, bonus: 0, unit_mode: "main" }],
+    }));
+    const jsHalfCentLine = calculateSaleAmounts([{ quantity: 0.125, sellingPrice: 80.60 }]);
+    assert.equal(Number(sqlHalfCentLine.transaction.total_amount), 10.08, "PostgreSQL NUMERIC rounds 0.125 × 80.60 (10.075) half away from zero");
+    assert.equal(jsHalfCentLine.total, Number(sqlHalfCentLine.transaction.total_amount), "JavaScript sale totals match the actual atomic SQL result");
+    assert.equal(Number(sqlHalfCentLine.transaction.change_due), 0);
+    const sqlReceipt = buildAtomicSaleReceipt(sqlHalfCentLine, {
+      scope: "test-org:test-owner", business: "Test Shop", fallbackDate: "today", fallbackPayment: "cash",
+    });
+    assert.equal(getReceiptLineRows(sqlReceipt)[0]?.amount, Number(sqlHalfCentLine.transaction.total_amount), "Receipt line amount matches the SQL sale amount");
+    assert.equal(sqlReceipt.total, Number(sqlHalfCentLine.transaction.total_amount), "Receipt total retains the SQL amount");
+
+    const historyTransaction = (await db.query<{ row: Record<string, unknown> }>(
+      `select json_build_object('id',st.id,'invoice_number',st.invoice_number,'sale_date',st.sale_date,'payment_type',st.payment_type,'credit_due_date',st.credit_due_date,'total_amount',st.total_amount::text,'discount_amount',st.discount_amount::text,'tax_rate',st.tax_rate::text,'tax_amount',st.tax_amount::text,'created_by_profile_id',st.created_by_profile_id,'customer_id',st.customer_id,'customers',json_build_object('customer_name',c.customer_name)) row from sales_transactions st join customers c on c.id=st.customer_id where st.id=$1`,
+      [sqlHalfCentLine.transaction.id],
+    )).rows[0].row;
+    const historyItem = (await db.query<{ row: Record<string, unknown> }>(
+      `select json_build_object('sales_transaction_id',si.sales_transaction_id,'quantity',si.quantity::text,'selling_price',si.selling_price::text,'discount',si.discount::text,'unit_mode',si.unit_mode,'product_id',si.product_id,'products',json_build_object('name',p.name,'unit_type',p.unit_type,'subunit_type',p.subunit_type)) row from sales_items si join products p on p.id=si.product_id where si.sales_transaction_id=$1`,
+      [sqlHalfCentLine.transaction.id],
+    )).rows[0].row;
+    const historyQuery = (rows: Record<string, unknown>[]) => {
+      const query: Record<string, unknown> & { then?: (resolve: (result: unknown) => unknown) => unknown } = {};
+      for (const method of ["select", "eq", "in", "gte", "lte", "order"]) {
+        query[method] = () => query;
+      }
+      query.then = (resolve) => Promise.resolve({ data: rows, error: null }).then(resolve);
+      return query;
+    };
+    const historyClient = {
+      from: (table: string) => historyQuery(table === "sales_transactions" ? [historyTransaction] : table === "sales_items" ? [historyItem] : []),
+    } as unknown as SupabaseClient;
+    const history = await buildSalesInvoices(historyClient, { organizationId: org });
+    assert.equal(history.ok, true);
+    assert.equal(history.docs?.[0]?.lines[0]?.quantity, 0.125, "sales history retains the stored three-decimal quantity");
+    assert.equal(history.docs?.[0]?.lines[0]?.quantity_text, "0.125 Unit", "history displays all entered fractional quantity digits");
+    assert.equal(history.docs?.[0]?.lines[0]?.line_total, Number(sqlHalfCentLine.transaction.total_amount), "history line calculation matches the PostgreSQL sale result");
+
+    const exportItems = await db.query<{ row: Record<string, unknown> }>(
+      `select json_build_object('quantity',si.quantity::text,'unit_mode',si.unit_mode,'products',json_build_object('name',p.name,'unit_type',p.unit_type,'subunit_type',p.subunit_type)) row from sales_items si join products p on p.id=si.product_id where si.sales_transaction_id=$1`,
+      [sqlHalfCentLine.transaction.id],
+    );
+    const itemColumn = salesInvoicesImportConfig.export?.columns.find(column => column.key === "sales_items");
+    const exportRow = { sales_items: [exportItems.rows[0].row] };
+    assert.equal(itemColumn?.transform?.(exportRow.sales_items, exportRow), "Cash Product 0.125 Unit", "sales invoice export preserves the stored three-decimal quantity and unit");
+
+    const roundingInputs = ["0.0049", "0.005", "0.0149", "0.015", "10.0749", "10.075", "-0.005", "-10.075", "999999999999.99"];
+    const sqlRounding = await db.query<{ input: string; rounded: string }>(
+      "select value::text input, round(value, 2)::text rounded from unnest($1::numeric[]) as value",
+      [roundingInputs],
+    );
+    for (const row of sqlRounding.rows) {
+      assert.equal(roundMoney(Number(row.input)), Number(row.rounded), `JavaScript rounding matches actual PostgreSQL NUMERIC round(${row.input}, 2)`);
+    }
+
+    const invalidCalculations: Array<{ input: Record<string, unknown>; check: () => unknown; message: RegExp; id: string }> = [
+      { id: "70000000-0000-4000-8000-000000000096", input: base({ lines: [{ product_id: cashProduct, quantity: 0, selling_price: 1, discount: 0, bonus: 0, unit_mode: "main" }] }), check: () => calculateSaleAmounts([{ quantity: 0, sellingPrice: 1 }]), message: /quantity/i },
+      { id: "70000000-0000-4000-8000-000000000097", input: base({ lines: [{ product_id: cashProduct, quantity: 1, selling_price: 1.001, discount: 0, bonus: 0, unit_mode: "main" }] }), check: () => calculateSaleAmounts([{ quantity: 1, sellingPrice: 1.001 }]), message: /precision|invalid sale line/i },
+      { id: "70000000-0000-4000-8000-000000000098", input: base({ lines: [{ product_id: cashProduct, quantity: 0.001, selling_price: 5, discount: 0.01, bonus: 0, unit_mode: "main" }] }), check: () => calculateSaleAmounts([{ quantity: 0.001, sellingPrice: 5, discount: 0.01 }]), message: /discount/i },
+    ];
+    for (const invalid of invalidCalculations) {
+      assert.throws(invalid.check, invalid.message, "JavaScript rejects an input outside the SQL calculation contract");
+      await assert.rejects(create(invalid.id, invalid.input), invalid.message, "the actual PostgreSQL function rejects the same unsupported input");
+    }
+
+    const parityCases = [
+      { id: "70000000-0000-4000-8000-000000000090", quantity: 0.125, sellingPrice: 80.60, discount: 0.03, invoiceDiscount: 10, invoiceDiscountType: "percent" as const, taxRate: 10, cashReceived: 10 },
+      { id: "70000000-0000-4000-8000-000000000091", quantity: 0.1, sellingPrice: 0.50, discount: 0, invoiceDiscount: 0, invoiceDiscountType: "flat" as const, taxRate: 10, cashReceived: 0.06 },
+      { id: "70000000-0000-4000-8000-000000000092", quantity: 0.001, sellingPrice: 4.90, discount: 0, invoiceDiscount: 0, invoiceDiscountType: "flat" as const, taxRate: 0, cashReceived: 0 },
+      { id: "70000000-0000-4000-8000-000000000093", quantity: 0.001, sellingPrice: 5.00, discount: 0, invoiceDiscount: 0, invoiceDiscountType: "flat" as const, taxRate: 0, cashReceived: 0.01 },
+      { id: "70000000-0000-4000-8000-000000000094", quantity: 0.001, sellingPrice: 5.10, discount: 0, invoiceDiscount: 0, invoiceDiscountType: "flat" as const, taxRate: 0, cashReceived: 0.01 },
+      { id: "70000000-0000-4000-8000-000000000095", quantity: 0.001, sellingPrice: 15.00, discount: 0.01, invoiceDiscount: 0, invoiceDiscountType: "flat" as const, taxRate: 0, cashReceived: 0.01 },
+    ];
+    for (const scenario of parityCases) {
+      const line = { product_id: cashProduct, quantity: scenario.quantity, selling_price: scenario.sellingPrice, discount: scenario.discount, bonus: 0, unit_mode: "main" };
+      const sqlLineAmounts = await db.query<{ line_subtotal: string; line_discount: string; subtotal: string }>(
+        "select round($1::numeric * $2::numeric, 2)::text line_subtotal, $3::numeric::text line_discount, round($1::numeric * $2::numeric - $3::numeric, 2)::text subtotal",
+        [scenario.quantity, scenario.sellingPrice, scenario.discount],
+      );
+      const jsAmounts = calculateSaleAmounts([{ quantity: scenario.quantity, sellingPrice: scenario.sellingPrice, discount: scenario.discount }], {
+        invoiceDiscount: scenario.invoiceDiscount, invoiceDiscountType: scenario.invoiceDiscountType, taxRate: scenario.taxRate,
+      });
+      const sqlSale = await create(scenario.id, base({
+        cash_received: scenario.cashReceived,
+        invoice_discount: scenario.invoiceDiscount,
+        invoice_discount_type: scenario.invoiceDiscountType,
+        tax_rate: scenario.taxRate,
+        lines: [line],
+      }));
+      const transaction = sqlSale.transaction;
+      assert.equal(jsAmounts.lineSubtotal, Number(sqlLineAmounts.rows[0].line_subtotal), "Line amounts match PostgreSQL NUMERIC results");
+      assert.equal(jsAmounts.lineDiscount, Number(sqlLineAmounts.rows[0].line_discount), "Line discounts match PostgreSQL NUMERIC results");
+      assert.equal(jsAmounts.subtotal, Number(sqlLineAmounts.rows[0].subtotal), "Discounted subtotals match PostgreSQL NUMERIC results");
+      assert.equal(jsAmounts.invoiceDiscount, Number(transaction.discount_amount), "Invoice discount matches the atomic SQL result");
+      assert.equal(jsAmounts.tax, Number(transaction.tax_amount), "Tax matches the atomic SQL result");
+      assert.equal(jsAmounts.total, Number(transaction.total_amount), "Total matches the atomic SQL result");
+      const drawer = buildRetailDrawerSummary({ total: jsAmounts.total, received: scenario.cashReceived });
+      assert.equal(drawer.received, Number(transaction.cash_received), "Tender cents match the atomic SQL result");
+      assert.equal(drawer.expected, Number(transaction.total_amount), "Tender summary uses the SQL sale total");
+      assert.equal(drawer.change, Number(transaction.change_due), "Tender change matches the atomic SQL result");
+      const receipt = buildAtomicSaleReceipt(sqlSale, {
+        scope: `test-org:${scenario.id}`, business: "Test Shop", fallbackDate: "today", fallbackPayment: "cash",
+      });
+      assert.equal(getReceiptLineRows(receipt)[0]?.amount, Number(sqlLineAmounts.rows[0].subtotal), "Receipt line amount matches PostgreSQL's NUMERIC line expression");
+      assert.equal(receipt.total, Number(transaction.total_amount), "Receipt total matches the persisted SQL sale total");
+    }
 
     const fractionalSubunit = await create("70000000-0000-4000-8000-000000000045", base({
       cash_received: 135, invoice_discount: 5, invoice_discount_type: "percent", tax_rate: 10,

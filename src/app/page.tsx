@@ -8,7 +8,7 @@ import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
 import { buildAtomicSaleReceipt } from "@/lib/print/retail-receipt";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
-import { calculateSaleAmounts, hasAllowedPrecision, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
+import { calculateSaleAmounts, hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
@@ -4105,7 +4105,7 @@ setCustomerOrganizationName("");
         tax_rate: parsedTaxRate,
         cash_received: salesPaymentType === "cash"
           ? (quickSaleMode
-            ? (posCashReceived.trim() === "" ? Math.round((currentSalesInvoiceTotal + Number.EPSILON) * 100) / 100 : safeNumber(posCashReceived))
+            ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal) : safeNumber(posCashReceived))
             : null)
           : 0,
         credit_override_confirmed: overrideConfirmed,
