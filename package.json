@@ -32,6 +32,7 @@
     "test:sales-atomicity": "tsx scripts/test-sales-atomicity.ts",
     "test:sale-amounts": "tsx scripts/test-sale-amounts.ts",
     "test:pos-receipt": "tsx scripts/test-pos-receipt.ts",
+    "test:sales-release-postgres": "tsx scripts/test-sales-release-postgres.ts",
     "test:mobile-tracking": "tsx scripts/test-mobile-tracking-queue.ts",
     "test:invoice-entry": "tsx scripts/test-invoice-entry.ts",
     "test:session": "tsx scripts/test-session-retry.ts",

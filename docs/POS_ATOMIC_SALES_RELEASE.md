@@ -10,7 +10,7 @@ On an isolated clone:
 
 1. Restore a recent schema/data snapshot or build the schema through the existing sales and access migrations. Confirm the stock trigger is still the only stock writer for `sales_items` inserts.
 2. Apply or re-run `src/lib/migrations/production_phase13_atomic_sales.sql`. This version validates three decimal places for entered quantity and bonus while keeping prices, discounts, tender, and tax rates at two decimals. It installs request replay/status functions and authenticated grants.
-3. Apply `src/lib/migrations/20260926_sales_quantity_precision.sql`. It checks the live column types/scales and refuses values that would lose quantity or stock precision, then widens `sales_items.quantity` and `bonus` to `numeric(16,3)`, and `products.current_stock` and `inventory_transactions.quantity_delta` to `numeric(18,6)`.
+3. Apply `src/lib/migrations/20260926_sales_quantity_precision.sql`. It checks the live column types/scales and refuses values that would lose quantity or stock precision, then widens `sales_items.quantity`, `sales_items.bonus`, and `sales_return_items.quantity` to `numeric(16,3)`, and `products.current_stock` and `inventory_transactions.quantity_delta` to `numeric(18,6)`.
 4. Run the focused and concurrent checks below, then verify authenticated permissions and compare the clone's schema with the deployed schema prerequisites.
 5. Deploy the application only after the precision migration succeeds. Do not narrow these columns as a rollback without first proving no stored values need the additional scale. The precision migration has not been applied to production as part of this review.
 
@@ -21,12 +21,13 @@ select table_name, column_name, data_type, numeric_precision, numeric_scale
 from information_schema.columns
 where table_schema = 'public'
   and ( (table_name = 'sales_items' and column_name in ('quantity', 'bonus'))
+     or (table_name = 'sales_return_items' and column_name = 'quantity')
      or (table_name = 'products' and column_name = 'current_stock')
      or (table_name = 'inventory_transactions' and column_name = 'quantity_delta') )
 order by table_name, column_name;
 ```
 
-The expected post-migration scales are 3 for `sales_items.quantity` and `sales_items.bonus`, and 6 for `products.current_stock` and `inventory_transactions.quantity_delta`. Confirm the other RPC dependencies and trigger definitions match `production_phase13_atomic_sales.sql`; a matching column list alone is not deployed-schema compatibility evidence.
+The expected post-migration scales are 3 for `sales_items.quantity`, `sales_items.bonus`, and `sales_return_items.quantity`, and 6 for `products.current_stock` and `inventory_transactions.quantity_delta`. Confirm the other RPC dependencies and trigger definitions match `production_phase13_atomic_sales.sql`; a matching column list alone is not deployed-schema compatibility evidence.
 
 ## Independent PostgreSQL-session concurrency checks
 
@@ -72,8 +73,38 @@ On the isolated clone, use real test-user access tokens through the authenticate
 
 Then compare the isolated clone's PostgreSQL version, relevant table column types, trigger bodies, helper functions, indexes, grants, and RLS policies with the target deployed schema. Record the exact migration revision and database snapshot used. Local PGlite integration tests validate the migration SQL and mocked `auth.uid()` branches; they do not prove hosted JWT behavior or compatibility with a deployed database.
 
+## Repeatable isolated target harness
+
+The executable release harness is `npm run test:sales-release-postgres`. It uses only explicitly named `POS_RELEASE_*` process variables and never loads `.env.local`. It requires `psql`, a disposable PostgreSQL/Supabase clone that has already been prepared with the application's real migrations and triggers, an app server connected to that same clone, and real test-user access tokens. It does not apply or deploy migrations.
+
+Add this one-row guard only inside the disposable clone, using an account that can create a test-only table:
+
+```sql
+create table public.pos_release_test_marker (
+  marker text primary key check (marker = 'disposable-pos-atomic-sales')
+);
+insert into public.pos_release_test_marker(marker) values ('disposable-pos-atomic-sales');
+```
+
+The clone needs dedicated fixtures and corresponding environment values:
+
+- Database/API: `POS_RELEASE_TEST_TARGET=disposable-pos-atomic-sales`, `POS_RELEASE_TEST_DATABASE_URL`, `POS_RELEASE_SUPABASE_URL`, `POS_RELEASE_SUPABASE_ANON_KEY`, and `POS_RELEASE_APP_URL`. The app URL must serve the same isolated Supabase project.
+- Organization/profile IDs: `POS_RELEASE_ORGANIZATION_ID`, `POS_RELEASE_OWNER_PROFILE_ID`, `POS_RELEASE_EMPLOYEE_PROFILE_ID`, `POS_RELEASE_INACTIVE_PROFILE_ID`, `POS_RELEASE_OTHER_ORG_ID`, and `POS_RELEASE_OTHER_ORG_OWNER_PROFILE_ID`.
+- Fixture IDs: `POS_RELEASE_CASH_CUSTOMER_ID`, `POS_RELEASE_CREDIT_CUSTOMER_ID`, `POS_RELEASE_STOCK_PRODUCT_ID`, `POS_RELEASE_CREDIT_PRODUCT_ID`, and `POS_RELEASE_AUTH_PRODUCT_ID`.
+- Real access tokens: `POS_RELEASE_OWNER_ACCESS_TOKEN`, `POS_RELEASE_EMPLOYEE_ACCESS_TOKEN`, `POS_RELEASE_INACTIVE_ACCESS_TOKEN`, and `POS_RELEASE_OTHER_ORG_OWNER_ACCESS_TOKEN`. Use ordinary authenticated user JWTs, never a service-role key.
+
+Use an active owner/admin, an active restricted employee, a deactivated owner profile with a still-valid test-user JWT, and an active owner from a second organization. The cash customer must be active and cash-only. The stock product must be active with `overselling_policy='block'`; the script sets its isolated-clone stock to one before the race and removes test sales after. The credit customer must be active with `credit_policy='limit_only'`, a limit of 10, and zero pre-existing outstanding; its separate product needs at least 20 units. The authenticated fractional-sale product must be active, have `units_per_pack=12`, and enough stock. The DB connection account needs permission to `SET ROLE authenticated`, inspect system catalogs, and clean only test rows created by this script.
+
+Set these values in the test runner's process environment, then run `npm run test:sales-release-postgres`. A missing variable, missing marker, missing migration scale, or missing stock trigger fails closed. The harness exercises independent database sessions for duplicate request, final stock, and customer credit races; real owner/employee/inactive/cross-organization JWT calls; fractional sub-unit sale and return through the app API; and return deletion/cancellation through the authenticated Supabase API. It reports the PostgreSQL version, database name, expected repository migration column scales, and trigger definitions. Keep its output as clone evidence. It is not deployed-schema evidence unless the clone is independently compared with the target deployment.
+
+## Browser and output checks
+
+`npm run test:pos-receipt` checks generated HTML for 58 mm and 80 mm page widths, long names and amounts, 40 receipt lines, and three-decimal quantity text. This is an HTML-generation test only. It does not open a browser print dialog or produce a browser PDF. The PostgreSQL release harness checks persisted sale/return quantities and stock triggers but does not render the history table or export workflow in a browser.
+
+In a browser session connected to the isolated clone, separately exercise: submit one POS sale with the network response deliberately dropped, reload, recover the same request ID, and confirm the UI renders one receipt; print the first sale, cancel the native print dialog, print that sale again, then print a second sale and confirm the content changes; produce browser print-to-PDF output for 58 mm and 80 mm templates, long business/customer/product names, large amounts, and a 40-line receipt. Physical printer checks still require the corresponding 58 mm and 80 mm devices. Record these as browser-dialog, browser-PDF, and physical-printer results separately.
+
 ## Review verification record
 
-- Focused local PGlite tests cover uncertain-sale recovery, request replay, basic authorization/tenant checks, quantity and stock conversion, and money rounding. They use one embedded database session.
-- Independent PostgreSQL-session races, real authenticated JWT checks, and deployed-schema comparison were not run in this review because no isolated PostgreSQL/Supabase test target was configured. Do not substitute the application's unclassified `.env.local` Supabase project for that target.
-- Short and long receipt output is covered by HTML-generation regressions, including both paper widths and 40 lines. Browser-native repeated printing and physical 58 mm/80 mm printers were not available for verification.
+- Focused local PGlite tests cover uncertain-sale recovery, request replay, basic authorization/tenant checks, quantity and stock conversion, money rounding, and repository migration column scales. They use one embedded database session and a test schema; they are not deployed-schema verification.
+- Independent PostgreSQL-session races, real authenticated JWT checks, return trigger behavior, and deployed-schema comparison remain NOT RUN until the isolated target and fixture settings above exist. Do not substitute the application's unclassified `.env.local` Supabase project for that target.
+- Short and long receipt output is covered by HTML-generation regressions, including both paper widths and 40 lines. Browser-native repeated printing, browser PDFs, the actual reload/recovery UI path, and physical 58 mm/80 mm printers remain separate NOT RUN checks until a browser session and devices are available.

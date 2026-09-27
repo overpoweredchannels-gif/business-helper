@@ -118,6 +118,7 @@ async function main() {
         purchase_price_snapshot numeric(14,2), discount numeric(14,2) not null default 0,
         bonus numeric(14,2) not null default 0, unit_mode text default 'main', organization_id uuid not null
       );
+      create table sales_return_items(id uuid primary key default gen_random_uuid(), quantity numeric(14,2) not null);
       create table inventory_transactions(
         id uuid primary key default gen_random_uuid(), organization_id uuid not null, product_id uuid not null,
         movement_type text, quantity_delta numeric(14,2), reason text, batch_number text, expiry_date date,
@@ -175,12 +176,12 @@ async function main() {
 
     const precision = await db.query<{ table_name: string; column_name: string; numeric_scale: number }>(`select table_name, column_name, numeric_scale::int
       from information_schema.columns where table_schema='public' and (table_name,column_name) in
-        (('sales_items','quantity'),('sales_items','bonus'),('products','current_stock'),('inventory_transactions','quantity_delta'))
+        (('sales_items','quantity'),('sales_items','bonus'),('sales_return_items','quantity'),('products','current_stock'),('inventory_transactions','quantity_delta'))
       order by table_name,column_name`);
     assert.deepEqual(precision.rows.map(row => [row.table_name, row.column_name, Number(row.numeric_scale)]), [
       ["inventory_transactions", "quantity_delta", 6], ["products", "current_stock", 6],
-      ["sales_items", "bonus", 3], ["sales_items", "quantity", 3],
-    ], "The migration widens persisted quantities and stock conversions to their documented scales");
+      ["sales_items", "bonus", 3], ["sales_items", "quantity", 3], ["sales_return_items", "quantity", 3],
+    ], "The migration widens sale and return quantities and stock conversions to their documented scales");
 
     const setActor = (actor = owner) => db.query("select set_config('request.jwt.claim.sub',$1,false)", [actor]);
     const create = async (requestId: string, input: Record<string, unknown>, actor = owner) => {

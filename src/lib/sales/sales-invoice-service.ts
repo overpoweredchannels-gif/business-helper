@@ -198,7 +198,7 @@ export async function buildSalesInvoices(
         subunit_unit_label: subLabel,
         unit_mode: unitMode,
         quantity,
-        quantity_text: `${trim(quantity)} ${unitMode === "subunit" ? subLabel : mainLabel}`,
+        quantity_text: `${formatSalesInvoiceQuantity(quantity)} ${unitMode === "subunit" ? subLabel : mainLabel}`,
         selling_price: price,
         discount,
         line_total: round2(quantity * price - discount),
@@ -264,8 +264,9 @@ export async function buildSalesInvoices(
   }
 }
 
-function trim(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+export function formatSalesInvoiceQuantity(quantity: number): string {
+  if (!Number.isFinite(quantity)) return "0";
+  return Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(3).replace(/\.?0+$/, "");
 }
 
 function round2(n: number): number {

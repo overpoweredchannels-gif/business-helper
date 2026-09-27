@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { calculateSaleAmounts, hasAllowedPrecision } from "../src/lib/sales/sale-amounts";
 import { addBarcodeLine } from "../src/lib/invoices/barcode";
 import { subunitPriceFromMain } from "../src/lib/tradeos/units";
+import { validateSalesReturnInput } from "../src/lib/sales/validation";
+import { formatSalesInvoiceQuantity } from "../src/lib/sales/sales-invoice-service";
 
 const simpleFraction = calculateSaleAmounts([
   { quantity: 0.125, sellingPrice: 1000, discount: 0 },
@@ -37,4 +39,17 @@ assert.equal(subunitPriceFromMain(10, 3), 3.33, "Derived sub-unit prices stay wi
 const scannedSubunit = addBarcodeLine([], { id: "1", name: "Case", unit_type: "Case", units_per_pack: 3, default_selling_price: 10 }, "subunit");
 assert.equal(scannedSubunit[0]?.selling_price, "3.33", "Scanned products use the same rounded sub-unit price");
 
-console.log("Sale amount precision tests passed: fractional quantities, subunit values, discounts, tax, and rounding.");
+const returnInput = (quantity: string) => validateSalesReturnInput({
+  customer_id: "customer",
+  lines: [{ product_id: "product", quantity }],
+});
+assert.equal(returnInput("0.125").ok, true, "Returns accept the three-decimal sale quantity contract");
+assert.equal(returnInput("1.2300").ok, true, "Redundant trailing zeroes preserve the same return quantity");
+assert.equal(returnInput("0.1251").ok, false, "Returns reject quantities that cannot be persisted at three decimals");
+assert.equal(formatSalesInvoiceQuantity(0.125), "0.125", "Sales invoice documents preserve three decimals");
+assert.equal(formatSalesInvoiceQuantity(0.333), "0.333", "Sub-unit fractions stay visible in history documents");
+assert.equal(formatSalesInvoiceQuantity(1.230), "1.23", "History documents trim redundant trailing zeroes");
+assert.equal(formatSalesInvoiceQuantity(0.001), "0.001", "The smallest supported quantity remains visible");
+assert.equal(formatSalesInvoiceQuantity(1.005), "1.005", "Quantity formatting does not round at a three-decimal boundary");
+
+console.log("Sale amount precision tests passed: fractional quantities, returns, subunit values, discounts, tax, and rounding.");

@@ -15,6 +15,7 @@ begin
     select * from (values
       ('sales_items','quantity',3),
       ('sales_items','bonus',3),
+      ('sales_return_items','quantity',3),
       ('products','current_stock',6),
       ('inventory_transactions','quantity_delta',6)
     ) as required(table_name, column_name, max_scale)
@@ -39,6 +40,9 @@ begin
   if exists (select 1 from public.sales_items where bonus <> round(bonus, 3)) then
     raise exception 'sales_items.bonus contains values that cannot be represented at three decimal places';
   end if;
+  if exists (select 1 from public.sales_return_items where quantity <> round(quantity, 3)) then
+    raise exception 'sales_return_items.quantity contains values that cannot be represented at three decimal places';
+  end if;
   if exists (select 1 from public.products where current_stock <> round(current_stock, 6)) then
     raise exception 'products.current_stock contains values that cannot be represented at six decimal places';
   end if;
@@ -50,6 +54,9 @@ end $$;
 alter table public.sales_items
   alter column quantity type numeric(16,3) using quantity::numeric(16,3),
   alter column bonus type numeric(16,3) using bonus::numeric(16,3);
+
+alter table public.sales_return_items
+  alter column quantity type numeric(16,3) using quantity::numeric(16,3);
 
 alter table public.products
   alter column current_stock type numeric(18,6) using current_stock::numeric(18,6);
