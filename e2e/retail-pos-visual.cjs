@@ -224,6 +224,21 @@
       assert.equal(await draftSave.isDisabled(), true);
       await invoiceDiscount.fill('0');
       assert.equal(await draftSave.isDisabled(), false, 'correcting both discounts restores saving');
+      const discountType = draftPage.getByRole('combobox', { name: 'Sale discount type' });
+      await discountType.selectOption('percent');
+      const percentDiscount = draftPage.getByRole('textbox', { name: 'Sale discount percentage' });
+      await percentDiscount.fill('10');
+      assert.match(await draftTotal.innerText(), /9\.07/, '10% of 10.08 rounds to 1.01 and reduces the payable total');
+      assert.match(await draftPage.getByText(/Discount before tax:/).innerText(), /1\.01/, 'the calculated discount is visible');
+      await percentDiscount.fill('100.01');
+      assert.match(await draftTotal.innerText(), /Unavailable/, 'discount over 100% never displays a payable total');
+      assert.equal(await draftSave.isDisabled(), true, 'discount over 100% cannot be saved');
+      await percentDiscount.fill('100');
+      assert.match(await draftTotal.innerText(), /0\.00/, 'a 100% discount is valid');
+      await discountType.selectOption('flat');
+      await draftPage.getByRole('textbox', { name: 'Sale discount amount' }).fill('1.00');
+      assert.match(await draftTotal.innerText(), /9\.08/, 'flat discount uses the existing amount calculation');
+      await draftPage.getByRole('textbox', { name: 'Sale discount amount' }).fill('');
       assert.deepEqual(draftErrors, [], 'draft editing produces no browser exceptions');
       await draftPage.close();
 
