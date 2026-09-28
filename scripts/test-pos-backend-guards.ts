@@ -10,6 +10,7 @@ const owner = "20000000-0000-4000-8000-000000000001";
 const otherOwner = "20000000-0000-4000-8000-000000000002";
 const fractionalProduct = "30000000-0000-4000-8000-000000000001";
 const blockedProduct = "30000000-0000-4000-8000-000000000002";
+const historyProduct = "30000000-0000-4000-8000-000000000003";
 const parent = "40000000-0000-4000-8000-000000000001";
 
 type FixtureRow = Record<string, string | number | null>;
@@ -103,10 +104,12 @@ async function main() {
         ('${owner}', '${org}'), ('${otherOwner}', '${otherOrg}');
       insert into public.products(id, organization_id, units_per_pack, overselling_policy, current_stock) values
         ('${fractionalProduct}', '${org}', 12, 'block', 1),
-        ('${blockedProduct}', '${org}', 1, 'block', 0);
+        ('${blockedProduct}', '${org}', 1, 'block', 0),
+        ('${historyProduct}', '${org}', 12, 'block', 4);
     `);
 
     await db.exec(readFileSync("src/lib/migrations/20260928_pos_sequence_return_stock_guards.sql", "utf8"));
+    await db.exec(readFileSync("src/lib/migrations/20260929_pos_return_history_guards.sql", "utf8"));
     await db.exec(`
       create function public.fixture_create_invoice(p_org uuid, p_type text)
       returns integer language plpgsql security definer
@@ -264,6 +267,121 @@ async function main() {
       "parent deletion reverses stock within the delete transaction");
     assert.equal((await db.query("select count(*)::int as n from public.inventory_transactions where product_id=$1", [fractionalProduct])).rows[0].n, deleteLedgerBefore + 1,
       "parent deletion writes exactly one reversal movement");
+
+    await db.exec(`
+      insert into public.sales_returns(id, organization_id) values
+        ('40000000-0000-4000-8000-000000000005', '${org}'),
+        ('40000000-0000-4000-8000-000000000006', '${org}');
+      insert into public.sales_return_items(id, sales_return_id, organization_id, product_id, quantity)
+      values ('50000000-0000-4000-8000-000000000005', '40000000-0000-4000-8000-000000000005', '${org}', '${fractionalProduct}', 0.125);
+      update public.sales_returns set status='cancelled' where id='40000000-0000-4000-8000-000000000005';
+    `);
+    const reassignmentStockBefore = (await db.query(
+      "select current_stock::text as stock from public.products where id=$1", [fractionalProduct],
+    )).rows[0].stock;
+    const reassignmentItemBefore = (await db.query(
+      "select sales_return_id, organization_id, product_id, quantity::text as quantity, unit_mode, batch_number, expiry_date from public.sales_return_items where id=$1",
+      ["50000000-0000-4000-8000-000000000005"],
+    )).rows[0];
+    const reassignmentLedgerBefore = (await db.query(
+      "select count(*)::int as n from public.inventory_transactions where product_id=$1", [fractionalProduct],
+    )).rows[0].n;
+    await assert.rejects(
+      db.query("update public.sales_return_items set sales_return_id=$1 where id=$2", [
+        "40000000-0000-4000-8000-000000000006", "50000000-0000-4000-8000-000000000005",
+      ]),
+      /Sales return items cannot be reassigned/,
+    );
+    assert.deepEqual((await db.query(
+      "select sales_return_id, organization_id, product_id, quantity::text as quantity, unit_mode, batch_number, expiry_date from public.sales_return_items where id=$1",
+      ["50000000-0000-4000-8000-000000000005"],
+    )).rows[0], reassignmentItemBefore, "rejected reassignment preserves the complete item row");
+    assert.equal((await db.query(
+      "select current_stock::text as stock from public.products where id=$1", [fractionalProduct],
+    )).rows[0].stock, reassignmentStockBefore, "rejected reassignment preserves stock");
+    assert.equal((await db.query(
+      "select count(*)::int as n from public.inventory_transactions where product_id=$1", [fractionalProduct],
+    )).rows[0].n, reassignmentLedgerBefore, "rejected reassignment preserves the ledger");
+
+    await db.exec(`
+      insert into public.sales_returns(id, organization_id) values ('40000000-0000-4000-8000-000000000007', '${org}');
+      insert into public.sales_return_items(id, sales_return_id, organization_id, product_id, quantity, unit_mode)
+      values ('50000000-0000-4000-8000-000000000007', '40000000-0000-4000-8000-000000000007', '${org}', '${historyProduct}', 12, 'subunit');
+    `);
+    const historyLedgerBefore = Number((await db.query(
+      "select count(*)::int as n from public.inventory_transactions where product_id=$1", [historyProduct],
+    )).rows[0].n);
+    const historyStockBeforeConversionAttempt = (await db.query(
+      "select current_stock::text as stock from public.products where id=$1", [historyProduct],
+    )).rows[0].stock;
+    assert.equal((await db.query(
+      "select current_stock::text as stock from public.products where id=$1", [historyProduct],
+    )).rows[0].stock, "5.000000", "12 subunits at 12 per pack add exactly one main unit");
+    await assert.rejects(
+      db.query("update public.products set units_per_pack=24 where id=$1", [historyProduct]),
+      /Cannot change units_per_pack while an active subunit sales return exists/,
+    );
+    assert.equal((await db.query(
+      "select units_per_pack from public.products where id=$1", [historyProduct],
+    )).rows[0].units_per_pack, 12, "rejected conversion change preserves the product conversion");
+    assert.equal((await db.query(
+      "select current_stock::text as stock from public.products where id=$1", [historyProduct],
+    )).rows[0].stock, historyStockBeforeConversionAttempt, "rejected conversion change preserves stock");
+    assert.equal(Number((await db.query(
+      "select count(*)::int as n from public.inventory_transactions where product_id=$1", [historyProduct],
+    )).rows[0].n), historyLedgerBefore, "rejected conversion change preserves the ledger");
+    await db.query("update public.sales_returns set status='cancelled' where id=$1", [
+      "40000000-0000-4000-8000-000000000007",
+    ]);
+    assert.equal((await db.query(
+      "select current_stock::text as stock from public.products where id=$1", [historyProduct],
+    )).rows[0].stock, "4.000000", "cancellation reverses with the original conversion exactly");
+    assert.equal((await db.query(
+      "select count(*)::int as n from public.inventory_transactions where product_id=$1", [historyProduct],
+    )).rows[0].n, historyLedgerBefore + 1, "cancellation records one exact conversion reversal");
+    assert.equal((await db.query(
+      "select quantity_delta::text as delta from public.inventory_transactions where product_id=$1 order by id desc limit 1",
+      [historyProduct],
+    )).rows[0].delta, "-1.000000", "cancellation ledger reverses the original one-main-unit effect");
+    await db.query("update public.products set units_per_pack=24 where id=$1", [historyProduct]);
+    const cancelledLedgerAfterPackChange = (await db.query(
+      "select count(*)::int as n from public.inventory_transactions where product_id=$1", [historyProduct],
+    )).rows[0].n;
+    await db.query("delete from public.sales_returns where id=$1", ["40000000-0000-4000-8000-000000000007"]);
+    assert.equal((await db.query(
+      "select current_stock::text as stock from public.products where id=$1", [historyProduct],
+    )).rows[0].stock, "4.000000", "deleting a cancelled return after a conversion change does not reverse twice");
+    assert.equal((await db.query(
+      "select count(*)::int as n from public.inventory_transactions where product_id=$1", [historyProduct],
+    )).rows[0].n, cancelledLedgerAfterPackChange, "cancelled return deletion does not add a ledger effect");
+
+    await db.exec(`
+      insert into public.sales_returns(id, organization_id) values ('40000000-0000-4000-8000-000000000008', '${org}');
+      insert into public.sales_return_items(id, sales_return_id, organization_id, product_id, quantity, unit_mode)
+      values ('50000000-0000-4000-8000-000000000008', '40000000-0000-4000-8000-000000000008', '${org}', '${historyProduct}', 12, 'subunit');
+    `);
+    const deleteHistoryLedgerBefore = Number((await db.query(
+      "select count(*)::int as n from public.inventory_transactions where product_id=$1", [historyProduct],
+    )).rows[0].n);
+    assert.equal((await db.query(
+      "select current_stock::text as stock from public.products where id=$1", [historyProduct],
+    )).rows[0].stock, "4.500000", "12 subunits at 24 per pack add one half main unit");
+    await assert.rejects(
+      db.query("update public.products set units_per_pack=12 where id=$1", [historyProduct]),
+      /Cannot change units_per_pack while an active subunit sales return exists/,
+    );
+    await db.query("delete from public.sales_returns where id=$1", ["40000000-0000-4000-8000-000000000008"]);
+    assert.equal((await db.query(
+      "select current_stock::text as stock from public.products where id=$1", [historyProduct],
+    )).rows[0].stock, "4.000000", "deleting an active subunit return reverses with its unchanged conversion");
+    assert.equal((await db.query(
+      "select count(*)::int as n from public.inventory_transactions where product_id=$1", [historyProduct],
+    )).rows[0].n, deleteHistoryLedgerBefore + 1, "active subunit return deletion records one reversal");
+    assert.equal((await db.query(
+      "select quantity_delta::text as delta from public.inventory_transactions where product_id=$1 order by id desc limit 1",
+      [historyProduct],
+    )).rows[0].delta, "-0.500000", "deletion ledger reverses the original half-main-unit effect");
+    await db.query("update public.products set units_per_pack=12 where id=$1", [historyProduct]);
     console.log("PASS: fixture/PGlite authorization, fractional return, rollback, cancel, and delete scenarios");
   } finally {
     await db.close();
