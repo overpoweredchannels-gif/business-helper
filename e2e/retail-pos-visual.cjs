@@ -9,7 +9,7 @@
   const { default: assert } = await import('node:assert/strict');
   const root = path.resolve(__dirname, '..');
   const mode = process.argv[2] === 'before' ? 'before' : 'after';
-  const output = path.join(root, 'validation-reports');
+  const output = path.join(__dirname, 'test-results', 'retail-pos-draft-validation');
   fs.mkdirSync(output, { recursive: true });
   const bundle = await build({
     entryPoints: [path.join(__dirname, 'fixtures/retail-pos.tsx')], bundle: true, write: false,
@@ -80,7 +80,7 @@
           await mobileRow.locator('details').locator('summary').click();
           const row = mobileRow;
           for (const label of ['Unit for Test Box 1', 'Price for Test Box 1', 'Discount for Test Box 1']) {
-            assert.ok(await row.getByRole(label.startsWith('Unit') ? 'combobox' : 'spinbutton', { name: label }).isVisible(), `${label} is available`);
+            assert.ok(await row.getByRole(label.startsWith('Unit') ? 'combobox' : 'textbox', { name: label }).isVisible(), `${label} is available`);
           }
           assert.ok(await row.getByRole('button', { name: 'Remove Test Box 1' }).isVisible(), 'remove action is available');
           const productSearch = page.getByRole('combobox', { name: 'Product' });
@@ -94,7 +94,7 @@
       }
 
       if (width <= 768) {
-        const quantity = page.getByRole('spinbutton', { name: 'Quantity for Test Box 12' }).last();
+        const quantity = page.getByRole('textbox', { name: 'Quantity for Test Box 12' }).last();
         await quantity.focus();
         await page.setViewportSize({ width, height: 420 });
         await quantity.scrollIntoViewIfNeeded();
@@ -123,13 +123,13 @@
       const barcode = page.getByRole('textbox', { name: 'Barcode' });
       await barcode.fill('001201');
       await barcode.press('Enter');
-      const payment = page.getByRole('spinbutton', { name: 'Cash received' });
+      const payment = page.getByRole('textbox', { name: 'Cash received' });
       const save = page.getByRole('button', { name: 'Pay & Save' });
       const totalText = await page.locator('[data-pos-payment-bar] .text-3xl').innerText();
       const total = Number(totalText.replace(/[^\d.]/g, ''));
       assert.ok(Number.isFinite(total) && total > 0, `displayed total is usable: ${totalText}`);
       const formatMoney = value => new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR' }).format(value);
-      assert.ok(await page.getByText(`Change due: ${new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR' }).format(0)}`).isVisible(), 'blank cash defaults to exact payment');
+      assert.ok(await page.getByText(/Leave blank to use the exact sale total/).isVisible(), 'blank cash clearly defaults to exact payment');
       assert.equal(await save.isDisabled(), false, 'blank cash can save at the exact total');
       await payment.fill('0');
       assert.equal(await save.isDisabled(), true, 'zero cash is insufficient');
@@ -143,10 +143,13 @@
       assert.equal(await save.isDisabled(), false, 'exact cash can save');
       assert.ok(await page.getByText(`Change due: ${formatMoney(0)}`).isVisible(), 'exact cash has zero change');
       await save.click();
+      const receiptButton = page.getByRole('button', { name: 'Receipt for S-TEST-1', exact: true });
+      await receiptButton.waitFor();
+      await receiptButton.click();
       const dialog = page.getByRole('dialog', { name: /Receipt S-TEST-1/ });
       await dialog.waitFor();
-      const receivedRow = dialog.getByText('Cash received', { exact: true }).locator('xpath=..');
-      const changeRow = dialog.getByText('Change', { exact: true }).locator('xpath=..');
+      const receivedRow = dialog.getByText('Tendered', { exact: true }).locator('xpath=..');
+      const changeRow = dialog.getByText('Change due', { exact: true }).locator('xpath=..');
       assert.ok((await receivedRow.innerText()).includes(totalText), 'receipt cash received matches the exact cash input');
       assert.ok((await dialog.getByText('Total', { exact: true }).locator('xpath=..').innerText()).includes(totalText), 'receipt total matches the POS total');
       assert.ok((await changeRow.innerText()).includes(formatMoney(0)), 'receipt change matches the POS summary');
@@ -162,16 +165,89 @@
       const excessTotal = Number(excessTotalText.replace(/[^\d.]/g, ''));
       const excessCash = excessTotal + 30;
       const excessSave = page.getByRole('button', { name: 'Pay & Save' });
-      await page.getByRole('spinbutton', { name: 'Cash received' }).fill(String(excessCash));
+      await page.getByRole('textbox', { name: 'Cash received' }).fill(String(excessCash));
       assert.ok(await page.getByText(`Change due: ${formatMoney(30)}`).isVisible(), 'excess cash displays change due');
       await excessSave.click();
+      const excessReceiptButton = page.getByRole('button', { name: 'Receipt for S-TEST-2', exact: true });
+      await excessReceiptButton.waitFor();
+      await excessReceiptButton.click();
       const excessDialog = page.getByRole('dialog', { name: /Receipt S-TEST-2/ });
       await excessDialog.waitFor();
       assert.ok((await excessDialog.getByText('Total', { exact: true }).locator('xpath=..').innerText()).includes(excessTotalText), 'excess receipt total matches the POS total');
-      assert.ok((await excessDialog.getByText('Cash received', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(excessCash)), 'excess receipt amount matches the input');
-      assert.ok((await excessDialog.getByText('Change', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(30)), 'receipt change matches the excess cash input');
+      assert.ok((await excessDialog.getByText('Tendered', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(excessCash)), 'excess receipt amount matches the input');
+      assert.ok((await excessDialog.getByText('Change due', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(30)), 'receipt change matches the excess cash input');
       await page.close();
       console.log('after cash UI: blank, zero, insufficient, exact, excess, receipt totals/change, and receipt targets passed');
+
+      const draftPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      const draftErrors = [];
+      draftPage.on('pageerror', error => draftErrors.push(error.message));
+      await draftPage.goto(`http://127.0.0.1:${server.address().port}/?draft=1`);
+      await draftPage.waitForLoadState('networkidle');
+      const draftHelpClose = draftPage.getByRole('button', { name: 'Close help' });
+      if (await draftHelpClose.isVisible().catch(() => false)) await draftHelpClose.click();
+      const draftQuantity = draftPage.locator('[data-pos-desktop-table] input[aria-label="quantity for Test Box 1"]');
+      const draftPrice = draftPage.locator('[data-pos-desktop-table] input[aria-label="Price for Test Box 1"]');
+      const draftLineDiscount = draftPage.locator('[data-pos-desktop-table] input[aria-label="discount for Test Box 1"]');
+      const draftTotal = draftPage.locator('[data-pos-payment-bar] .text-3xl');
+      const draftSave = draftPage.getByRole('button', { name: 'Pay & Save' });
+      const basket = draftPage.locator('[data-pos-desktop-table]');
+      await draftQuantity.fill('');
+      await draftPage.waitForTimeout(100);
+      assert.equal(await basket.count(), 1, 'clearing quantity keeps the basket mounted');
+      assert.equal(await draftQuantity.inputValue(), '', 'empty quantity remains exactly as entered');
+      assert.match(await draftTotal.innerText(), /Unavailable/, 'incomplete quantity does not display a zero total');
+      assert.equal(await draftSave.isDisabled(), true, 'an incomplete quantity disables saving');
+      await draftQuantity.fill('0.1251');
+      assert.equal(await draftQuantity.inputValue(), '0.1251', 'unsupported precision remains visible while correcting it');
+      assert.match(await draftTotal.innerText(), /Unavailable/);
+      await draftQuantity.fill('0.125');
+      assert.match(await draftTotal.innerText(), /10\.08/, '0.125 × 80.60 renders with SQL-compatible rounding');
+      assert.equal(await draftSave.isDisabled(), false, 'correcting quantity restores save eligibility');
+      await draftPrice.fill('');
+      assert.match(await draftTotal.innerText(), /Unavailable/, 'cleared price makes the total unavailable');
+      assert.equal(await draftSave.isDisabled(), true);
+      await draftPrice.fill('80.60');
+      const draftCash = draftPage.getByRole('textbox', { name: 'Cash received' });
+      await draftCash.fill('10.001');
+      assert.equal(await draftSave.isDisabled(), true, 'unsupported cash precision blocks saving');
+      assert.ok(await draftPage.getByText(/Cash received must be non-negative and use up to two decimal places/).isVisible());
+      await draftCash.fill('');
+      assert.equal(await draftSave.isDisabled(), false, 'cleared cash keeps the explicit exact-total default');
+      await draftLineDiscount.fill('10.09');
+      assert.match(await draftTotal.innerText(), /Unavailable/, 'excess line discount never appears as a valid total');
+      assert.equal(await draftSave.isDisabled(), true);
+      await draftLineDiscount.fill('0');
+      const invoiceDiscount = draftPage.getByRole('textbox', { name: 'Invoice discount' });
+      await invoiceDiscount.fill('10.09');
+      assert.match(await draftTotal.innerText(), /Unavailable/, 'invoice discount above subtotal is unavailable');
+      assert.equal(await draftSave.isDisabled(), true);
+      await invoiceDiscount.fill('0');
+      assert.equal(await draftSave.isDisabled(), false, 'correcting both discounts restores saving');
+      assert.deepEqual(draftErrors, [], 'draft editing produces no browser exceptions');
+      await draftPage.close();
+
+      const removePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      const removeErrors = [];
+      removePage.on('pageerror', error => removeErrors.push(error.message));
+      await removePage.goto(`http://127.0.0.1:${server.address().port}/?remove=1`);
+      await removePage.waitForLoadState('networkidle');
+      const removeHelpClose = removePage.getByRole('button', { name: 'Close help' });
+      if (await removeHelpClose.isVisible().catch(() => false)) await removeHelpClose.click();
+      const preservedInvoiceDiscount = removePage.getByRole('textbox', { name: 'Invoice discount' });
+      assert.match(await removePage.locator('[data-pos-payment-bar] .text-3xl').innerText(), /10\.00/);
+      await removePage.getByRole('button', { name: 'Remove Test Box 2' }).click();
+      assert.equal(await removePage.locator('[data-pos-desktop-table]').count(), 1, 'removing an item keeps the basket mounted');
+      assert.equal(await removePage.locator('[data-pos-desktop-table] tbody tr').count(), 1, 'only the selected item is removed');
+      assert.equal(await preservedInvoiceDiscount.inputValue(), '90.00', 'removal preserves the invoice discount text');
+      assert.equal(await removePage.getByRole('textbox', { name: 'Price for Test Box 1' }).inputValue(), '40.00', 'removal preserves the remaining line price');
+      assert.match(await removePage.locator('[data-pos-payment-bar] .text-3xl').innerText(), /Unavailable/);
+      assert.equal(await removePage.getByRole('button', { name: 'Pay & Save' }).isDisabled(), true);
+      await preservedInvoiceDiscount.fill('40.00');
+      assert.match(await removePage.locator('[data-pos-payment-bar] .text-3xl').innerText(), /0\.00/);
+      assert.deepEqual(removeErrors, [], 'item removal and invoice discount revalidation produce no browser exceptions');
+      await removePage.close();
+      console.log('after draft UI: clear/correct quantity, precision, price/cash, discounts, and removal with retained invoice discount passed');
     }
   } finally {
     if (browser) await browser.close();

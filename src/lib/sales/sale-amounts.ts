@@ -5,9 +5,9 @@ export type SaleAmountLine = {
 };
 
 export type SaleAmountOptions = {
-  invoiceDiscount?: number;
+  invoiceDiscount?: number | string;
   invoiceDiscountType?: "flat" | "percent";
-  taxRate?: number;
+  taxRate?: number | string;
 };
 
 export type SaleAmounts = {
@@ -172,10 +172,10 @@ export function calculateSaleAmounts(
   lines: SaleAmountLine[],
   options: SaleAmountOptions = {},
 ): SaleAmounts {
-  if (options.invoiceDiscount !== undefined && !Number.isFinite(options.invoiceDiscount)) {
+  if (typeof options.invoiceDiscount === "number" && !Number.isFinite(options.invoiceDiscount)) {
     throw new RangeError("Invoice discount must be a finite decimal value.");
   }
-  if (options.taxRate !== undefined && !Number.isFinite(options.taxRate)) {
+  if (typeof options.taxRate === "number" && !Number.isFinite(options.taxRate)) {
     throw new RangeError("Tax rate must be a finite decimal value.");
   }
   if (options.invoiceDiscountType !== undefined && !["flat", "percent"].includes(options.invoiceDiscountType)) {
@@ -203,8 +203,8 @@ export function calculateSaleAmounts(
   const taxableCents = subtotalCents > invoiceDiscountCents ? subtotalCents - invoiceDiscountCents : BigInt(0);
   const taxRate = options.taxRate ?? 0;
   assertDecimalPlaces(taxRate, SALE_MONEY_DECIMAL_PLACES, "Tax rate");
-  if (taxRate < 0 || taxRate > 999.99) throw new RangeError("Tax rate must be between 0 and 999.99.");
   const taxRateHundredths = moneyToCents(taxRate);
+  if (taxRateHundredths < BigInt(0) || taxRateHundredths > BigInt(99_999)) throw new RangeError("Tax rate must be between 0 and 999.99.");
   const taxCents = checkedMoneyCents(roundDivideHalfAwayFromZero(taxableCents * taxRateHundredths, BigInt(10_000)));
   const totalCents = checkedMoneyCents(taxableCents + taxCents);
 

@@ -7,8 +7,9 @@ import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
 import { buildAtomicSaleReceipt } from "@/lib/print/retail-receipt";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
+import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
-import { calculateSaleAmounts, hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
+import { hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
@@ -3839,6 +3840,12 @@ setCustomerOrganizationName("");
 
     const invoiceLines = enteredInvoiceLines(salesLines);
 
+    if (!currentSaleDraft.valid) {
+      setSalesError(currentSaleDraft.issues[0]?.message ?? "Correct the highlighted sale fields before saving.");
+      setSalesMessage(null);
+      return;
+    }
+
     setCreditWarning(null);
 
     if (!selectedCustomerIdForSale) {
@@ -3859,7 +3866,7 @@ setCustomerOrganizationName("");
         setSalesMessage(null);
         return;
       }
-      const cashSummary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal, received: posCashReceived });
+      const cashSummary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal ?? 0, received: posCashReceived });
       if (cashSummary.status === "cash-short") {
         setSalesError(`Cash is short by ${pkrFormatter.format(cashSummary.shortfall)}.`);
         setSalesMessage(null);
@@ -3971,9 +3978,9 @@ setCustomerOrganizationName("");
 
       if (isOverCreditLimit && !selectedCustomerAllowsOverLimit) {
         const warning = `Credit limit exceeded. Current balance: ${pkrFormatter.format(
-          selectedCustomerOutstandingBalance
+        selectedCustomerOutstandingBalance
         )}. Invoice total: ${pkrFormatter.format(
-          currentSalesInvoiceTotal
+          currentSalesInvoiceTotal ?? 0
         )}. Projected balance: ${pkrFormatter.format(
           projectedCustomerBalance
         )}. Credit limit: ${pkrFormatter.format(selectedCustomerCreditLimit)}.`;
@@ -4105,7 +4112,7 @@ setCustomerOrganizationName("");
         tax_rate: parsedTaxRate,
         cash_received: salesPaymentType === "cash"
           ? (quickSaleMode
-            ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal) : safeNumber(posCashReceived))
+            ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal ?? 0) : safeNumber(posCashReceived))
             : null)
           : 0,
         credit_override_confirmed: overrideConfirmed,
@@ -8625,19 +8632,18 @@ setCustomerOrganizationName("");
     },
     {}
   );
-  const currentSaleAmounts = calculateSaleAmounts(
-    salesLines.map((line) => ({
-      quantity: safeNumber(line.quantity),
-      sellingPrice: safeNumber(line.selling_price),
-      discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
-    })),
-    {
-      invoiceDiscount: salesDiscountAmount.trim() === "" ? 0 : safeNumber(salesDiscountAmount),
-      invoiceDiscountType: salesDiscountType,
-      taxRate: salesTaxRate.trim() === "" ? 0 : safeNumber(salesTaxRate),
-    },
-  );
-  const currentSalesInvoiceTotal = currentSaleAmounts.total;
+  const currentSaleDraft = validateSaleDraft({
+    lines: salesLines,
+    invoiceDiscount: salesDiscountAmount,
+    invoiceDiscountType: salesDiscountType,
+    taxRate: salesTaxRate,
+    paymentType: salesPaymentType,
+    cashReceived: posCashReceived,
+    validateCash: quickSaleMode && isOwnerOrAdmin(),
+    allowInvoiceAdjustments: isOwnerOrAdmin(),
+  });
+  const currentSaleAmounts = currentSaleDraft.amounts;
+  const currentSalesInvoiceTotal = currentSaleAmounts?.total;
   const todayDateValue = toDateInputValue(new Date());
   const filteredSalesTransactions = (() => {
     const searchTerm = salesHistorySearch.trim().toLowerCase();
@@ -8728,7 +8734,7 @@ setCustomerOrganizationName("");
       sum + Math.max(0, creditAllocationByTransaction[transactionId]?.remainingUnpaidAmount ?? 0),
     0
   );
-  const projectedCustomerBalance = selectedCustomerOutstandingBalance + currentSalesInvoiceTotal;
+  const projectedCustomerBalance = selectedCustomerOutstandingBalance + (currentSalesInvoiceTotal ?? 0);
   const unpaidCreditInvoicesForSelectedPaymentCustomer = salesTransactions
     .filter(
       (transaction) =>
@@ -17641,7 +17647,7 @@ setCustomerOrganizationName("");
           <div className="space-y-4" {...entryNavigationHandlers}>
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
-              products={activeProducts} customers={activeCustomers} total={currentSalesInvoiceTotal} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
+              products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
               onScan={code => { try { const product = findBarcodeProduct(products, code); clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); return String(product.id); } catch (error) { setSalesError(error instanceof Error ? error.message : "Barcode not found."); return null; } }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSaleScanFocus(value => value + 1); } }}
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
@@ -17738,17 +17744,15 @@ setCustomerOrganizationName("");
                   </span>
                 </span>
                 <input
-                  type="number"
+                  type="text" inputMode="decimal"
                   value={salesDiscountAmount}
                   onChange={(e) => {
                     clearCreditOverrideState();
                     setSalesDiscountAmount(e.target.value);
                   }}
-                  min="0"
-                  max={salesDiscountType === "percent" ? "100" : undefined}
-                  step="0.01"
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
+                {currentSaleDraft.issues.find(issue => issue.field === "invoice_discount") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "invoice_discount")?.message}</span>}
                 <span className="text-xs text-muted-foreground/80">
                   {salesDiscountType === "percent"
                     ? "Percentage deducted from the line subtotal before tax."
@@ -17759,17 +17763,15 @@ setCustomerOrganizationName("");
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Tax Rate % (Optional)</span>
                 <input
-                  type="number"
+                  type="text" inputMode="decimal"
                   value={salesTaxRate}
                   onChange={(e) => {
                     clearCreditOverrideState();
                     setSalesTaxRate(e.target.value);
                   }}
-                  min="0"
-                  max="100"
-                  step="0.01"
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
+                {currentSaleDraft.issues.find(issue => issue.field === "tax") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "tax")?.message}</span>}
                 <span className="text-xs text-muted-foreground/80">
                   Tax is computed on the subtotal after discount (future-ready GST/VAT).
                 </span>
@@ -17783,8 +17785,8 @@ setCustomerOrganizationName("");
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>Customer credit policy: {creditPolicyLabels[selectedCustomerCreditPolicy] ?? "Cash Only"}</div>
                   <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
-                  <div>Current invoice total: {pkrFormatter.format(currentSalesInvoiceTotal)}</div>
-                  <div>Projected balance: {pkrFormatter.format(projectedCustomerBalance)}</div>
+                  <div>Current invoice total: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
+                  <div>Projected balance: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(projectedCustomerBalance)}</div>
                   {policyUsesCreditLimit(selectedCustomerCreditPolicy) && (
                     <div>Credit limit: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
                   )}
@@ -17807,8 +17809,8 @@ setCustomerOrganizationName("");
                 <h3 className="mb-2 text-base font-medium">Owner Override Required</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
-                  <div>Current invoice total: {pkrFormatter.format(currentSalesInvoiceTotal)}</div>
-                  <div>Projected balance: {pkrFormatter.format(projectedCustomerBalance)}</div>
+                  <div>Current invoice total: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
+                  <div>Projected balance: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(projectedCustomerBalance)}</div>
                   {creditOverrideConfirmation.overLimit && (
                     <>
                       <div>Credit limit: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
@@ -17901,47 +17903,45 @@ setCustomerOrganizationName("");
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
                           <input
-                            type="number"
-                            required min="0.000001" step="any"
+                            type="text" inputMode="decimal"
                             value={line.quantity}
                             onChange={(e) => handleSalesLineChange(index, "quantity", e.target.value)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
+                          {currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "quantity") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "quantity")?.message}</span>}
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
                           <input
-                            type="number"
-                            required min="0" step="any"
+                            type="text" inputMode="decimal"
                             value={line.selling_price}
                             onChange={(e) => handleSalesLineChange(index, "selling_price", e.target.value)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
+                          {currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "selling_price") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "selling_price")?.message}</span>}
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Line Discount</span>
                           <input
-                            type="number"
+                            type="text" inputMode="decimal"
                             value={line.discount}
                             onChange={(e) => handleSalesLineChange(index, "discount", e.target.value)}
-                            min="0"
-                            step="0.01"
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
+                          {currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "discount") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "discount")?.message}</span>}
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Bonus (free)</span>
                           <input
-                            type="number"
+                            type="text" inputMode="decimal"
                             value={line.bonus}
                             onChange={(e) => handleSalesLineChange(index, "bonus", e.target.value)}
-                            min="0"
-                            step="0.01"
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
+                          {currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "bonus") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "bonus")?.message}</span>}
                         </label>
                       </div>
                     </div>
@@ -17961,19 +17961,21 @@ setCustomerOrganizationName("");
 
             {salesLines.length > 0 && (
               <div className="rounded border border-border bg-card p-4 text-sm text-foreground/80">
-                <div className="flex justify-between"><span>Line Subtotal</span><span>{pkrFormatter.format(currentSaleAmounts.lineSubtotal)}</span></div>
+                {currentSaleDraft.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received").map(issue => <p key={issue.field + issue.message} className="mb-2 text-destructive" role="alert">{issue.message}</p>)}
+                {!currentSaleAmounts && <p className="mb-2 text-destructive" role="status">Sale totals are unavailable until all fields are valid.</p>}
+                <div className="flex justify-between"><span>Line Subtotal</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.lineSubtotal) : "Unavailable"}</span></div>
                 {(salesLines.some((line) => Number(line.discount) > 0) || salesDiscountAmount.trim() !== "") && (
-                  <div className="flex justify-between"><span>Line Discounts</span><span>{pkrFormatter.format(currentSaleAmounts.lineDiscount)}</span></div>
+                  <div className="flex justify-between"><span>Line Discounts</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.lineDiscount) : "Unavailable"}</span></div>
                 )}
                 {salesDiscountAmount.trim() !== "" && (
-                  <div className="flex justify-between"><span>Invoice Discount{salesDiscountType === "percent" ? ` (${Number(salesDiscountAmount)}%)` : ""}</span><span>{pkrFormatter.format(currentSaleAmounts.invoiceDiscount)}</span></div>
+                  <div className="flex justify-between"><span>Invoice Discount{salesDiscountType === "percent" ? ` (${salesDiscountAmount}%)` : ""}</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.invoiceDiscount) : "Unavailable"}</span></div>
                 )}
-                {salesTaxRate.trim() !== "" && Number(salesTaxRate) > 0 && (
-                  <div className="flex justify-between"><span>Tax ({Number(salesTaxRate)}%)</span><span>{pkrFormatter.format(currentSaleAmounts.tax)}</span></div>
+                {salesTaxRate.trim() !== "" && (
+                  <div className="flex justify-between"><span>Tax ({salesTaxRate}%)</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.tax) : "Unavailable"}</span></div>
                 )}
                 <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium text-foreground">
                   <span>Invoice Total</span>
-                  <span>{pkrFormatter.format(currentSalesInvoiceTotal)}</span>
+                  <span>{currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(currentSalesInvoiceTotal)}</span>
                 </div>
               </div>
             )}
@@ -17981,7 +17983,7 @@ setCustomerOrganizationName("");
             <button
               type="button"
               onClick={() => handleCreateSalesInvoice()}
-              disabled={salesInvoiceLoading}
+              disabled={salesInvoiceLoading || !salesLines.length || !selectedCustomerIdForSale || !currentSaleDraft.valid}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
               {salesInvoiceLoading ? "Saving..." : isOwnerOrAdmin() ? "Save Sales Invoice" : "Send for owner approval"}
