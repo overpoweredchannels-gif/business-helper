@@ -2,6 +2,8 @@
 
 This procedure covers the atomic POS sale RPC and the three-decimal quantity contract. Run concurrency and authenticated permission checks only against a disposable, isolated Supabase/PostgreSQL clone with test users and test inventory. Do not point these steps at production.
 
+**Production classification:** Supabase project `lhqmtgrstvwtysfjjmhz` is the live TradeOS production project. It may be used only as the read-only source for the authoritative schema baseline. Never configure it as a disposable target, restore into it, seed it, or run release/concurrency tests against it.
+
 ## Migration prerequisites and order
 
 The atomic RPC depends on the existing sales, customer, product, inventory-ledger, payment-allocation, profile, and audit tables; the stock-writing sales-item trigger; `auth.uid()`; and `sales_tool_allowed()`. The actor must have an active owner/admin profile in the sale organization. Staff draft sales continue through their existing route.
@@ -83,7 +85,7 @@ Fixture provisioning is not automated from a clean Supabase database yet. This r
 
 ### Authoritative schema handoff
 
-Before writing fixture-creation SQL or claiming deployed-schema verification, obtain the schema-only definition from the owner-identified TradeOS application database, plus the migration order and database version. The minimum relevant object set is:
+Before writing fixture-creation SQL or claiming deployed-schema verification, obtain the schema-only definition from the production project above, plus the migration order and database version. The minimum relevant object set is:
 
 - `public.organizations`, `profiles`, `staff_permissions`, `customers`, `products`, `sales_transactions`, `sales_items`, `sales_returns`, `sales_return_items`, `inventory_transactions`, `customer_payments`, `customer_payment_allocations`, `purchase_transactions`, `purchase_items`, and `audit_logs`, including columns, defaults, types/scales, checks, foreign keys, unique constraints, indexes, and sequence ownership. `pos_release_test_marker` is synthetic and belongs only in the disposable clone.
 - Definitions and signatures for `create_sales_invoice_atomic`, `get_sales_invoice_request_status`, `sales_atomic_result`, `sales_tool_allowed`, `next_invoice_number`, and every function called by their RLS policies or triggers. Include owner, `SECURITY DEFINER`/`INVOKER`, function configuration such as `search_path`, and execute ACLs.
@@ -93,15 +95,15 @@ Before writing fixture-creation SQL or claiming deployed-schema verification, ob
 - Installed PostgreSQL version and extension names, versions, and schemas. Include all non-public dependencies referenced by the listed DDL, especially the actual `auth.uid()`, `auth.users`, and `auth.sessions` definitions/behavior and any project-specific helper schemas. Do not assume the dependency list is limited to `public` or `auth`.
 - The source migration history/order and the exact target project reference. `production_upgrade_consolidated.sql` is an upgrade path from v0.3.0, not the missing initial schema.
 
-The project owner should first identify the exact application project and provide a private, read-only database connection (or run this command and transfer the schema-only output privately). Use a password file/service definition rather than putting credentials in shell history or a command line:
+The owner should run this from a trusted workstation that already has authorized read-only database access and `pg_dump`, then transfer the plain SQL output through a private channel. Configure a private libpq service/password file for the read-only connection; do not put credentials in shell history, command arguments, chat, or this repository. The command preserves object ACL statements by default; do not add `--no-privileges`/`--no-acl`:
 
 ```text
-pg_dump --schema-only --no-owner --file tradeos-authoritative-schema.sql "$POS_SCHEMA_SOURCE_URL"
+pg_dump --schema-only --no-owner --dbname "service=tradeos_schema_ro" --file tradeos-authoritative-schema.sql
 ```
 
 This is a read-only schema export: it contains no customer rows. It preserves object ACL statements by default. Review the private export for embedded literals before any portions are copied into the repository; never commit connection details, access tokens, role passwords, or customer data. Preserve the migration-history output and PostgreSQL/extension version record alongside the private export.
 
-The fixture-creation automation is intentionally blocked at this boundary. Without the authoritative `organizations`/`profiles`/`auth_user_id` definitions, profile creation triggers, required columns, RLS policies, and grants, a script cannot safely create test owners, employees, customers, or products without guessing at deployed schema. Once the schema and migration order are recovered, automate a local disposable Supabase setup that creates only synthetic organizations, authenticated users/sessions, profiles, cash and credit customers, stock/credit/auth products, the one-row marker, and generated local settings consumed by this harness. Keep generated credentials in an ignored local file or process environment; do not print them or commit them. A clean local run also needs Docker Desktop, the Supabase CLI, and `psql`/`pg_dump` available. None of those executables is currently available in this runner.
+The fixture-creation automation is intentionally blocked at this boundary. Without the authoritative `organizations`/`profiles`/`auth_user_id` definitions, profile creation triggers, required columns, RLS policies, and grants, a script cannot safely create test owners, employees, customers, or products without guessing at deployed schema. Once the schema and migration order are recovered, automate a local disposable Supabase setup that creates only synthetic organizations, authenticated users/sessions, profiles, cash and credit customers, stock/credit/auth products, the one-row marker, and generated local settings consumed by this harness. Keep generated credentials in an ignored local file or process environment; do not print them or commit them. A clean local run also needs Docker Desktop, the Supabase CLI, and `psql`/`pg_dump` available.
 
 Add this one-row guard only inside the disposable clone, using an account that can create a test-only table:
 
@@ -137,4 +139,5 @@ In a browser session connected to the isolated clone, separately exercise: submi
 - Independent PostgreSQL-session races, real authenticated JWT checks, return trigger behavior, and deployed-schema comparison remain NOT RUN until the isolated target and fixture settings above exist. Do not substitute the application's unclassified `.env.local` Supabase project for that target.
 - Browser HTML/layout and PDF checks passed for synthetic confirmed receipts at both widths, including fractional quantity `0.125`, long business/customer/product names, a PKR 99,999,999,900.00 line, the confirmed totals, and a 40-line receipt. Output is local under `%TEMP%\tradeos-pos-receipt-browser`; it is not committed.
 - Mocked print lifecycle checks passed for first print, duplicate-click suppression, cancel-equivalent `afterprint` cleanup, reprint, and switching to a second receipt. Native Chrome dialog cancel/reprint/second-sale, physical printers, lost-response recovery against an isolated database, and browser history/export integration remain NOT RUN.
-- Independent PostgreSQL-session races, real authenticated JWT checks, return trigger behavior, and deployed-schema comparison remain NOT RUN until an owner identifies the exact application project and provides the authoritative schema-only export with ACLs and migration/version provenance, and an isolated Supabase/PostgreSQL target is available. Do not substitute the application's unclassified `.env.local` project for that target.
+- On 2026-09-28, the owner confirmed `lhqmtgrstvwtysfjjmhz` is live production. This runner had no Supabase MCP resources, database connection environment variables, Docker Desktop, Supabase CLI, `psql`, or `pg_dump`; `.env.local` was not read or used. The private authoritative schema-only export with ACLs and migration/version provenance has therefore not been obtained.
+- Independent PostgreSQL-session races, real authenticated JWT checks, return trigger behavior, fixture automation, and deployed-schema comparison remain NOT RUN until the owner provides the private production schema export and an isolated Supabase/PostgreSQL target is available. The production project above must never be used as that target; do not substitute any unclassified `.env.local` project either.
