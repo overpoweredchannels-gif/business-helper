@@ -8442,16 +8442,6 @@ setCustomerOrganizationName("");
 
     if (!window.confirm(`Delete sales return ${salesReturn.return_number}? Stock restoration will be reversed.`)) return;
 
-    const { error: itemError } = await supabase
-      .from("sales_return_items")
-      .delete()
-      .eq("sales_return_id", returnId);
-    if (itemError) {
-      setSrError("Failed to delete sales return items");
-      console.error("Supabase delete sales return items error:", itemError);
-      return;
-    }
-
     const { error } = await supabase
       .from("sales_returns")
       .delete()
