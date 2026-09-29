@@ -11,18 +11,33 @@ const products: Product[] = Array.from({ length: 12 }, (_, index) => ({ id: `pro
 const customers = [{ id: "walk-in", customer_name: "Walk-in customer" }] as Customer[];
 const empty: CounterSale = { lines: [], customerId: "walk-in", date: "2026-09-17", paymentType: "cash", discount: "", discountType: "flat", tax: "" };
 const search = new URLSearchParams(window.location.search);
-const draftSale: CounterSale = { ...empty, lines: [{ product_id: "product-1", quantity: "1", selling_price: "80.60", discount: "", unit_mode: "main" }] };
-const removableSale: CounterSale = { ...empty, discount: "90.00", lines: [
-  { product_id: "product-1", quantity: "1", selling_price: "40.00", discount: "", unit_mode: "main" },
-  { product_id: "product-2", quantity: "1", selling_price: "60.00", discount: "", unit_mode: "main" },
-] };
-const longBasket: CounterSale = { ...empty, lines: products.map(product => ({ product_id: String(product.id), quantity: "1", selling_price: "120", discount: "0", unit_mode: "main" })) };
+const initialSale: CounterSale = search.has("long") ? { ...empty, lines: products.map(product => ({ product_id: String(product.id), quantity: "1", selling_price: "120", discount: "0", unit_mode: "main" })) }
+  : search.has("remove") ? { ...empty, discount: "90.00", lines: [
+    { product_id: "product-1", quantity: "1", selling_price: "40.00", discount: "", unit_mode: "main" },
+    { product_id: "product-2", quantity: "1", selling_price: "60.00", discount: "", unit_mode: "main" },
+  ] }
+    : search.has("draft") ? { ...empty, lines: [{ product_id: "product-1", quantity: "1", selling_price: "80.60", discount: "", unit_mode: "main" }] }
+      : search.has("receipt-tax") ? { ...empty, tax: "5" }
+        : empty;
 function Fixture() {
-  const [sale, setSale] = useState(() => search.has("long") ? longBasket : search.has("remove") ? removableSale : search.has("draft") ? draftSale : empty); const [unit, setUnit] = useState<"main" | "subunit">("subunit"); const [saves, setSaves] = useState(0); const [employee, setEmployee] = useState(false); const [focus, setFocus] = useState(0); const [cashReceived, setCashReceived] = useState(""); const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [sale, setSale] = useState(initialSale); const [unit, setUnit] = useState<"main" | "subunit">("subunit"); const [saves, setSaves] = useState(0); const [employee, setEmployee] = useState(() => search.has("employee")); const [focus, setFocus] = useState(0); const [cashReceived, setCashReceived] = useState(""); const [receipt, setReceipt] = useState<Receipt | null>(null);
   const add = (id: string) => setSale(current => ({ ...current, lines: addBarcodeLine(current.lines, products.find(p => p.id === id)!, unit) }));
   return <main className="mx-auto max-w-6xl p-5"><h1 className="text-2xl font-bold">Retail POS test</h1><label><input type="checkbox" checked={employee} onChange={event => setEmployee(event.target.checked)} /> Employee mode</label><p>Saved sales: {saves}</p>
     {search.has("draft") || search.has("remove") ? <label className="mb-3 block">Invoice discount<input aria-label="Invoice discount" type="text" inputMode="decimal" value={sale.discount} onChange={event => setSale(current => ({ ...current, discount: event.target.value }))} className="ml-2 min-h-11 rounded border border-input px-2" /></label> : null}
-    <RetailPOS scope="synthetic-pos-test" sale={sale} products={products} customers={customers} busy={false} owner={!employee} scanUnit={unit} cashReceived={cashReceived} onCashReceived={setCashReceived} onDiscount={discount => setSale(current => ({ ...current, discount }))} onDiscountType={discountType => setSale(current => ({ ...current, discountType }))} focusSignal={focus} onScan={code => { const product = findBarcodeProduct(products, code); add(String(product.id)); return String(product.id); }} onAdd={add} onUnit={setUnit} onCustomer={id => setSale(current => ({ ...current, customerId: id }))} onLine={(index, field, value) => setSale(current => ({ ...current, lines: current.lines.map((line, i) => i === index ? { ...line, [field]: value } : line) }))} onRemove={index => setSale(current => ({ ...current, lines: current.lines.filter((_, i) => i !== index) }))} onSave={() => { const total = validateSaleDraft({ lines: sale.lines, invoiceDiscount: sale.discount, invoiceDiscountType: sale.discountType, taxRate: sale.tax }).amounts?.total ?? 0; const summary = buildRetailDrawerSummary({ total, received: cashReceived, paymentType: sale.paymentType }); setReceipt({ scope: "fixture", business: "Test Shop", number: `S-TEST-${saves + 1}`, date: "2026-09-17", customer: "Walk-in customer", total, received: summary.received, change: summary.change, returnAmount: summary.change, payment: sale.paymentType, lines: sale.lines.map(line => ({ name: products.find(product => String(product.id) === line.product_id)?.name ?? "Test product", quantity: line.quantity, unit: line.unit_mode === "subunit" ? "Piece" : "Box", price: line.selling_price, discount: line.discount, bonus: line.bonus })) }); setSaves(value => value + 1); setSale(empty); setCashReceived(""); setFocus(value => value + 1); }} onAdvanced={() => {}} onRestore={setSale} onClear={() => setSale(empty)} />
+    <RetailPOS scope="synthetic-pos-test" sale={sale} products={products} customers={customers} busy={false} owner={!employee} scanUnit={unit} cashReceived={cashReceived} onCashReceived={setCashReceived} onDiscount={discount => setSale(current => ({ ...current, discount }))} onDiscountType={discountType => setSale(current => ({ ...current, discountType }))} focusSignal={focus} onScan={code => { const product = findBarcodeProduct(products, code); add(String(product.id)); return String(product.id); }} onAdd={add} onUnit={setUnit} onCustomer={id => setSale(current => ({ ...current, customerId: id }))} onLine={(index, field, value) => setSale(current => ({ ...current, lines: current.lines.map((line, i) => i === index ? { ...line, [field]: value } : line) }))} onRemove={index => setSale(current => ({ ...current, lines: current.lines.filter((_, i) => i !== index) }))} onSave={() => {
+      const result = validateSaleDraft({ lines: sale.lines, invoiceDiscount: sale.discount, invoiceDiscountType: sale.discountType, taxRate: sale.tax, paymentType: sale.paymentType, cashReceived, validateCash: !employee, allowInvoiceAdjustments: !employee });
+      if (!result.valid || !result.amounts) return;
+      const amounts = result.amounts;
+      const summary = buildRetailDrawerSummary({ total: amounts.total, received: cashReceived, paymentType: sale.paymentType });
+      const nextReceipt: Receipt = {
+        scope: "fixture", business: "Test Shop", number: `S-TEST-${saves + 1}`, date: "2026-09-17", customer: "Walk-in customer",
+        lineSubtotal: amounts.lineSubtotal, lineDiscount: amounts.lineDiscount, subtotal: amounts.subtotal,
+        invoiceDiscount: amounts.invoiceDiscount, tax: amounts.tax, taxRate: Number(sale.tax || 0),
+        total: amounts.total, received: summary.received, change: summary.change, payment: sale.paymentType,
+        lines: sale.lines.map(line => ({ name: products.find(product => String(product.id) === line.product_id)?.name ?? "Test product", quantity: line.quantity, unit: line.unit_mode === "subunit" ? "Piece" : "Box", price: line.selling_price, discount: line.discount, bonus: line.bonus })),
+      };
+      setReceipt(nextReceipt); setSaves(value => value + 1); setSale(empty); setCashReceived(""); setFocus(value => value + 1);
+    }} onAdvanced={() => {}} onRestore={setSale} onClear={() => setSale(empty)} />
     {receipt && <POSReceipt receipt={receipt} />}
     <section className="mt-10 space-y-5 border p-5"><h2>Help positioning test</h2>{Array.from({ length: 15 }, (_, index) => <label key={index} className="block">Test field {index + 1}<input aria-label={`Test field ${index + 1}`} className="block h-11 w-full rounded border" /></label>)}</section><HelpCenter userId="retail-pos-fixture" />
   </main>;

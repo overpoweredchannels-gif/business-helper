@@ -35,4 +35,10 @@ assert.match(invalid, /Total payable.*Unavailable/);
 
 const employee = render({ ...sale, discount: "", discountType: "flat" }, false);
 assert.doesNotMatch(employee, /Sale discount percentage|Sale discount type/);
-console.log("Retail POS discount UI rendering passed: percentage totals, invalid value, and employee visibility.");
+
+const restoredEmployee = render(sale, false);
+assert.doesNotMatch(restoredEmployee, /Sale discount percentage|Sale discount type/, "employees cannot edit invoice discounts");
+assert.match(restoredEmployee, /Invoice discount and tax are not available for this approval flow/, "a restored discounted draft explains why it cannot be submitted");
+assert.match(restoredEmployee, /Total payable.*Unavailable/, "a restored discounted draft does not show a misleading total");
+assert.match(restoredEmployee, /<button[^>]*disabled=""[^>]*>Send for approval<\/button>/, "an employee cannot submit a restored discounted draft");
+console.log("Retail POS discount UI rendering passed: percentage totals, invalid value, employee restrictions, and restored-draft validation.");

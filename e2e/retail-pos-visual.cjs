@@ -116,19 +116,29 @@
 
     if (mode === 'after') {
       const page = await browser.newPage({ viewport: { width: 390, height: 850 }, isMobile: true, hasTouch: true });
-      await page.goto(`http://127.0.0.1:${server.address().port}/`);
+      await page.goto(`http://127.0.0.1:${server.address().port}/?receipt-tax=1`);
       await page.waitForLoadState('networkidle');
       const helpClose = page.getByRole('button', { name: 'Close help' });
       if (await helpClose.isVisible().catch(() => false)) await helpClose.click();
       const barcode = page.getByRole('textbox', { name: 'Barcode' });
       await barcode.fill('001201');
       await barcode.press('Enter');
+      const phoneRow = page.locator('[data-pos-mobile-row]').first();
+      await phoneRow.locator('details > summary').click();
+      await phoneRow.getByRole('textbox', { name: 'Discount for Test Box 1' }).fill('1.00');
       const payment = page.getByRole('textbox', { name: 'Cash received' });
       const save = page.getByRole('button', { name: 'Pay & Save' });
       const paymentTotal = page.locator('[data-pos-payment-bar] .text-3xl');
       const baseTotalText = await paymentTotal.innerText();
       const baseTotal = Number(baseTotalText.replace(/[^\d.]/g, ''));
       const formatMoney = value => new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+      const assertReceiptAmounts = async (receipt, expected) => {
+        for (const [label, amount] of Object.entries(expected)) {
+          const value = await receipt.getByText(label, { exact: true }).locator('xpath=..').locator('strong').innerText();
+          assert.equal(Number(value.replace(/[^\d.]/g, '')), amount, `${label} matches the validated sale amounts`);
+        }
+      };
+      assert.equal(baseTotal, 9.45, 'phone line discount and 5% tax are included before invoice discount');
       const phoneDiscountType = page.getByRole('combobox', { name: 'Sale discount type' });
       await phoneDiscountType.selectOption('percent');
       const phonePercentDiscount = page.getByRole('textbox', { name: 'Sale discount percentage' });
@@ -137,15 +147,15 @@
       assert.equal(await save.isDisabled(), true, 'phone invalid percentage cannot be saved');
       assert.ok(await page.getByRole('alert').filter({ hasText: /percentage cannot exceed 100/ }).isVisible(), 'phone explains why the percentage is invalid');
       await phonePercentDiscount.fill('10');
-      const percentAmount = Math.round(baseTotal * 10) / 100;
-      const percentTotal = Math.round((baseTotal - percentAmount) * 100) / 100;
+      const percentAmount = 0.90;
+      const percentTotal = 8.51;
       const percentTotalText = await paymentTotal.innerText();
       assert.equal(Number(percentTotalText.replace(/[^\d.]/g, '')), percentTotal, 'phone percentage discount yields the expected payable total');
       assert.ok((await page.getByText(/Discount before tax:/).innerText()).includes(formatMoney(percentAmount)), 'phone shows the calculated percentage discount');
       await phoneDiscountType.selectOption('flat');
       const amountDiscount = page.getByRole('textbox', { name: 'Sale discount amount' });
       await amountDiscount.fill('0.50');
-      assert.equal(Number((await paymentTotal.innerText()).replace(/[^\d.]/g, '')), Math.round((baseTotal - 0.5) * 100) / 100, 'phone amount discount yields the expected payable total');
+      assert.equal(Number((await paymentTotal.innerText()).replace(/[^\d.]/g, '')), 8.93, 'phone amount discount recalculates tax and payable total');
       await phoneDiscountType.selectOption('percent');
       await page.getByRole('textbox', { name: 'Sale discount percentage' }).fill('10');
       const totalText = await paymentTotal.innerText();
@@ -157,7 +167,7 @@
       assert.equal(await save.isDisabled(), true, 'zero cash is insufficient');
       assert.ok(await page.getByText(/Cash short by/).isVisible(), 'zero cash shows a shortfall');
       assert.equal(await page.getByText(/Return to customer/).count(), 0, 'shortfall is never labeled as customer change');
-      const insufficientCash = Math.max(0.01, total / 2);
+      const insufficientCash = Math.max(0.01, Math.floor(total * 50) / 100);
       await payment.fill(String(insufficientCash));
       assert.equal(await save.isDisabled(), true, 'insufficient cash cannot save');
       const shortfallText = await page.getByText(/Cash short by/).innerText();
@@ -176,6 +186,16 @@
       assert.ok((await receivedRow.innerText()).includes(formatMoney(total + 1)), 'phone receipt tender matches the cash input');
       assert.ok((await dialog.getByText('Total', { exact: true }).locator('xpath=..').innerText()).includes(totalText), 'receipt total matches the POS total');
       assert.ok((await changeRow.innerText()).includes(formatMoney(1)), 'phone receipt change matches the POS summary');
+      await assertReceiptAmounts(dialog, {
+        'Items subtotal': 10,
+        'Line discounts': 1,
+        Subtotal: 9,
+        'Invoice discount': 0.9,
+        'Tax (5%)': 0.41,
+        Total: 8.51,
+        Tendered: 9.51,
+        'Change due': 1,
+      });
       for (const button of await dialog.getByRole('button').all()) {
         const box = await button.boundingBox();
         assert.ok(box && box.height >= 44 && box.width >= 44, 'receipt dialog controls meet the mobile target');
@@ -203,6 +223,16 @@
       assert.ok((await excessDialog.getByText('Total', { exact: true }).locator('xpath=..').innerText()).includes(excessTotalText), 'excess receipt total matches the POS total');
       assert.ok((await excessDialog.getByText('Tendered', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(excessCash)), 'excess receipt amount matches the input');
       assert.ok((await excessDialog.getByText('Change due', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(2.5)), 'phone amount-discount receipt change matches cash input');
+      await assertReceiptAmounts(excessDialog, {
+        'Items subtotal': 10,
+        'Line discounts': 0,
+        Subtotal: 10,
+        'Invoice discount': 2.5,
+        'Tax (0%)': 0,
+        Total: excessTotal,
+        Tendered: excessCash,
+        'Change due': 2.5,
+      });
       await page.close();
       console.log('after phone UI: percentage/amount discounts, invalid percentage, cash shortfall/change, and discounted receipt total/tender/change passed');
 
@@ -270,18 +300,28 @@
       await draftPage.getByRole('textbox', { name: 'Sale discount percentage' }).fill('10');
       assert.match(await draftTotal.innerText(), /9\.07/, 'desktop percentage discount preserves the rounded 0.125 × 80.60 line total');
       assert.match(await draftPage.getByText(/Discount before tax:/).innerText(), /1\.01/, 'desktop shows the calculated percentage discount');
+      await draftLineDiscount.fill('0.08');
+      assert.match(await draftTotal.innerText(), /9\.00/, 'desktop line discount is applied before the invoice discount');
       const desktopCash = draftPage.getByRole('textbox', { name: 'Cash received' });
       await desktopCash.fill('10.00');
-      assert.ok(await draftPage.getByText(/Change due:.*0\.93/).isVisible(), 'desktop cash summary shows the matching change');
+      assert.ok(await draftPage.getByText(/Change due:.*1\.00/).isVisible(), 'desktop cash summary shows the matching change');
       await draftSave.click();
       const desktopReceiptButton = draftPage.getByRole('button', { name: 'Receipt for S-TEST-1', exact: true });
       await desktopReceiptButton.waitFor();
       await desktopReceiptButton.click();
       const desktopReceipt = draftPage.getByRole('dialog', { name: /Receipt S-TEST-1/ });
       await desktopReceipt.waitFor();
-      assert.ok((await desktopReceipt.getByText('Total', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(9.07)), 'desktop receipt total matches discounted POS total');
-      assert.ok((await desktopReceipt.getByText('Tendered', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(10)), 'desktop receipt tender matches cash input');
-      assert.ok((await desktopReceipt.getByText('Change due', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(0.93)), 'desktop receipt change matches the POS summary');
+      await assertReceiptAmounts(desktopReceipt, {
+        'Items subtotal': 10.08,
+        'Line discounts': 0.08,
+        Subtotal: 10,
+        'Invoice discount': 1,
+        'Tax (0%)': 0,
+        Total: 9,
+        Tendered: 10,
+        'Change due': 1,
+      });
+      await draftPage.screenshot({ path: path.join(output, 'pos-after-1280-receipt.png') });
       await desktopReceipt.getByRole('button', { name: 'Close' }).click();
       const desktopBarcode = draftPage.getByRole('textbox', { name: 'Barcode' });
       await desktopBarcode.fill('001202');
@@ -298,8 +338,16 @@
       await secondDesktopReceiptButton.click();
       const secondDesktopReceipt = draftPage.getByRole('dialog', { name: /Receipt S-TEST-2/ });
       await secondDesktopReceipt.waitFor();
-      assert.ok((await secondDesktopReceipt.getByText('Total', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(desktopAmountTotal)), 'desktop amount-discount receipt total matches POS total');
-      assert.ok((await secondDesktopReceipt.getByText('Change due', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(2.5)), 'desktop amount-discount receipt change matches POS summary');
+      await assertReceiptAmounts(secondDesktopReceipt, {
+        'Items subtotal': 10,
+        'Line discounts': 0,
+        Subtotal: 10,
+        'Invoice discount': 2.5,
+        'Tax (0%)': 0,
+        Total: desktopAmountTotal,
+        Tendered: desktopAmountTotal + 2.5,
+        'Change due': 2.5,
+      });
       await secondDesktopReceipt.getByRole('button', { name: 'Close' }).click();
       assert.deepEqual(draftErrors, [], 'draft editing produces no browser exceptions');
       await draftPage.close();
@@ -324,7 +372,29 @@
       assert.match(await removePage.locator('[data-pos-payment-bar] .text-3xl').innerText(), /0\.00/);
       assert.deepEqual(removeErrors, [], 'item removal and invoice discount revalidation produce no browser exceptions');
       await removePage.close();
-      console.log('after desktop UI: draft validation, percentage/amount discounts, invalid percentage, cash/change, fractional receipt totals, and retained invoice discount passed');
+
+      const employeePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      const heldEmployeeSale = {
+        id: 'held-discounted-sale', savedAt: '2026-09-29T00:00:00.000Z', sale: {
+          lines: [{ product_id: 'product-1', quantity: '1', selling_price: '80.60', discount: '', unit_mode: 'main' }],
+          customerId: 'walk-in', date: '2026-09-29', paymentType: 'cash', discount: '10', discountType: 'percent', tax: '',
+        },
+      };
+      await employeePage.addInitScript(({ key, held }) => localStorage.setItem(key, JSON.stringify([held])), {
+        key: 'tradeos-pos-held-v1:synthetic-pos-test', held: heldEmployeeSale,
+      });
+      await employeePage.goto(`http://127.0.0.1:${server.address().port}/?employee=1`);
+      await employeePage.waitForLoadState('networkidle');
+      const employeeHelpClose = employeePage.getByRole('button', { name: 'Close help' });
+      if (await employeeHelpClose.isVisible().catch(() => false)) await employeeHelpClose.click();
+      await employeePage.getByText('Held sales (1)', { exact: true }).click();
+      await employeePage.getByRole('button', { name: 'Resume' }).click();
+      assert.equal(await employeePage.getByRole('combobox', { name: 'Sale discount type' }).count(), 0, 'employee cannot edit an owner-only invoice discount');
+      assert.ok(await employeePage.getByRole('alert').filter({ hasText: /not available for this approval flow/ }).isVisible(), 'employee sees why the restored discounted draft is blocked');
+      assert.match(await employeePage.locator('[data-pos-payment-bar] .text-3xl').innerText(), /Unavailable/, 'blocked restored draft does not show a misleading total');
+      assert.equal(await employeePage.getByRole('button', { name: 'Send for approval' }).isDisabled(), true, 'employee cannot submit the restored discounted draft');
+      await employeePage.close();
+      console.log('after desktop UI: complete receipt summaries, tax, restored employee discount error, draft validation, and discount workflows passed');
     }
   } finally {
     if (browser) await browser.close();
