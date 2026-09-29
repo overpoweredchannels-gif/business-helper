@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import type { DashboardReadStatus } from "@/lib/dashboard/data-read-state";
 
 interface Metric {
   label: string;
@@ -11,6 +12,9 @@ interface Metric {
 interface BusinessHealthCardProps {
   score: number;
   metrics: Metric[];
+  readStatus?: DashboardReadStatus;
+  lastSuccessfulAt?: string;
+  onRetry?: () => void;
 }
 
 function CircularScore({ score }: { score: number }) {
@@ -39,7 +43,18 @@ function CircularScore({ score }: { score: number }) {
   );
 }
 
-export function BusinessHealthCard({ score, metrics }: BusinessHealthCardProps) {
+export function BusinessHealthCard({ score, metrics, readStatus = "successful-populated", lastSuccessfulAt, onRetry }: BusinessHealthCardProps) {
+  if (readStatus !== "successful-empty" && readStatus !== "successful-populated") {
+    const message = readStatus === "loading" ? "Loading business health…" : readStatus === "not-loaded" ? "Business health has not loaded." : "Business health is unavailable.";
+    return (
+      <div role="status" aria-live="polite" className="rounded-xl border border-border bg-card p-5">
+        <h3 className="mb-2 text-sm font-semibold text-foreground">Business Health</h3>
+        <p className="text-sm text-muted-foreground">{message}</p>
+        {readStatus === "failed" && lastSuccessfulAt && <p className="mt-1 text-xs text-muted-foreground">Last successful update: {new Date(lastSuccessfulAt).toLocaleString()}</p>}
+        {readStatus === "failed" && onRetry && <button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Retry dashboard reads</button>}
+      </div>
+    );
+  }
   return (
     <div className="rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
       <h3 className="text-sm font-semibold text-foreground mb-4">Business Health</h3>

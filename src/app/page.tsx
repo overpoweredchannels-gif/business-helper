@@ -32,6 +32,7 @@ import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
 import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerRetired, rememberSetupBannerRetired } from "@/lib/setup/setup-progress";
 import { useDashboardWidgets } from "@/lib/preferences/use-dashboard-widgets";
 import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardSectionWidgetId } from "@/lib/dashboard/section-cards";
+import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
 import type { ChatResponse } from "@/lib/conversation";
@@ -430,6 +431,12 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [currentProfile, setCurrentProfile] = useState<any | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
+  const [dashboardSourceStates, setDashboardSourceStates] = useState(emptyDashboardSourceStates);
+  const dashboardReadTrackerRef = useRef<DashboardReadTracker | null>(null);
+  if (!dashboardReadTrackerRef.current) dashboardReadTrackerRef.current = new DashboardReadTracker(setDashboardSourceStates);
+  const profileLoadRequestRef = useRef(0);
+  const authCheckRequestRef = useRef(0);
+  const dashboardAccountIdRef = useRef<string | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
@@ -667,6 +674,42 @@ export default function Home() {
   const activeDutySessionIdRef = useRef<string | null>(null);
   const lastSavedLocationRef = useRef<{ latitude: number; longitude: number; capturedAt: number } | null>(null);
 
+  const readDashboardSource = async <T,>(
+    source: DashboardReadSource,
+    organizationId: string,
+    load: () => Promise<T[]>,
+    commit: (rows: T[]) => void,
+    reportError: (error: unknown) => void,
+  ) => {
+    const accountId = dashboardAccountIdRef.current;
+    if (!accountId) return;
+    const result = await dashboardReadTrackerRef.current!.read(source, accountId, organizationId, load, commit);
+    if (result.status === "failed") reportError(result.error);
+  };
+
+  const clearDashboardSourceData = () => {
+    setProducts([]);
+    setCustomers([]);
+    setSuppliers([]);
+    setPurchaseTransactions([]);
+    setPurchaseItems([]);
+    setCustomerPayments([]);
+    setCustomerPaymentAllocations([]);
+    setSupplierPayments([]);
+    setSupplierPaymentAllocations([]);
+    setSalesTransactions([]);
+    setSalesItems([]);
+    setSalesOrders([]);
+    setTasks([]);
+  };
+
+  const invalidateDashboardSession = () => {
+    profileLoadRequestRef.current += 1;
+    dashboardAccountIdRef.current = null;
+    dashboardReadTrackerRef.current!.invalidate();
+    clearDashboardSourceData();
+  };
+
   useEffect(() => {
     checkAuthUser();
   }, []);
@@ -801,19 +844,22 @@ export default function Home() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("organization_id", orgId)
-      .order("due_date", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Supabase fetch tasks error:", JSON.stringify(error, null, 2));
-      return;
-    }
-
-    setTasks(data ?? []);
+    await readDashboardSource(
+      "tasks",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("tasks")
+          .select("*")
+          .eq("organization_id", orgId)
+          .order("due_date", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setTasks,
+      (error) => console.error("Supabase fetch tasks error:", error),
+    );
   };
 
   const fetchAuditLogs = async (organizationId?: string | null) => {
@@ -1403,6 +1449,10 @@ export default function Home() {
   };
 
   const loadProfile = async (userId: string | null) => {
+    const profileRequestId = ++profileLoadRequestRef.current;
+    dashboardAccountIdRef.current = null;
+    dashboardReadTrackerRef.current!.invalidate();
+    clearDashboardSourceData();
     if (!userId || typeof userId !== "string") {
       console.error("Invalid userId passed to loadProfile:", userId);
       setCurrentProfile(null);
@@ -1417,6 +1467,8 @@ export default function Home() {
       .select("*")
       .eq("id", userId)
       .maybeSingle();
+
+    if (profileRequestId !== profileLoadRequestRef.current) return;
 
     if (profileError) {
       console.error("Profile load error details:", JSON.stringify(profileError, null, 2));
@@ -1451,6 +1503,8 @@ export default function Home() {
         .eq("organization_id", profile.organization_id)
         .is("auth_user_id", null);
 
+      if (profileRequestId !== profileLoadRequestRef.current) return;
+
       if (authLinkError) {
         console.error("Profile auth_user_id link error:", JSON.stringify(authLinkError, null, 2));
       } else {
@@ -1463,6 +1517,8 @@ export default function Home() {
     }
 
     console.log("Profile loaded successfully:", { userId, organizationId: resolvedProfile.organization_id });
+    dashboardReadTrackerRef.current!.activate(userId, resolvedProfile.organization_id);
+    dashboardAccountIdRef.current = userId;
     setAuthError(null);
     setCurrentProfile(resolvedProfile);
     setCurrentOrganizationId(resolvedProfile.organization_id);
@@ -1527,16 +1583,19 @@ export default function Home() {
   }, [saleAlert]);
 
   const checkAuthUser = async () => {
+    const authRequestId = ++authCheckRequestRef.current;
     const logTag = `[CHECK_AUTH ${Date.now()}]`;
     console.log(`${logTag} ===== checkAuthUser invoked =====`);
     console.log(`${logTag} URL=${typeof window !== "undefined" ? window.location.href : "server"}`);
 
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (authRequestId !== authCheckRequestRef.current) return;
     if (sessionError) {
       console.error(`${logTag} sessionError:`, sessionError);
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
+      invalidateDashboardSession();
       return;
     }
 
@@ -1545,27 +1604,32 @@ export default function Home() {
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
+      invalidateDashboardSession();
       return;
     }
 
     console.log(`${logTag} session found. expires_at=${sessionData.session.expires_at}, access_token length=${sessionData.session.access_token?.length ?? 0}`);
 
     const { data, error } = await supabase.auth.getUser();
+    if (authRequestId !== authCheckRequestRef.current) return;
     if (error) {
       console.error(`${logTag} getUser error:`, error);
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
+      invalidateDashboardSession();
       return;
     }
 
     const user = data.user ?? null;
     console.log(`${logTag} user loaded: id=${user?.id ?? "null"}, email=${user?.email ?? "null"}, email_confirmed_at=${user?.email_confirmed_at ?? "null"}, confirmed_at=${user?.confirmed_at ?? "null"}`);
+    invalidateDashboardSession();
     setCurrentUser(user);
     if (user?.id) {
       try {
         console.log(`${logTag} calling provisionWorkspace...`);
         await provisionWorkspace();
+        if (authRequestId !== authCheckRequestRef.current) return;
         console.log(`${logTag} provisionWorkspace succeeded, calling loadProfile...`);
         await loadProfile(user.id);
         console.log(`${logTag} loadProfile succeeded`);
@@ -1577,11 +1641,13 @@ export default function Home() {
         setAuthError(provisionErr instanceof Error ? provisionErr.message : "Workspace provisioning failed.");
         setCurrentProfile(null);
         setCurrentOrganizationId(null);
+        invalidateDashboardSession();
       }
     } else {
       console.log(`${logTag} user?.id is falsy — calling setCurrentProfile(null)`);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
+      invalidateDashboardSession();
     }
   };
 
@@ -1693,6 +1759,7 @@ setCustomerOrganizationName("");
   };
 
   const handleLogin = async () => {
+    authCheckRequestRef.current += 1;
     setAuthError(null);
     setAuthMessage(null);
     setAuthLoading(true);
@@ -1714,6 +1781,7 @@ setCustomerOrganizationName("");
       }
 
       const user = loginData.user;
+      invalidateDashboardSession();
       setCurrentUser(user ?? null);
       if (user?.id) {
         await provisionWorkspace();
@@ -1733,9 +1801,11 @@ setCustomerOrganizationName("");
   };
 
   const handleLogout = async () => {
+    authCheckRequestRef.current += 1;
     setAuthError(null);
     setAuthMessage(null);
     setAuthLoading(true);
+    invalidateDashboardSession();
 
     try {
       const { error } = await supabase.auth.signOut();
@@ -4681,20 +4751,23 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await allPages((from, to) => supabase
-      .from("products")
-      .select("id, name, brand_id, category_id, unit_type, subunit_type, units_per_pack, sku, barcode, last_purchase_price, default_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, current_stock, overselling_policy, is_active, created_at, updated_at")
-      .eq("organization_id", orgId)
-      .order("name", { ascending: true }).order("id", { ascending: true }).range(from, to));
+    await readDashboardSource(
+      "products",
+      orgId,
+      async () => {
+        const { data, error } = await allPages((from, to) => supabase
+          .from("products")
+          .select("id, name, brand_id, category_id, unit_type, subunit_type, units_per_pack, sku, barcode, last_purchase_price, default_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, current_stock, overselling_policy, is_active, created_at, updated_at")
+          .eq("organization_id", orgId)
+          .order("name", { ascending: true }).order("id", { ascending: true }).range(from, to));
+        if (error) throw error;
+        return data ?? [];
+      },
+      setProducts,
+      (error) => console.error("Supabase fetch products error:", error),
+    );
 
     setProductsLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch products error:", error);
-      return;
-    }
-
-    setProducts(data ?? []);
   };
 
   const fetchCustomers = async (organizationId?: string | null) => {
@@ -4706,22 +4779,25 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await allPages((from, to) => supabase
-      .from("customers")
-      .select(
-        "id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, assigned_salesman_id, assigned_territory_id"
-      )
-      .eq("organization_id", orgId)
-      .order("customer_name", { ascending: true }).order("id", { ascending: true }).range(from, to));
+    await readDashboardSource(
+      "customers",
+      orgId,
+      async () => {
+        const { data, error } = await allPages((from, to) => supabase
+          .from("customers")
+          .select(
+            "id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, assigned_salesman_id, assigned_territory_id"
+          )
+          .eq("organization_id", orgId)
+          .order("customer_name", { ascending: true }).order("id", { ascending: true }).range(from, to));
+        if (error) throw error;
+        return data ?? [];
+      },
+      setCustomers,
+      (error) => console.error("Supabase fetch customers error:", error),
+    );
 
     setCustomersLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch customers error:", error);
-      return;
-    }
-
-    setCustomers(data ?? []);
   };
 
   const fetchSuppliers = async (organizationId?: string | null) => {
@@ -4733,20 +4809,23 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("suppliers")
-      .select("id, supplier_name, contact_person, phone, whatsapp, city, notes, is_active")
-      .eq("organization_id", orgId)
-      .order("supplier_name", { ascending: true });
+    await readDashboardSource(
+      "suppliers",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("suppliers")
+          .select("id, supplier_name, contact_person, phone, whatsapp, city, notes, is_active")
+          .eq("organization_id", orgId)
+          .order("supplier_name", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setSuppliers,
+      (error) => console.error("Supabase fetch suppliers error:", error),
+    );
 
     setSuppliersLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch suppliers error:", error);
-      return;
-    }
-
-    setSuppliers(data ?? []);
   };
 
   const fetchPurchaseTransactions = async (organizationId?: string | null) => {
@@ -4758,20 +4837,23 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("purchase_transactions")
-      .select("id, supplier_id, invoice_number, created_at, purchase_date, expense_review_status, expense_reviewed_at")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false });
+    await readDashboardSource(
+      "purchase-transactions",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("purchase_transactions")
+          .select("id, supplier_id, invoice_number, created_at, purchase_date, expense_review_status, expense_reviewed_at")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setPurchaseTransactions,
+      (error) => console.error("Supabase fetch purchase transactions error:", error),
+    );
 
     setPurchaseLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch purchase transactions error:", error);
-      return;
-    }
-
-    setPurchaseTransactions(data ?? []);
   };
 
   const fetchPurchaseOrders = async (organizationId?: string | null) => {
@@ -4931,17 +5013,24 @@ setCustomerOrganizationName("");
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
     if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
-    const { data, error } = await query;
+    await readDashboardSource(
+      "sales-orders",
+      orgId,
+      async () => {
+        const { data, error } = await query;
+        if (error) throw error;
+        return data ?? [];
+      },
+      (rows) => {
+        setSalesOrdersError(null);
+        setSalesOrders(rows);
+      },
+      (error) => {
+        console.error("Supabase fetch sales orders error:", error);
+        setSalesOrdersError(`Failed to load sales orders: ${error instanceof Error ? error.message : "Unknown read error"}`);
+      },
+    );
     setSalesOrdersLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch sales orders error:", error);
-      setSalesOrdersError(`Failed to load sales orders: ${error.message}`);
-      return;
-    }
-
-    setSalesOrdersError(null);
-    setSalesOrders(data ?? []);
 
   };
 
@@ -5999,18 +6088,21 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("purchase_items")
-      .select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, unit_mode, batch_number, expiry_date")
-      .eq("organization_id", orgId)
-      .order("id", { ascending: true });
-
-    if (error) {
-      console.error("Supabase fetch purchase items error:", error);
-      return;
-    }
-
-    setPurchaseItems(data ?? []);
+    await readDashboardSource(
+      "purchase-items",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("purchase_items")
+          .select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, unit_mode, batch_number, expiry_date")
+          .eq("organization_id", orgId)
+          .order("id", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setPurchaseItems,
+      (error) => console.error("Supabase fetch purchase items error:", error),
+    );
   };
 
   const fetchCustomerPayments = async (organizationId?: string | null) => {
@@ -6020,18 +6112,21 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("customer_payments")
-      .select("id, customer_id, amount, notes, created_at, payment_date, payment_method")
-      .eq("organization_id", orgId)
-      .order("id", { ascending: true });
-
-    if (error) {
-      console.error("Supabase fetch customer payments error:", error);
-      return;
-    }
-
-    setCustomerPayments(data ?? []);
+    await readDashboardSource(
+      "customer-payments",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("customer_payments")
+          .select("id, customer_id, amount, notes, created_at, payment_date, payment_method")
+          .eq("organization_id", orgId)
+          .order("id", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setCustomerPayments,
+      (error) => console.error("Supabase fetch customer payments error:", error),
+    );
   };
 
   const fetchCustomerPaymentAllocations = async (organizationId?: string | null) => {
@@ -6041,18 +6136,21 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("customer_payment_allocations")
-      .select("*")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      console.error("Supabase fetch customer payment allocations error:", JSON.stringify(error, null, 2));
-      return;
-    }
-
-    setCustomerPaymentAllocations(data ?? []);
+    await readDashboardSource(
+      "customer-payment-allocations",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("customer_payment_allocations")
+          .select("*")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setCustomerPaymentAllocations,
+      (error) => console.error("Supabase fetch customer payment allocations error:", error),
+    );
   };
 
   const fetchSupplierPayments = async (organizationId?: string | null) => {
@@ -6062,18 +6160,21 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("supplier_payments")
-      .select("id, supplier_id, amount, notes, payment_date, created_at")
-      .eq("organization_id", orgId)
-      .order("id", { ascending: true });
-
-    if (error) {
-      console.error("Supabase fetch supplier payments error:", error);
-      return;
-    }
-
-    setSupplierPayments(data ?? []);
+    await readDashboardSource(
+      "supplier-payments",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("supplier_payments")
+          .select("id, supplier_id, amount, notes, payment_date, created_at")
+          .eq("organization_id", orgId)
+          .order("id", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setSupplierPayments,
+      (error) => console.error("Supabase fetch supplier payments error:", error),
+    );
   };
 
   const fetchSupplierPaymentAllocations = async (organizationId?: string | null) => {
@@ -6083,18 +6184,21 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("supplier_payment_allocations")
-      .select("*")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      console.error("Supabase fetch supplier payment allocations error:", JSON.stringify(error, null, 2));
-      return;
-    }
-
-    setSupplierPaymentAllocations(data ?? []);
+    await readDashboardSource(
+      "supplier-payment-allocations",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("supplier_payment_allocations")
+          .select("*")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setSupplierPaymentAllocations,
+      (error) => console.error("Supabase fetch supplier payment allocations error:", error),
+    );
   };
 
   const fetchSalesItems = async (organizationId?: string | null, actor = currentProfile) => {
@@ -6110,13 +6214,17 @@ setCustomerOrganizationName("");
       .eq("organization_id", orgId)
       .order("id", { ascending: true });
     if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("sales_transactions.created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
-    const { data, error } = await query;
-    if (error) {
-      console.error("Supabase fetch sales items error:", error);
-      return;
-    }
-
-    setSalesItems(data ?? []);
+    await readDashboardSource(
+      "sales-items",
+      orgId,
+      async () => {
+        const { data, error } = await query;
+        if (error) throw error;
+        return data ?? [];
+      },
+      setSalesItems,
+      (error) => console.error("Supabase fetch sales items error:", error),
+    );
 
   };
 
@@ -6364,21 +6472,24 @@ setCustomerOrganizationName("");
       return;
     }
 
-    let query = supabase
-      .from("sales_transactions")
-      .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false });
-    if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
-    const { data, error } = await query;
+    await readDashboardSource(
+      "sales-transactions",
+      orgId,
+      async () => {
+        let query = supabase
+          .from("sales_transactions")
+          .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: false });
+        if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
+        const { data, error } = await query;
+        if (error) throw error;
+        return data ?? [];
+      },
+      setSalesTransactions,
+      (error) => console.error("Supabase fetch sales transactions error:", error),
+    );
     setSalesLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch sales transactions error:", error);
-      return;
-    }
-
-    setSalesTransactions(data ?? []);
 
   };
 
@@ -15432,6 +15543,34 @@ setCustomerOrganizationName("");
   const mySalesToday = mySales.filter((s) => (s.created_at ?? "").slice(0, 10) === todayStart);
   const todaySalesTotal = mySalesToday.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0);
 
+  const dashboardMetricReadStates = deriveDashboardMetricStates(dashboardSourceStates);
+  const dashboardMetricLastSuccessfulAt = deriveDashboardMetricLastSuccessAt(dashboardSourceStates);
+  const healthMetricKeys = ["today-sales", "today-profit", "inventory-value", "receivables", "payables", "low-stock"] as const;
+  const healthLastSuccessTimes = healthMetricKeys.map((metric) => dashboardMetricLastSuccessfulAt[metric]);
+  const healthLastSuccessfulAt = healthLastSuccessTimes.every((timestamp): timestamp is string => Boolean(timestamp))
+    ? healthLastSuccessTimes.sort()[0]
+    : undefined;
+  const retryFailedDashboardReads = () => {
+    for (const source of dashboardReadSources) {
+      if (dashboardSourceStates[source].status !== "failed") continue;
+      switch (source) {
+        case "sales-transactions": void fetchSalesTransactions(currentOrganizationId, currentProfile); break;
+        case "sales-items": void fetchSalesItems(currentOrganizationId, currentProfile); break;
+        case "products": void fetchProducts(currentOrganizationId); break;
+        case "customers": void fetchCustomers(currentOrganizationId); break;
+        case "customer-payments": void fetchCustomerPayments(currentOrganizationId); break;
+        case "customer-payment-allocations": void fetchCustomerPaymentAllocations(currentOrganizationId); break;
+        case "suppliers": void fetchSuppliers(currentOrganizationId); break;
+        case "purchase-transactions": void fetchPurchaseTransactions(currentOrganizationId); break;
+        case "purchase-items": void fetchPurchaseItems(currentOrganizationId); break;
+        case "supplier-payments": void fetchSupplierPayments(currentOrganizationId); break;
+        case "supplier-payment-allocations": void fetchSupplierPaymentAllocations(currentOrganizationId); break;
+        case "tasks": void fetchTasks(currentOrganizationId); break;
+        case "sales-orders": void fetchSalesOrders(currentOrganizationId, currentProfile); break;
+      }
+    }
+  };
+
   const staffDashboardData = {
     isStaff,
     mySalesCount: mySales.length,
@@ -15964,6 +16103,10 @@ setCustomerOrganizationName("");
 
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
+            metricReadStates={dashboardMetricReadStates}
+            metricLastSuccessfulAt={dashboardMetricLastSuccessfulAt}
+            onRetryFailedReads={retryFailedDashboardReads}
+            healthLastSuccessfulAt={healthLastSuccessfulAt}
             hiddenWidgets={homeWidgets.hidden}
             customizingWidgets={homeWidgets.customizing}
             onRemoveWidget={homeWidgets.removeWidget}

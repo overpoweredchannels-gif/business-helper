@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown } from "lucide-react";
+import type { DashboardReadStatus } from "@/lib/dashboard/data-read-state";
 
 interface SparklineProps {
   data: number[];
@@ -38,6 +39,9 @@ function Sparkline({ data, className }: SparklineProps) {
 interface KPICardProps {
   title: string;
   value: string;
+  readStatus?: DashboardReadStatus;
+  lastSuccessfulAt?: string;
+  onRetry?: () => void;
   trend?: { value: number; label: string };
   icon?: React.ReactNode;
   sparklineData?: number[];
@@ -45,15 +49,17 @@ interface KPICardProps {
   onClick?: () => void;
 }
 
-export function KPICard({ title, value, trend, icon, sparklineData, onClick }: KPICardProps) {
+export function KPICard({ title, value, readStatus = "successful-populated", lastSuccessfulAt, onRetry, trend, icon, sparklineData, onClick }: KPICardProps) {
   const isUp = (trend?.value ?? 0) >= 0;
-  const Component = onClick ? "button" : "div";
+  const readComplete = readStatus === "successful-empty" || readStatus === "successful-populated";
+  const shownValue = readComplete ? value : readStatus === "loading" ? "Loading…" : readStatus === "not-loaded" ? "Not loaded" : "Unavailable";
+  const Component = onClick && readComplete ? "button" : "div";
   return (
     <Component
-      onClick={onClick}
+      onClick={readComplete ? onClick : undefined}
       className={cn(
         "group rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]",
-        onClick && "w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        onClick && readComplete && "w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
       <div className="flex items-start justify-between mb-3">
@@ -62,15 +68,21 @@ export function KPICard({ title, value, trend, icon, sparklineData, onClick }: K
       </div>
       <div className="flex items-end justify-between">
         <div>
-          <div className="text-2xl font-semibold tabular-nums text-foreground font-heading">{value}</div>
-          {trend && (
+          <div role="status" aria-live="polite" className="text-2xl font-semibold tabular-nums text-foreground font-heading">{shownValue}</div>
+          {readStatus === "failed" && lastSuccessfulAt && (
+            <p className="mt-1 text-xs text-muted-foreground">Last successful update: {new Date(lastSuccessfulAt).toLocaleString()}</p>
+          )}
+          {readStatus === "failed" && onRetry && (
+            <button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Retry dashboard reads</button>
+          )}
+          {readComplete && trend && (
             <div className={cn("flex items-center gap-1 mt-1 text-xs font-medium", isUp ? "text-success" : "text-destructive")}>
               {isUp ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
               <span>{trend.label}</span>
             </div>
           )}
         </div>
-        {sparklineData && <Sparkline data={sparklineData} />}
+        {readComplete && sparklineData && <Sparkline data={sparklineData} />}
       </div>
     </Component>
   );
