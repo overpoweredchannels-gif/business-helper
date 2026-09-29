@@ -49,6 +49,7 @@ const waitForText = async (page, selector, text) => page.waitForFunction(
       await waitForText(page, '[data-dashboard-widget="kpi-payables"]', 'PKR 200.00');
       assert.ok(!(await salesCard.textContent()).includes('PKR 1,250.00'), 'failed sale dependency masks the stale amount');
       const healthCard = page.locator('[data-dashboard-widget="business-health"]');
+      assert.ok((await overview.textContent()).includes('1 products in catalog'), 'successful populated module counts show the returned count');
       assert.ok((await healthCard.textContent()).includes('Business health is unavailable.'), 'derived health scores are hidden when a source fails');
       assert.ok((await page.locator('[data-dashboard-widget="needs-attention"]').textContent()).includes('Pending Approvals'), 'successful alert source remains actionable');
       await page.screenshot({ path: path.join(output, `partial-failure-${width}.png`), fullPage: true });
@@ -84,17 +85,23 @@ const waitForText = async (page, selector, text) => page.waitForFunction(
       await waitForText(page, '[data-dashboard-widget="kpi-inventory-value"]', 'Unavailable');
       assert.ok((await inventoryCard.textContent()).includes('Last successful update:'), 'a retained last-good source read is labelled with its timestamp');
       assert.ok(!(await inventoryCard.textContent()).includes('PKR 4,000.00'), 'failed refresh does not show stale inventory as current');
+      assert.ok((await overview.textContent()).includes('Unavailable'), 'a failed product refresh makes its module summary unavailable');
+      assert.ok(!(await overview.textContent()).includes('1 products in catalog'), 'a failed product refresh hides the retained count');
       await inventoryCard.getByRole('button', { name: 'Retry dashboard reads' }).click();
       await waitForText(page, '[data-dashboard-widget="kpi-inventory-value"]', 'PKR 4,000.00');
       assert.equal((await page.locator('[data-testid="retry-count"]').textContent()).trim(), 'Retry count: 4', 'all four failed reads recovered through visible retry actions');
+      assert.ok((await overview.textContent()).includes('1 products in catalog'), 'successful product retry restores the module count');
+      await page.screenshot({ path: path.join(output, `recovered-${width}.png`), fullPage: true });
 
       await page.getByRole('button', { name: 'Switch organization during read' }).click();
       await waitForText(page, '[data-testid="committed-scope"]', 'account-b/org-b');
       assert.equal(await page.locator('[data-testid="committed-scope"]').textContent(), 'Committed scope: account-b/org-b', 'late previous-organization response cannot replace the current result');
       assert.equal((await page.locator('[data-testid="committed-expenses"]').textContent()).trim(), 'Expenses: account-b-org-b', 'expense rows from the prior scope are cleared and late results cannot overwrite the new scope');
+      assert.ok((await salesCard.textContent()).includes('Not loaded'), 'switching accounts clears the prior account dashboard figures');
+      assert.ok((await healthCard.textContent()).includes('Business health has not loaded.'), 'health remains unavailable until the new account sources load');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px has no horizontal overflow`);
       assert.deepEqual(errors, []);
-      await page.screenshot({ path: path.join(output, `recovered-${width}.png`), fullPage: true });
+      await page.screenshot({ path: path.join(output, `scope-switched-${width}.png`), fullPage: true });
       await page.close();
 
       const emptyPage = await browser.newPage({ viewport: { width, height: 900 } });

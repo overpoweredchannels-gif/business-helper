@@ -97,11 +97,11 @@ function Fixture() {
         { label: "Stock Health", value: "0 out of stock", status: "good" },
       ]}
       smartModules={[
-        { id: "products", title: "Products", summary: "0 products in catalog", readStatus: sourceStates.products.status, lastSuccessfulAt: sourceStates.products.lastSuccessAt },
-        { id: "customers", title: "Customers", summary: "0 registered customers", readStatus: sourceStates.customers.status, lastSuccessfulAt: sourceStates.customers.lastSuccessAt },
-        { id: "suppliers", title: "Suppliers", summary: "0 suppliers", readStatus: sourceStates.suppliers.status, lastSuccessfulAt: sourceStates.suppliers.lastSuccessAt },
-        { id: "sales", title: "Sales", summary: "0 recent sales transactions", readStatus: sourceStates["sales-transactions"].status, lastSuccessfulAt: sourceStates["sales-transactions"].lastSuccessAt },
-        { id: "purchases", title: "Purchases", summary: "0 recent purchases", readStatus: sourceStates["purchase-transactions"].status, lastSuccessfulAt: sourceStates["purchase-transactions"].lastSuccessAt },
+        { id: "products", title: "Products", summary: `${counts} products in catalog`, readStatus: sourceStates.products.status, lastSuccessfulAt: sourceStates.products.lastSuccessAt },
+        { id: "customers", title: "Customers", summary: `${counts} registered customers`, readStatus: sourceStates.customers.status, lastSuccessfulAt: sourceStates.customers.lastSuccessAt },
+        { id: "suppliers", title: "Suppliers", summary: `${counts} suppliers`, readStatus: sourceStates.suppliers.status, lastSuccessfulAt: sourceStates.suppliers.lastSuccessAt },
+        { id: "sales", title: "Sales", summary: `${counts} recent sales transactions`, readStatus: sourceStates["sales-transactions"].status, lastSuccessfulAt: sourceStates["sales-transactions"].lastSuccessAt },
+        { id: "purchases", title: "Purchases", summary: `${counts} recent purchases`, readStatus: sourceStates["purchase-transactions"].status, lastSuccessfulAt: sourceStates["purchase-transactions"].lastSuccessAt },
       ]}
       todaySales={{ value: emptyScenario ? "PKR 0.00" : "PKR 1,250.00" }}
       todayProfit={{ value: emptyScenario ? "PKR 0.00" : "PKR 375.00" }}
