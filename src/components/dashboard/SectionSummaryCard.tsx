@@ -2,11 +2,14 @@
 
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { dashboardReadStatusLabel, type DashboardReadStatus } from "@/lib/dashboard/data-read-state";
 
 export interface SectionSummaryMetric {
   label: string;
   value: string;
   tone?: "default" | "warning" | "danger" | "success";
+  readStatus?: DashboardReadStatus;
+  lastSuccessfulAt?: string;
 }
 
 export interface SectionSummaryRow {
@@ -21,6 +24,8 @@ export interface SectionSummary {
   rows?: SectionSummaryRow[];
   rowsLabel?: string;
   emptyText?: string;
+  rowsReadStatus?: DashboardReadStatus;
+  rowsLastSuccessfulAt?: string;
   onOpen: () => void;
 }
 
@@ -57,14 +62,20 @@ export function SectionSummaryCard({ summary }: { summary: SectionSummary }) {
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {summary.metrics.map((metric) => (
             <div key={metric.label} className="rounded-lg bg-muted p-2.5">
-              <p className={cn("text-lg font-semibold leading-tight", toneClass[metric.tone ?? "default"])}>{metric.value}</p>
+              <p role={metric.readStatus && !dashboardReadStatusLabel(metric.readStatus) ? undefined : "status"} aria-live="polite" className={cn("text-lg font-semibold leading-tight", metric.readStatus && dashboardReadStatusLabel(metric.readStatus) ? "text-muted-foreground" : toneClass[metric.tone ?? "default"])}>{metric.readStatus ? dashboardReadStatusLabel(metric.readStatus) ?? metric.value : metric.value}</p>
+              {metric.readStatus === "failed" && metric.lastSuccessfulAt && <p className="mt-1 text-[10px] text-muted-foreground">Last successful update: {new Date(metric.lastSuccessfulAt).toLocaleString()}</p>}
               <p className="text-[10px] text-light-text">{metric.label}</p>
             </div>
           ))}
         </div>
       )}
 
-      {summary.rows && summary.rows.length > 0 ? (
+      {summary.rowsReadStatus && dashboardReadStatusLabel(summary.rowsReadStatus) ? (
+        <div role="status" aria-live="polite" className="mt-3 text-xs text-muted-foreground">
+          <p>{dashboardReadStatusLabel(summary.rowsReadStatus)}</p>
+          {summary.rowsReadStatus === "failed" && summary.rowsLastSuccessfulAt && <p className="mt-1">Last successful update: {new Date(summary.rowsLastSuccessfulAt).toLocaleString()}</p>}
+        </div>
+      ) : summary.rows && summary.rows.length > 0 ? (
         <div className="mt-3">
           {summary.rowsLabel && <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{summary.rowsLabel}</p>}
           <div className="mt-1 divide-y divide-border">

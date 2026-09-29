@@ -32,7 +32,8 @@ import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
 import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerRetired, rememberSetupBannerRetired } from "@/lib/setup/setup-progress";
 import { useDashboardWidgets } from "@/lib/preferences/use-dashboard-widgets";
 import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardSectionWidgetId } from "@/lib/dashboard/section-cards";
-import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
+import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
+import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
 import type { ChatResponse } from "@/lib/conversation";
@@ -683,8 +684,7 @@ export default function Home() {
   ) => {
     const accountId = dashboardAccountIdRef.current;
     if (!accountId) return;
-    const result = await dashboardReadTrackerRef.current!.read(source, accountId, organizationId, load, commit);
-    if (result.status === "failed") reportError(result.error);
+    await runDashboardSourceRead(dashboardReadTrackerRef.current!, source, accountId, organizationId, load, commit, reportError);
   };
 
   const clearDashboardSourceData = () => {
@@ -697,6 +697,7 @@ export default function Home() {
     setCustomerPaymentAllocations([]);
     setSupplierPayments([]);
     setSupplierPaymentAllocations([]);
+    setExpenses([]);
     setSalesTransactions([]);
     setSalesItems([]);
     setSalesOrders([]);
@@ -822,19 +823,16 @@ export default function Home() {
       setExpenses([]);
       return;
     }
-
-    const { data, error } = await supabase
-      .from("expenses")
-      .select("*")
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching expenses:", error);
-      return;
-    }
-
-    setExpenses(data ?? []);
+    const accountId = dashboardAccountIdRef.current;
+    if (!accountId) return;
+    await loadDashboardExpenses(
+      supabase,
+      dashboardReadTrackerRef.current!,
+      accountId,
+      organizationId,
+      setExpenses,
+      (error) => console.error("Error fetching expenses:", error),
+    );
   };
 
   const fetchTasks = async (organizationId?: string | null) => {
@@ -15545,11 +15543,10 @@ setCustomerOrganizationName("");
 
   const dashboardMetricReadStates = deriveDashboardMetricStates(dashboardSourceStates);
   const dashboardMetricLastSuccessfulAt = deriveDashboardMetricLastSuccessAt(dashboardSourceStates);
-  const healthMetricKeys = ["today-sales", "today-profit", "inventory-value", "receivables", "payables", "low-stock"] as const;
-  const healthLastSuccessTimes = healthMetricKeys.map((metric) => dashboardMetricLastSuccessfulAt[metric]);
-  const healthLastSuccessfulAt = healthLastSuccessTimes.every((timestamp): timestamp is string => Boolean(timestamp))
-    ? healthLastSuccessTimes.sort()[0]
-    : undefined;
+  const dashboardReadStatusFor = (source: DashboardReadSource) => dashboardSourceStates[source].status;
+  const dashboardLastSuccessFor = (source: DashboardReadSource) => dashboardSourceStates[source].lastSuccessAt;
+  const healthReadStatus = dashboardMetricReadStates["business-health"];
+  const healthLastSuccessfulAt = dashboardMetricLastSuccessfulAt["business-health"];
   const retryFailedDashboardReads = () => {
     for (const source of dashboardReadSources) {
       if (dashboardSourceStates[source].status !== "failed") continue;
@@ -15560,6 +15557,7 @@ setCustomerOrganizationName("");
         case "customers": void fetchCustomers(currentOrganizationId); break;
         case "customer-payments": void fetchCustomerPayments(currentOrganizationId); break;
         case "customer-payment-allocations": void fetchCustomerPaymentAllocations(currentOrganizationId); break;
+        case "expenses": void fetchExpenses(currentOrganizationId); break;
         case "suppliers": void fetchSuppliers(currentOrganizationId); break;
         case "purchase-transactions": void fetchPurchaseTransactions(currentOrganizationId); break;
         case "purchase-items": void fetchPurchaseItems(currentOrganizationId); break;
@@ -15643,12 +15641,14 @@ setCustomerOrganizationName("");
           description: "Most recent sales invoices.",
           onOpen: () => handleSectionChange("sales"),
           metrics: [
-            { label: "Invoices", value: String(salesTransactions.length) },
-            { label: "Total value", value: money(salesTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)) },
+            { label: "Invoices", value: String(salesTransactions.length), readStatus: dashboardReadStatusFor("sales-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions") },
+            { label: "Total value", value: money(salesTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)), readStatus: dashboardReadStatusFor("sales-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions") },
           ],
           rowsLabel: "Latest invoices",
           rows: recentSalesInvoices.slice(0, 4).map((tx) => ({ label: `#${tx.invoice_number}`, value: money(tx.total_amount) })),
           emptyText: "No sales recorded yet.",
+          rowsReadStatus: dashboardReadStatusFor("sales-transactions"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("sales-transactions"),
         };
       case "purchases":
         return {
@@ -15656,12 +15656,14 @@ setCustomerOrganizationName("");
           description: "Most recent supplier bills.",
           onOpen: () => handleSectionChange("purchases"),
           metrics: [
-            { label: "Bills", value: String(purchaseTransactions.length) },
-            { label: "Total value", value: money(purchaseTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)) },
+            { label: "Bills", value: String(purchaseTransactions.length), readStatus: dashboardReadStatusFor("purchase-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions") },
+            { label: "Total value", value: money(purchaseTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)), readStatus: dashboardReadStatusFor("purchase-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions") },
           ],
           rowsLabel: "Latest bills",
           rows: recentPurchaseInvoices.slice(0, 4).map((tx) => ({ label: `#${tx.invoice_number}`, value: money(tx.total_amount) })),
           emptyText: "No purchases recorded yet.",
+          rowsReadStatus: dashboardReadStatusFor("purchase-transactions"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions"),
         };
       case "customer-payments":
         return {
@@ -15695,22 +15697,26 @@ setCustomerOrganizationName("");
           description: "What the business has spent.",
           onOpen: () => handleSectionChange("expenses"),
           metrics: [
-            { label: "Entries", value: String(expenses.length) },
-            { label: "Total spent", value: money(expenses.reduce((total, expense) => total + safeNumber(expense?.amount), 0)) },
+            { label: "Entries", value: String(expenses.length), readStatus: dashboardReadStatusFor("expenses"), lastSuccessfulAt: dashboardLastSuccessFor("expenses") },
+            { label: "Total spent", value: money(expenses.reduce((total, expense) => total + safeNumber(expense?.amount), 0)), readStatus: dashboardReadStatusFor("expenses"), lastSuccessfulAt: dashboardLastSuccessFor("expenses") },
           ],
           rowsLabel: "Recent expenses",
           rows: [...expenses].reverse().slice(0, 4).map((expense) => ({ label: String(expense?.expense_type ?? "Expense"), value: money(expense?.amount) })),
           emptyText: "No expenses recorded yet.",
+          rowsReadStatus: dashboardReadStatusFor("expenses"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("expenses"),
         };
       case "customers":
         return {
           title: "Customers",
           description: "Who you sell to.",
           onOpen: () => handleSectionChange("customers"),
-          metrics: [{ label: "Customers", value: String(totalCustomers) }],
+          metrics: [{ label: "Customers", value: String(totalCustomers), readStatus: dashboardReadStatusFor("customers"), lastSuccessfulAt: dashboardLastSuccessFor("customers") }],
           rowsLabel: "Newest customers",
           rows: [...customers].reverse().slice(0, 4).map((customer) => ({ label: customer.customer_name, value: customer.city ?? customer.phone ?? "" })),
           emptyText: "No customers added yet.",
+          rowsReadStatus: dashboardReadStatusFor("customers"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("customers"),
         };
       case "suppliers":
         return {
@@ -15718,12 +15724,14 @@ setCustomerOrganizationName("");
           description: "Who you buy from.",
           onOpen: () => handleSectionChange("suppliers"),
           metrics: [
-            { label: "Suppliers", value: String(totalSuppliers) },
-            { label: "You owe", value: money(totalPayables), tone: totalPayables > 0 ? "warning" : "success" },
+            { label: "Suppliers", value: String(totalSuppliers), readStatus: dashboardReadStatusFor("suppliers"), lastSuccessfulAt: dashboardLastSuccessFor("suppliers") },
+            { label: "You owe", value: money(totalPayables), tone: totalPayables > 0 ? "warning" : "success", readStatus: dashboardMetricReadStates.payables, lastSuccessfulAt: dashboardMetricLastSuccessfulAt.payables },
           ],
           rowsLabel: "Newest suppliers",
           rows: [...suppliers].reverse().slice(0, 4).map((supplier) => ({ label: supplier.supplier_name, value: supplier.city ?? supplier.phone ?? "" })),
           emptyText: "No suppliers added yet.",
+          rowsReadStatus: dashboardReadStatusFor("suppliers"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("suppliers"),
         };
       case "products":
         return {
@@ -15731,12 +15739,14 @@ setCustomerOrganizationName("");
           description: "Your catalogue and stock attention.",
           onOpen: () => handleSectionChange("products"),
           metrics: [
-            { label: "Products", value: String(totalProducts) },
-            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success" },
+            { label: "Products", value: String(totalProducts), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
           ],
           rowsLabel: "Needs reorder",
           rows: lowStockProducts.slice(0, 4).map((item) => ({ label: item.productName, value: `${item.currentStock} in stock` })),
           emptyText: "No stock attention needed.",
+          rowsReadStatus: dashboardReadStatusFor("products"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("products"),
         };
       case "brands": {
         const counts = brands
@@ -15772,12 +15782,14 @@ setCustomerOrganizationName("");
           description: "Stock value and what needs attention.",
           onOpen: () => handleSectionChange("inventory"),
           metrics: [
-            { label: "Stock value", value: money(inventoryValue) },
-            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success" },
-            { label: "Out of stock", value: String(reorderRecommendationSummary.outOfStockCount), tone: reorderRecommendationSummary.outOfStockCount > 0 ? "danger" : "success" },
+            { label: "Stock value", value: money(inventoryValue), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: "Out of stock", value: String(reorderRecommendationSummary.outOfStockCount), tone: reorderRecommendationSummary.outOfStockCount > 0 ? "danger" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
           ],
           rows: lowStockProducts.slice(0, 4).map((item) => ({ label: item.productName, value: `${item.currentStock} in stock` })),
           emptyText: "Stock levels look healthy.",
+          rowsReadStatus: dashboardReadStatusFor("products"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("products"),
         };
       case "task-manager": {
         const open = tasks.filter((task) => task.status === "pending" || task.status === "in_progress");
@@ -16106,6 +16118,7 @@ setCustomerOrganizationName("");
             metricReadStates={dashboardMetricReadStates}
             metricLastSuccessfulAt={dashboardMetricLastSuccessfulAt}
             onRetryFailedReads={retryFailedDashboardReads}
+            healthReadStatus={healthReadStatus}
             healthLastSuccessfulAt={healthLastSuccessfulAt}
             hiddenWidgets={homeWidgets.hidden}
             customizingWidgets={homeWidgets.customizing}
@@ -16148,13 +16161,15 @@ setCustomerOrganizationName("");
               })),
             ]}
             smartModules={[
-              { id: "products", title: "Products", summary: `${totalProducts} products in catalog`, onOpen: () => handleSectionChange("products") },
-              { id: "customers", title: "Customers", summary: `${totalCustomers} registered customers`, onOpen: () => handleSectionChange("customers") },
-              { id: "suppliers", title: "Suppliers", summary: `${totalSuppliers} suppliers`, onOpen: () => handleSectionChange("suppliers") },
+              { id: "products", title: "Products", summary: `${totalProducts} products in catalog`, readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products"), onOpen: () => handleSectionChange("products") },
+              { id: "customers", title: "Customers", summary: `${totalCustomers} registered customers`, readStatus: dashboardReadStatusFor("customers"), lastSuccessfulAt: dashboardLastSuccessFor("customers"), onOpen: () => handleSectionChange("customers") },
+              { id: "suppliers", title: "Suppliers", summary: `${totalSuppliers} suppliers`, readStatus: dashboardReadStatusFor("suppliers"), lastSuccessfulAt: dashboardLastSuccessFor("suppliers"), onOpen: () => handleSectionChange("suppliers") },
               {
                 id: "sales",
                 title: "Sales",
                 summary: `${recentSalesInvoices.length} recent sales transactions`,
+                readStatus: dashboardReadStatusFor("sales-transactions"),
+                lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions"),
                 onOpen: () => handleSectionChange("sales"),
                 children: recentSalesInvoices.length > 0 ? (
                   <div className="space-y-1 mt-1">
@@ -16171,6 +16186,8 @@ setCustomerOrganizationName("");
                 id: "purchases",
                 title: "Purchases",
                 summary: `${recentPurchaseInvoices.length} recent purchases`,
+                readStatus: dashboardReadStatusFor("purchase-transactions"),
+                lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions"),
                 onOpen: () => handleSectionChange("purchases"),
                 children: recentPurchaseInvoices.length > 0 ? (
                   <div className="space-y-1 mt-1">
@@ -16187,6 +16204,8 @@ setCustomerOrganizationName("");
                 id: "inventory",
                 title: "Inventory",
                 summary: `${reorderRecommendationSummary.urgentReorderCount} items need reorder`,
+                readStatus: dashboardReadStatusFor("products"),
+                lastSuccessfulAt: dashboardLastSuccessFor("products"),
                 badge: reorderRecommendationSummary.urgentReorderCount > 0 ? "Action needed" : undefined,
                 badgeColor: "warning" as const,
                 onOpen: () => handleSectionChange("inventory"),

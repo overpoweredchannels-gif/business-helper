@@ -26,6 +26,8 @@ interface SmartModuleConfig {
   badgeColor?: "default" | "warning" | "success" | "danger";
   onOpen?: () => void;
   children?: React.ReactNode;
+  readStatus?: DashboardReadStatus;
+  lastSuccessfulAt?: string;
 }
 
 interface DashboardViewProps {
@@ -140,13 +142,7 @@ export function DashboardView({
 
   const getMetricStatus = (metric: DashboardMetricKey): DashboardReadStatus => metricReadStates?.[metric] ?? "successful-populated";
   const isReadSuccessful = (status: DashboardReadStatus) => status === "successful-empty" || status === "successful-populated";
-  const healthStatuses = ["today-sales", "today-profit", "inventory-value", "receivables", "payables", "low-stock"].map((metric) => getMetricStatus(metric as DashboardMetricKey));
-  const effectiveHealthReadStatus = healthReadStatus ?? (
-    healthStatuses.includes("failed") ? "failed"
-      : healthStatuses.includes("not-loaded") ? "not-loaded"
-        : healthStatuses.includes("loading") ? "loading"
-          : healthStatuses.every((status) => status === "successful-empty") ? "successful-empty" : "successful-populated"
-  );
+  const effectiveHealthReadStatus = healthReadStatus ?? getMetricStatus("business-health");
   const taskCandidates: Array<{ label: string; value: number; icon: typeof AlertTriangle; color: string; metric: DashboardMetricKey; status: DashboardReadStatus }> = [
     { label: "Pending Approvals", value: pendingApprovals, icon: AlertTriangle, color: "text-warning", metric: "pending-approvals", status: getMetricStatus("pending-approvals") },
     { label: "Collection Tasks", value: invoicesDue, icon: Receipt, color: "text-destructive", metric: "collection-tasks", status: getMetricStatus("collection-tasks") },
@@ -315,7 +311,7 @@ export function DashboardView({
       )}
 
       {!widgetHidden("business-health") && <DashboardWidget id="business-health" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-        <BusinessHealthCard score={healthScore} metrics={healthMetrics} readStatus={effectiveHealthReadStatus} lastSuccessfulAt={healthLastSuccessfulAt} onRetry={onRetryFailedReads} />
+        <BusinessHealthCard score={healthScore} metrics={healthMetrics} readStatus={effectiveHealthReadStatus} lastSuccessfulAt={healthLastSuccessfulAt ?? metricLastSuccessfulAt?.["business-health"]} onRetry={onRetryFailedReads} />
       </DashboardWidget>}
 
       {/* Smart Modules */}
@@ -325,7 +321,7 @@ export function DashboardView({
             <h2 className="text-sm font-semibold text-foreground">Business Overview</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {smartModules.map((m) => (
-                <SmartModule key={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen}>
+                <SmartModule key={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen} readStatus={m.readStatus} lastSuccessfulAt={m.lastSuccessfulAt}>
                   {m.children}
                 </SmartModule>
               ))}

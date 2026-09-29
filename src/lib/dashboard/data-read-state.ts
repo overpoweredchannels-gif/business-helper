@@ -5,6 +5,7 @@ export const dashboardReadSources = [
   "customers",
   "customer-payments",
   "customer-payment-allocations",
+  "expenses",
   "suppliers",
   "purchase-transactions",
   "purchase-items",
@@ -38,10 +39,35 @@ export const dashboardMetricDependencies = {
   "urgent-reorders": ["products"],
   "customer-follow-ups": ["tasks"],
   "expiring-stock-checks": ["tasks"],
+  "business-health": [
+    // Score and profit margin: sales revenue/costs, collections, and expenses.
+    "sales-transactions",
+    "sales-items",
+    "products",
+    "customer-payments",
+    "expenses",
+    // Cash Flow: complete receivables and payables allocations.
+    "customers",
+    "customer-payment-allocations",
+    "suppliers",
+    "purchase-transactions",
+    "purchase-items",
+    "supplier-payments",
+    "supplier-payment-allocations",
+  ],
 } as const satisfies Record<string, readonly DashboardReadSource[]>;
 
 export type DashboardMetricKey = keyof typeof dashboardMetricDependencies;
 export type DashboardMetricStates = Record<DashboardMetricKey, DashboardReadStatus>;
+
+export function dashboardReadStatusLabel(status: DashboardReadStatus) {
+  switch (status) {
+    case "not-loaded": return "Not loaded";
+    case "loading": return "Loading…";
+    case "failed": return "Unavailable";
+    default: return null;
+  }
+}
 
 export function emptyDashboardSourceStates(): DashboardSourceStates {
   return Object.fromEntries(dashboardReadSources.map((source) => [source, { status: "not-loaded" }])) as DashboardSourceStates;
@@ -179,4 +205,18 @@ export class DashboardReadTracker {
       .then((data): DashboardReadResult<T> => this.succeed(request, data, commit) ? { status: "success", data } : { status: "ignored" })
       .catch((error: unknown): DashboardReadResult<T> => this.fail(request) ? { status: "failed", error } : { status: "ignored" });
   }
+}
+
+export async function runDashboardSourceRead<T>(
+  tracker: DashboardReadTracker,
+  source: DashboardReadSource,
+  accountId: string,
+  organizationId: string,
+  load: () => Promise<T[]>,
+  commit: (rows: T[]) => void,
+  reportError: (error: unknown) => void,
+) {
+  const result = await tracker.read(source, accountId, organizationId, load, commit);
+  if (result.status === "failed") reportError(result.error);
+  return result;
 }

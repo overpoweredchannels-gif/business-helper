@@ -37,6 +37,11 @@ const waitForText = async (page, selector, text) => page.waitForFunction(
       const salesCard = page.locator('[data-dashboard-widget="kpi-today-sales"]');
       assert.ok((await salesCard.textContent()).includes('Not loaded'), `${width}px begins in not-loaded state`);
       assert.ok(!(await salesCard.textContent()).includes('PKR 0'), 'unread dashboard data is not presented as zero');
+      const overview = page.locator('[data-dashboard-widget="smart-modules"]');
+      assert.ok((await overview.textContent()).includes('Not loaded'), 'unread module sources have an explicit state');
+      for (const zeroSummary of ['0 products in catalog', '0 registered customers', '0 suppliers', '0 recent sales transactions', '0 recent purchases']) {
+        assert.ok(!(await overview.textContent()).includes(zeroSummary), `unread module summary does not display ${zeroSummary}`);
+      }
 
       await page.getByRole('button', { name: 'Load with one failure' }).click();
       await page.getByText('Loading…').first().waitFor();
@@ -53,6 +58,27 @@ const waitForText = async (page, selector, text) => page.waitForFunction(
       await page.keyboard.press('Enter');
       await waitForText(page, '[data-dashboard-widget="kpi-today-sales"]', 'PKR 1,250.00');
 
+      await page.getByRole('button', { name: 'Load with expenses pending' }).click();
+      await waitForText(page, '[data-dashboard-widget="business-health"]', 'Loading business health');
+      assert.ok(!(await healthCard.textContent()).includes('Profit Margin'), 'health submetrics stay hidden while expenses are loading');
+      assert.ok(!(await healthCard.textContent()).includes('Score'), 'health score stays hidden while expenses are loading');
+
+      await page.getByRole('button', { name: 'Load with expense failure' }).click();
+      await waitForText(page, '[data-dashboard-widget="business-health"]', 'Business health is unavailable.');
+      assert.ok(!(await healthCard.textContent()).includes('Profit Margin'), 'expense failure hides dependent submetrics');
+      assert.ok(!(await healthCard.textContent()).includes('Score'), 'initial expense failure hides the score');
+      assert.ok(!(await healthCard.textContent()).includes('Last successful update:'), 'an initial expense failure does not claim stale data');
+      await healthCard.getByRole('button', { name: 'Retry dashboard reads' }).click();
+      await waitForText(page, '[data-dashboard-widget="business-health"]', 'Score');
+      assert.ok((await healthCard.textContent()).includes('Profit Margin'), 'successful expense retry restores the health submetrics');
+
+      await page.getByRole('button', { name: 'Fail expenses refresh' }).click();
+      await waitForText(page, '[data-dashboard-widget="business-health"]', 'Business health is unavailable.');
+      assert.ok((await healthCard.textContent()).includes('Last successful update:'), 'failed expense refresh identifies its last successful update');
+      assert.ok(!(await healthCard.textContent()).includes('Cash Flow'), 'failed expense refresh hides dependent submetrics');
+      await healthCard.getByRole('button', { name: 'Retry dashboard reads' }).click();
+      await waitForText(page, '[data-dashboard-widget="business-health"]', 'Score');
+
       await page.getByRole('button', { name: 'Fail products refresh' }).click();
       const inventoryCard = page.locator('[data-dashboard-widget="kpi-inventory-value"]');
       await waitForText(page, '[data-dashboard-widget="kpi-inventory-value"]', 'Unavailable');
@@ -60,11 +86,12 @@ const waitForText = async (page, selector, text) => page.waitForFunction(
       assert.ok(!(await inventoryCard.textContent()).includes('PKR 4,000.00'), 'failed refresh does not show stale inventory as current');
       await inventoryCard.getByRole('button', { name: 'Retry dashboard reads' }).click();
       await waitForText(page, '[data-dashboard-widget="kpi-inventory-value"]', 'PKR 4,000.00');
-      assert.equal((await page.locator('[data-testid="retry-count"]').textContent()).trim(), 'Retry count: 2', 'both failed sources recovered through the visible retry actions');
+      assert.equal((await page.locator('[data-testid="retry-count"]').textContent()).trim(), 'Retry count: 4', 'all four failed reads recovered through visible retry actions');
 
       await page.getByRole('button', { name: 'Switch organization during read' }).click();
       await waitForText(page, '[data-testid="committed-scope"]', 'account-b/org-b');
       assert.equal(await page.locator('[data-testid="committed-scope"]').textContent(), 'Committed scope: account-b/org-b', 'late previous-organization response cannot replace the current result');
+      assert.equal((await page.locator('[data-testid="committed-expenses"]').textContent()).trim(), 'Expenses: account-b-org-b', 'expense rows from the prior scope are cleared and late results cannot overwrite the new scope');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px has no horizontal overflow`);
       assert.deepEqual(errors, []);
       await page.screenshot({ path: path.join(output, `recovered-${width}.png`), fullPage: true });
@@ -75,6 +102,13 @@ const waitForText = async (page, selector, text) => page.waitForFunction(
       await emptyPage.getByRole('button', { name: 'Load successful data' }).click();
       await waitForText(emptyPage, '[data-dashboard-widget="kpi-today-sales"]', 'PKR 0.00');
       assert.ok((await emptyPage.locator('[data-dashboard-widget="needs-attention"]').textContent()).includes('No actionable alerts.'), 'successful empty reads are shown as a valid zero state');
+      const emptyOverview = await emptyPage.locator('[data-dashboard-widget="smart-modules"]').textContent();
+      for (const zeroSummary of ['0 products in catalog', '0 registered customers', '0 suppliers', '0 recent sales transactions', '0 recent purchases']) {
+        assert.ok(emptyOverview.includes(zeroSummary), `successful empty source may display ${zeroSummary}`);
+      }
+      const emptyHealth = await emptyPage.locator('[data-dashboard-widget="business-health"]').textContent();
+      assert.ok(emptyHealth.includes('Score') && emptyHealth.includes('Profit Margin'), 'successful empty expenses allow the valid health score and submetrics');
+      assert.ok(!emptyHealth.includes('unavailable'), 'successful empty expenses do not appear as an error');
       assert.ok(await emptyPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await emptyPage.close();
       console.log(`Dashboard read-state browser checks passed at ${width}px`);
