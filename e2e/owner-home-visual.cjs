@@ -67,6 +67,26 @@ const { chromium } = require('@playwright/test');
       await page.close();
       console.log(`Owner home ${mode} ${width}px captured`);
     }
+    const staffAllowed = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await staffAllowed.goto(`http://127.0.0.1:${server.address().port}/?staff&permission=sales`);
+    await staffAllowed.getByRole('heading', { name: 'Synthetic Staff' }).waitFor();
+    const staffQuickSale = staffAllowed.getByRole('button', { name: 'Retail POS / Create a sale', exact: true });
+    assert.equal(await staffQuickSale.count(), 1, 'staff with the sales grant keeps the Retail POS shortcut');
+    await staffQuickSale.click();
+    assert.equal(await staffAllowed.getByTestId('destination').textContent(), 'Destination: sales', 'staff shortcut opens Sales');
+    assert.equal(await staffAllowed.getByTestId('sales-tab').textContent(), 'Sales tab: invoice', 'staff shortcut opens the invoice tab');
+    assert.equal(await staffAllowed.getByTestId('quick-sale-mode').textContent(), 'Quick sale mode: true', 'staff shortcut enables quick-sale mode');
+    assert.equal(await staffAllowed.getByTestId('barcode-focus').textContent(), 'Barcode focus signal: 1', 'staff shortcut requests barcode focus');
+    await staffAllowed.close();
+
+    const staffDenied = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await staffDenied.goto(`http://127.0.0.1:${server.address().port}/?staff`);
+    await staffDenied.getByRole('heading', { name: 'Synthetic Staff' }).waitFor();
+    assert.equal(await staffDenied.locator('[data-dashboard-widget="quick-sale"]').count(), 0, 'staff without the sales grant cannot see the Retail POS shortcut');
+    assert.equal(await staffDenied.getByRole('button', { name: 'Retail POS / Create a sale', exact: true }).count(), 0, 'staff without permission has no Retail POS action');
+    await staffDenied.close();
+    console.log('Staff Retail POS permission and launch behavior passed');
+
     const empty = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await empty.goto(`http://127.0.0.1:${server.address().port}/?after&empty=1`);
     await empty.getByRole('button', { name: 'New Sale', exact: true }).waitFor();

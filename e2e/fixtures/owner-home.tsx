@@ -2,10 +2,13 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DashboardCustomizePanel } from "../../src/components/dashboard/DashboardCustomizePanel";
 import { DashboardView } from "../../src/components/dashboard/DashboardView";
+import { DashboardQuickSaleWidget } from "../../src/components/dashboard/DashboardQuickSaleWidget";
 import { DashboardWidget } from "../../src/components/dashboard/DashboardWidget";
+import { StaffDashboardView } from "../../src/components/dashboard/StaffDashboardView";
 import { useDashboardWidgets } from "../../src/lib/preferences/use-dashboard-widgets";
 import type { DashboardWidgetId } from "../../src/lib/preferences/dashboard-widgets";
 import type { SectionId } from "../../src/lib/tradeos/types";
+import { hasSalesTool } from "../../src/lib/sales/access";
 
 const sectionByAction: Record<string, SectionId> = {
   "New Sale": "sales",
@@ -26,16 +29,6 @@ function SetupCard({ hidden, customizing, onRemove }: { hidden: boolean; customi
   </DashboardWidget>;
 }
 
-function QuickSaleCard({ hidden, customizing, onRemove, onAction }: { hidden: boolean; customizing: boolean; onRemove: (id: DashboardWidgetId) => void; onAction: (label: string) => void }) {
-  return <DashboardWidget id="quick-sale" hidden={hidden} customizing={customizing} onRemove={onRemove} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-    <section className="rounded-xl border border-primary/30 bg-primary/5 p-5">
-      <h2 className="text-lg font-semibold">Quick sale</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Choose a customer, scan products, check quantity and price, then save.</p>
-      <button type="button" className="mt-3 min-h-11 rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => onAction("New Sale")}>Retail POS / Create a sale</button>
-    </section>
-  </DashboardWidget>;
-}
-
 function ExportCard({ hidden, customizing, onRemove }: { hidden: boolean; customizing: boolean; onRemove: (id: DashboardWidgetId) => void }) {
   return <DashboardWidget id="business-records-export" hidden={hidden} customizing={customizing} onRemove={onRemove} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
     <section className="rounded-xl border border-primary/30 bg-card p-5">
@@ -49,8 +42,17 @@ function Fixture() {
   const query = new URLSearchParams(location.search);
   const before = query.has("before");
   const empty = query.has("empty");
+  const staff = query.has("staff");
+  const hasInvoicePermission = hasSalesTool({
+    role: staff ? "employee" : "owner",
+    granted_sections: query.get("permission") === "sales" ? ["sales"] : [],
+  }, "invoice");
   const home = useDashboardWidgets("owner-home-synthetic");
   const [destination, setDestination] = useState("Dashboard");
+  const [activeSection, setActiveSection] = useState("dashboard");
+  const [quickSaleMode, setQuickSaleMode] = useState(false);
+  const [salesTab, setSalesTab] = useState<"invoice" | "orders">("orders");
+  const [barcodeFocus, setBarcodeFocus] = useState(0);
   const handleAction = (label: string) => setDestination(sectionByAction[label] ?? "sales");
   const handleAlert = (label: string) => {
     const section: Record<string, string> = {
@@ -70,13 +72,38 @@ function Fixture() {
     setDestination(section[label] ?? label);
   };
   const setup = <SetupCard hidden={home.isHidden("setup-import")} customizing={home.customizing} onRemove={home.removeWidget} />;
-  const quickSale = <QuickSaleCard hidden={home.isHidden("quick-sale")} customizing={home.customizing} onRemove={home.removeWidget} onAction={handleAction} />;
+  const quickSale = <DashboardQuickSaleWidget
+    canUseInvoice={hasInvoicePermission}
+    hidden={home.isHidden("quick-sale")}
+    customizing={home.customizing}
+    onRemove={home.removeWidget}
+    onSetQuickSaleMode={setQuickSaleMode}
+    onSetSalesTab={setSalesTab}
+    onFocusBarcode={() => setBarcodeFocus(value => value + 1)}
+    onOpenSales={() => { setActiveSection("sales"); setDestination("sales"); }}
+  />;
   const exportCard = <ExportCard hidden={home.isHidden("business-records-export")} customizing={home.customizing} onRemove={home.removeWidget} />;
 
   return <main>
-    {before && <>{setup}{quickSale}{exportCard}</>}
+    {!staff && before && <>{setup}{quickSale}{exportCard}</>}
     {home.customizing && <div className="mx-auto w-full max-w-7xl space-y-3 px-4 pt-4 sm:px-6 lg:px-8"><DashboardCustomizePanel removed={home.removed} onShow={home.show} onReset={home.reset} /><p>Saved section cards stay available: {home.added.join(", ") || "none"}</p></div>}
-    <DashboardView
+    {staff && activeSection === "dashboard" && <StaffDashboardView
+      userName="Synthetic Staff"
+      designation="Cashier"
+      mySalesCount={0}
+      mySalesTotal="PKR 0"
+      todaySalesCount={0}
+      todaySalesTotal="PKR 0"
+      myCustomersCount={0}
+      pendingTasksCount={0}
+      myProductsCount={0}
+      myTopProducts={[]}
+      myTopCustomers={[]}
+      myCustomers={[]}
+      myRecentSales={[]}
+      myPendingTasks={[]}
+    />}
+    {!staff && <DashboardView
       userName="Synthetic Owner"
       todaySales={empty ? undefined : { value: "PKR 42,500" }}
       todayProfit={empty ? undefined : { value: "PKR 8,420" }}
@@ -97,9 +124,17 @@ function Fixture() {
       onRemoveWidget={home.removeWidget}
       onToggleCustomize={() => home.setCustomizing(value => !value)}
       droppedCards={home.added.map(section => ({ id: `section:${section}` as DashboardWidgetId, label: section, node: <p>{section} section summary</p> }))}
-    />
-    {!before && <>{setup}{quickSale}{exportCard}</>}
-    <p role="status" data-testid="destination">Destination: {destination}</p>
+    />}
+    {!staff && !before && <>{setup}{quickSale}{exportCard}</>}
+    {staff && activeSection === "dashboard" && quickSale}
+    {staff && activeSection === "sales" && <section aria-label="Sales workspace">Sales workspace</section>}
+    {!staff && <p role="status" data-testid="destination">Destination: {destination}</p>}
+    {staff && <div role="status">
+      <p data-testid="destination">Destination: {activeSection}</p>
+      <p data-testid="sales-tab">Sales tab: {salesTab}</p>
+      <p data-testid="quick-sale-mode">Quick sale mode: {String(quickSaleMode)}</p>
+      <p data-testid="barcode-focus">Barcode focus signal: {barcodeFocus}</p>
+    </div>}
   </main>;
 }
 

@@ -45,6 +45,7 @@ import SessionManagement from "@/components/identity/SessionManagement";
 import AuditLogPanel from "@/components/identity/AuditLogPanel";
 import { SetupReview } from "@/components/import-export/SetupReview";
 import { BusinessRecordsExport } from "@/components/dashboard/BusinessRecordsExport";
+import { DashboardQuickSaleWidget } from "@/components/dashboard/DashboardQuickSaleWidget";
 import ImportWizard from "@/components/inventory/ImportWizard";
 import ImportExportSection from "@/components/import-export/ImportExportSection";
 import SetupImportHub from "@/components/import-export/SetupImportHub";
@@ -15690,17 +15691,18 @@ setCustomerOrganizationName("");
       </section>
     </DashboardWidget>
   ) : null;
-  const quickSaleWidget = canUseSalesTool("invoice") ? (
-    <DashboardWidget id="quick-sale" hidden={homeWidgets.isHidden("quick-sale")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-      <section data-help-topic="quick sale" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
-        <h2 className="text-lg font-semibold">Quick sale</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
-        <div className="mt-3">
-          <button type="button" className="min-h-11 rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); }}>Retail POS / Create a sale</button>
-        </div>
-      </section>
-    </DashboardWidget>
-  ) : null;
+  const quickSaleWidget = (
+    <DashboardQuickSaleWidget
+      canUseInvoice={canUseSalesTool("invoice")}
+      hidden={homeWidgets.isHidden("quick-sale")}
+      customizing={homeWidgets.customizing}
+      onRemove={homeWidgets.removeWidget}
+      onSetQuickSaleMode={setQuickSaleMode}
+      onSetSalesTab={setSalesTab}
+      onFocusBarcode={() => setSaleScanFocus(value => value + 1)}
+      onOpenSales={() => handleSectionChange("sales")}
+    />
+  );
   const businessRecordsExportWidget = currentProfile?.role === "owner" ? (
     <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
       <section className="rounded-xl border border-primary/30 bg-card p-5">
@@ -16112,7 +16114,7 @@ setCustomerOrganizationName("");
           />
         )}
         {activeSection === "dashboard" && !staffDashboardData.isStaff && setupStage !== "active" && setupImportWidget}
-        {activeSection === "dashboard" && !staffDashboardData.isStaff && quickSaleWidget}
+        {activeSection === "dashboard" && quickSaleWidget}
         {activeSection === "dashboard" && !staffDashboardData.isStaff && businessRecordsExportWidget}
 
         {activeSectionAllowed && activeSection === "business-intelligence" && (
