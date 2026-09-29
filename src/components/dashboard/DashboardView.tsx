@@ -129,11 +129,11 @@ export function DashboardView({
 
   const taskList = [
     ...(pendingApprovals > 0 ? [{ label: "Pending Approvals", value: pendingApprovals, icon: AlertTriangle, color: "text-warning" }] : []),
-    { label: "Invoices Due", value: invoicesDue, icon: Receipt, color: "text-destructive" },
-    { label: "Payments Due", value: paymentsDue, icon: DollarSign, color: "text-warning" },
-    { label: "Low Stock Items", value: lowStockItems, icon: AlertTriangle, color: "text-warning" },
-    { label: "Customers to Follow Up", value: customersToFollowUp, icon: Users, color: "text-primary" },
-    { label: "Expiring Products", value: expiringProducts, icon: Package, color: "text-destructive" },
+    { label: "Collection Tasks", value: invoicesDue, icon: Receipt, color: "text-destructive" },
+    { label: "Unpaid Purchases", value: paymentsDue, icon: DollarSign, color: "text-warning" },
+    { label: "Urgent Reorders", value: lowStockItems, icon: AlertTriangle, color: "text-warning" },
+    { label: "Customer Follow-ups", value: customersToFollowUp, icon: Users, color: "text-primary" },
+    { label: "Expiring Stock Checks", value: expiringProducts, icon: Package, color: "text-destructive" },
   ].filter((t) => t.value > 0);
 
   const widgetHidden = (id: DashboardWidgetId) => hiddenWidgets.includes(id);
@@ -212,15 +212,27 @@ export function DashboardView({
         )}
       </header>
 
+      {!widgetHidden("quick-actions") && <DashboardWidget id="quick-actions" customizing={customizingWidgets} onRemove={onRemoveWidget}>
+        <QuickActions onAction={onQuickAction} />
+      </DashboardWidget>}
+
       {/* KPI Cards */}
       {kpiCards.length > 0 && (
-        <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", customizingWidgets ? "gap-6" : "gap-3 sm:gap-4")}>
-          {kpiCards.map((card) => (
-            <DashboardWidget key={card.id} id={card.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
-              {card.node}
-            </DashboardWidget>
-          ))}
-        </div>
+        <section aria-labelledby="dashboard-today-heading" className="space-y-3">
+          <div>
+            <h2 id="dashboard-today-heading" className="text-sm font-semibold text-foreground">Today and current balances</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Today’s sales and estimated profit use invoices dated or recorded today. Inventory, receivables and payables are current balances.
+            </p>
+          </div>
+          <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", customizingWidgets ? "gap-6" : "gap-3 sm:gap-4")}>
+            {kpiCards.map((card) => (
+              <DashboardWidget key={card.id} id={card.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
+                {card.node}
+              </DashboardWidget>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* AI Insight */}
@@ -236,17 +248,35 @@ export function DashboardView({
         </DashboardWidget>
       )}
 
-      {/* Business Health + Quick Actions Row */}
-      {(!widgetHidden("business-health") || !widgetHidden("quick-actions")) && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <DashboardWidget id="business-health" customizing={customizingWidgets} onRemove={onRemoveWidget} className={widgetHidden("quick-actions") ? "lg:col-span-3" : "lg:col-span-2"}>
-            <BusinessHealthCard score={healthScore} metrics={healthMetrics} />
-          </DashboardWidget>
-          <DashboardWidget id="quick-actions" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-            <QuickActions onAction={onQuickAction} />
-          </DashboardWidget>
-        </div>
+      {/* Pending Tasks */}
+      {taskList.length > 0 && !widgetHidden("needs-attention") && (
+        <DashboardWidget id="needs-attention" customizing={customizingWidgets} onRemove={onRemoveWidget}>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h2 className="text-sm font-semibold text-foreground mb-1">Needs Your Attention</h2>
+            <p className="mb-3 text-xs text-muted-foreground">Open a current pending task, unpaid purchase, or stock alert to review it.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {taskList.map((t) => (
+                <button
+                  key={t.label}
+                  type="button"
+                  onClick={() => onKPIClick?.(t.label)}
+                  className={cn("flex min-h-11 items-center gap-2.5 rounded-lg bg-muted p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", t.label === "Pending Approvals" ? "hover:bg-warning/10" : "hover:bg-primary/10")}
+                >
+                  <t.icon className={cn("size-5", t.color)} />
+                  <div>
+                    <p className="text-lg font-semibold tabular-nums text-foreground">{t.value}</p>
+                    <p className="text-[11px] text-light-text">{t.label}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </DashboardWidget>
       )}
+
+      {!widgetHidden("business-health") && <DashboardWidget id="business-health" customizing={customizingWidgets} onRemove={onRemoveWidget}>
+        <BusinessHealthCard score={healthScore} metrics={healthMetrics} />
+      </DashboardWidget>}
 
       {/* Smart Modules */}
       {smartModules.length > 0 && !widgetHidden("smart-modules") && (
@@ -258,31 +288,6 @@ export function DashboardView({
                 <SmartModule key={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen}>
                   {m.children}
                 </SmartModule>
-              ))}
-            </div>
-          </div>
-        </DashboardWidget>
-      )}
-
-      {/* Pending Tasks */}
-      {taskList.length > 0 && !widgetHidden("needs-attention") && (
-        <DashboardWidget id="needs-attention" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <div className="rounded-xl border border-border bg-card p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Needs Your Attention</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-              {taskList.map((t) => (
-                <button
-                  key={t.label}
-                  type="button"
-                  onClick={() => t.label === "Pending Approvals" && onKPIClick?.("Pending Approvals")}
-                  className={`flex items-center gap-2.5 p-3 rounded-lg bg-muted text-left ${t.label === "Pending Approvals" ? "cursor-pointer hover:bg-warning/10" : "cursor-default"}`}
-                >
-                  <t.icon className={cn("size-5", t.color)} />
-                  <div>
-                    <p className="text-lg font-semibold text-foreground">{t.value}</p>
-                    <p className="text-[10px] text-light-text">{t.label}</p>
-                  </div>
-                </button>
               ))}
             </div>
           </div>

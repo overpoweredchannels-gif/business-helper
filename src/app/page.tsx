@@ -15679,6 +15679,38 @@ setCustomerOrganizationName("");
     node: <SectionSummaryCard summary={buildSectionSummary(section)} />,
   }));
 
+  const setupImportWidget = isOwnerOrAdmin() ? (
+    <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section data-help-topic="setup and data import" className="rounded-xl border border-primary/30 bg-card p-5">
+        <h2 className="text-lg font-semibold">Setup &amp; Data Import</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{setupStage === "complete" ? `Setup complete. This reminder retires itself after ${SETUP_BANNER_RETENTION_DAYS} days; you can still open Setup & Data Import from the sidebar.` : "Follow the setup guide, import your external records and review missing settings."}</p>
+        <div className="mt-3">
+          <button type="button" onClick={() => handleSectionChange("setup-import")} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Open Setup &amp; Data Import</button>
+        </div>
+      </section>
+    </DashboardWidget>
+  ) : null;
+  const quickSaleWidget = canUseSalesTool("invoice") ? (
+    <DashboardWidget id="quick-sale" hidden={homeWidgets.isHidden("quick-sale")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section data-help-topic="quick sale" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
+        <h2 className="text-lg font-semibold">Quick sale</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
+        <div className="mt-3">
+          <button type="button" className="min-h-11 rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); }}>Retail POS / Create a sale</button>
+        </div>
+      </section>
+    </DashboardWidget>
+  ) : null;
+  const businessRecordsExportWidget = currentProfile?.role === "owner" ? (
+    <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section className="rounded-xl border border-primary/30 bg-card p-5">
+        <h2 className="text-lg font-semibold">Export business records</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF.</p>
+        <BusinessRecordsExport />
+      </section>
+    </DashboardWidget>
+  ) : null;
+
   return (
     <DashboardLayout
         navigationItems={orderedNavItems}
@@ -15895,28 +15927,7 @@ setCustomerOrganizationName("");
             </div>
           </div>
         )}
-        {activeSection === "dashboard" && isOwnerOrAdmin() && (
-          <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-            <section data-help-topic="setup and data import" className="rounded-xl border border-primary/30 bg-card p-5">
-              <h2 className="text-lg font-semibold">Setup &amp; Data Import</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{setupStage === "complete" ? `Setup complete. This reminder retires itself after ${SETUP_BANNER_RETENTION_DAYS} days; you can still open Setup & Data Import from the sidebar.` : "Follow the setup guide, import your external records and review missing settings."}</p>
-              <div className="mt-3">
-                <button type="button" onClick={() => handleSectionChange("setup-import")} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Open Setup &amp; Data Import</button>
-              </div>
-            </section>
-          </DashboardWidget>
-        )}
-        {activeSection === "dashboard" && canUseSalesTool("invoice") && (
-          <DashboardWidget id="quick-sale" hidden={homeWidgets.isHidden("quick-sale")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-            <section data-help-topic="quick sale" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
-              <h2 className="text-lg font-semibold">Quick sale</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
-              <div className="mt-3">
-                <button type="button" className="rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); }}>Retail POS / Create a sale</button>
-              </div>
-            </section>
-          </DashboardWidget>
-        )}
+        {activeSection === "dashboard" && setupStage === "active" && setupImportWidget}
         {activeSection === "dashboard" && staffDashboardData.isStaff && (
           <StaffDashboardView
             userName={currentProfile?.full_name ?? currentUser.email}
@@ -15949,15 +15960,6 @@ setCustomerOrganizationName("");
           <EmployeeLiveTracking />
         )}
 
-        {activeSection === "dashboard" && currentProfile?.role === "owner" && (
-          <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-            <section className="rounded-xl border border-primary/30 bg-card p-5">
-              <h2 className="text-lg font-semibold">Export business records</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF.</p>
-              <BusinessRecordsExport />
-            </section>
-          </DashboardWidget>
-        )}
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
             hiddenWidgets={homeWidgets.hidden}
@@ -16090,14 +16092,28 @@ setCustomerOrganizationName("");
               else if (label === "View Inventory") handleSectionChange("inventory");
             }}
             onKPIClick={(title) => {
-              if (title === "Today's Sales" || title === "Orders Today") handleSectionChange("sales");
+              if (title === "Pending Approvals") {
+                setSalesTab("orders");
+                setSalesOrderStatusFilter("pending_approval");
+                refreshSalesOrders();
+                handleSectionChange("sales");
+              }
+              else if (title === "Collection Tasks" || title === "Customer Follow-ups" || title === "Expiring Stock Checks") {
+                setTaskFilter("all");
+                setTaskSearch("");
+                handleSectionChange("task-manager");
+              }
+              else if (title === "Unpaid Purchases" || title === "Outstanding Payables") handleSectionChange("supplier-payments");
+              else if (title === "Today's Sales" || title === "Orders Today") handleSectionChange("sales");
               else if (title === "Today's Profit" || title === "Profit Margin") handleSectionChange("profit-loss");
-              else if (title === "Inventory Value" || title === "Low Stock Alerts") handleSectionChange("inventory");
+              else if (title === "Inventory Value" || title === "Low Stock Alerts" || title === "Urgent Reorders") handleSectionChange("inventory");
               else if (title === "Outstanding Receivables" || title === "Customers Today") handleSectionChange("customers");
-              else if (title === "Outstanding Payables") handleSectionChange("supplier-payments");
             }}
           />
         )}
+        {activeSection === "dashboard" && !staffDashboardData.isStaff && setupStage !== "active" && setupImportWidget}
+        {activeSection === "dashboard" && !staffDashboardData.isStaff && quickSaleWidget}
+        {activeSection === "dashboard" && !staffDashboardData.isStaff && businessRecordsExportWidget}
 
         {activeSectionAllowed && activeSection === "business-intelligence" && (
         <section className="mb-8 rounded border border-border bg-muted/30 p-5">

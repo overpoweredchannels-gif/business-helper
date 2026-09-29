@@ -53,7 +53,7 @@ export function KPICard({ title, value, trend, icon, sparklineData, onClick }: K
       onClick={onClick}
       className={cn(
         "group rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]",
-        onClick && "cursor-pointer text-left w-full",
+        onClick && "w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
       <div className="flex items-start justify-between mb-3">
