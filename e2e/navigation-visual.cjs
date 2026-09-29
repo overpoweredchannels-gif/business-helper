@@ -60,5 +60,48 @@ const { chromium } = require('@playwright/test');
       await page.close();
       console.log(`Navigation ${width}px passed`);
     }
+
+    const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const mobileErrors = [];
+    mobile.on('pageerror', error => mobileErrors.push(error.message));
+    await mobile.goto(`http://127.0.0.1:${server.address().port}/?layout=1`);
+    const opener = mobile.getByRole('button', { name: 'Open navigation menu' });
+    const dialog = mobile.getByRole('dialog', { name: 'Navigation menu' });
+
+    await opener.click();
+    await dialog.waitFor({ state: 'visible' });
+    assert.equal(await opener.getAttribute('aria-expanded'), 'true');
+    const close = dialog.getByRole('button', { name: 'Close navigation menu' });
+    assert.equal(await mobile.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Close navigation menu', 'opening places focus on the dialog close button');
+    await mobile.keyboard.press('Shift+Tab');
+    assert.ok(await dialog.evaluate(element => element.contains(document.activeElement)), 'Shift+Tab remains inside the modal dialog');
+    await mobile.keyboard.press('Tab');
+    assert.equal(await mobile.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Close navigation menu', 'Tab wraps to the first dialog control');
+    await mobile.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await opener.getAttribute('aria-expanded'), 'false');
+    assert.equal(await mobile.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Open navigation menu', 'Escape restores focus to the opener');
+
+    await opener.click();
+    await close.click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await mobile.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Open navigation menu', 'close button restores focus to the opener');
+
+    await opener.click();
+    await dialog.click({ position: { x: 380, y: 500 } });
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await mobile.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Open navigation menu', 'backdrop click restores focus to the opener');
+
+    await opener.click();
+    const nav = dialog.getByRole('navigation', { name: 'Main navigation' });
+    await nav.getByText('Stock', { exact: true }).click();
+    await nav.getByRole('button', { name: 'Inventory', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await opener.getAttribute('aria-expanded'), 'false', 'choosing a destination closes the mobile menu');
+    assert.equal(await mobile.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Open navigation menu', 'destination selection restores focus to the opener');
+    assert.deepEqual(mobileErrors, []);
+    await mobile.screenshot({ path: path.join(output, 'navigation-mobile-menu-closed.png'), fullPage: true });
+    await mobile.close();
+    console.log('Mobile navigation dialog, focus, close paths, and destination selection passed');
   } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
