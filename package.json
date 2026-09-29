@@ -44,7 +44,7 @@
     "test:draft-customer": "tsx scripts/test-draft-customer-access.ts",
     "test:draft-bonus": "tsx scripts/test-draft-bonus-schema.ts",
     "test:search-selection": "tsx scripts/test-search-selection.ts",
-    "test:dashboard": "tsx scripts/test-dashboard-customization.ts"
+    "test:dashboard": "tsx scripts/test-dashboard-customization.ts && tsx scripts/test-navigation-groups.tsx"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.15",
