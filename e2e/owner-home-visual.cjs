@@ -90,8 +90,12 @@ const { chromium } = require('@playwright/test');
     const empty = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await empty.goto(`http://127.0.0.1:${server.address().port}/?after&empty=1`);
     await empty.getByRole('button', { name: 'New Sale', exact: true }).waitFor();
-    assert.equal(await empty.locator('[data-dashboard-widget="needs-attention"]').count(), 0, 'empty data does not fabricate action alerts');
-    assert.equal(await empty.locator('[data-dashboard-widget="kpi-today-sales"]').count(), 0, 'unavailable figures are omitted instead of shown as zero');
+    const emptyAlerts = empty.locator('[data-dashboard-widget="needs-attention"]');
+    assert.ok((await emptyAlerts.textContent()).includes('No actionable alerts.'), 'the empty alert widget explains that there are no actionable alerts');
+    assert.equal(await emptyAlerts.getByRole('button').count(), 0, 'the empty alert widget contains no actionable alert buttons');
+    for (const widgetId of ['kpi-today-sales', 'kpi-today-profit', 'kpi-inventory-value', 'kpi-receivables', 'kpi-payables', 'kpi-low-stock']) {
+      assert.equal(await empty.locator(`[data-dashboard-widget="${widgetId}"]`).count(), 0, `${widgetId} is omitted when its optional KPI prop is not supplied`);
+    }
     await empty.close();
 
     const saved = await browser.newPage({ viewport: { width: 390, height: 844 } });
