@@ -5,14 +5,17 @@ import { focusNextEntryField } from "./entry-navigation";
 import { activeSuggestionIndex } from "./search-selection";
 import { rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
 
-export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankFields }: {
+export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankedFields }: {
   value: string;
   onChange: (value: string) => void;
   products: Array<{ id: string; label: string }>;
   label?: string;
   searchPlaceholder?: string;
-  /** When provided, suggestions are relevance-ranked with the shared product-search contract. Omit for non-product lists (e.g. customers), which keep the legacy label filter. */
-  rankFields?: (id: string) => SearchRankFields | undefined;
+  /** Prebuilt id → structured rank fields, built by the caller in one pass and
+   * memoized. When provided, suggestions are relevance-ranked with the shared
+   * product-search contract (O(1) field lookup per candidate). Omit for
+   * non-product lists (e.g. customers), which keep the legacy label filter. */
+  rankedFields?: Map<string, SearchRankFields>;
 }) {
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -20,21 +23,13 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<number | null>(null);
   const selected = products.find(product => product.id === value);
-  const terms = (query ?? "").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  // Resolve structured rank fields once per list: callers' rankFields callbacks
-  // typically do a lookup by id, so keep this O(n) instead of O(n²) per keystroke.
-  const rankedFieldsById = useMemo(() => {
-    if (!rankFields) return null;
-    const map = new Map<string, SearchRankFields>();
-    for (const product of products) {
-      const fields = rankFields(product.id);
-      if (fields) map.set(product.id, fields);
+  const matches = useMemo(() => {
+    if (!rankedFields) {
+      const terms = (query ?? "").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+      return products.filter(product => terms.every(term => product.label.toLocaleLowerCase().includes(term)));
     }
-    return map;
-  }, [products, rankFields]);
-  const matches = rankedFieldsById
-    ? rankSearchResults(products, query ?? "", (product) => rankedFieldsById.get(product.id) ?? { name: product.label })
-    : products.filter(product => terms.every(term => product.label.toLocaleLowerCase().includes(term)));
+    return rankSearchResults(products, query ?? "", (product) => rankedFields.get(product.id) ?? { name: product.label });
+  }, [products, query, rankedFields]);
   const activeIndex = activeSuggestionIndex(matches, value, active);
   useLayoutEffect(() => {
     input.current?.setCustomValidity(selected ? "" : `Choose a ${label.toLowerCase()} from the suggestions.`);

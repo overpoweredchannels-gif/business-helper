@@ -2,7 +2,7 @@
 
 import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
 import { allPages } from "@/lib/supabase/all-pages";
-import { highlightSearchMatches, rankSearchResults } from "@/lib/products/search-rank";
+import { highlightSearchMatches, rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
@@ -356,6 +356,28 @@ export default function Home() {
     () => products.filter((product) => product.is_active !== false),
     [products]
   );
+
+  // Invoice-line product selector options + rank fields, built in one pass and
+  // memoized so the selector neither rebuilds nor re-ranks on parent renders.
+  const invoiceProductOptions = useMemo(
+    () => activeProducts.map((product) => ({
+      id: String(product.id),
+      label: [product.name, product.brand_id ? brandNameById.get(product.brand_id) : null, product.sku].filter(Boolean).join(" — "),
+    })),
+    [activeProducts, brandNameById]
+  );
+  const invoiceProductRankFields = useMemo(() => {
+    const map = new Map<string, SearchRankFields>();
+    for (const product of activeProducts) {
+      map.set(String(product.id), {
+        name: product.name,
+        sku: product.sku,
+        barcode: product.barcode,
+        brandName: product.brand_id ? brandNameById.get(product.brand_id) ?? null : null,
+      });
+    }
+    return map;
+  }, [activeProducts, brandNameById]);
 
   const [customerName, setCustomerName] = useState("");
   const [shopName, setShopName] = useState("");
@@ -18045,7 +18067,7 @@ setCustomerOrganizationName("");
                       <div className="grid gap-2 sm:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
-                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={activeProducts.map(product => ({ id: String(product.id), label: [product.name, brands.find(brand => brand.id === product.brand_id)?.name, product.sku].filter(Boolean).join(" — ") }))} rankFields={id => { const product = activeProducts.find(p => String(p.id) === id); return product ? { name: product.name, sku: product.sku, barcode: product.barcode, brandName: product.brand_id ? brandNameById.get(product.brand_id) ?? null : null } : undefined; }} />
+                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={invoiceProductOptions} rankedFields={invoiceProductRankFields} />
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">

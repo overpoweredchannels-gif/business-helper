@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import type { BarcodeLine } from "@/lib/invoices/barcode";
 import type { Product, Customer } from "@/lib/tradeos/types";
+import type { SearchRankFields } from "@/lib/products/search-rank";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 
 export type CounterSale = {
@@ -37,6 +38,17 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
   const [notice, setNotice] = useState("");
   const [searchKey, setSearchKey] = useState(0);
   const [focusQuantityFor, setFocusQuantityFor] = useState<number | null>(null);
+  // Product selector options + rank fields, built in one pass and memoized so
+  // the selector neither rebuilds nor re-ranks on parent renders.
+  const productOptions = useMemo(
+    () => products.map((p) => ({ id: String(p.id), label: [p.name, p.sku, p.barcode].filter(Boolean).join(" — ") })),
+    [products]
+  );
+  const productRankFields = useMemo(() => {
+    const map = new Map<string, SearchRankFields>();
+    for (const p of products) map.set(String(p.id), { name: p.name, sku: p.sku, barcode: p.barcode });
+    return map;
+  }, [products]);
   const holdLock = useRef(false);
   const storageKey = `tradeos-pos-held-v1:${scope}`;
   const templateStorageKey = `tradeos-pos-baskets-v1:${scope}`;
@@ -176,7 +188,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
     </div>
     <fieldset disabled={busy} className="grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
       <div><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={code => { const productId = onScan(code); if (!productId) return; const lineIndex = sale.lines.findIndex(line => String(line.product_id) === productId && (line.unit_mode ?? "main") === scanUnit); setFocusQuantityFor(lineIndex >= 0 ? lineIndex : sale.lines.length); }} /></div>
-      <div className="space-y-3"><label className="block text-sm font-medium">Find product</label><ProductSearchSelect key={searchKey} value="" products={products.map(p => ({ id: String(p.id), label: [p.name, p.sku, p.barcode].filter(Boolean).join(" — ") }))} rankFields={id => { const product = products.find(p => String(p.id) === id); return product ? { name: product.name, sku: product.sku, barcode: product.barcode } : undefined; }} onChange={id => { if (id) { setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} />
+      <div className="space-y-3"><label className="block text-sm font-medium">Find product</label><ProductSearchSelect key={searchKey} value="" products={productOptions} rankedFields={productRankFields} onChange={id => { if (id) { setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} />
         <label className="flex items-center gap-3 text-sm">Add one<select value={scanUnit} onChange={event => onUnit(event.target.value as "main" | "subunit")} className="min-h-11 rounded border border-input bg-background px-3"><option value="subunit">Piece / sub-unit</option><option value="main">Box / main unit</option></select></label>
         <label className="block text-sm font-medium">Customer</label><ProductSearchSelect label="Customer" value={sale.customerId ?? ""} products={customers.map(c => ({ id: c.id, label: [c.customer_name, c.shop_name, c.phone].filter(Boolean).join(" — ") }))} onChange={onCustomer} />
       </div>

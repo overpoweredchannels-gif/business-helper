@@ -89,7 +89,7 @@ for (const viewport of [{ width: 390, height: 844, label: "phone" }, { width: 14
     }));
 
   // 8. Selector: type, arrows, Enter selects the correct product ID.
-  const combo = page.getByRole("combobox", { name: "Product" });
+  const combo = page.getByRole("combobox", { name: "Product", exact: true });
   await combo.click();
   check(`[${viewport.label}] selector input receives focus`, await combo.evaluate((el) => document.activeElement === el));
   await combo.fill("Hey");
@@ -123,7 +123,73 @@ for (const viewport of [{ width: 390, height: 844, label: "phone" }, { width: 14
   check(`[${viewport.label}] selector no-matches message`, /No matches found/.test(noMatch ?? ""), noMatch);
   await page.keyboard.press("Escape");
 
-  // 11. Keystroke-to-paint timing over the 5,000-SKU fixture.
+  // 11. Initial mount: completed without errors and recorded its timing.
+  const mountMs = await page.evaluate(() => window.__labMountMs ?? -1);
+  check(`[${viewport.label}] initial mount recorded`, mountMs > 0 && mountMs < 15000, `${mountMs.toFixed(1)}ms`);
+
+  // 12. Parent rerenders do not re-rank: ranked-field lookups stay flat and
+  // results are unchanged.
+  await combo.click();
+  await combo.fill("Hey");
+  await page.waitForTimeout(400);
+  const getsBefore = await page.evaluate(() => window.__labFieldGets ?? -1);
+  const firstBefore = await page.getByRole("option").first().textContent();
+  await page.getByTestId("selector-rerender").click();
+  await page.waitForTimeout(400);
+  const getsAfter = await page.evaluate(() => window.__labFieldGets ?? -2);
+  check(`[${viewport.label}] parent rerender triggers no re-rank`, getsBefore >= 0 && getsAfter === getsBefore, `gets ${getsBefore} -> ${getsAfter}`);
+  await combo.click();
+  await page.waitForTimeout(300);
+  const firstAfter = await page.getByRole("option").first().textContent();
+  check(`[${viewport.label}] results unchanged after parent rerender`, firstAfter === firstBefore, (firstAfter ?? "").slice(0, 40));
+  await page.keyboard.press("Escape");
+
+  // 13. Multiword name+SKU in the products list: "sufi 5l" finds the 5L variant
+  // (legacy combined-label parity) but excludes the 1L variant.
+  await listSearch.fill("sufi 5l");
+  await page.waitForTimeout(400);
+  const multiIds = await page.evaluate(() => window.__labRankedIds || []);
+  check(`[${viewport.label}] multiword name+SKU finds the 5L variant`, multiIds.includes("p-oil-a"), `ranked=${multiIds.length}`);
+  check(`[${viewport.label}] 1L variant excluded from multiword name+SKU`, !multiIds.includes("p-oil-b"));
+  await page.getByTestId("list-clear").click();
+
+  // 14. POS flow: type an exact SKU, Enter, add the item; basket keeps the
+  // correct product id and price.
+  const posCombo = page.getByRole("combobox", { name: "POS product" });
+  await posCombo.click();
+  await posCombo.fill("SUF-OIL-5L");
+  await page.waitForTimeout(400);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  await page.getByTestId("pos-add").click();
+  await page.waitForTimeout(300);
+  const basketText = await page.getByTestId("basket-p-oil-a").textContent();
+  const basketState = await page.evaluate(() => window.__labBasket || []);
+  check(`[${viewport.label}] POS add keeps correct id and price`,
+    /Sufi Cooking Oil/.test(basketText ?? "") && /2850/.test(basketText ?? "") && basketState.at(-1)?.id === "p-oil-a",
+    basketText);
+
+  // 15. Multiple invoice lines: independent selections resolve correct ids.
+  const lineQueries = [["Line 1 product", "HEY-001", "p-hey-exact"], ["Line 2 product", "suf-oil-5l", "p-oil-a"], ["Line 3 product", "whey", "p-whey"]];
+  for (const [label, query, expected] of lineQueries) {
+    const lineCombo = page.getByRole("combobox", { name: label });
+    await lineCombo.click();
+    await lineCombo.fill(query);
+    await page.waitForTimeout(400);
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+    void expected;
+  }
+  const lineIds = await page.evaluate(() => window.__labLineIds || {});
+  check(`[${viewport.label}] invoice lines select correct independent ids`,
+    lineIds["line-0"] === "p-hey-exact" && lineIds["line-1"] === "p-oil-a" && lineIds["line-2"] === "p-whey",
+    JSON.stringify(lineIds));
+  for (let i = 0; i < 3; i++) {
+    const lineText = await page.getByTestId(`line-${i}-selected`).textContent();
+    check(`[${viewport.label}] line ${i} label reflects its selection`, lineText.includes(lineIds[`line-${i}`] ?? "none"), lineText);
+  }
+
+  // 16. Keystroke-to-paint timing over the 5,000-SKU fixture.
   await page.evaluate(() => { window.__labTimings = []; });
   await listSearch.fill("");
   await page.waitForTimeout(200);

@@ -1,14 +1,22 @@
 // Shared product-search relevance ranking.
 //
-// Ranking contract (deterministic; no fuzzy matching, no dependencies):
-//   0. Exact barcode or SKU match.
+// Ranking contract (deterministic; no fuzzy matching, no dependencies).
+// Lower rank = better. Exact codes keep the highest priority; code prefix and
+// code substring matches have their own documented ranks while the agreed name
+// ranking keeps its relative order (exact name > name prefix > word prefix >
+// all-words-in-name):
+//   0. Exact SKU/barcode match: the whole query, or (for multiword queries)
+//      a query word, exactly equals a normalized SKU or barcode.
 //   1. Exact normalized product-name match.
-//   2. Product name starts with the query.
-//   3. A word in the product name starts with the query.
-//   4. Every query word appears in the product name (broader substring matches
-//      naturally land here, ordered after the more precise ranks above).
-//   5. The query appears in the brand or category name (legacy behavior,
-//      kept as the lowest rank so brand/category search keeps working).
+//   2. Product name starts with the whole query.
+//   3. A SKU/barcode starts with a query word (code prefix).
+//   4. A word in the product name starts with a query word.
+//   5. A query word appears inside a SKU/barcode (code substring, non-prefix).
+//   6. Every query word appears in the product name.
+//   7. Every query word appears in at least one of name/SKU/barcode/brand/
+//      category (combined-label parity: the legacy selector matched across its
+//      "name — sku — barcode" label; single-word brand/category matches land
+//      here too, keeping them the lowest rank).
 //
 // Within a rank, ordering is by normalized name, then by id, so results are
 // stable across keystrokes and renders. Products matching nothing are excluded.
@@ -33,21 +41,33 @@ export function rankProductMatch(fields: SearchRankFields, normalizedQuery: stri
   if (!normalizedQuery) return null;
   const name = normalizeSearchText(fields.name);
   if (!name) return null;
-
-  const sku = normalizeSearchText(fields.sku);
-  const barcode = normalizeSearchText(fields.barcode);
-  if ((sku && sku === normalizedQuery) || (barcode && barcode === normalizedQuery)) return 0;
-  if (name === normalizedQuery) return 1;
-  if (name.startsWith(normalizedQuery)) return 2;
-  if (wordsOf(name).some((word) => word.startsWith(normalizedQuery))) return 3;
-
-  const queryWords = wordsOf(normalizedQuery);
-  if (queryWords.length > 0 && queryWords.every((word) => name.includes(word))) return 4;
-
+  const codes = [normalizeSearchText(fields.sku), normalizeSearchText(fields.barcode)].filter(Boolean);
   const brand = normalizeSearchText(fields.brandName);
   const category = normalizeSearchText(fields.categoryName);
-  if ((brand && brand.includes(normalizedQuery)) || (category && category.includes(normalizedQuery))) return 5;
-  return null;
+
+  // Exact code match on the whole query: highest priority, short-circuit.
+  if (codes.some((code) => code === normalizedQuery)) return 0;
+
+  let best: number | null = null;
+  if (name === normalizedQuery) best = 1;
+  else if (name.startsWith(normalizedQuery)) best = 2;
+
+  // Per-word matching: every query word must match at least one field;
+  // the product rank is the best (lowest) word rank.
+  let wordBest = Infinity;
+  for (const word of wordsOf(normalizedQuery)) {
+    let rank: number | null = null;
+    if (codes.some((code) => code === word)) rank = 0;
+    else if (codes.some((code) => code.startsWith(word))) rank = 3;
+    else if (wordsOf(name).some((nameWord) => nameWord.startsWith(word))) rank = 4;
+    else if (codes.some((code) => code.includes(word))) rank = 5;
+    else if (name.includes(word)) rank = 6;
+    else if (brand.includes(word) || category.includes(word)) rank = 7;
+    if (rank === null) return null;
+    if (rank < wordBest) wordBest = rank;
+  }
+  if (best === null || wordBest < best) best = wordBest;
+  return best;
 }
 
 /**
