@@ -1,15 +1,18 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { focusNextEntryField } from "./entry-navigation";
 import { activeSuggestionIndex } from "./search-selection";
+import { rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
 
-export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU" }: {
+export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankFields }: {
   value: string;
   onChange: (value: string) => void;
   products: Array<{ id: string; label: string }>;
   label?: string;
   searchPlaceholder?: string;
+  /** When provided, suggestions are relevance-ranked with the shared product-search contract. Omit for non-product lists (e.g. customers), which keep the legacy label filter. */
+  rankFields?: (id: string) => SearchRankFields | undefined;
 }) {
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -18,7 +21,20 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
   const [active, setActive] = useState<number | null>(null);
   const selected = products.find(product => product.id === value);
   const terms = (query ?? "").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  const matches = products.filter(product => terms.every(term => product.label.toLocaleLowerCase().includes(term)));
+  // Resolve structured rank fields once per list: callers' rankFields callbacks
+  // typically do a lookup by id, so keep this O(n) instead of O(n²) per keystroke.
+  const rankedFieldsById = useMemo(() => {
+    if (!rankFields) return null;
+    const map = new Map<string, SearchRankFields>();
+    for (const product of products) {
+      const fields = rankFields(product.id);
+      if (fields) map.set(product.id, fields);
+    }
+    return map;
+  }, [products, rankFields]);
+  const matches = rankedFieldsById
+    ? rankSearchResults(products, query ?? "", (product) => rankedFieldsById.get(product.id) ?? { name: product.label })
+    : products.filter(product => terms.every(term => product.label.toLocaleLowerCase().includes(term)));
   const activeIndex = activeSuggestionIndex(matches, value, active);
   useLayoutEffect(() => {
     input.current?.setCustomValidity(selected ? "" : `Choose a ${label.toLowerCase()} from the suggestions.`);

@@ -2,6 +2,7 @@
 
 import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
 import { allPages } from "@/lib/supabase/all-pages";
+import { highlightSearchMatches, rankSearchResults } from "@/lib/products/search-rank";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
@@ -337,21 +338,19 @@ export default function Home() {
   const [productIsActive, setProductIsActive] = useState(true);
   const [productOversellingPolicy, setProductOversellingPolicy] = useState("inherit");
 
+  const brandNameById = useMemo(() => new Map(brands.map((brand) => [brand.id, brand.name])), [brands]);
+  const categoryNameById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
+
   const filteredProducts = useMemo(() => {
-    const query = productSearch.trim().toLowerCase();
-    if (!query) return products;
-    return products.filter((product) => {
-      const brand = brands.find((b) => b.id === product.brand_id);
-      const category = categories.find((c) => c.id === product.category_id);
-      return (
-        product.name.toLowerCase().includes(query) ||
-        (product.sku ?? "").toLowerCase().includes(query) ||
-        (product.barcode ?? "").toLowerCase().includes(query) ||
-        (brand?.name ?? "").toLowerCase().includes(query) ||
-        (category?.name ?? "").toLowerCase().includes(query)
-      );
-    });
-  }, [productSearch, products, brands, categories]);
+    if (!productSearch.trim()) return products;
+    return rankSearchResults(products, productSearch, (product) => ({
+      name: product.name,
+      sku: product.sku,
+      barcode: product.barcode,
+      brandName: product.brand_id ? brandNameById.get(product.brand_id) ?? null : null,
+      categoryName: product.category_id ? categoryNameById.get(product.category_id) ?? null : null,
+    }));
+  }, [productSearch, products, brandNameById, categoryNameById]);
 
   const activeProducts = useMemo(
     () => products.filter((product) => product.is_active !== false),
@@ -18046,7 +18045,7 @@ setCustomerOrganizationName("");
                       <div className="grid gap-2 sm:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
-                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={activeProducts.map(product => ({ id: String(product.id), label: [product.name, brands.find(brand => brand.id === product.brand_id)?.name, product.sku].filter(Boolean).join(" — ") }))} />
+                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={activeProducts.map(product => ({ id: String(product.id), label: [product.name, brands.find(brand => brand.id === product.brand_id)?.name, product.sku].filter(Boolean).join(" — ") }))} rankFields={id => { const product = activeProducts.find(p => String(p.id) === id); return product ? { name: product.name, sku: product.sku, barcode: product.barcode, brandName: product.brand_id ? brandNameById.get(product.brand_id) ?? null : null } : undefined; }} />
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -21007,7 +21006,15 @@ setCustomerOrganizationName("");
                   >
                     <div className="space-y-1">
                       <div className="text-sm font-medium text-foreground">
-                        {product.name}
+                        {highlightSearchMatches(product.name, productSearch).map((segment, index) =>
+                          segment.match ? (
+                            <mark key={index} className="rounded-sm bg-primary/10 px-px text-inherit">
+                              {segment.text}
+                            </mark>
+                          ) : (
+                            <span key={index}>{segment.text}</span>
+                          ),
+                        )}
                         {product.is_active === false && (
                           <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Inactive</span>
                         )}
