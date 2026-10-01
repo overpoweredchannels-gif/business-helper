@@ -216,9 +216,16 @@ async function main() {
         (select current_stock from products where id='${limitedProduct}') limited_stock`)).rows[0];
       return { ...row, main_stock: Number(row.main_stock), limited_stock: Number(row.limited_stock) };
     };
+    // Derive fixture dates from the database clock (not a hard-coded calendar
+    // date): the credit fixture's sale date sits 4 days in the past so its due
+    // date (credit_days=5) lands tomorrow — the first credit invoice is never
+    // overdue when the later override path is exercised, on any run date.
+    const testDates = (await db.query<{ sale_date: string; due_date: string }>(
+      "select (current_date - 4)::text as sale_date, (current_date + 1)::text as due_date",
+    )).rows[0];
     const base = (extra: Record<string, unknown> = {}) => ({
       customer_id: cashCustomer,
-      sale_date: "2026-09-26",
+      sale_date: testDates.sale_date,
       payment_type: "cash",
       invoice_discount: 0,
       invoice_discount_type: "flat",
@@ -422,7 +429,7 @@ async function main() {
       lines: [{ product_id: product, quantity: 4, selling_price: 10, discount: 0, bonus: 0, unit_mode: "main" }],
     });
     const credit = await create("70000000-0000-4000-8000-000000000020", creditInput);
-    assert.equal(credit.transaction.credit_due_date, "2026-10-01");
+    assert.equal(credit.transaction.credit_due_date, testDates.due_date, "credit due date is sale date plus the customer's credit days");
     assert.equal(Number(credit.transaction.total_amount), 40);
     await assert.rejects(create("70000000-0000-4000-8000-000000000021", { ...creditInput, lines: [{ ...creditInput.lines[0], quantity: 10 }] }), /credit limit exceeded/);
     await db.query("update customers set allow_over_limit=true where id=$1", [creditCustomer]);
