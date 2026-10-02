@@ -3,6 +3,7 @@
 import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
 import { allPages } from "@/lib/supabase/all-pages";
 import { highlightSearchMatches, rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
+import { ProductCatalogState } from "@/components/products/ProductCatalogState";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
@@ -326,7 +327,7 @@ export default function Home() {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [productsLoading, setProductsLoading] = useState(false);
+  const [archivingProductId, setArchivingProductId] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [productToView, setProductToView] = useState<Product | null>(null);
@@ -456,6 +457,11 @@ export default function Home() {
   const [dashboardSourceStates, setDashboardSourceStates] = useState(emptyDashboardSourceStates);
   const dashboardReadTrackerRef = useRef<DashboardReadTracker | null>(null);
   if (!dashboardReadTrackerRef.current) dashboardReadTrackerRef.current = new DashboardReadTracker(setDashboardSourceStates);
+  // Product catalog loading is derived from the shared read-state tracker (not a
+  // local boolean) so a stale fetch can never clear the loading flag of a newer
+  // one, and failures are distinguishable from an empty catalog.
+  const productsReadStatus = dashboardSourceStates.products.status;
+  const productsLoading = productsReadStatus === "loading" || productsReadStatus === "not-loaded";
   const profileLoadRequestRef = useRef(0);
   const authCheckRequestRef = useRef(0);
   const dashboardAccountIdRef = useRef<string | null>(null);
@@ -723,6 +729,15 @@ export default function Home() {
     setSalesItems([]);
     setSalesOrders([]);
     setTasks([]);
+    // Invoice/POS selections reference organization data by id. They must not
+    // survive an account or organization switch: a stale line could otherwise
+    // be invoiced against the newly authorized organization. (These setters are
+    // declared later in this component; every call site runs after mount, so
+    // the closure references are safe.)
+    setSalesLines([]);
+    setPurchaseLines([]);
+    setSelectedCustomerIdForSale(null);
+    setSelectedSupplierId(null);
   };
 
   const invalidateDashboardSession = () => {
@@ -4762,14 +4777,15 @@ setCustomerOrganizationName("");
   };
 
   const fetchProducts = async (organizationId?: string | null) => {
-    setProductsLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setProducts([]);
-      setProductsLoading(false);
       return;
     }
 
+    // Loading/failed/empty states are published by the read tracker; no local
+    // boolean here, so a late response from a previous account or request can
+    // neither commit rows nor flip the loading flag (the tracker ignores it).
     await readDashboardSource(
       "products",
       orgId,
@@ -4785,8 +4801,13 @@ setCustomerOrganizationName("");
       setProducts,
       (error) => console.error("Supabase fetch products error:", error),
     );
+  };
 
-    setProductsLoading(false);
+  // Retry targets the currently authorized organization only; if the account or
+  // organization changed since the failure, the tracker's scope check ignores
+  // the read instead of loading another organization's catalog.
+  const retryProductsLoad = () => {
+    void fetchProducts(currentOrganizationId);
   };
 
   const fetchCustomers = async (organizationId?: string | null) => {
@@ -6734,7 +6755,7 @@ setCustomerOrganizationName("");
       setError("Organization not loaded. Please login again.");
       return;
     }
-    setProductsLoading(true);
+    setArchivingProductId(productId);
 
     const productToArchive = products.find((product) => product.id === productId);
     const { error } = await supabase
@@ -6743,7 +6764,7 @@ setCustomerOrganizationName("");
       .eq("id", productId)
       .eq("organization_id", currentOrganizationId);
 
-    setProductsLoading(false);
+    setArchivingProductId(null);
 
     if (error) {
       setError("Failed to archive product");
@@ -21008,15 +21029,7 @@ setCustomerOrganizationName("");
               )}
             </div>
           </div>
-          {productsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading products...</p>
-          ) : filteredProducts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {products.length === 0
-                ? "No products found."
-                : `No products match "${productSearch.trim()}".`}
-            </p>
-          ) : (
+          {productsReadStatus === "successful-populated" && filteredProducts.length > 0 ? (
             <ul className="space-y-2">
               {filteredProducts.map((product) => {
                 const brand = brands.find((b) => b.id === product.brand_id);
@@ -21069,16 +21082,22 @@ setCustomerOrganizationName("");
                       <button
                         type="button"
                         onClick={() => handleArchiveProduct(product.id)}
-                        disabled={product.is_active === false}
+                        disabled={product.is_active === false || archivingProductId === product.id}
                         className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90 disabled:cursor-not-allowed disabled:bg-muted"
                       >
-                        Archive
+                        {archivingProductId === product.id ? "Archiving..." : "Archive"}
                       </button>
                     </div>
                   </li>
                 );
               })}
             </ul>
+          ) : (
+            <ProductCatalogState
+              status={productsReadStatus}
+              searchQuery={productSearch}
+              onRetry={retryProductsLoad}
+            />
           )}
         </section>
         </>

@@ -87,6 +87,9 @@ export default function VisitDetailPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
+  // Guards the product catalog load: a slow response from an earlier request
+  // (e.g. after logout or navigation) must not overwrite the current state.
+  const productsRequestRef = useRef(0);
 
   // Photos
   const [photoLoading, setPhotoLoading] = useState(false);
@@ -113,13 +116,24 @@ export default function VisitDetailPage() {
   }, [visitId]);
 
   const loadProducts = useCallback(async () => {
+    const requestId = ++productsRequestRef.current;
     try {
       const res = await authorizedFetch("/api/products/list?limit=1000");
       const data = await res.json();
+      if (requestId !== productsRequestRef.current) return;
       if (data.ok) setProducts(data.products ?? []);
     } catch {
+      if (requestId !== productsRequestRef.current) return;
       // products are optional; ignore
     }
+  }, []);
+
+  useEffect(() => {
+    // Invalidate any in-flight catalog load on unmount so a late response
+    // cannot update state after the account or page changed.
+    return () => {
+      productsRequestRef.current += 1;
+    };
   }, []);
 
   useEffect(() => {
