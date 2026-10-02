@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ProductCatalogState } from "../src/components/products/ProductCatalogState";
+import { ProductCatalogErrorBanner, ProductCatalogState } from "../src/components/products/ProductCatalogState";
 import {
   DashboardReadTracker,
   runDashboardSourceRead,
@@ -188,9 +188,23 @@ async function main() {
 
   // --- ProductCatalogState presentation ---
 
-  const renderStatus = (status: "loading" | "not-loaded" | "failed" | "successful-empty" | "successful-populated", searchQuery = "") =>
+  const renderStatus = (
+    status: "loading" | "not-loaded" | "failed" | "successful-empty" | "successful-populated",
+    options: { searchQuery?: string; matchCount?: number; hasProducts?: boolean } = {},
+  ) =>
     renderToStaticMarkup(
-      React.createElement(ProductCatalogState, { status, searchQuery, onRetry: () => undefined }),
+      React.createElement(ProductCatalogState, {
+        status,
+        searchQuery: options.searchQuery ?? "",
+        matchCount: options.matchCount ?? 1,
+        hasProducts: options.hasProducts ?? true,
+        onRetry: () => undefined,
+      }),
+    );
+
+  const renderBanner = (hasStaleData: boolean) =>
+    renderToStaticMarkup(
+      React.createElement(ProductCatalogErrorBanner, { hasStaleData, onRetry: () => undefined }),
     );
 
   {
@@ -203,24 +217,39 @@ async function main() {
   }
 
   {
-    const failed = renderStatus("failed");
-    assert.match(failed, /Couldn(?:'|&#x27;)t load the product catalog/);
-    assert.match(failed, /role="alert"/);
-    assert.match(failed, />Retry</);
-    assert.doesNotMatch(failed, /Loading products/);
-    assert.doesNotMatch(failed, /No products added yet/);
-    console.log("✓ catalog state: failed shows error + retry, distinct from loading/empty");
+    const failedStale = renderStatus("failed", { hasProducts: true });
+    assert.match(failedStale, /Couldn(?:'|&#x27;)t refresh the product catalog/);
+    assert.match(failedStale, /previously loaded products/);
+    assert.match(failedStale, /role="alert"/);
+    assert.match(failedStale, />Retry</);
+    assert.doesNotMatch(failedStale, /Loading products/);
+    assert.doesNotMatch(failedStale, /No products added yet/);
+    const failedFirstLoad = renderStatus("failed", { hasProducts: false });
+    assert.match(failedFirstLoad, /Couldn(?:'|&#x27;)t load the product catalog/);
+    assert.match(failedFirstLoad, />Retry</);
+    console.log("✓ catalog state: failed shows banner + retry (stale vs first-load copy)");
+  }
+
+  {
+    const bannerStale = renderBanner(true);
+    assert.match(bannerStale, /previously loaded products/);
+    assert.match(bannerStale, />Retry</);
+    const bannerEmpty = renderBanner(false);
+    assert.match(bannerEmpty, /Check your connection/);
+    console.log("✓ error banner: standalone banner renders for POS/invoice placement");
   }
 
   {
     const empty = renderStatus("successful-empty");
     assert.match(empty, /No products added yet/);
-    assert.doesNotMatch(empty, /Couldn(?:'|&#x27;)t load/);
-    const noMatch = renderStatus("successful-populated", "  zzz  ");
+    assert.doesNotMatch(empty, /Couldn(?:'|&#x27;)t/);
+    const noMatch = renderStatus("successful-populated", { searchQuery: "  zzz  ", matchCount: 0 });
     assert.match(noMatch, /No products match/);
     assert.match(noMatch, /zzz/);
-    const populatedNoSearch = renderStatus("successful-populated");
-    assert.match(populatedNoSearch, /No products added yet/);
+    const populatedNoSearch = renderStatus("successful-populated", { matchCount: 3 });
+    assert.equal(populatedNoSearch, "", "list branch renders nothing when matches exist");
+    const populatedEmptySearch = renderStatus("successful-populated", { matchCount: 0 });
+    assert.equal(populatedEmptySearch, "", "populated with no query renders nothing (caller shows the list)");
     console.log("✓ catalog state: empty vs no-match are distinct messages");
   }
 

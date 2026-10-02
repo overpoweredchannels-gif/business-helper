@@ -1,24 +1,63 @@
 import type { DashboardReadStatus } from "@/lib/dashboard/data-read-state";
 
 /**
+ * Compact failure banner with retry, shown wherever products are selectable
+ * (products section, Retail POS, invoice lines) when a catalog refresh fails.
+ *
+ * A same-account transient failure keeps previously loaded rows visible and
+ * selectable — entered drafts are preserved — but the failure must never be
+ * silent, hence the prominent banner. Account/organization switches and logout
+ * clear the catalog and selections outright instead (see clearDashboardSourceData
+ * in src/app/page.tsx).
+ */
+export function ProductCatalogErrorBanner({
+  onRetry,
+  hasStaleData,
+}: {
+  onRetry: () => void;
+  hasStaleData: boolean;
+}) {
+  return (
+    <div role="alert" className="space-y-2 rounded-lg border border-destructive/30 bg-destructive-bg p-3">
+      <p className="text-sm text-destructive">
+        {hasStaleData
+          ? "Couldn't refresh the product catalog. Showing previously loaded products."
+          : "Couldn't load the product catalog. Check your connection and try again."}
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="min-h-11 rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+/**
  * Distinct UI states for the product catalog list, driven by the shared
  * dashboard read-state contract:
  * - "loading" / "not-loaded": the catalog is being fetched (or no fetch has
  *   started yet for the current account/organization).
- * - "failed": the fetch failed — the list is hidden (fail-closed: invoice and
- *   POS flows must not silently use a stale catalog) and a retry is offered.
- *   Retry always targets the currently authorized organization via the
- *   caller's onRetry.
+ * - "failed": the refresh failed. The banner above is always shown; the caller
+ *   additionally keeps rendering the stale list when rows exist, so drafts and
+ *   selections survive a same-account transient failure.
  * - "successful-empty": the organization genuinely has no products.
- * - "successful-populated": the query matched nothing.
+ * - "successful-populated": the query matched nothing (caller shows the list
+ *   otherwise; this component then renders nothing).
  */
 export function ProductCatalogState({
   status,
   searchQuery,
+  matchCount,
+  hasProducts,
   onRetry,
 }: {
   status: DashboardReadStatus;
   searchQuery: string;
+  matchCount: number;
+  hasProducts: boolean;
   onRetry: () => void;
 }) {
   if (status === "loading" || status === "not-loaded") {
@@ -30,26 +69,17 @@ export function ProductCatalogState({
   }
 
   if (status === "failed") {
-    return (
-      <div className="space-y-2">
-        <p role="alert" className="text-sm text-destructive">
-          Couldn&apos;t load the product catalog. Check your connection and try again.
-        </p>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="min-h-11 rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Retry
-        </button>
-      </div>
-    );
+    return <ProductCatalogErrorBanner onRetry={onRetry} hasStaleData={hasProducts} />;
+  }
+
+  if (status === "successful-empty") {
+    return <p className="text-sm text-muted-foreground">No products added yet.</p>;
   }
 
   const trimmed = searchQuery.trim();
-  if (status === "successful-populated" && trimmed) {
+  if (matchCount === 0 && trimmed) {
     return <p className="text-sm text-muted-foreground">No products match &ldquo;{trimmed}&rdquo;.</p>;
   }
 
-  return <p className="text-sm text-muted-foreground">No products added yet.</p>;
+  return null;
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useCatalogScopeGuard } from "@/lib/catalog/use-catalog-scope-guard";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import {
@@ -87,9 +88,15 @@ export default function VisitDetailPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
-  // Guards the product catalog load: a slow response from an earlier request
-  // (e.g. after logout or navigation) must not overwrite the current state.
-  const productsRequestRef = useRef(0);
+  // Scope guard for the catalog load: the salesman layout does not observe
+  // auth changes, so old-scope products and draft selections are cleared here
+  // on sign-out or a user change while this page stays mounted. A same-user
+  // token refresh is not a scope change and invalidates nothing.
+  const clearCatalogScope = useCallback(() => {
+    setProducts([]);
+    setItems([]);
+  }, []);
+  const { requestRef: productsRequestRef } = useCatalogScopeGuard(clearCatalogScope);
 
   // Photos
   const [photoLoading, setPhotoLoading] = useState(false);
@@ -126,14 +133,6 @@ export default function VisitDetailPage() {
       if (requestId !== productsRequestRef.current) return;
       // products are optional; ignore
     }
-  }, []);
-
-  useEffect(() => {
-    // Invalidate any in-flight catalog load on unmount so a late response
-    // cannot update state after the account or page changed.
-    return () => {
-      productsRequestRef.current += 1;
-    };
   }, []);
 
   useEffect(() => {

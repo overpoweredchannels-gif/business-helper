@@ -3,7 +3,7 @@
 import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
 import { allPages } from "@/lib/supabase/all-pages";
 import { highlightSearchMatches, rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
-import { ProductCatalogState } from "@/components/products/ProductCatalogState";
+import { ProductCatalogState, ProductCatalogErrorBanner } from "@/components/products/ProductCatalogState";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
@@ -17857,6 +17857,9 @@ setCustomerOrganizationName("");
             )}
           </div>
           <div className="space-y-4" {...entryNavigationHandlers}>
+            {productsReadStatus === "failed" && (
+              <ProductCatalogErrorBanner onRetry={retryProductsLoad} hasStaleData={products.length > 0} />
+            )}
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
               products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
@@ -21029,7 +21032,7 @@ setCustomerOrganizationName("");
               )}
             </div>
           </div>
-          {productsReadStatus === "successful-populated" && filteredProducts.length > 0 ? (
+          {(productsReadStatus === "successful-populated" || productsReadStatus === "failed") && filteredProducts.length > 0 ? (
             <ul className="space-y-2">
               {filteredProducts.map((product) => {
                 const brand = brands.find((b) => b.id === product.brand_id);
@@ -21096,6 +21099,8 @@ setCustomerOrganizationName("");
             <ProductCatalogState
               status={productsReadStatus}
               searchQuery={productSearch}
+              matchCount={filteredProducts.length}
+              hasProducts={products.length > 0}
               onRetry={retryProductsLoad}
             />
           )}
