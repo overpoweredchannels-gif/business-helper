@@ -87,7 +87,7 @@ function saleState() {
       ? lit(saleId) + "::uuid"
       : "'00000000-0000-0000-0000-000000000000'::uuid";
   return query(
-    `select json_build_object('sales',(select count(*) from public.sales_transactions where organization_id=${lit(org)}::uuid and request_id=${lit(reqId)}::uuid),'saleId',(select id from public.sales_transactions where organization_id=${lit(org)}::uuid and request_id=${lit(reqId)}::uuid limit 1),'items',(select count(*) from public.sales_items where sales_transaction_id=${id}),'qty',(select quantity from public.sales_items where sales_transaction_id=${id} limit 1),'total',(select total_amount from public.sales_transactions where id=${id}),'cash',(select cash_received from public.sales_transactions where id=${id}),'change',(select change_due from public.sales_transactions where id=${id}),'stock',(select current_stock from public.products where id=${lit(product)}::uuid));`,
+    `select json_build_object('sales',(select count(*) from public.sales_transactions where organization_id=${lit(org)}::uuid and request_id=${lit(reqId)}::uuid),'saleId',(select id from public.sales_transactions where organization_id=${lit(org)}::uuid and request_id=${lit(reqId)}::uuid limit 1),'items',(select count(*) from public.sales_items where sales_transaction_id=${id}),'qty',(select quantity from public.sales_items where sales_transaction_id=${id} limit 1),'discount',(select discount_amount from public.sales_transactions where id=${id}),'total',(select total_amount from public.sales_transactions where id=${id}),'cash',(select cash_received from public.sales_transactions where id=${id}),'change',(select change_due from public.sales_transactions where id=${id}),'stock',(select current_stock from public.products where id=${lit(product)}::uuid));`,
   );
 }
 async function main() {
@@ -313,6 +313,57 @@ async function main() {
       .locator("input[aria-label='Cash received']:visible")
       .first();
     await cash.fill("5.00");
+    const discountType = page.getByRole("combobox", {
+        name: "Sale discount type",
+      }),
+      percentDiscount = page.getByRole("textbox", {
+        name: "Sale discount percentage",
+      });
+    await discountType.selectOption("percent");
+    await percentDiscount.fill("100.01");
+    await page
+      .getByText("Invoice discount percentage cannot exceed 100.", {
+        exact: true,
+      })
+      .waitFor({ state: "visible", timeout: 10000 });
+    const invalidTotal = page.locator("[data-pos-payment-bar] .text-3xl"),
+      invalidSave = page.getByRole("button", {
+        name: "Pay & Save",
+        exact: true,
+      });
+    out.checks.invalidPercentageBlocked =
+      /Unavailable/.test(await invalidTotal.innerText()) &&
+      (await invalidSave.isDisabled())
+        ? "PASS"
+        : "FAIL";
+    ok(
+      out.checks.invalidPercentageBlocked === "PASS",
+      "invalid percentage did not disable the sale",
+    );
+    await percentDiscount.fill("10");
+    const discountSummary = page.getByText(/Discount before tax:/);
+    await discountSummary.waitFor({ state: "visible", timeout: 10000 });
+    out.checks.percentageDiscount =
+      /1\.01/.test(await discountSummary.innerText()) &&
+      /9\.07/.test(await invalidTotal.innerText())
+        ? "PASS"
+        : "FAIL";
+    ok(
+      out.checks.percentageDiscount === "PASS",
+      "percentage discount amount/total mismatch",
+    );
+    await discountType.selectOption("flat");
+    await page
+      .getByRole("textbox", { name: "Sale discount amount" })
+      .fill("1.00");
+    out.checks.amountDiscount = /9\.08/.test(await invalidTotal.innerText())
+      ? "PASS"
+      : "FAIL";
+    ok(out.checks.amountDiscount === "PASS", "amount discount total mismatch");
+    await discountType.selectOption("percent");
+    await page
+      .getByRole("textbox", { name: "Sale discount percentage" })
+      .fill("10");
     const metrics = await page.evaluate(() => ({
       w: innerWidth,
       d: document.documentElement.scrollWidth,
@@ -340,7 +391,7 @@ async function main() {
       }),
       disabled = await saveButton.isDisabled();
     out.checks.cashShortfall =
-      createCalls === 0 && disabled && /5\.08/.test(await short.innerText())
+      createCalls === 0 && disabled && /4\.07/.test(await short.innerText())
         ? "PASS"
         : "FAIL";
     ok(
@@ -350,7 +401,7 @@ async function main() {
     await cash.fill("20.00");
     const changeSummary = page.getByText(/Change due:/i);
     await changeSummary.waitFor({ state: "visible", timeout: 10000 });
-    out.checks.cashChangePreview = /9\.92/.test(await changeSummary.innerText())
+    out.checks.cashChangePreview = /10\.93/.test(await changeSummary.innerText())
       ? "PASS"
       : "FAIL";
     ok(out.checks.cashChangePreview === "PASS", "cash change preview mismatch");
@@ -426,9 +477,12 @@ async function main() {
       Number(persisted.sales) === 1 ? "PASS" : "FAIL";
     out.checks.fractionalQuantity =
       Number(persisted.qty) === 0.125 ? "PASS" : "FAIL";
-    out.checks.saleTotal = Number(persisted.total) === 10.08 ? "PASS" : "FAIL";
+    out.checks.saleTotal =
+      Number(persisted.discount) === 1.01 && Number(persisted.total) === 9.07
+        ? "PASS"
+        : "FAIL";
     out.checks.cashAndChange =
-      Number(persisted.cash) === 20 && Number(persisted.change) === 9.92
+      Number(persisted.cash) === 20 && Number(persisted.change) === 10.93
         ? "PASS"
         : "FAIL";
     out.checks.lostResponseSaved = "PASS";
@@ -500,9 +554,10 @@ async function main() {
       receiptText.includes(invoice) &&
       receiptText.includes("POS Release Fractional Pack Product") &&
       /0\.125/.test(receiptText) &&
-      /10\.08/.test(receiptText) &&
+      /1\.01/.test(receiptText) &&
+      /9\.07/.test(receiptText) &&
       /20\.00/.test(receiptText) &&
-      /9\.92/.test(receiptText);
+      /10\.93/.test(receiptText);
     out.checks.receiptPreview = receiptOK ? "PASS" : "FAIL";
     ok(receiptOK, "receipt totals/quantity mismatch");
     await page.screenshot({
@@ -518,9 +573,9 @@ async function main() {
     ok(
       printDoc.includes(invoice) &&
         printDoc.includes("POS Release Fractional Pack Product") &&
-        /10\.08/.test(printDoc) &&
+        /9\.07/.test(printDoc) &&
         /20\.00/.test(printDoc) &&
-        /9\.92/.test(printDoc),
+        /10\.93/.test(printDoc),
       "receipt print HTML mismatch",
     );
     out.checks.mockedPrintDocument = "PASS";
@@ -554,7 +609,7 @@ async function main() {
     await page.waitForFunction(() => window.__pc === 2, { timeout: 10000 });
     const print2 = await page.evaluate(() => window.__pd?.[1] || "");
     out.checks.receiptReprint =
-      print2.includes(invoice) && /10\.08/.test(print2) ? "PASS" : "FAIL";
+      print2.includes(invoice) && /9\.07/.test(print2) ? "PASS" : "FAIL";
     ok(out.checks.receiptReprint === "PASS", "reprint document mismatch");
     await page.getByRole("button", { name: "Close", exact: true }).click();
     await page
@@ -599,9 +654,10 @@ async function main() {
       desktopReceiptText.includes(invoice) &&
       desktopReceiptText.includes("POS Release Fractional Pack Product") &&
       /0\.125/.test(desktopReceiptText) &&
-      /10\.08/.test(desktopReceiptText) &&
+      /1\.01/.test(desktopReceiptText) &&
+      /9\.07/.test(desktopReceiptText) &&
       /20\.00/.test(desktopReceiptText) &&
-      /9\.92/.test(desktopReceiptText)
+      /10\.93/.test(desktopReceiptText)
         ? "PASS"
         : "FAIL";
     ok(
@@ -720,7 +776,7 @@ async function main() {
       .waitFor({ state: "visible", timeout: 15000 });
     const history = await page.locator("body").innerText();
     out.checks.salesHistory =
-      history.includes(invoice) && /10\.08/.test(history) ? "PASS" : "FAIL";
+      history.includes(invoice) && /9\.07/.test(history) ? "PASS" : "FAIL";
     ok(
       out.checks.salesHistory === "PASS",
       "sales history missing invoice/total",

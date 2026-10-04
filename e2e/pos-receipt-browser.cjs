@@ -56,7 +56,12 @@
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({
+      headless: true,
+      ...(process.env.POS_CHROME_PATH
+        ? { executablePath: process.env.POS_CHROME_PATH }
+        : {}),
+    });
     for (const width of [58, 80]) {
       const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
       page.setDefaultTimeout(10000);
