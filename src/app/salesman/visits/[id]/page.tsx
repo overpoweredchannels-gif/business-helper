@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useCatalogScopeGuard } from "@/lib/catalog/use-catalog-scope-guard";
+import { VisitProductLookup, VISIT_PRODUCT_SEARCH_PAGE_SIZE, type VisitProduct, type VisitProductPage } from "@/components/salesman/VisitProductLookup";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import {
   Loader2, MapPin, Navigation, FileText, CheckCircle2, AlertCircle, ArrowLeft,
-  Plus, Trash2, Search, Camera, Image as ImageIcon,
+  Plus, Trash2, Camera, Image as ImageIcon,
 } from "lucide-react";
 
 interface Visit {
@@ -30,15 +31,6 @@ interface Visit {
     customer_lat?: number;
     customer_lng?: number;
   };
-}
-
-interface Product {
-  id: string;
-  name: string;
-  sku?: string;
-  unit_type?: string;
-  current_stock: number;
-  default_selling_price: number;
 }
 
 interface DraftItem {
@@ -85,18 +77,33 @@ export default function VisitDetailPage() {
   const [savedNotes, setSavedNotes] = useState("");
 
   // Draft sale
-  const [products, setProducts] = useState<Product[]>([]);
-  const [productSearch, setProductSearch] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
-  // Scope guard for the catalog load: the salesman layout does not observe
+  // Remounting the lookup on scope change resets its query/results; in-flight
+  // searches are dropped by the shared request ref.
+  const [lookupScopeVersion, setLookupScopeVersion] = useState(0);
+  // Scope guard for the catalog lookup: the salesman layout does not observe
   // auth changes, so old-scope products and draft selections are cleared here
   // on sign-out or a user change while this page stays mounted. A same-user
   // token refresh is not a scope change and invalidates nothing.
   const clearCatalogScope = useCallback(() => {
-    setProducts([]);
     setItems([]);
+    setLookupScopeVersion((v) => v + 1);
   }, []);
   const { requestRef: productsRequestRef } = useCatalogScopeGuard(clearCatalogScope);
+
+  // Paginated product search via the existing /api/products/list contract.
+  // Tenant and permission filtering happen server-side on every request.
+  const searchVisitProducts = useCallback(
+    async (query: string, offset: number): Promise<VisitProductPage> => {
+      const res = await authorizedFetch(
+        `/api/products/list?search=${encodeURIComponent(query)}&offset=${offset}&limit=${VISIT_PRODUCT_SEARCH_PAGE_SIZE}`,
+      );
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Product search failed. Please try again.");
+      return { products: data.products ?? [], nextOffset: data.nextOffset ?? null };
+    },
+    [],
+  );
 
   // Photos
   const [photoLoading, setPhotoLoading] = useState(false);
@@ -122,19 +129,6 @@ export default function VisitDetailPage() {
     }
   }, [visitId]);
 
-  const loadProducts = useCallback(async () => {
-    const requestId = ++productsRequestRef.current;
-    try {
-      const res = await authorizedFetch("/api/products/list?limit=1000");
-      const data = await res.json();
-      if (requestId !== productsRequestRef.current) return;
-      if (data.ok) setProducts(data.products ?? []);
-    } catch {
-      if (requestId !== productsRequestRef.current) return;
-      // products are optional; ignore
-    }
-  }, []);
-
   useEffect(() => {
     (async () => {
       try {
@@ -148,10 +142,6 @@ export default function VisitDetailPage() {
       }
     })();
   }, [loadVisit]);
-
-  useEffect(() => {
-    if (visit?.visit_status === "in_progress") loadProducts();
-  }, [visit?.visit_status, loadProducts]);
 
   const startVisit = async () => {
     setActionLoading(true);
@@ -250,7 +240,7 @@ export default function VisitDetailPage() {
     }
   };
 
-  const addItem = (p: Product) => {
+  const addItem = (p: VisitProduct) => {
     const existing = items.find((i) => i.productId === p.id);
     if (existing) {
       setItems(items.map((i) => (i.productId === p.id ? { ...i, quantity: i.quantity + 1 } : i)));
@@ -429,35 +419,12 @@ export default function VisitDetailPage() {
             <h2 className="font-semibold text-foreground mb-1">Record a sale (draft)</h2>
             <p className="text-sm text-body mb-4">Add products to create a draft sale. The manager approves it and it becomes an invoice.</p>
 
-            <div className="relative mb-4">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <input
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Search products..."
-                className="w-full rounded-lg border border-input bg-card px-3.5 py-2.5 pl-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-
-            {productSearch.trim() && (
-              <div className="max-h-52 overflow-y-auto rounded-lg border border-border divide-y divide-border mb-4">
-                {products
-                  .filter((p) => (p.name + " " + (p.sku ?? "")).toLowerCase().includes(productSearch.toLowerCase()))
-                  .slice(0, 15)
-                  .map((p) => (
-                    <button key={p.id} onClick={() => addItem(p)} className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted/40 text-left">
-                      <div>
-                        <div className="text-foreground font-medium">{p.name}</div>
-                        <div className="text-xs text-body">Stock: {p.current_stock} · {p.unit_type ?? ""}</div>
-                      </div>
-                      <div className="text-sm font-semibold text-foreground">{fmt(p.default_selling_price)}</div>
-                    </button>
-                  ))}
-                {products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
-                  <div className="px-4 py-3 text-sm text-body">No products found.</div>
-                )}
-              </div>
-            )}
+            <VisitProductLookup
+              key={lookupScopeVersion}
+              searchProducts={searchVisitProducts}
+              onAddProduct={addItem}
+              invalidationRef={productsRequestRef}
+            />
 
             {items.length > 0 && (
               <div className="rounded-lg border border-border divide-y divide-border mb-4">
