@@ -328,6 +328,40 @@ async function assertRejectedCreate(token: string, requestId: string, input: Rec
   return { status: response.status, code: error.code, message: error.message };
 }
 
+async function getRequestEffectsSnapshot(requestId: string, productId: string): Promise<Record<string, unknown>> {
+  const request = literal(requestId);
+  const product = literal(productId);
+  const output = await sql(`select json_build_object(
+    'sales',(select count(*) from public.sales_transactions where request_id=${request}::uuid),
+    'items',(select count(*) from public.sales_items si join public.sales_transactions st on st.id=si.sales_transaction_id where st.request_id=${request}::uuid),
+    'payments',(select count(*) from public.customer_payments cp join public.customer_payment_allocations a on a.customer_payment_id=cp.id join public.sales_transactions st on st.id=a.sales_transaction_id where st.request_id=${request}::uuid),
+    'allocations',(select count(*) from public.customer_payment_allocations a join public.sales_transactions st on st.id=a.sales_transaction_id where st.request_id=${request}::uuid),
+    'movements',(select count(*) from public.inventory_transactions it join public.sales_transactions st on st.id=it.reference_id where st.request_id=${request}::uuid),
+    'returns',(select count(*) from public.sales_returns sr join public.sales_transactions st on st.id=sr.sales_transaction_id where st.request_id=${request}::uuid),
+    'return_items',(select count(*) from public.sales_return_items sri join public.sales_returns sr on sr.id=sri.sales_return_id join public.sales_transactions st on st.id=sr.sales_transaction_id where st.request_id=${request}::uuid),
+    'audits',(select count(*) from public.audit_logs where new_values ->> 'request_id'=${request} or entity_id in (select id from public.sales_transactions where request_id=${request}::uuid)),
+    'stock',(select current_stock from public.products where id=${product}::uuid)
+  );`);
+  return JSON.parse(output.trim()) as Record<string, unknown>;
+}
+
+async function assertInactiveCreateRejectedWithoutEffects(token: string, requestId: string, input: Record<string, unknown>, productId: string) {
+  // Inactive profiles are filtered before organization lookup. Keep the denial generic
+  // so this authorization path does not disclose profile existence.
+  const before = await getRequestEffectsSnapshot(requestId, productId);
+  const response = await rpc("create_sales_invoice_atomic", token, { p_request_id: requestId, p_input: input });
+  const after = await getRequestEffectsSnapshot(requestId, productId);
+  assert.deepEqual(after, before, "inactive-user rejection leaves invoice, item, payment, stock, return, and audit state unchanged");
+
+  assert.ok([400, 401, 403].includes(response.status), `inactive-user request must be rejected; got ${response.status} ${response.body}`);
+  const error = JSON.parse(response.body) as { code?: string; message?: string };
+  assert.ok(["42501", "28000"].includes(error.code ?? ""), `inactive-user request must return SQLSTATE 42501 or equivalent authorization failure: ${response.body}`);
+  assert.equal(error.message, "Owner sales permission is required", "inactive profiles intentionally receive the generic fail-closed permission message");
+  assert.doesNotMatch(error.message ?? "", /inactive|deactivated|profile/i, "the rejection must not reveal inactive-profile existence");
+  await assertNoBusinessRecords([requestId]);
+  return { status: response.status, code: error.code, message: error.message };
+}
+
 async function assertNoBusinessRecords(requestIds: string[]): Promise<void> {
   const ids = `array[${requestIds.map(id => `${literal(id)}::uuid`).join(",")}]::uuid[]`;
   const output = await sql(`select json_build_object(
@@ -336,9 +370,11 @@ async function assertNoBusinessRecords(requestIds: string[]): Promise<void> {
     'movements',(select count(*) from public.inventory_transactions it join public.sales_transactions st on st.id=it.reference_id where st.request_id=any(${ids})),
     'payments',(select count(*) from public.customer_payments cp join public.customer_payment_allocations a on a.customer_payment_id=cp.id join public.sales_transactions st on st.id=a.sales_transaction_id where st.request_id=any(${ids})),
     'allocations',(select count(*) from public.customer_payment_allocations a join public.sales_transactions st on st.id=a.sales_transaction_id where st.request_id=any(${ids})),
-    'audits',(select count(*) from public.audit_logs where entity_id in (select id from public.sales_transactions where request_id=any(${ids})))
+    'returns',(select count(*) from public.sales_returns sr join public.sales_transactions st on st.id=sr.sales_transaction_id where st.request_id=any(${ids})),
+    'return_items',(select count(*) from public.sales_return_items sri join public.sales_returns sr on sr.id=sri.sales_return_id join public.sales_transactions st on st.id=sr.sales_transaction_id where st.request_id=any(${ids})),
+    'audits',(select count(*) from public.audit_logs where new_values ->> 'request_id'=any(array[${requestIds.map(id => literal(id)).join(",")}]::text[]) or entity_id in (select id from public.sales_transactions where request_id=any(${ids})))
   );`);
-  assert.deepEqual(JSON.parse(output.trim()), { sales: 0, items: 0, movements: 0, payments: 0, allocations: 0, audits: 0 }, "rejected request IDs leave business records unchanged");
+  assert.deepEqual(JSON.parse(output.trim()), { sales: 0, items: 0, movements: 0, payments: 0, allocations: 0, returns: 0, return_items: 0, audits: 0 }, "rejected request IDs leave business records unchanged");
 }
 
 async function validateFixtureIdentities(identities: Array<{ name: string; identity: UserToken; profileId: string; organizationId: string; kind: "owner" | "employee" | "inactive" }>) {
@@ -384,6 +420,7 @@ async function validateFixtureIdentities(identities: Array<{ name: string; ident
 
 async function cleanup(requestIds: string[], returnIds: string[], organizationId: string) {
   const ids = `array[${requestIds.map(id => `${literal(id)}::uuid`).join(",")}]`;
+  const requestTextIds = `array[${requestIds.map(literal).join(",")}]::text[]`;
   const returns = `array[${returnIds.map(id => `${literal(id)}::uuid`).join(",")}]::uuid[]`;
   await sql(`do $$ declare v_org uuid := ${literal(organizationId)}::uuid; v_requests uuid[] := ${ids}; v_sales uuid[]; v_payments uuid[]; begin
     select array_agg(id) into v_sales from public.sales_transactions where organization_id=v_org and request_id=any(v_requests);
@@ -395,8 +432,51 @@ async function cleanup(requestIds: string[], returnIds: string[], organizationId
     delete from public.sales_transactions where organization_id=v_org and request_id=any(v_requests);
     delete from public.inventory_transactions where reference_id=any(coalesce(v_sales,'{}'::uuid[])) and reference_type='sales_transaction';
     delete from public.inventory_transactions where reference_id=any(${returns}) and reference_type='sales_return';
-    delete from public.audit_logs where organization_id=v_org and entity_id=any(coalesce(v_sales,'{}'::uuid[]));
+    delete from public.audit_logs where organization_id=v_org and (entity_id=any(coalesce(v_sales,'{}'::uuid[])) or new_values ->> 'request_id'=any(${requestTextIds}));
   end $$;`);
+}
+
+type CleanupEvidence = Record<"sales" | "items" | "payments" | "allocations" | "movements" | "returns" | "returnItems" | "audits", string[]>;
+
+async function captureCleanupEvidence(requestIds: string[], returnIds: string[]): Promise<CleanupEvidence> {
+  const requests = `array[${requestIds.map(id => `${literal(id)}::uuid`).join(",")}]::uuid[]`;
+  const returns = `array[${returnIds.map(id => `${literal(id)}::uuid`).join(",")}]::uuid[]`;
+  const output = await sql(`select json_build_object(
+    'sales',coalesce((select json_agg(id) from public.sales_transactions where request_id=any(${requests})),'[]'::json),
+    'items',coalesce((select json_agg(si.id) from public.sales_items si join public.sales_transactions st on st.id=si.sales_transaction_id where st.request_id=any(${requests})),'[]'::json),
+    'payments',coalesce((select json_agg(distinct cp.id) from public.customer_payments cp join public.customer_payment_allocations a on a.customer_payment_id=cp.id join public.sales_transactions st on st.id=a.sales_transaction_id where st.request_id=any(${requests})),'[]'::json),
+    'allocations',coalesce((select json_agg(a.id) from public.customer_payment_allocations a join public.sales_transactions st on st.id=a.sales_transaction_id where st.request_id=any(${requests})),'[]'::json),
+    'movements',coalesce((select json_agg(it.id) from public.inventory_transactions it where (it.reference_type='sales_transaction' and it.reference_id in (select id from public.sales_transactions where request_id=any(${requests}))) or (it.reference_type='sales_return' and it.reference_id=any(${returns}))),'[]'::json),
+    'returns',coalesce((select json_agg(id) from public.sales_returns where id=any(${returns})),'[]'::json),
+    'returnItems',coalesce((select json_agg(id) from public.sales_return_items where sales_return_id=any(${returns})),'[]'::json),
+    'audits',coalesce((select json_agg(al.id) from public.audit_logs al where al.new_values ->> 'request_id'=any(array[${requestIds.map(id => literal(id)).join(",")}]::text[]) or al.entity_id in (select id from public.sales_transactions where request_id=any(${requests}))),'[]'::json)
+  );`);
+  return JSON.parse(output.trim()) as CleanupEvidence;
+}
+
+async function assertCleanupComplete(evidence: CleanupEvidence, requestIds: string[], returnIds: string[], stockBaselines: Array<{ productId: string; organizationId: string; quantity: number }>) {
+  const count = (ids: string[]) => `array[${ids.map(id => `${literal(id)}::uuid`).join(",")}]::uuid[]`;
+  const output = await sql(`select json_build_object(
+    'sales',(select count(*) from public.sales_transactions where id=any(${count(evidence.sales)})),
+    'items',(select count(*) from public.sales_items where id=any(${count(evidence.items)})),
+    'payments',(select count(*) from public.customer_payments where id=any(${count(evidence.payments)})),
+    'allocations',(select count(*) from public.customer_payment_allocations where id=any(${count(evidence.allocations)})),
+    'movements',(select count(*) from public.inventory_transactions where id=any(${count(evidence.movements)})),
+    'returns',(select count(*) from public.sales_returns where id=any(${count(evidence.returns)})),
+    'returnItems',(select count(*) from public.sales_return_items where id=any(${count(evidence.returnItems)})),
+    'audits',(select count(*) from public.audit_logs where id=any(${count(evidence.audits)})),
+    'stocks',coalesce((select json_agg(json_build_array(id,current_stock) order by id) from public.products where id=any(${count(stockBaselines.map(item => item.productId))}) and organization_id=${literal(stockBaselines[0]?.organizationId ?? "00000000-0000-0000-0000-000000000000")}::uuid),'[]'::json)
+  );`);
+  const expectedStocks = stockBaselines
+    .map(item => [item.productId, item.quantity] as [string, number])
+    .sort(([left], [right]) => left.localeCompare(right));
+  assert.deepEqual(JSON.parse(output.trim()), {
+    sales: 0, items: 0, payments: 0, allocations: 0, movements: 0,
+    returns: 0, returnItems: 0, audits: 0,
+    stocks: expectedStocks,
+  }, "cleanup removes every captured test record and restores fixture stock");
+  assert.ok(evidence.returns.length <= returnIds.length, "cleanup evidence is limited to this run's tracked return IDs");
+  await assertNoBusinessRecords(requestIds);
 }
 
 async function main() {
@@ -421,6 +501,7 @@ async function main() {
   const executed: string[] = [];
   const returnIds: string[] = [];
   let stockBaseline: number | undefined;
+  let authProductStockBaseline: number | undefined;
   try {
     const appEnvironment = await appRequest("/api/pos-release-environment", "", "GET");
     assert.equal(appEnvironment.status, 200, `app server must expose its test-only target preflight: ${appEnvironment.status} ${appEnvironment.body}`);
@@ -518,6 +599,9 @@ async function main() {
     console.log("PASS credit-limit race: one invoice at the exact limit; competing invoice rejected.");
 
     const fractionRequest = randomUUID();
+    const authProductStock = await sql(`select current_stock from public.products where id=${literal(authProduct)}::uuid and organization_id=${literal(org)}::uuid;`);
+    authProductStockBaseline = Number(authProductStock.trim());
+    assert.ok(Number.isFinite(authProductStockBaseline), "fractional-sale product must have a readable stock baseline");
     executed.push(fractionRequest);
     const fractionInput = saleInput(cashCustomer, authProduct, "cash", 15, 0.125, "subunit", 120);
     const fractionSession = startPsql(atomicSql(owner, fractionRequest, fractionInput));
@@ -572,12 +656,12 @@ async function main() {
     assert.equal(ownerStatus.status, 200);
     assert.match(ownerStatus.body, /confirmed/);
     const employeeRequest = randomUUID();
-    await assertRejectedCreate(employeeToken.token, employeeRequest, saleInput(cashCustomer, authProduct, "cash", 10), /owner|admin|permission|authoriz|role/i);
     const inactiveRequest = randomUUID();
-    await assertRejectedCreate(inactiveToken.token, inactiveRequest, saleInput(cashCustomer, authProduct, "cash", 10), /active|inactive|profile/i);
     const crossRequest = randomUUID();
-    await assertRejectedCreate(otherOwnerToken.token, crossRequest, saleInput(cashCustomer, authProduct, "cash", 10), /organization|customer/i);
     executed.push(employeeRequest, inactiveRequest, crossRequest);
+    await assertRejectedCreate(employeeToken.token, employeeRequest, saleInput(cashCustomer, authProduct, "cash", 10), /owner|admin|permission|authoriz|role/i);
+    await assertInactiveCreateRejectedWithoutEffects(inactiveToken.token, inactiveRequest, saleInput(cashCustomer, authProduct, "cash", 10), authProduct);
+    await assertRejectedCreate(otherOwnerToken.token, crossRequest, saleInput(cashCustomer, authProduct, "cash", 10), /organization|customer/i);
     await assertNoBusinessRecords([employeeRequest, inactiveRequest, crossRequest]);
     const crossStatus = await rpc("get_sales_invoice_request_status", otherOwnerToken.token, { p_request_id: ownerRequest });
     assert.equal(crossStatus.status, 200, `cross-organization status lookup should return a non-disclosing result: ${crossStatus.body}`);
@@ -589,12 +673,31 @@ async function main() {
     console.log("PASS real Supabase JWT authorization: active owner, restricted employee, inactive profile, and cross-organization owner.");
     console.log("NOT RUN: browser history/export display and native print-dialog cases need a real browser session; repository HTML and data checks are separate.");
   } finally {
+    const requestIds = [...new Set(executed)];
+    let cleanupEvidence: CleanupEvidence | undefined;
     try {
-      if (executed.length || returnIds.length) await cleanup([...new Set(executed)], returnIds, org);
-    } finally {
-      if (stockBaseline !== undefined) {
-        await sql(`update public.products set current_stock=${stockBaseline} where id=${literal(stockProduct)}::uuid and organization_id=${literal(org)}::uuid;`);
+      if (requestIds.length || returnIds.length) {
+        cleanupEvidence = await captureCleanupEvidence(requestIds, returnIds);
+        await cleanup(requestIds, returnIds, org);
       }
+    } finally {
+      try {
+        if (stockBaseline !== undefined) {
+          await sql(`update public.products set current_stock=${stockBaseline} where id=${literal(stockProduct)}::uuid and organization_id=${literal(org)}::uuid;`);
+        }
+      } finally {
+        if (authProductStockBaseline !== undefined) {
+          await sql(`update public.products set current_stock=${authProductStockBaseline} where id=${literal(authProduct)}::uuid and organization_id=${literal(org)}::uuid;`);
+        }
+      }
+    }
+    if (cleanupEvidence) {
+      const stockBaselines = [
+        ...(stockBaseline === undefined ? [] : [{ productId: stockProduct, organizationId: org, quantity: stockBaseline }]),
+        ...(authProductStockBaseline === undefined ? [] : [{ productId: authProduct, organizationId: org, quantity: authProductStockBaseline }]),
+      ];
+      await assertCleanupComplete(cleanupEvidence, requestIds, returnIds, stockBaselines);
+      console.log("PASS cleanup verification: captured invoice, item, payment, allocation, movement, return, and audit rows are absent; fixture stock is restored.");
     }
   }
 }
