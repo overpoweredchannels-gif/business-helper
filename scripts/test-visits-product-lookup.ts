@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { rankSearchResults } from "../src/lib/products/search-rank";
+import { escapeIlikePattern, pinExactSkuFirstPage } from "../src/lib/products/visit-search";
 import type { VisitProduct } from "../src/components/salesman/VisitProductLookup";
 
 // The visits lookup re-ranks each API page client-side so exact SKU matches
@@ -40,6 +41,37 @@ async function main() {
     // "Widget Pro" matches no "1200" term and is excluded.
     assert.deepEqual(ranked2.map((r) => r.id), ["p1205", "p1201"]);
     console.log("✓ deep-offset rows rank by relevance, not by API position");
+  }
+
+  // 3. An exact SKU that sorts beyond the first API page is pinned there;
+  // raw offsets still cover every result and the UI's ID de-duplication
+  // removes the pinned row when its normal page is reached.
+  {
+    const query = "TARGET-1200";
+    const catalog = Array.from({ length: 1201 }, (_, index) => row(
+      `p${index}`,
+      `A matching product ${String(index).padStart(4, "0")} ${query}`,
+      `ALT-${index}`,
+    ));
+    const exact = row("exact-sku", "Z exact SKU product", query);
+    catalog.push(exact);
+    catalog.sort((left, right) => left.name.localeCompare(right.name));
+    const pageSize = 25;
+    const seen = new Set<string>();
+    let offset = 0;
+    let pageNumber = 0;
+    while (true) {
+      const rawPage = catalog.slice(offset, offset + pageSize);
+      const visiblePage = pinExactSkuFirstPage(rawPage, pageNumber === 0 ? exact : null, offset);
+      if (pageNumber === 0) assert.equal(visiblePage[0]?.id, exact.id, "later-page exact SKU is first in visible results");
+      for (const product of visiblePage) seen.add(product.id);
+      if (rawPage.length < pageSize) break;
+      offset += pageSize;
+      pageNumber += 1;
+    }
+    assert.equal(seen.size, catalog.length, "raw pagination includes every matching product without skipping rows");
+    assert.equal(escapeIlikePattern("SKU_%\\"), "SKU\\_\\%\\\\", "exact code lookup treats ILIKE metacharacters literally");
+    console.log("✓ exact SKU beyond offset 1000 is pinned first without losing paginated rows");
   }
 
   // 3. Name relevance ordering is preserved (exact name > prefix > word prefix).
