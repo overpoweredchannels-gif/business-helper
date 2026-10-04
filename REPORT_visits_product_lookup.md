@@ -84,11 +84,14 @@ keyboard selection.
 
 ### Not verified / not run
 
-- **Authenticated backend checks: NOT RUN.** The isolated Supabase project is
-  still not provisioned; production was not used. Once available, verify with
-  two organizations and 1,000+ products each: a product beyond row 1,000 is
-  searchable, `nextOffset` pages advance, tenant isolation holds on every
-  page, and permission filtering (`inventory_view`) is enforced.
+- **Authenticated backend and browser checks: PENDING.** The isolated Supabase
+  project `rtfowunsyrdygyvubnvs` is now provisioned with synthetic users and
+  fixtures. Authenticated backend and browser checks against that target are
+  pending Codex's release-harness completion. Once the harness is complete,
+  verify with two organizations and 1,000+ products each: a product beyond row
+  1,000 is searchable, `nextOffset` pages advance, tenant isolation holds on
+  every page, and permission filtering (`inventory_view`) is enforced.
+  Production was not used and will not be used for these checks.
 - The mock API filters name/sku like the real route's `ilike`; the real route
   does **not** search barcodes, so a pure barcode query returns no rows from
   the API today. Exact-barcode-first ranking applies to rows the API returns.
