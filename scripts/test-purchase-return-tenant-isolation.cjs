@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- This runner is intentionally CommonJS for direct Node execution. */
 "use strict";
 
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const { randomBytes } = require("node:crypto");
 
 const TARGET_REF = "rtfowunsyrdygyvubnvs";
@@ -96,6 +96,96 @@ function psql(sql, { write = false } = {}) {
     fail(`Disposable database query failed${detail ? `: ${detail}` : ""}`);
   }
   return (result.stdout || "").trim();
+}
+
+function psqlExpectRejection(sql, sqlState, messagePattern) {
+  const config = databaseConfig();
+  const result = spawnSync(PSQL, [
+    "-X", "-w", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=verbose", "-q", "-A", "-t",
+    "-h", config.host, "-p", config.port, "-U", config.user, "-d", config.database,
+    "-c", sql,
+  ], {
+    encoding: "utf8",
+    timeout: 20000,
+    windowsHide: true,
+    env: {
+      ...process.env,
+      PGPASSFILE: process.env.PGPASSFILE,
+      PGSSLMODE: "require",
+      PGCONNECT_TIMEOUT: "8",
+      PGOPTIONS: "-c statement_timeout=10000 -c lock_timeout=5000",
+      PGAPPNAME: "tradeos-purchase-return-tenant-regression",
+    },
+  });
+  if (result.error) fail(`psql rejection check could not run: ${result.error.message}`);
+  const error = result.stderr || "";
+  if (result.status === 0 || !error.includes(sqlState) || !messagePattern.test(error)) {
+    fail(`Expected direct database rejection with SQLSTATE ${sqlState}`);
+  }
+}
+
+function startParentDelete(returnId) {
+  const config = databaseConfig();
+  const id = assertUuid(returnId, "Concurrent return ID");
+  const child = spawn(PSQL, [
+    "-X", "-w", "-v", "ON_ERROR_STOP=1", "-q", "-A", "-t",
+    "-h", config.host, "-p", config.port, "-U", config.user, "-d", config.database,
+    "-c", `begin; set local statement_timeout='12s'; delete from public.purchase_returns where id='${id}'::uuid; select '__PARENT_DELETE_LOCKED__'; select pg_catalog.pg_sleep(1.5); commit;`,
+  ], {
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+    env: {
+      ...process.env,
+      PGPASSFILE: process.env.PGPASSFILE,
+      PGSSLMODE: "require",
+      PGCONNECT_TIMEOUT: "8",
+      PGOPTIONS: "-c statement_timeout=15000 -c lock_timeout=5000",
+      PGAPPNAME: "tradeos-purchase-return-delete-race",
+    },
+  });
+
+  let stdout = "";
+  let stderr = "";
+  let settled = false;
+  let resolveReady;
+  let rejectReady;
+  let resolveDone;
+  let rejectDone;
+  const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+  const done = new Promise((resolve, reject) => { resolveDone = resolve; rejectDone = reject; });
+  done.catch(() => {});
+  const timer = setTimeout(() => {
+    child.kill();
+    const error = new Error("Concurrent parent-delete session timed out");
+    if (!settled) rejectReady(error);
+    rejectDone(error);
+  }, 18000);
+
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk.toString("utf8");
+    if (stdout.includes("__PARENT_DELETE_LOCKED__")) resolveReady();
+  });
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+  child.on("error", (error) => {
+    clearTimeout(timer);
+    settled = true;
+    rejectReady(new Error(`Concurrent psql could not start: ${error.message}`));
+    rejectDone(error);
+  });
+  child.on("close", (code) => {
+    clearTimeout(timer);
+    settled = true;
+    if (code !== 0) {
+      const message = (stderr || "").replace(/\s+/g, " ").slice(0, 400);
+      const error = new Error(`Concurrent parent-delete session failed${message ? `: ${message}` : ""}`);
+      rejectReady(error);
+      rejectDone(error);
+      return;
+    }
+    resolveReady();
+    resolveDone(stdout.trim());
+  });
+  return { ready, done };
 }
 
 function jwtSubject(token) {
@@ -214,6 +304,14 @@ async function createReturn(role, organizationId, returnNumber, profileId) {
   return assertUuid(result.rows[0].id, "Created return ID");
 }
 
+function parentRecord(returnId) {
+  const id = assertUuid(returnId, "Return ID");
+  const result = psql(`select id::text || E'\\t' || organization_id::text from public.purchase_returns where id='${id}'::uuid`);
+  if (!result) return null;
+  const [recordId, organizationId] = result.split("\t");
+  return { id: recordId, organizationId };
+}
+
 async function insertItem(role, values) {
   return rest(role, "POST", "purchase_return_items", "select=id,purchase_return_id,product_id,organization_id,quantity,unit_mode", values);
 }
@@ -246,7 +344,7 @@ async function main() {
   const marker = `PRSEC-${runId}`;
   const foreignSku = `PRSEC-${runId}-FOREIGN`;
   const returns = [];
-  const returnNumbers = ["A", "B", "OVER", "CASCADE"].map((suffix) => `${marker}-${suffix}`);
+  const returnNumbers = ["A", "B", "OVER", "CASCADE", "RACE-INSERT", "RACE-UPDATE"].map((suffix) => `${marker}-${suffix}`);
   let foreignProductId = null;
   let stockAStart = null;
   let stockBStart = null;
@@ -273,8 +371,11 @@ async function main() {
     const stockWriterCount = psql("select count(*)::text from pg_trigger t where t.tgrelid='public.purchase_return_items'::regclass and t.tgname='inventory_sync_purchase_return_item' and t.tgfoid='public.inventory_sync_purchase_return_item()'::regprocedure and not t.tgisinternal and t.tgenabled<>'D' and (t.tgtype & 29)=29");
     report("the existing single AFTER stock writer remains enabled", stockWriterCount === "1");
 
-    const securedFunctions = psql(`select bool_and(p.prosecdef and coalesce(p.proconfig @> array['search_path=""'],false) and not exists (select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl where acl.grantee=0 and acl.privilege_type='EXECUTE') and not has_function_privilege('anon',p.oid,'execute') and not has_function_privilege('authenticated',p.oid,'execute') and not has_function_privilege('service_role',p.oid,'execute'))::text from pg_proc p where p.oid in ('public.guard_purchase_return_item_tenant()'::regprocedure,'public.inventory_sync_purchase_return_item()'::regprocedure)`);
+    const securedFunctions = psql(`select bool_and(p.prosecdef and coalesce(p.proconfig @> array['search_path=""'],false) and not exists (select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl where acl.grantee=0 and acl.privilege_type='EXECUTE') and not has_function_privilege('anon',p.oid,'execute') and not has_function_privilege('authenticated',p.oid,'execute') and not has_function_privilege('service_role',p.oid,'execute'))::text from pg_proc p where p.oid in ('public.guard_purchase_return_item_tenant()'::regprocedure,'public.inventory_sync_purchase_return_item()'::regprocedure,'public.guard_purchase_return_organization()'::regprocedure)`);
     report("trigger functions are pinned SECURITY DEFINER functions without client EXECUTE grants", securedFunctions === "true");
+
+    const parentGuardCount = psql("select count(*)::text from pg_trigger t where t.tgrelid='public.purchase_returns'::regclass and t.tgname='purchase_return_organization_guard' and t.tgfoid='public.guard_purchase_return_organization()'::regprocedure and not t.tgisinternal and t.tgenabled<>'D' and (t.tgtype & 16)=16");
+    report("parent organization reassignment guard is enabled for UPDATE", parentGuardCount === "1");
 
     const productOrg = psql(`select organization_id::text from public.products where id='${productA}'::uuid`);
     if (productOrg !== orgA) fail("Owner synthetic product does not belong to the owner organization");
@@ -344,6 +445,29 @@ async function main() {
     if (state.items !== 1 || state.ledger !== 1 || state.ledgerSum !== -125000n || state.ledgerProductCount !== 1) fail("Fractional return did not create exactly one scoped stock ledger effect");
     report("same-organization subunit return preserves fractional stock and one ledger effect", true, `HTTP ${validInsert.status}`);
 
+    const parentBeforeReassignment = parentRecord(primaryReturnId);
+    const itemBeforeReassignment = itemRecord(itemId);
+    const stockBeforeReassignment = stock(productA);
+    const ledgerBeforeReassignment = returnState(primaryReturnId, [productA, foreignProductId]);
+    const ordinaryParentReassignment = await rest("owner", "PATCH", "purchase_returns", `id=eq.${primaryReturnId}&select=id,organization_id`, { organization_id: orgB });
+    if (ordinaryParentReassignment.ok || ordinaryParentReassignment.errorCode !== "23514" || !/organization cannot be reassigned/i.test(ordinaryParentReassignment.errorMessage)) {
+      fail(`Ordinary owner parent reassignment was not rejected by the database guard (HTTP ${ordinaryParentReassignment.status}, SQLSTATE ${ordinaryParentReassignment.errorCode || "none"})`);
+    }
+    const privilegedParentSql = `update public.purchase_returns set organization_id='${orgB}'::uuid where id='${primaryReturnId}'::uuid`;
+    psqlExpectRejection(privilegedParentSql, "23514", /Purchase return organization cannot be reassigned/i);
+    const parentAfterReassignment = parentRecord(primaryReturnId);
+    const itemAfterReassignment = itemRecord(itemId);
+    const ledgerAfterReassignment = returnState(primaryReturnId, [productA, foreignProductId]);
+    if (JSON.stringify(parentAfterReassignment) !== JSON.stringify(parentBeforeReassignment)
+        || JSON.stringify(itemAfterReassignment) !== JSON.stringify(itemBeforeReassignment)
+        || stock(productA) !== stockBeforeReassignment
+        || ledgerAfterReassignment.items !== ledgerBeforeReassignment.items
+        || ledgerAfterReassignment.ledger !== ledgerBeforeReassignment.ledger
+        || ledgerAfterReassignment.ledgerSum !== ledgerBeforeReassignment.ledgerSum) {
+      fail("Rejected parent organization reassignment changed the parent, line, stock, or ledger");
+    }
+    report("ordinary and privileged parent organization reassignment are rejected without effects", true, "HTTP/PostgreSQL SQLSTATE 23514");
+
     const rejectedUpdates = [
       { label: "cross-organization product reassignment rejected", body: { product_id: foreignProductId } },
       { label: "cross-organization parent reassignment rejected", body: { purchase_return_id: otherReturnId } },
@@ -401,6 +525,50 @@ async function main() {
     state = returnState(cascadeReturnId, [productA, foreignProductId]);
     if (state.items !== 0 || state.ledger !== 2 || state.ledgerSum !== 0n) fail("Parent cascade did not reverse the ledger exactly once per stock effect");
     report("parent deletion cascade reverses stock and ledger atomically", true);
+
+    const raceInsertId = await createReturn("owner", orgA, returnNumbers[4], owner.profileId);
+    returns.push(raceInsertId);
+    const insertRaceDelete = startParentDelete(raceInsertId);
+    await insertRaceDelete.ready;
+    const blockedInsertPromise = insertItem("owner", {
+      purchase_return_id: raceInsertId,
+      organization_id: orgA,
+      product_id: productA,
+      quantity: "0.25",
+      unit_mode: "main",
+    });
+    await insertRaceDelete.done;
+    const blockedInsert = await blockedInsertPromise;
+    if (blockedInsert.ok || blockedInsert.errorCode !== "23503") fail(`Concurrent insert was not rejected after parent deletion (HTTP ${blockedInsert.status}, SQLSTATE ${blockedInsert.errorCode || "none"})`);
+    state = returnState(raceInsertId, [productA, foreignProductId]);
+    if (parentRecord(raceInsertId) !== null || state.items !== 0 || state.ledger !== 0 || stock(productA) !== stockAStart) {
+      fail("Parent-delete/item-insert race left a parent, item, stock, or ledger effect");
+    }
+    report("concurrent parent deletion serializes before an ordinary-user item insert", true, "independent PostgreSQL and PostgREST sessions");
+
+    const raceUpdateId = await createReturn("owner", orgA, returnNumbers[5], owner.profileId);
+    returns.push(raceUpdateId);
+    const raceUpdateItem = await insertItem("owner", {
+      purchase_return_id: raceUpdateId,
+      organization_id: orgA,
+      product_id: productA,
+      quantity: "0.25",
+      unit_mode: "main",
+    });
+    if (!raceUpdateItem.ok || raceUpdateItem.rows.length !== 1) fail(`Concurrent update fixture insert failed (HTTP ${raceUpdateItem.status})`);
+    const raceUpdateItemId = assertUuid(raceUpdateItem.rows[0].id, "Concurrent update item ID");
+    if (numericMicros(stock(productA)) !== numericMicros(stockAStart) - 250000n) fail("Concurrent update fixture did not reduce stock by 0.25");
+    const updateRaceDelete = startParentDelete(raceUpdateId);
+    await updateRaceDelete.ready;
+    const blockedUpdatePromise = rest("owner", "PATCH", "purchase_return_items", `id=eq.${raceUpdateItemId}&select=id`, { quantity: "0.50" });
+    await updateRaceDelete.done;
+    const blockedUpdate = await blockedUpdatePromise;
+    if (!blockedUpdate.ok || blockedUpdate.rows.length !== 0) fail(`Concurrent item update was not serialized after parent cascade (HTTP ${blockedUpdate.status}, rows ${blockedUpdate.rows.length})`);
+    state = returnState(raceUpdateId, [productA, foreignProductId]);
+    if (parentRecord(raceUpdateId) !== null || state.items !== 0 || state.ledger !== 2 || state.ledgerSum !== 0n || stock(productA) !== stockAStart) {
+      fail("Parent-delete/item-update race did not leave a fully reversed stock and ledger state");
+    }
+    report("concurrent parent deletion serializes before an ordinary-user item update", true, "independent PostgreSQL and PostgREST sessions");
     report("foreign product stock remains unchanged throughout the run", stock(foreignProductId) === stockBStart);
   } catch (error) {
     failure = error;
