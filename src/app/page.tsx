@@ -23,6 +23,8 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@/lib/sales/access";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
+import { SearchSuggestField } from "@/components/search/SearchSuggestField";
+import { buildCustomerSuggestionData, buildProductSuggestionData } from "@/components/search/suggestion-items";
 import { MyPendingSales } from "@/components/salesman/MyPendingSales";
 import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
@@ -352,6 +354,14 @@ export default function Home() {
       categoryName: product.category_id ? categoryNameById.get(product.category_id) ?? null : null,
     }));
   }, [productSearch, products, brandNameById, categoryNameById]);
+
+  // Suggestion-panel data for the Products section search field: one pass over
+  // the already-authorized product list. Tenant/role/permission filtering stays
+  // with the products fetch; this only reorders for display.
+  const productSuggestionData = useMemo(
+    () => buildProductSuggestionData(products, brandNameById, categoryNameById, formatPKR),
+    [products, brandNameById, categoryNameById],
+  );
 
   const activeProducts = useMemo(
     () => products.filter((product) => product.is_active !== false),
@@ -8661,25 +8671,20 @@ setCustomerOrganizationName("");
     );
   };
 
-  const filteredCustomers = customers.filter((customer) => {
-    const searchTerm = customerSearch.trim().toLowerCase();
-    if (!searchTerm) return true;
-    return [
-      customer.customer_name,
-      customer.shop_name,
-      customer.organization_name,
-      customer.contact_person,
-      customer.phone,
-      customer.whatsapp,
-      customer.city,
-      customer.area,
-      customer.address,
-      customer.shipping_address,
-      customer.customer_type,
-    ].some(
-      (value) => value?.toLowerCase().includes(searchTerm)
+  // Suggestion-panel data for the Customers section search field and the
+  // customer pickers: one pass over the already-authorized customer list.
+  // Rank fields keep the section's full searchable surface (name, shop, phone,
+  // contact, organization, type, city/area/address) with name matches first.
+  const customerSuggestionData = useMemo(() => buildCustomerSuggestionData(customers), [customers]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch.trim()) return customers;
+    return rankSearchResults(
+      customers,
+      customerSearch,
+      (customer) => customerSuggestionData.rankFields.get(customer.id) ?? { name: customer.customer_name },
     );
-  });
+  }, [customers, customerSearch, customerSuggestionData]);
   const selectedSalesCustomer = customers.find((customer) => customer.id === selectedCustomerIdForSale);
   const selectedCustomerCreditPolicy = selectedSalesCustomer?.credit_policy ?? "cash_only";
   const selectedCustomerCreditLimit = Number(selectedSalesCustomer?.credit_limit || 0);
@@ -15926,29 +15931,56 @@ setCustomerOrganizationName("");
         onToggleNavHidden={handleNavToggleHidden}
       onResetNavOrder={handleNavReset}
       dragSectionsToDashboard={activeSection === "dashboard" && homeWidgets.customizing}
-        onSearchSubmit={(query) => {
+        onSearchSubmit={(query, prefill) => {
           const q = query.toLowerCase().replace(/&/g, " and ");
           const match = visibleNavigationItems.find((item) => {
             const label = item.label.toLowerCase().replace(/&/g, " and ");
             return label.includes(q) || label.replace(/ and /g, " & ").includes(q) || item.id.replace(/-/g, " ").includes(q);
           });
-          if (match) handleSectionChange(match.id);
+          if (match) {
+            handleSectionChange(match.id);
+            // A product suggestion carries its exact name: prefill the Products
+            // section filter so the chosen record is the first row — no scrolling.
+            if (match.id === "products" && prefill) setProductSearch(prefill);
+          }
         }}
         onSearchChange={(query) => {
-          if (!query.trim()) return [];
-          const q = query.toLowerCase().replace(/&/g, " and ");
-          const sectionMatches = visibleNavigationItems
-            .filter((item) => {
-              const label = item.label.toLowerCase().replace(/&/g, " and ");
-              return label.includes(q) || label.replace(/ and /g, " & ").includes(q) || item.id.replace(/-/g, " ").includes(q);
-            })
-            .slice(0, 5)
-            .map((item) => ({ label: item.label, section: item.id, type: "action" as const }));
-          const productMatches = products
-            .filter((p) => p.name.toLowerCase().includes(q))
+          const q = query.trim().replace(/&/g, " and ");
+          if (!q) return [];
+          // Navigation sections, relevance-ranked with the shared search
+          // contract (exact label > label prefix > word prefix > contains).
+          const sectionSuggestions = rankSearchResults(
+            visibleNavigationItems.map((item) => ({
+              id: `section-${item.id}`,
+              label: item.label,
+              section: item.id,
+              type: "action" as const,
+            })),
+            q,
+            (suggestion) => ({ name: suggestion.label }),
+          ).slice(0, 5);
+          // Products, ranked with the same contract as every other product
+          // search: exact SKU/barcode first, then name ranks, brand/category last.
+          const productSuggestions = rankSearchResults(
+            products,
+            q,
+            (product) => productSuggestionData.rankFields.get(String(product.id)) ?? { name: product.name },
+          )
             .slice(0, 3)
-            .map((p) => ({ label: p.name, section: "products", type: "product" as const }));
-          return [...sectionMatches, ...productMatches];
+            .map((product) => ({
+              id: `product-${product.id}`,
+              label: product.name,
+              detail: [
+                product.sku,
+                product.default_selling_price != null ? formatPKR(product.default_selling_price) : null,
+              ]
+                .filter(Boolean)
+                .join(" · "),
+              section: "products",
+              type: "product" as const,
+              prefill: product.name,
+            }));
+          return [...sectionSuggestions, ...productSuggestions];
         }}
         notificationCount={
           aiAlerts.filter((a) => a.status === "active" || a.status === "new").length +
@@ -17888,7 +17920,7 @@ setCustomerOrganizationName("");
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Customer</span>
-                <ProductSearchSelect label="Customer" searchPlaceholder="Search customer, shop or phone" value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} products={activeCustomers.map(customer => ({ id: customer.id, label: [customer.customer_name, customer.shop_name, customer.phone].filter(Boolean).join(" — ") }))} />
+                <ProductSearchSelect label="Customer" searchPlaceholder="Search customer, shop or phone" value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={activeCustomers.map(customer => ({ id: customer.id, label: [customer.customer_name, customer.shop_name, customer.phone].filter(Boolean).join(" — ") }))} />
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
@@ -21014,12 +21046,22 @@ setCustomerOrganizationName("");
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">Existing Products</h2>
             <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
+              <SearchSuggestField
+                label="Search products"
                 placeholder="Search by name, SKU, barcode, brand, category..."
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none sm:w-72"
+                value={productSearch}
+                onChange={setProductSearch}
+                items={productSuggestionData.items}
+                rankedFields={productSuggestionData.rankFields}
+                status={
+                  productsReadStatus === "failed"
+                    ? "error"
+                    : productsReadStatus === "loading" || productsReadStatus === "not-loaded"
+                      ? "loading"
+                      : "ready"
+                }
+                inputClassName="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                className="relative min-w-0 w-full sm:w-72"
               />
               {productSearch && (
                 <button
@@ -21301,12 +21343,14 @@ setCustomerOrganizationName("");
           <div className="mt-6 space-y-4">
             <div>
               <label className="mb-2 block text-sm font-medium text-foreground/80">Search Customers</label>
-              <input
-                type="text"
-                value={customerSearch}
-                onChange={(e) => setCustomerSearch(e.target.value)}
+              <SearchSuggestField
+                label="Search customers"
                 placeholder="Search by name, shop, or phone"
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                value={customerSearch}
+                onChange={setCustomerSearch}
+                items={customerSuggestionData.items}
+                rankedFields={customerSuggestionData.rankFields}
+                status={customersLoading ? "loading" : "ready"}
               />
             </div>
 

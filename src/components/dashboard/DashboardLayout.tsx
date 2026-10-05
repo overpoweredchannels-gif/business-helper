@@ -30,8 +30,8 @@ interface DashboardLayoutProps {
   notificationCount?: number;
   notifications?: Notification[];
   onNotificationClick?: (notification: Notification) => void;
-  onSearchSubmit?: (query: string) => void;
-  onSearchChange?: (query: string) => Array<{ label: string; section?: string; type?: "product" | "customer" | "task" | "action" }>;
+  onSearchSubmit?: (query: string, prefill?: string) => void;
+  onSearchChange?: (query: string) => Array<{ id: string; label: string; detail?: string; prefill?: string; section?: string; type?: "product" | "customer" | "task" | "action" }>;
   customizeMode?: boolean;
   hiddenNavIds?: string[];
   canCustomize?: boolean;

@@ -3,9 +3,16 @@
 import { cn } from "@/lib/utils";
 import { Search, Bell, Sparkles, Menu, X, LogOut, User, AlertCircle, Package, DollarSign } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { activeSuggestionIndex } from "@/components/invoices/search-selection";
+import { SuggestionPopover } from "@/components/search/SuggestionPopover";
+import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 
-interface SearchSuggestion {
+export interface SearchSuggestion {
+  id: string;
   label: string;
+  detail?: string;
+  /** Exact filter text to prefill when the suggestion navigates to a section. */
+  prefill?: string;
   section?: string;
   type?: "product" | "customer" | "task" | "action";
 }
@@ -22,7 +29,7 @@ interface Notification {
 interface HeaderProps {
   userName?: string;
   organizationName?: string;
-  onSearchSubmit?: (query: string) => void;
+  onSearchSubmit?: (query: string, prefill?: string) => void;
   onSearchChange?: (query: string) => SearchSuggestion[];
   onToggleMobileMenu?: () => void;
   mobileMenuOpen?: boolean;
@@ -31,6 +38,119 @@ interface HeaderProps {
   notificationCount?: number;
   notifications?: Notification[];
   onNotificationClick?: (notification: Notification) => void;
+}
+
+function suggestionIcon(type: SearchSuggestion["type"]) {
+  if (type === "product") return <Package className="size-3.5 shrink-0 text-primary" />;
+  if (type === "customer") return <User className="size-3.5 shrink-0 text-primary" />;
+  return <Sparkles className="size-3.5 shrink-0 text-primary" />;
+}
+
+/**
+ * Dashboard global search field: typing shows relevance-ranked section and
+ * product suggestions in the shared compact panel (exact matches first),
+ * with full keyboard support and combobox/listbox semantics. Selecting a
+ * product suggestion navigates to Products with the filter prefilled to the
+ * exact product name, so the record is the first row without scrolling.
+ */
+function HeaderSearchBox({
+  idPrefix,
+  autoFocus,
+  query,
+  onQueryChange,
+  suggestions,
+  onSelectSuggestion,
+  onSubmitQuery,
+  className,
+}: {
+  idPrefix: string;
+  autoFocus?: boolean;
+  query: string;
+  onQueryChange: (query: string) => void;
+  suggestions: SearchSuggestion[];
+  onSelectSuggestion: (suggestion: SearchSuggestion) => void;
+  onSubmitQuery: (query: string) => void;
+  className?: string;
+}) {
+  const listId = `${idPrefix}-suggestions`;
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState<number | null>(null);
+  const trimmed = query.trim();
+  const showPopover = open && trimmed.length > 0;
+  const activeIndex = activeSuggestionIndex(suggestions, "", active);
+  const { anchorRef, placement, maxHeightPx } = useSuggestionPlacement(showPopover);
+
+  const select = (id: string) => {
+    const suggestion = suggestions.find((item) => item.id === id);
+    setOpen(false);
+    setActive(null);
+    if (suggestion) onSelectSuggestion(suggestion);
+  };
+
+  return (
+    <div ref={anchorRef} className={cn("relative min-w-0", className)}>
+      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-ring">
+        <Search className="size-4 shrink-0" />
+        <input
+          type="text"
+          role="combobox"
+          aria-label="Search sections and products"
+          aria-autocomplete="list"
+          aria-expanded={showPopover}
+          aria-controls={listId}
+          aria-activedescendant={showPopover && suggestions.length ? `${listId}-${activeIndex}` : undefined}
+          autoComplete="off"
+          placeholder="Search products..."
+          value={query}
+          autoFocus={autoFocus}
+          onChange={(e) => { onQueryChange(e.target.value); setActive(0); setOpen(true); }}
+          onFocus={() => { if (trimmed) { setActive(0); setOpen(true); } }}
+          onBlur={() => setOpen(false)}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              const direction = e.key === "ArrowDown" ? 1 : -1;
+              setActive(showPopover ? activeSuggestionIndex(suggestions, "", activeIndex + direction) : 0);
+              setOpen(true);
+            } else if (e.key === "Enter") {
+              if (showPopover && suggestions[activeIndex]) {
+                e.preventDefault();
+                select(suggestions[activeIndex].id);
+              } else {
+                setOpen(false);
+                onSubmitQuery(trimmed);
+              }
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setOpen(false);
+            }
+          }}
+          className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
+        />
+      </div>
+      {showPopover && (
+        <SuggestionPopover
+          listId={listId}
+          ariaLabel="Search suggestions"
+          placement={placement}
+          maxHeightPx={maxHeightPx}
+          items={suggestions.map((suggestion) => ({
+            id: suggestion.id,
+            label: suggestion.label,
+            detail: suggestion.detail,
+            icon: suggestionIcon(suggestion.type),
+          }))}
+          activeIndex={activeIndex}
+          query={trimmed}
+          status="ready"
+          emptyText="No matches found."
+          onSelect={select}
+          onHover={setActive}
+        />
+      )}
+    </div>
+  );
 }
 
 export function Header({
@@ -50,17 +170,12 @@ export function Header({
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
   const suggestions = onSearchChange ? onSearchChange(searchQuery) : [];
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setNotifOpen(false);
       }
@@ -69,11 +184,15 @@ export function Header({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && searchQuery.trim()) {
-      onSearchSubmit?.(searchQuery.trim());
-      setShowSuggestions(false);
-    }
+  const handleSelectSuggestion = (suggestion: SearchSuggestion) => {
+    setSearchQuery(suggestion.label);
+    setSearchOpen(false);
+    if (suggestion.section) onSearchSubmit?.(suggestion.section, suggestion.prefill);
+  };
+  const handleSubmitQuery = (query: string) => {
+    if (!query.trim()) return;
+    onSearchSubmit?.(query.trim());
+    setSearchOpen(false);
   };
 
   const severityStyles = {
@@ -119,40 +238,15 @@ export function Header({
         {/* Right: Search, AI, Notifications, Profile */}
         <div className="flex items-center gap-1">
           {/* Search */}
-          <div ref={searchRef} className="relative hidden sm:block">
-            <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground w-48 lg:w-64 transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-ring">
-              <Search className="size-4 shrink-0" />
-              <input
-                type="text"
-                placeholder="Search products..."
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setShowSuggestions(true); }}
-                onFocus={() => setShowSuggestions(true)}
-                onKeyDown={handleKeyDown}
-                className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
-              />
-            </div>
-            {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute top-full mt-1 left-0 w-full rounded-xl border border-border bg-card shadow-lg p-1 z-50 animate-scaleIn">
-                {suggestions.map((s, i) => (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      setSearchQuery(s.label);
-                      setShowSuggestions(false);
-                      if (s.section) onSearchSubmit?.(s.section);
-                    }}
-                    className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left"
-                  >
-                    {s.type === "product" && <Package className="size-3.5 text-primary" />}
-                    {s.type === "customer" && <User className="size-3.5 text-primary" />}
-                    {s.type === "action" && <Sparkles className="size-3.5 text-primary" />}
-                    <span>{s.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <HeaderSearchBox
+            idPrefix="header-search-desktop"
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            suggestions={suggestions}
+            onSelectSuggestion={handleSelectSuggestion}
+            onSubmitQuery={handleSubmitQuery}
+            className="hidden w-48 sm:block lg:w-64"
+          />
           <button
             onClick={() => setSearchOpen(!searchOpen)}
             aria-label="Search sections and products"
@@ -265,41 +359,16 @@ export function Header({
         </div>
       </div>
       {searchOpen && (
-        <div ref={searchRef} className="sm:hidden border-t border-border bg-card px-4 py-3 animate-slideUp">
-          <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-ring">
-            <Search className="size-4 shrink-0" />
-            <input
-              type="text"
-              placeholder="Search products..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setShowSuggestions(true); }}
-              onFocus={() => setShowSuggestions(true)}
-              onKeyDown={handleKeyDown}
-              autoFocus
-              className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
-            />
-          </div>
-          {showSuggestions && suggestions.length > 0 && (
-            <div className="mt-1 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
-              {suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setSearchQuery(s.label);
-                    setShowSuggestions(false);
-                    setSearchOpen(false);
-                    if (s.section) onSearchSubmit?.(s.section);
-                  }}
-                  className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left"
-                >
-                  {s.type === "product" && <Package className="size-3.5 text-primary" />}
-                  {s.type === "customer" && <User className="size-3.5 text-primary" />}
-                  {s.type === "action" && <Sparkles className="size-3.5 text-primary" />}
-                  <span>{s.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="sm:hidden border-t border-border bg-card px-4 py-3 animate-slideUp">
+          <HeaderSearchBox
+            idPrefix="header-search-mobile"
+            autoFocus
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            suggestions={suggestions}
+            onSelectSuggestion={handleSelectSuggestion}
+            onSubmitQuery={handleSubmitQuery}
+          />
         </div>
       )}
     </header>
