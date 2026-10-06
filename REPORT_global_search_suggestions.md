@@ -179,3 +179,104 @@ shared loader code changed — the panels only *consume*
 - Production build — passes with placeholder public Supabase variables.
 - Authenticated checks against isolated project `rtfowunsyrdygyvubnvs`
   remain pending Codex's release-harness completion — explicitly not run.
+
+## Second review round (2026-10-07)
+
+Seven further findings, addressed on this branch starting from `fb263de`
+(normal push, no force; no merge, no deploy, no database changes; Codex's
+database/security work untouched).
+
+1. **Global header read states.** The product source now reports independently
+   of local section results: `SuggestionPopover` gained an optional
+   `statusNote` ("Loading products…" / "Couldn't load products.") rendered
+   above the list while sections stay visible. A failed authorized source is
+   never reported as "No matches". `page.tsx` passes
+   `productStatus={canViewProducts ? headerProductStatus : undefined}`, so
+   restricted users never see product-source status.
+2. **Products/Customers list states.** Both section lists now show a persistent
+   stale-data warning with a working Retry above retained matching rows when
+   a same-scope refresh fails (`ProductCatalogErrorBanner` was already shown
+   in the invoice section; the Products section list now renders it too, and
+   a new `CustomerCatalogState`/`CustomerCatalogErrorBanner` pair gives the
+   Customers section the same treatment, driven by the authoritative
+   `customersReadStatus` tracker). Initial failure, successful empty catalog
+   ("No products/customers added yet."), and query no-match are distinct.
+   Same-scope drafts are preserved (stale-visible design unchanged).
+3. **Global relevance.** `rankSearchResultsWithTiers` exposes each item's
+   contract tier; the new pure `orderCrossTypeSuggestions` merges sections
+   and products with one explicit, deterministic ordering: lower tier first
+   (exact SKU/barcode = tier 0 outranks even exact section matches),
+   then sections before products within a tier, then label, then id.
+   Permissions and name-prefix ranking are preserved.
+4. **Mobile placement.** `useSuggestionPlacement` now also re-measures on
+   scroll (capture-phase listener, rAF-throttled; scrolls inside the popover
+   itself are ignored so option-list scrolling stays container-only) and
+   captures `visualViewport` once so add/removeEventListener stay symmetric
+   on cleanup. The space computation is a pure, unit-tested
+   `computeSuggestionSpaces` (documented coordinate assumption:
+   `getBoundingClientRect` is in the visual viewport's space). Simulated
+   shrunken-viewport tests are now labeled "simulated-keyboard" — no physical
+   keyboard or real-device verification is claimed or performed.
+5. **Portable browser runner.** The `/home/hatch` playwright fallback and the
+   `/opt/meta-chromium` hard-coded path are removed. Resolution is now:
+   `SUGGEST_LAB_PLAYWRIGHT` (or a bare `playwright-core` import from the
+   repo's own dependencies) and `SUGGEST_LAB_BROWSER` (or generic platform
+   install locations, then Playwright's bundled Chromium). Missing
+   dependencies and unlaunchable browsers fail fast with actionable errors
+   naming the env override to set.
+6. **Scope reset and progressive results.** The `searchScopeKey` effect now
+   clears parent-owned search text AND selected IDs on user/organization
+   change; the key stays stable across ordinary same-user token refreshes and
+   same-scope retries, so those preserve drafts. The POS customer picker
+   (`RetailPOS`) and the invoice customer picker (`page.tsx`) option arrays
+   are now memoized (they were rebuilt inline every render), so "Show more"
+   no longer collapses on unrelated parent rerenders.
+7. **Regression coverage.** The lab now exercises real caller wiring: header
+   section-results + loading/failed product source; stale rows + persistent
+   warning + working Retry (both lists); exact product code ("FZ-999")
+   competing with a same-code section label; duplicate names + scope changes
+   (text cleared too); Show more followed by an unrelated parent rerender;
+   POS and invoice selectors retaining ID, price, and unit.
+
+### Evidence tiers
+
+- **Source review:** each finding was verified against the source before
+  fixing (e.g. the products list rendered the failure banner only when no
+  rows matched; the customers list used a boolean `customersLoading` with a
+  single "No customers found."; the header concatenated sections-then-products
+  so an exact SKU could never outrank a section; both customer pickers built
+  their option arrays inline per render).
+- **Unit (synthetic):** `npm run test:global-search-suggestions` — new
+  assertions for `computeSuggestionSpaces` (including nonzero-offset/shrunken
+  viewports), `rankSearchResultsWithTiers`, and `orderCrossTypeSuggestions`
+  (tier-0-outranks-section, same-tier section-first, deterministic id
+  tiebreak) — all pass.
+- **Synthetic browser tests:** `node
+  scripts/browser-global-search-suggestions.mjs` — **123/123** at 390×844
+  (touch) and 1440×900, zero page errors. Fixture: 5,022 products (now with
+  units), 9 customers. New checks: header exact-SKU-vs-section ordering;
+  header loading-with-sections + "Loading products…"; header failed-source
+  never "No matches"; restricted users see no product-source status; list
+  stale-warning + Retry + recovery; empty-catalog vs query-no-match vs
+  initial-failure; scope switch clears search text; POS Show more survives
+  parent rerender; POS + invoice ID/price/unit; scroll-while-open placement
+  re-measurement; container-only option-list scroll.
+- **Authenticated tests:** not run — isolated project `rtfowunsyrdygyvubnvs`
+  checks remain pending Codex's release-harness completion.
+- **Real-device checks:** not performed. The "simulated-keyboard" checks use a
+  shrunken 390×220 viewport in desktop Chromium; they do not verify a
+  physical phone keyboard.
+
+### Second-round validation (2026-10-07)
+
+- Unit: `npm run test:global-search-suggestions` — pass (new assertions above).
+- Browser: **123/123** (see evidence tiers).
+- Performance (5,022-product fixture): mount 486–557ms, typing 93–140ms,
+  parent rerender 175–225ms.
+- Focused existing tests (`test:search-selection`, `test:product-search`,
+  `test:product-catalog-loading`) — pass.
+- `npm run typecheck` — clean.
+- Full `npm test` — exit 0, no failures (35 scripts).
+- Changed-file ESLint — 0 errors, 0 warnings on changed lines.
+- `git diff --check` — clean.
+- Production build — passes with placeholder public Supabase variables.

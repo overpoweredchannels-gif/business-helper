@@ -1,13 +1,14 @@
 // Unit tests for the global search suggestion panels.
 // Run with: npm run test:global-search-suggestions
 import assert from "node:assert/strict";
-import { clampPopoverHeight, decideSuggestionPlacement } from "../src/components/search/useSuggestionPlacement";
+import { clampPopoverHeight, computeSuggestionSpaces, decideSuggestionPlacement } from "../src/components/search/useSuggestionPlacement";
 import {
   buildCustomerSuggestionData,
   buildProductSuggestionData,
+  orderCrossTypeSuggestions,
   pinSelectedFirst,
 } from "../src/components/search/suggestion-items";
-import { rankSearchResults } from "../src/lib/products/search-rank";
+import { rankSearchResults, rankSearchResultsWithTiers } from "../src/lib/products/search-rank";
 
 // --- popover placement: stays in the viewport, flips above when cramped ---
 assert.equal(decideSuggestionPlacement(50, 400), "below", "ample space below stays below");
@@ -152,4 +153,69 @@ assert.deepEqual(
   "name prefix > word prefix > incidental name substring",
 );
 
-console.log("test:global-search-suggestions — all assertions passed");
+// --- computeSuggestionSpaces: consistent coordinates with the anchor rect ---
+// The rect is reported in the visual viewport's coordinate space, so the
+// edges compare directly against the visual viewport height — including when
+// the rect sits at a nonzero offset (e.g. a scrolled or shrunken viewport).
+assert.deepEqual(
+  computeSuggestionSpaces(100, 140, 800),
+  { spaceAbove: 100, spaceBelow: 660 },
+  "spaces measured against the visual viewport height",
+);
+assert.deepEqual(
+  computeSuggestionSpaces(700, 740, 800),
+  { spaceAbove: 700, spaceBelow: 60 },
+  "field near the bottom leaves little space below",
+);
+assert.deepEqual(
+  computeSuggestionSpaces(50, 90, 220),
+  { spaceAbove: 50, spaceBelow: 130 },
+  "simulated shrunken (keyboard-like) viewport: spaces stay consistent",
+);
+
+// --- rankSearchResultsWithTiers: exposes the contract tier per item ---
+const tieredItems = rankSearchResultsWithTiers(
+  [
+    { id: "code", name: "Zebra Cakes", sku: "FZ-999" },
+    { id: "prefix", name: "Fresh Milk", sku: "FM-200" },
+  ],
+  "FZ-999",
+  (p) => ({ name: p.name, sku: p.sku }),
+);
+assert.deepEqual(
+  tieredItems.map((t) => [t.item.id, t.rank]),
+  [["code", 0]],
+  "exact SKU exposes tier 0; non-matching items are excluded",
+);
+const tieredOrder = rankSearchResults(tiered.items, "art", (item) => tiered.rankFields.get(item.id) ?? { name: item.label });
+const tieredOrderWithTiers = rankSearchResultsWithTiers(tiered.items, "art", (item) => tiered.rankFields.get(item.id) ?? { name: item.label });
+assert.deepEqual(
+  tieredOrderWithTiers.map((t) => t.item.id),
+  tieredOrder.map((i) => i.id),
+  "tiered ranking preserves the shared ordering",
+);
+
+// --- orderCrossTypeSuggestions: explicit deterministic cross-type ordering ---
+const mixed = orderCrossTypeSuggestions([
+  { id: "section-fz999", label: "FZ-999 archive", tier: 2, kind: "section" as const },
+  { id: "product-fz999", label: "Zebra Cakes", tier: 0, kind: "product" as const },
+  { id: "section-products", label: "Products", tier: 2, kind: "section" as const },
+  { id: "product-other", label: "Fresh Milk", tier: 2, kind: "product" as const },
+]);
+assert.deepEqual(
+  mixed.map((m) => m.id),
+  ["product-fz999", "section-fz999", "section-products", "product-other"],
+  "exact SKU (tier 0) outranks sections; within a tier sections come first, then label",
+);
+// Fully deterministic: identical tier/kind/label falls back to id order.
+const tied = orderCrossTypeSuggestions([
+  { id: "b", label: "Same", tier: 2, kind: "product" as const },
+  { id: "a", label: "Same", tier: 2, kind: "product" as const },
+]);
+assert.deepEqual(
+  tied.map((m) => m.id),
+  ["a", "b"],
+  "ties break deterministically by id",
+);
+
+console.log("test:global-search-suggestions — cross-type ordering assertions passed");

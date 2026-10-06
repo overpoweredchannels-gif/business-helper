@@ -7,11 +7,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { SearchSuggestField } from "@/components/search/SearchSuggestField";
-import { buildCustomerSuggestionData, buildProductSuggestionData, pinSelectedFirst } from "@/components/search/suggestion-items";
+import { buildCustomerSuggestionData, buildProductSuggestionData, orderCrossTypeSuggestions, pinSelectedFirst } from "@/components/search/suggestion-items";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { Header } from "@/components/dashboard/Header";
 import type { SuggestionStatus } from "@/components/search/SuggestionPopover";
-import { rankSearchResults } from "@/lib/products/search-rank";
+import { ProductCatalogErrorBanner, ProductCatalogState } from "@/components/products/ProductCatalogState";
+import { CustomerCatalogErrorBanner, CustomerCatalogState } from "@/components/customers/CustomerCatalogState";
+import type { DashboardReadStatus } from "@/lib/dashboard/data-read-state";
+import { rankSearchResults, rankSearchResultsWithTiers } from "@/lib/products/search-rank";
 
 interface FixtureProduct {
   id: string;
@@ -21,21 +24,22 @@ interface FixtureProduct {
   brand_id: string | null;
   category_id: string | null;
   default_selling_price: number;
+  unit: string;
 }
 
 function buildProducts(): FixtureProduct[] {
   const list: FixtureProduct[] = [
-    { id: "p-fortune", name: "Fortune Biscuits", sku: "FTB-100", barcode: null, brand_id: null, category_id: null, default_selling_price: 250 },
-    { id: "p-fresh", name: "Fresh Milk", sku: "FM-200", barcode: null, brand_id: null, category_id: null, default_selling_price: 120 },
-    { id: "p-wordprefix", name: "Super Fresh Juice", sku: null, barcode: null, brand_id: null, category_id: null, default_selling_price: 90 },
-    { id: "p-sku-only", name: "Zebra Cakes", sku: "FZ-999", barcode: null, brand_id: null, category_id: null, default_selling_price: 60 },
-    { id: "p-barcode-only", name: "Yogurt Cup", sku: null, barcode: "8961000999999", brand_id: null, category_id: null, default_selling_price: 45 },
-    { id: "p-brand-only", name: "Plain Water", sku: null, barcode: null, brand_id: "b-freshco", category_id: null, default_selling_price: 30 },
-    { id: "p-xss", name: "Evil <img src=x onerror=alert(1)>", sku: null, barcode: null, brand_id: null, category_id: null, default_selling_price: 10 },
+    { id: "p-fortune", name: "Fortune Biscuits", sku: "FTB-100", barcode: null, brand_id: null, category_id: null, default_selling_price: 250, unit: "box" },
+    { id: "p-fresh", name: "Fresh Milk", sku: "FM-200", barcode: null, brand_id: null, category_id: null, default_selling_price: 120, unit: "litre" },
+    { id: "p-wordprefix", name: "Super Fresh Juice", sku: null, barcode: null, brand_id: null, category_id: null, default_selling_price: 90, unit: "bottle" },
+    { id: "p-sku-only", name: "Zebra Cakes", sku: "FZ-999", barcode: null, brand_id: null, category_id: null, default_selling_price: 60, unit: "pack" },
+    { id: "p-barcode-only", name: "Yogurt Cup", sku: null, barcode: "8961000999999", brand_id: null, category_id: null, default_selling_price: 45, unit: "cup" },
+    { id: "p-brand-only", name: "Plain Water", sku: null, barcode: null, brand_id: "b-freshco", category_id: null, default_selling_price: 30, unit: "bottle" },
+    { id: "p-xss", name: "Evil <img src=x onerror=alert(1)>", sku: null, barcode: null, brand_id: null, category_id: null, default_selling_price: 10, unit: "pcs" },
     // Identically named records with different IDs/SKUs/prices: selecting one
     // must pin that record's ID first, not just its name.
-    { id: "p-twin-a", name: "Twin Widget", sku: "TWN-A", barcode: null, brand_id: null, category_id: null, default_selling_price: 100 },
-    { id: "p-twin-b", name: "Twin Widget", sku: "TWN-B", barcode: null, brand_id: null, category_id: null, default_selling_price: 200 },
+    { id: "p-twin-a", name: "Twin Widget", sku: "TWN-A", barcode: null, brand_id: null, category_id: null, default_selling_price: 100, unit: "pcs" },
+    { id: "p-twin-b", name: "Twin Widget", sku: "TWN-B", barcode: null, brand_id: null, category_id: null, default_selling_price: 200, unit: "pcs" },
   ];
   for (let i = 0; i < 4993; i++) {
     list.push({
@@ -46,6 +50,7 @@ function buildProducts(): FixtureProduct[] {
       brand_id: null,
       category_id: null,
       default_selling_price: 5 + (i % 100),
+      unit: "pcs",
     });
   }
   // Twenty "Fresh Bulk" products so single-character queries exceed the
@@ -59,6 +64,7 @@ function buildProducts(): FixtureProduct[] {
       brand_id: null,
       category_id: null,
       default_selling_price: 10 + i,
+      unit: "pack",
     });
   }
   return list;
@@ -80,7 +86,7 @@ const CUSTOMERS = [
 // A second account/organization with entirely different products, for the
 // account-switching regression: old-scope suggestions must clear immediately.
 const ORG_B_PRODUCTS: FixtureProduct[] = [
-  { id: "p-orgb-1", name: "OrgB Special", sku: "OB-1", barcode: null, brand_id: null, category_id: null, default_selling_price: 999 },
+  { id: "p-orgb-1", name: "OrgB Special", sku: "OB-1", barcode: null, brand_id: null, category_id: null, default_selling_price: 999, unit: "pcs" },
 ];
 
 const NAV_SECTIONS = [
@@ -88,6 +94,9 @@ const NAV_SECTIONS = [
   { id: "products", label: "Products" },
   { id: "customers", label: "Customers" },
   { id: "sales", label: "Sales" },
+  // Fixture-only section whose label contains an exact product SKU, so the
+  // "exact code outranks sections" ordering is exercised against real wiring.
+  { id: "fz999", label: "FZ-999 archive" },
 ];
 
 const fmtPrice = (n: number) => `Rs ${n.toFixed(2)}`;
@@ -117,8 +126,14 @@ export function SuggestLab() {
   const [productQuery, setProductQuery] = useState("");
   const [rerenderCount, setRerenderCount] = useState(0);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-  // Mirrors the real page: the scope change clears the pinned selection.
-  useEffect(() => { setSelectedProductId(null); }, [scopeId]);
+  // Mirrors the real page: the scope change clears search text AND the pinned
+  // selection (same-scope rerenders and retries keep them).
+  useEffect(() => {
+    setProductQuery("");
+    setCustomerQuery("");
+    setSelectedProductId(null);
+    setSelectedCustomerId(null);
+  }, [scopeId]);
   const topRankedIds = useMemo(
     () =>
       pinSelectedFirst(
@@ -160,31 +175,53 @@ export function SuggestLab() {
   }, [products]);
   const posSelectedProduct = products.find((p) => p.id === posSelected);
 
-  // --- Header global search ---
+  // --- Invoice line selector: same component, separate caller wiring ---
+  const [invoiceSelected, setInvoiceSelected] = useState("");
+  const invoiceSelectedProduct = products.find((p) => p.id === invoiceSelected);
+
+  // --- Catalog list states: mirrors the real page's conditional structure ---
+  const [listStatus, setListStatus] = useState<DashboardReadStatus>("failed");
+  const [listQuery, setListQuery] = useState("");
+  const [listHasRows, setListHasRows] = useState(true);
+  const listMatchCount = !listHasRows || listQuery.trim() ? 0 : 2;
+  const cycleListStatus = () =>
+    setListStatus((s) => (s === "failed" ? "successful-empty" : s === "successful-empty" ? "successful-populated" : "failed"));
+  const retryList = () => setListStatus("successful-populated");
+
+  // --- Header global search: mirrors the real page wiring ---
   const [headerRestricted, setHeaderRestricted] = useState(false);
   const [headerStatus, setHeaderStatus] = useState<SuggestionStatus>("ready");
   const headerSearchChange = (query: string) => {
     const q = query.trim().replace(/&/g, " and ");
     if (!q) return [];
-    const sections = rankSearchResults(
+    const sections = rankSearchResultsWithTiers(
       NAV_SECTIONS.map((item) => ({ id: `section-${item.id}`, label: item.label, section: item.id, type: "action" as const })),
       q,
       (s) => ({ name: s.label }),
-    ).slice(0, 5);
+    );
     // Mirrors the real page: restricted users never see product suggestions.
-    if (headerRestricted) return sections;
-    const prods = rankSearchResults(products, q, (p) => productData.rankFields.get(p.id) ?? { name: p.name })
-      .slice(0, 3)
-      .map((p) => ({
-        id: `product-${p.id}`,
-        label: p.name,
-        detail: [p.sku, fmtPrice(p.default_selling_price)].filter(Boolean).join(" · "),
-        section: "products",
-        type: "product" as const,
-        prefill: p.name,
-        recordId: p.id,
-      }));
-    return [...sections, ...prods];
+    const prods = headerRestricted
+      ? []
+      : rankSearchResultsWithTiers(products, q, (p) => productData.rankFields.get(p.id) ?? { name: p.name }).map(
+          ({ item: p, rank }) => ({
+            tier: rank,
+            kind: "product" as const,
+            id: `product-${p.id}`,
+            label: p.name,
+            detail: [p.sku, fmtPrice(p.default_selling_price)].filter(Boolean).join(" · "),
+            section: "products",
+            type: "product" as const,
+            prefill: p.name,
+            recordId: p.id,
+          }),
+        );
+    // One explicit, deterministic cross-type ordering, same as the real page:
+    // exact SKU/barcode (tier 0) outranks sections; within a tier, sections
+    // first, then label, then id.
+    return orderCrossTypeSuggestions([
+      ...sections.map(({ item, rank }) => ({ ...item, tier: rank, kind: "section" as const })),
+      ...prods,
+    ]).slice(0, 8);
   };
 
   return (
@@ -288,7 +325,24 @@ export function SuggestLab() {
           rankedFields={posRankFields}
         />
         <p data-testid="lab-pos-selected" className="mt-2 text-sm text-muted-foreground">
-          selected: {posSelected || "none"} price: {posSelectedProduct ? fmtPrice(posSelectedProduct.default_selling_price) : "none"}
+          selected: {posSelected || "none"} price: {posSelectedProduct ? fmtPrice(posSelectedProduct.default_selling_price) : "none"} unit: {posSelectedProduct?.unit ?? "none"}
+        </p>
+        <button type="button" data-testid="lab-pos-rerender" onClick={() => setRerenderCount((c) => c + 1)} className="mt-2 rounded border px-3 py-2">
+          Rerender parent {rerenderCount}
+        </button>
+      </section>
+
+      <section data-testid="lab-invoice">
+        <h2 className="mb-2 text-lg font-semibold">Invoice line product selector</h2>
+        <ProductSearchSelect
+          label="Lab invoice product"
+          value={invoiceSelected}
+          onChange={setInvoiceSelected}
+          products={posOptions}
+          rankedFields={posRankFields}
+        />
+        <p data-testid="lab-invoice-selected" className="mt-2 text-sm text-muted-foreground">
+          selected: {invoiceSelected || "none"} price: {invoiceSelectedProduct ? fmtPrice(invoiceSelectedProduct.default_selling_price) : "none"} unit: {invoiceSelectedProduct?.unit ?? "none"}
         </p>
       </section>
 
@@ -306,7 +360,9 @@ export function SuggestLab() {
           userName="Lab User"
           organizationName="Lab Org"
           onSearchChange={headerSearchChange}
-          productStatus={headerStatus}
+          // Mirrors the real page: restricted users get no productStatus, so
+          // they never see product-source status.
+          productStatus={headerRestricted ? undefined : headerStatus}
           onViewAllProducts={headerRestricted ? undefined : (q) => { window.__labViewAll = `header:${q}`; }}
           onSearchSubmit={(section, prefill, recordId) => {
             window.__labNav = { section, prefill, recordId };
@@ -315,6 +371,69 @@ export function SuggestLab() {
         <p data-testid="lab-header-nav" className="mt-2 text-sm text-muted-foreground">
           nav: {window.__labNav ? `${window.__labNav.section}|${window.__labNav.prefill ?? ""}|${window.__labNav.recordId ?? ""}` : "none"}
         </p>
+      </section>
+
+      <section data-testid="lab-liststates">
+        <h2 className="mb-2 text-lg font-semibold">Catalog list states</h2>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <button type="button" data-testid="lab-liststates-status" onClick={cycleListStatus} className="rounded border px-3 py-2">
+            Status {listStatus}
+          </button>
+          <button type="button" data-testid="lab-liststates-rows-toggle" onClick={() => setListHasRows((r) => !r)} className="rounded border px-3 py-2">
+            Rows {listHasRows ? "on" : "off"}
+          </button>
+          <input
+            data-testid="lab-liststates-query"
+            value={listQuery}
+            onChange={(e) => setListQuery(e.target.value)}
+            placeholder="Filter query"
+            className="rounded border border-border px-3 py-2"
+          />
+        </div>
+        <h3 className="mb-1 text-sm font-medium">Products list</h3>
+        {listStatus === "failed" && listMatchCount > 0 && (
+          <div className="mb-3" data-testid="lab-liststates-product-banner">
+            <ProductCatalogErrorBanner onRetry={retryList} hasStaleData={listHasRows} />
+          </div>
+        )}
+        {(listStatus === "successful-populated" || listStatus === "failed") && listMatchCount > 0 ? (
+          <ul data-testid="lab-liststates-product-rows" className="mb-3 space-y-2">
+            <li className="rounded border border-border px-3 py-2">Stale Row One</li>
+            <li className="rounded border border-border px-3 py-2">Stale Row Two</li>
+          </ul>
+        ) : (
+          <div data-testid="lab-liststates-product-state">
+            <ProductCatalogState
+              status={listStatus}
+              searchQuery={listQuery}
+              matchCount={listMatchCount}
+              hasProducts={listHasRows}
+              onRetry={retryList}
+            />
+          </div>
+        )}
+        <h3 className="mb-1 mt-4 text-sm font-medium">Customers list</h3>
+        {listStatus === "failed" && listMatchCount > 0 && (
+          <div className="mb-3" data-testid="lab-liststates-customer-banner">
+            <CustomerCatalogErrorBanner onRetry={retryList} hasStaleData={listHasRows} />
+          </div>
+        )}
+        {(listStatus === "successful-populated" || listStatus === "failed") && listMatchCount > 0 ? (
+          <ul data-testid="lab-liststates-customer-rows" className="mb-3 space-y-2">
+            <li className="rounded border border-border px-3 py-2">Stale Row One</li>
+            <li className="rounded border border-border px-3 py-2">Stale Row Two</li>
+          </ul>
+        ) : (
+          <div data-testid="lab-liststates-customer-state">
+            <CustomerCatalogState
+              status={listStatus}
+              searchQuery={listQuery}
+              matchCount={listMatchCount}
+              hasCustomers={listHasRows}
+              onRetry={retryList}
+            />
+          </div>
+        )}
       </section>
 
       <section data-testid="lab-cramped">
@@ -330,6 +449,12 @@ export function SuggestLab() {
           inputClassName="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
         />
         <div style={{ height: "40px" }} aria-hidden="true" />
+        {/*
+          Tall spacer below the field so scroll-re-measurement tests can
+          position the field anywhere in the viewport (the flip from
+          above-placement to below-placement needs scroll room).
+        */}
+        <div style={{ height: "900px" }} aria-hidden="true" />
       </section>
     </div>
   );

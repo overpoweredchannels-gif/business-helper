@@ -76,8 +76,27 @@ export function rankProductMatch(fields: SearchRankFields, normalizedQuery: stri
  * stays with the caller: this only reorders already-authorized items.
  */
 export function rankSearchResults<T>(items: readonly T[], query: string, fieldsOf: (item: T) => SearchRankFields): T[] {
+  return rankSearchResultsWithTiers(items, query, fieldsOf).map((entry) => entry.item);
+}
+
+export interface RankedResult<T> {
+  item: T;
+  /** Relevance tier (0 = best); see the contract above. */
+  rank: number;
+}
+
+/**
+ * Like rankSearchResults, but exposes each item's rank tier so callers can
+ * merge differently-typed result sets (e.g. navigation sections and products)
+ * with one explicit, deterministic cross-type ordering.
+ */
+export function rankSearchResultsWithTiers<T>(
+  items: readonly T[],
+  query: string,
+  fieldsOf: (item: T) => SearchRankFields,
+): RankedResult<T>[] {
   const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery) return [...items];
+  if (!normalizedQuery) return [...items].map((item) => ({ item, rank: Number.MAX_SAFE_INTEGER }));
   const scored: Array<{ item: T; rank: number; sortName: string; sortId: string }> = [];
   for (const item of items) {
     const fields = fieldsOf(item);
@@ -96,7 +115,7 @@ export function rankSearchResults<T>(items: readonly T[], query: string, fieldsO
     (a.sortName < b.sortName ? -1 : a.sortName > b.sortName ? 1 : 0) ||
     (a.sortId < b.sortId ? -1 : a.sortId > b.sortId ? 1 : 0),
   );
-  return scored.map((entry) => entry.item);
+  return scored.map((entry) => ({ item: entry.item, rank: entry.rank }));
 }
 
 export interface HighlightSegment {

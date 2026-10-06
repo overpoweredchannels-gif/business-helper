@@ -2,8 +2,9 @@
 
 import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
 import { allPages } from "@/lib/supabase/all-pages";
-import { highlightSearchMatches, rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
+import { highlightSearchMatches, rankSearchResults, rankSearchResultsWithTiers, type SearchRankFields } from "@/lib/products/search-rank";
 import { ProductCatalogState, ProductCatalogErrorBanner } from "@/components/products/ProductCatalogState";
+import { CustomerCatalogState, CustomerCatalogErrorBanner } from "@/components/customers/CustomerCatalogState";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
@@ -24,7 +25,7 @@ import { supabase } from "@/lib/supabase/client";
 import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@/lib/sales/access";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { SearchSuggestField } from "@/components/search/SearchSuggestField";
-import { buildCustomerSuggestionData, buildProductSuggestionData, pinSelectedFirst } from "@/components/search/suggestion-items";
+import { buildCustomerSuggestionData, buildProductSuggestionData, orderCrossTypeSuggestions, pinSelectedFirst } from "@/components/search/suggestion-items";
 import type { SuggestionStatus } from "@/components/search/SuggestionPopover";
 import { MyPendingSales } from "@/components/salesman/MyPendingSales";
 import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
@@ -482,6 +483,11 @@ export default function Home() {
   // drafts and other same-scope state are preserved.
   const searchScopeKey = `${currentUser?.id ?? "anon"}:${currentOrganizationId ?? "none"}`;
   useEffect(() => {
+    // User/organization change: clear parent-owned search text AND selected
+    // IDs. Ordinary same-user token refreshes and same-scope retries keep the
+    // key stable, so drafts and same-scope state are preserved.
+    setProductSearch("");
+    setCustomerSearch("");
     setSelectedProductId(null);
     setSelectedCustomerId(null);
   }, [searchScopeKey]);
@@ -4846,6 +4852,10 @@ setCustomerOrganizationName("");
     void fetchProducts(currentOrganizationId);
   };
 
+  const retryCustomersLoad = () => {
+    void fetchCustomers(currentOrganizationId);
+  };
+
   const fetchCustomers = async (organizationId?: string | null) => {
     setCustomersLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
@@ -7290,6 +7300,14 @@ setCustomerOrganizationName("");
   const activeCustomers = useMemo(
     () => customers.filter((customer) => customer.is_active !== false),
     [customers]
+  );
+
+  // Memoized: the picker option array must keep its identity across unrelated
+  // parent rerenders, or the picker's "Show more" expansion collapses when
+  // the parent re-renders.
+  const invoiceCustomerOptions = useMemo(
+    () => activeCustomers.map((customer) => ({ id: customer.id, label: [customer.customer_name, customer.shop_name, customer.phone].filter(Boolean).join(" — ") })),
+    [activeCustomers]
   );
 
   const handleAddPurchaseLine = () => {
@@ -15963,7 +15981,7 @@ setCustomerOrganizationName("");
       // Navigation sections, relevance-ranked with the shared search
       // contract (exact label > label prefix > word prefix > contains).
       // visibleNavigationItems is already permission-filtered.
-      const sectionSuggestions = rankSearchResults(
+      const sectionResults = rankSearchResultsWithTiers(
         visibleNavigationItems.map((item) => ({
           id: `section-${item.id}`,
           label: item.label,
@@ -15972,32 +15990,39 @@ setCustomerOrganizationName("");
         })),
         q,
         (suggestion) => ({ name: suggestion.label }),
-      ).slice(0, 5);
+      );
       // Centralized permission gate: product names, their SKU/price details,
       // and the Products destination are suggested only when the user may
       // open the Products section. Nothing here expands permissions.
-      if (!canViewProducts) return sectionSuggestions;
-      const productSuggestions = rankSearchResults(
-        products,
-        q,
-        (product) => productSuggestionData.rankFields.get(String(product.id)) ?? { name: product.name },
-      )
-        .slice(0, 3)
-        .map((product) => ({
-          id: `product-${product.id}`,
-          label: product.name,
-          detail: [
-            product.sku,
-            product.default_selling_price != null ? formatPKR(product.default_selling_price) : null,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-          section: "products",
-          type: "product" as const,
-          prefill: product.name,
-          recordId: String(product.id),
-        }));
-      return [...sectionSuggestions, ...productSuggestions];
+      const productResults = !canViewProducts
+        ? []
+        : rankSearchResultsWithTiers(
+            products,
+            q,
+            (product) => productSuggestionData.rankFields.get(String(product.id)) ?? { name: product.name },
+          ).map(({ item: product, rank }) => ({
+            tier: rank,
+            kind: "product" as const,
+            id: `product-${product.id}`,
+            label: product.name,
+            detail: [
+              product.sku,
+              product.default_selling_price != null ? formatPKR(product.default_selling_price) : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+            section: "products",
+            type: "product" as const,
+            prefill: product.name,
+            recordId: String(product.id),
+          }));
+      // One explicit, deterministic cross-type ordering: an exact SKU/barcode
+      // product match (tier 0) outranks even exact section matches; within a
+      // tier, sections come before products, then label, then id.
+      return orderCrossTypeSuggestions([
+        ...sectionResults.map(({ item, rank }) => ({ ...item, tier: rank, kind: "section" as const })),
+        ...productResults,
+      ]).slice(0, 8);
     },
     [visibleNavigationItems, products, productSuggestionData, canViewProducts],
   );
@@ -16042,7 +16067,9 @@ setCustomerOrganizationName("");
         onSearchSubmit={handleGlobalSearchSubmit}
         onSearchChange={handleGlobalSearchChange}
         searchScopeKey={searchScopeKey}
-        productStatus={headerProductStatus}
+        // Restricted users get no productStatus: they must not see
+        // product-source status, names, or the Products destination.
+        productStatus={canViewProducts ? headerProductStatus : undefined}
         onViewAllProducts={
           canViewProducts
             ? (query) => {
@@ -17990,7 +18017,7 @@ setCustomerOrganizationName("");
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Customer</span>
-                <ProductSearchSelect label="Customer" searchPlaceholder="Search customer, shop or phone" value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={activeCustomers.map(customer => ({ id: customer.id, label: [customer.customer_name, customer.shop_name, customer.phone].filter(Boolean).join(" — ") }))} />
+                <ProductSearchSelect label="Customer" searchPlaceholder="Search customer, shop or phone" value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={invoiceCustomerOptions} />
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
@@ -21149,7 +21176,13 @@ setCustomerOrganizationName("");
             </div>
           </div>
           {(productsReadStatus === "successful-populated" || productsReadStatus === "failed") && filteredProducts.length > 0 ? (
-            <ul className="space-y-2">
+            <>
+              {productsReadStatus === "failed" && (
+                <div className="mb-3">
+                  <ProductCatalogErrorBanner onRetry={retryProductsLoad} hasStaleData={products.length > 0} />
+                </div>
+              )}
+              <ul className="space-y-2">
               {filteredProducts.map((product) => {
                 const brand = brands.find((b) => b.id === product.brand_id);
                 const category = categories.find((c) => c.id === product.category_id);
@@ -21211,6 +21244,7 @@ setCustomerOrganizationName("");
                 );
               })}
             </ul>
+            </>
           ) : (
             <ProductCatalogState
               status={productsReadStatus}
@@ -21434,11 +21468,12 @@ setCustomerOrganizationName("");
 
             <div>
               <h3 ref={customersListHeadingRef} tabIndex={-1} className="mb-3 text-lg font-medium text-foreground">Existing Customers</h3>
-              {customersLoading ? (
-                <p className="text-sm text-muted-foreground">Loading customers...</p>
-              ) : filteredCustomers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No customers found.</p>
-              ) : (
+              {customersReadStatus === "failed" && (
+                <div className="mb-3">
+                  <CustomerCatalogErrorBanner onRetry={retryCustomersLoad} hasStaleData={customers.length > 0} />
+                </div>
+              )}
+              {(customersReadStatus === "successful-populated" || customersReadStatus === "failed") && filteredCustomers.length > 0 ? (
                 <ul className="space-y-2">
                   {filteredCustomers.map((customer) => {
                     const policy = customer.credit_policy ?? "cash_only";
@@ -21572,6 +21607,14 @@ setCustomerOrganizationName("");
                     );
                   })}
                 </ul>
+              ) : (
+                <CustomerCatalogState
+                  status={customersReadStatus}
+                  searchQuery={customerSearch}
+                  matchCount={filteredCustomers.length}
+                  hasCustomers={customers.length > 0}
+                  onRetry={retryCustomersLoad}
+                />
               )}
             </div>
           </div>

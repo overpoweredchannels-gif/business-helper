@@ -33,6 +33,36 @@ export function pinSelectedFirst<T>(
   return copy;
 }
 
+export type HeaderSuggestionKind = "section" | "product";
+
+export interface TieredHeaderSuggestion {
+  id: string;
+  label: string;
+  /** Rank tier from the shared contract (0 = exact SKU/barcode). Lower is better. */
+  tier: number;
+  kind: HeaderSuggestionKind;
+}
+
+/**
+ * Explicit, deterministic ordering across navigation-section and product
+ * suggestions, each already ranked by the shared contract within its kind:
+ *  1. Lower rank tier first — so an exact SKU/barcode product match (tier 0)
+ *     outranks even an exact section-label match (tier 1) and any incidental
+ *     section match.
+ *  2. Within a tier, sections before products (navigation is the header's
+ *     primary job).
+ *  3. Then by label, then by id — fully deterministic across keystrokes.
+ */
+export function orderCrossTypeSuggestions<T extends TieredHeaderSuggestion>(items: readonly T[]): T[] {
+  return [...items].sort(
+    (a, b) =>
+      a.tier - b.tier ||
+      (a.kind === b.kind ? 0 : a.kind === "section" ? -1 : 1) ||
+      (a.label < b.label ? -1 : a.label > b.label ? 1 : 0) ||
+      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+}
+
 interface ProductLike {
   id: string | number;
   name: string;

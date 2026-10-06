@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Search, Bell, Sparkles, Menu, X, LogOut, User, AlertCircle, Package, DollarSign } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { activeSuggestionIndex } from "@/components/invoices/search-selection";
-import { SuggestionPopover, type SuggestionStatus } from "@/components/search/SuggestionPopover";
+import { SuggestionPopover, type SuggestionStatus, type SuggestionStatusNote } from "@/components/search/SuggestionPopover";
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 
 export interface SearchSuggestion {
@@ -92,15 +92,18 @@ function HeaderSearchBox({
   const activeIndex = activeSuggestionIndex(suggestions, "", active);
   const { anchorRef, placement, maxHeightPx } = useSuggestionPlacement(showPopover);
   const hasProductSuggestions = suggestions.some((suggestion) => suggestion.type === "product");
-  // Sections are local; the authoritative product read state only gates the
-  // product half of the panel: loading/error messaging appears only when it
-  // actually concerns what is shown.
-  const panelStatus: SuggestionStatus =
-    productStatus === "loading"
-      ? (suggestions.length === 0 ? "loading" : "ready")
-      : productStatus === "error"
-        ? (hasProductSuggestions ? "error" : "ready")
-        : "ready";
+  // The product source reports independently of local section results:
+  // sections stay visible while products load or fail, with an explicit
+  // product-status message. Restricted callers pass no productStatus, so they
+  // never see product-source status. A failed authorized source is never
+  // reported as "No matches".
+  const productNote: SuggestionStatusNote | undefined =
+    productStatus === "loading" && !hasProductSuggestions
+      ? { text: "Loading products…", variant: "info" }
+      : productStatus === "error" && !hasProductSuggestions
+        ? { text: "Couldn't load products.", variant: "error" }
+        : undefined;
+  const panelStatus: SuggestionStatus = productStatus === "error" && hasProductSuggestions ? "error" : "ready";
 
   const select = (id: string) => {
     const suggestion = suggestions.find((item) => item.id === id);
@@ -169,6 +172,7 @@ function HeaderSearchBox({
           staleText="Couldn't refresh products — showing saved results."
           errorText="Couldn't load product results."
           emptyText="No matches found."
+          statusNote={productNote}
           footer={
             onViewAllProducts && hasProductSuggestions
               ? { actionLabel: "See all results in Products", onAction: () => { setOpen(false); onViewAllProducts(trimmed); } }

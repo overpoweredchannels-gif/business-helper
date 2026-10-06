@@ -7,9 +7,14 @@
 // postcss+tailwind compiles the real design tokens for layout measurements.
 //
 // Portability: repository-relative paths; override with:
-//   SUGGEST_LAB_BROWSER  - browser executable (default: $CHROME-ish discovery)
-//   SUGGEST_LAB_OUT      - output dir (default: os.tmpdir()/lab-suggest/dist)
-//   SUGGEST_LAB_PLAYWRIGHT - path to a playwright-core index.mjs
+//   SUGGEST_LAB_BROWSER   - browser executable (default: generic platform
+//                           locations, then playwright's bundled chromium)
+//   SUGGEST_LAB_OUT       - output dir (default: os.tmpdir()/lab-suggest/dist)
+//   SUGGEST_LAB_PLAYWRIGHT- absolute path to a playwright-core index.mjs
+//                           (default: bare "playwright-core" import from the
+//                           repository's own dependencies)
+// A missing playwright-core or an unlaunchable browser fails fast with an
+// actionable error naming the env override to set.
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -23,27 +28,44 @@ const ROOT = process.env.SUGGEST_LAB_ROOT || path.resolve(SCRIPT_DIR, "..");
 const DIST = process.env.SUGGEST_LAB_OUT || path.join(os.tmpdir(), "lab-suggest", "dist");
 mkdirSync(DIST, { recursive: true });
 
-// --- playwright-core resolution: explicit env, bare import, legacy fallback ---
+// --- playwright-core resolution: explicit env override, then a bare import
+// resolved from the repository's own dependencies. No machine-specific
+// fallbacks; a missing dependency produces an actionable error. ---
 async function loadPlaywright() {
-  const candidates = [];
-  if (process.env.SUGGEST_LAB_PLAYWRIGHT) candidates.push(process.env.SUGGEST_LAB_PLAYWRIGHT);
-  candidates.push("playwright-core");
-  candidates.push("/home/hatch/workspace/tradeos-product-search/e2e/node_modules/playwright-core/index.mjs");
-  let lastError;
-  for (const c of candidates) {
+  const fromEnv = process.env.SUGGEST_LAB_PLAYWRIGHT;
+  if (fromEnv) {
     try {
-      return await import(c);
+      return await import(fromEnv);
     } catch (e) {
-      lastError = e;
+      throw new Error(
+        `Could not load playwright-core from SUGGEST_LAB_PLAYWRIGHT=${fromEnv}. ` +
+        `Check the path. Underlying error: ${e instanceof Error ? e.message : e}`,
+      );
     }
   }
-  throw new Error(`Could not load playwright-core. Set SUGGEST_LAB_PLAYWRIGHT. Last error: ${lastError}`);
+  try {
+    return await import("playwright-core");
+  } catch (e) {
+    throw new Error(
+      "Could not load playwright-core. Install it as a devDependency " +
+      "(`npm i -D playwright-core` in this repository) or set " +
+      "SUGGEST_LAB_PLAYWRIGHT to the absolute path of a playwright-core " +
+      `index.mjs. Underlying error: ${e instanceof Error ? e.message : e}`,
+    );
+  }
 }
 const { chromium } = await loadPlaywright();
 
-// --- browser executable discovery: env, platform defaults, then playwright's bundled chromium ---
+// --- browser executable discovery: explicit env override, then generic
+// platform install locations, then playwright's bundled chromium. No
+// machine-specific paths. ---
 function findBrowser() {
-  if (process.env.SUGGEST_LAB_BROWSER) return process.env.SUGGEST_LAB_BROWSER;
+  if (process.env.SUGGEST_LAB_BROWSER) {
+    if (!existsSync(process.env.SUGGEST_LAB_BROWSER)) {
+      throw new Error(`SUGGEST_LAB_BROWSER points at a missing file: ${process.env.SUGGEST_LAB_BROWSER}`);
+    }
+    return process.env.SUGGEST_LAB_BROWSER;
+  }
   if (process.platform === "win32") {
     const candidates = [
       "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -54,7 +76,7 @@ function findBrowser() {
     for (const c of candidates) if (existsSync(c)) return c;
     return undefined; // playwright's bundled chromium
   }
-  for (const c of ["/opt/meta-chromium/chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"]) {
+  for (const c of ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"]) {
     if (existsSync(c)) return c;
   }
   return undefined;
@@ -92,12 +114,24 @@ const perf = {};
 const executablePath = findBrowser();
 console.log(`browser: ${executablePath ?? "(playwright bundled chromium)"}`);
 
+async function launchBrowser() {
+  try {
+    return await chromium.launch(executablePath ? { executablePath } : {});
+  } catch (e) {
+    throw new Error(
+      `Could not launch a browser${executablePath ? ` at ${executablePath}` : " (playwright's bundled chromium)"}. ` +
+      "Set SUGGEST_LAB_BROWSER to the absolute path of a Chrome/Chromium " +
+      `executable. Underlying error: ${e instanceof Error ? e.message : e}`,
+    );
+  }
+}
+
 for (const viewport of [
   { width: 390, height: 844, label: "phone", mobile: true },
   { width: 1440, height: 900, label: "desktop", mobile: false },
 ]) {
   console.log(`\n===== viewport: ${viewport.label} =====`);
-  const browser = await chromium.launch(executablePath ? { executablePath } : {});
+  const browser = await launchBrowser();
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
     hasTouch: viewport.mobile,
@@ -237,13 +271,15 @@ for (const viewport of [
   const scopeLabel = await page.getByTestId("lab-scope-toggle").textContent();
   const topAfterSwitch = await prodScope.getByTestId("lab-products-top").textContent();
   const selAfterSwitch = await prodScope.getByTestId("lab-products-selected").textContent();
+  const queryAfterSwitch = await prodCombo.inputValue();
   check(
-    `[${viewport.label}] account switch clears old-scope suggestions + selection`,
+    `[${viewport.label}] account switch clears search text + selection (no stale old-scope query)`,
     /org-b/.test(scopeLabel ?? "") &&
-      (topAfterSwitch ?? "").includes("top: none") &&
+      queryAfterSwitch === "" &&
       /selected: none/.test(selAfterSwitch ?? "") &&
+      !topAfterSwitch.includes("p-twin") &&
       (await prodListboxCount()) === 0,
-    `${scopeLabel} / ${topAfterSwitch} / ${selAfterSwitch}`,
+    `${scopeLabel} / ${topAfterSwitch} / ${selAfterSwitch} / query="${queryAfterSwitch}"`,
   );
   await prodCombo.fill("OrgB");
   await sleep(150);
@@ -362,7 +398,71 @@ for (const viewport of [
   check(`[${viewport.label}] initial failure shows the error state`, /Couldn't load results/.test(errorEmptyText ?? ""), errorEmptyText);
   await page.keyboard.press("Escape");
 
-  // -- 19-22. Customers section field. --
+  // -- Catalog list states: stale warning + Retry with retained rows. --
+  const listScope = page.locator('[data-testid="lab-liststates"]');
+  // Initial: failed + rows.
+  const prodBanner = await listScope.getByTestId("lab-liststates-product-banner").textContent();
+  const prodRows = await listScope.getByTestId("lab-liststates-product-rows").getByRole("listitem").count();
+  check(
+    `[${viewport.label}] list: stale rows render with persistent warning`,
+    /Couldn't refresh the product catalog/.test(prodBanner ?? "") && prodRows === 2,
+    `${prodBanner?.slice(0, 60)} / ${prodRows} rows`,
+  );
+  const custBanner = await listScope.getByTestId("lab-liststates-customer-banner").textContent();
+  check(
+    `[${viewport.label}] list: customer stale warning shown`,
+    /Couldn't refresh the customer list/.test(custBanner ?? ""),
+    custBanner?.slice(0, 60),
+  );
+  // Retry works: banner and rows clear into the refreshed state.
+  await listScope.getByTestId("lab-liststates-product-banner").getByRole("button", { name: "Retry" }).click();
+  await sleep(150);
+  const bannerGone = await listScope.getByTestId("lab-liststates-product-banner").count();
+  const stateAfterRetry = await listScope.getByTestId("lab-liststates-product-state").count();
+  check(
+    `[${viewport.label}] list: Retry recovers from the failure`,
+    bannerGone === 0 && stateAfterRetry === 0,
+    `banners ${bannerGone}, state blocks ${stateAfterRetry}`,
+  );
+  // successful-empty: distinct empty-catalog message. (Retry left the status at
+  // successful-populated, so two cycler clicks reach successful-empty.)
+  await listScope.getByTestId("lab-liststates-status").click(); // -> failed
+  await listScope.getByTestId("lab-liststates-status").click(); // -> successful-empty
+  await sleep(150);
+  const emptyProd = await listScope.getByTestId("lab-liststates-product-state").textContent();
+  const emptyCust = await listScope.getByTestId("lab-liststates-customer-state").textContent();
+  check(
+    `[${viewport.label}] list: successful empty catalog distinguished`,
+    /No products added yet/.test(emptyProd ?? "") && /No customers added yet/.test(emptyCust ?? ""),
+    `${emptyProd} / ${emptyCust}`,
+  );
+  // Query no-match: distinct from empty catalog.
+  await listScope.getByTestId("lab-liststates-status").click(); // -> successful-populated
+  await sleep(150);
+  await listScope.getByTestId("lab-liststates-query").fill("zzz-nope");
+  await sleep(150);
+  const noMatchProd = await listScope.getByTestId("lab-liststates-product-state").textContent();
+  check(
+    `[${viewport.label}] list: query no-match distinguished`,
+    /No products match/.test(noMatchProd ?? ""),
+    noMatchProd,
+  );
+  // Initial failure (no rows): the state component shows the banner, no rows.
+  await listScope.getByTestId("lab-liststates-query").fill("");
+  await listScope.getByTestId("lab-liststates-rows-toggle").click(); // rows off
+  await sleep(150);
+  await listScope.getByTestId("lab-liststates-status").click(); // -> failed
+  await sleep(150);
+  const initFailBannerCount = await listScope.getByTestId("lab-liststates-product-banner").count();
+  const initFailRows = await listScope.getByTestId("lab-liststates-product-rows").count();
+  const initFailState = await listScope.getByTestId("lab-liststates-product-state").textContent();
+  check(
+    `[${viewport.label}] list: initial failure shows banner once, no rows`,
+    initFailBannerCount === 0 && initFailRows === 0 && /Couldn't load the product catalog/.test(initFailState ?? ""),
+    initFailState?.slice(0, 60),
+  );
+  await listScope.getByTestId("lab-liststates-rows-toggle").click(); // rows back on
+  await sleep(150);
   await custCombo.fill("Fah");
   await sleep(150);
   const custIds = await custScope.getByRole("option").evaluateAll((els) => els.map((el) => el.getAttribute("data-suggestion-id")));
@@ -410,8 +510,8 @@ for (const viewport of [
   await sleep(150);
   const posSelected = await posScope.getByTestId("lab-pos-selected").textContent();
   check(
-    `[${viewport.label}] POS selection keeps correct id and price`,
-    posFirstId === "p-sku-only" && /p-sku-only/.test(posSelected ?? "") && /Rs 60\.00/.test(posSelected ?? ""),
+    `[${viewport.label}] POS selection keeps correct id, price, and unit`,
+    posFirstId === "p-sku-only" && /p-sku-only/.test(posSelected ?? "") && /Rs 60\.00/.test(posSelected ?? "") && /unit: pack/.test(posSelected ?? ""),
     `${posFirstId} / ${posSelected}`,
   );
   await posCombo.click();
@@ -433,6 +533,31 @@ for (const viewport of [
   await sleep(150);
   const posCount2 = await posScope.getByRole("option").count();
   check(`[${viewport.label}] POS Show more reveals more matches`, posCount2 === 24, `${posCount2}`);
+  // Unrelated parent rerender must not collapse the Show more expansion
+  // (regression: the picker reset when the caller rebuilt its option array).
+  // Clicking the rerender button blurs the input and closes the panel, so
+  // refocus to reopen: the expansion must still be at 24, not reset to 12.
+  await page.getByTestId("lab-pos-rerender").click();
+  await sleep(150);
+  await posCombo.click();
+  await sleep(150);
+  const posCount3 = await posScope.getByRole("option").count();
+  check(`[${viewport.label}] POS Show more survives unrelated parent rerender`, posCount3 === 24, `${posCount3}`);
+  await page.keyboard.press("Escape");
+
+  // -- 26c. Invoice line selector: separate caller wiring, id + price + unit. --
+  const invScope = page.locator('[data-testid="lab-invoice"]');
+  const invCombo = invScope.getByRole("combobox", { name: "Lab invoice product" });
+  await invCombo.fill("FM-200");
+  await sleep(150);
+  await page.keyboard.press("Enter");
+  await sleep(150);
+  const invSelected = await invScope.getByTestId("lab-invoice-selected").textContent();
+  check(
+    `[${viewport.label}] invoice selection keeps id, price, and unit`,
+    /p-fresh/.test(invSelected ?? "") && /Rs 120\.00/.test(invSelected ?? "") && /unit: litre/.test(invSelected ?? ""),
+    invSelected,
+  );
   await page.keyboard.press("Escape");
 
   // -- 27-30. Header global search. --
@@ -513,6 +638,64 @@ for (const viewport of [
     await page.keyboard.press("Escape");
     const expanded = await headerCombo.getAttribute("aria-expanded");
     check(`[${viewport.label}] header: combobox semantics`, expanded === "false", `aria-expanded=${expanded}`);
+
+    // -- Header cross-type ordering: exact SKU outranks a competing section. --
+    await headerCombo.fill("FZ-999");
+    await sleep(200);
+    const codeFirstId = await headerScope.getByRole("option").first().getAttribute("data-suggestion-id");
+    const codeFirstText = await headerScope.getByRole("option").first().textContent();
+    check(
+      `[${viewport.label}] header: exact SKU outranks competing section`,
+      codeFirstId === "product-p-sku-only",
+      `${codeFirstId} / ${codeFirstText}`,
+    );
+    await page.keyboard.press("Escape");
+
+    // -- Header read states: product source reports independently of sections. --
+    await page.getByTestId("lab-header-status").click(); // -> loading
+    await sleep(150);
+    await headerCombo.fill("Products");
+    await sleep(200);
+    const hLoadingSections = await headerScope.getByRole("option").count();
+    const hLoadingNote = await headerScope.getByRole("status").first().textContent();
+    check(
+      `[${viewport.label}] header: sections stay visible while products load, with product-status message`,
+      hLoadingSections > 0 && /Loading products/.test(hLoadingNote ?? ""),
+      `${hLoadingSections} options / ${hLoadingNote}`,
+    );
+    await page.getByTestId("lab-header-status").click(); // -> error
+    await sleep(150);
+    await headerCombo.fill("zzz-nope");
+    await sleep(200);
+    const hFailedNote = await headerScope.getByRole("status").textContent();
+    check(
+      `[${viewport.label}] header: failed product source is never reported as "No matches"`,
+      /Couldn't load products/.test(hFailedNote ?? "") && !/No matches found/.test(hFailedNote ?? ""),
+      hFailedNote,
+    );
+    await page.getByTestId("lab-header-status").click(); // -> ready
+    await sleep(150);
+
+    // -- Restricted users never see product-source status. --
+    await page.getByTestId("lab-header-restrict-toggle").click(); // -> on
+    await sleep(150);
+    await page.getByTestId("lab-header-status").click(); // -> loading (must stay hidden)
+    await sleep(150);
+    await headerCombo.fill("zzz-nope");
+    await sleep(200);
+    const hRestrictedNote = await headerScope.getByRole("status").textContent();
+    check(
+      `[${viewport.label}] header: restricted users see no product-source status`,
+      /No matches found/.test(hRestrictedNote ?? "") && !/Loading products/.test(hRestrictedNote ?? ""),
+      hRestrictedNote,
+    );
+    await page.getByTestId("lab-header-status").click(); // -> error (must stay hidden)
+    await sleep(150);
+    await page.getByTestId("lab-header-status").click(); // -> ready
+    await sleep(150);
+    await page.getByTestId("lab-header-restrict-toggle").click(); // -> off
+    await sleep(150);
+    await page.keyboard.press("Escape");
   } else {
     // Mobile: open the search panel, then use the mobile combobox.
     // (getByRole skips the display:none desktop box, so it is .first().)
@@ -565,12 +748,54 @@ for (const viewport of [
   );
   await page.keyboard.press("Escape");
 
+  // -- 31b. Page scroll while open re-measures placement (no stale popover). --
+  // Position the field near the viewport bottom (popover opens above), then
+  // scroll the page so the field sits near the top: the popover must flip
+  // below, proving the scroll listener re-measured.
+  await crampedCombo.evaluate((el) => {
+    el.blur();
+    const r = el.getBoundingClientRect();
+    window.scrollTo(0, window.scrollY + r.top - (window.innerHeight - 140));
+  });
+  await sleep(250);
+  await crampedCombo.fill("");
+  await crampedCombo.fill("F");
+  await sleep(250);
+  const flipBefore = await crampedScope.getByRole("listbox").evaluate((el) => {
+    const pop = el.parentElement.getBoundingClientRect();
+    const field = el.closest('[data-testid="lab-cramped"]').querySelector("input").getBoundingClientRect();
+    return { popBottom: pop.bottom, fieldTop: field.top };
+  });
+  const openedAbove = Math.abs(flipBefore.popBottom - flipBefore.fieldTop) < 8;
+  await page.evaluate(() => {
+    const input = document.querySelector('[data-testid="lab-cramped"] input');
+    const r = input.getBoundingClientRect();
+    window.scrollTo(0, window.scrollY + r.top - 200);
+  });
+  await sleep(400); // rAF-throttled re-measure
+  const flipAfter = await crampedScope.getByRole("listbox").evaluate((el) => {
+    const pop = el.parentElement.getBoundingClientRect();
+    const field = el.closest('[data-testid="lab-cramped"]').querySelector("input").getBoundingClientRect();
+    return { popTop: pop.top, fieldBottom: field.bottom };
+  });
+  const flippedBelow = Math.abs(flipAfter.popTop - flipAfter.fieldBottom) < 8;
+  check(
+    `[${viewport.label}] scroll-while-open: popover re-measures placement`,
+    openedAbove && flippedBelow,
+    `above=${openedAbove} below=${flippedBelow}`,
+  );
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await sleep(200);
+
   if (viewport.mobile) {
-    // -- 32. Phone-keyboard simulation: shrunken viewport, field at the bottom.
+    // -- 32. Simulated keyboard viewport: shrunken viewport, field at the bottom.
+    // This is a SIMULATED shrunken viewport, not a physical device keyboard:
+    // no real-device keyboard verification is performed here.
     // At 220px tall the space above the flipped popover is ~130px: the old
     // 132px minimum would push it off the top of the viewport. The field is
     // scrolled into view manually and focused with preventScroll so the
-    // measurement reflects a real keyboard-open state (the field in view).
+    // measurement reflects a keyboard-open-like state (the field in view).
     await page.setViewportSize({ width: 390, height: 220 });
     await sleep(200);
     await crampedCombo.fill("", { force: true });
@@ -591,7 +816,7 @@ for (const viewport of [
       return { t: r.top, b: r.bottom };
     });
     check(
-      `[${viewport.label}] keyboard-cramped: popover never exceeds the available space`,
+      `[${viewport.label}] simulated-keyboard: popover never exceeds the available space`,
       kbPopBox.t >= 0 && kbPopBox.b <= 220,
       JSON.stringify(kbPopBox),
     );
@@ -606,7 +831,7 @@ for (const viewport of [
     await sleep(150);
     const scrollAfterKeys = await page.evaluate(() => window.scrollY);
     check(
-      `[${viewport.label}] keyboard-cramped: keyboarding through options does not move the page`,
+      `[${viewport.label}] simulated-keyboard: keyboarding through options does not move the page`,
       Math.abs(scrollAfterKeys - scrollBeforeKeys) < 2,
       `scrollY ${scrollBeforeKeys} -> ${scrollAfterKeys}`,
     );
@@ -618,11 +843,24 @@ for (const viewport of [
         return !!active && active.top >= pop.top - 1 && active.bottom <= pop.bottom + 1;
       });
     check(
-      `[${viewport.label}] keyboard-cramped: active option stays visible while scrolling`,
+      `[${viewport.label}] simulated-keyboard: active option stays visible while scrolling`,
       kbActiveVisible === true,
       String(kbActiveVisible),
     );
+    // Scrolling the popover's own option list is container-only: the page
+    // must not move, and the scroll must not trigger a re-measurement.
+    const scrollBeforeList = await page.evaluate(() => window.scrollY);
+    await crampedScope.getByRole("listbox").evaluate((listbox) => { listbox.scrollTop = 200; });
+    await sleep(200);
+    const scrollAfterList = await page.evaluate(() => window.scrollY);
+    check(
+      `[${viewport.label}] simulated-keyboard: option-list scroll is container-only`,
+      Math.abs(scrollAfterList - scrollBeforeList) < 2,
+      `scrollY ${scrollBeforeList} -> ${scrollAfterList}`,
+    );
     await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await sleep(200);
   }
 
   // -- Page errors. --

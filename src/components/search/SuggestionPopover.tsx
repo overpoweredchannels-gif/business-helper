@@ -20,6 +20,15 @@ export interface SuggestionFooter {
   onAction?: () => void;
 }
 
+/**
+ * A source-level status shown independently of the suggestion list itself,
+ * e.g. "Loading products…" while local section results are already visible.
+ */
+export interface SuggestionStatusNote {
+  text: string;
+  variant: "info" | "error";
+}
+
 interface SuggestionPopoverProps {
   /** id referenced by the combobox input's aria-controls. */
   listId: string;
@@ -38,6 +47,13 @@ interface SuggestionPopoverProps {
   errorText?: string;
   /** Slim note shown above stale results when a refresh failed. */
   staleText?: string;
+  /**
+   * Independent source status (e.g. the product source loading/failing while
+   * local results are shown). Rendered above the list; when there is nothing
+   * to list, it replaces "No matches" so a failed source is never reported
+   * as an empty result set.
+   */
+  statusNote?: SuggestionStatusNote;
   /** Explicit result-limit footer ("Showing 8 of 25" + action), outside the listbox. */
   footer?: SuggestionFooter;
   onSelect: (id: string) => void;
@@ -62,6 +78,7 @@ export function SuggestionPopover({
   loadingText = "Loading…",
   errorText = "Couldn't load results.",
   staleText = "Couldn't refresh — showing saved results.",
+  statusNote,
   footer,
   onSelect,
   onHover,
@@ -107,7 +124,17 @@ export function SuggestionPopover({
         </p>
       ) : (
         <>
-          {status === "error" && items.length > 0 && (
+          {statusNote && (
+            <p
+              role="status"
+              className={`border-b border-border px-3 py-2 text-xs ${
+                statusNote.variant === "error" ? "text-destructive" : "text-muted-foreground"
+              }`}
+            >
+              {statusNote.text}
+            </p>
+          )}
+          {status === "error" && items.length > 0 && !statusNote && (
             <p role="status" className="border-b border-border px-3 py-2 text-xs text-warning">
               {staleText}
             </p>
@@ -148,7 +175,7 @@ export function SuggestionPopover({
                 </li>
               ))}
             </ul>
-          ) : (
+          ) : statusNote ? null : (
             <p role="status" className="px-3 py-3 text-sm text-muted-foreground">
               {emptyText}
             </p>
