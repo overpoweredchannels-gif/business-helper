@@ -25,6 +25,17 @@ interface SearchSuggestFieldProps {
   className?: string;
   listAriaLabel?: string;
   emptyText?: string;
+  /**
+   * Record ID chosen from the panel. The parent pins this record first in its
+   * own ranked list; any keystroke clears it via onSelectItem(null).
+   */
+  selectedId?: string | null;
+  /** Called with the chosen record on selection, and with null when the
+   * selection is cleared by typing. */
+  onSelectItem?: (selection: { id: string; label: string } | null) => void;
+  /** "View all" action for the result-limit footer; omitted when the caller
+   * has no fuller list to show. */
+  onViewAll?: () => void;
 }
 
 /**
@@ -47,6 +58,9 @@ export function SearchSuggestField({
   className = "relative min-w-0 w-full",
   listAriaLabel,
   emptyText,
+  selectedId = null,
+  onSelectItem,
+  onViewAll,
 }: SearchSuggestFieldProps) {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -54,12 +68,12 @@ export function SearchSuggestField({
   const query = value.trim();
   const showPopover = open && query.length > 0;
 
-  const matches = useMemo(() => {
-    if (!query) return [];
-    const ranked = rankedFields
+  const { ranked, matches } = useMemo(() => {
+    if (!query) return { ranked: [], matches: [] };
+    const all = rankedFields
       ? rankSearchResults(items, query, (item) => rankedFields.get(item.id) ?? { name: item.label })
       : items.filter((item) => item.label.toLowerCase().includes(query.toLowerCase()));
-    return ranked.slice(0, maxSuggestions);
+    return { ranked: all, matches: all.slice(0, maxSuggestions) };
   }, [items, query, rankedFields, maxSuggestions]);
 
   const activeIndex = activeSuggestionIndex(matches, "", active);
@@ -69,8 +83,15 @@ export function SearchSuggestField({
     const item = matches.find((match) => match.id === id);
     if (!item) return;
     onChange(item.label);
+    onSelectItem?.({ id: item.id, label: item.label });
     setOpen(false);
     setActive(null);
+  };
+
+  const viewAll = () => {
+    setOpen(false);
+    setActive(null);
+    onViewAll?.();
   };
 
   return (
@@ -94,6 +115,9 @@ export function SearchSuggestField({
         }}
         onBlur={() => setOpen(false)}
         onChange={(event) => {
+          // Any keystroke invalidates a pinned selection: the text no longer
+          // identifies the chosen record.
+          if (selectedId) onSelectItem?.(null);
           onChange(event.target.value);
           setActive(0);
           setOpen(true);
@@ -129,6 +153,14 @@ export function SearchSuggestField({
           query={query}
           status={status}
           emptyText={emptyText}
+          footer={
+            ranked.length > matches.length && matches.length > 0
+              ? {
+                  text: `Showing ${matches.length} of ${ranked.length} matches`,
+                  ...(onViewAll ? { actionLabel: "View all", onAction: viewAll } : {}),
+                }
+              : undefined
+          }
           onSelect={select}
           onHover={setActive}
         />

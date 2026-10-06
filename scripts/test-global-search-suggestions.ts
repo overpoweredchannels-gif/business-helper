@@ -1,10 +1,11 @@
 // Unit tests for the global search suggestion panels.
 // Run with: npm run test:global-search-suggestions
 import assert from "node:assert/strict";
-import { decideSuggestionPlacement } from "../src/components/search/useSuggestionPlacement";
+import { clampPopoverHeight, decideSuggestionPlacement } from "../src/components/search/useSuggestionPlacement";
 import {
   buildCustomerSuggestionData,
   buildProductSuggestionData,
+  pinSelectedFirst,
 } from "../src/components/search/suggestion-items";
 import { rankSearchResults } from "../src/lib/products/search-rank";
 
@@ -114,5 +115,41 @@ assert.deepEqual(
 
 // --- empty query returns the input untouched (callers decide what empty shows) ---
 assert.equal(rankSearchResults(products.items, "   ", (item) => products.rankFields.get(item.id) ?? { name: item.label }).length, 4, "empty query returns all items");
+
+// --- popover height clamp: never larger than the available space, no enforced minimum ---
+assert.equal(clampPopoverHeight(400), 256, "ample space uses the preferred max height");
+assert.equal(clampPopoverHeight(200), 200, "tight space shrinks the popover");
+assert.equal(clampPopoverHeight(80), 80, "cramped space (phone keyboard) keeps the popover inside the viewport");
+assert.equal(clampPopoverHeight(0), 0, "no space clamps to zero instead of enforcing a minimum");
+
+// --- selected record identity: duplicate names pin the chosen ID first ---
+const twins = [
+  { id: "p-twin-a", name: "Twin Widget" },
+  { id: "p-twin-b", name: "Twin Widget" },
+  { id: "p-other", name: "Other Thing" },
+];
+const pinned = pinSelectedFirst(twins, "p-twin-b", (t) => t.id);
+assert.deepEqual(pinned.map((t) => t.id), ["p-twin-b", "p-twin-a", "p-other"], "chosen duplicate moves first, others keep order");
+assert.deepEqual(pinSelectedFirst(twins, null, (t) => t.id).map((t) => t.id), ["p-twin-a", "p-twin-b", "p-other"], "no selection keeps the ranked order");
+assert.deepEqual(pinSelectedFirst(twins, "p-twin-a", (t) => t.id).map((t) => t.id), ["p-twin-a", "p-twin-b", "p-other"], "already-first selection is a no-op");
+assert.deepEqual(pinSelectedFirst(twins, "p-gone", (t) => t.id).map((t) => t.id), ["p-twin-a", "p-twin-b", "p-other"], "unknown id keeps the ranked order");
+
+// --- name-prefix matches rank ahead of incidental name substrings ---
+const tiered = buildProductSuggestionData(
+  [
+    { id: "substring", name: "Cart Wheels", default_selling_price: 10 },
+    { id: "prefix", name: "Artisan Bread", default_selling_price: 20 },
+    { id: "wordprefix", name: "Fine Art Supplies", default_selling_price: 30 },
+  ],
+  brandNames,
+  categoryNames,
+  price,
+);
+const rankedTier = rankSearchResults(tiered.items, "art", (item) => tiered.rankFields.get(item.id) ?? { name: item.label });
+assert.deepEqual(
+  rankedTier.map((i) => i.id),
+  ["prefix", "wordprefix", "substring"],
+  "name prefix > word prefix > incidental name substring",
+);
 
 console.log("test:global-search-suggestions — all assertions passed");

@@ -6,6 +6,7 @@ import { FloatingAI } from "./FloatingAI";
 import { MobileNavigation } from "./MobileNavigation";
 import { useCallback, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
+import type { SuggestionStatus } from "@/components/search/SuggestionPopover";
 
 interface Notification {
   id: string;
@@ -30,8 +31,14 @@ interface DashboardLayoutProps {
   notificationCount?: number;
   notifications?: Notification[];
   onNotificationClick?: (notification: Notification) => void;
-  onSearchSubmit?: (query: string, prefill?: string) => void;
-  onSearchChange?: (query: string) => Array<{ id: string; label: string; detail?: string; prefill?: string; section?: string; type?: "product" | "customer" | "task" | "action" }>;
+  onSearchSubmit?: (query: string, prefill?: string, recordId?: string) => void;
+  onSearchChange?: (query: string) => Array<{ id: string; label: string; detail?: string; prefill?: string; recordId?: string; section?: string; type?: "product" | "customer" | "task" | "action" }>;
+  /** Remounts the header search boxes on account/organization change. */
+  searchScopeKey?: string;
+  /** Authoritative read state for the header's product suggestions. */
+  productStatus?: SuggestionStatus;
+  /** "See all results in Products" footer; omit when the user may not open Products. */
+  onViewAllProducts?: (query: string) => void;
   customizeMode?: boolean;
   hiddenNavIds?: string[];
   canCustomize?: boolean;
@@ -60,6 +67,9 @@ export function DashboardLayout({
   onNotificationClick,
   onSearchSubmit,
   onSearchChange,
+  searchScopeKey,
+  productStatus,
+  onViewAllProducts,
 customizeMode,
   hiddenNavIds,
   canCustomize,
@@ -131,6 +141,9 @@ customizeMode,
           onNotificationClick={onNotificationClick}
           onSearchSubmit={onSearchSubmit}
           onSearchChange={onSearchChange}
+          searchScopeKey={searchScopeKey}
+          productStatus={productStatus}
+          onViewAllProducts={onViewAllProducts}
         />
         <main className="responsive-content min-w-0 flex-1 pb-24 lg:pb-8">
           {children}

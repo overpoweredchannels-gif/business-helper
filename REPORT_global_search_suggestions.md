@@ -95,3 +95,87 @@ search, reorder-recommendation search, held-sales search, advisory-items search.
   harness with two organizations that suggestion ranking, tenant isolation,
   and permission filtering hold end to end. Production was not used.
 - Receipt-clipping verification still needs UMAIR's real-printer sample.
+
+## Codex review follow-up (2026-10-07)
+
+Addressed Codex's review of `b39cd61` on this branch (no force-push, no merge,
+no deploy, no database changes; Codex's database/security work untouched; no
+shared loader code changed — the panels only *consume*
+`dashboardSourceStates.*.status` from the existing `DashboardReadTracker`).
+
+1. **Selected record identity.** `SearchSuggestField` gained
+   `selectedId`/`onSelectItem`; choosing a suggestion reports its record ID
+   and any keystroke clears it. Products/Customers sections pin the chosen ID
+   first via the new pure `pinSelectedFirst` helper (unit-tested), so one of
+   two identically named records shows the chosen record first. Dashboard
+   product navigation now carries `recordId` through
+   `onSearchSubmit(section, prefill, recordId)` and pins it in the Products
+   section. A `searchScopeKey` (`userId:organizationId`) remounts the fields
+   and clears the pinned selection on account/organization change; same-scope
+   renders keep the key stable so drafts are preserved. POS/invoice selectors
+   already select by ID — unchanged.
+2. **Constrained popover placement.** The 132px minimum height is gone:
+   `clampPopoverHeight` (pure, unit-tested) caps the popover at the space
+   actually available, so a phone-keyboard viewport can never push it
+   off-screen; options stay scrollable. Also fixed a real page-jump bug the
+   cramped-viewport regression exposed: the active option used
+   `scrollIntoView`, which scrolled the *window*; both panels now scroll only
+   their own popover container.
+3. **Global-search permissions.** The header's `onSearchChange` is now a
+   stable `useCallback` that returns product suggestions (names, SKU/price
+   details, Products destination) only when the centralized
+   `canAccessSection("products")` passes; restricted users see sections only,
+   and the "See all results in Products" footer is omitted for them. Nothing
+   expands permissions.
+4. **Accurate loading/failure states.** `SuggestionPopover` now distinguishes
+   four states: loading with nothing loaded ("Loading…"), results present
+   (interactive, even mid-refresh), initial failure with nothing loaded
+   ("Couldn't load results."), and stale results after refresh failure (slim
+   stale note + results). Customers use the authoritative
+   `dashboardSourceStates.customers.status`; the header maps
+   `productsReadStatus` but only surfaces loading/error messaging when it
+   concerns what is actually shown (sections are local). Request identity and
+   scope invalidation stay in `DashboardReadTracker` (untouched); panels
+   remount on scope change so an old request can never clear a new request's
+   state.
+5. **Explicit result limits.** Panels show "Showing N of M matches": section
+   fields offer "View all" (focuses the full ranked list below); the header
+   offers "See all results in Products" (permission-gated); POS/invoice
+   selectors offer progressive "Show more" (+12). Name-prefix tiers remain
+   ahead of incidental name substrings (new unit assertion); exact
+   SKU/barcode keeps rank 0.
+6. **Performance and portability.** Header suggestions are memoized
+   (`useCallback` in the page over stable inputs + `useMemo` in `Header`;
+   `visibleNavigationItems` is memoized) so unrelated parent rerenders do not
+   re-rank. The browser runner is portable: repository-relative paths,
+   `SUGGEST_LAB_BROWSER` / `SUGGEST_LAB_OUT` / `SUGGEST_LAB_PLAYWRIGHT`
+   overrides, and platform browser discovery (Windows Chrome/Edge paths,
+   `/opt/meta-chromium`, `/usr/bin/*`, then Playwright's bundled Chromium).
+
+### Follow-up validation (2026-10-07)
+
+- Unit: `npm run test:global-search-suggestions` — new assertions for
+  `clampPopoverHeight`, `pinSelectedFirst` (duplicates, unknown/absent IDs),
+  and name-prefix > word-prefix > incidental-substring tiers — all pass.
+- Browser: `node scripts/browser-global-search-suggestions.mjs` —
+  **100/100** at 390×844 (touch) and 1440×900, zero page errors. Fixture:
+  5,022 products, 9 customers. New regressions: duplicate product/customer
+  names pin the chosen ID first and clear on edit; "Showing 8 of 25" +
+  "View all"; POS "Show more" 12 → 24; account switch clears old-scope
+  suggestions + selection immediately; initial-failure error state; header
+  restricted (no product suggestions, no SKU/price leak, no See-all);
+  header loading / stale-after-refresh states; cramped field flips and fits;
+  220px keyboard-cramped viewport keeps the popover inside the available
+  space with the active option visible and no page scroll movement.
+- Performance (5,022 products): mount 496–584ms, typing fill→options
+  108–308ms, parent rerender 187–209ms.
+- Focused existing tests (`test:search-selection`, `test:product-search`,
+  `test:product-catalog-loading`) — pass.
+- `npm run typecheck` — clean.
+- Full `npm test` — exit 0, no failures (35 scripts).
+- Changed-file ESLint — 0 errors, 0 warnings on changed lines
+  (`Header.tsx`'s `DollarSign` unused-import warning is pre-existing).
+- `git diff --check` — clean.
+- Production build — passes with placeholder public Supabase variables.
+- Authenticated checks against isolated project `rtfowunsyrdygyvubnvs`
+  remain pending Codex's release-harness completion — explicitly not run.

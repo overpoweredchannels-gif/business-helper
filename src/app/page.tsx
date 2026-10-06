@@ -24,7 +24,8 @@ import { supabase } from "@/lib/supabase/client";
 import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@/lib/sales/access";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { SearchSuggestField } from "@/components/search/SearchSuggestField";
-import { buildCustomerSuggestionData, buildProductSuggestionData } from "@/components/search/suggestion-items";
+import { buildCustomerSuggestionData, buildProductSuggestionData, pinSelectedFirst } from "@/components/search/suggestion-items";
+import type { SuggestionStatus } from "@/components/search/SuggestionPopover";
 import { MyPendingSales } from "@/components/salesman/MyPendingSales";
 import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
@@ -331,6 +332,9 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [archivingProductId, setArchivingProductId] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
+  // Record chosen from the Products suggestion panel, pinned first in the
+  // ranked list. Cleared when the query is edited or the scope changes.
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [productToView, setProductToView] = useState<Product | null>(null);
   const [productSku, setProductSku] = useState("");
@@ -345,15 +349,19 @@ export default function Home() {
   const categoryNameById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
 
   const filteredProducts = useMemo(() => {
-    if (!productSearch.trim()) return products;
-    return rankSearchResults(products, productSearch, (product) => ({
-      name: product.name,
-      sku: product.sku,
-      barcode: product.barcode,
-      brandName: product.brand_id ? brandNameById.get(product.brand_id) ?? null : null,
-      categoryName: product.category_id ? categoryNameById.get(product.category_id) ?? null : null,
-    }));
-  }, [productSearch, products, brandNameById, categoryNameById]);
+    const ranked = !productSearch.trim()
+      ? products
+      : rankSearchResults(products, productSearch, (product) => ({
+          name: product.name,
+          sku: product.sku,
+          barcode: product.barcode,
+          brandName: product.brand_id ? brandNameById.get(product.brand_id) ?? null : null,
+          categoryName: product.category_id ? categoryNameById.get(product.category_id) ?? null : null,
+        }));
+    // A record chosen from the suggestion panel keeps its identity: it is
+    // pinned first even when several records share its name.
+    return pinSelectedFirst(ranked, selectedProductId, (product) => String(product.id));
+  }, [productSearch, products, brandNameById, categoryNameById, selectedProductId]);
 
   // Suggestion-panel data for the Products section search field: one pass over
   // the already-authorized product list. Tenant/role/permission filtering stays
@@ -411,6 +419,9 @@ export default function Home() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+  // Record chosen from the Customers suggestion panel, pinned first in the
+  // ranked list. Cleared when the query is edited or the scope changes.
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [customerEditingId, setCustomerEditingId] = useState<string | null>(null);
   const [viewCustomerHistoryId, setViewCustomerHistoryId] = useState<string | null>(null);
   const [customerWorkspaceTab, setCustomerWorkspaceTab] = useState<"management" | "history">("management");
@@ -464,6 +475,20 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [currentProfile, setCurrentProfile] = useState<any | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
+
+  // Scope key for the suggestion panels: remounts them on account or
+  // organization change so old-scope queries, selections, and open popovers
+  // are cleared immediately. Same-scope renders keep the key stable, so
+  // drafts and other same-scope state are preserved.
+  const searchScopeKey = `${currentUser?.id ?? "anon"}:${currentOrganizationId ?? "none"}`;
+  useEffect(() => {
+    setSelectedProductId(null);
+    setSelectedCustomerId(null);
+  }, [searchScopeKey]);
+
+  // Headings that "View all" focuses to reveal the full ranked list.
+  const productsListHeadingRef = useRef<HTMLHeadingElement>(null);
+  const customersListHeadingRef = useRef<HTMLHeadingElement>(null);
   const [dashboardSourceStates, setDashboardSourceStates] = useState(emptyDashboardSourceStates);
   const dashboardReadTrackerRef = useRef<DashboardReadTracker | null>(null);
   if (!dashboardReadTrackerRef.current) dashboardReadTrackerRef.current = new DashboardReadTracker(setDashboardSourceStates);
@@ -471,6 +496,7 @@ export default function Home() {
   // local boolean) so a stale fetch can never clear the loading flag of a newer
   // one, and failures are distinguishable from an empty catalog.
   const productsReadStatus = dashboardSourceStates.products.status;
+  const customersReadStatus = dashboardSourceStates.customers.status;
   const productsLoading = productsReadStatus === "loading" || productsReadStatus === "not-loaded";
   const profileLoadRequestRef = useRef(0);
   const authCheckRequestRef = useRef(0);
@@ -5605,7 +5631,13 @@ setCustomerOrganizationName("");
     if (!requiredPermission) return false;
     return hasPermission(requiredPermission);
   };
-  const visibleNavigationItems = navigationItems.filter((item) => canAccessSection(item.id));
+  const visibleNavigationItems = useMemo(
+    () => navigationItems.filter((item) => canAccessSection(item.id)),
+    // canAccessSection reads currentProfile.role, currentStaffPermission, and
+    // module-level constants only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentProfile?.role, currentStaffPermission],
+  );
   const navIdIndex = new Map(navOrder?.map((id, index) => [id, index]));
   const orderedNavItems =
     navOrder && navOrder.length > 0
@@ -8678,13 +8710,15 @@ setCustomerOrganizationName("");
   const customerSuggestionData = useMemo(() => buildCustomerSuggestionData(customers), [customers]);
 
   const filteredCustomers = useMemo(() => {
-    if (!customerSearch.trim()) return customers;
-    return rankSearchResults(
-      customers,
-      customerSearch,
-      (customer) => customerSuggestionData.rankFields.get(customer.id) ?? { name: customer.customer_name },
-    );
-  }, [customers, customerSearch, customerSuggestionData]);
+    const ranked = !customerSearch.trim()
+      ? customers
+      : rankSearchResults(
+          customers,
+          customerSearch,
+          (customer) => customerSuggestionData.rankFields.get(customer.id) ?? { name: customer.customer_name },
+        );
+    return pinSelectedFirst(ranked, selectedCustomerId, (customer) => customer.id);
+  }, [customers, customerSearch, customerSuggestionData, selectedCustomerId]);
   const selectedSalesCustomer = customers.find((customer) => customer.id === selectedCustomerIdForSale);
   const selectedCustomerCreditPolicy = selectedSalesCustomer?.credit_policy ?? "cash_only";
   const selectedCustomerCreditLimit = Number(selectedSalesCustomer?.credit_limit || 0);
@@ -15911,6 +15945,80 @@ setCustomerOrganizationName("");
     </DashboardWidget>
   ) : null;
 
+  // Dashboard global search wiring.
+  // The suggestion list is built with useCallback over stable inputs so the
+  // header's memoization holds: unrelated parent rerenders do not re-rank
+  // thousands of products.
+  const canViewProducts = canAccessSection("products");
+  const headerProductStatus: SuggestionStatus =
+    productsReadStatus === "failed"
+      ? "error"
+      : productsReadStatus === "loading" || productsReadStatus === "not-loaded"
+        ? "loading"
+        : "ready";
+  const handleGlobalSearchChange = useCallback(
+    (query: string) => {
+      const q = query.trim().replace(/&/g, " and ");
+      if (!q) return [];
+      // Navigation sections, relevance-ranked with the shared search
+      // contract (exact label > label prefix > word prefix > contains).
+      // visibleNavigationItems is already permission-filtered.
+      const sectionSuggestions = rankSearchResults(
+        visibleNavigationItems.map((item) => ({
+          id: `section-${item.id}`,
+          label: item.label,
+          section: item.id,
+          type: "action" as const,
+        })),
+        q,
+        (suggestion) => ({ name: suggestion.label }),
+      ).slice(0, 5);
+      // Centralized permission gate: product names, their SKU/price details,
+      // and the Products destination are suggested only when the user may
+      // open the Products section. Nothing here expands permissions.
+      if (!canViewProducts) return sectionSuggestions;
+      const productSuggestions = rankSearchResults(
+        products,
+        q,
+        (product) => productSuggestionData.rankFields.get(String(product.id)) ?? { name: product.name },
+      )
+        .slice(0, 3)
+        .map((product) => ({
+          id: `product-${product.id}`,
+          label: product.name,
+          detail: [
+            product.sku,
+            product.default_selling_price != null ? formatPKR(product.default_selling_price) : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          section: "products",
+          type: "product" as const,
+          prefill: product.name,
+          recordId: String(product.id),
+        }));
+      return [...sectionSuggestions, ...productSuggestions];
+    },
+    [visibleNavigationItems, products, productSuggestionData, canViewProducts],
+  );
+  const handleGlobalSearchSubmit = (query: string, prefill?: string, recordId?: string) => {
+    const q = query.toLowerCase().replace(/&/g, " and ");
+    const match = visibleNavigationItems.find((item) => {
+      const label = item.label.toLowerCase().replace(/&/g, " and ");
+      return label.includes(q) || label.replace(/ and /g, " & ").includes(q) || item.id.replace(/-/g, " ").includes(q);
+    });
+    if (match) {
+      handleSectionChange(match.id);
+      if (match.id === "products") {
+        // A product suggestion carries its exact name and record ID: prefill
+        // the filter and pin the chosen record first — no scrolling, and
+        // duplicate names resolve to the record that was actually chosen.
+        if (prefill) setProductSearch(prefill);
+        setSelectedProductId(recordId ?? null);
+      }
+    }
+  };
+
   return (
     <DashboardLayout
         navigationItems={orderedNavItems}
@@ -15931,57 +16039,19 @@ setCustomerOrganizationName("");
         onToggleNavHidden={handleNavToggleHidden}
       onResetNavOrder={handleNavReset}
       dragSectionsToDashboard={activeSection === "dashboard" && homeWidgets.customizing}
-        onSearchSubmit={(query, prefill) => {
-          const q = query.toLowerCase().replace(/&/g, " and ");
-          const match = visibleNavigationItems.find((item) => {
-            const label = item.label.toLowerCase().replace(/&/g, " and ");
-            return label.includes(q) || label.replace(/ and /g, " & ").includes(q) || item.id.replace(/-/g, " ").includes(q);
-          });
-          if (match) {
-            handleSectionChange(match.id);
-            // A product suggestion carries its exact name: prefill the Products
-            // section filter so the chosen record is the first row — no scrolling.
-            if (match.id === "products" && prefill) setProductSearch(prefill);
-          }
-        }}
-        onSearchChange={(query) => {
-          const q = query.trim().replace(/&/g, " and ");
-          if (!q) return [];
-          // Navigation sections, relevance-ranked with the shared search
-          // contract (exact label > label prefix > word prefix > contains).
-          const sectionSuggestions = rankSearchResults(
-            visibleNavigationItems.map((item) => ({
-              id: `section-${item.id}`,
-              label: item.label,
-              section: item.id,
-              type: "action" as const,
-            })),
-            q,
-            (suggestion) => ({ name: suggestion.label }),
-          ).slice(0, 5);
-          // Products, ranked with the same contract as every other product
-          // search: exact SKU/barcode first, then name ranks, brand/category last.
-          const productSuggestions = rankSearchResults(
-            products,
-            q,
-            (product) => productSuggestionData.rankFields.get(String(product.id)) ?? { name: product.name },
-          )
-            .slice(0, 3)
-            .map((product) => ({
-              id: `product-${product.id}`,
-              label: product.name,
-              detail: [
-                product.sku,
-                product.default_selling_price != null ? formatPKR(product.default_selling_price) : null,
-              ]
-                .filter(Boolean)
-                .join(" · "),
-              section: "products",
-              type: "product" as const,
-              prefill: product.name,
-            }));
-          return [...sectionSuggestions, ...productSuggestions];
-        }}
+        onSearchSubmit={handleGlobalSearchSubmit}
+        onSearchChange={handleGlobalSearchChange}
+        searchScopeKey={searchScopeKey}
+        productStatus={headerProductStatus}
+        onViewAllProducts={
+          canViewProducts
+            ? (query) => {
+                handleSectionChange("products");
+                setProductSearch(query);
+                setSelectedProductId(null);
+              }
+            : undefined
+        }
         notificationCount={
           aiAlerts.filter((a) => a.status === "active" || a.status === "new").length +
           realNotifications.filter((n) => !n.is_read).length
@@ -21044,15 +21114,19 @@ setCustomerOrganizationName("");
 
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Existing Products</h2>
+            <h2 ref={productsListHeadingRef} tabIndex={-1} className="text-xl font-medium text-foreground">Existing Products</h2>
             <div className="flex items-center gap-2">
               <SearchSuggestField
+                key={searchScopeKey}
                 label="Search products"
                 placeholder="Search by name, SKU, barcode, brand, category..."
                 value={productSearch}
                 onChange={setProductSearch}
                 items={productSuggestionData.items}
                 rankedFields={productSuggestionData.rankFields}
+                selectedId={selectedProductId}
+                onSelectItem={(selection) => setSelectedProductId(selection?.id ?? null)}
+                onViewAll={() => productsListHeadingRef.current?.focus()}
                 status={
                   productsReadStatus === "failed"
                     ? "error"
@@ -21066,7 +21140,7 @@ setCustomerOrganizationName("");
               {productSearch && (
                 <button
                   type="button"
-                  onClick={() => setProductSearch("")}
+                  onClick={() => { setProductSearch(""); setSelectedProductId(null); }}
                   className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-muted"
                 >
                   Clear
@@ -21344,18 +21418,22 @@ setCustomerOrganizationName("");
             <div>
               <label className="mb-2 block text-sm font-medium text-foreground/80">Search Customers</label>
               <SearchSuggestField
+                key={searchScopeKey}
                 label="Search customers"
                 placeholder="Search by name, shop, or phone"
                 value={customerSearch}
                 onChange={setCustomerSearch}
                 items={customerSuggestionData.items}
                 rankedFields={customerSuggestionData.rankFields}
-                status={customersLoading ? "loading" : "ready"}
+                selectedId={selectedCustomerId}
+                onSelectItem={(selection) => setSelectedCustomerId(selection?.id ?? null)}
+                onViewAll={() => customersListHeadingRef.current?.focus()}
+                status={customersReadStatus === "failed" ? "error" : customersReadStatus === "loading" || customersReadStatus === "not-loaded" ? "loading" : "ready"}
               />
             </div>
 
             <div>
-              <h3 className="mb-3 text-lg font-medium text-foreground">Existing Customers</h3>
+              <h3 ref={customersListHeadingRef} tabIndex={-1} className="mb-3 text-lg font-medium text-foreground">Existing Customers</h3>
               {customersLoading ? (
                 <p className="text-sm text-muted-foreground">Loading customers...</p>
               ) : filteredCustomers.length === 0 ? (

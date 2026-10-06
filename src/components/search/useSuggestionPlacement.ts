@@ -2,8 +2,6 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 
-/** Minimum usable popover height (px): a couple of 44px rows stay tappable. */
-export const SUGGESTION_POPOVER_MIN_HEIGHT = 132;
 /** Preferred popover height (px) when viewport space allows. */
 export const SUGGESTION_POPOVER_MAX_HEIGHT = 256;
 /** Below-space threshold (px) under which the popover flips above the field. */
@@ -20,6 +18,16 @@ export function decideSuggestionPlacement(
   if (spaceBelowPx >= FLIP_THRESHOLD_PX) return "below";
   if (spaceAbovePx > spaceBelowPx) return "above";
   return "below";
+}
+
+/**
+ * Pure height clamp, unit-tested separately: the popover never exceeds the
+ * space actually available on its side — no minimum is enforced beyond that
+ * space, so a cramped viewport (e.g. phone keyboard open) cannot push the
+ * popover outside the visual viewport. Options stay scrollable inside.
+ */
+export function clampPopoverHeight(availablePx: number): number {
+  return Math.max(0, Math.min(SUGGESTION_POPOVER_MAX_HEIGHT, availablePx));
 }
 
 /**
@@ -50,12 +58,7 @@ export function useSuggestionPlacement(open: boolean): {
       const next = decideSuggestionPlacement(spaceAbove, spaceBelow);
       setPlacement(next);
       const available = (next === "below" ? spaceBelow : spaceAbove) - 12;
-      setMaxHeightPx(
-        Math.max(
-          SUGGESTION_POPOVER_MIN_HEIGHT,
-          Math.min(SUGGESTION_POPOVER_MAX_HEIGHT, available),
-        ),
-      );
+      setMaxHeightPx(clampPopoverHeight(available));
     };
     measure();
     window.visualViewport?.addEventListener("resize", measure);

@@ -25,26 +25,47 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
 }) {
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<number | null>(null);
   const selected = products.find(product => product.id === value);
-  const matches = useMemo(() => {
-    const ranked = !rankedFields
-      ? (() => {
-          const terms = (query ?? "").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-          return products.filter(product => terms.every(term => product.label.toLocaleLowerCase().includes(term)));
-        })()
-      : rankSearchResults(products, query ?? "", (product) => rankedFields.get(product.id) ?? { name: product.label });
-    return ranked.slice(0, maxSuggestions);
-  }, [products, query, rankedFields, maxSuggestions]);
+  const rankedAll = useMemo(() => {
+    if (!rankedFields) {
+      const terms = (query ?? "").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+      return products.filter(product => terms.every(term => product.label.toLocaleLowerCase().includes(term)));
+    }
+    return rankSearchResults(products, query ?? "", (product) => rankedFields.get(product.id) ?? { name: product.label });
+  }, [products, query, rankedFields]);
+  // Progressive browsing: the panel stays compact, but capped results remain
+  // discoverable via "Show more". The visible count resets whenever the
+  // result set changes (derived during render, not in an effect).
+  const [visibleCount, setVisibleCount] = useState(maxSuggestions);
+  const [resetState, setResetState] = useState({ query, products, maxSuggestions });
+  if (resetState.query !== query || resetState.products !== products || resetState.maxSuggestions !== maxSuggestions) {
+    setResetState({ query, products, maxSuggestions });
+    setVisibleCount(maxSuggestions);
+  }
+  const matches = rankedAll.slice(0, visibleCount);
   const activeIndex = activeSuggestionIndex(matches, value, active);
   const { anchorRef, placement, maxHeightPx } = useSuggestionPlacement(open);
   useLayoutEffect(() => {
     input.current?.setCustomValidity(selected ? "" : `Choose a ${label.toLowerCase()} from the suggestions.`);
   }, [selected, label]);
   useLayoutEffect(() => {
-    if (open) document.getElementById(`${listId}-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
+    // Keep the active option visible by scrolling the popover's own scroll
+    // container only — never the page itself.
+    if (!open) return;
+    const popover = popoverRef.current;
+    const active = document.getElementById(`${listId}-${activeIndex}`);
+    if (!popover || !active) return;
+    const popRect = popover.getBoundingClientRect();
+    const optRect = active.getBoundingClientRect();
+    if (optRect.top < popRect.top) {
+      popover.scrollTop -= popRect.top - optRect.top;
+    } else if (optRect.bottom > popRect.bottom) {
+      popover.scrollTop += optRect.bottom - popRect.bottom;
+    }
   }, [activeIndex, open, listId]);
 
   const choose = (id: string) => {
@@ -78,7 +99,7 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
           event.preventDefault(); event.stopPropagation(); setOpen(false);
         }
       }} className="w-full rounded border border-input px-3 py-2 focus:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-    {open && <div className={`absolute left-0 right-0 z-50 overflow-y-auto rounded border border-border bg-card shadow-lg ${placement === "below" ? "top-full mt-1" : "bottom-full mb-1"}`} style={{ maxHeight: maxHeightPx }}>
+    {open && <div ref={popoverRef} className={`absolute left-0 right-0 z-50 overflow-y-auto rounded border border-border bg-card shadow-lg ${placement === "below" ? "top-full mt-1" : "bottom-full mb-1"}`} style={{ maxHeight: maxHeightPx }}>
       <ul id={listId} role="listbox" aria-label={`${label} suggestions`}>
         {matches.map((product, index) => <li key={product.id} id={`${listId}-${index}`} role="option" aria-selected={index === activeIndex}
           data-suggestion-id={product.id}
@@ -94,6 +115,20 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
         </li>)}
       </ul>
       {!matches.length && <p role="status" className="px-3 py-3 text-sm text-muted-foreground">No matches found. Try another name.</p>}
+      {rankedAll.length > matches.length && matches.length > 0 && (
+        <div className="border-t border-border">
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setVisibleCount((count) => count + maxSuggestions)}
+            className="flex min-h-11 w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <span>
+              Showing {matches.length} of {rankedAll.length} matches — <span className="underline">Show more</span>
+            </span>
+          </button>
+        </div>
+      )}
     </div>}
   </div>;
 }

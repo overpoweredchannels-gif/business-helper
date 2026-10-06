@@ -2,9 +2,9 @@
 
 import { cn } from "@/lib/utils";
 import { Search, Bell, Sparkles, Menu, X, LogOut, User, AlertCircle, Package, DollarSign } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { activeSuggestionIndex } from "@/components/invoices/search-selection";
-import { SuggestionPopover } from "@/components/search/SuggestionPopover";
+import { SuggestionPopover, type SuggestionStatus } from "@/components/search/SuggestionPopover";
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 
 export interface SearchSuggestion {
@@ -13,6 +13,8 @@ export interface SearchSuggestion {
   detail?: string;
   /** Exact filter text to prefill when the suggestion navigates to a section. */
   prefill?: string;
+  /** Record ID to pin first in the destination section (duplicate names). */
+  recordId?: string;
   section?: string;
   type?: "product" | "customer" | "task" | "action";
 }
@@ -29,8 +31,14 @@ interface Notification {
 interface HeaderProps {
   userName?: string;
   organizationName?: string;
-  onSearchSubmit?: (query: string, prefill?: string) => void;
+  onSearchSubmit?: (query: string, prefill?: string, recordId?: string) => void;
   onSearchChange?: (query: string) => SearchSuggestion[];
+  /** Remounts the search boxes on account/organization change, clearing old-scope state. */
+  searchScopeKey?: string;
+  /** Authoritative read state for the product suggestions (sections are local). */
+  productStatus?: SuggestionStatus;
+  /** "See all results in Products" footer; omitted when the user may not open Products. */
+  onViewAllProducts?: (query: string) => void;
   onToggleMobileMenu?: () => void;
   mobileMenuOpen?: boolean;
   onLogout?: () => void;
@@ -61,6 +69,8 @@ function HeaderSearchBox({
   suggestions,
   onSelectSuggestion,
   onSubmitQuery,
+  productStatus = "ready",
+  onViewAllProducts,
   className,
 }: {
   idPrefix: string;
@@ -70,6 +80,8 @@ function HeaderSearchBox({
   suggestions: SearchSuggestion[];
   onSelectSuggestion: (suggestion: SearchSuggestion) => void;
   onSubmitQuery: (query: string) => void;
+  productStatus?: SuggestionStatus;
+  onViewAllProducts?: (query: string) => void;
   className?: string;
 }) {
   const listId = `${idPrefix}-suggestions`;
@@ -79,6 +91,16 @@ function HeaderSearchBox({
   const showPopover = open && trimmed.length > 0;
   const activeIndex = activeSuggestionIndex(suggestions, "", active);
   const { anchorRef, placement, maxHeightPx } = useSuggestionPlacement(showPopover);
+  const hasProductSuggestions = suggestions.some((suggestion) => suggestion.type === "product");
+  // Sections are local; the authoritative product read state only gates the
+  // product half of the panel: loading/error messaging appears only when it
+  // actually concerns what is shown.
+  const panelStatus: SuggestionStatus =
+    productStatus === "loading"
+      ? (suggestions.length === 0 ? "loading" : "ready")
+      : productStatus === "error"
+        ? (hasProductSuggestions ? "error" : "ready")
+        : "ready";
 
   const select = (id: string) => {
     const suggestion = suggestions.find((item) => item.id === id);
@@ -143,8 +165,15 @@ function HeaderSearchBox({
           }))}
           activeIndex={activeIndex}
           query={trimmed}
-          status="ready"
+          status={panelStatus}
+          staleText="Couldn't refresh products — showing saved results."
+          errorText="Couldn't load product results."
           emptyText="No matches found."
+          footer={
+            onViewAllProducts && hasProductSuggestions
+              ? { actionLabel: "See all results in Products", onAction: () => { setOpen(false); onViewAllProducts(trimmed); } }
+              : undefined
+          }
           onSelect={select}
           onHover={setActive}
         />
@@ -158,6 +187,9 @@ export function Header({
   organizationName,
   onSearchSubmit,
   onSearchChange,
+  searchScopeKey,
+  productStatus,
+  onViewAllProducts,
   onToggleMobileMenu,
   mobileMenuOpen,
   onLogout,
@@ -172,7 +204,11 @@ export function Header({
   const [searchQuery, setSearchQuery] = useState("");
   const notifRef = useRef<HTMLDivElement>(null);
 
-  const suggestions = onSearchChange ? onSearchChange(searchQuery) : [];
+  // Memoized so unrelated parent rerenders don't re-rank thousands of products.
+  const suggestions = useMemo(
+    () => (onSearchChange ? onSearchChange(searchQuery) : []),
+    [onSearchChange, searchQuery],
+  );
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -187,7 +223,7 @@ export function Header({
   const handleSelectSuggestion = (suggestion: SearchSuggestion) => {
     setSearchQuery(suggestion.label);
     setSearchOpen(false);
-    if (suggestion.section) onSearchSubmit?.(suggestion.section, suggestion.prefill);
+    if (suggestion.section) onSearchSubmit?.(suggestion.section, suggestion.prefill, suggestion.recordId);
   };
   const handleSubmitQuery = (query: string) => {
     if (!query.trim()) return;
@@ -239,12 +275,15 @@ export function Header({
         <div className="flex items-center gap-1">
           {/* Search */}
           <HeaderSearchBox
+            key={`desktop:${searchScopeKey ?? "default"}`}
             idPrefix="header-search-desktop"
             query={searchQuery}
             onQueryChange={setSearchQuery}
             suggestions={suggestions}
             onSelectSuggestion={handleSelectSuggestion}
             onSubmitQuery={handleSubmitQuery}
+            productStatus={productStatus}
+            onViewAllProducts={onViewAllProducts}
             className="hidden w-48 sm:block lg:w-64"
           />
           <button
@@ -361,6 +400,7 @@ export function Header({
       {searchOpen && (
         <div className="sm:hidden border-t border-border bg-card px-4 py-3 animate-slideUp">
           <HeaderSearchBox
+            key={`mobile:${searchScopeKey ?? "default"}`}
             idPrefix="header-search-mobile"
             autoFocus
             query={searchQuery}
@@ -368,6 +408,8 @@ export function Header({
             suggestions={suggestions}
             onSelectSuggestion={handleSelectSuggestion}
             onSubmitQuery={handleSubmitQuery}
+            productStatus={productStatus}
+            onViewAllProducts={onViewAllProducts}
           />
         </div>
       )}

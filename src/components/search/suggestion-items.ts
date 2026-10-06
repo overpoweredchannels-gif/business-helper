@@ -13,6 +13,26 @@ export interface SuggestionData {
   rankFields: Map<string, SearchRankFields>;
 }
 
+/**
+ * Moves the selected record to the front of an already-ranked list, keeping
+ * the relative order of everything else. Used so that choosing one of several
+ * identically named records shows the chosen record first. Returns the input
+ * untouched when there is no selection or the record is absent/not first.
+ */
+export function pinSelectedFirst<T>(
+  items: readonly T[],
+  selectedId: string | null | undefined,
+  idOf: (item: T) => string,
+): T[] {
+  if (!selectedId) return [...items];
+  const index = items.findIndex((item) => idOf(item) === selectedId);
+  if (index <= 0) return [...items];
+  const copy = [...items];
+  const [selected] = copy.splice(index, 1);
+  copy.unshift(selected);
+  return copy;
+}
+
 interface ProductLike {
   id: string | number;
   name: string;
