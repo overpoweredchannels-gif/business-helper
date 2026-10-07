@@ -16,7 +16,7 @@
 // A missing playwright-core or an unlaunchable browser fails fast with an
 // actionable error naming the env override to set.
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import os from "node:os";
 import { build } from "esbuild";
@@ -35,7 +35,7 @@ async function loadPlaywright() {
   const fromEnv = process.env.SUGGEST_LAB_PLAYWRIGHT;
   if (fromEnv) {
     try {
-      return await import(fromEnv);
+      return await import(pathToFileURL(fromEnv).href);
     } catch (e) {
       throw new Error(
         `Could not load playwright-core from SUGGEST_LAB_PLAYWRIGHT=${fromEnv}. ` +
