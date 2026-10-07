@@ -208,6 +208,16 @@ export function Header({
   const [searchQuery, setSearchQuery] = useState("");
   const notifRef = useRef<HTMLDivElement>(null);
 
+  // Account/organization scope change clears the parent-owned search text.
+  // The keyed HeaderSearchBox remount clears its own open/active state, but
+  // the query lives here — the key alone is insufficient. The scope key is
+  // userId:organizationId, so ordinary same-user token refreshes and
+  // same-scope retries keep it stable and never clear the query.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional scope reset, runs only on account/org change
+  useEffect(() => {
+    setSearchQuery("");
+  }, [searchScopeKey]);
+
   // Memoized so unrelated parent rerenders don't re-rank thousands of products.
   const suggestions = useMemo(
     () => (onSearchChange ? onSearchChange(searchQuery) : []),

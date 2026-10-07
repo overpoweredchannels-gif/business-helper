@@ -154,23 +154,35 @@ assert.deepEqual(
 );
 
 // --- computeSuggestionSpaces: consistent coordinates with the anchor rect ---
-// The rect is reported in the visual viewport's coordinate space, so the
-// edges compare directly against the visual viewport height — including when
-// the rect sits at a nonzero offset (e.g. a scrolled or shrunken viewport).
+// The visual viewport's offset converts the anchor rectangle into
+// visual-viewport coordinates; the result compares directly against the
+// visual viewport height. Outside pinch-zoom the offset is 0.
 assert.deepEqual(
-  computeSuggestionSpaces(100, 140, 800),
+  computeSuggestionSpaces(100, 140, 800, 0),
   { spaceAbove: 100, spaceBelow: 660 },
-  "spaces measured against the visual viewport height",
+  "zero offset: spaces measured against the visual viewport height",
 );
 assert.deepEqual(
-  computeSuggestionSpaces(700, 740, 800),
+  computeSuggestionSpaces(700, 740, 800, 0),
   { spaceAbove: 700, spaceBelow: 60 },
   "field near the bottom leaves little space below",
 );
 assert.deepEqual(
-  computeSuggestionSpaces(50, 90, 220),
+  computeSuggestionSpaces(50, 90, 220, 0),
   { spaceAbove: 50, spaceBelow: 130 },
   "simulated shrunken (keyboard-like) viewport: spaces stay consistent",
+);
+// Nonzero visual viewport offset (e.g. panned pinch-zoom): the offset is
+// subtracted so the spaces stay in visual-viewport coordinates.
+assert.deepEqual(
+  computeSuggestionSpaces(200, 240, 800, 100),
+  { spaceAbove: 100, spaceBelow: 660 },
+  "nonzero offsetTop shifts both edges into visual coordinates",
+);
+assert.deepEqual(
+  computeSuggestionSpaces(750, 790, 500, 300),
+  { spaceAbove: 450, spaceBelow: 10 },
+  "large offset with a shrunken viewport stays consistent",
 );
 
 // --- rankSearchResultsWithTiers: exposes the contract tier per item ---

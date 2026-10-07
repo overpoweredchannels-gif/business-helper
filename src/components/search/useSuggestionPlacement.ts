@@ -32,19 +32,21 @@ export function clampPopoverHeight(availablePx: number): number {
 
 /**
  * Pure space computation, unit-tested separately (including nonzero viewport
- * offsets). getBoundingClientRect() reports the anchor rectangle in the
- * visual viewport's coordinate space, so the rect edges and the visual
- * viewport height are directly comparable: space above is the rect's top
- * edge, space below is the viewport height minus the rect's bottom edge.
- * The caller passes the visual viewport height (window.innerHeight when no
- * visual viewport exists).
+ * offsets). The anchor rectangle from getBoundingClientRect() is converted
+ * from the layout viewport's coordinate space into the visual viewport's
+ * space by subtracting the visual viewport's offset; the result compares
+ * directly against the visual viewport height. Outside pinch-zoom the offset
+ * is 0 and the computation reduces to rect edges vs. viewport height.
  */
 export function computeSuggestionSpaces(
   rectTop: number,
   rectBottom: number,
   viewportHeight: number,
+  viewportOffsetTop = 0,
 ): { spaceAbove: number; spaceBelow: number } {
-  return { spaceAbove: rectTop, spaceBelow: viewportHeight - rectBottom };
+  const top = rectTop - viewportOffsetTop;
+  const bottom = rectBottom - viewportOffsetTop;
+  return { spaceAbove: top, spaceBelow: viewportHeight - bottom };
 }
 
 /**
@@ -73,7 +75,11 @@ export function useSuggestionPlacement(open: boolean): {
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const viewportHeight = viewport?.height ?? window.innerHeight;
-      const { spaceAbove, spaceBelow } = computeSuggestionSpaces(rect.top, rect.bottom, viewportHeight);
+      // The visual viewport's offset converts the anchor rectangle into
+      // visual-viewport coordinates; recomputed when the viewport pans
+      // (pinch-zoom) or the keyboard changes its dimensions.
+      const offsetTop = viewport?.offsetTop ?? 0;
+      const { spaceAbove, spaceBelow } = computeSuggestionSpaces(rect.top, rect.bottom, viewportHeight, offsetTop);
       const next = decideSuggestionPlacement(spaceAbove, spaceBelow);
       setPlacement(next);
       const available = (next === "below" ? spaceBelow : spaceAbove) - 12;
@@ -93,14 +99,25 @@ export function useSuggestionPlacement(open: boolean): {
         measure();
       });
     };
+    // The visual viewport pans (pinch-zoom) and resizes (keyboard) on its own
+    // events, independent of page scroll.
+    const handleViewportChange = () => {
+      if (scrollRaf) return;
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = 0;
+        measure();
+      });
+    };
     measure();
-    viewport?.addEventListener("resize", measure);
+    viewport?.addEventListener("resize", handleViewportChange);
+    viewport?.addEventListener("scroll", handleViewportChange);
     window.addEventListener("resize", measure);
     // Capture phase: scroll events do not bubble, but they do capture from window.
     window.addEventListener("scroll", handleScroll, true);
     return () => {
       if (scrollRaf) cancelAnimationFrame(scrollRaf);
-      viewport?.removeEventListener("resize", measure);
+      viewport?.removeEventListener("resize", handleViewportChange);
+      viewport?.removeEventListener("scroll", handleViewportChange);
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", handleScroll, true);
     };

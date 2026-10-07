@@ -463,6 +463,17 @@ for (const viewport of [
   );
   await listScope.getByTestId("lab-liststates-rows-toggle").click(); // rows back on
   await sleep(150);
+  // Customer failure -> Retry -> successful recovery.
+  const custBannerBefore = await listScope.getByTestId("lab-liststates-customer-banner").count();
+  await listScope.getByTestId("lab-liststates-customer-banner").getByRole("button", { name: "Retry" }).click();
+  await sleep(150);
+  const custBannerAfter = await listScope.getByTestId("lab-liststates-customer-banner").count();
+  const custRowsAfter = await listScope.getByTestId("lab-liststates-customer-rows").count();
+  check(
+    `[${viewport.label}] list: customer Retry recovers from failure`,
+    custBannerBefore === 1 && custBannerAfter === 0 && custRowsAfter === 1,
+    `banners ${custBannerBefore} -> ${custBannerAfter}, rows ${custRowsAfter}`,
+  );
   await custCombo.fill("Fah");
   await sleep(150);
   const custIds = await custScope.getByRole("option").evaluateAll((els) => els.map((el) => el.getAttribute("data-suggestion-id")));
@@ -559,6 +570,24 @@ for (const viewport of [
     invSelected,
   );
   await page.keyboard.press("Escape");
+  // -- Invoice progressive browsing survives an unrelated parent rerender. --
+  await invCombo.fill("F");
+  await sleep(150);
+  const invShowMore = invScope.getByRole("button", { name: /Show more/ });
+  await invShowMore.click();
+  await sleep(150);
+  const invCount1 = await invScope.getByRole("option").count();
+  await page.getByTestId("lab-pos-rerender").click(); // rerenders the whole lab
+  await sleep(150);
+  await invCombo.click(); // refocus: the blur closed the panel
+  await sleep(150);
+  const invCount2 = await invScope.getByRole("option").count();
+  check(
+    `[${viewport.label}] invoice Show more survives unrelated parent rerender`,
+    invCount1 === 24 && invCount2 === 24,
+    `${invCount1} -> ${invCount2}`,
+  );
+  await page.keyboard.press("Escape");
 
   // -- 27-30. Header global search. --
   const headerScope = page.locator('[data-testid="lab-header"]');
@@ -638,6 +667,22 @@ for (const viewport of [
     await page.keyboard.press("Escape");
     const expanded = await headerCombo.getAttribute("aria-expanded");
     check(`[${viewport.label}] header: combobox semantics`, expanded === "false", `aria-expanded=${expanded}`);
+
+    // -- Header scope reset: user/org change clears the Header's query. --
+    await headerCombo.fill("Fresh Milk");
+    await sleep(200);
+    const headerOptsBefore = await headerScope.getByRole("option").count();
+    await page.getByTestId("lab-header-scope-toggle").click();
+    await sleep(200);
+    const headerQueryAfterScope = await headerCombo.inputValue();
+    const headerOptsAfter = await headerScope.getByRole("option").count();
+    check(
+      `[${viewport.label}] header: scope change clears the search query`,
+      headerOptsBefore > 0 && headerQueryAfterScope === "" && headerOptsAfter === 0,
+      `query="${headerQueryAfterScope}" options ${headerOptsBefore} -> ${headerOptsAfter}`,
+    );
+    await page.getByTestId("lab-header-scope-toggle").click(); // back
+    await sleep(200);
 
     // -- Header cross-type ordering: exact SKU outranks a competing section. --
     await headerCombo.fill("FZ-999");
@@ -728,6 +773,18 @@ for (const viewport of [
       mPopBox.l >= 0 && mPopBox.r <= viewport.width && mPopBox.t >= 0 && mPopBox.b <= viewport.height,
       JSON.stringify(mPopBox),
     );
+    // Mobile header scope reset: the mobile combobox query clears too.
+    await page.getByTestId("lab-header-scope-toggle").click();
+    await sleep(200);
+    const mQueryAfterScope = await headerCombos().first().inputValue();
+    check(
+      `[${viewport.label}] header mobile: scope change clears the search query`,
+      mQueryAfterScope === "",
+      `query="${mQueryAfterScope}"`,
+    );
+    await page.getByTestId("lab-header-scope-toggle").click(); // back
+    await sleep(200);
+    await page.keyboard.press("Escape");
   }
 
   // -- 31. Cramped viewport: field near the bottom of a tall page. --
@@ -862,6 +919,88 @@ for (const viewport of [
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await sleep(200);
   }
+
+  // -- 33. Simulated visualViewport: nonzero offsets and scroll events. --
+  // Installs a mock visualViewport (the real one is read-only) to prove the
+  // placement hook accounts for offsetTop and re-measures on visualViewport
+  // scroll. This is a SIMULATION: no real-device pinch-zoom or keyboard is
+  // performed here. Uses the cramped field (near the page bottom) so it can
+  // be positioned anywhere in the viewport.
+  await page.evaluate(() => {
+    const listeners = {};
+    const mock = {
+      height: 400,
+      width: 1440,
+      offsetTop: 0,
+      offsetLeft: 0,
+      scale: 1,
+      pageTop: 0,
+      pageLeft: 0,
+      addEventListener: (t, f) => { (listeners[t] ??= []).push(f); },
+      removeEventListener: (t, f) => { listeners[t] = (listeners[t] ?? []).filter((x) => x !== f); },
+      __dispatch: (t) => { (listeners[t] ?? []).forEach((f) => f()); },
+      __setOffsetTop: (v) => { mock.offsetTop = v; mock.pageTop = v; },
+    };
+    Object.defineProperty(window, "visualViewport", { value: mock, configurable: true });
+    window.__mockViewport = mock;
+  });
+  await page.keyboard.press("Escape");
+  await sleep(100);
+  const vvField = page.locator('[data-testid="lab-cramped"]').getByRole("combobox");
+  const vvListbox = () => page.locator('[data-testid="lab-cramped"]').getByRole("listbox");
+  const vvPlacement = () => vvListbox().evaluate((el) => {
+    const pop = el.parentElement.getBoundingClientRect();
+    const field = el.closest('[data-testid="lab-cramped"]').querySelector("input").getBoundingClientRect();
+    return pop.bottom <= field.top + 8 ? "above" : pop.top >= field.bottom - 8 ? "below" : "neither";
+  });
+  // Ensure the popover opens fresh AFTER the mock is installed.
+  await vvField.fill("");
+  await sleep(150);
+  await vvField.fill("F");
+  await sleep(250);
+  // Position the field at viewport y=250: offsetTop=0 gives
+  // spaceAbove=250, spaceBelow=400-290=110 (< 180) -> above.
+  // (Position after filling; Playwright's fill auto-scrolls.)
+  await page.evaluate(() => {
+    const input = document.querySelector('[data-testid="lab-cramped"] input');
+    const r = input.getBoundingClientRect();
+    window.scrollTo(0, window.scrollY + r.top - 250);
+  });
+  await page.evaluate(() => window.__mockViewport.__dispatch("resize"));
+  await sleep(400);
+  const vvMockActive = await page.evaluate(() => window.visualViewport && window.visualViewport.height === 400);
+  check(
+    `[${viewport.label}] viewport-mock: mock visualViewport is active`,
+    vvMockActive === true,
+    String(vvMockActive),
+  );
+  const vvPlace1 = await vvPlacement();
+  check(
+    `[${viewport.label}] viewport-mock: placement with zero offset`,
+    vvPlace1 === "above",
+    vvPlace1,
+  );
+  // Pan the visual viewport: offsetTop=200 shifts the spaces
+  // (spaceAbove 250->50, spaceBelow 110->310 >= 180 -> below); the scroll
+  // event must trigger the re-measure.
+  await page.evaluate(() => {
+    window.__mockViewport.__setOffsetTop(200);
+    window.__mockViewport.__dispatch("scroll");
+  });
+  await sleep(400);
+  const vvPlace2 = await vvPlacement();
+  check(
+    `[${viewport.label}] viewport-mock: nonzero offsetTop re-measured on visualViewport scroll`,
+    vvPlace2 === "below",
+    vvPlace2,
+  );
+  await page.keyboard.press("Escape");
+  // Restore the native visualViewport.
+  await page.evaluate(() => {
+    delete window.visualViewport;
+    delete window.__mockViewport;
+  });
+  await sleep(200);
 
   // -- Page errors. --
   check(`[${viewport.label}] no page errors`, errors.length === 0, errors.slice(0, 2).join(" | "));

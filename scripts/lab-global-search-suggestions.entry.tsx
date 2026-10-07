@@ -191,6 +191,7 @@ export function SuggestLab() {
   // --- Header global search: mirrors the real page wiring ---
   const [headerRestricted, setHeaderRestricted] = useState(false);
   const [headerStatus, setHeaderStatus] = useState<SuggestionStatus>("ready");
+  const [headerScopeId, setHeaderScopeId] = useState("user-a:org-a");
   const headerSearchChange = (query: string) => {
     const q = query.trim().replace(/&/g, " and ");
     if (!q) return [];
@@ -355,11 +356,15 @@ export function SuggestLab() {
           <button type="button" data-testid="lab-header-status" onClick={() => setHeaderStatus((s) => (s === "ready" ? "loading" : s === "loading" ? "error" : "ready"))} className="rounded border px-3 py-2">
             Status {headerStatus}
           </button>
+          <button type="button" data-testid="lab-header-scope-toggle" onClick={() => setHeaderScopeId((s) => (s === "user-a:org-a" ? "user-b:org-b" : "user-a:org-a"))} className="rounded border px-3 py-2">
+            Scope {headerScopeId}
+          </button>
         </div>
         <Header
           userName="Lab User"
           organizationName="Lab Org"
           onSearchChange={headerSearchChange}
+          searchScopeKey={headerScopeId}
           // Mirrors the real page: restricted users get no productStatus, so
           // they never see product-source status.
           productStatus={headerRestricted ? undefined : headerStatus}

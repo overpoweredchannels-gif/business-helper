@@ -280,3 +280,65 @@ database/security work untouched).
 - Changed-file ESLint — 0 errors, 0 warnings on changed lines.
 - `git diff --check` — clean.
 - Production build — passes with placeholder public Supabase variables.
+
+## Third review round (2026-10-07)
+
+Three blockers, addressed on this branch starting from `5eb7a62` (normal
+push, no force; no merge, no deploy, no database changes; Codex's
+database/security work untouched).
+
+1. **Header scope reset.** The `searchQuery` state lives in the `Header`
+   component while the scope key only remounted the child
+   `HeaderSearchBox` — the keyed child alone was insufficient, so the old
+   query survived account/organization changes. `Header` now clears its
+   query in a `searchScopeKey` effect (the key is `userId:organizationId`,
+   so same-user token refreshes and same-scope retries never clear it).
+   The page's `selectedProductId` clearing on scope change (from the
+   previous round) is preserved.
+2. **Real visual viewport placement.** `useSuggestionPlacement` now
+   subtracts `visualViewport.offsetTop` in the pure, unit-tested
+   `computeSuggestionSpaces` (nonzero offsets covered), and listens to the
+   visual viewport's own `resize` and `scroll` events (rAF-throttled, with
+   symmetric cleanup and pending-frame cancellation) so placement
+   recomputes when the viewport pans or the keyboard changes its
+   dimensions. The window scroll/resize listeners are unchanged.
+3. **Complete regression coverage.** New browser assertions: customer
+   failure → Retry → successful recovery; invoice Show more → unrelated
+   parent rerender → 24 results remain; header query reset after
+   account/organization scope change (desktop and mobile); mocked
+   visualViewport with nonzero `offsetTop` (placement accounts for the
+   offset; `scroll` event re-measures). Permissions, ranking, POS/invoice
+   IDs, prices, units, and same-scope retry behavior are preserved
+   (existing assertions still pass).
+
+### Evidence tiers
+
+- **Source review:** verified the Header owned `searchQuery` while the key
+  sat on the child; verified the hook ignored `offsetTop` and the
+  visualViewport `scroll` event.
+- **Unit (synthetic):** `computeSuggestionSpaces` with nonzero `offsetTop`
+  — pass.
+- **Synthetic browser tests:** `node
+  scripts/browser-global-search-suggestions.mjs` — **135/135** at 390×844
+  (touch) and 1440×900, zero page errors. New checks: header scope clears
+  query (desktop + mobile); customer Retry recovery; invoice Show more +
+  rerender; mocked visualViewport offset and scroll re-measurement. The
+  viewport mock is explicitly labeled simulated — no real-device
+  pinch-zoom or keyboard verification is claimed or performed.
+- **Authenticated tests:** not run — isolated project `rtfowunsyrdygyvubnvs`
+  checks remain pending Codex's release-harness completion.
+- **Real-device checks:** not performed.
+
+### Third-round validation (2026-10-07)
+
+- Unit: `npm run test:global-search-suggestions` — pass.
+- Browser: **135/135** (see evidence tiers).
+- Focused existing tests (`test:search-selection`, `test:product-search`,
+  `test:product-catalog-loading`) — pass.
+- `npm run typecheck` — clean.
+- Full `npm test` — exit 0, no failures (35 scripts).
+- Changed-file ESLint — 0 errors, 0 warnings on changed lines
+  (the `set-state-in-effect` warning on the intentional scope-reset effect
+  carries a justification comment, matching codebase style).
+- `git diff --check` — clean.
+- Production build — passes with placeholder public Supabase variables.
