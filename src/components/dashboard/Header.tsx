@@ -2,10 +2,19 @@
 
 import { cn } from "@/lib/utils";
 import { Search, Bell, Sparkles, Menu, X, LogOut, User, AlertCircle, Package, DollarSign } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { activeSuggestionIndex } from "@/components/invoices/search-selection";
+import { SuggestionPopover, type SuggestionStatus, type SuggestionStatusNote } from "@/components/search/SuggestionPopover";
+import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 
-interface SearchSuggestion {
+export interface SearchSuggestion {
+  id: string;
   label: string;
+  detail?: string;
+  /** Exact filter text to prefill when the suggestion navigates to a section. */
+  prefill?: string;
+  /** Record ID to pin first in the destination section (duplicate names). */
+  recordId?: string;
   section?: string;
   type?: "product" | "customer" | "task" | "action";
 }
@@ -22,8 +31,14 @@ interface Notification {
 interface HeaderProps {
   userName?: string;
   organizationName?: string;
-  onSearchSubmit?: (query: string) => void;
+  onSearchSubmit?: (query: string, prefill?: string, recordId?: string) => void;
   onSearchChange?: (query: string) => SearchSuggestion[];
+  /** Remounts the search boxes on account/organization change, clearing old-scope state. */
+  searchScopeKey?: string;
+  /** Authoritative read state for the product suggestions (sections are local). */
+  productStatus?: SuggestionStatus;
+  /** "See all results in Products" footer; omitted when the user may not open Products. */
+  onViewAllProducts?: (query: string) => void;
   onToggleMobileMenu?: () => void;
   mobileMenuOpen?: boolean;
   onLogout?: () => void;
@@ -33,11 +48,152 @@ interface HeaderProps {
   onNotificationClick?: (notification: Notification) => void;
 }
 
+function suggestionIcon(type: SearchSuggestion["type"]) {
+  if (type === "product") return <Package className="size-3.5 shrink-0 text-primary" />;
+  if (type === "customer") return <User className="size-3.5 shrink-0 text-primary" />;
+  return <Sparkles className="size-3.5 shrink-0 text-primary" />;
+}
+
+/**
+ * Dashboard global search field: typing shows relevance-ranked section and
+ * product suggestions in the shared compact panel (exact matches first),
+ * with full keyboard support and combobox/listbox semantics. Selecting a
+ * product suggestion navigates to Products with the filter prefilled to the
+ * exact product name, so the record is the first row without scrolling.
+ */
+function HeaderSearchBox({
+  idPrefix,
+  autoFocus,
+  query,
+  onQueryChange,
+  suggestions,
+  onSelectSuggestion,
+  onSubmitQuery,
+  productStatus = "ready",
+  onViewAllProducts,
+  className,
+}: {
+  idPrefix: string;
+  autoFocus?: boolean;
+  query: string;
+  onQueryChange: (query: string) => void;
+  suggestions: SearchSuggestion[];
+  onSelectSuggestion: (suggestion: SearchSuggestion) => void;
+  onSubmitQuery: (query: string) => void;
+  productStatus?: SuggestionStatus;
+  onViewAllProducts?: (query: string) => void;
+  className?: string;
+}) {
+  const listId = `${idPrefix}-suggestions`;
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState<number | null>(null);
+  const trimmed = query.trim();
+  const showPopover = open && trimmed.length > 0;
+  const activeIndex = activeSuggestionIndex(suggestions, "", active);
+  const { anchorRef, placement, maxHeightPx } = useSuggestionPlacement(showPopover);
+  const hasProductSuggestions = suggestions.some((suggestion) => suggestion.type === "product");
+  // The product source reports independently of local section results:
+  // sections stay visible while products load or fail, with an explicit
+  // product-status message. Restricted callers pass no productStatus, so they
+  // never see product-source status. A failed authorized source is never
+  // reported as "No matches".
+  const productNote: SuggestionStatusNote | undefined =
+    productStatus === "loading" && !hasProductSuggestions
+      ? { text: "Loading products…", variant: "info" }
+      : productStatus === "error" && !hasProductSuggestions
+        ? { text: "Couldn't load products.", variant: "error" }
+        : undefined;
+  const panelStatus: SuggestionStatus = productStatus === "error" && hasProductSuggestions ? "error" : "ready";
+
+  const select = (id: string) => {
+    const suggestion = suggestions.find((item) => item.id === id);
+    setOpen(false);
+    setActive(null);
+    if (suggestion) onSelectSuggestion(suggestion);
+  };
+
+  return (
+    <div ref={anchorRef} className={cn("relative min-w-0", className)}>
+      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-ring">
+        <Search className="size-4 shrink-0" />
+        <input
+          type="text"
+          role="combobox"
+          aria-label="Search sections and products"
+          aria-autocomplete="list"
+          aria-expanded={showPopover}
+          aria-controls={listId}
+          aria-activedescendant={showPopover && suggestions.length ? `${listId}-${activeIndex}` : undefined}
+          autoComplete="off"
+          placeholder="Search products..."
+          value={query}
+          autoFocus={autoFocus}
+          onChange={(e) => { onQueryChange(e.target.value); setActive(0); setOpen(true); }}
+          onFocus={() => { if (trimmed) { setActive(0); setOpen(true); } }}
+          onBlur={() => setOpen(false)}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              const direction = e.key === "ArrowDown" ? 1 : -1;
+              setActive(showPopover ? activeSuggestionIndex(suggestions, "", activeIndex + direction) : 0);
+              setOpen(true);
+            } else if (e.key === "Enter") {
+              if (showPopover && suggestions[activeIndex]) {
+                e.preventDefault();
+                select(suggestions[activeIndex].id);
+              } else {
+                setOpen(false);
+                onSubmitQuery(trimmed);
+              }
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setOpen(false);
+            }
+          }}
+          className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
+        />
+      </div>
+      {showPopover && (
+        <SuggestionPopover
+          listId={listId}
+          ariaLabel="Search suggestions"
+          placement={placement}
+          maxHeightPx={maxHeightPx}
+          items={suggestions.map((suggestion) => ({
+            id: suggestion.id,
+            label: suggestion.label,
+            detail: suggestion.detail,
+            icon: suggestionIcon(suggestion.type),
+          }))}
+          activeIndex={activeIndex}
+          query={trimmed}
+          status={panelStatus}
+          staleText="Couldn't refresh products — showing saved results."
+          errorText="Couldn't load product results."
+          emptyText="No matches found."
+          statusNote={productNote}
+          footer={
+            onViewAllProducts && hasProductSuggestions
+              ? { actionLabel: "See all results in Products", onAction: () => { setOpen(false); onViewAllProducts(trimmed); } }
+              : undefined
+          }
+          onSelect={select}
+          onHover={setActive}
+        />
+      )}
+    </div>
+  );
+}
+
 export function Header({
   userName,
   organizationName,
   onSearchSubmit,
   onSearchChange,
+  searchScopeKey,
+  productStatus,
+  onViewAllProducts,
   onToggleMobileMenu,
   mobileMenuOpen,
   onLogout,
@@ -50,17 +206,26 @@ export function Header({
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  const suggestions = onSearchChange ? onSearchChange(searchQuery) : [];
+  // Account/organization scope change clears the parent-owned search text.
+  // The keyed HeaderSearchBox remount clears its own open/active state, but
+  // the query lives here — the key alone is insufficient. The scope key is
+  // userId:organizationId, so ordinary same-user token refreshes and
+  // same-scope retries keep it stable and never clear the query.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional scope reset, runs only on account/org change
+  useEffect(() => {
+    setSearchQuery("");
+  }, [searchScopeKey]);
+
+  // Memoized so unrelated parent rerenders don't re-rank thousands of products.
+  const suggestions = useMemo(
+    () => (onSearchChange ? onSearchChange(searchQuery) : []),
+    [onSearchChange, searchQuery],
+  );
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setNotifOpen(false);
       }
@@ -69,11 +234,15 @@ export function Header({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && searchQuery.trim()) {
-      onSearchSubmit?.(searchQuery.trim());
-      setShowSuggestions(false);
-    }
+  const handleSelectSuggestion = (suggestion: SearchSuggestion) => {
+    setSearchQuery(suggestion.label);
+    setSearchOpen(false);
+    if (suggestion.section) onSearchSubmit?.(suggestion.section, suggestion.prefill, suggestion.recordId);
+  };
+  const handleSubmitQuery = (query: string) => {
+    if (!query.trim()) return;
+    onSearchSubmit?.(query.trim());
+    setSearchOpen(false);
   };
 
   const severityStyles = {
@@ -119,40 +288,18 @@ export function Header({
         {/* Right: Search, AI, Notifications, Profile */}
         <div className="flex items-center gap-1">
           {/* Search */}
-          <div ref={searchRef} className="relative hidden sm:block">
-            <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground w-48 lg:w-64 transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-ring">
-              <Search className="size-4 shrink-0" />
-              <input
-                type="text"
-                placeholder="Search products..."
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setShowSuggestions(true); }}
-                onFocus={() => setShowSuggestions(true)}
-                onKeyDown={handleKeyDown}
-                className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
-              />
-            </div>
-            {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute top-full mt-1 left-0 w-full rounded-xl border border-border bg-card shadow-lg p-1 z-50 animate-scaleIn">
-                {suggestions.map((s, i) => (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      setSearchQuery(s.label);
-                      setShowSuggestions(false);
-                      if (s.section) onSearchSubmit?.(s.section);
-                    }}
-                    className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left"
-                  >
-                    {s.type === "product" && <Package className="size-3.5 text-primary" />}
-                    {s.type === "customer" && <User className="size-3.5 text-primary" />}
-                    {s.type === "action" && <Sparkles className="size-3.5 text-primary" />}
-                    <span>{s.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <HeaderSearchBox
+            key={`desktop:${searchScopeKey ?? "default"}`}
+            idPrefix="header-search-desktop"
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            suggestions={suggestions}
+            onSelectSuggestion={handleSelectSuggestion}
+            onSubmitQuery={handleSubmitQuery}
+            productStatus={productStatus}
+            onViewAllProducts={onViewAllProducts}
+            className="hidden w-48 sm:block lg:w-64"
+          />
           <button
             onClick={() => setSearchOpen(!searchOpen)}
             aria-label="Search sections and products"
@@ -265,41 +412,19 @@ export function Header({
         </div>
       </div>
       {searchOpen && (
-        <div ref={searchRef} className="sm:hidden border-t border-border bg-card px-4 py-3 animate-slideUp">
-          <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-ring">
-            <Search className="size-4 shrink-0" />
-            <input
-              type="text"
-              placeholder="Search products..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setShowSuggestions(true); }}
-              onFocus={() => setShowSuggestions(true)}
-              onKeyDown={handleKeyDown}
-              autoFocus
-              className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
-            />
-          </div>
-          {showSuggestions && suggestions.length > 0 && (
-            <div className="mt-1 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
-              {suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setSearchQuery(s.label);
-                    setShowSuggestions(false);
-                    setSearchOpen(false);
-                    if (s.section) onSearchSubmit?.(s.section);
-                  }}
-                  className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left"
-                >
-                  {s.type === "product" && <Package className="size-3.5 text-primary" />}
-                  {s.type === "customer" && <User className="size-3.5 text-primary" />}
-                  {s.type === "action" && <Sparkles className="size-3.5 text-primary" />}
-                  <span>{s.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="sm:hidden border-t border-border bg-card px-4 py-3 animate-slideUp">
+          <HeaderSearchBox
+            key={`mobile:${searchScopeKey ?? "default"}`}
+            idPrefix="header-search-mobile"
+            autoFocus
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            suggestions={suggestions}
+            onSelectSuggestion={handleSelectSuggestion}
+            onSubmitQuery={handleSubmitQuery}
+            productStatus={productStatus}
+            onViewAllProducts={onViewAllProducts}
+          />
         </div>
       )}
     </header>
