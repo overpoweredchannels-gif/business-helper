@@ -15695,6 +15695,63 @@ setCustomerOrganizationName("");
     })),
   };
 
+  // Dashboard global search wiring must remain above the logged-out return:
+  // Home renders both before and after authentication, so its hooks must be
+  // called in the same order for every auth state.
+  const canViewProducts = Boolean(currentUser && canAccessSection("products"));
+  const handleGlobalSearchChange = useCallback(
+    (query: string) => {
+      const q = query.trim().replace(/&/g, " and ");
+      if (!q) return [];
+      // Navigation sections, relevance-ranked with the shared search
+      // contract (exact label > label prefix > word prefix > contains).
+      // visibleNavigationItems is already permission-filtered.
+      const sectionResults = rankSearchResultsWithTiers(
+        visibleNavigationItems.map((item) => ({
+          id: `section-${item.id}`,
+          label: item.label,
+          section: item.id,
+          type: "action" as const,
+        })),
+        q,
+        (suggestion) => ({ name: suggestion.label }),
+      );
+      // Centralized permission gate: product names, their SKU/price details,
+      // and the Products destination are suggested only when the user may
+      // open the Products section. Nothing here expands permissions.
+      const productResults = !canViewProducts
+        ? []
+        : rankSearchResultsWithTiers(
+            products,
+            q,
+            (product) => productSuggestionData.rankFields.get(String(product.id)) ?? { name: product.name },
+          ).map(({ item: product, rank }) => ({
+            tier: rank,
+            kind: "product" as const,
+            id: `product-${product.id}`,
+            label: product.name,
+            detail: [
+              product.sku,
+              product.default_selling_price != null ? formatPKR(product.default_selling_price) : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+            section: "products",
+            type: "product" as const,
+            prefill: product.name,
+            recordId: String(product.id),
+          }));
+      // One explicit, deterministic cross-type ordering: an exact SKU/barcode
+      // product match (tier 0) outranks even exact section matches; within a
+      // tier, sections come before products, then label, then id.
+      return orderCrossTypeSuggestions([
+        ...sectionResults.map(({ item, rank }) => ({ ...item, tier: rank, kind: "section" as const })),
+        ...productResults,
+      ]).slice(0, 8);
+    },
+    [visibleNavigationItems, products, productSuggestionData, canViewProducts],
+  );
+
   if (!currentUser) {
     return (
     <main className="min-h-screen bg-muted">
@@ -15967,65 +16024,12 @@ setCustomerOrganizationName("");
   // The suggestion list is built with useCallback over stable inputs so the
   // header's memoization holds: unrelated parent rerenders do not re-rank
   // thousands of products.
-  const canViewProducts = canAccessSection("products");
   const headerProductStatus: SuggestionStatus =
     productsReadStatus === "failed"
       ? "error"
       : productsReadStatus === "loading" || productsReadStatus === "not-loaded"
         ? "loading"
         : "ready";
-  const handleGlobalSearchChange = useCallback(
-    (query: string) => {
-      const q = query.trim().replace(/&/g, " and ");
-      if (!q) return [];
-      // Navigation sections, relevance-ranked with the shared search
-      // contract (exact label > label prefix > word prefix > contains).
-      // visibleNavigationItems is already permission-filtered.
-      const sectionResults = rankSearchResultsWithTiers(
-        visibleNavigationItems.map((item) => ({
-          id: `section-${item.id}`,
-          label: item.label,
-          section: item.id,
-          type: "action" as const,
-        })),
-        q,
-        (suggestion) => ({ name: suggestion.label }),
-      );
-      // Centralized permission gate: product names, their SKU/price details,
-      // and the Products destination are suggested only when the user may
-      // open the Products section. Nothing here expands permissions.
-      const productResults = !canViewProducts
-        ? []
-        : rankSearchResultsWithTiers(
-            products,
-            q,
-            (product) => productSuggestionData.rankFields.get(String(product.id)) ?? { name: product.name },
-          ).map(({ item: product, rank }) => ({
-            tier: rank,
-            kind: "product" as const,
-            id: `product-${product.id}`,
-            label: product.name,
-            detail: [
-              product.sku,
-              product.default_selling_price != null ? formatPKR(product.default_selling_price) : null,
-            ]
-              .filter(Boolean)
-              .join(" · "),
-            section: "products",
-            type: "product" as const,
-            prefill: product.name,
-            recordId: String(product.id),
-          }));
-      // One explicit, deterministic cross-type ordering: an exact SKU/barcode
-      // product match (tier 0) outranks even exact section matches; within a
-      // tier, sections come before products, then label, then id.
-      return orderCrossTypeSuggestions([
-        ...sectionResults.map(({ item, rank }) => ({ ...item, tier: rank, kind: "section" as const })),
-        ...productResults,
-      ]).slice(0, 8);
-    },
-    [visibleNavigationItems, products, productSuggestionData, canViewProducts],
-  );
   const handleGlobalSearchSubmit = (query: string, prefill?: string, recordId?: string) => {
     const q = query.toLowerCase().replace(/&/g, " and ");
     const match = visibleNavigationItems.find((item) => {
