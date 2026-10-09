@@ -12,7 +12,7 @@ interface QuickAction {
 
 const defaultActions: QuickAction[] = [
   { label: "New Sale", icon: <Receipt className="size-5" />, primary: true },
-  { label: "New Purchase", icon: <ShoppingCart className="size-5" />, primary: true },
+  { label: "New Purchase", icon: <ShoppingCart className="size-5" /> },
   { label: "Add Product", icon: <PackagePlus className="size-5" /> },
   { label: "Record Payment", icon: <Banknote className="size-5" /> },
   { label: "Add Customer", icon: <UserPlus className="size-5" /> },
@@ -28,13 +28,14 @@ export function QuickActions({ actions = defaultActions, onAction }: QuickAction
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <h3 className="text-sm font-semibold text-foreground mb-3">Quick Actions</h3>
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
         {actions.map((a) => (
           <button
             key={a.label}
             onClick={() => onAction?.(a.label)}
             className={cn(
-              "flex flex-col items-center gap-1.5 rounded-lg py-3 px-2 text-xs font-medium transition-all duration-200",
+              "flex min-h-11 flex-col items-center gap-1.5 rounded-lg px-2 py-3 text-xs font-medium transition-all duration-200",
+              a.primary && "col-span-2 sm:col-span-1",
               "hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               a.primary
                 ? "bg-primary text-primary-foreground hover:bg-primary-hover shadow-sm hover:shadow-md"

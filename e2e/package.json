@@ -8,7 +8,9 @@
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "test:list": "playwright test --list",
-    "test:responsive": "node responsive-check.cjs"
+    "test:responsive": "node responsive-check.cjs",
+    "test:retail-pos": "node retail-pos-visual.cjs after",
+    "test:pos-receipt": "node pos-receipt-browser.cjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

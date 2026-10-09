@@ -12,6 +12,7 @@ import { useRef, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
 import { DisplayZoomControl } from "./DisplayZoomControl";
 import { DASHBOARD_SECTION_DRAG_TYPE, isDashboardSectionCard } from "@/lib/dashboard/section-cards";
+import { groupNavigationItems } from "@/lib/dashboard/navigation-groups";
 
 const navIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   dashboard: LayoutDashboard,
@@ -89,6 +90,7 @@ export function Sidebar({
   dragToDashboard,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [menuSearch, setMenuSearch] = useState("");
   const hiddenSet = new Set(hiddenIds || []);
   const customizing = Boolean(customizeMode) && Boolean(canCustomize);
   const displayItems = customizing ? items : items.filter((item) => !hiddenSet.has(item.id));
@@ -128,33 +130,7 @@ export function Sidebar({
   };
 
   const canDropOnDashboard = (id: SectionId) => Boolean(dragToDashboard) && isDashboardSectionCard(id);
-
-  return (
-    <aside
-      className={cn(
-        forceVisible ? "flex" : "hidden lg:flex",
-        "shrink-0 flex-col bg-card border-r border-border transition-all duration-300 h-dvh sticky top-0",
-        collapsed ? "w-[68px]" : "w-64",
-      )}
-    >
-      {/* Logo */}
-      <div className={cn("border-b border-border flex items-center gap-3 px-5", collapsed ? "justify-center py-4" : "py-5")}>
-        <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <span className="text-primary-foreground font-brand font-bold text-sm">T</span>
-        </div>
-        {!collapsed && (
-          <div className="min-w-0">
-            <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
-            {organizationName && (
-              <div className="text-[10px] text-light-text truncate">{organizationName}</div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Navigation */}
-      <nav data-context-help-skip={customizing ? "" : undefined} className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {displayItems.map((item, index) => {
+  const renderItem = (item: SidebarProps["items"][number], index: number) => {
           const Icon = navIconMap[item.id];
           const isHidden = hiddenSet.has(item.id);
           const isDragging = dragId === item.id;
@@ -196,6 +172,8 @@ export function Sidebar({
               )}
               <button
                 type="button"
+                aria-label={item.label}
+                aria-current={activeSection === item.id ? "page" : undefined}
                 onClick={() => onSectionChange(item.id)}
                 draggable={canDropOnDashboard(item.id)}
                 onDragStart={(event) => {
@@ -204,7 +182,7 @@ export function Sidebar({
                   event.dataTransfer.effectAllowed = "copy";
                 }}
                 className={cn(
-                  "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                  "min-h-11 w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   activeSection === item.id
                     ? "bg-primary text-primary-foreground font-medium"
@@ -244,7 +222,31 @@ export function Sidebar({
               )}
             </div>
           );
-        })}
+  };
+  const query = menuSearch.trim().toLocaleLowerCase();
+  const groups = groupNavigationItems(displayItems)
+    .map(group => ({ ...group, items: group.items.filter(item => !query || group.label.toLocaleLowerCase().includes(query) || item.label.toLocaleLowerCase().includes(query)) }))
+    .filter(group => group.items.length > 0);
+
+  return (
+    <aside className={cn(forceVisible ? "flex" : "hidden lg:flex", "shrink-0 flex-col bg-card border-r border-border transition-all duration-300 h-dvh sticky top-0", collapsed ? "w-[68px]" : "w-64")}>
+      <div className={cn("border-b border-border flex items-center gap-3 px-5", collapsed ? "justify-center py-4" : "py-5")}>
+        <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0"><span className="text-primary-foreground font-brand font-bold text-sm">T</span></div>
+        {!collapsed && <div className="min-w-0"><div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>{organizationName && <div className="text-[11px] text-light-text truncate">{organizationName}</div>}</div>}
+      </div>
+      {!collapsed && !customizing && <div data-context-help-skip className="p-3">
+        <label className="text-xs font-medium text-foreground">Find a page
+          <input type="search" value={menuSearch} onChange={event => setMenuSearch(event.target.value)} placeholder="Search menu" className="mt-1 min-h-11 w-full rounded-lg border border-input bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        </label>
+      </div>}
+      <nav aria-label="Main navigation" data-context-help-skip={customizing ? "" : undefined} className="flex-1 overflow-y-auto p-2 space-y-0.5">
+        {customizing || collapsed ? displayItems.map(renderItem) : groups.map(group => group.label === "Home"
+          ? group.items.map(renderItem)
+          : <details key={`${group.label}:${query ? "search" : "browse"}`} open={Boolean(query) || group.items.some(item => item.id === activeSection)} className="rounded-lg">
+            <summary data-context-help-skip className="min-h-11 cursor-pointer rounded-lg px-3 py-3 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{group.label}</summary>
+            <div className="ml-3 space-y-0.5 border-l border-border pl-1">{group.items.map(renderItem)}</div>
+          </details>)}
+        {!customizing && !collapsed && groups.length === 0 && <p role="status" className="px-3 py-2 text-sm text-muted-foreground">No matching pages. Try another name.</p>}
         {customizing && displayItems.length === 0 && (
           <p className="px-3 py-2 text-xs text-light-text">No menu sections to show.</p>
         )}
@@ -255,7 +257,7 @@ export function Sidebar({
         {!collapsed && <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customize your workspace</p>}
         {customizing && (
           <div data-context-help-skip className="flex items-center justify-between rounded-lg px-3 py-2 text-xs text-light-text">
-            <span className="truncate">Drag with mouse / finger to reorder, arrows fine-tune, eye shows &amp; hides</span>
+            <span>Reorder pages within their task groups. Use the eye to show or hide a page.</span>
             <div className="flex shrink-0 gap-1">
               <button
                 type="button"

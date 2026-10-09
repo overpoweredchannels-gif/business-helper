@@ -39,7 +39,7 @@ export const unitLabelFor = (product: UnitAwareProduct | null | undefined, mode:
 /** Subunit price derived from a main-unit price (e.g. 200 / 20 = 10). */
 export const subunitPriceFromMain = (mainPrice: number, unitsPerPack: number): number => {
   if (!unitsPerPack || unitsPerPack <= 0) return mainPrice;
-  return mainPrice / unitsPerPack;
+  return Math.round((mainPrice / unitsPerPack + Number.EPSILON) * 100) / 100;
 };
 
 /** Convert a quantity expressed in a given mode to main units (for stock). */

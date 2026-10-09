@@ -27,6 +27,23 @@ export function MobileNavigation({ open, onClose, children }: {
   }, [open, onClose]);
   return (
     <dialog ref={dialog} aria-label="Navigation menu" className="mobile-navigation" onCancel={onClose}
+      onKeyDown={(event) => {
+        if (event.key !== "Tab" || !dialog.current) return;
+        const controls = Array.from(dialog.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )).filter(control => control.getClientRects().length > 0);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (!first || !last) return;
+        const active = document.activeElement;
+        if (event.shiftKey && (active === first || !dialog.current.contains(active))) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && (active === last || !dialog.current.contains(active))) {
+          event.preventDefault();
+          first.focus();
+        }
+      }}
       onClick={(event) => { if (event.target === dialog.current) onClose(); }}>
       <div className="mobile-navigation-panel">
         <button type="button" onClick={onClose} aria-label="Close navigation menu" className="mobile-navigation-close">

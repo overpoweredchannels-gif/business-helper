@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Sidebar } from "../src/components/dashboard/Sidebar";
+import { groupNavigationItems } from "../src/lib/dashboard/navigation-groups";
+import { navigationItems } from "../src/lib/tradeos/constants";
+
+const groups = groupNavigationItems(navigationItems);
+assert.deepEqual(groups.flatMap(group => group.items.map(item => item.id)).sort(), navigationItems.map(item => item.id).sort(), "every permitted destination occurs exactly once");
+const restricted = navigationItems.filter(item => ["dashboard", "sales", "customer-payments"].includes(item.id));
+assert.deepEqual(groupNavigationItems(restricted).map(group => group.label), ["Home", "Sell", "Money"]);
+const reversed = navigationItems.toReversed();
+assert.deepEqual(groupNavigationItems(reversed).find(group => group.label === "Stock")?.items.map(item => item.id), ["inventory", "categories", "brands", "products"], "saved relative order is retained within groups");
+const render = (customizeMode = false) => renderToStaticMarkup(<Sidebar items={restricted} activeSection="sales" onSectionChange={() => undefined} hiddenIds={["customer-payments"]} canCustomize customizeMode={customizeMode} />);
+const html = render();
+assert.match(html, /<details[^>]*open=""[^>]*>/, "active task group starts open");
+assert.match(html, /aria-current="page"/);
+assert.doesNotMatch(html, /data-nav-id="customer-payments"|data-nav-id="business-settings"/, "hidden and ungranted pages stay out of navigation");
+const editing = render(true);
+assert.match(editing, /data-nav-id="customer-payments"/, "customization can restore a hidden permitted page");
+assert.doesNotMatch(editing, /<details|data-nav-id="business-settings"/, "customization keeps the original permitted flat list");
+console.log("Navigation groups passed: destination coverage, permissions boundary, saved ordering, hidden pages, active page and customization.");

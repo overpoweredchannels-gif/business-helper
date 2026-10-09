@@ -2,10 +2,18 @@
 
 import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
 import { allPages } from "@/lib/supabase/all-pages";
+import { highlightSearchMatches, rankSearchResults, rankSearchResultsWithTiers, type SearchRankFields } from "@/lib/products/search-rank";
+import { ProductCatalogState, ProductCatalogErrorBanner } from "@/components/products/ProductCatalogState";
+import { CustomerCatalogState, CustomerCatalogErrorBanner } from "@/components/customers/CustomerCatalogState";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
+import { buildAtomicSaleReceipt } from "@/lib/print/retail-receipt";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
+import { validateSaleDraft } from "@/lib/sales/sale-draft";
+import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
+import { hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
+import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
@@ -16,6 +24,9 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@/lib/sales/access";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
+import { SearchSuggestField } from "@/components/search/SearchSuggestField";
+import { buildCustomerSuggestionData, buildProductSuggestionData, orderCrossTypeSuggestions, pinSelectedFirst } from "@/components/search/suggestion-items";
+import type { SuggestionStatus } from "@/components/search/SuggestionPopover";
 import { MyPendingSales } from "@/components/salesman/MyPendingSales";
 import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
@@ -27,6 +38,8 @@ import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
 import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerRetired, rememberSetupBannerRetired } from "@/lib/setup/setup-progress";
 import { useDashboardWidgets } from "@/lib/preferences/use-dashboard-widgets";
 import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardSectionWidgetId } from "@/lib/dashboard/section-cards";
+import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
+import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
 import type { ChatResponse } from "@/lib/conversation";
@@ -40,6 +53,7 @@ import SessionManagement from "@/components/identity/SessionManagement";
 import AuditLogPanel from "@/components/identity/AuditLogPanel";
 import { SetupReview } from "@/components/import-export/SetupReview";
 import { BusinessRecordsExport } from "@/components/dashboard/BusinessRecordsExport";
+import { DashboardQuickSaleWidget } from "@/components/dashboard/DashboardQuickSaleWidget";
 import ImportWizard from "@/components/inventory/ImportWizard";
 import ImportExportSection from "@/components/import-export/ImportExportSection";
 import SetupImportHub from "@/components/import-export/SetupImportHub";
@@ -173,7 +187,6 @@ import {
 import {
   generatePurchaseInvoiceWithClient,
   generatePurchaseOrderWithClient,
-  generateSalesInvoiceWithClient,
   generateSalesOrderWithClient,
   generateSalesReturnInvoiceWithClient,
   generatePurchaseReturnInvoiceWithClient,
@@ -318,8 +331,11 @@ export default function Home() {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [productsLoading, setProductsLoading] = useState(false);
+  const [archivingProductId, setArchivingProductId] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
+  // Record chosen from the Products suggestion panel, pinned first in the
+  // ranked list. Cleared when the query is edited or the scope changes.
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [productToView, setProductToView] = useState<Product | null>(null);
   const [productSku, setProductSku] = useState("");
@@ -330,26 +346,58 @@ export default function Home() {
   const [productIsActive, setProductIsActive] = useState(true);
   const [productOversellingPolicy, setProductOversellingPolicy] = useState("inherit");
 
+  const brandNameById = useMemo(() => new Map(brands.map((brand) => [brand.id, brand.name])), [brands]);
+  const categoryNameById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
+
   const filteredProducts = useMemo(() => {
-    const query = productSearch.trim().toLowerCase();
-    if (!query) return products;
-    return products.filter((product) => {
-      const brand = brands.find((b) => b.id === product.brand_id);
-      const category = categories.find((c) => c.id === product.category_id);
-      return (
-        product.name.toLowerCase().includes(query) ||
-        (product.sku ?? "").toLowerCase().includes(query) ||
-        (product.barcode ?? "").toLowerCase().includes(query) ||
-        (brand?.name ?? "").toLowerCase().includes(query) ||
-        (category?.name ?? "").toLowerCase().includes(query)
-      );
-    });
-  }, [productSearch, products, brands, categories]);
+    const ranked = !productSearch.trim()
+      ? products
+      : rankSearchResults(products, productSearch, (product) => ({
+          name: product.name,
+          sku: product.sku,
+          barcode: product.barcode,
+          brandName: product.brand_id ? brandNameById.get(product.brand_id) ?? null : null,
+          categoryName: product.category_id ? categoryNameById.get(product.category_id) ?? null : null,
+        }));
+    // A record chosen from the suggestion panel keeps its identity: it is
+    // pinned first even when several records share its name.
+    return pinSelectedFirst(ranked, selectedProductId, (product) => String(product.id));
+  }, [productSearch, products, brandNameById, categoryNameById, selectedProductId]);
+
+  // Suggestion-panel data for the Products section search field: one pass over
+  // the already-authorized product list. Tenant/role/permission filtering stays
+  // with the products fetch; this only reorders for display.
+  const productSuggestionData = useMemo(
+    () => buildProductSuggestionData(products, brandNameById, categoryNameById, formatPKR),
+    [products, brandNameById, categoryNameById],
+  );
 
   const activeProducts = useMemo(
     () => products.filter((product) => product.is_active !== false),
     [products]
   );
+
+  // Invoice-line product selector options + rank fields, built in one pass and
+  // memoized so the selector neither rebuilds nor re-ranks on parent renders.
+  const invoiceProductOptions = useMemo(
+    () => activeProducts.map((product) => ({
+      id: String(product.id),
+      label: [product.name, product.brand_id ? brandNameById.get(product.brand_id) : null, product.sku].filter(Boolean).join(" — "),
+    })),
+    [activeProducts, brandNameById]
+  );
+  const invoiceProductRankFields = useMemo(() => {
+    const map = new Map<string, SearchRankFields>();
+    for (const product of activeProducts) {
+      map.set(String(product.id), {
+        name: product.name,
+        sku: product.sku,
+        barcode: product.barcode,
+        brandName: product.brand_id ? brandNameById.get(product.brand_id) ?? null : null,
+      });
+    }
+    return map;
+  }, [activeProducts, brandNameById]);
 
   const [customerName, setCustomerName] = useState("");
   const [shopName, setShopName] = useState("");
@@ -372,6 +420,9 @@ export default function Home() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+  // Record chosen from the Customers suggestion panel, pinned first in the
+  // ranked list. Cleared when the query is edited or the scope changes.
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [customerEditingId, setCustomerEditingId] = useState<string | null>(null);
   const [viewCustomerHistoryId, setViewCustomerHistoryId] = useState<string | null>(null);
   const [customerWorkspaceTab, setCustomerWorkspaceTab] = useState<"management" | "history">("management");
@@ -425,6 +476,37 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [currentProfile, setCurrentProfile] = useState<any | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
+
+  // Scope key for the suggestion panels: remounts them on account or
+  // organization change so old-scope queries, selections, and open popovers
+  // are cleared immediately. Same-scope renders keep the key stable, so
+  // drafts and other same-scope state are preserved.
+  const searchScopeKey = `${currentUser?.id ?? "anon"}:${currentOrganizationId ?? "none"}`;
+  useEffect(() => {
+    // User/organization change: clear parent-owned search text AND selected
+    // IDs. Ordinary same-user token refreshes and same-scope retries keep the
+    // key stable, so drafts and same-scope state are preserved.
+    setProductSearch("");
+    setCustomerSearch("");
+    setSelectedProductId(null);
+    setSelectedCustomerId(null);
+  }, [searchScopeKey]);
+
+  // Headings that "View all" focuses to reveal the full ranked list.
+  const productsListHeadingRef = useRef<HTMLHeadingElement>(null);
+  const customersListHeadingRef = useRef<HTMLHeadingElement>(null);
+  const [dashboardSourceStates, setDashboardSourceStates] = useState(emptyDashboardSourceStates);
+  const dashboardReadTrackerRef = useRef<DashboardReadTracker | null>(null);
+  if (!dashboardReadTrackerRef.current) dashboardReadTrackerRef.current = new DashboardReadTracker(setDashboardSourceStates);
+  // Product catalog loading is derived from the shared read-state tracker (not a
+  // local boolean) so a stale fetch can never clear the loading flag of a newer
+  // one, and failures are distinguishable from an empty catalog.
+  const productsReadStatus = dashboardSourceStates.products.status;
+  const customersReadStatus = dashboardSourceStates.customers.status;
+  const productsLoading = productsReadStatus === "loading" || productsReadStatus === "not-loaded";
+  const profileLoadRequestRef = useRef(0);
+  const authCheckRequestRef = useRef(0);
+  const dashboardAccountIdRef = useRef<string | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
@@ -662,6 +744,51 @@ export default function Home() {
   const activeDutySessionIdRef = useRef<string | null>(null);
   const lastSavedLocationRef = useRef<{ latitude: number; longitude: number; capturedAt: number } | null>(null);
 
+  const readDashboardSource = async <T,>(
+    source: DashboardReadSource,
+    organizationId: string,
+    load: () => Promise<T[]>,
+    commit: (rows: T[]) => void,
+    reportError: (error: unknown) => void,
+  ) => {
+    const accountId = dashboardAccountIdRef.current;
+    if (!accountId) return;
+    await runDashboardSourceRead(dashboardReadTrackerRef.current!, source, accountId, organizationId, load, commit, reportError);
+  };
+
+  const clearDashboardSourceData = () => {
+    setProducts([]);
+    setCustomers([]);
+    setSuppliers([]);
+    setPurchaseTransactions([]);
+    setPurchaseItems([]);
+    setCustomerPayments([]);
+    setCustomerPaymentAllocations([]);
+    setSupplierPayments([]);
+    setSupplierPaymentAllocations([]);
+    setExpenses([]);
+    setSalesTransactions([]);
+    setSalesItems([]);
+    setSalesOrders([]);
+    setTasks([]);
+    // Invoice/POS selections reference organization data by id. They must not
+    // survive an account or organization switch: a stale line could otherwise
+    // be invoiced against the newly authorized organization. (These setters are
+    // declared later in this component; every call site runs after mount, so
+    // the closure references are safe.)
+    setSalesLines([]);
+    setPurchaseLines([]);
+    setSelectedCustomerIdForSale(null);
+    setSelectedSupplierId(null);
+  };
+
+  const invalidateDashboardSession = () => {
+    profileLoadRequestRef.current += 1;
+    dashboardAccountIdRef.current = null;
+    dashboardReadTrackerRef.current!.invalidate();
+    clearDashboardSourceData();
+  };
+
   useEffect(() => {
     checkAuthUser();
   }, []);
@@ -774,19 +901,16 @@ export default function Home() {
       setExpenses([]);
       return;
     }
-
-    const { data, error } = await supabase
-      .from("expenses")
-      .select("*")
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching expenses:", error);
-      return;
-    }
-
-    setExpenses(data ?? []);
+    const accountId = dashboardAccountIdRef.current;
+    if (!accountId) return;
+    await loadDashboardExpenses(
+      supabase,
+      dashboardReadTrackerRef.current!,
+      accountId,
+      organizationId,
+      setExpenses,
+      (error) => console.error("Error fetching expenses:", error),
+    );
   };
 
   const fetchTasks = async (organizationId?: string | null) => {
@@ -796,19 +920,22 @@ export default function Home() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("organization_id", orgId)
-      .order("due_date", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Supabase fetch tasks error:", JSON.stringify(error, null, 2));
-      return;
-    }
-
-    setTasks(data ?? []);
+    await readDashboardSource(
+      "tasks",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("tasks")
+          .select("*")
+          .eq("organization_id", orgId)
+          .order("due_date", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setTasks,
+      (error) => console.error("Supabase fetch tasks error:", error),
+    );
   };
 
   const fetchAuditLogs = async (organizationId?: string | null) => {
@@ -1398,6 +1525,10 @@ export default function Home() {
   };
 
   const loadProfile = async (userId: string | null) => {
+    const profileRequestId = ++profileLoadRequestRef.current;
+    dashboardAccountIdRef.current = null;
+    dashboardReadTrackerRef.current!.invalidate();
+    clearDashboardSourceData();
     if (!userId || typeof userId !== "string") {
       console.error("Invalid userId passed to loadProfile:", userId);
       setCurrentProfile(null);
@@ -1412,6 +1543,8 @@ export default function Home() {
       .select("*")
       .eq("id", userId)
       .maybeSingle();
+
+    if (profileRequestId !== profileLoadRequestRef.current) return;
 
     if (profileError) {
       console.error("Profile load error details:", JSON.stringify(profileError, null, 2));
@@ -1446,6 +1579,8 @@ export default function Home() {
         .eq("organization_id", profile.organization_id)
         .is("auth_user_id", null);
 
+      if (profileRequestId !== profileLoadRequestRef.current) return;
+
       if (authLinkError) {
         console.error("Profile auth_user_id link error:", JSON.stringify(authLinkError, null, 2));
       } else {
@@ -1458,6 +1593,8 @@ export default function Home() {
     }
 
     console.log("Profile loaded successfully:", { userId, organizationId: resolvedProfile.organization_id });
+    dashboardReadTrackerRef.current!.activate(userId, resolvedProfile.organization_id);
+    dashboardAccountIdRef.current = userId;
     setAuthError(null);
     setCurrentProfile(resolvedProfile);
     setCurrentOrganizationId(resolvedProfile.organization_id);
@@ -1522,16 +1659,19 @@ export default function Home() {
   }, [saleAlert]);
 
   const checkAuthUser = async () => {
+    const authRequestId = ++authCheckRequestRef.current;
     const logTag = `[CHECK_AUTH ${Date.now()}]`;
     console.log(`${logTag} ===== checkAuthUser invoked =====`);
     console.log(`${logTag} URL=${typeof window !== "undefined" ? window.location.href : "server"}`);
 
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (authRequestId !== authCheckRequestRef.current) return;
     if (sessionError) {
       console.error(`${logTag} sessionError:`, sessionError);
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
+      invalidateDashboardSession();
       return;
     }
 
@@ -1540,27 +1680,32 @@ export default function Home() {
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
+      invalidateDashboardSession();
       return;
     }
 
     console.log(`${logTag} session found. expires_at=${sessionData.session.expires_at}, access_token length=${sessionData.session.access_token?.length ?? 0}`);
 
     const { data, error } = await supabase.auth.getUser();
+    if (authRequestId !== authCheckRequestRef.current) return;
     if (error) {
       console.error(`${logTag} getUser error:`, error);
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
+      invalidateDashboardSession();
       return;
     }
 
     const user = data.user ?? null;
     console.log(`${logTag} user loaded: id=${user?.id ?? "null"}, email=${user?.email ?? "null"}, email_confirmed_at=${user?.email_confirmed_at ?? "null"}, confirmed_at=${user?.confirmed_at ?? "null"}`);
+    invalidateDashboardSession();
     setCurrentUser(user);
     if (user?.id) {
       try {
         console.log(`${logTag} calling provisionWorkspace...`);
         await provisionWorkspace();
+        if (authRequestId !== authCheckRequestRef.current) return;
         console.log(`${logTag} provisionWorkspace succeeded, calling loadProfile...`);
         await loadProfile(user.id);
         console.log(`${logTag} loadProfile succeeded`);
@@ -1572,11 +1717,13 @@ export default function Home() {
         setAuthError(provisionErr instanceof Error ? provisionErr.message : "Workspace provisioning failed.");
         setCurrentProfile(null);
         setCurrentOrganizationId(null);
+        invalidateDashboardSession();
       }
     } else {
       console.log(`${logTag} user?.id is falsy — calling setCurrentProfile(null)`);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
+      invalidateDashboardSession();
     }
   };
 
@@ -1688,6 +1835,7 @@ setCustomerOrganizationName("");
   };
 
   const handleLogin = async () => {
+    authCheckRequestRef.current += 1;
     setAuthError(null);
     setAuthMessage(null);
     setAuthLoading(true);
@@ -1709,6 +1857,7 @@ setCustomerOrganizationName("");
       }
 
       const user = loginData.user;
+      invalidateDashboardSession();
       setCurrentUser(user ?? null);
       if (user?.id) {
         await provisionWorkspace();
@@ -1728,9 +1877,11 @@ setCustomerOrganizationName("");
   };
 
   const handleLogout = async () => {
+    authCheckRequestRef.current += 1;
     setAuthError(null);
     setAuthMessage(null);
     setAuthLoading(true);
+    invalidateDashboardSession();
 
     try {
       const { error } = await supabase.auth.signOut();
@@ -3790,8 +3941,55 @@ setCustomerOrganizationName("");
   };
   const saveSalesInvoice = async (overrideConfirmed = false) => {
     if (!canUseSalesTool("invoice")) { setSalesError("Sales invoice permission is required."); return; }
-    const invoiceLines = enteredInvoiceLines(salesLines);
     if (salesInvoiceLoading) {
+      return;
+    }
+
+    const pendingScope = currentOrganizationId && currentProfile?.id
+      ? `${currentOrganizationId}:${currentProfile.id}`
+      : null;
+    if (isOwnerOrAdmin() && pendingScope && readPendingAtomicSale(pendingScope)) {
+      setSalesInvoiceLoading(true);
+      try {
+        const recovered = await reconcilePendingAtomicSale(supabase, pendingScope);
+        if (recovered) {
+          const transaction = recovered.result.transaction;
+          const invoiceNumber = String(transaction.invoice_number ?? "");
+          if (quickSaleMode) {
+            setLastPOSReceipt(buildAtomicSaleReceipt(recovered.result, {
+              scope: pendingScope,
+              business: currentOrganization?.name || "TradeOS",
+              fallbackDate: salesInvoiceDate,
+              fallbackPayment: salesPaymentType,
+            }));
+          }
+          setSalesError(null);
+          setCreditWarning(null);
+          setSalesMessage(`Earlier sale ${invoiceNumber} was confirmed. Your current basket is unchanged; review it before saving another sale.`);
+          fetchSalesTransactions();
+          fetchSalesItems();
+          fetchProducts();
+          fetchCustomerPayments();
+          fetchCustomerPaymentAllocations();
+          return;
+        }
+        setSalesError("An earlier sale changed in another window. Reload and review the current basket before continuing.");
+        setSalesMessage(null);
+        return;
+      } catch (err) {
+        setSalesError(err instanceof Error ? err.message : "The earlier sale request could not be reconciled.");
+        setSalesMessage(null);
+        return;
+      } finally {
+        setSalesInvoiceLoading(false);
+      }
+    }
+
+    const invoiceLines = enteredInvoiceLines(salesLines);
+
+    if (!currentSaleDraft.valid) {
+      setSalesError(currentSaleDraft.issues[0]?.message ?? "Correct the highlighted sale fields before saving.");
+      setSalesMessage(null);
       return;
     }
 
@@ -3809,6 +4007,20 @@ setCustomerOrganizationName("");
       return;
     }
 
+    if (quickSaleMode && isOwnerOrAdmin() && salesPaymentType === "cash") {
+      if (posCashReceived.trim() !== "" && !hasAllowedPrecision(posCashReceived, SALE_MONEY_DECIMAL_PLACES)) {
+        setSalesError("Cash received supports up to two decimal places.");
+        setSalesMessage(null);
+        return;
+      }
+      const cashSummary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal ?? 0, received: posCashReceived });
+      if (cashSummary.status === "cash-short") {
+        setSalesError(`Cash is short by ${pkrFormatter.format(cashSummary.shortfall)}.`);
+        setSalesMessage(null);
+        return;
+      }
+    }
+
     const requestedByProduct = new Map<string, number>();
     for (const line of invoiceLines) {
       if (!line.product_id) continue;
@@ -3816,8 +4028,13 @@ setCustomerOrganizationName("");
       if (!product || product.is_active === false) { setSalesError("A product is unavailable. Remove it or choose an active product."); return; }
       const price = Number(line.selling_price);
       const bonus = Number(line.bonus || 0);
-      if (line.selling_price.trim() === "" || !Number.isFinite(price) || price < 0 || !Number.isFinite(bonus) || bonus < 0) { setSalesError(`Enter a valid price and bonus for ${product.name}.`); return; }
+      if (line.selling_price.trim() === "" || !Number.isFinite(price) || price < 0 || !hasAllowedPrecision(line.selling_price, SALE_MONEY_DECIMAL_PLACES) || !Number.isFinite(bonus) || bonus < 0 || !hasAllowedPrecision(line.bonus || "0", SALE_QUANTITY_DECIMAL_PLACES)) { setSalesError(`Enter a price with up to two decimal places and a bonus with up to three decimal places for ${product.name}.`); return; }
       const quantity = Number(line.quantity);
+      if (!hasAllowedPrecision(line.quantity, SALE_QUANTITY_DECIMAL_PLACES)) {
+        setSalesError(`Quantity for ${product.name} supports up to three decimal places. Adjust the entered value before saving.`);
+        setSalesMessage(null);
+        return;
+      }
       if (!Number.isFinite(quantity) || quantity <= 0) {
         setSalesError(`Invalid quantity for ${product.name}.`);
         setSalesMessage(null);
@@ -3843,12 +4060,12 @@ setCustomerOrganizationName("");
     const rawInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
     if (
       salesDiscountAmount.trim() !== "" &&
-      (!Number.isFinite(rawInvoiceDiscount) || rawInvoiceDiscount < 0)
+      (!Number.isFinite(rawInvoiceDiscount) || rawInvoiceDiscount < 0 || !hasAllowedPrecision(salesDiscountAmount, SALE_MONEY_DECIMAL_PLACES))
     ) {
       setSalesError(
         salesDiscountType === "percent"
-          ? "Invoice discount must be a valid percentage greater than or equal to zero"
-          : "Invoice discount must be a valid amount greater than or equal to zero"
+          ? "Invoice discount must be a valid percentage with up to two decimal places"
+          : "Invoice discount must be a valid amount with up to two decimal places"
       );
       setSalesMessage(null);
       return;
@@ -3865,8 +4082,8 @@ setCustomerOrganizationName("");
       return;
     }
 
-    if (salesTaxRate.trim() !== "" && (!Number.isFinite(parsedTaxRate) || parsedTaxRate < 0)) {
-      setSalesError("Tax rate must be a valid percentage greater than or equal to zero");
+    if (salesTaxRate.trim() !== "" && (!Number.isFinite(parsedTaxRate) || parsedTaxRate < 0 || !hasAllowedPrecision(salesTaxRate, SALE_MONEY_DECIMAL_PLACES))) {
+      setSalesError("Tax rate must be a valid percentage with up to two decimal places");
       setSalesMessage(null);
       return;
     }
@@ -3874,16 +4091,12 @@ setCustomerOrganizationName("");
     for (const line of invoiceLines) {
       if (!line.product_id) continue;
       const lineDiscount = line.discount.trim() === "" ? 0 : Number(line.discount);
-      if (line.discount.trim() !== "" && (!Number.isFinite(lineDiscount) || lineDiscount < 0 || lineDiscount > Number(line.quantity) * Number(line.selling_price))) {
-        setSalesError("Line discount must be between zero and the line subtotal");
+      if (line.discount.trim() !== "" && (!Number.isFinite(lineDiscount) || lineDiscount < 0 || !hasAllowedPrecision(line.discount, SALE_MONEY_DECIMAL_PLACES) || lineDiscount > Number(line.quantity) * Number(line.selling_price))) {
+        setSalesError("Line discount must use up to two decimal places and stay between zero and the line subtotal");
         setSalesMessage(null);
         return;
       }
     }
-
-    let creditDueDate: string | null = null;
-    let creditLimitSnapshot: number | null = null;
-    let creditDaysSnapshot: number | null = null;
 
     if (salesPaymentType === "credit") {
       if (!selectedSalesCustomer) {
@@ -3912,9 +4125,9 @@ setCustomerOrganizationName("");
 
       if (isOverCreditLimit && !selectedCustomerAllowsOverLimit) {
         const warning = `Credit limit exceeded. Current balance: ${pkrFormatter.format(
-          selectedCustomerOutstandingBalance
+        selectedCustomerOutstandingBalance
         )}. Invoice total: ${pkrFormatter.format(
-          currentSalesInvoiceTotal
+          currentSalesInvoiceTotal ?? 0
         )}. Projected balance: ${pkrFormatter.format(
           projectedCustomerBalance
         )}. Credit limit: ${pkrFormatter.format(selectedCustomerCreditLimit)}.`;
@@ -3962,25 +4175,11 @@ setCustomerOrganizationName("");
           return;
         }
 
-        creditDueDate = addDaysToDateInputValue(salesInvoiceDate, selectedCustomerCreditDays);
-        if (!creditDueDate) {
+        if (!addDaysToDateInputValue(salesInvoiceDate, selectedCustomerCreditDays)) {
           setSalesError("Could not calculate a valid credit due date.");
           setSalesMessage(null);
           return;
         }
-        creditDaysSnapshot = selectedCustomerCreditDays;
-      }
-
-      if (
-        selectedCustomerCreditPolicy === "limit_only" ||
-        selectedCustomerCreditPolicy === "limit_and_days"
-      ) {
-        if (!Number.isFinite(selectedCustomerCreditLimit) || selectedCustomerCreditLimit < 0) {
-          setSalesError("Customer credit limit is invalid.");
-          setSalesMessage(null);
-          return;
-        }
-        creditLimitSnapshot = selectedCustomerCreditLimit;
       }
     }
 
@@ -4047,196 +4246,67 @@ setCustomerOrganizationName("");
         setSalesInvoiceLoading(false);
         return;
       }
+      if (!currentOrganizationId || !currentProfile?.id || !selectedCustomerIdForSale) {
+        throw new Error("Organization, owner profile, and customer must be loaded before saving.");
+      }
 
-      // Generate invoice number server-side (S-100001, S-100002, ...)
-      let systemInvoiceNumber: string;
-      try {
-        if (!currentOrganizationId) {
-          throw new Error("Organization not loaded");
-        }
-        systemInvoiceNumber = await generateSalesInvoiceWithClient(supabase, currentOrganizationId);
-      } catch (numberErr) {
-        setSalesError(
-          numberErr instanceof Error ? numberErr.message : "Failed to generate invoice number"
-        );
-        setSalesInvoiceLoading(false);
+      const input = {
+        customer_id: selectedCustomerIdForSale,
+        sale_date: salesInvoiceDate,
+        payment_type: salesPaymentType,
+        invoice_discount: rawInvoiceDiscount,
+        invoice_discount_type: salesDiscountType,
+        tax_rate: parsedTaxRate,
+        cash_received: salesPaymentType === "cash"
+          ? (quickSaleMode
+            ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal ?? 0) : safeNumber(posCashReceived))
+            : null)
+          : 0,
+        credit_override_confirmed: overrideConfirmed,
+        lines: invoiceLines.map((line) => ({
+          product_id: String(line.product_id),
+          quantity: safeNumber(line.quantity),
+          selling_price: safeNumber(line.selling_price),
+          discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
+          bonus: line.bonus?.trim() ? safeNumber(line.bonus) : 0,
+          unit_mode: line.unit_mode ?? "main",
+        })),
+      };
+      const scope = `${currentOrganizationId}:${currentProfile.id}`;
+      const { result, previousPendingConfirmed } = await createAtomicSale(supabase, scope, input);
+      const transaction = result.transaction;
+      const invoiceNumber = String(transaction.invoice_number ?? "");
+      if (quickSaleMode) {
+        setLastPOSReceipt(buildAtomicSaleReceipt(result, {
+          scope,
+          business: currentOrganization?.name || "TradeOS",
+          fallbackDate: salesInvoiceDate,
+          fallbackPayment: salesPaymentType,
+        }));
+      }
+      if (previousPendingConfirmed) {
+        setSalesMessage(`Earlier sale ${invoiceNumber} was confirmed. Your current basket is unchanged; review it before saving another sale.`);
+        fetchSalesTransactions();
+        fetchSalesItems();
+        fetchProducts();
+        fetchCustomerPayments();
+        fetchCustomerPaymentAllocations();
         return;
       }
 
-      const lineSubtotal = invoiceLines.reduce((sum, line) => {
-        if (!line.product_id) return sum;
-        const lineDiscount = line.discount.trim() === "" ? 0 : safeNumber(line.discount);
-        return sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - lineDiscount;
-      }, 0);
-      const parsedInvoiceDiscount =
-        salesDiscountType === "percent"
-          ? (lineSubtotal * rawInvoiceDiscount) / 100
-          : rawInvoiceDiscount;
-      const taxableBase = Math.max(0, lineSubtotal - parsedInvoiceDiscount);
-      const computedTaxAmount = (taxableBase * parsedTaxRate) / 100;
-
-      const tx = await supabase
-        .from("sales_transactions")
-        .insert({
-          customer_id: selectedCustomerIdForSale,
-          invoice_number: systemInvoiceNumber,
-          sale_date: salesInvoiceDate,
-          payment_type: salesPaymentType,
-          credit_due_date: salesPaymentType === "credit" ? creditDueDate : null,
-          credit_limit_snapshot: salesPaymentType === "credit" ? creditLimitSnapshot : null,
-          credit_days_snapshot: salesPaymentType === "credit" ? creditDaysSnapshot : null,
-          notes: null,
-          organization_id: currentOrganizationId,
-          total_amount: taxableBase + computedTaxAmount,
-          discount_amount: parsedInvoiceDiscount,
-          tax_rate: parsedTaxRate,
-          tax_amount: computedTaxAmount,
-          status: salesPaymentType === "cash" ? "paid" : "confirmed",
-          invoice_type: "sales",
-          created_by_profile_id: currentProfile?.id ?? null,
-        })
-        .select()
-        .single();
-
-      console.log("sales transaction result", tx);
-
-      if (tx.error) {
-        console.error("sales_transactions error", JSON.stringify(tx.error, null, 2));
-        throw tx.error;
-      }
-
-      const salesTransactionId = tx.data?.id;
-      if (!salesTransactionId) throw new Error("Failed to create sales transaction");
-
-      const itemsToSave = invoiceLines.map(line => {
-        const latestPurchaseItem = purchaseItems
-          .filter(
-            (item) =>
-              String(item.product_id) === String(line.product_id) &&
-              Number.isFinite(Number(item.purchase_price)) &&
-              Number(item.purchase_price) > 0
-          )
-          .sort((a, b) => {
-            const aTransaction = purchaseTransactions.find(
-              (tx) => tx.id === a.purchase_transaction_id
-            );
-            const bTransaction = purchaseTransactions.find(
-              (tx) => tx.id === b.purchase_transaction_id
-            );
-            const aTime = aTransaction?.created_at
-              ? new Date(aTransaction.created_at).getTime()
-              : 0;
-            const bTime = bTransaction?.created_at
-              ? new Date(bTransaction.created_at).getTime()
-              : 0;
-            return bTime - aTime;
-          })[0];
-        const product = products.find((p) => String(p.id) === String(line.product_id));
-        const latestPurchasePrice = Number(latestPurchaseItem?.purchase_price);
-        const productLastPurchasePrice = Number(product?.last_purchase_price);
-        // Cost is always stored per main unit so COGS math is unit-safe even
-        // when the purchase was recorded in subunit mode.
-        const normalizeCostToMainUnit = (price: number): number | null => {
-          if (!Number.isFinite(price) || price <= 0) return null;
-          if (latestPurchaseItem?.unit_mode === "subunit" && Number(product?.units_per_pack ?? 0) > 0) {
-            return price * Number(product?.units_per_pack);
-          }
-          return price;
-        };
-        const purchasePriceSnapshot =
-          normalizeCostToMainUnit(latestPurchasePrice) ??
-          (Number.isFinite(productLastPurchasePrice) && productLastPurchasePrice > 0
-            ? productLastPurchasePrice
-            : null);
-
-        return {
-          sales_transaction_id: salesTransactionId,
-          product_id: line.product_id,
-          quantity: Number(line.quantity),
-          selling_price: Number(line.selling_price),
-          purchase_price_snapshot: purchasePriceSnapshot,
-          discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
-          bonus: line.bonus?.trim() === "" || line.bonus == null ? 0 : safeNumber(line.bonus),
-          unit_mode: line.unit_mode ?? "main",
-          organization_id: currentOrganizationId,
-        };
-      });
-      // One database statement: a failed line cannot leave half an invoice's items.
-      const { error: itemError } = await supabase.from("sales_items").insert(itemsToSave);
-      if (itemError) {
-        const rollback = await supabase.from("sales_transactions").delete().eq("id", salesTransactionId).eq("organization_id", currentOrganizationId);
-        if (rollback.error) throw new Error(`Invoice ${systemInvoiceNumber} needs owner review: items were not saved and its empty header could not be removed. Do not retry until it is checked.`);
-        throw itemError;
-      }
-      let paymentWarning = "";
-
-      await createAuditLog({
-        action: "created",
-        entity_type: "sales_invoice",
-        entity_id: salesTransactionId,
-        entity_label: systemInvoiceNumber,
-        description: `Created sales invoice ${systemInvoiceNumber} for ${selectedSalesCustomer?.customer_name ?? "Unknown Customer"}`,
-        new_values: {
-          customer_id: selectedCustomerIdForSale,
-          invoice_number: systemInvoiceNumber,
-          sale_date: salesInvoiceDate,
-          payment_type: salesPaymentType,
-        },
-      });
-
-      if (salesPaymentType === "cash") {
-        const { data: autoPayment, error: autoPaymentError } = await supabase
-          .from("customer_payments")
-          .insert({
-            customer_id: selectedCustomerIdForSale,
-            amount: taxableBase + computedTaxAmount,
-            payment_date: salesInvoiceDate,
-            payment_method: "cash",
-            notes: `Payment received against invoice ${systemInvoiceNumber}`,
-            organization_id: currentOrganizationId,
-          })
-          .select("id")
-          .single();
-
-        if (autoPaymentError) {
-          paymentWarning = " Cash payment could not be recorded. Open this invoice in the ledger and reconcile its payment; do not create the sale again.";
-          console.error(
-            "Auto customer payment insert error:",
-            JSON.stringify(autoPaymentError, null, 2)
-          );
-        } else if (autoPayment?.id) {
-          const { error: autoAllocationError } = await supabase
-            .from("customer_payment_allocations")
-            .insert({
-              customer_payment_id: autoPayment.id,
-              sales_transaction_id: salesTransactionId,
-              amount: taxableBase + computedTaxAmount,
-              organization_id: currentOrganizationId,
-            });
-          if (autoAllocationError) {
-            paymentWarning = " Payment was recorded but could not be linked. Review payment allocation in the customer ledger; do not create the sale again.";
-            console.error(
-              "Auto customer payment allocation insert error:",
-              JSON.stringify(autoAllocationError, null, 2)
-            );
-          }
-        }
-      }
-
-      if (quickSaleMode) { const total = taxableBase + computedTaxAmount; const received = salesPaymentType === "cash" ? (Number(posCashReceived) || total) : 0; const returnAmount = salesPaymentType === "cash" ? Math.max(0, received - total) : 0; setLastPOSReceipt({ scope: `${currentOrganizationId}:${currentProfile?.id}`, business: currentOrganization?.name || "TradeOS", number: systemInvoiceNumber, date: salesInvoiceDate, customer: selectedSalesCustomer?.customer_name ?? "Customer", total, received, change: returnAmount, returnAmount, payment: paymentWarning ? "unreconciled" : salesPaymentType, lines: invoiceLines.map(line => { const product = products.find(product => String(product.id) === line.product_id); return { name: product?.name ?? "Product", quantity: line.quantity, unit: product ? unitLabelFor(product, line.unit_mode ?? "main") : "", price: line.selling_price, discount: line.discount, bonus: line.bonus }; }) }); }
-      setSalesMessage(`Sales invoice ${systemInvoiceNumber} saved successfully${paymentWarning}`);
+      setSalesMessage(`Sales invoice ${invoiceNumber} saved successfully${result.replayed ? " (confirmed retry)" : ""}.`);
       if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
       setSaleScanFocus(value => value + 1);
       setSalesInvoiceNumber("");
       setSalesInvoiceDate(toDateInputValue(new Date()));
       setSalesPaymentType("cash");
+      setPosCashReceived("");
       setSalesDiscountAmount("");
       setSalesDiscountType("flat");
       setSalesTaxRate("");
       clearCreditOverrideState();
       setSalesLines([]);
 
-      // Refresh dashboard and history
       fetchSalesTransactions();
       fetchSalesItems();
       fetchPurchaseItems();
@@ -4749,28 +4819,41 @@ setCustomerOrganizationName("");
   };
 
   const fetchProducts = async (organizationId?: string | null) => {
-    setProductsLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setProducts([]);
-      setProductsLoading(false);
       return;
     }
 
-    const { data, error } = await allPages((from, to) => supabase
-      .from("products")
-      .select("id, name, brand_id, category_id, unit_type, subunit_type, units_per_pack, sku, barcode, last_purchase_price, default_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, current_stock, overselling_policy, is_active, created_at, updated_at")
-      .eq("organization_id", orgId)
-      .order("name", { ascending: true }).order("id", { ascending: true }).range(from, to));
+    // Loading/failed/empty states are published by the read tracker; no local
+    // boolean here, so a late response from a previous account or request can
+    // neither commit rows nor flip the loading flag (the tracker ignores it).
+    await readDashboardSource(
+      "products",
+      orgId,
+      async () => {
+        const { data, error } = await allPages((from, to) => supabase
+          .from("products")
+          .select("id, name, brand_id, category_id, unit_type, subunit_type, units_per_pack, sku, barcode, last_purchase_price, default_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, current_stock, overselling_policy, is_active, created_at, updated_at")
+          .eq("organization_id", orgId)
+          .order("name", { ascending: true }).order("id", { ascending: true }).range(from, to));
+        if (error) throw error;
+        return data ?? [];
+      },
+      setProducts,
+      (error) => console.error("Supabase fetch products error:", error),
+    );
+  };
 
-    setProductsLoading(false);
+  // Retry targets the currently authorized organization only; if the account or
+  // organization changed since the failure, the tracker's scope check ignores
+  // the read instead of loading another organization's catalog.
+  const retryProductsLoad = () => {
+    void fetchProducts(currentOrganizationId);
+  };
 
-    if (error) {
-      console.error("Supabase fetch products error:", error);
-      return;
-    }
-
-    setProducts(data ?? []);
+  const retryCustomersLoad = () => {
+    void fetchCustomers(currentOrganizationId);
   };
 
   const fetchCustomers = async (organizationId?: string | null) => {
@@ -4782,22 +4865,25 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await allPages((from, to) => supabase
-      .from("customers")
-      .select(
-        "id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, assigned_salesman_id, assigned_territory_id"
-      )
-      .eq("organization_id", orgId)
-      .order("customer_name", { ascending: true }).order("id", { ascending: true }).range(from, to));
+    await readDashboardSource(
+      "customers",
+      orgId,
+      async () => {
+        const { data, error } = await allPages((from, to) => supabase
+          .from("customers")
+          .select(
+            "id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, assigned_salesman_id, assigned_territory_id"
+          )
+          .eq("organization_id", orgId)
+          .order("customer_name", { ascending: true }).order("id", { ascending: true }).range(from, to));
+        if (error) throw error;
+        return data ?? [];
+      },
+      setCustomers,
+      (error) => console.error("Supabase fetch customers error:", error),
+    );
 
     setCustomersLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch customers error:", error);
-      return;
-    }
-
-    setCustomers(data ?? []);
   };
 
   const fetchSuppliers = async (organizationId?: string | null) => {
@@ -4809,20 +4895,23 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("suppliers")
-      .select("id, supplier_name, contact_person, phone, whatsapp, city, notes, is_active")
-      .eq("organization_id", orgId)
-      .order("supplier_name", { ascending: true });
+    await readDashboardSource(
+      "suppliers",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("suppliers")
+          .select("id, supplier_name, contact_person, phone, whatsapp, city, notes, is_active")
+          .eq("organization_id", orgId)
+          .order("supplier_name", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setSuppliers,
+      (error) => console.error("Supabase fetch suppliers error:", error),
+    );
 
     setSuppliersLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch suppliers error:", error);
-      return;
-    }
-
-    setSuppliers(data ?? []);
   };
 
   const fetchPurchaseTransactions = async (organizationId?: string | null) => {
@@ -4834,20 +4923,23 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("purchase_transactions")
-      .select("id, supplier_id, invoice_number, created_at, purchase_date, expense_review_status, expense_reviewed_at")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false });
+    await readDashboardSource(
+      "purchase-transactions",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("purchase_transactions")
+          .select("id, supplier_id, invoice_number, created_at, purchase_date, expense_review_status, expense_reviewed_at")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setPurchaseTransactions,
+      (error) => console.error("Supabase fetch purchase transactions error:", error),
+    );
 
     setPurchaseLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch purchase transactions error:", error);
-      return;
-    }
-
-    setPurchaseTransactions(data ?? []);
   };
 
   const fetchPurchaseOrders = async (organizationId?: string | null) => {
@@ -5007,17 +5099,24 @@ setCustomerOrganizationName("");
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
     if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
-    const { data, error } = await query;
+    await readDashboardSource(
+      "sales-orders",
+      orgId,
+      async () => {
+        const { data, error } = await query;
+        if (error) throw error;
+        return data ?? [];
+      },
+      (rows) => {
+        setSalesOrdersError(null);
+        setSalesOrders(rows);
+      },
+      (error) => {
+        console.error("Supabase fetch sales orders error:", error);
+        setSalesOrdersError(`Failed to load sales orders: ${error instanceof Error ? error.message : "Unknown read error"}`);
+      },
+    );
     setSalesOrdersLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch sales orders error:", error);
-      setSalesOrdersError(`Failed to load sales orders: ${error.message}`);
-      return;
-    }
-
-    setSalesOrdersError(null);
-    setSalesOrders(data ?? []);
 
   };
 
@@ -5253,7 +5352,7 @@ setCustomerOrganizationName("");
   const [salesInvoiceNumber, setSalesInvoiceNumber] = useState("");
   const [salesInvoiceDate, setSalesInvoiceDate] = useState(toDateInputValue(new Date()));
   const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "credit">("cash");
-  const [posCashReceived, setPosCashReceived] = useState(0);
+  const [posCashReceived, setPosCashReceived] = useState("");
   const [salesDiscountAmount, setSalesDiscountAmount] = useState("");
   const [salesDiscountType, setSalesDiscountType] = useState<"flat" | "percent">("flat");
   const [salesTaxRate, setSalesTaxRate] = useState("");
@@ -5320,6 +5419,32 @@ setCustomerOrganizationName("");
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
   const [salesError, setSalesError] = useState<string | null>(null);
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
+  useEffect(() => {
+    if (!currentOrganizationId || !currentProfile?.id) return;
+    try {
+      const pending = readPendingAtomicSale(`${currentOrganizationId}:${currentProfile.id}`);
+      if (!pending) return;
+      setSelectedCustomerIdForSale(pending.input.customer_id);
+      setSalesInvoiceDate(pending.input.sale_date);
+      setSalesPaymentType(pending.input.payment_type);
+      setSalesDiscountAmount(String(pending.input.invoice_discount));
+      setSalesDiscountType(pending.input.invoice_discount_type);
+      setSalesTaxRate(String(pending.input.tax_rate));
+      setPosCashReceived(pending.input.cash_received == null ? "" : String(pending.input.cash_received));
+      setSalesLines(pending.input.lines.map((line) => ({
+        product_id: line.product_id,
+        quantity: String(line.quantity),
+        selling_price: String(line.selling_price),
+        discount: String(line.discount),
+        bonus: String(line.bonus),
+        unit_mode: line.unit_mode,
+      })));
+      setSalesError("A saved sale request is waiting for confirmation. Retry it to reconcile the same sale.");
+    } catch (error) {
+      console.error("Could not restore pending sale:", error);
+      setSalesError("A saved sale request could not be read. Keep this session open and contact an owner before submitting another sale.");
+    }
+  }, [currentOrganizationId, currentProfile?.id]);
 
   // Sales Management (Phase 4) — sales orders + returns + reporting
   const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform" | "invoices" | "history">("invoice");
@@ -5516,7 +5641,13 @@ setCustomerOrganizationName("");
     if (!requiredPermission) return false;
     return hasPermission(requiredPermission);
   };
-  const visibleNavigationItems = navigationItems.filter((item) => canAccessSection(item.id));
+  const visibleNavigationItems = useMemo(
+    () => navigationItems.filter((item) => canAccessSection(item.id)),
+    // canAccessSection reads currentProfile.role, currentStaffPermission, and
+    // module-level constants only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentProfile?.role, currentStaffPermission],
+  );
   const navIdIndex = new Map(navOrder?.map((id, index) => [id, index]));
   const orderedNavItems =
     navOrder && navOrder.length > 0
@@ -6049,18 +6180,21 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("purchase_items")
-      .select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, unit_mode, batch_number, expiry_date")
-      .eq("organization_id", orgId)
-      .order("id", { ascending: true });
-
-    if (error) {
-      console.error("Supabase fetch purchase items error:", error);
-      return;
-    }
-
-    setPurchaseItems(data ?? []);
+    await readDashboardSource(
+      "purchase-items",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("purchase_items")
+          .select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, unit_mode, batch_number, expiry_date")
+          .eq("organization_id", orgId)
+          .order("id", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setPurchaseItems,
+      (error) => console.error("Supabase fetch purchase items error:", error),
+    );
   };
 
   const fetchCustomerPayments = async (organizationId?: string | null) => {
@@ -6070,18 +6204,21 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("customer_payments")
-      .select("id, customer_id, amount, notes, created_at, payment_date, payment_method")
-      .eq("organization_id", orgId)
-      .order("id", { ascending: true });
-
-    if (error) {
-      console.error("Supabase fetch customer payments error:", error);
-      return;
-    }
-
-    setCustomerPayments(data ?? []);
+    await readDashboardSource(
+      "customer-payments",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("customer_payments")
+          .select("id, customer_id, amount, notes, created_at, payment_date, payment_method")
+          .eq("organization_id", orgId)
+          .order("id", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setCustomerPayments,
+      (error) => console.error("Supabase fetch customer payments error:", error),
+    );
   };
 
   const fetchCustomerPaymentAllocations = async (organizationId?: string | null) => {
@@ -6091,18 +6228,21 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("customer_payment_allocations")
-      .select("*")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      console.error("Supabase fetch customer payment allocations error:", JSON.stringify(error, null, 2));
-      return;
-    }
-
-    setCustomerPaymentAllocations(data ?? []);
+    await readDashboardSource(
+      "customer-payment-allocations",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("customer_payment_allocations")
+          .select("*")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setCustomerPaymentAllocations,
+      (error) => console.error("Supabase fetch customer payment allocations error:", error),
+    );
   };
 
   const fetchSupplierPayments = async (organizationId?: string | null) => {
@@ -6112,18 +6252,21 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("supplier_payments")
-      .select("id, supplier_id, amount, notes, payment_date, created_at")
-      .eq("organization_id", orgId)
-      .order("id", { ascending: true });
-
-    if (error) {
-      console.error("Supabase fetch supplier payments error:", error);
-      return;
-    }
-
-    setSupplierPayments(data ?? []);
+    await readDashboardSource(
+      "supplier-payments",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("supplier_payments")
+          .select("id, supplier_id, amount, notes, payment_date, created_at")
+          .eq("organization_id", orgId)
+          .order("id", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setSupplierPayments,
+      (error) => console.error("Supabase fetch supplier payments error:", error),
+    );
   };
 
   const fetchSupplierPaymentAllocations = async (organizationId?: string | null) => {
@@ -6133,18 +6276,21 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const { data, error } = await supabase
-      .from("supplier_payment_allocations")
-      .select("*")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      console.error("Supabase fetch supplier payment allocations error:", JSON.stringify(error, null, 2));
-      return;
-    }
-
-    setSupplierPaymentAllocations(data ?? []);
+    await readDashboardSource(
+      "supplier-payment-allocations",
+      orgId,
+      async () => {
+        const { data, error } = await supabase
+          .from("supplier_payment_allocations")
+          .select("*")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        return data ?? [];
+      },
+      setSupplierPaymentAllocations,
+      (error) => console.error("Supabase fetch supplier payment allocations error:", error),
+    );
   };
 
   const fetchSalesItems = async (organizationId?: string | null, actor = currentProfile) => {
@@ -6160,13 +6306,17 @@ setCustomerOrganizationName("");
       .eq("organization_id", orgId)
       .order("id", { ascending: true });
     if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("sales_transactions.created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
-    const { data, error } = await query;
-    if (error) {
-      console.error("Supabase fetch sales items error:", error);
-      return;
-    }
-
-    setSalesItems(data ?? []);
+    await readDashboardSource(
+      "sales-items",
+      orgId,
+      async () => {
+        const { data, error } = await query;
+        if (error) throw error;
+        return data ?? [];
+      },
+      setSalesItems,
+      (error) => console.error("Supabase fetch sales items error:", error),
+    );
 
   };
 
@@ -6414,21 +6564,24 @@ setCustomerOrganizationName("");
       return;
     }
 
-    let query = supabase
-      .from("sales_transactions")
-      .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false });
-    if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
-    const { data, error } = await query;
+    await readDashboardSource(
+      "sales-transactions",
+      orgId,
+      async () => {
+        let query = supabase
+          .from("sales_transactions")
+          .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: false });
+        if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
+        const { data, error } = await query;
+        if (error) throw error;
+        return data ?? [];
+      },
+      setSalesTransactions,
+      (error) => console.error("Supabase fetch sales transactions error:", error),
+    );
     setSalesLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch sales transactions error:", error);
-      return;
-    }
-
-    setSalesTransactions(data ?? []);
 
   };
 
@@ -6654,7 +6807,7 @@ setCustomerOrganizationName("");
       setError("Organization not loaded. Please login again.");
       return;
     }
-    setProductsLoading(true);
+    setArchivingProductId(productId);
 
     const productToArchive = products.find((product) => product.id === productId);
     const { error } = await supabase
@@ -6663,7 +6816,7 @@ setCustomerOrganizationName("");
       .eq("id", productId)
       .eq("organization_id", currentOrganizationId);
 
-    setProductsLoading(false);
+    setArchivingProductId(null);
 
     if (error) {
       setError("Failed to archive product");
@@ -7147,6 +7300,14 @@ setCustomerOrganizationName("");
   const activeCustomers = useMemo(
     () => customers.filter((customer) => customer.is_active !== false),
     [customers]
+  );
+
+  // Memoized: the picker option array must keep its identity across unrelated
+  // parent rerenders, or the picker's "Show more" expansion collapses when
+  // the parent re-renders.
+  const invoiceCustomerOptions = useMemo(
+    () => activeCustomers.map((customer) => ({ id: customer.id, label: [customer.customer_name, customer.shop_name, customer.phone].filter(Boolean).join(" — ") })),
+    [activeCustomers]
   );
 
   const handleAddPurchaseLine = () => {
@@ -8493,16 +8654,6 @@ setCustomerOrganizationName("");
 
     if (!window.confirm(`Delete sales return ${salesReturn.return_number}? Stock restoration will be reversed.`)) return;
 
-    const { error: itemError } = await supabase
-      .from("sales_return_items")
-      .delete()
-      .eq("sales_return_id", returnId);
-    if (itemError) {
-      setSrError("Failed to delete sales return items");
-      console.error("Supabase delete sales return items error:", itemError);
-      return;
-    }
-
     const { error } = await supabase
       .from("sales_returns")
       .delete()
@@ -8570,25 +8721,22 @@ setCustomerOrganizationName("");
     );
   };
 
-  const filteredCustomers = customers.filter((customer) => {
-    const searchTerm = customerSearch.trim().toLowerCase();
-    if (!searchTerm) return true;
-    return [
-      customer.customer_name,
-      customer.shop_name,
-      customer.organization_name,
-      customer.contact_person,
-      customer.phone,
-      customer.whatsapp,
-      customer.city,
-      customer.area,
-      customer.address,
-      customer.shipping_address,
-      customer.customer_type,
-    ].some(
-      (value) => value?.toLowerCase().includes(searchTerm)
-    );
-  });
+  // Suggestion-panel data for the Customers section search field and the
+  // customer pickers: one pass over the already-authorized customer list.
+  // Rank fields keep the section's full searchable surface (name, shop, phone,
+  // contact, organization, type, city/area/address) with name matches first.
+  const customerSuggestionData = useMemo(() => buildCustomerSuggestionData(customers), [customers]);
+
+  const filteredCustomers = useMemo(() => {
+    const ranked = !customerSearch.trim()
+      ? customers
+      : rankSearchResults(
+          customers,
+          customerSearch,
+          (customer) => customerSuggestionData.rankFields.get(customer.id) ?? { name: customer.customer_name },
+        );
+    return pinSelectedFirst(ranked, selectedCustomerId, (customer) => customer.id);
+  }, [customers, customerSearch, customerSuggestionData, selectedCustomerId]);
   const selectedSalesCustomer = customers.find((customer) => customer.id === selectedCustomerIdForSale);
   const selectedCustomerCreditPolicy = selectedSalesCustomer?.credit_policy ?? "cash_only";
   const selectedCustomerCreditLimit = Number(selectedSalesCustomer?.credit_limit || 0);
@@ -8683,34 +8831,18 @@ setCustomerOrganizationName("");
     },
     {}
   );
-  const currentSalesInvoiceTotal = (() => {
-    const rawInvoiceDiscount = salesDiscountAmount.trim() === "" ? 0 : Number(salesDiscountAmount);
-    const parsedTaxRate = salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate);
-    const lineSubtotal = salesLines.reduce(
-      (sum, line) =>
-        sum +
-        safeNumber(line.quantity) * safeNumber(line.selling_price) -
-        (line.discount.trim() === "" ? 0 : safeNumber(line.discount)),
-      0
-    );
-    const parsedInvoiceDiscount =
-      salesDiscountType === "percent"
-        ? (lineSubtotal * (Number.isFinite(rawInvoiceDiscount) ? rawInvoiceDiscount : 0)) / 100
-        : rawInvoiceDiscount;
-    const taxableBase = Math.max(
-      0,
-      lineSubtotal -
-        (Number.isFinite(parsedInvoiceDiscount) && parsedInvoiceDiscount >= 0
-          ? parsedInvoiceDiscount
-          : 0)
-    );
-    return (
-      taxableBase +
-      (Number.isFinite(parsedTaxRate) && parsedTaxRate >= 0
-        ? (taxableBase * parsedTaxRate) / 100
-        : 0)
-    );
-  })();
+  const currentSaleDraft = validateSaleDraft({
+    lines: salesLines,
+    invoiceDiscount: salesDiscountAmount,
+    invoiceDiscountType: salesDiscountType,
+    taxRate: salesTaxRate,
+    paymentType: salesPaymentType,
+    cashReceived: posCashReceived,
+    validateCash: quickSaleMode && isOwnerOrAdmin(),
+    allowInvoiceAdjustments: isOwnerOrAdmin(),
+  });
+  const currentSaleAmounts = currentSaleDraft.amounts;
+  const currentSalesInvoiceTotal = currentSaleAmounts?.total;
   const todayDateValue = toDateInputValue(new Date());
   const filteredSalesTransactions = (() => {
     const searchTerm = salesHistorySearch.trim().toLowerCase();
@@ -8801,7 +8933,7 @@ setCustomerOrganizationName("");
       sum + Math.max(0, creditAllocationByTransaction[transactionId]?.remainingUnpaidAmount ?? 0),
     0
   );
-  const projectedCustomerBalance = selectedCustomerOutstandingBalance + currentSalesInvoiceTotal;
+  const projectedCustomerBalance = selectedCustomerOutstandingBalance + (currentSalesInvoiceTotal ?? 0);
   const unpaidCreditInvoicesForSelectedPaymentCustomer = salesTransactions
     .filter(
       (transaction) =>
@@ -15508,6 +15640,34 @@ setCustomerOrganizationName("");
   const mySalesToday = mySales.filter((s) => (s.created_at ?? "").slice(0, 10) === todayStart);
   const todaySalesTotal = mySalesToday.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0);
 
+  const dashboardMetricReadStates = deriveDashboardMetricStates(dashboardSourceStates);
+  const dashboardMetricLastSuccessfulAt = deriveDashboardMetricLastSuccessAt(dashboardSourceStates);
+  const dashboardReadStatusFor = (source: DashboardReadSource) => dashboardSourceStates[source].status;
+  const dashboardLastSuccessFor = (source: DashboardReadSource) => dashboardSourceStates[source].lastSuccessAt;
+  const healthReadStatus = dashboardMetricReadStates["business-health"];
+  const healthLastSuccessfulAt = dashboardMetricLastSuccessfulAt["business-health"];
+  const retryFailedDashboardReads = () => {
+    for (const source of dashboardReadSources) {
+      if (dashboardSourceStates[source].status !== "failed") continue;
+      switch (source) {
+        case "sales-transactions": void fetchSalesTransactions(currentOrganizationId, currentProfile); break;
+        case "sales-items": void fetchSalesItems(currentOrganizationId, currentProfile); break;
+        case "products": void fetchProducts(currentOrganizationId); break;
+        case "customers": void fetchCustomers(currentOrganizationId); break;
+        case "customer-payments": void fetchCustomerPayments(currentOrganizationId); break;
+        case "customer-payment-allocations": void fetchCustomerPaymentAllocations(currentOrganizationId); break;
+        case "expenses": void fetchExpenses(currentOrganizationId); break;
+        case "suppliers": void fetchSuppliers(currentOrganizationId); break;
+        case "purchase-transactions": void fetchPurchaseTransactions(currentOrganizationId); break;
+        case "purchase-items": void fetchPurchaseItems(currentOrganizationId); break;
+        case "supplier-payments": void fetchSupplierPayments(currentOrganizationId); break;
+        case "supplier-payment-allocations": void fetchSupplierPaymentAllocations(currentOrganizationId); break;
+        case "tasks": void fetchTasks(currentOrganizationId); break;
+        case "sales-orders": void fetchSalesOrders(currentOrganizationId, currentProfile); break;
+      }
+    }
+  };
+
   const staffDashboardData = {
     isStaff,
     mySalesCount: mySales.length,
@@ -15534,6 +15694,63 @@ setCustomerOrganizationName("");
       dueDate: t.due_date ? formatDate(t.due_date) : undefined,
     })),
   };
+
+  // Dashboard global search wiring must remain above the logged-out return:
+  // Home renders both before and after authentication, so its hooks must be
+  // called in the same order for every auth state.
+  const canViewProducts = Boolean(currentUser && canAccessSection("products"));
+  const handleGlobalSearchChange = useCallback(
+    (query: string) => {
+      const q = query.trim().replace(/&/g, " and ");
+      if (!q) return [];
+      // Navigation sections, relevance-ranked with the shared search
+      // contract (exact label > label prefix > word prefix > contains).
+      // visibleNavigationItems is already permission-filtered.
+      const sectionResults = rankSearchResultsWithTiers(
+        visibleNavigationItems.map((item) => ({
+          id: `section-${item.id}`,
+          label: item.label,
+          section: item.id,
+          type: "action" as const,
+        })),
+        q,
+        (suggestion) => ({ name: suggestion.label }),
+      );
+      // Centralized permission gate: product names, their SKU/price details,
+      // and the Products destination are suggested only when the user may
+      // open the Products section. Nothing here expands permissions.
+      const productResults = !canViewProducts
+        ? []
+        : rankSearchResultsWithTiers(
+            products,
+            q,
+            (product) => productSuggestionData.rankFields.get(String(product.id)) ?? { name: product.name },
+          ).map(({ item: product, rank }) => ({
+            tier: rank,
+            kind: "product" as const,
+            id: `product-${product.id}`,
+            label: product.name,
+            detail: [
+              product.sku,
+              product.default_selling_price != null ? formatPKR(product.default_selling_price) : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+            section: "products",
+            type: "product" as const,
+            prefill: product.name,
+            recordId: String(product.id),
+          }));
+      // One explicit, deterministic cross-type ordering: an exact SKU/barcode
+      // product match (tier 0) outranks even exact section matches; within a
+      // tier, sections come before products, then label, then id.
+      return orderCrossTypeSuggestions([
+        ...sectionResults.map(({ item, rank }) => ({ ...item, tier: rank, kind: "section" as const })),
+        ...productResults,
+      ]).slice(0, 8);
+    },
+    [visibleNavigationItems, products, productSuggestionData, canViewProducts],
+  );
 
   if (!currentUser) {
     return (
@@ -15580,12 +15797,14 @@ setCustomerOrganizationName("");
           description: "Most recent sales invoices.",
           onOpen: () => handleSectionChange("sales"),
           metrics: [
-            { label: "Invoices", value: String(salesTransactions.length) },
-            { label: "Total value", value: money(salesTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)) },
+            { label: "Invoices", value: String(salesTransactions.length), readStatus: dashboardReadStatusFor("sales-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions") },
+            { label: "Total value", value: money(salesTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)), readStatus: dashboardReadStatusFor("sales-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions") },
           ],
           rowsLabel: "Latest invoices",
           rows: recentSalesInvoices.slice(0, 4).map((tx) => ({ label: `#${tx.invoice_number}`, value: money(tx.total_amount) })),
           emptyText: "No sales recorded yet.",
+          rowsReadStatus: dashboardReadStatusFor("sales-transactions"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("sales-transactions"),
         };
       case "purchases":
         return {
@@ -15593,12 +15812,14 @@ setCustomerOrganizationName("");
           description: "Most recent supplier bills.",
           onOpen: () => handleSectionChange("purchases"),
           metrics: [
-            { label: "Bills", value: String(purchaseTransactions.length) },
-            { label: "Total value", value: money(purchaseTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)) },
+            { label: "Bills", value: String(purchaseTransactions.length), readStatus: dashboardReadStatusFor("purchase-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions") },
+            { label: "Total value", value: money(purchaseTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)), readStatus: dashboardReadStatusFor("purchase-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions") },
           ],
           rowsLabel: "Latest bills",
           rows: recentPurchaseInvoices.slice(0, 4).map((tx) => ({ label: `#${tx.invoice_number}`, value: money(tx.total_amount) })),
           emptyText: "No purchases recorded yet.",
+          rowsReadStatus: dashboardReadStatusFor("purchase-transactions"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions"),
         };
       case "customer-payments":
         return {
@@ -15632,22 +15853,26 @@ setCustomerOrganizationName("");
           description: "What the business has spent.",
           onOpen: () => handleSectionChange("expenses"),
           metrics: [
-            { label: "Entries", value: String(expenses.length) },
-            { label: "Total spent", value: money(expenses.reduce((total, expense) => total + safeNumber(expense?.amount), 0)) },
+            { label: "Entries", value: String(expenses.length), readStatus: dashboardReadStatusFor("expenses"), lastSuccessfulAt: dashboardLastSuccessFor("expenses") },
+            { label: "Total spent", value: money(expenses.reduce((total, expense) => total + safeNumber(expense?.amount), 0)), readStatus: dashboardReadStatusFor("expenses"), lastSuccessfulAt: dashboardLastSuccessFor("expenses") },
           ],
           rowsLabel: "Recent expenses",
           rows: [...expenses].reverse().slice(0, 4).map((expense) => ({ label: String(expense?.expense_type ?? "Expense"), value: money(expense?.amount) })),
           emptyText: "No expenses recorded yet.",
+          rowsReadStatus: dashboardReadStatusFor("expenses"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("expenses"),
         };
       case "customers":
         return {
           title: "Customers",
           description: "Who you sell to.",
           onOpen: () => handleSectionChange("customers"),
-          metrics: [{ label: "Customers", value: String(totalCustomers) }],
+          metrics: [{ label: "Customers", value: String(totalCustomers), readStatus: dashboardReadStatusFor("customers"), lastSuccessfulAt: dashboardLastSuccessFor("customers") }],
           rowsLabel: "Newest customers",
           rows: [...customers].reverse().slice(0, 4).map((customer) => ({ label: customer.customer_name, value: customer.city ?? customer.phone ?? "" })),
           emptyText: "No customers added yet.",
+          rowsReadStatus: dashboardReadStatusFor("customers"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("customers"),
         };
       case "suppliers":
         return {
@@ -15655,12 +15880,14 @@ setCustomerOrganizationName("");
           description: "Who you buy from.",
           onOpen: () => handleSectionChange("suppliers"),
           metrics: [
-            { label: "Suppliers", value: String(totalSuppliers) },
-            { label: "You owe", value: money(totalPayables), tone: totalPayables > 0 ? "warning" : "success" },
+            { label: "Suppliers", value: String(totalSuppliers), readStatus: dashboardReadStatusFor("suppliers"), lastSuccessfulAt: dashboardLastSuccessFor("suppliers") },
+            { label: "You owe", value: money(totalPayables), tone: totalPayables > 0 ? "warning" : "success", readStatus: dashboardMetricReadStates.payables, lastSuccessfulAt: dashboardMetricLastSuccessfulAt.payables },
           ],
           rowsLabel: "Newest suppliers",
           rows: [...suppliers].reverse().slice(0, 4).map((supplier) => ({ label: supplier.supplier_name, value: supplier.city ?? supplier.phone ?? "" })),
           emptyText: "No suppliers added yet.",
+          rowsReadStatus: dashboardReadStatusFor("suppliers"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("suppliers"),
         };
       case "products":
         return {
@@ -15668,12 +15895,14 @@ setCustomerOrganizationName("");
           description: "Your catalogue and stock attention.",
           onOpen: () => handleSectionChange("products"),
           metrics: [
-            { label: "Products", value: String(totalProducts) },
-            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success" },
+            { label: "Products", value: String(totalProducts), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
           ],
           rowsLabel: "Needs reorder",
           rows: lowStockProducts.slice(0, 4).map((item) => ({ label: item.productName, value: `${item.currentStock} in stock` })),
           emptyText: "No stock attention needed.",
+          rowsReadStatus: dashboardReadStatusFor("products"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("products"),
         };
       case "brands": {
         const counts = brands
@@ -15709,12 +15938,14 @@ setCustomerOrganizationName("");
           description: "Stock value and what needs attention.",
           onOpen: () => handleSectionChange("inventory"),
           metrics: [
-            { label: "Stock value", value: money(inventoryValue) },
-            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success" },
-            { label: "Out of stock", value: String(reorderRecommendationSummary.outOfStockCount), tone: reorderRecommendationSummary.outOfStockCount > 0 ? "danger" : "success" },
+            { label: "Stock value", value: money(inventoryValue), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: "Out of stock", value: String(reorderRecommendationSummary.outOfStockCount), tone: reorderRecommendationSummary.outOfStockCount > 0 ? "danger" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
           ],
           rows: lowStockProducts.slice(0, 4).map((item) => ({ label: item.productName, value: `${item.currentStock} in stock` })),
           emptyText: "Stock levels look healthy.",
+          rowsReadStatus: dashboardReadStatusFor("products"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("products"),
         };
       case "task-manager": {
         const open = tasks.filter((task) => task.status === "pending" || task.status === "in_progress");
@@ -15756,6 +15987,67 @@ setCustomerOrganizationName("");
     node: <SectionSummaryCard summary={buildSectionSummary(section)} />,
   }));
 
+  const setupImportWidget = isOwnerOrAdmin() ? (
+    <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section data-help-topic="setup and data import" className="rounded-xl border border-primary/30 bg-card p-5">
+        <h2 className="text-lg font-semibold">Setup &amp; Data Import</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{setupStage === "complete" ? `Setup complete. This reminder retires itself after ${SETUP_BANNER_RETENTION_DAYS} days; you can still open Setup & Data Import from the sidebar.` : "Follow the setup guide, import your external records and review missing settings."}</p>
+        <div className="mt-3">
+          <button type="button" onClick={() => handleSectionChange("setup-import")} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Open Setup &amp; Data Import</button>
+        </div>
+      </section>
+    </DashboardWidget>
+  ) : null;
+  const quickSaleWidget = (
+    <DashboardQuickSaleWidget
+      canUseInvoice={canUseSalesTool("invoice")}
+      hidden={homeWidgets.isHidden("quick-sale")}
+      customizing={homeWidgets.customizing}
+      onRemove={homeWidgets.removeWidget}
+      onSetQuickSaleMode={setQuickSaleMode}
+      onSetSalesTab={setSalesTab}
+      onFocusBarcode={() => setSaleScanFocus(value => value + 1)}
+      onOpenSales={() => handleSectionChange("sales")}
+    />
+  );
+  const businessRecordsExportWidget = currentProfile?.role === "owner" ? (
+    <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section className="rounded-xl border border-primary/30 bg-card p-5">
+        <h2 className="text-lg font-semibold">Export business records</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF.</p>
+        <BusinessRecordsExport />
+      </section>
+    </DashboardWidget>
+  ) : null;
+
+  // Dashboard global search wiring.
+  // The suggestion list is built with useCallback over stable inputs so the
+  // header's memoization holds: unrelated parent rerenders do not re-rank
+  // thousands of products.
+  const headerProductStatus: SuggestionStatus =
+    productsReadStatus === "failed"
+      ? "error"
+      : productsReadStatus === "loading" || productsReadStatus === "not-loaded"
+        ? "loading"
+        : "ready";
+  const handleGlobalSearchSubmit = (query: string, prefill?: string, recordId?: string) => {
+    const q = query.toLowerCase().replace(/&/g, " and ");
+    const match = visibleNavigationItems.find((item) => {
+      const label = item.label.toLowerCase().replace(/&/g, " and ");
+      return label.includes(q) || label.replace(/ and /g, " & ").includes(q) || item.id.replace(/-/g, " ").includes(q);
+    });
+    if (match) {
+      handleSectionChange(match.id);
+      if (match.id === "products") {
+        // A product suggestion carries its exact name and record ID: prefill
+        // the filter and pin the chosen record first — no scrolling, and
+        // duplicate names resolve to the record that was actually chosen.
+        if (prefill) setProductSearch(prefill);
+        setSelectedProductId(recordId ?? null);
+      }
+    }
+  };
+
   return (
     <DashboardLayout
         navigationItems={orderedNavItems}
@@ -15776,30 +16068,21 @@ setCustomerOrganizationName("");
         onToggleNavHidden={handleNavToggleHidden}
       onResetNavOrder={handleNavReset}
       dragSectionsToDashboard={activeSection === "dashboard" && homeWidgets.customizing}
-        onSearchSubmit={(query) => {
-          const q = query.toLowerCase().replace(/&/g, " and ");
-          const match = visibleNavigationItems.find((item) => {
-            const label = item.label.toLowerCase().replace(/&/g, " and ");
-            return label.includes(q) || label.replace(/ and /g, " & ").includes(q) || item.id.replace(/-/g, " ").includes(q);
-          });
-          if (match) handleSectionChange(match.id);
-        }}
-        onSearchChange={(query) => {
-          if (!query.trim()) return [];
-          const q = query.toLowerCase().replace(/&/g, " and ");
-          const sectionMatches = visibleNavigationItems
-            .filter((item) => {
-              const label = item.label.toLowerCase().replace(/&/g, " and ");
-              return label.includes(q) || label.replace(/ and /g, " & ").includes(q) || item.id.replace(/-/g, " ").includes(q);
-            })
-            .slice(0, 5)
-            .map((item) => ({ label: item.label, section: item.id, type: "action" as const }));
-          const productMatches = products
-            .filter((p) => p.name.toLowerCase().includes(q))
-            .slice(0, 3)
-            .map((p) => ({ label: p.name, section: "products", type: "product" as const }));
-          return [...sectionMatches, ...productMatches];
-        }}
+        onSearchSubmit={handleGlobalSearchSubmit}
+        onSearchChange={handleGlobalSearchChange}
+        searchScopeKey={searchScopeKey}
+        // Restricted users get no productStatus: they must not see
+        // product-source status, names, or the Products destination.
+        productStatus={canViewProducts ? headerProductStatus : undefined}
+        onViewAllProducts={
+          canViewProducts
+            ? (query) => {
+                handleSectionChange("products");
+                setProductSearch(query);
+                setSelectedProductId(null);
+              }
+            : undefined
+        }
         notificationCount={
           aiAlerts.filter((a) => a.status === "active" || a.status === "new").length +
           realNotifications.filter((n) => !n.is_read).length
@@ -15972,28 +16255,7 @@ setCustomerOrganizationName("");
             </div>
           </div>
         )}
-        {activeSection === "dashboard" && isOwnerOrAdmin() && (
-          <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-            <section data-help-topic="setup and data import" className="rounded-xl border border-primary/30 bg-card p-5">
-              <h2 className="text-lg font-semibold">Setup &amp; Data Import</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{setupStage === "complete" ? `Setup complete. This reminder retires itself after ${SETUP_BANNER_RETENTION_DAYS} days; you can still open Setup & Data Import from the sidebar.` : "Follow the setup guide, import your external records and review missing settings."}</p>
-              <div className="mt-3">
-                <button type="button" onClick={() => handleSectionChange("setup-import")} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Open Setup &amp; Data Import</button>
-              </div>
-            </section>
-          </DashboardWidget>
-        )}
-        {activeSection === "dashboard" && canUseSalesTool("invoice") && (
-          <DashboardWidget id="quick-sale" hidden={homeWidgets.isHidden("quick-sale")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-            <section data-help-topic="quick sale" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
-              <h2 className="text-lg font-semibold">Quick sale</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
-              <div className="mt-3">
-                <button type="button" className="rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground" onClick={() => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); }}>Retail POS / Create a sale</button>
-              </div>
-            </section>
-          </DashboardWidget>
-        )}
+        {activeSection === "dashboard" && setupStage === "active" && setupImportWidget}
         {activeSection === "dashboard" && staffDashboardData.isStaff && (
           <StaffDashboardView
             userName={currentProfile?.full_name ?? currentUser.email}
@@ -16026,17 +16288,13 @@ setCustomerOrganizationName("");
           <EmployeeLiveTracking />
         )}
 
-        {activeSection === "dashboard" && currentProfile?.role === "owner" && (
-          <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-            <section className="rounded-xl border border-primary/30 bg-card p-5">
-              <h2 className="text-lg font-semibold">Export business records</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF.</p>
-              <BusinessRecordsExport />
-            </section>
-          </DashboardWidget>
-        )}
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
+            metricReadStates={dashboardMetricReadStates}
+            metricLastSuccessfulAt={dashboardMetricLastSuccessfulAt}
+            onRetryFailedReads={retryFailedDashboardReads}
+            healthReadStatus={healthReadStatus}
+            healthLastSuccessfulAt={healthLastSuccessfulAt}
             hiddenWidgets={homeWidgets.hidden}
             customizingWidgets={homeWidgets.customizing}
             onRemoveWidget={homeWidgets.removeWidget}
@@ -16078,13 +16336,15 @@ setCustomerOrganizationName("");
               })),
             ]}
             smartModules={[
-              { id: "products", title: "Products", summary: `${totalProducts} products in catalog`, onOpen: () => handleSectionChange("products") },
-              { id: "customers", title: "Customers", summary: `${totalCustomers} registered customers`, onOpen: () => handleSectionChange("customers") },
-              { id: "suppliers", title: "Suppliers", summary: `${totalSuppliers} suppliers`, onOpen: () => handleSectionChange("suppliers") },
+              { id: "products", title: "Products", summary: `${totalProducts} products in catalog`, readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products"), onOpen: () => handleSectionChange("products") },
+              { id: "customers", title: "Customers", summary: `${totalCustomers} registered customers`, readStatus: dashboardReadStatusFor("customers"), lastSuccessfulAt: dashboardLastSuccessFor("customers"), onOpen: () => handleSectionChange("customers") },
+              { id: "suppliers", title: "Suppliers", summary: `${totalSuppliers} suppliers`, readStatus: dashboardReadStatusFor("suppliers"), lastSuccessfulAt: dashboardLastSuccessFor("suppliers"), onOpen: () => handleSectionChange("suppliers") },
               {
                 id: "sales",
                 title: "Sales",
                 summary: `${recentSalesInvoices.length} recent sales transactions`,
+                readStatus: dashboardReadStatusFor("sales-transactions"),
+                lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions"),
                 onOpen: () => handleSectionChange("sales"),
                 children: recentSalesInvoices.length > 0 ? (
                   <div className="space-y-1 mt-1">
@@ -16101,6 +16361,8 @@ setCustomerOrganizationName("");
                 id: "purchases",
                 title: "Purchases",
                 summary: `${recentPurchaseInvoices.length} recent purchases`,
+                readStatus: dashboardReadStatusFor("purchase-transactions"),
+                lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions"),
                 onOpen: () => handleSectionChange("purchases"),
                 children: recentPurchaseInvoices.length > 0 ? (
                   <div className="space-y-1 mt-1">
@@ -16117,6 +16379,8 @@ setCustomerOrganizationName("");
                 id: "inventory",
                 title: "Inventory",
                 summary: `${reorderRecommendationSummary.urgentReorderCount} items need reorder`,
+                readStatus: dashboardReadStatusFor("products"),
+                lastSuccessfulAt: dashboardLastSuccessFor("products"),
                 badge: reorderRecommendationSummary.urgentReorderCount > 0 ? "Action needed" : undefined,
                 badgeColor: "warning" as const,
                 onOpen: () => handleSectionChange("inventory"),
@@ -16167,14 +16431,28 @@ setCustomerOrganizationName("");
               else if (label === "View Inventory") handleSectionChange("inventory");
             }}
             onKPIClick={(title) => {
-              if (title === "Today's Sales" || title === "Orders Today") handleSectionChange("sales");
+              if (title === "Pending Approvals") {
+                setSalesTab("orders");
+                setSalesOrderStatusFilter("pending_approval");
+                refreshSalesOrders();
+                handleSectionChange("sales");
+              }
+              else if (title === "Collection Tasks" || title === "Customer Follow-ups" || title === "Expiring Stock Checks") {
+                setTaskFilter("all");
+                setTaskSearch("");
+                handleSectionChange("task-manager");
+              }
+              else if (title === "Unpaid Purchases" || title === "Outstanding Payables") handleSectionChange("supplier-payments");
+              else if (title === "Today's Sales" || title === "Orders Today") handleSectionChange("sales");
               else if (title === "Today's Profit" || title === "Profit Margin") handleSectionChange("profit-loss");
-              else if (title === "Inventory Value" || title === "Low Stock Alerts") handleSectionChange("inventory");
+              else if (title === "Inventory Value" || title === "Low Stock Alerts" || title === "Urgent Reorders") handleSectionChange("inventory");
               else if (title === "Outstanding Receivables" || title === "Customers Today") handleSectionChange("customers");
-              else if (title === "Outstanding Payables") handleSectionChange("supplier-payments");
             }}
           />
         )}
+        {activeSection === "dashboard" && !staffDashboardData.isStaff && setupStage !== "active" && setupImportWidget}
+        {activeSection === "dashboard" && quickSaleWidget}
+        {activeSection === "dashboard" && !staffDashboardData.isStaff && businessRecordsExportWidget}
 
         {activeSectionAllowed && activeSection === "business-intelligence" && (
         <section className="mb-8 rounded border border-border bg-muted/30 p-5">
@@ -17712,12 +17990,15 @@ setCustomerOrganizationName("");
             )}
           </div>
           <div className="space-y-4" {...entryNavigationHandlers}>
+            {productsReadStatus === "failed" && (
+              <ProductCatalogErrorBanner onRetry={retryProductsLoad} hasStaleData={products.length > 0} />
+            )}
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
-              products={activeProducts} customers={activeCustomers} total={currentSalesInvoiceTotal} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} focusSignal={saleScanFocus}
+              products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
               onScan={code => { try { const product = findBarcodeProduct(products, code); clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); return String(product.id); } catch (error) { setSalesError(error instanceof Error ? error.message : "Barcode not found."); return null; } }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSaleScanFocus(value => value + 1); } }}
-              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
+              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">Open Retail POS</button>
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
@@ -17740,7 +18021,7 @@ setCustomerOrganizationName("");
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Customer</span>
-                <ProductSearchSelect label="Customer" searchPlaceholder="Search customer, shop or phone" value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} products={activeCustomers.map(customer => ({ id: customer.id, label: [customer.customer_name, customer.shop_name, customer.phone].filter(Boolean).join(" — ") }))} />
+                <ProductSearchSelect label="Customer" searchPlaceholder="Search customer, shop or phone" value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={invoiceCustomerOptions} />
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
@@ -17811,17 +18092,15 @@ setCustomerOrganizationName("");
                   </span>
                 </span>
                 <input
-                  type="number"
+                  type="text" inputMode="decimal"
                   value={salesDiscountAmount}
                   onChange={(e) => {
                     clearCreditOverrideState();
                     setSalesDiscountAmount(e.target.value);
                   }}
-                  min="0"
-                  max={salesDiscountType === "percent" ? "100" : undefined}
-                  step="0.01"
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
+                {currentSaleDraft.issues.find(issue => issue.field === "invoice_discount") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "invoice_discount")?.message}</span>}
                 <span className="text-xs text-muted-foreground/80">
                   {salesDiscountType === "percent"
                     ? "Percentage deducted from the line subtotal before tax."
@@ -17832,17 +18111,15 @@ setCustomerOrganizationName("");
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Tax Rate % (Optional)</span>
                 <input
-                  type="number"
+                  type="text" inputMode="decimal"
                   value={salesTaxRate}
                   onChange={(e) => {
                     clearCreditOverrideState();
                     setSalesTaxRate(e.target.value);
                   }}
-                  min="0"
-                  max="100"
-                  step="0.01"
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
+                {currentSaleDraft.issues.find(issue => issue.field === "tax") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "tax")?.message}</span>}
                 <span className="text-xs text-muted-foreground/80">
                   Tax is computed on the subtotal after discount (future-ready GST/VAT).
                 </span>
@@ -17856,8 +18133,8 @@ setCustomerOrganizationName("");
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>Customer credit policy: {creditPolicyLabels[selectedCustomerCreditPolicy] ?? "Cash Only"}</div>
                   <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
-                  <div>Current invoice total: {pkrFormatter.format(currentSalesInvoiceTotal)}</div>
-                  <div>Projected balance: {pkrFormatter.format(projectedCustomerBalance)}</div>
+                  <div>Current invoice total: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
+                  <div>Projected balance: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(projectedCustomerBalance)}</div>
                   {policyUsesCreditLimit(selectedCustomerCreditPolicy) && (
                     <div>Credit limit: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
                   )}
@@ -17880,8 +18157,8 @@ setCustomerOrganizationName("");
                 <h3 className="mb-2 text-base font-medium">Owner Override Required</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
-                  <div>Current invoice total: {pkrFormatter.format(currentSalesInvoiceTotal)}</div>
-                  <div>Projected balance: {pkrFormatter.format(projectedCustomerBalance)}</div>
+                  <div>Current invoice total: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
+                  <div>Projected balance: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(projectedCustomerBalance)}</div>
                   {creditOverrideConfirmation.overLimit && (
                     <>
                       <div>Credit limit: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
@@ -17947,7 +18224,7 @@ setCustomerOrganizationName("");
                       <div className="grid gap-2 sm:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
-                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={activeProducts.map(product => ({ id: String(product.id), label: [product.name, brands.find(brand => brand.id === product.brand_id)?.name, product.sku].filter(Boolean).join(" — ") }))} />
+                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={invoiceProductOptions} rankedFields={invoiceProductRankFields} />
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -17974,47 +18251,45 @@ setCustomerOrganizationName("");
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
                           <input
-                            type="number"
-                            required min="0.000001" step="any"
+                            type="text" inputMode="decimal"
                             value={line.quantity}
                             onChange={(e) => handleSalesLineChange(index, "quantity", e.target.value)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
+                          {currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "quantity") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "quantity")?.message}</span>}
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
                           <input
-                            type="number"
-                            required min="0" step="any"
+                            type="text" inputMode="decimal"
                             value={line.selling_price}
                             onChange={(e) => handleSalesLineChange(index, "selling_price", e.target.value)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
+                          {currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "selling_price") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "selling_price")?.message}</span>}
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Line Discount</span>
                           <input
-                            type="number"
+                            type="text" inputMode="decimal"
                             value={line.discount}
                             onChange={(e) => handleSalesLineChange(index, "discount", e.target.value)}
-                            min="0"
-                            step="0.01"
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
+                          {currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "discount") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "discount")?.message}</span>}
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Bonus (free)</span>
                           <input
-                            type="number"
+                            type="text" inputMode="decimal"
                             value={line.bonus}
                             onChange={(e) => handleSalesLineChange(index, "bonus", e.target.value)}
-                            min="0"
-                            step="0.01"
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
+                          {currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "bonus") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "bonus")?.message}</span>}
                         </label>
                       </div>
                     </div>
@@ -18034,19 +18309,21 @@ setCustomerOrganizationName("");
 
             {salesLines.length > 0 && (
               <div className="rounded border border-border bg-card p-4 text-sm text-foreground/80">
-                <div className="flex justify-between"><span>Line Subtotal</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price), 0))}</span></div>
+                {currentSaleDraft.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received").map(issue => <p key={issue.field + issue.message} className="mb-2 text-destructive" role="alert">{issue.message}</p>)}
+                {!currentSaleAmounts && <p className="mb-2 text-destructive" role="status">Sale totals are unavailable until all fields are valid.</p>}
+                <div className="flex justify-between"><span>Line Subtotal</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.lineSubtotal) : "Unavailable"}</span></div>
                 {(salesLines.some((line) => Number(line.discount) > 0) || salesDiscountAmount.trim() !== "") && (
-                  <div className="flex justify-between"><span>Line Discounts</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + (Number(line.discount) || 0), 0))}</span></div>
+                  <div className="flex justify-between"><span>Line Discounts</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.lineDiscount) : "Unavailable"}</span></div>
                 )}
                 {salesDiscountAmount.trim() !== "" && (
-                  <div className="flex justify-between"><span>Invoice Discount{salesDiscountType === "percent" ? ` (${Number(salesDiscountAmount)}%)` : ""}</span><span>{pkrFormatter.format(salesDiscountType === "percent" ? (salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) * Number(salesDiscountAmount)) / 100 : (Number(salesDiscountAmount) || 0))}</span></div>
+                  <div className="flex justify-between"><span>Invoice Discount{salesDiscountType === "percent" ? ` (${salesDiscountAmount}%)` : ""}</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.invoiceDiscount) : "Unavailable"}</span></div>
                 )}
-                {salesTaxRate.trim() !== "" && Number(salesTaxRate) > 0 && (
-                  <div className="flex justify-between"><span>Tax ({Number(salesTaxRate)}%)</span><span>{pkrFormatter.format((Math.max(0, salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) - (salesDiscountType === "percent" ? (salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) * Number(salesDiscountAmount)) / 100 : (Number(salesDiscountAmount) || 0))) * Number(salesTaxRate)) / 100)}</span></div>
+                {salesTaxRate.trim() !== "" && (
+                  <div className="flex justify-between"><span>Tax ({salesTaxRate}%)</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.tax) : "Unavailable"}</span></div>
                 )}
                 <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium text-foreground">
                   <span>Invoice Total</span>
-                  <span>{pkrFormatter.format(currentSalesInvoiceTotal)}</span>
+                  <span>{currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(currentSalesInvoiceTotal)}</span>
                 </div>
               </div>
             )}
@@ -18054,7 +18331,7 @@ setCustomerOrganizationName("");
             <button
               type="button"
               onClick={() => handleCreateSalesInvoice()}
-              disabled={salesInvoiceLoading}
+              disabled={salesInvoiceLoading || !salesLines.length || !selectedCustomerIdForSale || !currentSaleDraft.valid}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
               {salesInvoiceLoading ? "Saving..." : isOwnerOrAdmin() ? "Save Sales Invoice" : "Send for owner approval"}
@@ -20868,19 +21145,33 @@ setCustomerOrganizationName("");
 
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Existing Products</h2>
+            <h2 ref={productsListHeadingRef} tabIndex={-1} className="text-xl font-medium text-foreground">Existing Products</h2>
             <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
+              <SearchSuggestField
+                key={searchScopeKey}
+                label="Search products"
                 placeholder="Search by name, SKU, barcode, brand, category..."
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none sm:w-72"
+                value={productSearch}
+                onChange={setProductSearch}
+                items={productSuggestionData.items}
+                rankedFields={productSuggestionData.rankFields}
+                selectedId={selectedProductId}
+                onSelectItem={(selection) => setSelectedProductId(selection?.id ?? null)}
+                onViewAll={() => productsListHeadingRef.current?.focus()}
+                status={
+                  productsReadStatus === "failed"
+                    ? "error"
+                    : productsReadStatus === "loading" || productsReadStatus === "not-loaded"
+                      ? "loading"
+                      : "ready"
+                }
+                inputClassName="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                className="relative min-w-0 w-full sm:w-72"
               />
               {productSearch && (
                 <button
                   type="button"
-                  onClick={() => setProductSearch("")}
+                  onClick={() => { setProductSearch(""); setSelectedProductId(null); }}
                   className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-muted"
                 >
                   Clear
@@ -20888,16 +21179,14 @@ setCustomerOrganizationName("");
               )}
             </div>
           </div>
-          {productsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading products...</p>
-          ) : filteredProducts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {products.length === 0
-                ? "No products found."
-                : `No products match "${productSearch.trim()}".`}
-            </p>
-          ) : (
-            <ul className="space-y-2">
+          {(productsReadStatus === "successful-populated" || productsReadStatus === "failed") && filteredProducts.length > 0 ? (
+            <>
+              {productsReadStatus === "failed" && (
+                <div className="mb-3">
+                  <ProductCatalogErrorBanner onRetry={retryProductsLoad} hasStaleData={products.length > 0} />
+                </div>
+              )}
+              <ul className="space-y-2">
               {filteredProducts.map((product) => {
                 const brand = brands.find((b) => b.id === product.brand_id);
                 const category = categories.find((c) => c.id === product.category_id);
@@ -20908,7 +21197,15 @@ setCustomerOrganizationName("");
                   >
                     <div className="space-y-1">
                       <div className="text-sm font-medium text-foreground">
-                        {product.name}
+                        {highlightSearchMatches(product.name, productSearch).map((segment, index) =>
+                          segment.match ? (
+                            <mark key={index} className="rounded-sm bg-primary/10 px-px text-inherit">
+                              {segment.text}
+                            </mark>
+                          ) : (
+                            <span key={index}>{segment.text}</span>
+                          ),
+                        )}
                         {product.is_active === false && (
                           <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Inactive</span>
                         )}
@@ -20941,16 +21238,25 @@ setCustomerOrganizationName("");
                       <button
                         type="button"
                         onClick={() => handleArchiveProduct(product.id)}
-                        disabled={product.is_active === false}
+                        disabled={product.is_active === false || archivingProductId === product.id}
                         className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90 disabled:cursor-not-allowed disabled:bg-muted"
                       >
-                        Archive
+                        {archivingProductId === product.id ? "Archiving..." : "Archive"}
                       </button>
                     </div>
                   </li>
                 );
               })}
             </ul>
+            </>
+          ) : (
+            <ProductCatalogState
+              status={productsReadStatus}
+              searchQuery={productSearch}
+              matchCount={filteredProducts.length}
+              hasProducts={products.length > 0}
+              onRetry={retryProductsLoad}
+            />
           )}
         </section>
         </>
@@ -21149,22 +21455,29 @@ setCustomerOrganizationName("");
           <div className="mt-6 space-y-4">
             <div>
               <label className="mb-2 block text-sm font-medium text-foreground/80">Search Customers</label>
-              <input
-                type="text"
-                value={customerSearch}
-                onChange={(e) => setCustomerSearch(e.target.value)}
+              <SearchSuggestField
+                key={searchScopeKey}
+                label="Search customers"
                 placeholder="Search by name, shop, or phone"
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                value={customerSearch}
+                onChange={setCustomerSearch}
+                items={customerSuggestionData.items}
+                rankedFields={customerSuggestionData.rankFields}
+                selectedId={selectedCustomerId}
+                onSelectItem={(selection) => setSelectedCustomerId(selection?.id ?? null)}
+                onViewAll={() => customersListHeadingRef.current?.focus()}
+                status={customersReadStatus === "failed" ? "error" : customersReadStatus === "loading" || customersReadStatus === "not-loaded" ? "loading" : "ready"}
               />
             </div>
 
             <div>
-              <h3 className="mb-3 text-lg font-medium text-foreground">Existing Customers</h3>
-              {customersLoading ? (
-                <p className="text-sm text-muted-foreground">Loading customers...</p>
-              ) : filteredCustomers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No customers found.</p>
-              ) : (
+              <h3 ref={customersListHeadingRef} tabIndex={-1} className="mb-3 text-lg font-medium text-foreground">Existing Customers</h3>
+              {customersReadStatus === "failed" && (
+                <div className="mb-3">
+                  <CustomerCatalogErrorBanner onRetry={retryCustomersLoad} hasStaleData={customers.length > 0} />
+                </div>
+              )}
+              {(customersReadStatus === "successful-populated" || customersReadStatus === "failed") && filteredCustomers.length > 0 ? (
                 <ul className="space-y-2">
                   {filteredCustomers.map((customer) => {
                     const policy = customer.credit_policy ?? "cash_only";
@@ -21298,6 +21611,14 @@ setCustomerOrganizationName("");
                     );
                   })}
                 </ul>
+              ) : (
+                <CustomerCatalogState
+                  status={customersReadStatus}
+                  searchQuery={customerSearch}
+                  matchCount={filteredCustomers.length}
+                  hasCustomers={customers.length > 0}
+                  onRetry={retryCustomersLoad}
+                />
               )}
             </div>
           </div>

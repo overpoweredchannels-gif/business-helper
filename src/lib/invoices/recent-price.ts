@@ -1,3 +1,5 @@
+import { subunitPriceFromMain } from "@/lib/tradeos/units";
+
 type UnitMode = "main" | "subunit";
 export function applyRecentLinePrice<T extends { unit_mode?: UnitMode; selling_price: string }>(
   line: T,
@@ -10,7 +12,7 @@ export function applyRecentLinePrice<T extends { unit_mode?: UnitMode; selling_p
   if (mode !== recent.unit_mode) {
     const pack = Number(product.units_per_pack);
     if (!Number.isFinite(pack) || pack <= 0) return line;
-    price = mode === "subunit" ? price / pack : price * pack;
+    price = mode === "subunit" ? subunitPriceFromMain(price, pack) : price * pack;
   }
   return Number.isFinite(price) ? { ...line, selling_price: String(price) } : line;
 }

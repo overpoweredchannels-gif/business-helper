@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { ChevronRight, ArrowUpRight } from "lucide-react";
 import { useState } from "react";
+import { dashboardReadStatusLabel, type DashboardReadStatus } from "@/lib/dashboard/data-read-state";
 
 interface SmartModuleProps {
   title: string;
@@ -11,10 +12,15 @@ interface SmartModuleProps {
   children?: React.ReactNode;
   badge?: string;
   badgeColor?: "default" | "warning" | "success" | "danger";
+  readStatus?: DashboardReadStatus;
+  lastSuccessfulAt?: string;
 }
 
-export function SmartModule({ title, summary, onOpen, children, badge, badgeColor = "default" }: SmartModuleProps) {
+export function SmartModule({ title, summary, onOpen, children, badge, badgeColor = "default", readStatus = "successful-populated", lastSuccessfulAt }: SmartModuleProps) {
   const [expanded, setExpanded] = useState(false);
+  const readComplete = readStatus === "successful-empty" || readStatus === "successful-populated";
+  const visibleChildren = readComplete ? children : undefined;
+  const readLabel = dashboardReadStatusLabel(readStatus);
 
   const badgeStyles = {
     default: "bg-muted text-muted-foreground",
@@ -27,7 +33,7 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
     <div className="rounded-xl border border-border bg-card transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.08)]">
       <button
         onClick={() => {
-          if (children) {
+          if (visibleChildren) {
             setExpanded(!expanded);
           } else if (onOpen) {
             onOpen();
@@ -36,7 +42,7 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
         className="w-full flex items-center justify-between p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
       >
         <div className="flex items-center gap-3 min-w-0">
-          {children && (
+          {visibleChildren && (
             <ChevronRight
               className={cn(
                 "size-4 text-light-text transition-transform duration-200 shrink-0",
@@ -53,7 +59,8 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
                 </span>
               )}
             </div>
-            <p className="text-xs text-light-text mt-0.5 truncate">{summary}</p>
+            <p className="text-xs text-light-text mt-0.5 truncate">{readLabel ?? summary}</p>
+            {readStatus === "failed" && lastSuccessfulAt && <p className="text-[11px] text-muted-foreground">Last successful update: {new Date(lastSuccessfulAt).toLocaleString()}</p>}
           </div>
         </div>
         {onOpen && (
@@ -66,9 +73,9 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
           </button>
         )}
       </button>
-      {expanded && children && (
+      {expanded && visibleChildren && (
         <div className="border-t border-border px-4 py-3 animate-slideUp">
-          {children}
+          {visibleChildren}
         </div>
       )}
     </div>

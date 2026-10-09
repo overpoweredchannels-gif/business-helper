@@ -179,6 +179,7 @@ export const DEFAULT_PRINT_TEMPLATES: Record<PrintDocumentType, PrintTemplate> =
     name: "Default Retail Receipt",
     description: "A compact counter-sale receipt with barcode-friendly product lines, total, cash received and change.",
     docType: "retail_receipt",
+    receiptWidthMm: 80,
     fontFamily: "Arial, Helvetica, sans-serif",
     page: { background: "#ffffff", ink: "#000000", rule: "#000000" },
     header: { showOrgName: true, orgNameSizePx: 18, orgNamePosition: "top", showOrgAddress: false, showOrgPhone: false, contactSizePx: 9, headingText: "Sales Receipt", headingSizePx: 12, metaSizePx: 9, showSalesman: false, showCustomer: true, showCustomerCity: false, showDate: true, showInvoiceNo: true, dateLabel: "Date" },
