@@ -9,6 +9,7 @@ import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigati
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
 import { buildAtomicSaleReceipt } from "@/lib/print/retail-receipt";
+import { formatAvailableStock } from "@/lib/products/stock-display";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
@@ -1572,17 +1573,16 @@ export default function Home() {
 
     let resolvedProfile = profile;
     if (!profile.auth_user_id && profile.id && profile.organization_id) {
-      const { error: authLinkError } = await supabase
-        .from("profiles")
-        .update({ auth_user_id: userId })
-        .eq("id", profile.id)
-        .eq("organization_id", profile.organization_id)
-        .is("auth_user_id", null);
+      const authLinkResponse = await authorizedFetch("/api/identity/profile/current", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ link_auth_user: true }),
+      });
 
       if (profileRequestId !== profileLoadRequestRef.current) return;
 
-      if (authLinkError) {
-        console.error("Profile auth_user_id link error:", JSON.stringify(authLinkError, null, 2));
+      if (!authLinkResponse.ok) {
+        console.error("Profile auth_user_id link error:", authLinkResponse.status);
       } else {
         resolvedProfile = { ...profile, auth_user_id: userId };
         console.log("Profile auth_user_id linked successfully:", {
@@ -15385,12 +15385,13 @@ setCustomerOrganizationName("");
     };
 
     try {
-      const { error } = await withSessionRetry(supabase.auth, () => supabase
-        .from("profiles")
-        .update(updatePayload)
-        .eq("id", profileId)
-        .eq("organization_id", currentOrganizationId));
-      if (error) throw new Error(error.message);
+      const response = await authorizedFetch("/api/identity/profiles", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile_id: profileId, ...updatePayload }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Could not update staff profile.");
     } catch (error) {
       setStaffPermissionError(error instanceof Error ? error.message : "Could not update staff profile. Please retry Save.");
       return;
@@ -20933,7 +20934,7 @@ setCustomerOrganizationName("");
               </div>
               <div>
                 <div className="text-xs text-muted-foreground/80">Available Stock</div>
-                <div className="text-sm font-medium text-foreground">{getAvailableStockForProduct(productToView.id)}</div>
+                <div className="text-sm font-medium tabular-nums text-foreground">{formatAvailableStock(getAvailableStockForProduct(productToView.id))}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground/80">Minimum Stock Level</div>
@@ -23226,7 +23227,7 @@ setCustomerOrganizationName("");
                           navigationItems.find((item) => item.id === sectionId)?.label ?? sectionId
                         );
                       const permissionSummary = grantedSectionLabels;
-                      const profileIsOwnerOrAdmin = !profile.role || profile.role === "owner" || profile.role === "admin";
+                      const profileIsOwnerOrAdmin = profile.role === "owner" || profile.role === "admin";
 
                       return (
                         <tr key={profile.id}>
@@ -23330,7 +23331,7 @@ setCustomerOrganizationName("");
             </label>
             {(() => {
               const selectedProfile = staffProfiles.find((profile) => profile.id === selectedStaffProfileId);
-              const selectedProfileIsOwner = selectedProfile?.role === "owner" || !selectedProfile?.role;
+              const selectedProfileIsOwner = selectedProfile?.role === "owner";
 
               if (!selectedProfile) {
                 return <p className="mt-4 text-sm text-muted-foreground">Select a staff member to edit permissions.</p>;
@@ -24492,7 +24493,7 @@ setCustomerOrganizationName("");
                               </button>
                               <div className="text-xs text-muted-foreground/80">{profile.email ?? "No email"}</div>
                             </td>
-                            <td className="px-3 py-3">{profile.role ?? "owner"}</td>
+                            <td className="px-3 py-3">{profile.role ?? "staff"}</td>
                             <td className="px-3 py-3">
                               <span className={`rounded px-2 py-1 text-xs font-medium ${
                                 isOnDuty ? "bg-success/10 text-success" : "bg-muted text-foreground/80"

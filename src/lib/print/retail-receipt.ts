@@ -1,4 +1,5 @@
 import { calculateSaleAmounts, calculateSaleLineTotal, roundMoney } from "@/lib/sales/sale-amounts";
+import { formatDate } from "@/lib/tradeos/formatters";
 import type { PrintTemplate } from "./print-template-types";
 
 export type ReceiptLine = {
@@ -104,7 +105,9 @@ export function buildAtomicSaleReceipt(
   return {
     ...details,
     number: String(transaction.invoice_number ?? ""),
-    date: String(transaction.sale_date ?? details.fallbackDate),
+    // A sale date is a calendar day, not a UTC instant. Local midnight avoids
+    // shifting date-only values to yesterday in browsers west of UTC.
+    date: formatDate(String(transaction.sale_date ?? details.fallbackDate).replace(/^(\d{4}-\d{2}-\d{2})$/, "$1T00:00:00")),
     customer: result.customer_name || "Customer",
     lineSubtotal: calculated.lineSubtotal,
     lineDiscount: calculated.lineDiscount,

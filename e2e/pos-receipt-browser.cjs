@@ -76,8 +76,21 @@
       await page.addInitScript(() => {
         window.__posPrintCalls = [];
         window.__posPrintEvents = [];
+        window.__holdReceiptAnimation = false;
+        window.__receiptAnimationHeld = false;
+        window.__disableReceiptPrint = false;
         window.addEventListener('beforeprint', () => window.parent.__posPrintEvents.push('beforeprint'));
         window.addEventListener('afterprint', () => window.parent.__posPrintEvents.push('afterprint'));
+        if (window.frameElement) {
+          const requestAnimationFrame = window.requestAnimationFrame.bind(window);
+          window.requestAnimationFrame = callback => {
+            if (window.parent.__holdReceiptAnimation) {
+              window.parent.__receiptAnimationHeld = true;
+              return 0;
+            }
+            return requestAnimationFrame(callback);
+          };
+        }
         window.print = function () {
           if (!window.frameElement) return;
           window.dispatchEvent(new Event('beforeprint'));
@@ -88,6 +101,7 @@
           });
           window.parent.__posPrintFrame = window;
         };
+        if (window.frameElement && window.parent.__disableReceiptPrint) window.print = undefined;
       });
       await page.goto(`http://127.0.0.1:${server.address().port}/?width=${width}`);
       await page.getByRole('heading', { name: 'POS receipt browser fixture' }).waitFor();
@@ -119,19 +133,63 @@
       assert.equal(await printButton.isDisabled(), true, 'printing locks repeated actions until afterprint cleanup');
       let print = await page.evaluate(() => window.__posPrintCalls[0]);
       assert.match(print.title, /S-SYNTH-001/);
-      await savePdfAndInspect(browser, print.html, width, 'first-sale', output);
       await page.evaluate(() => window.__posPrintFrame.dispatchEvent(new Event('afterprint')));
       await page.waitForFunction(() => window.__posPrintEvents.includes('afterprint'));
       await page.waitForFunction(() => !document.querySelector('iframe[title^="Print receipt"]'));
       assert.equal(await printButton.isDisabled(), false, 'mocked cancel/afterprint restores the print action');
+      await savePdfAndInspect(browser, print.html, width, 'first-sale', output);
+
+      await page.evaluate(() => { window.__receiptAnimationHeld = false; window.__holdReceiptAnimation = true; });
+      await printButton.click();
+      await page.waitForFunction(() => window.__receiptAnimationHeld && [...document.querySelectorAll('[role="dialog"] button')].some(button => button.textContent?.includes('Preparing receipt')));
+      assert.equal(await dialog.getByRole('button', { name: 'Close' }).isDisabled(), false, 'Close stays enabled during receipt preparation');
+      await dialog.getByRole('button', { name: 'Close' }).click();
+      await dialog.waitFor({ state: 'detached' });
+      await page.waitForFunction(() => !document.querySelector('iframe[title^="Print receipt"]'));
+
+      await page.evaluate(() => { window.__holdReceiptAnimation = false; });
+      await openReceipt.click();
+      await dialog.waitFor();
+      await page.evaluate(() => { window.__receiptAnimationHeld = false; window.__holdReceiptAnimation = true; });
+      await dialog.getByRole('button', { name: 'Print receipt' }).click();
+      await page.waitForFunction(() => window.__receiptAnimationHeld && [...document.querySelectorAll('[role="dialog"] button')].some(button => button.textContent?.includes('Preparing receipt')));
+      await page.keyboard.press('Escape');
+      await dialog.waitFor({ state: 'detached' });
+      await page.waitForFunction(() => !document.querySelector('iframe[title^="Print receipt"]'));
+
+      await page.evaluate(() => { window.__holdReceiptAnimation = false; });
+      await openReceipt.click();
+      await dialog.waitFor();
+      await page.evaluate(() => { window.__disableReceiptPrint = true; });
+      const failedPrintButton = dialog.getByRole('button', { name: 'Print receipt' });
+      await failedPrintButton.click();
+      await page.getByRole('alert').filter({ hasText: 'could not be prepared' }).waitFor();
+      assert.equal(await failedPrintButton.isDisabled(), false, 'print capability failure restores the print action');
+      await page.waitForFunction(() => !document.querySelector('iframe[title^="Print receipt"]'));
+      await page.evaluate(() => { window.__disableReceiptPrint = false; });
+
+      await page.evaluate(() => { window.__holdReceiptAnimation = true; });
+      await printButton.click();
+      await page.waitForFunction(() => !document.querySelector('iframe[title^="Print receipt"]'));
+      assert.equal(await printButton.isDisabled(), false, 'stalled animation preparation times out and restores printing');
+      assert.ok(await page.getByRole('alert').filter({ hasText: 'could not be prepared' }).isVisible());
+      await page.evaluate(() => { window.__holdReceiptAnimation = false; });
 
       await printButton.click();
       await page.waitForFunction(() => window.__posPrintCalls.length === 2);
       print = await page.evaluate(() => window.__posPrintCalls[1]);
       assert.match(print.title, /S-SYNTH-001/, 'reprint still targets the first receipt');
-      await page.evaluate(() => window.__posPrintFrame.dispatchEvent(new Event('afterprint')));
       await page.waitForFunction(() => !document.querySelector('iframe[title^="Print receipt"]'));
+      await page.waitForFunction(() => ![...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent?.includes('Print receipt'))?.disabled);
 
+      await dialog.getByRole('button', { name: 'Close' }).click();
+      await openReceipt.click();
+      await dialog.waitFor();
+      await dialog.getByRole('button', { name: 'Print receipt' }).click();
+      await page.waitForFunction(() => window.__posPrintCalls.length === 3);
+      print = await page.evaluate(() => window.__posPrintCalls[2]);
+      assert.match(print.title, /S-SYNTH-001/, 'closing and reopening preserves the saved receipt');
+      await page.waitForFunction(() => !document.querySelector('iframe[title^="Print receipt"]'));
       await dialog.getByRole('button', { name: 'Close' }).click();
       await page.getByRole('button', { name: 'Select second synthetic sale' }).click();
       await page.getByRole('button', { name: 'Receipt for S-SYNTH-002', exact: true }).click();
@@ -140,17 +198,16 @@
       assert.equal(await secondDialog.locator('tbody tr').count(), 40, 'long receipt has all 40 lines');
       assert.ok((await secondDialog.innerText()).includes('100,000,000,293.12'), 'second sale has its distinct large confirmed total');
       await secondDialog.getByRole('button', { name: 'Print receipt' }).click();
-      await page.waitForFunction(() => window.__posPrintCalls.length === 3);
-      print = await page.evaluate(() => window.__posPrintCalls[2]);
+      await page.waitForFunction(() => window.__posPrintCalls.length === 4);
+      print = await page.evaluate(() => window.__posPrintCalls[3]);
       assert.match(print.title, /S-SYNTH-002/, 'switching sales prints the second receipt');
       assert.ok(print.text.includes('S-SYNTH-002') && !print.text.includes('S-SYNTH-001'), 'generated document contains no stale first-sale content');
       assert.equal((print.html.match(/data-receipt-line=/g) || []).length, 40, 'generated long document includes every receipt line');
       await savePdfAndInspect(browser, print.html, width, 'second-sale-long', output);
-      await page.evaluate(() => window.__posPrintFrame.dispatchEvent(new Event('afterprint')));
       await page.waitForFunction(() => !document.querySelector('iframe[title^="Print receipt"]'));
       assert.deepEqual(errors, [], `${width}mm receipt flow has no browser errors`);
       await page.close();
-      console.log(`PASS ${width}mm browser receipt: preview, fractional/large values, 40-line print document, rapid repeated action lock, mocked cancel cleanup, reprint, and second-sale switch.`);
+      console.log(`PASS ${width}mm browser receipt: preview, fractional/large values, 40-line print document, repeated action lock, mocked cancel/afterprint, Close/Escape preparation cancellation, print failure recovery, reopen, reprint, and second-sale switch.`);
     }
   } finally {
     if (browser) await browser.close();

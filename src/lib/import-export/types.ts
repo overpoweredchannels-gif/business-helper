@@ -110,6 +110,7 @@ export interface ExportFilters {
 }
 
 export interface ImportContext {
+  updateStaffProfile?: (profileId: string, updates: Record<string, unknown>) => Promise<unknown>;
   previewOnly?: boolean;
   cutoverDate?: string;
   orgId: string;

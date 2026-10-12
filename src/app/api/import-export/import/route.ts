@@ -1,6 +1,8 @@
 import { reviewImportDuplicates } from "@/lib/import-export/review";
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
+import { ProfileService } from "@/lib/identity/services/profile-service";
+import { canImportStaffEntity } from "@/lib/import-export/staff-profile-update";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { getEntityConfig } from "@/lib/import-export/registry";
 import { readImportFile, parseCellValue, validateParsedRow, buildPreviewResult, importErrorMessage, runImport } from "@/lib/import-export/processor";
@@ -38,6 +40,9 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const entityKey = String(formData.get("entity_key") ?? "");
+    if (!canImportStaffEntity(entityKey, permission.actor.isOwner)) {
+      return NextResponse.json({ ok: false, error: "Owner access required for staff imports." }, { status: 403 });
+    }
     const mode = String(formData.get("mode") ?? "preview");
     const duplicateModeValue = String(formData.get("duplicate_mode") ?? "error");
     const duplicateMode = duplicateModeValue as "skip" | "update" | "error";
@@ -109,6 +114,7 @@ export async function POST(request: NextRequest) {
     const stats: ImportStats = { totalRows: rows.length, newCount: 0, updateCount: 0, skipCount: 0, errorCount: 0, warningCount: 0 };
     const fileName = requestedFileName || file.name;
     const importContext: ImportContext = {
+      updateStaffProfile: (id, updates) => new ProfileService().updateStaffProfile(permission.actor!, id, updates),
       orgId,
       previewOnly: true,
       cutoverDate: String(formData.get("cutover_date") ?? ""),

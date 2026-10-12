@@ -4,6 +4,7 @@
 // This config handles importing staff with their section permissions.
 
 import type { EntityImportConfig, ImportFieldDef } from "../types";
+import { updateImportedStaffProfile } from "../staff-profile-update";
 
 function parseBool(raw: string): boolean | null {
   const normalized = raw.trim().toLowerCase();
@@ -102,12 +103,11 @@ export const staffImportConfig: EntityImportConfig = {
     const profileId = (existing as any).id;
     
     // Update profile
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({ display_name: payload.display_name, role: payload.role, is_active: payload.is_active })
-      .eq("id", profileId)
-      .eq("organization_id", ctx.orgId);
-    if (profileError) throw profileError;
+    await updateImportedStaffProfile(profileId, {
+      display_name: payload.display_name,
+      role: payload.role,
+      is_active: payload.is_active,
+    }, ctx.updateStaffProfile);
 
     // Update staff_permissions
     const v = (existing as any).rawValues as Record<string, unknown>;

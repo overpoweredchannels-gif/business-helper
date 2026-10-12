@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { cloneDefaultTemplate } from "../src/lib/print/default-templates";
 import { buildAtomicSaleReceipt, buildPrintableReceiptHtml, getReceiptSummaryRows, type Receipt } from "../src/lib/print/retail-receipt";
+import { formatAvailableStock } from "../src/lib/products/stock-display";
 
 const confirmedReceipt = buildAtomicSaleReceipt({
   customer_name: "Walk-in",
@@ -12,6 +13,7 @@ const confirmedReceipt = buildAtomicSaleReceipt({
   items: [{ product_name: "Small Pack", quantity: "0.125", selling_price: "1000.00", discount: "0.01", bonus: "0.000", unit_mode: "main", unit_type: "Case" }],
 }, { scope: "org:owner", business: "Corner Shop", fallbackDate: "today", fallbackPayment: "credit" });
 assert.equal(confirmedReceipt.lines[0]?.quantity, "0.125");
+assert.equal(confirmedReceipt.date, "26-Sept-2026", "saved sale dates use the app's Pakistan date format");
 assert.equal(confirmedReceipt.lineSubtotal, 125);
 assert.equal(confirmedReceipt.lineDiscount, 0.01);
 assert.equal(confirmedReceipt.subtotal, 124.99);
@@ -42,6 +44,13 @@ assert.deepEqual(summary.map(row => row.label), [
 ]);
 assert.equal(summary.find(row => row.label === "Total")?.amount, 147.15);
 assert.equal(summary.find(row => row.label === "Change due")?.amount, 52.85);
+assert.equal(formatAvailableStock(0), "0", "available stock keeps explicit zero visible");
+assert.equal(formatAvailableStock(0.125), "0.125", "available stock keeps fractional quantity visible");
+assert.equal(formatAvailableStock(null), "0", "missing stock uses the existing zero fallback");
+assert.equal(formatAvailableStock("0.125"), "0.125");
+assert.equal(formatAvailableStock(-0.125), "-0.125");
+assert.equal(formatAvailableStock(Number.NaN), "0");
+assert.equal(formatAvailableStock(Infinity), "0");
 
 const smallTemplate = cloneDefaultTemplate("retail_receipt");
 smallTemplate.receiptWidthMm = 58;

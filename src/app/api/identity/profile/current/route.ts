@@ -22,7 +22,12 @@ export async function PATCH(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const service = new ProfileService();
-  const updated = await service.updateProfile(context.actor, body);
-
-  return NextResponse.json({ profile: updated });
+  try {
+    const updated = body.link_auth_user === true
+      ? await service.linkCurrentAuthUser(context.actor)
+      : await service.updateProfile(context.actor, body);
+    return NextResponse.json({ profile: updated });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update profile." }, { status: 400 });
+  }
 }
