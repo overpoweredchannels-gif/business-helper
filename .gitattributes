@@ -1,0 +1,4 @@
+# Preserve reviewed database-release artifact bytes and SHA-256 on all checkouts.
+/docs/evidence/* -text whitespace=cr-at-eol
+/scripts/profile-release-state.sql -text
+/src/lib/migrations/20261011_staff_profile_role_access.sql -text

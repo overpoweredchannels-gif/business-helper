@@ -2,6 +2,12 @@
 
 Status: code changes prepared; database migration is **not applied**.
 
+2026-10-13 correction: fresh read-only metadata and the revised release scope are in
+[`DB_RELEASE_PLAN_da88c3d.md`](DB_RELEASE_PLAN_da88c3d.md). The older explicit column-grant
+claim below is superseded: all column ACLs are NULL; effective column access comes from
+table grants. The old UPDATE-only migration was insufficient because authenticated
+INSERT has WITH CHECK true. Its proposed revision remains unapplied.
+
 ## Findings
 
 The inspected disposable project was `rtfowunsyrdygyvubnvs`. Read-only PostgreSQL metadata showed:
@@ -14,7 +20,7 @@ The application’s employee form already defaulted to `salesman`, and employee 
 
 ## Prepared database change
 
-[`20261011_staff_profile_role_access.sql`](../src/lib/migrations/20261011_staff_profile_role_access.sql) changes only future `role` defaults and profile write privileges/policy. It does not update existing profile rows. It revokes table and per-column `UPDATE` from `anon` and `authenticated`; server-side service-role writes remain available. Review and apply it through the normal migration process before relying on the direct-table write restriction.
+[`20261011_staff_profile_role_access.sql`](../src/lib/migrations/20261011_staff_profile_role_access.sql) proposes the future role default, removal of INSERT/UPDATE policies and client non-read table/column privileges. Expanded scope now includes a fail-closed owner/admin helper requiring explicit role and active status; its organization/security-check/staff-permission callers retain their policies. It does not update existing profile rows. Captured metadata verifies independent service_role grants; BYPASSRLS does not bypass ordinary grants. [Local validation](PROFILE_DB_RELEASE_VALIDATION_da88c3d.md) passed 128 checks. Server writer compatibility and fresh remote preflight remain separately required.
 
 ## Verification evidence and limits
 

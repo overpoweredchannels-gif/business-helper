@@ -1,0 +1,8 @@
+{
+  "scripts/profile-release-state.sql": "96e82e55174aa5153d431f6630a20c4c99114e97f85479a8258f5eae1d5177be",
+  "docs/evidence/PROFILE_RELEASE_PRE_da88c3d.json": "315cc00d98a5a482c959c9b272dcc22ba1f86c0ad54c59a29055a72d356ec734",
+  "docs/evidence/PROFILE_RELEASE_POST_da88c3d.json": "8f569d253b169b3a92276bc81182c83e7a04050df605080c9d9bae7a4e54b61c",
+  "src/lib/migrations/20261011_staff_profile_role_access.sql": "45f9270a6ee4ade69bcdc5d1de140afdd94aaf17cd503a7616fd70c455c3c453",
+  "docs/evidence/PROFILE_AUTHORIZATION_ROLLBACK_da88c3d.sql": "e6b805fec5ba409ffa07f186d9493616f82d23f532eccf02aedcadcd55782b3f",
+  "docs/evidence/PROFILE_RELEASE_PREFLIGHT_da88c3d.sql": "b9d23f2ab6588f033447ea24cd4b7e4c9040917a32c7c7101ac2de861e848dd6"
+}
