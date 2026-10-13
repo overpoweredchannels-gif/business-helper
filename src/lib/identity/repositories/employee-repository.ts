@@ -11,6 +11,17 @@ const EMPLOYEE_COLUMNS = `
 `;
 
 export class EmployeeRepository {
+  constructor(private readonly createClient = createSupabaseService) {}
+
+  /** Server-only invitation lookup; general employee projections omit invite secrets. */
+  async findForInvitation(id: string, organizationId: string): Promise<Employee | null> {
+    const { data, error } = await this.createClient().from("employees")
+      .select(`${EMPLOYEE_COLUMNS}, login_id, hidden_email, invite_code, invite_status, invite_expires_at`)
+      .eq("id", id).eq("organization_id", organizationId).maybeSingle();
+    if (error) throw error;
+    return data as Employee | null;
+  }
+
   async findByOrganization(organizationId: string): Promise<Employee[]> {
     const supabase = createSupabaseService();
     const { data, error } = await supabase

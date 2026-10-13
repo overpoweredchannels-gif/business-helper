@@ -53,7 +53,11 @@ export interface StaffLoginResult {
 const HIDDEN_EMAIL_DOMAIN = "staff.tradeos.internal";
 
 export class StaffOnboardingService {
-  private readonly employeeRepository = new EmployeeRepository();
+  private readonly employeeRepository: EmployeeRepository;
+
+  constructor(private readonly createClient = createSupabaseService) {
+    this.employeeRepository = new EmployeeRepository(createClient);
+  }
 
   /** Owner generates a Profile ID + invite for an employee. No email needed. */
   async generateInvite(actor: ActorContext, employeeId: string): Promise<StaffInviteResult> {
@@ -64,7 +68,7 @@ export class StaffOnboardingService {
       return { ok: false, error: "Organization context required." };
     }
 
-    const employee = await this.employeeRepository.findById(employeeId);
+    const employee = await this.employeeRepository.findForInvitation(employeeId, actor.organizationId);
     if (!employee || employee.organization_id !== actor.organizationId) {
       return { ok: false, error: "Employee not found in this organization." };
     }
@@ -72,7 +76,7 @@ export class StaffOnboardingService {
       return { ok: false, error: "This employee has already accepted their invitation." };
     }
 
-    const supabase = createSupabaseService();
+    const supabase = this.createClient();
 
     // If already invited (pending), return existing invite data instead of creating duplicates.
     if (employee.invite_status === "pending" && employee.login_id && employee.hidden_email && employee.invite_code) {

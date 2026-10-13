@@ -47,7 +47,7 @@ export const staffImportConfig: EntityImportConfig = {
   existingColumns: "id, email, display_name, role, is_active, organization_id",
   
   fields: [
-    { key: "email", label: "Email", type: "text", required: true, unique: true, preview: true, width: 220, help: "Required. Unique login email." },
+    { key: "email", label: "Email", type: "text", required: true, unique: true, preview: true, width: 220, help: "Required. Existing profile login email in this organization (from Staff export), not employee contact email or Profile ID. Create new staff through Employees → Invite first." },
     { key: "name", label: "Name", type: "text", required: true, preview: true, width: 180, help: "Display name." },
     { key: "role", label: "Role", type: "select", required: false, preview: true, width: 160, parse: parseRole, options: ["owner", "manager", "salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor", "staff"], defaultValue: "staff", help: "Base role (permissions inherit from role)." },
     { key: "is_active", label: "Active", type: "boolean", required: false, preview: true, width: 80, defaultValue: true, parse: (s) => s?.trim().toLowerCase() === "yes" || s?.trim() === "1" || s?.trim().toLowerCase() === "true" ? true : s?.trim().toLowerCase() === "no" || s?.trim() === "0" || s?.trim().toLowerCase() === "false" ? false : null },
@@ -89,13 +89,19 @@ export const staffImportConfig: EntityImportConfig = {
   async findExisting(row, ctx) {
     const v = row.values as Record<string, unknown>;
     if (!v.email) return null;
-    const { data } = await ctx.supabase
+    const { data, error } = await ctx.supabase
       .from("profiles")
       .select("id")
       .eq("organization_id", ctx.orgId)
       .eq("email", String(v.email).trim().toLowerCase())
       .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("No staff profile matches this login email in your organization. Use Employees → Invite to provision new staff, then use the profile login email from Staff export. Employee contact email and Profile ID are not matching keys.");
     return data as any;
+  },
+
+  async createRecord() {
+    throw new Error("Staff import only updates existing profiles. Use Employees → Invite to provision new staff first.");
   },
 
   async applyUpdate(existing, payload, ctx) {

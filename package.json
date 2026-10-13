@@ -12,7 +12,7 @@
     "test:gateway": "tsx scripts/run-gateway-validation.ts",
     "test:supplier": "tsx scripts/test-supplier-service.ts",
     "test:purchase": "tsx scripts/test-purchase-service.ts",
-    "test:identity": "tsx scripts/test-identity-authorization.ts",
+    "test:identity": "tsx scripts/test-identity-authorization.ts && tsx scripts/test-staff-invite-import.ts",
     "test:credentials": "tsx scripts/test-credential-security.ts",
     "test:tenant": "tsx scripts/test-tenant-context.ts",
     "test:invoice-number": "tsx scripts/test-invoice-number-service.ts",
