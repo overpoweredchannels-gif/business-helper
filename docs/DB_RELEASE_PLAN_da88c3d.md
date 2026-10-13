@@ -1,5 +1,7 @@
 # Database release plan — da88c3d
 
+2026-10-14 continuation: see [verified fixture findings and remaining attestation blockers](QA_FIXTURE_FINDINGS_e97be5c.md). TLS verify-full is restored; the runner explicitly supports the reviewed e97be5c deployment while retaining da88c3d as application baseline. Server provenance/fresh attestation and guarded preflight remain outstanding. The known staff-import case uses employee contact email rather than profile login email, then fails in the unsupported generic INSERT path; it does not establish failure of all matched updates. Pending invite reuse has a repository-projection defect. No application or database mutation was performed in this inspection.
+
 Status: **REVIEW ONLY. No remote migration, remote mutation test, production access, deployment or database configuration change performed.** Migration and rollback were executed only in an isolated local in-memory fixture: 128 checks passed. Revised 2026-10-13 from the supplied `DB_RELEASE_PLAN_da88c3d.pdf`; the PDF is preserved. See [guarded procedure and validation](PROFILE_DB_RELEASE_VALIDATION_da88c3d.md).
 
 Target is exclusively disposable Supabase project `rtfowunsyrdygyvubnvs`. Application baseline: `da88c3d56df58cf29e7d32debfcc1045d0ea01b4`, branch `review/tradeos-search-security-integration`, existing `tradeos-qa` deployment. The deployment revision and database project must be verified separately before runtime tests. This plan does not authorize its proposed mutations.

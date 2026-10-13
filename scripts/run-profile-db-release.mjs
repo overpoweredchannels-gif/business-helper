@@ -8,9 +8,25 @@ import { fileURLToPath } from 'node:url';
 
 export const projectRef = 'rtfowunsyrdygyvubnvs';
 export const commit = 'da88c3d56df58cf29e7d32debfcc1045d0ea01b4';
+export const reviewedDeploymentCommit = 'e97be5c240810cdb543553b9d06119104f5c3bf4';
+export const reviewedDeploymentId = 'dpl_DMKZMTBoccKMPquTUBXKeDLzXKp8';
+export const reviewedDeploymentUrl = 'https://tradeos-7carva1lw-overpoweredchannels-7830s-projects.vercel.app';
+export const databaseCaSha256 = '700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7';
+export function verifyDatabaseCa(bytes) {
+  if (crypto.createHash('sha256').update(bytes).digest('hex') !== databaseCaSha256) {
+    throw new Error('Official Supabase database CA hash mismatch; stop for review');
+  }
+}
 export function validateDeploymentEvidence(e, now = Date.now()) {
   if (e.projectRef !== projectRef || e.configuredSupabaseUrl !== `https://${projectRef}.supabase.co`
-    || e.projectName !== 'tradeos-qa' || e.gitCommit !== commit || e.environmentVerified !== true
+    || e.projectName !== 'tradeos-qa' || ![commit, reviewedDeploymentCommit].includes(e.gitCommit)
+    || e.applicationBaselineCommit !== commit || e.environmentVerified !== true
+    || e.clientSupabaseUrl !== `https://${projectRef}.supabase.co`
+    || e.serverSupabaseUrl !== `https://${projectRef}.supabase.co`
+    || e.serverCredentialProjectRef !== projectRef
+    || typeof e.clientConfigurationEvidence !== 'string' || !e.clientConfigurationEvidence.trim()
+    || typeof e.serverCredentialEvidence !== 'string' || !e.serverCredentialEvidence.trim()
+    || (e.gitCommit === reviewedDeploymentCommit && (e.deploymentId !== reviewedDeploymentId || e.deploymentUrl !== reviewedDeploymentUrl))
     || typeof e.deploymentId !== 'string' || !e.deploymentId.startsWith('dpl_')
     || typeof e.verifiedBy !== 'string' || !e.verifiedBy.trim()
     || e.source !== 'independent-read-only-QA-deployment-and-environment-inspection') {
@@ -47,7 +63,10 @@ function main() {
   const passfile = path.join(process.env.LOCALAPPDATA, 'TradeOS/pos-release-test/target.pgpass');
   if (!fs.existsSync(passfile)) throw new Error('Private disposable-project pgpass unavailable');
   // Fixed endpoint and project-qualified username; no arbitrary DSN/host/project argument.
-  const connection = `host=aws-0-ap-southeast-2.pooler.supabase.com port=5432 dbname=postgres user=postgres.${projectRef} sslmode=verify-full sslrootcert=system connect_timeout=10`;
+  const caFile = path.join(process.env.LOCALAPPDATA, 'TradeOS/pos-release-test/prod-ca-2021.crt');
+  verifyDatabaseCa(fs.readFileSync(caFile));
+  const quotedCaFile = caFile.replaceAll('\\', '/').replaceAll("'", "\\'");
+  const connection = `host=aws-0-ap-southeast-2.pooler.supabase.com port=5432 dbname=postgres user=postgres.${projectRef} sslmode=verify-full sslrootcert='${quotedCaFile}' connect_timeout=10`;
   const context = `select set_config('tradeos.release_project_ref','${projectRef}',false), set_config('tradeos.release_deployment','tradeos-qa',false), set_config('tradeos.release_commit','${commit}',false);\n`;
   const sql = context + fs.readFileSync(path.join(root, file), 'utf8');
   // Remove inherited libpq options; target credentials come only from the pinned passfile.

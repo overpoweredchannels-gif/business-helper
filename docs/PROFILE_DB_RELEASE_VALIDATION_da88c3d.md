@@ -1,5 +1,7 @@
 # Profile authorization release: guarded procedure and local validation
 
+2026-10-14 runner update: [current findings](QA_FIXTURE_FINDINGS_e97be5c.md) supersede the earlier TLS and exact-deployment restrictions below. TLS now uses the SHA-256-pinned official local Supabase CA with verify-full. Evidence must retain `applicationBaselineCommit=da88c3d56df58cf29e7d32debfcc1045d0ea01b4`; `gitCommit` may also be the exact reviewed e97be5c SHA, only with the pinned deployment ID/URL. Separately required evidence fields are `clientSupabaseUrl`, `serverSupabaseUrl`, `serverCredentialProjectRef`, `clientConfigurationEvidence` and `serverCredentialEvidence`. The last two are sanitized references to genuine deployment-specific verification, not key material or guessed statements. All former target, provenance, identity and one-hour freshness guards remain. SQL artifact hashes are unchanged.
+
 2026-10-13. Review only. No remote changes authorized or performed.
 
 ## Final artifacts
