@@ -8,9 +8,11 @@ import { fileURLToPath } from 'node:url';
 
 export const projectRef = 'rtfowunsyrdygyvubnvs';
 export const commit = 'da88c3d56df58cf29e7d32debfcc1045d0ea01b4';
-export const reviewedDeploymentCommit = 'e97be5c240810cdb543553b9d06119104f5c3bf4';
-export const reviewedDeploymentId = 'dpl_DMKZMTBoccKMPquTUBXKeDLzXKp8';
-export const reviewedDeploymentUrl = 'https://tradeos-7carva1lw-overpoweredchannels-7830s-projects.vercel.app';
+// Application source approved independently of deployment attestation, 2026-10-15.
+export const reviewedDeploymentCommit = 'c8af1bb256a6d66929a90b1d3aa8c83230f7ab27';
+// Populate only after reviewing genuine evidence for the new exact deployment.
+export const reviewedDeploymentId = null;
+export const reviewedDeploymentUrl = null;
 export const databaseCaSha256 = '700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7';
 export function verifyDatabaseCa(bytes) {
   if (crypto.createHash('sha256').update(bytes).digest('hex') !== databaseCaSha256) {
@@ -19,14 +21,14 @@ export function verifyDatabaseCa(bytes) {
 }
 export function validateDeploymentEvidence(e, now = Date.now()) {
   if (e.projectRef !== projectRef || e.configuredSupabaseUrl !== `https://${projectRef}.supabase.co`
-    || e.projectName !== 'tradeos-qa' || ![commit, reviewedDeploymentCommit].includes(e.gitCommit)
+    || e.projectName !== 'tradeos-qa' || e.gitCommit !== reviewedDeploymentCommit
     || e.applicationBaselineCommit !== commit || e.environmentVerified !== true
     || e.clientSupabaseUrl !== `https://${projectRef}.supabase.co`
     || e.serverSupabaseUrl !== `https://${projectRef}.supabase.co`
     || e.serverCredentialProjectRef !== projectRef
     || typeof e.clientConfigurationEvidence !== 'string' || !e.clientConfigurationEvidence.trim()
     || typeof e.serverCredentialEvidence !== 'string' || !e.serverCredentialEvidence.trim()
-    || (e.gitCommit === reviewedDeploymentCommit && (e.deploymentId !== reviewedDeploymentId || e.deploymentUrl !== reviewedDeploymentUrl))
+    || (reviewedDeploymentId !== null && (e.deploymentId !== reviewedDeploymentId || e.deploymentUrl !== reviewedDeploymentUrl))
     || typeof e.deploymentId !== 'string' || !e.deploymentId.startsWith('dpl_')
     || typeof e.verifiedBy !== 'string' || !e.verifiedBy.trim()
     || e.source !== 'independent-read-only-QA-deployment-and-environment-inspection') {
@@ -34,6 +36,9 @@ export function validateDeploymentEvidence(e, now = Date.now()) {
   }
   const age = now - Date.parse(e.verifiedAt);
   if (!Number.isFinite(age) || age < 0 || age > 60 * 60 * 1000) throw new Error('QA evidence must be verified within one hour');
+  if (!reviewedDeploymentId || !reviewedDeploymentUrl) {
+    throw new Error('Approved c8af1bb application candidate awaits verified exact QA deployment binding; preflight blocked');
+  }
   // This is a trusted operator attestation, not a claim to re-read Vercel settings.
   // Never fill these fields from guesses or from the desired configuration.
 }
