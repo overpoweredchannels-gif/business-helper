@@ -1,0 +1,20 @@
+{
+  "projectRef": "rtfowunsyrdygyvubnvs",
+  "configuredSupabaseUrl": "https://rtfowunsyrdygyvubnvs.supabase.co",
+  "projectName": "tradeos-qa",
+  "gitCommit": "d1bd245d6986061c073681f834e97743bb238b88",
+  "applicationBaselineCommit": "da88c3d56df58cf29e7d32debfcc1045d0ea01b4",
+  "deploymentId": "dpl_3omNBFWdAhkQR9PqBQyXyVD9YC47",
+  "deploymentUrl": "https://tradeos-nu3scr876-overpoweredchannels-7830s-projects.vercel.app",
+  "environmentVerified": true,
+  "clientSupabaseUrl": "https://rtfowunsyrdygyvubnvs.supabase.co",
+  "serverSupabaseUrl": "https://rtfowunsyrdygyvubnvs.supabase.co",
+  "serverCredentialProjectRef": "rtfowunsyrdygyvubnvs",
+  "clientConfigurationEvidence": "OPPRESSO EVIDENCE_FOR_CODEX_d1bd245.md: exact deployment bundle instantiates the client with the disposable URL; only one Supabase hostname observed.",
+  "serverCredentialEvidence": "Operator attestation in OPPRESSO report: UMAIR privately copied existing disposable service_role key into tradeos-qa scopes; dashboard save 2026-10-15 01:58:16 PKT precedes exact redeployment 02:14:54 PKT. Source uses same NEXT_PUBLIC_SUPABASE_URL as inspected bundle and SUPABASE_SERVICE_ROLE_KEY. Observed application outcomes support this; individual Auth Admin calls are inferred from reviewed code, not captured requests. No secret independently decoded.",
+  "verifiedBy": "OPPRESSO (Muse report), reviewed by Codex",
+  "reportPath": "C:/Users/Usman Laptops/OneDrive/Documents/evidence.md",
+  "reportSha256": "acbe355d4c2d8a1367c31775f958d7d5718332632faa2c0219d58e87a0b3aa3e",
+  "verifiedAt": "2026-10-15T02:14:00+05:00",
+  "source": "independent-read-only-QA-deployment-and-environment-inspection"
+}

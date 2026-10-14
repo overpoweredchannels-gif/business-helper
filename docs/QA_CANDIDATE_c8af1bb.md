@@ -1,5 +1,19 @@
 # QA candidate approval and Option B handoff — 2026-10-15
 
+## Current binding and preflight result
+
+Muse's full report has now been reviewed. Local runner binding is dpl_3omNBFWdAhkQR9PqBQyXyVD9YC47 at https://tradeos-nu3scr876-overpoweredchannels-7830s-projects.vercel.app, exact SHA d1bd245d6986061c073681f834e97743bb238b88. Fresh guarded read-only preflight PASSED within the report's one-hour window. This supersedes the historical pending-binding statements below. See STAFF_IMPORT_FAILURE_d1bd245.md for evidence qualification, the separate failed hosted import baseline, and proposed local containment. No migration or rollback is authorized. Local application edits are not part of that deployed SHA.
+
+## Superseding approval — d1bd245, 2026-10-15
+
+Approved replacement frozen QA candidate: d1bd245d6986061c073681f834e97743bb238b88. This supersedes the c8af1bb-only deployment instructions below. Muse is authorized by the user's instruction to redeploy this exact revision on tradeos-qa with the newly saved QA key, preserving existing environment scopes and protection. No production-app deployment is authorized.
+
+Exact c8af1bb-to-d1bd245 diff contains only this document, scripts/run-profile-db-release.mjs and scripts/test-profile-release-runner.mjs. Both commits have identical src tree 26f026e6ebdd91be85ea9d3f0fc35603ab9ff883. Dependencies, lockfiles, build/runtime configuration and deployment scripts are unchanged. The changed standalone release runner is not referenced by application source or package build/start commands; its changed behavior is restricted to manual database-release validation. No tracked application/deployment behavior change was found. Vercel-side settings and actual rebuild output still require fresh deployment evidence.
+
+Manifest verification passes for all reviewed database artifacts. The manifest itself remains SHA256 acbf586940b214d4dd58b12603057fa365715bb65630bcc799fb5c921017141e. Application baseline da88c3d and original database package e97be5c remain separate. Local runner/tests now pin only d1bd245 and reject c8af1bb and arbitrary revisions. Deployment ID/URL stay null until verified evidence arrives. These local bookkeeping edits must not be committed/pushed before Muse redeploys.
+
+Muse handoff: deploy d1bd245d6986061c073681f834e97743bb238b88 on tradeos-qa only; return fresh deployment ID, full SHA, immutable URL, unchanged protection/scopes, actual client/server disposable-target evidence, private completed key-source confirmation, and authorized synthetic application/server-writer baseline outcomes with resulting state. A saved-key report is not independent verification of the hidden value. No diagnostic endpoint, migration or rollback. Guarded preflight remains blocked pending this evidence and exact binding.
+
 ## Exact revision assessment
 
 Approved application candidate: c8af1bb256a6d66929a90b1d3aa8c83230f7ab27, for tradeos-qa only. This is source approval, not deployment or runtime verification. Do not deploy the subsequent runner/documentation commit instead.

@@ -9,10 +9,10 @@ import { fileURLToPath } from 'node:url';
 export const projectRef = 'rtfowunsyrdygyvubnvs';
 export const commit = 'da88c3d56df58cf29e7d32debfcc1045d0ea01b4';
 // Application source approved independently of deployment attestation, 2026-10-15.
-export const reviewedDeploymentCommit = 'c8af1bb256a6d66929a90b1d3aa8c83230f7ab27';
-// Populate only after reviewing genuine evidence for the new exact deployment.
-export const reviewedDeploymentId = null;
-export const reviewedDeploymentUrl = null;
+export const reviewedDeploymentCommit = 'd1bd245d6986061c073681f834e97743bb238b88';
+// Bound to reviewed Muse report EVIDENCE_FOR_CODEX_d1bd245.md (2026-10-15).
+export const reviewedDeploymentId = 'dpl_3omNBFWdAhkQR9PqBQyXyVD9YC47';
+export const reviewedDeploymentUrl = 'https://tradeos-nu3scr876-overpoweredchannels-7830s-projects.vercel.app';
 export const databaseCaSha256 = '700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7';
 export function verifyDatabaseCa(bytes) {
   if (crypto.createHash('sha256').update(bytes).digest('hex') !== databaseCaSha256) {
@@ -37,7 +37,7 @@ export function validateDeploymentEvidence(e, now = Date.now()) {
   const age = now - Date.parse(e.verifiedAt);
   if (!Number.isFinite(age) || age < 0 || age > 60 * 60 * 1000) throw new Error('QA evidence must be verified within one hour');
   if (!reviewedDeploymentId || !reviewedDeploymentUrl) {
-    throw new Error('Approved c8af1bb application candidate awaits verified exact QA deployment binding; preflight blocked');
+    throw new Error('Approved d1bd245 application candidate awaits verified exact QA deployment binding; preflight blocked');
   }
   // This is a trusted operator attestation, not a claim to re-read Vercel settings.
   // Never fill these fields from guesses or from the desired configuration.

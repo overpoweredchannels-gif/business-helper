@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { StaffOnboardingService } from "../src/lib/identity/services/staff-onboarding-service";
-import { staffImportConfig } from "../src/lib/import-export/entities/staff";
+import { staffImportConfig, STAFF_IMPORT_UPDATE_BLOCKED } from "../src/lib/import-export/entities/staff";
 import type { ActorContext } from "../src/lib/identity/types";
 import type { ImportContext, ParsedRow } from "../src/lib/import-export/types";
 import { runImport, buildPreviewResult } from "../src/lib/import-export/processor";
@@ -50,14 +50,17 @@ async function inviteCase(status: string, expired = false, concurrent = false) {
 
 async function imports() {
   const stored: Record<string, unknown> = { id, organization_id: org, email: "local01@staff.tradeos.internal", role: "staff", display_name: "Before", is_active: true };
-  let lookupError: unknown = null, inserts = 0, updates = 0;
+  const before = structuredClone(stored);
+  const permissions = { granted_sections: ["sales"], can_create_sales: true };
+  const beforePermissions = structuredClone(permissions);
+  let lookupError: unknown = null, inserts = 0, updates = 0, permissionWrites = 0;
   const supabase = { from(table: string) {
     const filters: Record<string, string> = {};
     const query = {
       select() { return query; }, eq(key: string, value: string) { filters[key] = value; return query; },
       async maybeSingle() { assert.equal(table, "profiles"); return { data: lookupError ? null : filters.organization_id === org && filters.email === stored.email ? { id } : null, error: lookupError }; },
       insert() { inserts++; throw new Error("Unexpected profile INSERT"); },
-      async upsert() { assert.equal(table, "staff_permissions"); return { error: null }; },
+      async upsert() { assert.equal(table, "staff_permissions"); permissionWrites++; return { error: { code: "PGRST204", message: "Missing can_manage_ai_assistant" } }; },
     }; return query;
   }};
   const ctx = { orgId: org, supabase, duplicateMode: "update", existingCache: new Map(), refCaches: new Map(),
@@ -68,9 +71,24 @@ async function imports() {
   const existing = await staffImportConfig.findExisting!(row, ctx) as { id: string };
   assert.equal(existing.id, id);
   row.existingId = existing.id; row.status = "update";
+  const previewRow = structuredClone(row);
+  await staffImportConfig.reviewRows!([previewRow], ctx);
+  const blockedPreview = buildPreviewResult([], [previewRow], "update");
+  assert.equal(blockedPreview.stats.errorCount, 1);
+  assert.ok(previewRow.errors.includes(STAFF_IMPORT_UPDATE_BLOCKED));
+  // Bypass review deliberately: the execution guard must still prevent the
+  // former profile-success/permission-PGRST204 partial-write failure.
   const result = await runImport(staffImportConfig, buildPreviewResult([], [row], "update"), ctx);
-  assert.equal(result.updated, 1); assert.equal(result.failed, 0); assert.equal(updates, 1); assert.equal(inserts, 0);
-  assert.equal(stored.display_name, "After"); assert.equal(stored.role, "salesman"); assert.equal(stored.email, "local01@staff.tradeos.internal");
+  assert.equal(result.updated, 0); assert.equal(result.failed, 1);
+  assert.equal(result.failures[0].message, STAFF_IMPORT_UPDATE_BLOCKED);
+  assert.equal(permissionWrites, 0); assert.equal(updates, 0); assert.equal(inserts, 0);
+  assert.deepEqual(stored, before); assert.deepEqual(permissions, beforePermissions);
+  assert.equal(staffImportConfig.postImportHook, undefined, "No post-hook can reintroduce partial permission writes");
+  const skippedRow = structuredClone(row);
+  await staffImportConfig.reviewRows!([skippedRow], { ...ctx, duplicateMode: "skip" });
+  assert.equal(skippedRow.errors.length, 0);
+  const skipped = await runImport(staffImportConfig, buildPreviewResult([], [skippedRow], "skip"), { ...ctx, duplicateMode: "skip" });
+  assert.equal(skipped.skipped, 1); assert.equal(updates, 0); assert.equal(permissionWrites, 0);
   const unmatched = { ...row, values: { ...row.values, email: "contact@example.com" }, existingId: null, status: "new" as const };
   await assert.rejects(staffImportConfig.findExisting!(unmatched, ctx), /Employees → Invite/);
   await assert.rejects(staffImportConfig.findExisting!(row, { ...ctx, orgId: "other-org" }), /No staff profile matches/);
@@ -80,13 +98,13 @@ async function imports() {
   await assert.rejects(staffImportConfig.findExisting!(row, ctx), e => e === lookupError);
   lookupError = { code: "42501", message: "Lookup denied" };
   await assert.rejects(staffImportConfig.findExisting!(row, ctx), e => e === lookupError);
-  assert.equal(inserts, 0); assert.equal(updates, 1);
+  assert.equal(inserts, 0); assert.equal(updates, 0); assert.equal(permissionWrites, 0);
 }
 
 async function main() {
   await inviteCase("pending"); await inviteCase("accepted"); await inviteCase("pending", true);
   await inviteCase("pending", false, true);
   await imports();
-  console.log("PASS local invitation reuse/rejection/renewal and concurrent pending reuse: zero Auth/profile creates; matched staff UPDATE/state, mismatch, lookup errors and unsupported INSERT guard. No remote access.");
+  console.log("PASS local invitation cases; staff matching and lookup errors; preview and bypass rejection preserve profile/permission state with zero writes; skip and unsupported INSERT guards. No remote access.");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

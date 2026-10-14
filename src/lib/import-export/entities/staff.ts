@@ -4,7 +4,8 @@
 // This config handles importing staff with their section permissions.
 
 import type { EntityImportConfig, ImportFieldDef } from "../types";
-import { updateImportedStaffProfile } from "../staff-profile-update";
+
+export const STAFF_IMPORT_UPDATE_BLOCKED = "Staff import updates are temporarily paused to prevent partially saved profiles and permissions. This row was not changed. Use Staff & Permissions to review and save each change individually. Export and skipping existing rows remain available.";
 
 function parseBool(raw: string): boolean | null {
   const normalized = raw.trim().toLowerCase();
@@ -101,75 +102,22 @@ export const staffImportConfig: EntityImportConfig = {
   },
 
   async createRecord() {
-    throw new Error("Staff import only updates existing profiles. Use Employees → Invite to provision new staff first.");
+    throw new Error("Staff import cannot create accounts. Use Employees → Invite to create new staff. Import updates are temporarily paused; edit existing staff individually in Staff & Permissions.");
   },
 
-  async applyUpdate(existing, payload, ctx) {
-    const supabase = ctx.supabase;
-    const profileId = (existing as any).id;
-    
-    // Update profile
-    await updateImportedStaffProfile(profileId, {
-      display_name: payload.display_name,
-      role: payload.role,
-      is_active: payload.is_active,
-    }, ctx.updateStaffProfile);
-
-    // Update staff_permissions
-    const v = (existing as any).rawValues as Record<string, unknown>;
-    const grantedSections: string[] = [];
-    for (const section of SECTIONS) {
-      if (v[`perm_${section}`] === true) grantedSections.push(section);
+  async reviewRows(rows, ctx) {
+    if (ctx.duplicateMode !== "update") return;
+    for (const row of rows) {
+      if (row.existingId == null || row.errors.length) continue;
+      row.errors.push(STAFF_IMPORT_UPDATE_BLOCKED);
+      row.status = "error";
     }
-    if (v.granted_sections && Array.isArray(v.granted_sections)) {
-      for (const s of v.granted_sections) {
-        if (SECTIONS.includes(s) && !grantedSections.includes(s)) grantedSections.push(s);
-      }
-    }
-
-    const { error: permError } = await supabase
-      .from("staff_permissions")
-      .upsert({
-        profile_id: profileId,
-        organization_id: ctx.orgId,
-        granted_sections: grantedSections,
-        // Also set legacy boolean columns
-        ...Object.fromEntries(SECTIONS.map(s => [`can_manage_${s}`, grantedSections.includes(s)])),
-      }, { onConflict: "profile_id,organization_id" });
-    if (permError) throw permError;
-
-    return { ...(existing as Record<string, unknown>), ...payload };
   },
 
-  // Post-import: create staff_permissions rows for new profiles
-  async postImportHook(created, updated, ctx) {
-    const supabase = ctx.supabase;
-    const all = [...created, ...updated] as any[];
-    
-    for (const item of all) {
-      const v = item.rawValues as Record<string, unknown>;
-      const profileId = item.id;
-      if (!profileId) continue;
-      
-      const grantedSections: string[] = [];
-      for (const section of SECTIONS) {
-        if (v[`perm_${section}`] === true) grantedSections.push(section);
-      }
-      if (v.granted_sections && Array.isArray(v.granted_sections)) {
-        for (const s of v.granted_sections) {
-          if (SECTIONS.includes(s) && !grantedSections.includes(s)) grantedSections.push(s);
-        }
-      }
-
-      await supabase
-        .from("staff_permissions")
-        .upsert({
-          profile_id: profileId,
-          organization_id: ctx.orgId,
-          granted_sections: grantedSections,
-          ...Object.fromEntries(SECTIONS.map(s => [`can_manage_${s}`, grantedSections.includes(s)])),
-        }, { onConflict: "profile_id,organization_id" });
-    }
+  // Also fail closed when a caller bypasses HTTP preview. No compensating writes:
+  // a remote two-request sequence cannot guarantee atomic profile/permission state.
+  async applyUpdate() {
+    throw new Error(STAFF_IMPORT_UPDATE_BLOCKED);
   },
 
   export: {

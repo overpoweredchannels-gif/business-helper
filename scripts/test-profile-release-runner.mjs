@@ -4,8 +4,8 @@ import { validateDeploymentEvidence, validateMode, verifyManifest, verifyDatabas
 const now = Date.parse('2026-10-13T10:00:00Z');
 const valid = {
   projectRef, configuredSupabaseUrl: `https://${projectRef}.supabase.co`,
-  projectName: 'tradeos-qa', gitCommit: reviewedDeploymentCommit, deploymentId: 'dpl_synthetic_local_test',
-  deploymentUrl: 'https://synthetic-local-test.vercel.app',
+  projectName: 'tradeos-qa', gitCommit: reviewedDeploymentCommit, deploymentId: reviewedDeploymentId,
+  deploymentUrl: reviewedDeploymentUrl,
   environmentVerified: true, verifiedBy: 'local-test-only', verifiedAt: new Date(now).toISOString(),
   source: 'independent-read-only-QA-deployment-and-environment-inspection',
   applicationBaselineCommit: commit,
@@ -14,14 +14,16 @@ const valid = {
   clientConfigurationEvidence: 'synthetic test only: deployment client configuration observation',
   serverCredentialEvidence: 'synthetic test only: deployment credential provenance',
 };
-assert.equal(reviewedDeploymentCommit, 'c8af1bb256a6d66929a90b1d3aa8c83230f7ab27');
-assert.equal(reviewedDeploymentId, null);
-assert.equal(reviewedDeploymentUrl, null);
-assert.throws(() => validateDeploymentEvidence(valid, now), /awaits verified exact QA deployment binding/);
+assert.equal(reviewedDeploymentCommit, 'd1bd245d6986061c073681f834e97743bb238b88');
+assert.equal(reviewedDeploymentId, 'dpl_3omNBFWdAhkQR9PqBQyXyVD9YC47');
+assert.equal(reviewedDeploymentUrl, 'https://tradeos-nu3scr876-overpoweredchannels-7830s-projects.vercel.app');
+validateDeploymentEvidence(valid, now);
 const reviewed = valid;
 for (const override of [
   { gitCommit: '1111111111111111111111111111111111111111' },
   { gitCommit: commit },
+  { deploymentId: 'dpl_wrong' }, { deploymentUrl: 'https://wrong.vercel.app' },
+  { gitCommit: 'c8af1bb256a6d66929a90b1d3aa8c83230f7ab27' },
   { applicationBaselineCommit: reviewedDeploymentCommit }, { clientSupabaseUrl: undefined },
   { clientSupabaseUrl: 'https://wrong.supabase.co' }, { serverSupabaseUrl: 'https://wrong.supabase.co' },
   { serverCredentialProjectRef: 'wrong' }, { serverCredentialEvidence: '' }, { clientConfigurationEvidence: '' },
@@ -44,4 +46,4 @@ for (const mode of ['apply', 'rollback']) {
 assert.throws(() => validateMode('deploy'));
 verifyManifest(process.cwd());
 assert.throws(() => verifyDatabaseCa(Buffer.from('untrusted CA')), /CA hash mismatch/);
-console.log('PASS frozen c8af1bb candidate, pending deployment blocks execution, evidence validation, freshness, separate write approval guards, and artifact hashes. No psql or network invoked.');
+console.log('PASS frozen d1bd245 candidate and exact deployment binding, evidence validation, freshness, separate write approval guards, and artifact hashes. No psql or network invoked.');
