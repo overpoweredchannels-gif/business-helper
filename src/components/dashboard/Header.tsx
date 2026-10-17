@@ -233,6 +233,37 @@ export function Header({
     requestAnimationFrame(() => triggerRef.current?.focus());
   };
 
+  // Document-level Escape for portal-rendered help buttons.
+  // HelpCenter renders "?" buttons via React portals. React events follow the
+  // component tree, not the DOM tree, so the container onKeyDown does not
+  // receive events from portal buttons even when DOM-inside the container.
+  // This listener uses DOM containment (which works for portals) to close the
+  // popup when Escape is pressed on an adjacent help button.
+  useEffect(() => {
+    if (!notifOpen && !profileOpen) return;
+    const onDocKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('dialog[open]')) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      // Check if focus is on a portal help button inside our containers
+      // (DOM contains works for portals; React onKeyDown does not)
+      const inNotif = notifRef.current?.contains(target);
+      const inProfile = profileRef.current?.contains(target);
+      if (inNotif && notifOpen) {
+        e.stopPropagation();
+        setNotifOpen(false);
+        requestAnimationFrame(() => notifTriggerRef.current?.focus());
+      } else if (inProfile && profileOpen) {
+        e.stopPropagation();
+        setProfileOpen(false);
+        requestAnimationFrame(() => profileTriggerRef.current?.focus());
+      }
+    };
+    document.addEventListener('keydown', onDocKeyDown, true); // capture phase
+    return () => document.removeEventListener('keydown', onDocKeyDown, true);
+  }, [notifOpen, profileOpen]);
+
   // Account/organization scope change clears the parent-owned search text.
   // The keyed HeaderSearchBox remount clears its own open/active state, but
   // the query lives here — the key alone is insufficient. The scope key is
