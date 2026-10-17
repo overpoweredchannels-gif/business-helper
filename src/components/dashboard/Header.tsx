@@ -337,7 +337,10 @@ export function Header({
               )}
             </button>
             {notifOpen && (
-              <div className="fixed inset-x-3 top-16 z-50 sm:absolute sm:inset-x-auto sm:end-0 sm:top-full sm:mt-1 sm:w-80 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
+              <div
+                className="fixed inset-x-3 top-16 z-50 sm:absolute sm:inset-x-auto sm:end-0 sm:top-full sm:mt-1 sm:w-80 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn"
+                onKeyDown={(e) => { if (e.key === "Escape") setNotifOpen(false); }}
+              >
                 <div className="px-3 py-2 border-b border-border mb-1">
                   <p className="text-sm font-semibold text-foreground">{ui('header.notifications')}</p>
                 </div>
@@ -399,7 +402,10 @@ export function Header({
             {profileOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
-                <div className="absolute end-0 top-full mt-1 z-50 w-48 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
+                <div
+                  className="absolute end-0 top-full mt-1 z-50 w-48 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn"
+                  onKeyDown={(e) => { if (e.key === "Escape") setProfileOpen(false); }}
+                >
                   <div className="px-3 py-2 border-b border-border mb-1">
                     <p className="text-sm font-medium text-foreground truncate"><bdi>{userName || ui('header.userFallback')}</bdi></p>
                     {organizationName && (
