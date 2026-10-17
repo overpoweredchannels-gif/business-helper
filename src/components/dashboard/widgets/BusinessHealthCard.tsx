@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { DashboardReadStatus } from "@/lib/dashboard/data-read-state";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Metric {
   label: string;
@@ -18,6 +19,7 @@ interface BusinessHealthCardProps {
 }
 
 function CircularScore({ score }: { score: number }) {
+  const { t } = useRegional();
   const r = 44;
   const circ = 2 * Math.PI * r;
   const offset = circ - (score / 100) * circ;
@@ -37,27 +39,29 @@ function CircularScore({ score }: { score: number }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-3xl font-bold font-heading" style={{ color }}>{score}</span>
-        <span className="text-[10px] text-light-text font-medium uppercase tracking-wider">Score</span>
+        <span className="text-[10px] text-light-text font-medium uppercase tracking-wider">{t('dashboard.score')}</span>
       </div>
     </div>
   );
 }
 
 export function BusinessHealthCard({ score, metrics, readStatus = "successful-populated", lastSuccessfulAt, onRetry }: BusinessHealthCardProps) {
+  const { t, language } = useRegional();
+  const dateLocale = language === 'es' ? 'es-ES' : language === 'it' ? 'it-IT' : language === 'ur' ? 'ur-PK' : 'en-US';
   if (readStatus !== "successful-empty" && readStatus !== "successful-populated") {
-    const message = readStatus === "loading" ? "Loading business health…" : readStatus === "not-loaded" ? "Business health has not loaded." : "Business health is unavailable.";
+    const message = readStatus === "loading" ? t('dashboard.healthLoading') : readStatus === "not-loaded" ? t('dashboard.healthNotLoaded') : t('dashboard.healthUnavailable');
     return (
       <div role="status" aria-live="polite" className="rounded-xl border border-border bg-card p-5">
-        <h3 className="mb-2 text-sm font-semibold text-foreground">Business Health</h3>
+        <h3 className="mb-2 text-sm font-semibold text-foreground">{t('dashboard.businessHealth')}</h3>
         <p className="text-sm text-muted-foreground">{message}</p>
-        {readStatus === "failed" && lastSuccessfulAt && <p className="mt-1 text-xs text-muted-foreground">Last successful update: {new Date(lastSuccessfulAt).toLocaleString()}</p>}
-        {readStatus === "failed" && onRetry && <button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Retry dashboard reads</button>}
+        {readStatus === "failed" && lastSuccessfulAt && <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(dateLocale)}</p>}
+        {readStatus === "failed" && onRetry && <button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('dashboard.retryReads')}</button>}
       </div>
     );
   }
   return (
     <div className="rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
-      <h3 className="text-sm font-semibold text-foreground mb-4">Business Health</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-4">{t('dashboard.businessHealth')}</h3>
       <div className="flex items-start gap-6">
         <CircularScore score={score} />
         <div className="flex-1 grid gap-3">

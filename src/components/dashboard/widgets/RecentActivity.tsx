@@ -2,6 +2,8 @@
 
 import { cn } from "@/lib/utils";
 import { Clock, ArrowRight } from "lucide-react";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import type { MessageKey } from "@/lib/regional/messages";
 
 interface Activity {
   id: string;
@@ -20,13 +22,13 @@ const typeStyles = {
   task: "bg-muted text-muted-foreground",
 };
 
-const typeLabels: Record<string, string> = {
-  sale: "Sale",
-  purchase: "Purchase",
-  payment: "Payment",
-  stock: "Stock",
-  customer: "Customer",
-  task: "Task",
+const typeLabels: Record<string, MessageKey> = {
+  sale: "activity.sale",
+  purchase: "activity.purchase",
+  payment: "activity.payment",
+  stock: "activity.stock",
+  customer: "activity.customer",
+  task: "activity.task",
 };
 
 interface RecentActivityProps {
@@ -35,13 +37,14 @@ interface RecentActivityProps {
 }
 
 export function RecentActivity({ activities, onViewAll }: RecentActivityProps) {
+  const { t } = useRegional();
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-foreground">Recent Activity</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t('dashboard.recentActivity')}</h3>
         {onViewAll && (
           <button onClick={onViewAll} className="flex min-h-6 items-center gap-1 -mr-1.5 rounded px-1.5 text-xs font-medium text-primary hover:text-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            View all
+            {t('dashboard.viewAll')}
             <ArrowRight className="size-3" />
           </button>
         )}
@@ -55,7 +58,7 @@ export function RecentActivity({ activities, onViewAll }: RecentActivityProps) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className={cn("text-[11px] font-medium px-1.5 py-0.5 rounded", typeStyles[a.type])}>
-                    {typeLabels[a.type]}
+                    {t(typeLabels[a.type])}
                   </span>
                   <span className="text-xs text-light-text flex items-center gap-1">
                     <Clock className="size-3" />

@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import type { DashboardReadStatus } from "@/lib/dashboard/data-read-state";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface SparklineProps {
   data: number[];
@@ -50,9 +51,10 @@ interface KPICardProps {
 }
 
 export function KPICard({ title, value, readStatus = "successful-populated", lastSuccessfulAt, onRetry, trend, icon, sparklineData, onClick }: KPICardProps) {
+  const { t, ui, language } = useRegional();
   const isUp = (trend?.value ?? 0) >= 0;
   const readComplete = readStatus === "successful-empty" || readStatus === "successful-populated";
-  const shownValue = readComplete ? value : readStatus === "loading" ? "Loading…" : readStatus === "not-loaded" ? "Not loaded" : "Unavailable";
+  const shownValue = readComplete ? value : readStatus === "loading" ? ui('loading') : readStatus === "not-loaded" ? t('dashboard.notLoaded') : t('dashboard.unavailable');
   const Component = onClick && readComplete ? "button" : "div";
   return (
     <Component
@@ -70,10 +72,10 @@ export function KPICard({ title, value, readStatus = "successful-populated", las
         <div>
           <div role="status" aria-live="polite" className="text-2xl font-semibold tabular-nums text-foreground font-heading">{shownValue}</div>
           {readStatus === "failed" && lastSuccessfulAt && (
-            <p className="mt-1 text-xs text-muted-foreground">Last successful update: {new Date(lastSuccessfulAt).toLocaleString()}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(language === 'es' ? 'es-ES' : language === 'it' ? 'it-IT' : language === 'ur' ? 'ur-PK' : 'en-US')}</p>
           )}
           {readStatus === "failed" && onRetry && (
-            <button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Retry dashboard reads</button>
+            <button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('dashboard.retryReads')}</button>
           )}
           {readComplete && trend && (
             <div className={cn("flex items-center gap-1 mt-1 text-xs font-medium", isUp ? "text-success" : "text-destructive")}>

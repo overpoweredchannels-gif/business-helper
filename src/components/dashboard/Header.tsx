@@ -6,6 +6,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { activeSuggestionIndex } from "@/components/invoices/search-selection";
 import { SuggestionPopover, type SuggestionStatus, type SuggestionStatusNote } from "@/components/search/SuggestionPopover";
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 export interface SearchSuggestion {
   id: string;
@@ -92,6 +93,7 @@ function HeaderSearchBox({
   const activeIndex = activeSuggestionIndex(suggestions, "", active);
   const { anchorRef, placement, maxHeightPx } = useSuggestionPlacement(showPopover);
   const hasProductSuggestions = suggestions.some((suggestion) => suggestion.type === "product");
+  const { ui } = useRegional();
   // The product source reports independently of local section results:
   // sections stay visible while products load or fail, with an explicit
   // product-status message. Restricted callers pass no productStatus, so they
@@ -99,9 +101,9 @@ function HeaderSearchBox({
   // reported as "No matches".
   const productNote: SuggestionStatusNote | undefined =
     productStatus === "loading" && !hasProductSuggestions
-      ? { text: "Loading products…", variant: "info" }
+      ? { text: ui('header.loadingProducts'), variant: "info" }
       : productStatus === "error" && !hasProductSuggestions
-        ? { text: "Couldn't load products.", variant: "error" }
+        ? { text: ui('header.productsLoadError'), variant: "error" }
         : undefined;
   const panelStatus: SuggestionStatus = productStatus === "error" && hasProductSuggestions ? "error" : "ready";
 
@@ -119,13 +121,13 @@ function HeaderSearchBox({
         <input
           type="text"
           role="combobox"
-          aria-label="Search sections and products"
+          aria-label={ui('header.searchLabel')}
           aria-autocomplete="list"
           aria-expanded={showPopover}
           aria-controls={listId}
           aria-activedescendant={showPopover && suggestions.length ? `${listId}-${activeIndex}` : undefined}
           autoComplete="off"
-          placeholder="Search products..."
+          placeholder={ui('header.searchPlaceholder')}
           value={query}
           autoFocus={autoFocus}
           onChange={(e) => { onQueryChange(e.target.value); setActive(0); setOpen(true); }}
@@ -157,7 +159,7 @@ function HeaderSearchBox({
       {showPopover && (
         <SuggestionPopover
           listId={listId}
-          ariaLabel="Search suggestions"
+          ariaLabel={ui('header.searchSuggestions')}
           placement={placement}
           maxHeightPx={maxHeightPx}
           items={suggestions.map((suggestion) => ({
@@ -169,13 +171,13 @@ function HeaderSearchBox({
           activeIndex={activeIndex}
           query={trimmed}
           status={panelStatus}
-          staleText="Couldn't refresh products — showing saved results."
-          errorText="Couldn't load product results."
-          emptyText="No matches found."
+          staleText={ui('header.productsStale')}
+          errorText={ui('header.productsError')}
+          emptyText={ui('header.noMatches')}
           statusNote={productNote}
           footer={
             onViewAllProducts && hasProductSuggestions
-              ? { actionLabel: "See all results in Products", onAction: () => { setOpen(false); onViewAllProducts(trimmed); } }
+              ? { actionLabel: ui('header.seeAllProducts'), onAction: () => { setOpen(false); onViewAllProducts(trimmed); } }
               : undefined
           }
           onSelect={select}
@@ -207,6 +209,7 @@ export function Header({
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const notifRef = useRef<HTMLDivElement>(null);
+  const { ui } = useRegional();
 
   // Account/organization scope change clears the parent-owned search text.
   // The keyed HeaderSearchBox remount clears its own open/active state, but
@@ -264,7 +267,7 @@ export function Header({
         <div className="flex min-w-0 items-center gap-1 sm:gap-3 lg:hidden">
           <button
             onClick={onToggleMobileMenu}
-            aria-label="Open navigation menu"
+            aria-label={ui('header.openNav')}
             aria-expanded={mobileMenuOpen}
             className="size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
           >
@@ -302,7 +305,7 @@ export function Header({
           />
           <button
             onClick={() => setSearchOpen(!searchOpen)}
-            aria-label="Search sections and products"
+            aria-label={ui('header.searchLabel')}
             className="sm:hidden size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
           >
             {searchOpen ? <X className="size-4" /> : <Search className="size-4" />}
@@ -312,7 +315,8 @@ export function Header({
           <button
             onClick={onOpenAiAssistant}
             className="size-11 shrink-0 flex items-center justify-center rounded-lg text-primary hover:bg-primary-light transition-colors"
-            title="AI Assistant"
+            title={ui('header.aiAssistant')}
+            aria-label={ui('header.aiAssistant')}
           >
             <Sparkles className="size-4.5" />
           </button>
@@ -321,7 +325,7 @@ export function Header({
           <div ref={notifRef} className="relative">
             <button
               onClick={() => setNotifOpen(!notifOpen)}
-              aria-label="Notifications"
+              aria-label={ui('header.notifications')}
               className="relative size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
             >
               <Bell className="size-4.5" />
@@ -332,10 +336,10 @@ export function Header({
             {notifOpen && (
               <div className="fixed right-3 left-3 top-16 z-50 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:w-80 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
                 <div className="px-3 py-2 border-b border-border mb-1">
-                  <p className="text-sm font-semibold text-foreground">Notifications</p>
+                  <p className="text-sm font-semibold text-foreground">{ui('header.notifications')}</p>
                 </div>
                 {notifications.length === 0 ? (
-                  <p className="text-sm text-light-text px-3 py-6 text-center">No new notifications</p>
+                  <p className="text-sm text-light-text px-3 py-6 text-center">{ui('header.noNotifications')}</p>
                 ) : (
                   <div className="max-h-64 overflow-y-auto">
                     {notifications.map((n) => {
@@ -366,12 +370,12 @@ export function Header({
                 <button
                   type="button"
                   onClick={() => {
-                    onNotificationClick?.({ id: "notifications-center", title: "View all notifications", section: "notifications" });
+                    onNotificationClick?.({ id: "notifications-center", title: ui('header.viewAllNotifications'), section: "notifications" });
                     setNotifOpen(false);
                   }}
                   className="w-full text-center rounded-lg px-3 py-2 text-xs font-medium text-primary hover:bg-muted transition-colors"
                 >
-                  View all notifications
+                  {ui('header.viewAllNotifications')}
                 </button>
               </div>
             )}
@@ -386,14 +390,14 @@ export function Header({
               <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center">
                 <User className="size-3.5 text-primary" />
               </div>
-              <span className="hidden sm:inline text-sm font-medium max-w-[120px] truncate">{userName || "User"}</span>
+              <span className="hidden sm:inline text-sm font-medium max-w-[120px] truncate">{userName || ui('header.userFallback')}</span>
             </button>
             {profileOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
                 <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
                   <div className="px-3 py-2 border-b border-border mb-1">
-                    <p className="text-sm font-medium text-foreground truncate">{userName || "User"}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{userName || ui('header.userFallback')}</p>
                     {organizationName && (
                       <p className="text-[11px] text-light-text truncate">{organizationName}</p>
                     )}
@@ -403,7 +407,7 @@ export function Header({
                     className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive hover:bg-destructive/5 transition-colors"
                   >
                     <LogOut className="size-4" />
-                    Sign out
+                    {ui('header.signOut')}
                   </button>
                 </div>
               </>

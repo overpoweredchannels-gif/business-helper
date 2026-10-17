@@ -158,7 +158,7 @@ export function Sidebar({
                     type="button"
                     onPointerDown={(e) => startDrag(e, item.id)}
                     className="shrink-0 cursor-grab touch-none pl-1 text-muted-foreground hover:text-foreground active:cursor-grabbing"
-                    title="Drag to reorder"
+                    title={navigationText('Drag to reorder',language)}
                   >
                     <GripVertical className="size-3.5" />
                   </button>
@@ -167,7 +167,7 @@ export function Sidebar({
                     onClick={() => onMoveItem?.(item.id, "up")}
                     disabled={index === 0}
                     className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    title="Move up"
+                    title={navigationText('Move up',language)}
                   >
                     <ArrowUp className="size-3.5" />
                   </button>
@@ -194,7 +194,7 @@ export function Sidebar({
                   isHidden && !customizing && "opacity-40",
                   collapsed && "justify-center px-0",
                 )}
-                title={canDropOnDashboard(item.id) ? `${item.label} - drag onto the home dashboard to add it as a card` : collapsed ? item.label : undefined}
+                title={canDropOnDashboard(item.id) ? `${item.label} - ${navigationText('drag onto the home dashboard to add it as a card',language)}` : collapsed ? item.label : undefined}
               >
                 {Icon && <Icon className="size-4.5 shrink-0" />}
                 {!collapsed && <span className="truncate">{item.label}</span>}
@@ -206,7 +206,7 @@ export function Sidebar({
                     onClick={() => onMoveItem?.(item.id, "down")}
                     disabled={index === displayItems.length - 1}
                     className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    title="Move down"
+                    title={navigationText('Move down',language)}
                   >
                     <ArrowDown className="size-3.5" />
                   </button>
@@ -217,7 +217,7 @@ export function Sidebar({
                       "shrink-0 pr-2",
                       isHidden ? "text-success hover:text-success/80" : "text-muted-foreground hover:text-destructive",
                     )}
-                    title={isHidden ? "Unhide section" : "Hide section"}
+                    title={isHidden ? navigationText('Unhide section',language) : navigationText('Hide section',language)}
                   >
                     {isHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                   </button>
@@ -251,22 +251,22 @@ export function Sidebar({
           </details>)}
         {!customizing && !collapsed && groups.length === 0 && <p role="status" className="px-3 py-2 text-sm text-muted-foreground">{navigationText('No matching pages. Try another name.',language)}</p>}
         {customizing && displayItems.length === 0 && (
-          <p className="px-3 py-2 text-xs text-light-text">No menu sections to show.</p>
+          <p className="px-3 py-2 text-xs text-light-text">{navigationText('No menu sections to show.',language)}</p>
         )}
       </nav>
 
       {/* Footer: customize + collapse */}
       <div className="border-t border-border p-2 space-y-1">
-        {!collapsed && <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customize your workspace</p>}
+        {!collapsed && <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{navigationText('Customize your workspace',language)}</p>}
         {customizing && (
           <div data-context-help-skip className="flex items-center justify-between rounded-lg px-3 py-2 text-xs text-light-text">
-            <span>Reorder pages within their task groups. Use the eye to show or hide a page.</span>
+            <span>{navigationText('Reorder pages within their task groups. Use the eye to show or hide a page.',language)}</span>
             <div className="flex shrink-0 gap-1">
               <button
                 type="button"
                 onClick={onResetOrder}
                 className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded p-1.5 text-light-text hover:text-foreground hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:min-w-8"
-                title="Reset to default order"
+                title={navigationText('Reset to default order',language)}
               >
                 <RotateCcw className="size-3.5" />
               </button>
@@ -274,7 +274,7 @@ export function Sidebar({
                 type="button"
                 onClick={onToggleCustomize}
                 className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded p-1.5 text-primary hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:min-w-8"
-                title="Done customizing"
+                title={navigationText('Done customizing',language)}
               >
                 <X className="size-3.5" />
               </button>
@@ -285,11 +285,11 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => { setCollapsed(false); onToggleCustomize?.(); }}
-            aria-label="Reorder or hide menu sections"
+            aria-label={navigationText('Reorder or hide menu sections',language)}
             className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-light-text hover:text-foreground hover:bg-muted transition-colors"
           >
             <Pencil className="size-3.5" />
-            {!collapsed && <span>Reorder / hide sections</span>}
+            {!collapsed && <span>{navigationText('Reorder / hide sections',language)}</span>}
           </button>
         )}
         <DisplayZoomControl collapsed={collapsed} />
@@ -298,11 +298,11 @@ export function Sidebar({
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={collapsed ? navigationText('Expand sidebar',language) : navigationText('Collapse sidebar',language)}
           className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs text-light-text hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
-          {!collapsed && !forceVisible && <span>Collapse</span>}
+          {!collapsed && !forceVisible && <span>{navigationText('Collapse',language)}</span>}
         </button>
         )}
       </div>

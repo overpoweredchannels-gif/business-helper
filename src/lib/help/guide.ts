@@ -1,3 +1,6 @@
+import type { Language } from '../regional/settings';
+import { localizedGuideTopics } from './guide-i18n';
+
 export type GuideTopic = { title: string; description: string; steps: string[] };
 export const guideTopics: GuideTopic[] = [
   { title: "Welcome to TradeOS", description: "Manage products, stock, purchases, sales, payments and your team in one workspace. Available screens depend on the owner's permissions.", steps: ["Start with business settings, brands and categories.", "Add products with the correct units, prices and opening stock.", "Add customers and suppliers, then record purchases and sales.", "Record payments and review your reports. Click any question-mark icon for help. This tutorial never changes your records."] },
@@ -82,8 +85,7 @@ const descriptions: Record<string, string> = {
   "settings": guideTopics[11].description,
 };
 
-export function describeControl(label: string, kind = "", context = "") {
-  const normalized = label.toLowerCase().replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
+export function describeControl(label: string, kind = "", context = "") {  const normalized = label.toLowerCase().replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
   const match = Object.keys(descriptions).sort((a, b) => b.length - a.length).find(key => normalized.includes(key.replace(/-/g, " ")));
   if (match) return descriptions[match];
   if (/^(save|create|add|submit|send|approve|reject|delete|remove|cancel|close|edit|update|apply|confirm|print|next|previous|clear|reset|select|search|filter|view|open|record)/i.test(normalized)) {
@@ -98,4 +100,9 @@ export function describeControl(label: string, kind = "", context = "") {
   if (kind === "date") return "Choose the date this record or filter should use. Reports and transaction dates can produce different results if you choose the wrong range.";
   if (kind === "number") return `Enter the ${label.toLowerCase()} for this record. Check any unit, minimum and step shown on the field before saving.`;
   return `This is the “${label}” control${context ? ` in ${context}` : ""}. Use the visible label, choices and validation messages to set this part of the record. The full tutorial explains the surrounding workflow.`;
+}
+
+/** Localized welcome-tutorial topics. English returns the source guideTopics. */
+export function getGuideTopics(language: Language): GuideTopic[] {
+  return language === 'en' ? guideTopics : localizedGuideTopics(language);
 }

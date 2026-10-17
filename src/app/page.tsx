@@ -34,7 +34,7 @@ import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
 import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
-import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, type SectionSummary } from "@/components/dashboard";
+import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, SetupImportPrompt, type SectionSummary } from "@/components/dashboard";
 import { cn } from "@/lib/utils";
 import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
 import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerRetired, rememberSetupBannerRetired } from "@/lib/setup/setup-progress";
@@ -15991,13 +15991,7 @@ setCustomerOrganizationName("");
 
   const setupImportWidget = isOwnerOrAdmin() ? (
     <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-      <section data-help-topic="setup and data import" className="rounded-xl border border-primary/30 bg-card p-5">
-        <h2 className="text-lg font-semibold">Setup &amp; Data Import</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{setupStage === "complete" ? `Setup complete. This reminder retires itself after ${SETUP_BANNER_RETENTION_DAYS} days; you can still open Setup & Data Import from the sidebar.` : "Follow the setup guide, import your external records and review missing settings."}</p>
-        <div className="mt-3">
-          <button type="button" onClick={() => handleSectionChange("setup-import")} className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Open Setup &amp; Data Import</button>
-        </div>
-      </section>
+      <SetupImportPrompt complete={setupStage === "complete"} retentionDays={SETUP_BANNER_RETENTION_DAYS} onOpen={() => handleSectionChange("setup-import")} />
     </DashboardWidget>
   ) : null;
   const quickSaleWidget = (

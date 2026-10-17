@@ -15,6 +15,7 @@ import {
 import { TrendingUp, TrendingDown, DollarSign, Package, Users, Receipt, AlertTriangle, Pencil, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DashboardWidget } from "./DashboardWidget";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import type { DashboardWidgetId } from "@/lib/preferences/dashboard-widgets";
 import type { DashboardMetricKey, DashboardMetricStates, DashboardReadStatus } from "@/lib/dashboard/data-read-state";
 
@@ -125,10 +126,12 @@ export function DashboardView({
   onToggleCustomize,
   droppedCards = [],
 }: DashboardViewProps) {
+  const { t, ui, language } = useRegional();
   const now = new Date();
   const hour = now.getHours();
-  const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
-  const dateStr = now.toLocaleDateString("en-US", {
+  const greeting = hour < 12 ? t('dashboard.greeting.morning') : hour < 17 ? t('dashboard.greeting.afternoon') : t('dashboard.greeting.evening');
+  const locale = language === 'es' ? 'es-ES' : language === 'it' ? 'it-IT' : language === 'ur' ? 'ur-PK' : 'en-US';
+  const dateStr = now.toLocaleDateString(locale, {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -143,13 +146,15 @@ export function DashboardView({
   const getMetricStatus = (metric: DashboardMetricKey): DashboardReadStatus => metricReadStates?.[metric] ?? "successful-populated";
   const isReadSuccessful = (status: DashboardReadStatus) => status === "successful-empty" || status === "successful-populated";
   const effectiveHealthReadStatus = healthReadStatus ?? getMetricStatus("business-health");
-  const taskCandidates: Array<{ label: string; value: number; icon: typeof AlertTriangle; color: string; metric: DashboardMetricKey; status: DashboardReadStatus }> = [
-    { label: "Pending Approvals", value: pendingApprovals, icon: AlertTriangle, color: "text-warning", metric: "pending-approvals", status: getMetricStatus("pending-approvals") },
-    { label: "Collection Tasks", value: invoicesDue, icon: Receipt, color: "text-destructive", metric: "collection-tasks", status: getMetricStatus("collection-tasks") },
-    { label: "Unpaid Purchases", value: paymentsDue, icon: DollarSign, color: "text-warning", metric: "unpaid-purchases", status: getMetricStatus("unpaid-purchases") },
-    { label: "Urgent Reorders", value: lowStockItems, icon: AlertTriangle, color: "text-warning", metric: "urgent-reorders", status: getMetricStatus("urgent-reorders") },
-    { label: "Customer Follow-ups", value: customersToFollowUp, icon: Users, color: "text-primary", metric: "customer-follow-ups", status: getMetricStatus("customer-follow-ups") },
-    { label: "Expiring Stock Checks", value: expiringProducts, icon: Package, color: "text-destructive", metric: "expiring-stock-checks", status: getMetricStatus("expiring-stock-checks") },
+  // `key` is the stable English routing string passed to onKPIClick (page.tsx matches
+  // on these); `label` is the translated display string. Never translate the key.
+  const taskCandidates: Array<{ key: string; label: string; value: number; icon: typeof AlertTriangle; color: string; metric: DashboardMetricKey; status: DashboardReadStatus }> = [
+    { key: "Pending Approvals", label: t('task.pendingApprovals'), value: pendingApprovals, icon: AlertTriangle, color: "text-warning", metric: "pending-approvals", status: getMetricStatus("pending-approvals") },
+    { key: "Collection Tasks", label: t('task.collectionTasks'), value: invoicesDue, icon: Receipt, color: "text-destructive", metric: "collection-tasks", status: getMetricStatus("collection-tasks") },
+    { key: "Unpaid Purchases", label: t('task.unpaidPurchases'), value: paymentsDue, icon: DollarSign, color: "text-warning", metric: "unpaid-purchases", status: getMetricStatus("unpaid-purchases") },
+    { key: "Urgent Reorders", label: t('task.urgentReorders'), value: lowStockItems, icon: AlertTriangle, color: "text-warning", metric: "urgent-reorders", status: getMetricStatus("urgent-reorders") },
+    { key: "Customer Follow-ups", label: t('task.customerFollowUps'), value: customersToFollowUp, icon: Users, color: "text-primary", metric: "customer-follow-ups", status: getMetricStatus("customer-follow-ups") },
+    { key: "Expiring Stock Checks", label: t('task.expiringStockChecks'), value: expiringProducts, icon: Package, color: "text-destructive", metric: "expiring-stock-checks", status: getMetricStatus("expiring-stock-checks") },
   ];
   const taskList = taskCandidates.filter((task) => !isReadSuccessful(task.status) || task.value > 0);
   const allAlertReadsReady = taskList.length === 0 && [
@@ -164,39 +169,39 @@ export function DashboardView({
   const kpiCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
     ...(todaySales ? [{
       id: "kpi-today-sales" as DashboardWidgetId,
-      node: <KPICard title="Today's Sales" value={todaySales.value} readStatus={getMetricStatus("today-sales")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-sales"]} onRetry={onRetryFailedReads} trend={todaySales.trend} icon={<TrendingUp className="size-4" />} sparklineData={todaySales.sparkline} onClick={() => onKPIClick?.("Today's Sales")} />,
+      node: <KPICard title={t('kpi.todaySales')} value={todaySales.value} readStatus={getMetricStatus("today-sales")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-sales"]} onRetry={onRetryFailedReads} trend={todaySales.trend} icon={<TrendingUp className="size-4" />} sparklineData={todaySales.sparkline} onClick={() => onKPIClick?.("Today's Sales")} />,
     }] : []),
     ...(todayProfit ? [{
       id: "kpi-today-profit" as DashboardWidgetId,
-      node: <KPICard title="Today's Profit" value={todayProfit.value} readStatus={getMetricStatus("today-profit")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-profit"]} onRetry={onRetryFailedReads} trend={todayProfit.trend} icon={<TrendingDown className="size-4" />} sparklineData={todayProfit.sparkline} onClick={() => onKPIClick?.("Today's Profit")} />,
+      node: <KPICard title={t('kpi.todayProfit')} value={todayProfit.value} readStatus={getMetricStatus("today-profit")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-profit"]} onRetry={onRetryFailedReads} trend={todayProfit.trend} icon={<TrendingDown className="size-4" />} sparklineData={todayProfit.sparkline} onClick={() => onKPIClick?.("Today's Profit")} />,
     }] : []),
     ...(inventoryValue ? [{
       id: "kpi-inventory-value" as DashboardWidgetId,
-      node: <KPICard title="Inventory Value" value={safeInventoryValue} readStatus={getMetricStatus("inventory-value")} lastSuccessfulAt={metricLastSuccessfulAt?.["inventory-value"]} onRetry={onRetryFailedReads} trend={inventoryValue.trend} icon={<Package className="size-4" />} onClick={() => onKPIClick?.("Inventory Value")} />,
+      node: <KPICard title={t('kpi.inventoryValue')} value={safeInventoryValue} readStatus={getMetricStatus("inventory-value")} lastSuccessfulAt={metricLastSuccessfulAt?.["inventory-value"]} onRetry={onRetryFailedReads} trend={inventoryValue.trend} icon={<Package className="size-4" />} onClick={() => onKPIClick?.("Inventory Value")} />,
     }] : []),
     ...(outstandingReceivables ? [{
       id: "kpi-receivables" as DashboardWidgetId,
-      node: <KPICard title="Outstanding Receivables" value={safeReceivables} readStatus={getMetricStatus("receivables")} lastSuccessfulAt={metricLastSuccessfulAt?.receivables} onRetry={onRetryFailedReads} icon={<Users className="size-4" />} onClick={() => onKPIClick?.("Outstanding Receivables")} />,
+      node: <KPICard title={t('kpi.receivables')} value={safeReceivables} readStatus={getMetricStatus("receivables")} lastSuccessfulAt={metricLastSuccessfulAt?.receivables} onRetry={onRetryFailedReads} icon={<Users className="size-4" />} onClick={() => onKPIClick?.("Outstanding Receivables")} />,
     }] : []),
     ...(outstandingPayables ? [{
       id: "kpi-payables" as DashboardWidgetId,
-      node: <KPICard title="Outstanding Payables" value={safePayables} readStatus={getMetricStatus("payables")} lastSuccessfulAt={metricLastSuccessfulAt?.payables} onRetry={onRetryFailedReads} icon={<DollarSign className="size-4" />} onClick={() => onKPIClick?.("Outstanding Payables")} />,
+      node: <KPICard title={t('kpi.payables')} value={safePayables} readStatus={getMetricStatus("payables")} lastSuccessfulAt={metricLastSuccessfulAt?.payables} onRetry={onRetryFailedReads} icon={<DollarSign className="size-4" />} onClick={() => onKPIClick?.("Outstanding Payables")} />,
     }] : []),
     ...(lowStockAlerts ? [{
       id: "kpi-low-stock" as DashboardWidgetId,
-      node: <KPICard title="Low Stock Alerts" value={safeLowStock} readStatus={getMetricStatus("low-stock")} lastSuccessfulAt={metricLastSuccessfulAt?.["low-stock"]} onRetry={onRetryFailedReads} icon={<AlertTriangle className="size-4" />} onClick={() => onKPIClick?.("Low Stock Alerts")} />,
+      node: <KPICard title={t('kpi.lowStock')} value={safeLowStock} readStatus={getMetricStatus("low-stock")} lastSuccessfulAt={metricLastSuccessfulAt?.["low-stock"]} onRetry={onRetryFailedReads} icon={<AlertTriangle className="size-4" />} onClick={() => onKPIClick?.("Low Stock Alerts")} />,
     }] : []),
     ...(!isReadSuccessful(getMetricStatus("pending-approvals")) || pendingApprovals > 0 ? [{
       id: "kpi-approvals" as DashboardWidgetId,
-      node: <KPICard title="Pending Approvals" value={String(pendingApprovals)} readStatus={getMetricStatus("pending-approvals")} lastSuccessfulAt={metricLastSuccessfulAt?.["pending-approvals"]} onRetry={onRetryFailedReads} icon={<AlertTriangle className="size-4" />} onClick={() => onKPIClick?.("Pending Approvals")} />,
+      node: <KPICard title={t('kpi.pendingApprovals')} value={String(pendingApprovals)} readStatus={getMetricStatus("pending-approvals")} lastSuccessfulAt={metricLastSuccessfulAt?.["pending-approvals"]} onRetry={onRetryFailedReads} icon={<AlertTriangle className="size-4" />} onClick={() => onKPIClick?.("Pending Approvals")} />,
     }] : []),
     ...(ordersToday ? [{
       id: "kpi-orders-today" as DashboardWidgetId,
-      node: <KPICard title="Orders Today" value={ordersToday.value} icon={<Receipt className="size-4" />} onClick={() => onKPIClick?.("Orders Today")} />,
+      node: <KPICard title={t('kpi.ordersToday')} value={ordersToday.value} icon={<Receipt className="size-4" />} onClick={() => onKPIClick?.("Orders Today")} />,
     }] : []),
     ...(customersToday ? [{
       id: "kpi-customers-today" as DashboardWidgetId,
-      node: <KPICard title="Customers Today" value={customersToday.value} icon={<Users className="size-4" />} onClick={() => onKPIClick?.("Customers Today")} />,
+      node: <KPICard title={t('kpi.customersToday')} value={customersToday.value} icon={<Users className="size-4" />} onClick={() => onKPIClick?.("Customers Today")} />,
     }] : []),
   ].filter((card) => !widgetHidden(card.id));
 
@@ -230,7 +235,7 @@ export function DashboardView({
             )}
           >
             {customizingWidgets ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
-            {customizingWidgets ? "Done" : "Edit home"}
+            {customizingWidgets ? t('dashboard.done') : t('dashboard.editHome')}
           </button>
         )}
       </header>
@@ -243,9 +248,9 @@ export function DashboardView({
       {kpiCards.length > 0 && (
         <section aria-labelledby="dashboard-today-heading" className="space-y-3">
           <div>
-            <h2 id="dashboard-today-heading" className="text-sm font-semibold text-foreground">Today and current balances</h2>
+            <h2 id="dashboard-today-heading" className="text-sm font-semibold text-foreground">{t('dashboard.todayBalances')}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Today’s sales and estimated profit use invoices dated or recorded today. Inventory, receivables and payables are current balances.
+              {t('dashboard.todayBalancesHint')}
             </p>
           </div>
           <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", customizingWidgets ? "gap-6" : "gap-3 sm:gap-4")}>
@@ -275,32 +280,33 @@ export function DashboardView({
       {(taskList.length > 0 || allAlertReadsReady) && !widgetHidden("needs-attention") && (
         <DashboardWidget id="needs-attention" customizing={customizingWidgets} onRemove={onRemoveWidget}>
           <div className="rounded-xl border border-border bg-card p-5">
-            <h2 className="text-sm font-semibold text-foreground mb-1">Needs Your Attention</h2>
-            <p className="mb-3 text-xs text-muted-foreground">Open a current pending task, unpaid purchase, or stock alert to review it.</p>
+            <h2 className="text-sm font-semibold text-foreground mb-1">{t('dashboard.needsAttention')}</h2>
+            <p className="mb-3 text-xs text-muted-foreground">{t('dashboard.needsAttentionHint')}</p>
             {taskList.length === 0 ? (
-              <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">No actionable alerts.</p>
+              <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{t('dashboard.noAlerts')}</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                {taskList.map((t) => {
-                  const stateLabel = t.status === "failed" ? "Unavailable" : t.status === "loading" ? "Loading…" : t.status === "not-loaded" ? "Not loaded" : String(t.value);
+                {taskList.map((task) => {
+                  const stateLabel = task.status === "failed" ? t('dashboard.unavailable') : task.status === "loading" ? ui('loading') : task.status === "not-loaded" ? t('dashboard.notLoaded') : String(task.value);
+                  const TaskIcon = task.icon;
                   const content = <>
-                    <t.icon className={cn("size-5", t.color)} />
+                    <TaskIcon className={cn("size-5", task.color)} />
                     <div>
                       <p className="text-lg font-semibold tabular-nums text-foreground">{stateLabel}</p>
-                      <p className="text-[11px] text-light-text">{t.label}</p>
+                      <p className="text-[11px] text-light-text">{task.label}</p>
                     </div>
                   </>;
-                  return isReadSuccessful(t.status) ? (
+                  return isReadSuccessful(task.status) ? (
                     <button
-                      key={t.label}
+                      key={task.key}
                       type="button"
-                      onClick={() => onKPIClick?.(t.label)}
-                      className={cn("flex min-h-11 items-center gap-2.5 rounded-lg bg-muted p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", t.label === "Pending Approvals" ? "hover:bg-warning/10" : "hover:bg-primary/10")}
+                      onClick={() => onKPIClick?.(task.key)}
+                      className={cn("flex min-h-11 items-center gap-2.5 rounded-lg bg-muted p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", task.key === "Pending Approvals" ? "hover:bg-warning/10" : "hover:bg-primary/10")}
                     >{content}</button>
                   ) : (
-                    <div key={t.label} className="flex min-h-11 items-center gap-2.5 rounded-lg bg-muted p-3 text-left">
+                    <div key={task.key} className="flex min-h-11 items-center gap-2.5 rounded-lg bg-muted p-3 text-left">
                       {content}
-                      {t.status === "failed" && onRetryFailedReads && <button type="button" onClick={onRetryFailedReads} className="min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Retry</button>}
+                      {task.status === "failed" && onRetryFailedReads && <button type="button" onClick={onRetryFailedReads} className="min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('dashboard.retry')}</button>}
                     </div>
                   );
                 })}
@@ -318,7 +324,7 @@ export function DashboardView({
       {smartModules.length > 0 && !widgetHidden("smart-modules") && (
         <DashboardWidget id="smart-modules" customizing={customizingWidgets} onRemove={onRemoveWidget}>
           <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-foreground">Business Overview</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t('dashboard.businessOverview')}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {smartModules.map((m) => (
                 <SmartModule key={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen} readStatus={m.readStatus} lastSuccessfulAt={m.lastSuccessfulAt}>
