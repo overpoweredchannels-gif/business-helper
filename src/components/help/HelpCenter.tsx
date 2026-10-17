@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { describeControl, getGuideTopics } from "@/lib/help/guide";
+import { describeControl, describeHelpId, getGuideTopics } from "@/lib/help/guide";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 type HelpItem = { id: number; label: string; description: string; choices: string[]; host: HTMLElement };
@@ -83,7 +83,12 @@ export function HelpCenter({ userId }: { userId: string }) {
         const parentRect = parent.getBoundingClientRect();
         host.style.left = `${rect.right - parentRect.left + parent.scrollLeft - parent.clientLeft - rightInset}px`;
         host.style.top = `${rect.top - parentRect.top + parent.scrollTop - parent.clientTop + (rect.height - 24) / 2}px`;
-        result.push({ id: ids.get(element)!, label, description: describeControl(label, element.tagName === "SELECT" ? "select" : field.type, context || topic || ""), choices, host });
+        // Stable help IDs take precedence over label matching, so translated
+        // controls resolve to localized explanations without parsing display text.
+        const helpId = element.getAttribute("data-help-id");
+        const description = (helpId && describeHelpId(helpId, language))
+          ?? describeControl(label, element.tagName === "SELECT" ? "select" : field.type, context || topic || "");
+        result.push({ id: ids.get(element)!, label, description, choices, host });
       });
       hosts.forEach((host, anchor) => { if (!seen.has(anchor)) { host.remove(); hosts.delete(anchor); } });
       const next = JSON.stringify(result.map(({ host, ...item }) => ({ ...item, connected: host.isConnected })));

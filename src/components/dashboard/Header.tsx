@@ -121,6 +121,7 @@ function HeaderSearchBox({
         <input
           type="text"
           role="combobox"
+          data-help-id="header-search"
           aria-label={ui('header.searchLabel')}
           aria-autocomplete="list"
           aria-expanded={showPopover}
@@ -314,6 +315,7 @@ export function Header({
           {/* AI Assistant */}
           <button
             onClick={onOpenAiAssistant}
+            data-help-id="header-ai"
             className="size-11 shrink-0 flex items-center justify-center rounded-lg text-primary hover:bg-primary-light transition-colors"
             title={ui('header.aiAssistant')}
             aria-label={ui('header.aiAssistant')}
@@ -325,16 +327,17 @@ export function Header({
           <div ref={notifRef} className="relative">
             <button
               onClick={() => setNotifOpen(!notifOpen)}
+              data-help-id="header-notifications"
               aria-label={ui('header.notifications')}
               className="relative size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
             >
               <Bell className="size-4.5" />
               {notificationCount > 0 && (
-                <span className="absolute top-2 right-2 size-2 rounded-full bg-destructive" />
+                <span className="absolute top-2 end-2 size-2 rounded-full bg-destructive" />
               )}
             </button>
             {notifOpen && (
-              <div className="fixed right-3 left-3 top-16 z-50 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:w-80 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
+              <div className="fixed inset-x-3 top-16 z-50 sm:absolute sm:inset-x-auto sm:end-0 sm:top-full sm:mt-1 sm:w-80 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
                 <div className="px-3 py-2 border-b border-border mb-1">
                   <p className="text-sm font-semibold text-foreground">{ui('header.notifications')}</p>
                 </div>
@@ -385,21 +388,22 @@ export function Header({
           <div className="relative">
             <button
               onClick={() => setProfileOpen(!profileOpen)}
+              data-help-id="header-profile"
               className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-foreground hover:bg-muted transition-colors"
             >
               <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center">
                 <User className="size-3.5 text-primary" />
               </div>
-              <span className="hidden sm:inline text-sm font-medium max-w-[120px] truncate">{userName || ui('header.userFallback')}</span>
+              <span className="hidden sm:inline text-sm font-medium max-w-[120px] truncate"><bdi>{userName || ui('header.userFallback')}</bdi></span>
             </button>
             {profileOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
-                <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
+                <div className="absolute end-0 top-full mt-1 z-50 w-48 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn">
                   <div className="px-3 py-2 border-b border-border mb-1">
-                    <p className="text-sm font-medium text-foreground truncate">{userName || ui('header.userFallback')}</p>
+                    <p className="text-sm font-medium text-foreground truncate"><bdi>{userName || ui('header.userFallback')}</bdi></p>
                     {organizationName && (
-                      <p className="text-[11px] text-light-text truncate">{organizationName}</p>
+                      <p className="text-[11px] text-light-text truncate"><bdi>{organizationName}</bdi></p>
                     )}
                   </div>
                   <button

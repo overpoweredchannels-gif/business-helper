@@ -50,10 +50,10 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
         )}>
           {rank}
         </span>
-        <span className="text-sm text-foreground truncate">{name}</span>
+        <span className="text-sm text-foreground truncate"><bdi>{name}</bdi></span>
       </div>
       <div className="flex items-center gap-1.5 shrink-0 ml-3">
-        <span className="text-sm font-semibold text-foreground">{value}</span>
+        <span className="text-sm font-semibold text-foreground"><bdi>{value}</bdi></span>
         {trend === "up" && <TrendingUp className="size-3 text-success" />}
         {trend === "down" && <TrendingDown className="size-3 text-destructive" />}
         {trend === "flat" && <Minus className="size-3 text-light-text" />}

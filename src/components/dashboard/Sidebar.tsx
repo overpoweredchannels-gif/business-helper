@@ -285,6 +285,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => { setCollapsed(false); onToggleCustomize?.(); }}
+            data-help-id="sidebar-customize"
             aria-label={navigationText('Reorder or hide menu sections',language)}
             className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-light-text hover:text-foreground hover:bg-muted transition-colors"
           >

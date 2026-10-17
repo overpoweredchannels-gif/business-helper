@@ -65,9 +65,9 @@ export function RecentActivity({ activities, onViewAll }: RecentActivityProps) {
                     {a.time}
                   </span>
                 </div>
-                <p className="text-sm text-foreground mt-1">{a.description}</p>
+                <p className="text-sm text-foreground mt-1"><bdi>{a.description}</bdi></p>
               </div>
-              {a.amount && <span className="text-sm font-semibold tabular-nums text-foreground shrink-0">{a.amount}</span>}
+              {a.amount && <span className="text-sm font-semibold tabular-nums text-foreground shrink-0"><bdi>{a.amount}</bdi></span>}
             </div>
           </div>
         ))}

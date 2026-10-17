@@ -49,6 +49,7 @@ export function DisplayZoomControl({ collapsed = false }: { collapsed?: boolean 
       <button
         type="button"
         onClick={() => { setPercentText(String(displayZoomPercent(applied))); setOpen(value => !value); }}
+        data-help-id="sidebar-zoom"
         aria-expanded={open}
         aria-label={navigationText('Screen zoom',language)}
         className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-light-text hover:text-foreground hover:bg-muted transition-colors"

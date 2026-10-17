@@ -106,3 +106,52 @@ export function describeControl(label: string, kind = "", context = "") {  const
 export function getGuideTopics(language: Language): GuideTopic[] {
   return language === 'en' ? guideTopics : localizedGuideTopics(language);
 }
+
+// Stable contextual-help identifiers, independent of translated display text.
+// Each ID maps to a localized explanation. HelpCenter checks data-help-id
+// before falling back to label-based describeControl().
+type HelpIdText = { en: string; es: string; it: string; ur: string };
+const helpIdDescriptions: Record<string, HelpIdText> = {
+  "header-search": {
+    en: "Search sections and products. Type to see matching pages and product results with keyboard navigation.",
+    es: "Busca secciones y productos. Escribe para ver páginas y productos coincidentes con navegación por teclado.",
+    it: "Cerca sezioni e prodotti. Digita per vedere pagine e prodotti corrispondenti con navigazione da tastiera.",
+    ur: "حصے اور مصنوعات تلاش کریں۔ کی بورڈ نیویگیشن کے ساتھ مماثل صفحات اور مصنوعات دیکھنے کے لیے لکھیں۔",
+  },
+  "header-notifications": {
+    en: "View notifications. The dot indicates unread items.",
+    es: "Ver notificaciones. El punto indica elementos sin leer.",
+    it: "Vedi notifiche. Il punto indica elementi non letti.",
+    ur: "اطلاعات دیکھیں۔ نقطہ نہ پڑھی گئی اشیاء کی نشاندہی کرتا ہے۔",
+  },
+  "header-profile": {
+    en: "Open the account menu to see your name and organization, or sign out.",
+    es: "Abre el menú de cuenta para ver tu nombre y organización, o cierra sesión.",
+    it: "Apri il menu account per vedere nome e attività, o esci.",
+    ur: "اپنا نام اور تنظیم دیکھنے یا سائن آؤٹ کرنے کے لیے اکاؤنٹ مینو کھولیں۔",
+  },
+  "header-ai": {
+    en: "Open the AI assistant for help with records and queries.",
+    es: "Abre el asistente de IA para ayuda con registros y consultas.",
+    it: "Apri l’assistente IA per aiuto con registri e domande.",
+    ur: "ریکارڈ اور سوالات میں مدد کے لیے اے آئی معاون کھولیں۔",
+  },
+  "sidebar-customize": {
+    en: "Reorder or hide menu sections. Changes apply to this browser.",
+    es: "Reordena u oculta secciones del menú. Los cambios se aplican a este navegador.",
+    it: "Riordina o nascondi sezioni del menu. Le modifiche si applicano a questo browser.",
+    ur: "مینو کے حصوں کی ترتیب بدلیں یا چھپائیں۔ تبدیلیاں اس براؤزر پر لاگو ہوتی ہیں۔",
+  },
+  "sidebar-zoom": {
+    en: "Adjust the display zoom for this browser. The setting is saved locally.",
+    es: "Ajusta el zoom de pantalla para este navegador. El ajuste se guarda localmente.",
+    it: "Regola lo zoom dello schermo per questo browser. L’impostazione è salvata localmente.",
+    ur: "اس براؤزر کے لیے ڈسپلے زوم ایڈجسٹ کریں۔ ترتیب مقامی طور پر محفوظ ہوتی ہے۔",
+  },
+};
+
+/** Localized explanation for a stable help ID, or undefined if unknown. */
+export function describeHelpId(id: string, language: Language): string | undefined {
+  const entry = helpIdDescriptions[id];
+  return entry ? entry[language] : undefined;
+}
