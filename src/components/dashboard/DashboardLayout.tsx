@@ -5,6 +5,8 @@ import { Header } from "./Header";
 import { FloatingAI } from "./FloatingAI";
 import { MobileNavigation } from "./MobileNavigation";
 import { useCallback, useState } from "react";
+import { LanguageSwitcher, useRegional } from "@/components/regional/RegionalProvider";
+import { navigationLabel } from "@/lib/regional/navigation";
 import type { SectionId } from "@/lib/tradeos/types";
 import type { SuggestionStatus } from "@/components/search/SuggestionPopover";
 
@@ -83,10 +85,12 @@ customizeMode,
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMobileMenuOpen(false), []);
 
+  const {language, enabled: regionalEnabled, ui} = useRegional();
+  const localizedNavigation = navigationItems.map(item => ({...item,label:navigationLabel(item.id,item.label,language)}));
   return (
     <div className="flex min-h-dvh w-full min-w-0 bg-background">
       <Sidebar
-        items={navigationItems}
+        items={localizedNavigation}
         activeSection={activeSection}
         onSectionChange={(id) => {
           onSectionChange(id);
@@ -107,7 +111,7 @@ customizeMode,
       {/* Mobile sidebar overlay */}
       <MobileNavigation open={mobileMenuOpen} onClose={closeMenu}>
             <Sidebar
-              items={navigationItems}
+              items={localizedNavigation}
               activeSection={activeSection}
               onSectionChange={(id) => {
                 onSectionChange(id);
@@ -129,6 +133,7 @@ customizeMode,
       </MobileNavigation>
 
       <div className="min-w-0 flex-1 flex flex-col min-h-dvh">
+        {regionalEnabled && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-2"><p className="text-xs text-muted-foreground">{ui('coverage')}</p><LanguageSwitcher /></div>}
         <Header
           userName={userName}
           organizationName={organizationName}

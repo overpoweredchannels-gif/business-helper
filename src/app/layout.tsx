@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Libre_Baskerville } from "next/font/google";
 import "./globals.css";
 import AppHelp from "@/components/help/AppHelp";
+import { RegionalProvider } from "@/components/regional/RegionalProvider";
 import { DISPLAY_ZOOM_BOOTSTRAP_SCRIPT } from "@/lib/preferences/display-zoom";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -50,7 +51,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: DISPLAY_ZOOM_BOOTSTRAP_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col">{children}<AppHelp /></body>
+      <body className="min-h-full flex flex-col"><RegionalProvider>{children}<AppHelp /></RegionalProvider></body>
     </html>
   );
 }

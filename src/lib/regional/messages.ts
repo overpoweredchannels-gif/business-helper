@@ -1,0 +1,63 @@
+import type { Language } from './settings';
+
+const en = {
+  'regional.title': 'Language and regional settings',
+  'regional.language': 'Language', 'regional.locale': 'Number and date format',
+  'regional.timeZone': 'Time zone', 'regional.currency': 'Accounting currency',
+  'regional.save': 'Save settings', 'regional.cancel': 'Cancel',
+  'regional.invalid': 'Check the regional settings.',
+  'regional.languageInvalid': 'Choose a supported language.',
+  'regional.localeInvalid': 'Choose a supported number and date format.',
+  'regional.currencyInvalid': 'Choose a supported accounting currency.',
+  'regional.timeZoneInvalid': 'Choose a valid time zone.',
+  'regional.currencyLocked': 'The accounting currency cannot be changed for an established business.',
+  'regional.history': 'Language and display formats do not convert historical amounts or change document currencies.',
+  'money.invalid': 'Enter a valid amount.',
+} as const;
+export type MessageKey = keyof typeof en;
+export const messages: Record<Language, Record<MessageKey, string>> = {
+  en,
+  es: {
+    'regional.title': 'Idioma y configuración regional',
+    'regional.language': 'Idioma', 'regional.locale': 'Formato de números y fechas',
+    'regional.timeZone': 'Zona horaria', 'regional.currency': 'Moneda contable',
+    'regional.save': 'Guardar configuración', 'regional.cancel': 'Cancelar',
+    'regional.invalid': 'Revisa la configuración regional.',
+    'regional.languageInvalid': 'Selecciona un idioma disponible.',
+    'regional.localeInvalid': 'Selecciona un formato de números y fechas disponible.',
+    'regional.currencyInvalid': 'Selecciona una moneda contable disponible.',
+    'regional.timeZoneInvalid': 'Selecciona una zona horaria válida.',
+    'regional.currencyLocked': 'No se puede cambiar la moneda contable de una empresa ya establecida.',
+    'regional.history': 'El idioma y los formatos de visualización no convierten los importes históricos ni cambian las monedas de los documentos.',
+    'money.invalid': 'Introduce un importe válido.',
+  },
+  it: {
+    'regional.title': 'Lingua e impostazioni locali',
+    'regional.language': 'Lingua', 'regional.locale': 'Formato di numeri e date',
+    'regional.timeZone': 'Fuso orario', 'regional.currency': 'Valuta contabile',
+    'regional.save': 'Salva impostazioni', 'regional.cancel': 'Annulla',
+    'regional.invalid': 'Controlla le impostazioni locali.',
+    'regional.languageInvalid': 'Scegli una lingua supportata.',
+    'regional.localeInvalid': 'Scegli un formato di numeri e date supportato.',
+    'regional.currencyInvalid': 'Scegli una valuta contabile supportata.',
+    'regional.timeZoneInvalid': 'Scegli un fuso orario valido.',
+    'regional.currencyLocked': 'Non è possibile cambiare la valuta contabile di un’attività già avviata.',
+    'regional.history': 'La lingua e i formati di visualizzazione non convertono gli importi storici né modificano le valute dei documenti.',
+    'money.invalid': 'Inserisci un importo valido.',
+  },
+  ur: {
+    'regional.title': 'زبان اور علاقائی ترتیبات',
+    'regional.language': 'زبان', 'regional.locale': 'اعداد اور تاریخ کا انداز',
+    'regional.timeZone': 'ٹائم زون', 'regional.currency': 'حسابات کی کرنسی',
+    'regional.save': 'ترتیبات محفوظ کریں', 'regional.cancel': 'منسوخ کریں',
+    'regional.invalid': 'علاقائی ترتیبات درست کریں۔',
+    'regional.languageInvalid': 'دستیاب زبان منتخب کریں۔',
+    'regional.localeInvalid': 'اعداد اور تاریخ کا دستیاب انداز منتخب کریں۔',
+    'regional.currencyInvalid': 'حسابات کے لیے دستیاب کرنسی منتخب کریں۔',
+    'regional.timeZoneInvalid': 'درست ٹائم زون منتخب کریں۔',
+    'regional.currencyLocked': 'پہلے سے قائم کاروبار کے حسابات کی کرنسی تبدیل نہیں کی جا سکتی۔',
+    'regional.history': 'زبان یا دکھانے کا انداز بدلنے سے سابقہ رقوم یا دستاویزات کی کرنسی تبدیل نہیں ہوتی۔',
+    'money.invalid': 'درست رقم درج کریں۔',
+  },
+};
+export function translate(language: Language, key: MessageKey): string { return messages[language][key]; }

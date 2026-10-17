@@ -1,6 +1,7 @@
 "use client";
 
 import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
+import { RegionalSettingsPanel } from "@/components/regional/RegionalSettingsPanel";
 import { allPages } from "@/lib/supabase/all-pages";
 import { highlightSearchMatches, rankSearchResults, rankSearchResultsWithTiers, type SearchRankFields } from "@/lib/products/search-rank";
 import { ProductCatalogState, ProductCatalogErrorBanner } from "@/components/products/ProductCatalogState";
@@ -25547,6 +25548,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         {activeSectionAllowed && activeSection === "business-settings" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">Business Settings</h2>
+          <RegionalSettingsPanel key={searchScopeKey} request={authorizedFetch} canEdit={currentProfile?.role === 'owner' && currentProfile?.is_active === true} />
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">

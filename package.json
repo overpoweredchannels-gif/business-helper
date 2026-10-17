@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test:regional": "tsx scripts/test-regional-settings.ts && tsx scripts/test-regional-service.ts && tsx scripts/test-regional-schema.ts && tsx scripts/test-regional-ui.tsx",
     "test:brain": "tsx scripts/run-brain-validation.ts",
     "test:gateway": "tsx scripts/run-gateway-validation.ts",
     "test:supplier": "tsx scripts/test-supplier-service.ts",

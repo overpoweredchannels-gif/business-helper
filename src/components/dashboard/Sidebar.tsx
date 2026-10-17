@@ -13,6 +13,8 @@ import type { SectionId } from "@/lib/tradeos/types";
 import { DisplayZoomControl } from "./DisplayZoomControl";
 import { DASHBOARD_SECTION_DRAG_TYPE, isDashboardSectionCard } from "@/lib/dashboard/section-cards";
 import { groupNavigationItems } from "@/lib/dashboard/navigation-groups";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import { navigationText } from "@/lib/regional/navigation";
 
 const navIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   dashboard: LayoutDashboard,
@@ -89,6 +91,7 @@ export function Sidebar({
   disableCollapse,
   dragToDashboard,
 }: SidebarProps) {
+  const {language}=useRegional();
   const [collapsed, setCollapsed] = useState(false);
   const [menuSearch, setMenuSearch] = useState("");
   const hiddenSet = new Set(hiddenIds || []);
@@ -225,28 +228,28 @@ export function Sidebar({
   };
   const query = menuSearch.trim().toLocaleLowerCase();
   const groups = groupNavigationItems(displayItems)
-    .map(group => ({ ...group, items: group.items.filter(item => !query || group.label.toLocaleLowerCase().includes(query) || item.label.toLocaleLowerCase().includes(query)) }))
+    .map(group => ({ ...group, items: group.items.filter(item => !query || navigationText(group.label,language).toLocaleLowerCase().includes(query) || item.label.toLocaleLowerCase().includes(query)) }))
     .filter(group => group.items.length > 0);
 
   return (
-    <aside className={cn(forceVisible ? "flex" : "hidden lg:flex", "shrink-0 flex-col bg-card border-r border-border transition-all duration-300 h-dvh sticky top-0", collapsed ? "w-[68px]" : "w-64")}>
+    <aside className={cn(forceVisible ? "flex" : "hidden lg:flex", "shrink-0 flex-col bg-card border-e border-border transition-all duration-300 h-dvh sticky top-0", collapsed ? "w-[68px]" : "w-64")}>
       <div className={cn("border-b border-border flex items-center gap-3 px-5", collapsed ? "justify-center py-4" : "py-5")}>
         <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0"><span className="text-primary-foreground font-brand font-bold text-sm">T</span></div>
         {!collapsed && <div className="min-w-0"><div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>{organizationName && <div className="text-[11px] text-light-text truncate">{organizationName}</div>}</div>}
       </div>
       {!collapsed && !customizing && <div data-context-help-skip className="p-3">
-        <label className="text-xs font-medium text-foreground">Find a page
-          <input type="search" value={menuSearch} onChange={event => setMenuSearch(event.target.value)} placeholder="Search menu" className="mt-1 min-h-11 w-full rounded-lg border border-input bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        <label className="text-xs font-medium text-foreground">{navigationText('Find a page',language)}
+          <input type="search" value={menuSearch} onChange={event => setMenuSearch(event.target.value)} placeholder={navigationText('Search menu',language)} className="mt-1 min-h-11 w-full rounded-lg border border-input bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
         </label>
       </div>}
-      <nav aria-label="Main navigation" data-context-help-skip={customizing ? "" : undefined} className="flex-1 overflow-y-auto p-2 space-y-0.5">
+      <nav aria-label={navigationText('Main navigation',language)} data-context-help-skip={customizing ? "" : undefined} className="flex-1 overflow-y-auto p-2 space-y-0.5">
         {customizing || collapsed ? displayItems.map(renderItem) : groups.map(group => group.label === "Home"
           ? group.items.map(renderItem)
           : <details key={`${group.label}:${query ? "search" : "browse"}`} open={Boolean(query) || group.items.some(item => item.id === activeSection)} className="rounded-lg">
-            <summary data-context-help-skip className="min-h-11 cursor-pointer rounded-lg px-3 py-3 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{group.label}</summary>
-            <div className="ml-3 space-y-0.5 border-l border-border pl-1">{group.items.map(renderItem)}</div>
+            <summary data-context-help-skip className="min-h-11 cursor-pointer rounded-lg px-3 py-3 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{navigationText(group.label,language)}</summary>
+            <div className="ms-3 space-y-0.5 border-s border-border ps-1">{group.items.map(renderItem)}</div>
           </details>)}
-        {!customizing && !collapsed && groups.length === 0 && <p role="status" className="px-3 py-2 text-sm text-muted-foreground">No matching pages. Try another name.</p>}
+        {!customizing && !collapsed && groups.length === 0 && <p role="status" className="px-3 py-2 text-sm text-muted-foreground">{navigationText('No matching pages. Try another name.',language)}</p>}
         {customizing && displayItems.length === 0 && (
           <p className="px-3 py-2 text-xs text-light-text">No menu sections to show.</p>
         )}
