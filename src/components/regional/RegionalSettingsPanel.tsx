@@ -1,12 +1,24 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {useRegional} from './RegionalProvider';
-import {currencies,locales,parseRegionalSettings,type RegionalSettings,type Currency} from '@/lib/regional/settings';
+import {currencies,locales,parseRegionalSettings,type RegionalSettings,type Currency,type Language} from '@/lib/regional/settings';
 import {formatDocumentMoney} from '@/lib/regional/money';
 import {messages,type MessageKey} from '@/lib/regional/messages';
+import {regionalUi} from '@/lib/regional/ui-messages';
 
 const control='min-h-11 w-full rounded border border-input bg-background px-3 py-2 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 type Props={request:(url:string,init?:RequestInit)=>Promise<Response>;canEdit:boolean};
+/** Pure error-code → localized message mapping, exported for unit testing.
+ * Every failure path must resolve to an explicit message; never a blank alert
+ * and never a false success. */
+export function resolveRegionalErrorText(error:string|null,language:Language):string|null{
+  if(!error)return null;
+  if(Object.hasOwn(messages[language],error))return messages[language][error as MessageKey];
+  if(error==='regional.conflict')return regionalUi[language].conflict;
+  if(error==='persistenceUnavailable'||error==='regional.persistenceUnavailable')return regionalUi[language].persistenceUnavailable;
+  if(error==='loadError')return regionalUi[language].loadError;
+  return regionalUi[language].saveError;
+}
 export function RegionalSettingsPanel({request,canEdit}:Props){
   const {enabled,language,t,ui}=useRegional();
   const [preferences,setPreferences]=useState<RegionalSettings|null>(null);
@@ -29,7 +41,7 @@ export function RegionalSettingsPanel({request,canEdit}:Props){
     return ()=>controller.abort();
   },[enabled,request,reload]);
   if(!enabled)return null;
-  const errorText=error && (Object.hasOwn(messages[language],error)?t(error as MessageKey):error==='regional.conflict'?ui('conflict'):error==='persistenceUnavailable'||error==='regional.persistenceUnavailable'?ui('persistenceUnavailable'):error==='loadError'?ui('loadError'):ui('saveError'));
+  const errorText=resolveRegionalErrorText(error,language);
   const update=<K extends keyof RegionalSettings>(key:K,value:RegionalSettings[K])=>{setSaved(false);setPreferences(p=>p?{...p,[key]:value}:p);};
   return <section aria-labelledby="regional-title" className="mt-5 space-y-5 rounded border border-border bg-background p-5">
     <h3 id="regional-title" className="text-lg font-semibold text-foreground">{t('regional.title')}</h3>

@@ -29,6 +29,12 @@ export function isCurrency(value: unknown): value is Currency {
 }
 export function direction(language: Language): 'rtl' | 'ltr' { return language === 'ur' ? 'rtl' : 'ltr'; }
 
+/** Pre-paint bootstrap: applies the saved browser language's lang/dir before first
+ * paint so Urdu users never see an LTR flash. Mirrors DISPLAY_ZOOM_BOOTSTRAP_SCRIPT.
+ * The cookie is only written when the regional QA gate is enabled, and layout.tsx
+ * only inlines this script behind the same gate. */
+export const LANGUAGE_BOOTSTRAP_SCRIPT = `try{var m=document.cookie.match(/(?:^|;\\s*)tradeos-ui-language=([^;]*)/);var l=m&&decodeURIComponent(m[1]);if(l==='ur'){document.documentElement.lang='ur';document.documentElement.dir='rtl';}else if(l==='es'){document.documentElement.lang='es';document.documentElement.dir='ltr';}else if(l==='it'){document.documentElement.lang='it';document.documentElement.dir='ltr';}}catch(e){}`;
+
 export function parseRegionalSettings(input: unknown): RegionalSettings {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('regional.invalid');
   const v = input as Record<string, unknown>;
