@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { escapeIlikePattern, pinExactSkuFirstPage } from "@/lib/products/visit-search";
 
 export const runtime = "nodejs";
 
@@ -23,8 +24,9 @@ export async function GET(request: NextRequest) {
     .order("name", { ascending: true })
     .range(offset, offset + limit - 1);
 
-  if (search.trim()) {
-    query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%`);
+  const searchText = search.trim();
+  if (searchText) {
+    query = query.or(`name.ilike.%${searchText}%,sku.ilike.%${searchText}%`);
   }
 
   const { data, error } = await query;
@@ -32,5 +34,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, products: data ?? [], nextOffset: (data ?? []).length === limit ? offset + limit : null });
+  let exactSku = null;
+  if (searchText && offset === 0) {
+    const exactResult = await supabase
+      .from("products")
+      .select("id, name, sku, unit_type, current_stock, default_selling_price")
+      .eq("organization_id", permission.actor.organizationId)
+      .ilike("sku", escapeIlikePattern(searchText))
+      .maybeSingle();
+    if (exactResult.error) {
+      return NextResponse.json({ ok: false, error: exactResult.error.message }, { status: 400 });
+    }
+    exactSku = exactResult.data;
+  }
+
+  return NextResponse.json({
+    ok: true,
+    products: pinExactSkuFirstPage(data ?? [], exactSku, offset),
+    nextOffset: (data ?? []).length === limit ? offset + limit : null,
+  });
 }

@@ -1,6 +1,7 @@
 import { EmployeeRepository, EmployeeInput, isEmployeeDesignation } from "../repositories/employee-repository";
 import type { ActorContext } from "../types";
 import { Employee } from "@/lib/tradeos/types";
+import { DEFAULT_STAFF_DESIGNATION } from "../staff-roles";
 
 export type EmployeeResult = { employee?: Employee; error?: string };
 
@@ -62,6 +63,9 @@ export class EmployeeService {
   }
 
   async createEmployee(actor: ActorContext, input: Record<string, unknown>): Promise<EmployeeResult> {
+    if (!actor.isOwner) {
+      return { error: "Only the store owner can create employees." };
+    }
     if (!actor.organizationId) {
       return { error: "Organization context required" };
     }
@@ -79,7 +83,7 @@ export class EmployeeService {
       phone: toNullableString(input.phone),
       cnic: toNullableString(input.cnic),
       email: toNullableString(input.email),
-      designation: ((input.designation as string) || "salesman") as EmployeeInput["designation"],
+      designation: ((input.designation as string) || DEFAULT_STAFF_DESIGNATION) as EmployeeInput["designation"],
       department: toNullableString(input.department),
       joining_date: toNullableString(input.joining_date),
       status: (input.status as EmployeeInput["status"]) ?? "active",
@@ -100,6 +104,9 @@ export class EmployeeService {
   }
 
   async updateEmployee(actor: ActorContext, employeeId: string, updates: Record<string, unknown>): Promise<EmployeeResult> {
+    if (!actor.isOwner) {
+      return { error: "Only the store owner can update employees." };
+    }
     if (!actor.organizationId) {
       return { error: "Organization context required" };
     }

@@ -339,7 +339,7 @@ export default function TemplateCustomizer({
       {/* ------------------------------- Toolbar ------------------------------ */}
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
         <h2 className="text-lg font-semibold text-foreground">
-          Customize {docType === "sales_invoice" ? "Sales Invoice" : "Load Form"} Template
+          Customize {docType === "sales_invoice" ? "Sales Invoice" : docType === "retail_receipt" ? "Retail Receipt" : "Load Form"} Template
         </h2>
         <div className="flex-1" />
         <select value={selectedId} onChange={(e) => handleSelect(e.target.value)} className={inputCls + " w-auto"}>
@@ -382,7 +382,18 @@ export default function TemplateCustomizer({
           {message && <p className="mb-3 rounded border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary">{message}</p>}
           {error && <p className="mb-3 rounded border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p>}
 
-          <div className="space-y-4">
+        <div className="space-y-4">
+            {docType === "retail_receipt" && <label className="flex flex-col gap-1 text-sm text-foreground/80">
+              <span className="font-medium">Receipt paper width</span>
+              <select
+                value={working.receiptWidthMm === 58 ? "58" : "80"}
+                onChange={(event) => update({ receiptWidthMm: event.target.value === "58" ? 58 : 80 })}
+                className={inputCls + " min-h-11"}
+              >
+                <option value="58">58 mm</option>
+                <option value="80">80 mm</option>
+              </select>
+            </label>}
             <label className="flex flex-col gap-1 text-sm text-foreground/80">
               <span className="font-medium">Template Name</span>
               <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Custom Template" />

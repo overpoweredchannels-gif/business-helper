@@ -28,6 +28,9 @@ export interface PrintTemplate {
   description?: string;
   docType: PrintDocumentType;
 
+  /** Thermal receipt paper width. Ignored for non-receipt documents. */
+  receiptWidthMm?: 58 | 80;
+
   /** Serif/sans family applied to the whole document. */
   fontFamily: string;
 

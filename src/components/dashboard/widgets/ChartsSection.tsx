@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface BarChartProps {
   data: { label: string; value: number; color?: string }[];
@@ -49,10 +50,10 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
         )}>
           {rank}
         </span>
-        <span className="text-sm text-foreground truncate">{name}</span>
+        <span className="text-sm text-foreground truncate"><bdi>{name}</bdi></span>
       </div>
       <div className="flex items-center gap-1.5 shrink-0 ml-3">
-        <span className="text-sm font-semibold text-foreground">{value}</span>
+        <span className="text-sm font-semibold text-foreground"><bdi>{value}</bdi></span>
         {trend === "up" && <TrendingUp className="size-3 text-success" />}
         {trend === "down" && <TrendingDown className="size-3 text-destructive" />}
         {trend === "flat" && <Minus className="size-3 text-light-text" />}
@@ -68,27 +69,30 @@ const card = "rounded-xl border border-border bg-card p-5";
 
 // Each chart is its own card so the home dashboard can add or remove one at a time.
 export function RevenueTrendCard({ data }: { data: TrendPoint[] }) {
+  const { t } = useRegional();
   return (
     <div className={card}>
-      <h3 className="text-sm font-semibold text-foreground mb-3">Revenue Trend</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-3">{t('dashboard.revenueTrend')}</h3>
       <BarChart data={data} />
     </div>
   );
 }
 
 export function ProfitTrendCard({ data }: { data: TrendPoint[] }) {
+  const { t } = useRegional();
   return (
     <div className={card}>
-      <h3 className="text-sm font-semibold text-foreground mb-3">Profit Trend</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-3">{t('dashboard.profitTrend')}</h3>
       <BarChart data={data} />
     </div>
   );
 }
 
 export function TopProductsCard({ items }: { items: RankedItem[] }) {
+  const { t } = useRegional();
   return (
     <div className={card}>
-      <h3 className="text-sm font-semibold text-foreground mb-3">Top Products</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-3">{t('dashboard.topProducts')}</h3>
       <div className="divide-y divide-border">
         {items.map((item, index) => (
           <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} trend={item.trend} />
@@ -99,9 +103,10 @@ export function TopProductsCard({ items }: { items: RankedItem[] }) {
 }
 
 export function TopCustomersCard({ items }: { items: RankedItem[] }) {
+  const { t } = useRegional();
   return (
     <div className={card}>
-      <h3 className="text-sm font-semibold text-foreground mb-3">Top Customers</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-3">{t('dashboard.topCustomers')}</h3>
       <div className="divide-y divide-border">
         {items.map((item, index) => (
           <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} trend={item.trend} />

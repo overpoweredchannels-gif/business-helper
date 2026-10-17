@@ -5,6 +5,8 @@
 
 import type { EntityImportConfig, ImportFieldDef } from "../types";
 
+export const STAFF_IMPORT_UPDATE_BLOCKED = "Staff import updates are temporarily paused to prevent partially saved profiles and permissions. This row was not changed. Use Staff & Permissions to review and save each change individually. Export and skipping existing rows remain available.";
+
 function parseBool(raw: string): boolean | null {
   const normalized = raw.trim().toLowerCase();
   if (!normalized) return null;
@@ -46,7 +48,7 @@ export const staffImportConfig: EntityImportConfig = {
   existingColumns: "id, email, display_name, role, is_active, organization_id",
   
   fields: [
-    { key: "email", label: "Email", type: "text", required: true, unique: true, preview: true, width: 220, help: "Required. Unique login email." },
+    { key: "email", label: "Email", type: "text", required: true, unique: true, preview: true, width: 220, help: "Required. Existing profile login email in this organization (from Staff export), not employee contact email or Profile ID. Create new staff through Employees → Invite first." },
     { key: "name", label: "Name", type: "text", required: true, preview: true, width: 180, help: "Display name." },
     { key: "role", label: "Role", type: "select", required: false, preview: true, width: 160, parse: parseRole, options: ["owner", "manager", "salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor", "staff"], defaultValue: "staff", help: "Base role (permissions inherit from role)." },
     { key: "is_active", label: "Active", type: "boolean", required: false, preview: true, width: 80, defaultValue: true, parse: (s) => s?.trim().toLowerCase() === "yes" || s?.trim() === "1" || s?.trim().toLowerCase() === "true" ? true : s?.trim().toLowerCase() === "no" || s?.trim() === "0" || s?.trim().toLowerCase() === "false" ? false : null },
@@ -88,82 +90,34 @@ export const staffImportConfig: EntityImportConfig = {
   async findExisting(row, ctx) {
     const v = row.values as Record<string, unknown>;
     if (!v.email) return null;
-    const { data } = await ctx.supabase
+    const { data, error } = await ctx.supabase
       .from("profiles")
       .select("id")
       .eq("organization_id", ctx.orgId)
       .eq("email", String(v.email).trim().toLowerCase())
       .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("No staff profile matches this login email in your organization. Use Employees → Invite to provision new staff, then use the profile login email from Staff export. Employee contact email and Profile ID are not matching keys.");
     return data as any;
   },
 
-  async applyUpdate(existing, payload, ctx) {
-    const supabase = ctx.supabase;
-    const profileId = (existing as any).id;
-    
-    // Update profile
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({ display_name: payload.display_name, role: payload.role, is_active: payload.is_active })
-      .eq("id", profileId)
-      .eq("organization_id", ctx.orgId);
-    if (profileError) throw profileError;
-
-    // Update staff_permissions
-    const v = (existing as any).rawValues as Record<string, unknown>;
-    const grantedSections: string[] = [];
-    for (const section of SECTIONS) {
-      if (v[`perm_${section}`] === true) grantedSections.push(section);
-    }
-    if (v.granted_sections && Array.isArray(v.granted_sections)) {
-      for (const s of v.granted_sections) {
-        if (SECTIONS.includes(s) && !grantedSections.includes(s)) grantedSections.push(s);
-      }
-    }
-
-    const { error: permError } = await supabase
-      .from("staff_permissions")
-      .upsert({
-        profile_id: profileId,
-        organization_id: ctx.orgId,
-        granted_sections: grantedSections,
-        // Also set legacy boolean columns
-        ...Object.fromEntries(SECTIONS.map(s => [`can_manage_${s}`, grantedSections.includes(s)])),
-      }, { onConflict: "profile_id,organization_id" });
-    if (permError) throw permError;
-
-    return { ...(existing as Record<string, unknown>), ...payload };
+  async createRecord() {
+    throw new Error("Staff import cannot create accounts. Use Employees → Invite to create new staff. Import updates are temporarily paused; edit existing staff individually in Staff & Permissions.");
   },
 
-  // Post-import: create staff_permissions rows for new profiles
-  async postImportHook(created, updated, ctx) {
-    const supabase = ctx.supabase;
-    const all = [...created, ...updated] as any[];
-    
-    for (const item of all) {
-      const v = item.rawValues as Record<string, unknown>;
-      const profileId = item.id;
-      if (!profileId) continue;
-      
-      const grantedSections: string[] = [];
-      for (const section of SECTIONS) {
-        if (v[`perm_${section}`] === true) grantedSections.push(section);
-      }
-      if (v.granted_sections && Array.isArray(v.granted_sections)) {
-        for (const s of v.granted_sections) {
-          if (SECTIONS.includes(s) && !grantedSections.includes(s)) grantedSections.push(s);
-        }
-      }
-
-      await supabase
-        .from("staff_permissions")
-        .upsert({
-          profile_id: profileId,
-          organization_id: ctx.orgId,
-          granted_sections: grantedSections,
-          ...Object.fromEntries(SECTIONS.map(s => [`can_manage_${s}`, grantedSections.includes(s)])),
-        }, { onConflict: "profile_id,organization_id" });
+  async reviewRows(rows, ctx) {
+    if (ctx.duplicateMode !== "update") return;
+    for (const row of rows) {
+      if (row.existingId == null || row.errors.length) continue;
+      row.errors.push(STAFF_IMPORT_UPDATE_BLOCKED);
+      row.status = "error";
     }
+  },
+
+  // Also fail closed when a caller bypasses HTTP preview. No compensating writes:
+  // a remote two-request sequence cannot guarantee atomic profile/permission state.
+  async applyUpdate() {
+    throw new Error(STAFF_IMPORT_UPDATE_BLOCKED);
   },
 
   export: {

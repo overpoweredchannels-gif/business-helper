@@ -1,0 +1,1373 @@
+{
+  "roles": [
+    {
+      "name": "anon",
+      "login": false,
+      "super": false,
+      "bypass": false,
+      "inherit": true
+    },
+    {
+      "name": "authenticated",
+      "login": false,
+      "super": false,
+      "bypass": false,
+      "inherit": true
+    },
+    {
+      "name": "authenticator",
+      "login": true,
+      "super": false,
+      "bypass": false,
+      "inherit": false
+    },
+    {
+      "name": "service_role",
+      "login": false,
+      "super": false,
+      "bypass": true,
+      "inherit": true
+    }
+  ],
+  "schema": {
+    "acl": [
+      "=U/pg_database_owner",
+      "anon=U/pg_database_owner",
+      "authenticated=U/pg_database_owner",
+      "pg_database_owner=UC/pg_database_owner",
+      "postgres=U/pg_database_owner",
+      "service_role=U/pg_database_owner"
+    ],
+    "owner": "pg_database_owner"
+  },
+  "callers": [
+    {
+      "cmd": "UPDATE",
+      "qual": "((id = current_user_organization_id()) AND is_current_user_owner_or_admin())",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "organizations",
+      "permissive": "PERMISSIVE",
+      "policyname": "organizations_update_owner_admin",
+      "schemaname": "public",
+      "with_check": "((id = current_user_organization_id()) AND is_current_user_owner_or_admin())"
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((auth_user_id = auth.uid()) OR ((organization_id = current_user_organization_id()) AND is_current_user_owner_or_admin()))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "profiles",
+      "permissive": "PERMISSIVE",
+      "policyname": "profiles_update_same_org_owner_admin_or_self",
+      "schemaname": "public",
+      "with_check": "((auth_user_id = auth.uid()) OR ((organization_id = current_user_organization_id()) AND is_current_user_owner_or_admin()))"
+    },
+    {
+      "cmd": "ALL",
+      "qual": "(user_can_access_organization(organization_id) AND is_current_user_owner_or_admin())",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "security_checks",
+      "permissive": "PERMISSIVE",
+      "policyname": "security_checks_owner_admin_access",
+      "schemaname": "public",
+      "with_check": "(user_can_access_organization(organization_id) AND is_current_user_owner_or_admin())"
+    },
+    {
+      "cmd": "ALL",
+      "qual": "(user_can_access_organization(organization_id) AND is_current_user_owner_or_admin())",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "staff_permissions",
+      "permissive": "PERMISSIVE",
+      "policyname": "staff_permissions_org_owner_admin_access",
+      "schemaname": "public",
+      "with_check": "(user_can_access_organization(organization_id) AND is_current_user_owner_or_admin())"
+    }
+  ],
+  "columns": [
+    {
+      "acl": [],
+      "name": "id",
+      "type": "uuid",
+      "default": null,
+      "not_null": true
+    },
+    {
+      "acl": [],
+      "name": "organization_id",
+      "type": "uuid",
+      "default": null,
+      "not_null": false
+    },
+    {
+      "acl": [],
+      "name": "full_name",
+      "type": "text",
+      "default": null,
+      "not_null": true
+    },
+    {
+      "acl": [],
+      "name": "role_name",
+      "type": "text",
+      "default": "'staff'::text",
+      "not_null": true
+    },
+    {
+      "acl": [],
+      "name": "is_active",
+      "type": "boolean",
+      "default": "true",
+      "not_null": false
+    },
+    {
+      "acl": [],
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "default": "now()",
+      "not_null": false
+    },
+    {
+      "acl": [],
+      "name": "role",
+      "type": "text",
+      "default": "'owner'::text",
+      "not_null": false
+    },
+    {
+      "acl": [],
+      "name": "display_name",
+      "type": "text",
+      "default": null,
+      "not_null": false
+    },
+    {
+      "acl": [],
+      "name": "email",
+      "type": "text",
+      "default": null,
+      "not_null": false
+    },
+    {
+      "acl": [],
+      "name": "auth_user_id",
+      "type": "uuid",
+      "default": null,
+      "not_null": false
+    },
+    {
+      "acl": [],
+      "name": "login_id",
+      "type": "text",
+      "default": null,
+      "not_null": false
+    },
+    {
+      "acl": [],
+      "name": "phone",
+      "type": "text",
+      "default": null,
+      "not_null": false
+    }
+  ],
+  "helpers": [
+    {
+      "acl": [
+        "=X/postgres",
+        "anon=X/postgres",
+        "authenticated=X/postgres",
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "args": "",
+      "name": "current_user_organization_id",
+      "owner": "postgres",
+      "config": [
+        "search_path=public"
+      ],
+      "source": "\n  select p.organization_id\n  from public.profiles p\n  where p.auth_user_id = auth.uid()\n  limit 1\n",
+      "strict": false,
+      "definer": true,
+      "returns": "uuid",
+      "language": "sql",
+      "volatility": "s"
+    },
+    {
+      "acl": [
+        "=X/postgres",
+        "anon=X/postgres",
+        "authenticated=X/postgres",
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "args": "",
+      "name": "current_user_profile_id",
+      "owner": "postgres",
+      "config": [
+        "search_path=public"
+      ],
+      "source": "\n  select p.id\n  from public.profiles p\n  where p.auth_user_id = auth.uid()\n  limit 1\n",
+      "strict": false,
+      "definer": true,
+      "returns": "uuid",
+      "language": "sql",
+      "volatility": "s"
+    },
+    {
+      "acl": [
+        "=X/postgres",
+        "anon=X/postgres",
+        "authenticated=X/postgres",
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "args": "",
+      "name": "is_current_user_owner_or_admin",
+      "owner": "postgres",
+      "config": [
+        "search_path=public"
+      ],
+      "source": "\n  select exists (\n    select 1\n    from public.profiles p\n    where p.auth_user_id = auth.uid()\n      and coalesce(p.role, 'owner') in ('owner', 'admin')\n      and coalesce(p.is_active, true) = true\n  )\n",
+      "strict": false,
+      "definer": true,
+      "returns": "boolean",
+      "language": "sql",
+      "volatility": "s"
+    },
+    {
+      "acl": [
+        "=X/postgres",
+        "anon=X/postgres",
+        "authenticated=X/postgres",
+        "postgres=X/postgres",
+        "service_role=X/postgres"
+      ],
+      "args": "target_organization_id uuid",
+      "name": "user_can_access_organization",
+      "owner": "postgres",
+      "config": [
+        "search_path=public"
+      ],
+      "source": "\n  select exists (\n    select 1\n    from public.profiles p\n    where p.auth_user_id = auth.uid()\n      and p.organization_id = target_organization_id\n      and coalesce(p.is_active, true) = true\n  )\n",
+      "strict": false,
+      "definer": true,
+      "returns": "boolean",
+      "language": "sql",
+      "volatility": "s"
+    }
+  ],
+  "policies": [
+    {
+      "cmd": "a",
+      "name": "profiles_insert_authenticated",
+      "check": "true",
+      "roles": [
+        "authenticated"
+      ],
+      "using": null,
+      "permissive": true
+    },
+    {
+      "cmd": "r",
+      "name": "profiles_select_same_org",
+      "check": null,
+      "roles": [
+        "authenticated"
+      ],
+      "using": "((auth_user_id = auth.uid()) OR (organization_id = current_user_organization_id()))",
+      "permissive": true
+    },
+    {
+      "cmd": "w",
+      "name": "profiles_update_same_org_owner_admin_or_self",
+      "check": "((auth_user_id = auth.uid()) OR ((organization_id = current_user_organization_id()) AND is_current_user_owner_or_admin()))",
+      "roles": [
+        "authenticated"
+      ],
+      "using": "((auth_user_id = auth.uid()) OR ((organization_id = current_user_organization_id()) AND is_current_user_owner_or_admin()))",
+      "permissive": true
+    }
+  ],
+  "relation": {
+    "acl": [
+      "anon=arwdDxtm/postgres",
+      "authenticated=arwdDxtm/postgres",
+      "postgres=arwdDxtm/postgres",
+      "service_role=arwdDxtm/postgres"
+    ],
+    "rls": true,
+    "owner": "postgres",
+    "force_rls": false
+  },
+  "effective": [
+    {
+      "role": "anon",
+      "usage": true,
+      "allowed": true,
+      "privilege": "DELETE"
+    },
+    {
+      "role": "anon",
+      "usage": true,
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "usage": true,
+      "allowed": true,
+      "privilege": "MAINTAIN"
+    },
+    {
+      "role": "anon",
+      "usage": true,
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "usage": true,
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "usage": true,
+      "allowed": true,
+      "privilege": "TRIGGER"
+    },
+    {
+      "role": "anon",
+      "usage": true,
+      "allowed": true,
+      "privilege": "TRUNCATE"
+    },
+    {
+      "role": "anon",
+      "usage": true,
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "usage": true,
+      "allowed": true,
+      "privilege": "DELETE"
+    },
+    {
+      "role": "authenticated",
+      "usage": true,
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "usage": true,
+      "allowed": true,
+      "privilege": "MAINTAIN"
+    },
+    {
+      "role": "authenticated",
+      "usage": true,
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "usage": true,
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "usage": true,
+      "allowed": true,
+      "privilege": "TRIGGER"
+    },
+    {
+      "role": "authenticated",
+      "usage": true,
+      "allowed": true,
+      "privilege": "TRUNCATE"
+    },
+    {
+      "role": "authenticated",
+      "usage": true,
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "usage": true,
+      "allowed": true,
+      "privilege": "DELETE"
+    },
+    {
+      "role": "service_role",
+      "usage": true,
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "usage": true,
+      "allowed": true,
+      "privilege": "MAINTAIN"
+    },
+    {
+      "role": "service_role",
+      "usage": true,
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "usage": true,
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "usage": true,
+      "allowed": true,
+      "privilege": "TRIGGER"
+    },
+    {
+      "role": "service_role",
+      "usage": true,
+      "allowed": true,
+      "privilege": "TRUNCATE"
+    },
+    {
+      "role": "service_role",
+      "usage": true,
+      "allowed": true,
+      "privilege": "UPDATE"
+    }
+  ],
+  "memberships": [
+    {
+      "set": true,
+      "role": "anon",
+      "admin": false,
+      "member": "authenticator",
+      "inherit": false
+    },
+    {
+      "set": true,
+      "role": "authenticated",
+      "admin": false,
+      "member": "authenticator",
+      "inherit": false
+    },
+    {
+      "set": true,
+      "role": "service_role",
+      "admin": false,
+      "member": "authenticator",
+      "inherit": false
+    }
+  ],
+  "view_callers": [],
+  "function_callers": [],
+  "effective_columns": [
+    {
+      "role": "anon",
+      "column": "id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "role",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "role",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "role",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "role",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "email",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "email",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "email",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "email",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "anon",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "anon",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "anon",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "anon",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "role",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "role",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "role",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "role",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "email",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "email",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "email",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "email",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "authenticated",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "authenticated",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "authenticated",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "authenticated",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "organization_id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "full_name",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "role_name",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "is_active",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "created_at",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "role",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "role",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "role",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "role",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "display_name",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "email",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "email",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "email",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "email",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "auth_user_id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "login_id",
+      "allowed": true,
+      "privilege": "UPDATE"
+    },
+    {
+      "role": "service_role",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "INSERT"
+    },
+    {
+      "role": "service_role",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "REFERENCES"
+    },
+    {
+      "role": "service_role",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "SELECT"
+    },
+    {
+      "role": "service_role",
+      "column": "phone",
+      "allowed": true,
+      "privilege": "UPDATE"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "profiles_id_fkey",
+      "definition": "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "profiles_organization_id_fkey",
+      "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "profiles_pkey",
+      "definition": "PRIMARY KEY (id)"
+    }
+  ],
+  "indexes": [
+    {
+      "name": "profiles_auth_user_id_unique_idx",
+      "definition": "CREATE UNIQUE INDEX profiles_auth_user_id_unique_idx ON public.profiles USING btree (auth_user_id) WHERE (auth_user_id IS NOT NULL)"
+    },
+    {
+      "name": "profiles_login_id_uidx",
+      "definition": "CREATE UNIQUE INDEX profiles_login_id_uidx ON public.profiles USING btree (login_id) WHERE (login_id IS NOT NULL)"
+    },
+    {
+      "name": "profiles_pkey",
+      "definition": "CREATE UNIQUE INDEX profiles_pkey ON public.profiles USING btree (id)"
+    }
+  ]
+}

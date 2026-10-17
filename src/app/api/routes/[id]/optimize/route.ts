@@ -4,7 +4,7 @@ import { getRouteOptimizer } from "@/lib/maps/route-optimizer";
 
 export const runtime = "nodejs";
 
-type RouteContext = { params: Promise<{ id: string }> } | { params: { id: string } };
+type RouteContext = { params: Promise<{ id: string }> };
 
 async function getRouteId(context: RouteContext): Promise<string> {
   const params = await context.params;

@@ -151,7 +151,7 @@ export const sectionPermissionGroups: Array<{ group: string; sections: Array<{ i
   },
 ];
 
-export const staffRoles = ["owner", "admin", "manager", "staff", "accountant", "sales"];
+export const staffRoles = ["owner", "admin", "manager", "staff", "accountant", "sales", "salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor"];
 
 export const defaultSecurityChecks: Array<{ key: string; label: string }> = [
   { key: "app_loads", label: "App loads after RLS hardening" },

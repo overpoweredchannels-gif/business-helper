@@ -4,7 +4,7 @@ import { getDraftSaleService } from "@/lib/sales/services/draft-sale-service";
 
 export const runtime = "nodejs";
 
-type DraftContext = { params: Promise<{ id: string }> } | { params: { id: string } };
+type DraftContext = { params: Promise<{ id: string }> };
 
 async function getDraftId(context: DraftContext): Promise<string> {
   const params = await context.params;

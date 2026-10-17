@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Customer, Employee, EmployeeDesignation, SalesRoute, SalesRouteStop, Territory } from "@/lib/tradeos/types";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { buildWhatsAppUrl, buildWhatsAppInviteMessage, designationLabel } from "@/lib/identity/staff-invitation";
+import { DEFAULT_STAFF_DESIGNATION } from "@/lib/identity/staff-roles";
 
 const DESIGNATIONS: EmployeeDesignation[] = [
   "salesman",
@@ -59,7 +60,7 @@ const emptyForm: Record<string, string> = {
   phone: "",
   cnic: "",
   email: "",
-  designation: "salesman",
+  designation: DEFAULT_STAFF_DESIGNATION,
   department: "",
   joining_date: "",
   employee_id: "",

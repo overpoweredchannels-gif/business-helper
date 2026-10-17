@@ -8,6 +8,7 @@
 // Read-only: never mutates data.
 
 import { SupabaseClient } from "@supabase/supabase-js";
+import { calculateSaleLineTotal, centsToMoney, moneyToCents } from "./sale-amounts";
 
 export interface SalesInvoiceFilters {
   organizationId: string;
@@ -180,8 +181,11 @@ export async function buildSalesInvoices(
     const itemsByTx = new Map<string, SalesInvoiceLine[]>();
     for (const item of itemsRes.data ?? []) {
       const txId = item.sales_transaction_id as string;
-      const products = item.products as Array<{ name: string; unit_type: string | null; subunit_type: string | null }> | null;
-      const product = products?.[0] ?? null;
+      const products = item.products as
+        | Array<{ name: string; unit_type: string | null; subunit_type: string | null }>
+        | { name: string; unit_type: string | null; subunit_type: string | null }
+        | null;
+      const product = Array.isArray(products) ? products[0] ?? null : products;
       const mainLabel = product?.unit_type ?? "Units";
       const subLabel = product?.subunit_type ?? "Pcs";
       const unitMode: "main" | "subunit" | null =
@@ -198,10 +202,10 @@ export async function buildSalesInvoices(
         subunit_unit_label: subLabel,
         unit_mode: unitMode,
         quantity,
-        quantity_text: `${trim(quantity)} ${unitMode === "subunit" ? subLabel : mainLabel}`,
+        quantity_text: `${formatSalesInvoiceQuantity(quantity)} ${unitMode === "subunit" ? subLabel : mainLabel}`,
         selling_price: price,
         discount,
-        line_total: round2(quantity * price - discount),
+        line_total: calculateSaleLineTotal({ quantity, sellingPrice: price, discount }),
       };
       const list = itemsByTx.get(txId);
       if (list) list.push(line);
@@ -218,11 +222,11 @@ export async function buildSalesInvoices(
       const totalAmount = Number(t.total_amount);
       const invoiceTotal = Number.isFinite(totalAmount) && totalAmount > 0
         ? totalAmount
-        : round2(lines.reduce((s, l) => s + l.line_total, 0));
+        : centsToMoney(lines.reduce((sum, line) => sum + moneyToCents(line.line_total), BigInt(0)));
       const discountAmount = Number(t.discount_amount) || 0;
       const taxRate = Number(t.tax_rate) || 0;
       const taxAmount = Number(t.tax_amount) || 0;
-      const netTotal = round2(invoiceTotal - discountAmount + taxAmount);
+      const netTotal = centsToMoney(moneyToCents(invoiceTotal) - moneyToCents(discountAmount) + moneyToCents(taxAmount));
       const salesmanId = (t.created_by_profile_id as string) ?? null;
 
       return {
@@ -264,10 +268,7 @@ export async function buildSalesInvoices(
   }
 }
 
-function trim(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
-}
-
-function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+export function formatSalesInvoiceQuantity(quantity: number): string {
+  if (!Number.isFinite(quantity)) return "0";
+  return Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(3).replace(/\.?0+$/, "");
 }

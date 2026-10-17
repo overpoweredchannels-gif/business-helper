@@ -28,6 +28,27 @@ function parseBool(raw: string): boolean | null {
   return null;
 }
 
+function formatExportQuantities(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object") return "";
+    const item = entry as {
+      quantity?: unknown; unit_mode?: unknown;
+      products?:
+        | { name?: string | null; unit_type?: string | null; subunit_type?: string | null }
+        | Array<{ name?: string | null; unit_type?: string | null; subunit_type?: string | null }>
+        | null;
+    };
+    const quantity = Number(item.quantity);
+    if (!Number.isFinite(quantity)) return "";
+    const quantityText = Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(3).replace(/\.?0+$/, "");
+    const productDetails = Array.isArray(item.products) ? item.products[0] : item.products;
+    const unit = item.unit_mode === "subunit" ? productDetails?.subunit_type : productDetails?.unit_type;
+    const product = productDetails?.name;
+    return [product, `${quantityText}${unit ? ` ${unit}` : ""}`].filter(Boolean).join(" ");
+  }).filter(Boolean).join("; ");
+}
+
 function parsePaymentType(raw: string): "cash" | "credit" | null {
   const normalized = raw.trim().toLowerCase();
   if (normalized === "cash") return "cash";
@@ -156,6 +177,7 @@ export const salesInvoicesImportConfig: EntityImportConfig = {
       { key: "tax_amount", label: "Tax" },
       { key: "credit_due_date", label: "Due Date" },
       { key: "status", label: "Status" },
+      { key: "sales_items", label: "Item quantities", transform: formatExportQuantities },
     ],
     async fetchData(orgId, filters) {
       const { createSupabaseService } = await import("@/lib/supabase/server");
@@ -165,6 +187,7 @@ export const salesInvoicesImportConfig: EntityImportConfig = {
         .select(`
           id, invoice_number, sale_date, payment_type, total_amount,
           discount_amount, tax_rate, tax_amount, credit_due_date, status,
+          sales_items(quantity, unit_mode, products(name, unit_type, subunit_type)),
           customer:customers(customer_name, shop_name),
           salesman:profiles!created_by_profile_id(display_name)
         `)

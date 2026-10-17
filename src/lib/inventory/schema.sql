@@ -84,7 +84,7 @@ create table if not exists public.inventory_transactions (
   movement_type text not null check (
     movement_type in ('purchase_in', 'sale_out', 'adjustment_in', 'adjustment_out')
   ),
-  quantity_delta numeric(14, 2) not null check (quantity_delta <> 0),
+  quantity_delta numeric(18, 6) not null check (quantity_delta <> 0),
   reason text check (reason is null or char_length(trim(reason)) <= 500),
   batch_number text check (batch_number is null or char_length(trim(batch_number)) <= 100),
   expiry_date date,

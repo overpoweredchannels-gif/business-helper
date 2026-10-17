@@ -8,4 +8,5 @@ export { DashboardCustomizePanel } from "./DashboardCustomizePanel";
 export { SectionSummaryCard, type SectionSummary } from "./SectionSummaryCard";
 export { Header } from "./Header";
 export { FloatingAI } from "./FloatingAI";
+export { SetupImportPrompt } from "./SetupImportPrompt";
 export * from "./widgets";

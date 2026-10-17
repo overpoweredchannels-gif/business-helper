@@ -13,6 +13,7 @@ import { buildLegacyPermissionRow } from "../legacy";
 import { logAuditEvent } from "../audit";
 import type { ActorContext } from "../types";
 import type { Employee } from "@/lib/tradeos/types";
+import { getStaffProfileRole } from "../staff-roles";
 
 export interface StaffInviteResult {
   ok: boolean;
@@ -51,18 +52,12 @@ export interface StaffLoginResult {
 
 const HIDDEN_EMAIL_DOMAIN = "staff.tradeos.internal";
 
-const DESIGNATION_ROLE: Record<string, string> = {
-  salesman: "salesman",
-  delivery_rider: "delivery_rider",
-  field_officer: "field_officer",
-  collection_officer: "collection_officer",
-  supervisor: "supervisor",
-  manager: "manager",
-  owner: "owner",
-};
-
 export class StaffOnboardingService {
-  private readonly employeeRepository = new EmployeeRepository();
+  private readonly employeeRepository: EmployeeRepository;
+
+  constructor(private readonly createClient = createSupabaseService) {
+    this.employeeRepository = new EmployeeRepository(createClient);
+  }
 
   /** Owner generates a Profile ID + invite for an employee. No email needed. */
   async generateInvite(actor: ActorContext, employeeId: string): Promise<StaffInviteResult> {
@@ -73,7 +68,7 @@ export class StaffOnboardingService {
       return { ok: false, error: "Organization context required." };
     }
 
-    const employee = await this.employeeRepository.findById(employeeId);
+    const employee = await this.employeeRepository.findForInvitation(employeeId, actor.organizationId);
     if (!employee || employee.organization_id !== actor.organizationId) {
       return { ok: false, error: "Employee not found in this organization." };
     }
@@ -81,7 +76,7 @@ export class StaffOnboardingService {
       return { ok: false, error: "This employee has already accepted their invitation." };
     }
 
-    const supabase = createSupabaseService();
+    const supabase = this.createClient();
 
     // If already invited (pending), return existing invite data instead of creating duplicates.
     if (employee.invite_status === "pending" && employee.login_id && employee.hidden_email && employee.invite_code) {
@@ -149,7 +144,7 @@ export class StaffOnboardingService {
       expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000);
     }
 
-    const defaultRole = DESIGNATION_ROLE[employee.designation ?? "salesman"] ?? "salesman";
+    const defaultRole = getStaffProfileRole(employee.designation);
     const displayName = employee.full_name?.trim() ?? "Staff";
 
     // The owner wants visibility in Staff & Permissions immediately and

@@ -1,3 +1,6 @@
+import type { Language } from '../regional/settings';
+import { localizedGuideTopics } from './guide-i18n';
+
 export type GuideTopic = { title: string; description: string; steps: string[] };
 export const guideTopics: GuideTopic[] = [
   { title: "Welcome to TradeOS", description: "Manage products, stock, purchases, sales, payments and your team in one workspace. Available screens depend on the owner's permissions.", steps: ["Start with business settings, brands and categories.", "Add products with the correct units, prices and opening stock.", "Add customers and suppliers, then record purchases and sales.", "Record payments and review your reports. Click any question-mark icon for help. This tutorial never changes your records."] },
@@ -82,8 +85,7 @@ const descriptions: Record<string, string> = {
   "settings": guideTopics[11].description,
 };
 
-export function describeControl(label: string, kind = "", context = "") {
-  const normalized = label.toLowerCase().replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
+export function describeControl(label: string, kind = "", context = "") {  const normalized = label.toLowerCase().replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
   const match = Object.keys(descriptions).sort((a, b) => b.length - a.length).find(key => normalized.includes(key.replace(/-/g, " ")));
   if (match) return descriptions[match];
   if (/^(save|create|add|submit|send|approve|reject|delete|remove|cancel|close|edit|update|apply|confirm|print|next|previous|clear|reset|select|search|filter|view|open|record)/i.test(normalized)) {
@@ -98,4 +100,64 @@ export function describeControl(label: string, kind = "", context = "") {
   if (kind === "date") return "Choose the date this record or filter should use. Reports and transaction dates can produce different results if you choose the wrong range.";
   if (kind === "number") return `Enter the ${label.toLowerCase()} for this record. Check any unit, minimum and step shown on the field before saving.`;
   return `This is the “${label}” control${context ? ` in ${context}` : ""}. Use the visible label, choices and validation messages to set this part of the record. The full tutorial explains the surrounding workflow.`;
+}
+
+/** Localized welcome-tutorial topics. English returns the source guideTopics. */
+export function getGuideTopics(language: Language): GuideTopic[] {
+  return language === 'en' ? guideTopics : localizedGuideTopics(language);
+}
+
+// Stable contextual-help identifiers, independent of translated display text.
+// Each ID maps to a localized explanation. HelpCenter checks data-help-id
+// before falling back to label-based describeControl().
+type HelpIdText = { en: string; es: string; it: string; ur: string };
+const helpIdDescriptions: Record<string, HelpIdText> = {
+  "header-search": {
+    en: "Search sections and products. Type to see matching pages and product results with keyboard navigation.",
+    es: "Busca secciones y productos. Escribe para ver páginas y productos coincidentes con navegación por teclado.",
+    it: "Cerca sezioni e prodotti. Digita per vedere pagine e prodotti corrispondenti con navigazione da tastiera.",
+    ur: "حصے اور مصنوعات تلاش کریں۔ کی بورڈ نیویگیشن کے ساتھ مماثل صفحات اور مصنوعات دیکھنے کے لیے لکھیں۔",
+  },
+  "header-notifications": {
+    en: "View notifications. The dot indicates unread items.",
+    es: "Ver notificaciones. El punto indica elementos sin leer.",
+    it: "Vedi notifiche. Il punto indica elementi non letti.",
+    ur: "اطلاعات دیکھیں۔ نقطہ نہ پڑھی گئی اشیاء کی نشاندہی کرتا ہے۔",
+  },
+  "header-profile": {
+    en: "Open the account menu to see your name and organization, or sign out.",
+    es: "Abre el menú de cuenta para ver tu nombre y organización, o cierra sesión.",
+    it: "Apri il menu account per vedere nome e attività, o esci.",
+    ur: "اپنا نام اور تنظیم دیکھنے یا سائن آؤٹ کرنے کے لیے اکاؤنٹ مینو کھولیں۔",
+  },
+  "header-ai": {
+    en: "Open the AI assistant for help with records and queries.",
+    es: "Abre el asistente de IA para ayuda con registros y consultas.",
+    it: "Apri l’assistente IA per aiuto con registri e domande.",
+    ur: "ریکارڈ اور سوالات میں مدد کے لیے اے آئی معاون کھولیں۔",
+  },
+  "sidebar-customize": {
+    en: "Reorder or hide menu sections. Changes apply to this browser.",
+    es: "Reordena u oculta secciones del menú. Los cambios se aplican a este navegador.",
+    it: "Riordina o nascondi sezioni del menu. Le modifiche si applicano a questo browser.",
+    ur: "مینو کے حصوں کی ترتیب بدلیں یا چھپائیں۔ تبدیلیاں اس براؤزر پر لاگو ہوتی ہیں۔",
+  },
+  "sidebar-zoom": {
+    en: "Adjust the display zoom for this browser. The setting is saved locally.",
+    es: "Ajusta el zoom de pantalla para este navegador. El ajuste se guarda localmente.",
+    it: "Regola lo zoom dello schermo per questo browser. L’impostazione è salvata localmente.",
+    ur: "اس براؤزر کے لیے ڈسپلے زوم ایڈجسٹ کریں۔ ترتیب مقامی طور پر محفوظ ہوتی ہے۔",
+  },
+  "dashboard-quick-actions": {
+    en: "Start a common task like a new sale or adding a product. Each button opens its workspace directly.",
+    es: "Inicia una tarea común como una nueva venta o agregar un producto. Cada botón abre su espacio de trabajo directamente.",
+    it: "Avvia un’attività comune come una nuova vendita o l’aggiunta di un prodotto. Ogni pulsante apre direttamente il suo spazio di lavoro.",
+    ur: "نئی فروخت یا مصنوعات شامل کرنے جیسا عام کام شروع کریں۔ ہر بٹن براہ راست اپنا ورک اسپیس کھولتا ہے۔",
+  },
+};
+
+/** Localized explanation for a stable help ID, or undefined if unknown. */
+export function describeHelpId(id: string, language: Language): string | undefined {
+  const entry = helpIdDescriptions[id];
+  return entry ? entry[language] : undefined;
 }

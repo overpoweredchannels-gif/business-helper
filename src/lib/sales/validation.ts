@@ -7,6 +7,8 @@
 // The database mirrors these rules with CHECK constraints in
 // src/lib/sales/schema.sql and the Phase 4 migration — keep them in sync.
 
+import { hasAllowedPrecision, SALE_QUANTITY_DECIMAL_PLACES } from "./sale-amounts";
+
 export const MAX_NOTES_LENGTH = 500;
 export const MAX_REASON_LENGTH = 500;
 export const MAX_BATCH_NUMBER_LENGTH = 100;
@@ -95,6 +97,8 @@ export function validateSalesOrderInput(input: SalesOrderInputLike): ValidationR
       const quantity = normalizeOptionalNumber(line.quantity);
       if (quantity === null || quantity <= 0) {
         errors.push(`${label}: quantity must be greater than zero.`);
+      } else if (!hasAllowedPrecision(line.quantity ?? "", SALE_QUANTITY_DECIMAL_PLACES)) {
+        errors.push(`${label}: quantity supports up to ${SALE_QUANTITY_DECIMAL_PLACES} decimal places.`);
       }
       const unitPrice = normalizeOptionalNumber(line.unit_price);
       if (unitPrice !== null && unitPrice < 0) {
@@ -239,6 +243,8 @@ export function validateSalesReturnInput(input: SalesReturnInputLike): Validatio
       const quantity = normalizeOptionalNumber(line.quantity);
       if (quantity === null || quantity <= 0) {
         errors.push(`${label}: quantity must be greater than zero.`);
+      } else if (!hasAllowedPrecision(line.quantity ?? "", SALE_QUANTITY_DECIMAL_PLACES)) {
+        errors.push(`${label}: quantity supports up to ${SALE_QUANTITY_DECIMAL_PLACES} decimal places.`);
       }
       const unitPrice = normalizeOptionalNumber(line.unit_price);
       if (unitPrice !== null && unitPrice < 0) {

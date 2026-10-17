@@ -152,7 +152,7 @@ body {
   position: absolute;
   z-index: 1;
   top: .75rem;
-  right: .5rem;
+  inset-inline-end: .5rem;
   display: grid;
   place-items: center;
   width: 44px;
