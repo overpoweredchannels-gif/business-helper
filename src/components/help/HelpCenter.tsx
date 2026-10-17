@@ -112,6 +112,11 @@ export function HelpCenter({ userId }: { userId: string }) {
         // Retain the actual control element (not in state, to avoid React issues)
         helpControlMap.current.set(itemId, element as HTMLElement);
       });
+      // Prune map entries for controls that no longer exist in this collection.
+      const liveIds = new Set(result.map(item => item.id));
+      for (const key of helpControlMap.current.keys()) {
+        if (!liveIds.has(key)) helpControlMap.current.delete(key);
+      }
       hosts.forEach((host, anchor) => { if (!seen.has(anchor)) { host.remove(); hosts.delete(anchor); } });
       const next = JSON.stringify(result.map(({ host, ...item }) => ({ ...item, connected: host.isConnected })));
       if (next !== signature.current) { signature.current = next; setItems(result); }
@@ -121,7 +126,7 @@ export function HelpCenter({ userId }: { userId: string }) {
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "aria-hidden", "open", "class"] });
     const resize = new ResizeObserver(schedule); resize.observe(document.body);
     window.addEventListener("resize", schedule); schedule();
-    return () => { observer.disconnect(); resize.disconnect(); cancelAnimationFrame(frame); hosts.forEach(host => host.remove()); parents.forEach((position, parent) => { parent.style.position = position; }); window.removeEventListener("resize", schedule); marked.forEach(element => { element.removeAttribute("data-context-help-target"); element.style.removeProperty("--tradeos-help-padding"); }); };
+    return () => { observer.disconnect(); resize.disconnect(); cancelAnimationFrame(frame); hosts.forEach(host => host.remove()); parents.forEach((position, parent) => { parent.style.position = position; }); window.removeEventListener("resize", schedule); marked.forEach(element => { element.removeAttribute("data-context-help-target"); element.style.removeProperty("--tradeos-help-padding"); }); helpControlMap.current.clear(); /* helpControl.current is intentionally preserved: it was captured at activation and is consumed by the dialog-close restoration. */ };
   }, [icons, isOpen, language]);
   const close = () => { setSelected(null); setTour(null); setSearch(""); };
   const toggleIcons = () => setIcons(current => { try { localStorage.setItem(`tradeos-help-icons:${userId}`, current ? "hidden" : "visible"); } catch { /* Browser storage is optional. */ } return !current; });
