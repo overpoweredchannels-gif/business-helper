@@ -21,6 +21,11 @@ export function HelpCenter({ userId }: { userId: string }) {
   }, []);
   const [selected, setSelected] = useState<HelpItem | null>(null); const [tour, setTour] = useState<number | null>(null); const [search, setSearch] = useState("");
   const dialog = useRef<HTMLDialogElement>(null); const signature = useRef(""); const previousFocus = useRef<HTMLElement | null>(null);
+  // The actual associated control, retained at help activation.
+  // Stored in a ref map (not state) to avoid React serialization issues with DOM nodes.
+  // Keyed by HelpItem id.
+  const helpControlMap = useRef<Map<number, HTMLElement>>(new Map());
+  const helpControl = useRef<HTMLElement | null>(null);
   const isOpen = selected !== null || tour !== null;
   useEffect(() => {
     try { setIcons(localStorage.getItem(`tradeos-help-icons:${userId}`) !== "hidden"); } catch { /* Browser storage is optional. */ }
@@ -28,8 +33,22 @@ export function HelpCenter({ userId }: { userId: string }) {
   }, [userId]);
   useEffect(() => {
     const element = dialog.current;
-    if (isOpen && element && !element.open) { previousFocus.current = document.activeElement as HTMLElement; element.showModal(); }
-    if (!isOpen && element?.open) { element.close(); if (previousFocus.current?.isConnected) previousFocus.current.focus(); }
+    if (isOpen && element && !element.open) {
+      previousFocus.current = document.activeElement as HTMLElement;
+      element.showModal();
+    }
+    if (!isOpen && element?.open) {
+      element.close();
+      // Restore focus to the retained control (captured at activation).
+      // Fall back to previousFocus if control is gone.
+      const ctrl = helpControl.current;
+      if (ctrl?.isConnected) {
+        ctrl.focus();
+      } else if (previousFocus.current?.isConnected) {
+        previousFocus.current.focus();
+      }
+      helpControl.current = null;
+    }
   }, [isOpen]);
   useEffect(() => {
     if (!icons || isOpen) return;
@@ -88,7 +107,10 @@ export function HelpCenter({ userId }: { userId: string }) {
         const helpId = element.getAttribute("data-help-id");
         const description = (helpId && describeHelpId(helpId, language))
           ?? describeControl(label, element.tagName === "SELECT" ? "select" : field.type, context || topic || "");
-        result.push({ id: ids.get(element)!, label, description, choices, host });
+        const itemId = ids.get(element)!;
+        result.push({ id: itemId, label, description, choices, host });
+        // Retain the actual control element (not in state, to avoid React issues)
+        helpControlMap.current.set(itemId, element as HTMLElement);
       });
       hosts.forEach((host, anchor) => { if (!seen.has(anchor)) { host.remove(); hosts.delete(anchor); } });
       const next = JSON.stringify(result.map(({ host, ...item }) => ({ ...item, connected: host.isConnected })));
@@ -104,13 +126,17 @@ export function HelpCenter({ userId }: { userId: string }) {
   const close = () => { setSelected(null); setTour(null); setSearch(""); };
   const toggleIcons = () => setIcons(current => { try { localStorage.setItem(`tradeos-help-icons:${userId}`, current ? "hidden" : "visible"); } catch { /* Browser storage is optional. */ } return !current; });
   const complete = () => { try { localStorage.setItem(`tradeos-guide-v1:${userId}`, "complete"); } catch { /* Help stays usable when browser storage is unavailable. */ } close(); };
-  const iconLayer = icons && !isOpen ? items.filter(item => item.host.isConnected).map(item => createPortal(<button data-app-help type="button" aria-label={`${t('help.helpPrefix')} ${item.label}`} title={`${t('help.helpPrefix')} ${item.label}`} onClick={event => { event.preventDefault(); event.stopPropagation(); setSelected(item); }} style={{ width: 24, height: 24, minWidth: 24, minHeight: 24, padding: 4, border: 0, background: "transparent", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ width: 14, height: 14, fontSize: 10, lineHeight: "12px" }} className="rounded-full border border-primary bg-background text-center font-semibold text-primary">?</span></button>, item.host, String(item.id))) : null;
+  const iconLayer = icons && !isOpen ? items.filter(item => item.host.isConnected).map(item => createPortal(<button data-app-help type="button" aria-label={`${t('help.helpPrefix')} ${item.label}`} title={`${t('help.helpPrefix')} ${item.label}`} onClick={event => { event.preventDefault(); event.stopPropagation(); // Retain the actual associated control (not the portal button).
+        // Retrieved from the ref map populated during field collection.
+        const ctrl = helpControlMap.current.get(item.id) || null;
+        helpControl.current = ctrl;
+        setSelected(item); }} style={{ width: 24, height: 24, minWidth: 24, minHeight: 24, padding: 4, border: 0, background: "transparent", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ width: 14, height: 14, fontSize: 10, lineHeight: "12px" }} className="rounded-full border border-primary bg-background text-center font-semibold text-primary">?</span></button>, item.host, String(item.id))) : null;
   const controls = <div data-app-help className={controlsHost ? "flex flex-col gap-2" : "fixed bottom-3 left-3 z-[75] flex gap-2 rounded-lg border bg-background p-2 shadow-lg print:hidden"}><button type="button" onClick={() => { setSelected(null); setTour(0); }} className="min-h-11 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus-visible:ring-2 focus-visible:ring-primary" aria-label={t('help.helpAndTutorial')}>{compactControls ? t('help.help') : t('help.helpAndTutorial')}</button>{!compactControls && <button type="button" aria-pressed={icons} onClick={toggleIcons} className="min-h-11 rounded-lg border px-3 py-2 text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary">{icons ? t('help.hideIcons') : t('help.showIcons')}</button>}</div>;
   return <div data-app-help className="print:hidden">
     <style>{"@media screen{[data-context-help-target]{padding-right:var(--tradeos-help-padding,26px)!important}}@media print{[data-app-help],[data-app-help]::backdrop{display:none!important}}"}</style>
     {iconLayer}
     {controlsHost ? createPortal(controls, controlsHost) : controls}
-    <dialog ref={dialog} aria-labelledby="tradeos-help-title" data-app-help onCancel={close} className="m-auto max-h-[85dvh] w-[min(680px,94vw)] overflow-y-auto rounded-xl border border-border bg-background p-6 text-foreground shadow-xl backdrop:bg-black/40">
+    <dialog ref={dialog} aria-labelledby="tradeos-help-title" data-app-help onCancel={(e) => { e.preventDefault(); close(); }} className="m-auto max-h-[85dvh] w-[min(680px,94vw)] overflow-y-auto rounded-xl border border-border bg-background p-6 text-foreground shadow-xl backdrop:bg-black/40">
       <div className="flex items-start justify-between gap-4"><h2 id="tradeos-help-title" className="text-xl font-semibold">{selected?.label ?? topics[tour ?? 0].title}</h2><button type="button" aria-label={t('help.closeHelp')} onClick={close}>✕</button></div>
       <button type="button" aria-pressed={icons} onClick={toggleIcons} className="mt-4 min-h-11 rounded-lg border px-4 py-2 text-sm">{icons ? t('help.hideIcons') : t('help.showIcons')}</button>{selected ? <div className="mt-4 space-y-4"><p>{selected.description}</p>{selected.choices.length > 0 && <div><h3 className="font-medium">{t('help.availableChoices')}</h3><ul className="list-disc pl-5">{selected.choices.map((choice, index) => <li key={index}>{choice}</li>)}</ul><p className="mt-2 text-sm">{t('help.chooseValue')}</p></div>}<button type="button" className="underline" onClick={() => { setSelected(null); setTour(0); }}>{t('help.openTutorial')}</button></div> : <div className="mt-4 space-y-4">
         <p>{topics[tour ?? 0].description}</p><ol className="list-decimal space-y-3 pl-6">{topics[tour ?? 0].steps.map(step => <li key={step}>{step}</li>)}</ol>
