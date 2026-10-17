@@ -148,6 +148,12 @@ const helpIdDescriptions: Record<string, HelpIdText> = {
     it: "Regola lo zoom dello schermo per questo browser. L’impostazione è salvata localmente.",
     ur: "اس براؤزر کے لیے ڈسپلے زوم ایڈجسٹ کریں۔ ترتیب مقامی طور پر محفوظ ہوتی ہے۔",
   },
+  "dashboard-quick-actions": {
+    en: "Start a common task like a new sale or adding a product. Each button opens its workspace directly.",
+    es: "Inicia una tarea común como una nueva venta o agregar un producto. Cada botón abre su espacio de trabajo directamente.",
+    it: "Avvia un’attività comune come una nuova vendita o l’aggiunta di un prodotto. Ogni pulsante apre direttamente il suo spazio di lavoro.",
+    ur: "نئی فروخت یا مصنوعات شامل کرنے جیسا عام کام شروع کریں۔ ہر بٹن براہ راست اپنا ورک اسپیس کھولتا ہے۔",
+  },
 };
 
 /** Localized explanation for a stable help ID, or undefined if unknown. */

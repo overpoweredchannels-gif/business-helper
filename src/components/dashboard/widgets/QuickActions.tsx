@@ -39,6 +39,7 @@ export function QuickActions({ actions = defaultActions, onAction }: QuickAction
           <button
             key={a.label}
             onClick={() => onAction?.(a.label)}
+            data-help-id="dashboard-quick-actions"
             aria-label={a.labelKey ? t(a.labelKey) : a.label}
             className={cn(
               "flex min-h-11 flex-col items-center gap-1.5 rounded-lg px-2 py-3 text-xs font-medium transition-all duration-200",

@@ -100,7 +100,7 @@ export function HelpCenter({ userId }: { userId: string }) {
     const resize = new ResizeObserver(schedule); resize.observe(document.body);
     window.addEventListener("resize", schedule); schedule();
     return () => { observer.disconnect(); resize.disconnect(); cancelAnimationFrame(frame); hosts.forEach(host => host.remove()); parents.forEach((position, parent) => { parent.style.position = position; }); window.removeEventListener("resize", schedule); marked.forEach(element => { element.removeAttribute("data-context-help-target"); element.style.removeProperty("--tradeos-help-padding"); }); };
-  }, [icons, isOpen]);
+  }, [icons, isOpen, language]);
   const close = () => { setSelected(null); setTour(null); setSearch(""); };
   const toggleIcons = () => setIcons(current => { try { localStorage.setItem(`tradeos-help-icons:${userId}`, current ? "hidden" : "visible"); } catch { /* Browser storage is optional. */ } return !current; });
   const complete = () => { try { localStorage.setItem(`tradeos-guide-v1:${userId}`, "complete"); } catch { /* Help stays usable when browser storage is unavailable. */ } close(); };
