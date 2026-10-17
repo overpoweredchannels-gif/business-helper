@@ -210,7 +210,28 @@ export function Header({
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const notifRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const notifTriggerRef = useRef<HTMLButtonElement>(null);
+  const profileTriggerRef = useRef<HTMLButtonElement>(null);
   const { ui } = useRegional();
+
+  // Escape handler for popups: closes when focus is on trigger, help button,
+  // or popup content. Returns focus to trigger. Does not intercept when a
+  // modal dialog (e.g., contextual help) is open or when popup is closed.
+  const handlePopupEscape = (
+    e: React.KeyboardEvent,
+    isOpen: boolean,
+    close: () => void,
+    triggerRef: React.RefObject<HTMLButtonElement | null>
+  ) => {
+    if (e.key !== "Escape" || !isOpen) return;
+    // Don't intercept Escape for an active modal dialog
+    if (document.querySelector('dialog[open]')) return;
+    e.stopPropagation();
+    close();
+    // Return focus to the trigger after the popup unmounts
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  };
 
   // Account/organization scope change clears the parent-owned search text.
   // The keyed HeaderSearchBox remount clears its own open/active state, but
@@ -324,8 +345,13 @@ export function Header({
           </button>
 
           {/* Notifications */}
-          <div ref={notifRef} className="relative">
+          <div
+            ref={notifRef}
+            className="relative"
+            onKeyDown={(e) => handlePopupEscape(e, notifOpen, () => setNotifOpen(false), notifTriggerRef)}
+          >
             <button
+              ref={notifTriggerRef}
               onClick={() => setNotifOpen(!notifOpen)}
               data-help-id="header-notifications"
               aria-label={ui('header.notifications')}
@@ -339,7 +365,6 @@ export function Header({
             {notifOpen && (
               <div
                 className="fixed inset-x-3 top-16 z-50 sm:absolute sm:inset-x-auto sm:end-0 sm:top-full sm:mt-1 sm:w-80 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn"
-                onKeyDown={(e) => { if (e.key === "Escape") setNotifOpen(false); }}
               >
                 <div className="px-3 py-2 border-b border-border mb-1">
                   <p className="text-sm font-semibold text-foreground">{ui('header.notifications')}</p>
@@ -388,8 +413,13 @@ export function Header({
           </div>
 
           {/* Profile */}
-          <div className="relative">
+          <div
+            ref={profileRef}
+            className="relative"
+            onKeyDown={(e) => handlePopupEscape(e, profileOpen, () => setProfileOpen(false), profileTriggerRef)}
+          >
             <button
+              ref={profileTriggerRef}
               onClick={() => setProfileOpen(!profileOpen)}
               data-help-id="header-profile"
               className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-foreground hover:bg-muted transition-colors"
@@ -404,7 +434,6 @@ export function Header({
                 <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
                 <div
                   className="absolute end-0 top-full mt-1 z-50 w-48 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn"
-                  onKeyDown={(e) => { if (e.key === "Escape") setProfileOpen(false); }}
                 >
                   <div className="px-3 py-2 border-b border-border mb-1">
                     <p className="text-sm font-medium text-foreground truncate"><bdi>{userName || ui('header.userFallback')}</bdi></p>
