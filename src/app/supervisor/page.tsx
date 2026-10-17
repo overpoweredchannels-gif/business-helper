@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Loader2, AlertCircle, Users, CheckCircle2, MapPin, XCircle, Clock, UserX } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Member {
   id: string;
@@ -30,14 +31,14 @@ interface TeamState {
   };
 }
 
-const ATT_LABEL: Record<string, string> = {
-  present: "Present",
-  late: "Late",
-  absent: "Absent",
-  half_day: "Half Day",
-  leave: "On Leave",
-  holiday: "Holiday",
-  no_record: "No record",
+const ATT_KEYS: Record<string, 'supervisor.home.att.present' | 'supervisor.home.att.late' | 'supervisor.home.att.absent' | 'supervisor.home.att.half_day' | 'supervisor.home.att.leave' | 'supervisor.home.att.holiday' | 'supervisor.home.att.no_record'> = {
+  present: 'supervisor.home.att.present',
+  late: 'supervisor.home.att.late',
+  absent: 'supervisor.home.att.absent',
+  half_day: 'supervisor.home.att.half_day',
+  leave: 'supervisor.home.att.leave',
+  holiday: 'supervisor.home.att.holiday',
+  no_record: 'supervisor.home.att.no_record',
 };
 
 const ATT_TONE: Record<string, string> = {
@@ -51,6 +52,7 @@ const ATT_TONE: Record<string, string> = {
 };
 
 export default function SupervisorOverviewPage() {
+  const { t } = useRegional();
   const [data, setData] = useState<TeamState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,10 +66,10 @@ export default function SupervisorOverviewPage() {
       if (json.ok) {
         setData(json);
       } else {
-        setError(json.error || "Failed to load team");
+        setError(json.error || t('supervisor.home.loadError'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('salesman.att.networkError'));
     } finally {
       setLoading(false);
     }
@@ -81,7 +83,7 @@ export default function SupervisorOverviewPage() {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading your team...</p>
+        <p className="text-sm text-body">{t('supervisor.home.loading')}</p>
       </div>
     );
   }
@@ -89,7 +91,7 @@ export default function SupervisorOverviewPage() {
   if (error || !data) {
     return (
       <div className="flex items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">
-        <AlertCircle className="size-4 shrink-0" /> {error ?? "Team data unavailable"}
+        <AlertCircle className="size-4 shrink-0" /> {error ?? t('supervisor.home.unavailable')}
       </div>
     );
   }
@@ -99,29 +101,29 @@ export default function SupervisorOverviewPage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Team Overview</h1>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('supervisor.home.title')}</h1>
         <p className="text-sm text-body mt-1">
-          Today's attendance and field activity for {stats.total} team members.
+          {t('supervisor.home.subtitle').replace('{count}', String(stats.total))}
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard icon={<Users className="size-5 text-primary" />} label="Team Members" value={stats.total} />
-        <StatCard icon={<CheckCircle2 className="size-5 text-success" />} label="Present Today" value={stats.presentToday} />
-        <StatCard icon={<Clock className="size-5 text-info" />} label="On Duty" value={stats.onDutyToday} />
-        <StatCard icon={<XCircle className="size-5 text-destructive" />} label="Absent" value={stats.absentToday} />
-        <StatCard icon={<MapPin className="size-5 text-warning" />} label="Visits Today" value={stats.visitsToday} />
+        <StatCard icon={<Users className="size-5 text-primary" />} label={t('supervisor.home.members')} value={stats.total} />
+        <StatCard icon={<CheckCircle2 className="size-5 text-success" />} label={t('supervisor.home.present')} value={stats.presentToday} />
+        <StatCard icon={<Clock className="size-5 text-info" />} label={t('supervisor.home.onDuty')} value={stats.onDutyToday} />
+        <StatCard icon={<XCircle className="size-5 text-destructive" />} label={t('supervisor.home.absent')} value={stats.absentToday} />
+        <StatCard icon={<MapPin className="size-5 text-warning" />} label={t('supervisor.home.visitsToday')} value={stats.visitsToday} />
       </div>
 
       {members.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-light-text">
-          You have no team members assigned to you yet. Ask the owner to assign staff to you as their supervisor.
+          {t('supervisor.home.noMembers')}
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <span className="text-sm font-semibold text-foreground">Field Staff</span>
-            <span className="text-xs text-light-text">{stats.presentToday}/{stats.total} present today</span>
+            <span className="text-sm font-semibold text-foreground">{t('supervisor.home.fieldStaff')}</span>
+            <span className="text-xs text-light-text">{t('supervisor.home.presentCount').replace('{present}', String(stats.presentToday)).replace('{total}', String(stats.total))}</span>
           </div>
           <div className="divide-y divide-border/40">
             {members.map((m) => (
@@ -130,20 +132,20 @@ export default function SupervisorOverviewPage() {
                   {m.full_name.slice(0, 1).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium text-foreground truncate">{m.full_name}</div>
+                  <div className="font-medium text-foreground truncate"><bdi>{m.full_name}</bdi></div>
                   <div className="text-xs text-body capitalize">
-                    {m.designation ?? "staff"}
-                    {m.employee_id ? ` · ${m.employee_id}` : ""}
+                    <bdi>{m.designation ?? t('supervisor.home.staffFallback')}</bdi>
+                    {m.employee_id ? <bdi>{` · ${m.employee_id}`}</bdi> : ""}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                   <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium", ATT_TONE[m.attendance.status] ?? "bg-muted text-muted-foreground")}>
                     <span className="size-1.5 rounded-full bg-current" />
-                    {ATT_LABEL[m.attendance.status] ?? m.attendance.status}
+                    {ATT_KEYS[m.attendance.status] ? t(ATT_KEYS[m.attendance.status]) : m.attendance.status}
                   </span>
                   <span className="text-xs text-body flex items-center gap-1">
                     <MapPin className="size-3.5 text-warning" />
-                    {m.visits.completed}/{m.visits.total} visited
+                    <bdi>{t('supervisor.home.visited').replace('{done}', String(m.visits.completed)).replace('{total}', String(m.visits.total))}</bdi>
                   </span>
                 </div>
               </div>

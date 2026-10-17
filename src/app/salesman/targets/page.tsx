@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Target, Loader2, AlertCircle } from "lucide-react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Target {
   id: string;
@@ -14,15 +15,16 @@ interface Target {
   end_date: string;
 }
 
-const METRIC_LABEL: Record<string, string> = {
-  revenue: "Revenue",
-  orders: "Orders",
-  customers: "New customers",
-  products: "Products sold",
-  collections: "Collections",
+const METRIC_KEYS: Record<string, 'salesman.targets.metric.revenue' | 'salesman.targets.metric.orders' | 'salesman.targets.metric.customers' | 'salesman.targets.metric.products' | 'salesman.targets.metric.collections'> = {
+  revenue: 'salesman.targets.metric.revenue',
+  orders: 'salesman.targets.metric.orders',
+  customers: 'salesman.targets.metric.customers',
+  products: 'salesman.targets.metric.products',
+  collections: 'salesman.targets.metric.collections',
 };
 
 export default function MyTargetsPage() {
+  const { t } = useRegional();
   const [targets, setTargets] = useState<Target[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,10 +44,10 @@ export default function MyTargetsPage() {
         const mine = empId ? (tData.targets ?? []).filter((t: Target) => t.employee_id === empId) : (tData.targets ?? []);
         setTargets(mine);
       } else {
-        setError(tData.error || "Failed to load targets");
+        setError(tData.error || t('salesman.targets.loadError'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('salesman.att.networkError'));
     } finally {
       setLoading(false);
     }
@@ -58,8 +60,8 @@ export default function MyTargetsPage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">My Targets</h1>
-        <p className="text-sm text-body mt-1">The sales targets your manager has set for you.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.targets.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('salesman.targets.subtitle')}</p>
       </div>
 
       {error && (
@@ -75,27 +77,27 @@ export default function MyTargetsPage() {
       ) : targets.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <Target className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No targets set for you yet.</p>
+          <p className="text-sm text-body">{t('salesman.targets.none')}</p>
         </div>
       ) : (
         <div className="grid gap-4">
-          {targets.map((t) => {
+          {targets.map((tg) => {
             return (
-              <div key={t.id} className="rounded-2xl border border-border bg-card p-5">
+              <div key={tg.id} className="rounded-2xl border border-border bg-card p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <Target className="size-5 text-primary" />
                     <div>
-                      <div className="font-medium text-foreground">{METRIC_LABEL[t.metric] ?? t.metric}</div>
-                      <div className="text-xs text-body capitalize">{t.period}</div>
+                      <div className="font-medium text-foreground">{METRIC_KEYS[tg.metric] ? t(METRIC_KEYS[tg.metric]) : tg.metric}</div>
+                      <div className="text-xs text-body capitalize">{tg.period}</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold text-lg text-foreground">{t.target_value}</div>
+                  <div className="text-end">
+                    <div className="font-bold text-lg text-foreground"><bdi>{tg.target_value}</bdi></div>
                   </div>
                 </div>
                 <div className="text-xs text-light-text mt-2">
-                  {new Date(t.start_date).toLocaleDateString()} → {new Date(t.end_date).toLocaleDateString()}
+                  <bdi>{new Date(tg.start_date).toLocaleDateString()} → {new Date(tg.end_date).toLocaleDateString()}</bdi>
                 </div>
               </div>
             );

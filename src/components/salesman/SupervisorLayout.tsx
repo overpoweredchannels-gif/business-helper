@@ -10,12 +10,13 @@ import {
 import { supabase } from "@/lib/supabase/client";
 import { useCallback, useState } from "react";
 import { MobileNavigation } from "@/components/dashboard/MobileNavigation";
+import { useRegional, LanguageSwitcher } from "@/components/regional/RegionalProvider";
 
 const NAV_ITEMS = [
-  { href: "/supervisor", label: "Team Overview", icon: LayoutDashboard },
-  { href: "/supervisor/attendance", label: "Team Attendance", icon: Clock },
-  { href: "/supervisor/visits", label: "Team Visits", icon: MapPin },
-  { href: "/supervisor/profile", label: "Profile", icon: User },
+  { href: "/supervisor", key: 'supervisor.nav.overview' as const, icon: LayoutDashboard },
+  { href: "/supervisor/attendance", key: 'supervisor.nav.attendance' as const, icon: Clock },
+  { href: "/supervisor/visits", key: 'supervisor.nav.visits' as const, icon: MapPin },
+  { href: "/supervisor/profile", key: 'supervisor.nav.profile' as const, icon: User },
 ];
 
 interface SupervisorLayoutProps {
@@ -29,6 +30,7 @@ export default function SupervisorLayout({ organizationName, userName, children 
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const closeMenu = useCallback(() => setMobileOpen(false), []);
+  const { ui } = useRegional();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -36,14 +38,14 @@ export default function SupervisorLayout({ organizationName, userName, children 
   };
 
   const content = (
-    <aside className="flex flex-col bg-card border-r border-border transition-all duration-300 h-full w-64">
+    <aside className="flex flex-col bg-card border-e border-border transition-all duration-300 h-full w-64">
       <div className="border-b border-border flex items-center gap-3 px-5 py-5">
         <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
           <span className="text-primary-foreground font-brand font-bold text-sm">T</span>
         </div>
         <div className="min-w-0">
           <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
-          <div className="text-[10px] text-light-text truncate">{organizationName ?? "Supervisor"}</div>
+          <div className="text-[10px] text-light-text truncate">{organizationName ?? ui('supervisor.roleFallback')}</div>
         </div>
       </div>
 
@@ -62,7 +64,7 @@ export default function SupervisorLayout({ organizationName, userName, children 
               )}
             >
               <Icon className="size-4.5 shrink-0" />
-              <span>{item.label}</span>
+              <span>{ui(item.key)}</span>
             </Link>
           );
         })}
@@ -74,16 +76,19 @@ export default function SupervisorLayout({ organizationName, userName, children 
             {(userName ?? "S").slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground truncate">{userName ?? "Supervisor"}</div>
-            <div className="text-[10px] text-light-text">Team Lead</div>
+            <div className="text-sm font-medium text-foreground truncate"><bdi>{userName ?? ui('supervisor.roleFallback')}</bdi></div>
+            <div className="text-[10px] text-light-text">{ui('supervisor.teamLead')}</div>
           </div>
+        </div>
+        <div className="px-3 py-2">
+          <LanguageSwitcher />
         </div>
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground/70 hover:text-foreground hover:bg-muted transition-all duration-150"
         >
           <LogOut className="size-4.5 shrink-0" />
-          <span>Log out</span>
+          <span>{ui('supervisor.logOut')}</span>
         </button>
       </div>
     </aside>
@@ -98,12 +103,12 @@ export default function SupervisorLayout({ organizationName, userName, children 
           <div className="size-7 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-brand font-bold text-xs">T</span>
           </div>
-          <span className="font-brand font-bold text-sm text-foreground">Supervisor</span>
+          <span className="font-brand font-bold text-sm text-foreground">{ui('supervisor.roleTitle')}</span>
         </div>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
           className="p-2 rounded-lg text-foreground hover:bg-muted transition-colors"
-          aria-label="Open navigation menu"
+          aria-label={ui('supervisor.openMenu')}
           aria-expanded={mobileOpen}
         >
           {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}

@@ -7,6 +7,7 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { getMapProvider } from "@/lib/maps/map-provider";
 import { getPlaceName } from "@/lib/maps/client-maps";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface MeResponse {
   ok: boolean;
@@ -28,6 +29,7 @@ interface LocationPoint {
 }
 
 export function EmployeeLiveTracking() {
+  const { t } = useRegional();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -78,7 +80,7 @@ export function EmployeeLiveTracking() {
           watchIdRef.current = null;
           sessionIdRef.current = null;
           setTracking(false);
-          setMessage(data.error || "Duty ended at the scheduled cutoff. Start duty again on the next working day.");
+          setMessage(data.error || t('tracking.dutyEnded'));
           setError(null);
           return;
         }
@@ -88,10 +90,10 @@ export function EmployeeLiveTracking() {
           lastSavedLocationRef.current = point;
           setError(null);
         } else {
-          throw new Error(data.error || "Upload failed");
+          throw new Error(data.error || t('tracking.uploadFailed'));
         }
       } catch {
-        setError("Your location was found, but the latest update could not be saved. TradeOS will retry on the next GPS update.");
+        setError(t('tracking.saveFailed'));
       }
     },
     []
@@ -183,10 +185,10 @@ export function EmployeeLiveTracking() {
           data.me.employee?.full_name || data.me.profile?.full_name || null
         );
       } else {
-        setError(data.error || "Failed to load your profile.");
+        setError(data.error || t('tracking.profileError'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
@@ -209,7 +211,7 @@ export function EmployeeLiveTracking() {
         sessionIdRef.current = data.dutySessionId;
         setTracking(true);
         resumeWatch(data.dutySessionId);
-        setMessage("Resumed sharing your live location.");
+        setMessage(t('tracking.resumed'));
       }
     } catch {
       // status check is best-effort
@@ -229,17 +231,17 @@ export function EmployeeLiveTracking() {
     setMessage(null);
 
     if (!profileId || !organizationId) {
-      setError("Your profile is not loaded. Please refresh and try again.");
+      setError(t('tracking.noProfile'));
       return;
     }
 
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setError("This browser does not support location tracking.");
+      setError(t('tracking.noGeolocation'));
       return;
     }
 
     setBooting(true);
-    setMessage("Acquiring accurate GPS fix…");
+    setMessage(t('tracking.acquiring'));
     try {
       const position = await acquireBrowserLocation();
 
@@ -267,7 +269,7 @@ export function EmployeeLiveTracking() {
       });
       const data = (await res.json()) as { ok?: boolean; dutySessionId?: string | null; message?: string; error?: string };
       if (!data.ok || !data.dutySessionId) {
-        throw new Error(data.error || data.message || "Could not start live tracking.");
+        throw new Error(data.error || data.message || t('tracking.startFailed'));
       }
 
       sessionIdRef.current = data.dutySessionId;
@@ -277,7 +279,7 @@ export function EmployeeLiveTracking() {
       void uploadPoint(data.dutySessionId, startPoint);
 
       setTracking(true);
-      setMessage("Live tracking started. Your location is being shared with your organization.");
+      setMessage(t('tracking.started'));
 
       resumeWatch(data.dutySessionId);
     } catch (err) {
@@ -305,7 +307,7 @@ export function EmployeeLiveTracking() {
 
     sessionIdRef.current = null;
     lastSavedLocationRef.current = null;
-    setMessage("Live tracking stopped. Location sharing is off.");
+    setMessage(t('tracking.stopped'));
   }, [profileId, organizationId, stopWatch]);
 
   useEffect(() => {
@@ -320,7 +322,7 @@ export function EmployeeLiveTracking() {
     return (
       <div className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-center gap-2 text-sm text-body">
-          <Loader2 className="size-4 animate-spin text-primary" /> Loading live tracking…
+          <Loader2 className="size-4 animate-spin text-primary" /> {t('tracking.loading')}
         </div>
       </div>
     );
@@ -343,11 +345,11 @@ export function EmployeeLiveTracking() {
           </span>
           <div>
             <h3 className="text-sm font-semibold text-foreground">
-              <MapPin className="size-3.5 mr-1 inline-block" />
-              Live Tracking
+              <MapPin className="size-3.5 me-1 inline-block" />
+              {t('tracking.title')}
             </h3>
             <span className="text-xs text-body">
-              {tracking ? "Sharing your live location" : "Location sharing is off"}
+              {tracking ? t('tracking.sharing') : t('tracking.off')}
             </span>
           </div>
         </div>
@@ -355,19 +357,19 @@ export function EmployeeLiveTracking() {
           <button
             onClick={() => void stopTracking()}
             className="inline-flex items-center gap-2 rounded-lg bg-destructive px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-            title="Stop sharing your location"
+            title={t('tracking.stopTitle')}
           >
-            <LogOut className="size-3.5" /> Stop
+            <LogOut className="size-3.5" /> {t('tracking.stop')}
           </button>
         ) : (
           <button
             onClick={() => void startTracking()}
             disabled={booting}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
-            title="Allow location access and start sharing"
+            title={t('tracking.startTitle')}
           >
             {booting ? <Loader2 className="size-3.5 animate-spin" /> : <Radio className="size-3.5" />}
-            {booting ? "Starting…" : "Start"}
+            {booting ? t('tracking.starting') : t('tracking.start')}
           </button>
         )}
       </div>
@@ -384,7 +386,7 @@ export function EmployeeLiveTracking() {
       {tracking && lastLocation ? (
         <div className="mt-1 rounded-lg border border-border bg-muted/20 p-3 grid gap-3">
           <iframe
-            title={`Your current live location`}
+            title={t('tracking.mapTitle')}
             src={getMapProvider().buildEmbedMapUrl(
               { latitude: lastLocation.latitude, longitude: lastLocation.longitude },
               displayName ?? "Current location"
@@ -415,20 +417,19 @@ export function EmployeeLiveTracking() {
                 ±{Math.round(lastLocation.accuracy)}m
               </span>
             )}
-            <span className="ml-1 inline-flex items-center gap-1 text-success">
-              <Crosshair className="size-3 animate-pulse" /> live
+            <span className="ms-1 inline-flex items-center gap-1 text-success">
+              <Crosshair className="size-3 animate-pulse" /> {t('tracking.live')}
             </span>
           </div>
           {lastSavedAt && (
             <div className="text-[11px] text-body">
-              Last updated {new Date(lastSavedAt).toLocaleTimeString()}
+              {t('tracking.lastUpdated').replace('{time}', new Date(lastSavedAt).toLocaleTimeString())}
             </div>
           )}
         </div>
       ) : (
         <p className="mt-1 text-xs text-body">
-          Start live tracking to share your location with your organization. Location is uploaded while TradeOS
-          stays open.
+          {t('tracking.empty')}
         </p>
       )}
     </div>

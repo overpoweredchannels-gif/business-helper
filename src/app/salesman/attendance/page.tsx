@@ -5,6 +5,7 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Clock, Loader2, AlertCircle, CheckCircle2, LogIn, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface AttendanceRecord {
   id: string;
@@ -16,6 +17,7 @@ interface AttendanceRecord {
 }
 
 export default function AttendancePage() {
+  const { t } = useRegional();
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,9 +32,9 @@ export default function AttendancePage() {
       const res = await authorizedFetch("/api/attendance?limit=30");
       const data = await res.json();
       if (data.ok) setRecords(data.records ?? []);
-      else setError(data.error || "Failed to load attendance");
+      else setError(data.error || t('salesman.att.loadError'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('salesman.att.networkError'));
     } finally {
       setLoading(false);
     }
@@ -45,11 +47,11 @@ export default function AttendancePage() {
   const clock = async (action: "clock_in" | "clock_out") => {
     setActing(true);
     setMessage(null);
-    setGpsStatus("Getting location...");
+    setGpsStatus(t('salesman.att.gettingLocation'));
     try {
       const position = await acquireBrowserLocation();
       const pos = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-      setGpsStatus(action === "clock_in" ? "Clocking in..." : "Clocking out...");
+      setGpsStatus(action === "clock_in" ? t('salesman.att.clockingIn') : t('salesman.att.clockingOut'));
       const res = await authorizedFetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -57,7 +59,7 @@ export default function AttendancePage() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed");
-      setMessage({ type: "ok", text: action === "clock_in" ? "Clocked in. Have a great day!" : `Clocked out. Total today: ${data.record?.total_hours ?? "—"} hours.` });
+      setMessage({ type: "ok", text: action === "clock_in" ? t('salesman.att.clockedIn') : t('salesman.att.clockedOut').replace('{hours}', String(data.record?.total_hours ?? "—")) });
       await load();
     } catch (err) {
       setMessage({ type: "error", text: getBrowserLocationErrorMessage(err) });
@@ -74,8 +76,8 @@ export default function AttendancePage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Attendance</h1>
-        <p className="text-sm text-body mt-1">Clock in at the start of your duty and clock out when you finish.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.att.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('salesman.att.subtitle')}</p>
       </div>
 
       {message && (
@@ -98,12 +100,12 @@ export default function AttendancePage() {
       <div className="rounded-2xl border border-border bg-card p-6 grid gap-5">
         <div>
           <h2 className="font-heading font-bold text-xl text-foreground">
-            {clockedIn ? "You are on duty" : "Start your duty"}
+            {clockedIn ? t('salesman.att.onDuty') : t('salesman.att.startDuty')}
           </h2>
           <p className="text-sm text-body mt-1">
             {today?.duty_start
-              ? `Clocked in at ${new Date(today.duty_start).toLocaleTimeString()}${today.duty_end ? ` · out at ${new Date(today.duty_end).toLocaleTimeString()}` : ""}`
-              : "No clock-in yet today."}
+              ? <><bdi>{t('salesman.att.clockedInAt').replace('{time}', new Date(today.duty_start).toLocaleTimeString())}</bdi>{today.duty_end ? <bdi>{` · ${t('salesman.att.outAt').replace('{time}', new Date(today.duty_end).toLocaleTimeString())}`}</bdi> : ""}</>
+              : t('salesman.att.noClockIn')}
           </p>
         </div>
 
@@ -114,7 +116,7 @@ export default function AttendancePage() {
             className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-primary px-6 text-primary-foreground font-medium disabled:opacity-50"
           >
             {acting ? <Loader2 className="size-4 animate-spin" /> : <LogIn className="size-4" />}
-            {acting ? "Clocking in..." : "Clock in"}
+            {acting ? t('salesman.att.clockingIn') : t('salesman.att.clockIn')}
           </button>
         ) : !clockedOut ? (
           <button
@@ -123,23 +125,23 @@ export default function AttendancePage() {
             className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-destructive px-6 text-destructive-foreground font-medium disabled:opacity-50"
           >
             {acting ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
-            {acting ? "Clocking out..." : "Clock out"}
+            {acting ? t('salesman.att.clockingOut') : t('salesman.att.clockOut')}
           </button>
         ) : (
           <div className="flex items-center gap-2 rounded-lg bg-success/10 px-4 py-3 text-sm text-success">
-            <CheckCircle2 className="size-4" /> Duty complete for today{typeof today?.total_hours === "number" ? ` — ${today.total_hours} hours` : ""}.
+            <CheckCircle2 className="size-4" /> {t('salesman.att.dutyComplete')}{typeof today?.total_hours === "number" ? ` — ${t('salesman.att.hours').replace('{count}', String(today.total_hours))}` : ""}.
           </div>
         )}
       </div>
 
       <div>
-        <h2 className="font-semibold text-foreground mb-2 flex items-center gap-2"><Clock className="size-4 text-primary" /> History</h2>
+        <h2 className="font-semibold text-foreground mb-2 flex items-center gap-2"><Clock className="size-4 text-primary" /> {t('salesman.att.history')}</h2>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <Loader2 className="size-8 text-primary animate-spin" />
           </div>
         ) : records.length === 0 ? (
-          <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-body">No attendance records yet.</div>
+          <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-body">{t('salesman.att.noRecords')}</div>
         ) : (
           <div className="rounded-2xl border border-border bg-card divide-y divide-border">
             {records.map((r) => (
@@ -147,13 +149,13 @@ export default function AttendancePage() {
                 <div>
                   <div className="font-medium text-foreground">{new Date(r.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div>
                   <div className="text-xs text-body">
-                    {r.duty_start ? `In ${new Date(r.duty_start).toLocaleTimeString()}` : "No clock-in"}
-                    {r.duty_end ? ` · Out ${new Date(r.duty_end).toLocaleTimeString()}` : ""}
+                    {r.duty_start ? t('salesman.att.in').replace('{time}', new Date(r.duty_start).toLocaleTimeString()) : t('salesman.att.noClockIn')}
+                    {r.duty_end ? ` · ${t('salesman.att.out').replace('{time}', new Date(r.duty_end).toLocaleTimeString())}` : ""}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium text-foreground">{r.total_hours ? `${r.total_hours}h` : "—"}</span>
-                  <StatusBadge status={r.status} />
+                  <StatusBadge status={r.status} t={t} />
                 </div>
               </div>
             ))}
@@ -164,7 +166,7 @@ export default function AttendancePage() {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, t }: { status: string; t: (key: any) => string }) {
   const colors: Record<string, string> = {
     present: "bg-success/10 text-success",
     absent: "bg-destructive/10 text-destructive",
@@ -173,9 +175,17 @@ function StatusBadge({ status }: { status: string }) {
     leave: "bg-muted text-muted-foreground",
     holiday: "bg-muted text-muted-foreground",
   };
+  const labels: Record<string, string> = {
+    present: t('salesman.att.status.present'),
+    absent: t('salesman.att.status.absent'),
+    late: t('salesman.att.status.late'),
+    half_day: t('salesman.att.status.half_day'),
+    leave: t('salesman.att.status.leave'),
+    holiday: t('salesman.att.status.holiday'),
+  };
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium capitalize", colors[status] ?? "bg-muted text-muted-foreground")}>
-      {status.replace("_", " ")}
+      {labels[status] ?? status.replace("_", " ")}
     </span>
   );
 }

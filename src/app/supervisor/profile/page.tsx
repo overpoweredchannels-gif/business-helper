@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Loader2, AlertCircle } from "lucide-react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface MeResponse {
   ok: boolean;
@@ -15,6 +16,7 @@ interface MeResponse {
 }
 
 export default function SupervisorProfilePage() {
+  const { t } = useRegional();
   const [me, setMe] = useState<MeResponse["me"] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -38,7 +40,7 @@ export default function SupervisorProfilePage() {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading profile...</p>
+        <p className="text-sm text-body">{t('supervisor.profile.loading')}</p>
       </div>
     );
   }
@@ -49,13 +51,13 @@ export default function SupervisorProfilePage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">My Profile</h1>
-        <p className="text-sm text-body mt-1">Supervisor account details.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('supervisor.profile.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('supervisor.profile.subtitle')}</p>
       </div>
 
       {!emp && !profile ? (
         <div className="flex items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">
-          <AlertCircle className="size-4 shrink-0" /> Could not load profile.
+          <AlertCircle className="size-4 shrink-0" /> {t('supervisor.profile.loadError')}
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card p-6 max-w-2xl">
@@ -64,17 +66,17 @@ export default function SupervisorProfilePage() {
               {(emp?.full_name || profile?.full_name || "S").slice(0, 1).toUpperCase()}
             </div>
             <div>
-              <div className="font-heading font-bold text-xl text-foreground">{emp?.full_name || profile?.full_name || "Supervisor"}</div>
-              <div className="text-sm text-body capitalize">{emp?.designation ?? "supervisor"}</div>
+              <div className="font-heading font-bold text-xl text-foreground"><bdi>{emp?.full_name || profile?.full_name || t('supervisor.profile.nameFallback')}</bdi></div>
+              <div className="text-sm text-body capitalize">{emp?.designation ?? t('supervisor.profile.designationFallback')}</div>
             </div>
           </div>
           <dl className="grid gap-3 text-sm">
-            <Row label="Employee ID" value={emp?.employee_id} />
-            <Row label="Phone" value={emp?.phone} />
-            <Row label="Email" value={profile?.email || emp?.email} />
-            <Row label="Department" value={emp?.department} />
-            <Row label="Status" value={emp?.status ?? profile?.role} />
-            <Row label="Organization" value={me?.organization?.name} />
+            <Row label={t('supervisor.profile.employeeId')} value={emp?.employee_id} />
+            <Row label={t('supervisor.profile.phone')} value={emp?.phone} />
+            <Row label={t('supervisor.profile.email')} value={profile?.email || emp?.email} />
+            <Row label={t('supervisor.profile.department')} value={emp?.department} />
+            <Row label={t('supervisor.profile.status')} value={emp?.status ?? profile?.role} />
+            <Row label={t('supervisor.profile.organization')} value={me?.organization?.name} />
           </dl>
         </div>
       )}
@@ -86,7 +88,7 @@ function Row({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="flex justify-between gap-4">
       <dt className="text-body">{label}</dt>
-      <dd className="text-foreground font-medium text-right">{value ?? "—"}</dd>
+      <dd className="text-foreground font-medium text-end"><bdi>{value ?? "—"}</bdi></dd>
     </div>
   );
 }

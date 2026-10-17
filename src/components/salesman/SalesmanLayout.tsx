@@ -12,6 +12,8 @@ import { useCallback, useState } from "react";
 import { MobileNavigation } from "@/components/dashboard/MobileNavigation";
 import { navigationItems } from "@/lib/tradeos/constants";
 import { hasSalesTool } from "@/lib/sales/access";
+import { useRegional, LanguageSwitcher } from "@/components/regional/RegionalProvider";
+import { navigationLabel } from "@/lib/regional/navigation";
 
 interface SalesmanLayoutProps {
   organizationName?: string | null;
@@ -25,6 +27,7 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const closeMenu = useCallback(() => setMobileOpen(false), []);
+  const { ui, language } = useRegional();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -35,28 +38,28 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
   // remain visible only when explicitly granted by the owner.
   const grantedNavItems = navigationItems
     .filter((item) => grantedSections.includes(item.id))
-    .map((item) => ({ href: `/#${item.id}`, label: item.label, icon: Settings2 }));
+    .map((item) => ({ href: `/#${item.id}`, label: navigationLabel(item.id, item.label, language), icon: Settings2 }));
 
   const navItems = [
-    { href: "/salesman", label: "Dashboard", icon: LayoutDashboard },
-    ...(hasSalesTool({ granted_sections: grantedSections }, "invoice") ? [{ href: "/#sales", label: "New Sales Invoice", icon: PlusCircle }] : []),
-    { href: "/salesman/profile#my-sales", label: "My Sales", icon: BarChart3 },
-    { href: "/salesman#customers", label: "My Customers", icon: Users },
-    { href: "/salesman/routes", label: "My Route", icon: RouteIcon },
-    { href: "/salesman#tracking", label: "Live Tracking", icon: MapPin },
-    { href: "/salesman/profile", label: "My Profile", icon: UserRound },
+    { href: "/salesman", label: ui('salesman.nav.dashboard'), icon: LayoutDashboard },
+    ...(hasSalesTool({ granted_sections: grantedSections }, "invoice") ? [{ href: "/#sales", label: ui('salesman.nav.newInvoice'), icon: PlusCircle }] : []),
+    { href: "/salesman/profile#my-sales", label: ui('salesman.nav.mySales'), icon: BarChart3 },
+    { href: "/salesman#customers", label: ui('salesman.nav.myCustomers'), icon: Users },
+    { href: "/salesman/routes", label: ui('salesman.nav.myRoute'), icon: RouteIcon },
+    { href: "/salesman#tracking", label: ui('salesman.nav.liveTracking'), icon: MapPin },
+    { href: "/salesman/profile", label: ui('salesman.nav.myProfile'), icon: UserRound },
     ...grantedNavItems,
   ];
 
   const content = (
-    <aside className="flex flex-col bg-card border-r border-border transition-all duration-300 h-full w-64">
+    <aside className="flex flex-col bg-card border-e border-border transition-all duration-300 h-full w-64">
       <div className="border-b border-border flex items-center gap-3 px-5 py-5">
         <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
           <span className="text-primary-foreground font-brand font-bold text-sm">T</span>
         </div>
         <div className="min-w-0">
           <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
-          <div className="text-[10px] text-light-text truncate">{organizationName ?? "Field Team"}</div>
+          <div className="text-[10px] text-light-text truncate">{organizationName ?? ui('salesman.roleTitle')}</div>
         </div>
       </div>
 
@@ -88,16 +91,19 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
             {(userName ?? "S").slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground truncate">{userName ?? "Staff Member"}</div>
-            <div className="text-[10px] text-light-text">Field Sales</div>
+            <div className="text-sm font-medium text-foreground truncate"><bdi>{userName ?? ui('salesman.roleFallback')}</bdi></div>
+            <div className="text-[10px] text-light-text">{ui('salesman.roleTitle')}</div>
           </div>
+        </div>
+        <div className="px-3 py-2">
+          <LanguageSwitcher />
         </div>
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground/70 hover:text-foreground hover:bg-muted transition-all duration-150"
         >
           <LogOut className="size-4.5 shrink-0" />
-          <span>Log out</span>
+          <span>{ui('salesman.logOut')}</span>
         </button>
       </div>
     </aside>
@@ -118,7 +124,7 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
           className="p-2 rounded-lg text-foreground hover:bg-muted transition-colors"
-          aria-label="Open navigation menu"
+          aria-label={ui('salesman.openMenu')}
           aria-expanded={mobileOpen}
         >
           {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
