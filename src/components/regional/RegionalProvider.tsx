@@ -1,6 +1,6 @@
 'use client';
 import {createContext,useContext,useEffect,useSyncExternalStore,type ReactNode} from 'react';
-import {languages,direction,type Language} from '@/lib/regional/settings';
+import {languages,direction,parseLanguageCookie,type Language} from '@/lib/regional/settings';
 import {messages,type MessageKey} from '@/lib/regional/messages';
 import {regionalUi,type RegionalUiKey} from '@/lib/regional/ui-messages';
 import {regionalQaEnabled} from '@/lib/regional/qa';
@@ -16,8 +16,7 @@ export function RegionalProvider({children,initialLanguage='en'}:{children:React
   const enabled=regionalQaEnabled();
   const language=useSyncExternalStore(subscribeLanguage,()=>{
     if(!enabled)return initialLanguage;
-    const saved=document.cookie.split('; ').find(s=>s.startsWith('tradeos-ui-language='))?.split('=')[1];
-    return languages.includes(saved as Language)?saved as Language:initialLanguage;
+    return parseLanguageCookie(document.cookie)??initialLanguage;
   },()=>initialLanguage);
   useEffect(()=>{
     if(!enabled)return;

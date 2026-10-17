@@ -29,11 +29,27 @@ export function isCurrency(value: unknown): value is Currency {
 }
 export function direction(language: Language): 'rtl' | 'ltr' { return language === 'ur' ? 'rtl' : 'ltr'; }
 
+/** Canonical browser-language cookie parsing, shared by the pre-paint bootstrap
+ * and the React provider. Accepts exactly the supported language codes;
+ * encoded, malformed, empty or unknown values fall back to null (English/LTR).
+ * Values are matched literally — never decoded — so both paths resolve identically. */
+export function parseLanguageCookie(cookie: string): Language | null {
+  for (const part of cookie.split(';')) {
+    const trimmed = part.replace(/^\s+/, '');
+    if (trimmed.startsWith('tradeos-ui-language=')) {
+      const value = trimmed.slice('tradeos-ui-language='.length);
+      return (languages as readonly string[]).includes(value) ? (value as Language) : null;
+    }
+  }
+  return null;
+}
+
 /** Pre-paint bootstrap: applies the saved browser language's lang/dir before first
  * paint so Urdu users never see an LTR flash. Mirrors DISPLAY_ZOOM_BOOTSTRAP_SCRIPT.
- * The cookie is only written when the regional QA gate is enabled, and layout.tsx
- * only inlines this script behind the same gate. */
-export const LANGUAGE_BOOTSTRAP_SCRIPT = `try{var m=document.cookie.match(/(?:^|;\\s*)tradeos-ui-language=([^;]*)/);var l=m&&decodeURIComponent(m[1]);if(l==='ur'){document.documentElement.lang='ur';document.documentElement.dir='rtl';}else if(l==='es'){document.documentElement.lang='es';document.documentElement.dir='ltr';}else if(l==='it'){document.documentElement.lang='it';document.documentElement.dir='ltr';}}catch(e){}`;
+ * Parsing mirrors parseLanguageCookie exactly (no decoding); the cookie is only
+ * written when the regional QA gate is enabled, and layout.tsx only inlines this
+ * script behind the same gate. */
+export const LANGUAGE_BOOTSTRAP_SCRIPT = `try{var lang=null;var parts=document.cookie.split(';');for(var i=0;i<parts.length;i++){var p=parts[i].replace(/^\\s+/,'');if(p.indexOf('tradeos-ui-language=')===0){var v=p.substring(p.indexOf('=')+1);if(v==='en'||v==='es'||v==='it'||v==='ur'){lang=v;}break;}}if(lang==='ur'){document.documentElement.lang='ur';document.documentElement.dir='rtl';}else if(lang==='es'){document.documentElement.lang='es';document.documentElement.dir='ltr';}else if(lang==='it'){document.documentElement.lang='it';document.documentElement.dir='ltr';}}catch(e){}`;
 
 export function parseRegionalSettings(input: unknown): RegionalSettings {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('regional.invalid');
