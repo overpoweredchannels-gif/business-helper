@@ -6,12 +6,15 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { EmployeeLiveTracking } from "@/components/dashboard";
 import { User, Briefcase, Phone, Calendar, Hash, Building2, Loader2, AlertCircle } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { localeFor } from "@/lib/regional/settings";
+import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
 
 export default function ProfilePage() {
-  const { t } = useRegional();
+  const { t, language } = useRegional();
+  const locale = localeFor(language);
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | DeferredMessage | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -19,9 +22,9 @@ export default function ProfilePage() {
         const res = await authorizedFetch("/api/identity/staff/me");
         const data = await res.json();
         if (data.ok && data.me) setMe(data.me);
-        else setError(data.error || t('salesman.profile.loadError'));
+        else setError(data.error || { key: 'salesman.profile.loadError' });
       } catch (err) {
-        setError(err instanceof Error ? err.message : t('salesman.att.networkError'));
+        setError(err instanceof Error ? err.message : { key: 'salesman.att.networkError' });
       } finally {
         setLoading(false);
       }
@@ -38,7 +41,7 @@ export default function ProfilePage() {
   }
 
   if (error) {
-    return <div className="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive"><AlertCircle className="size-4 mt-0.5 shrink-0" /> {error}</div>;
+    return <div className="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive"><AlertCircle className="size-4 mt-0.5 shrink-0" /> {typeof error === "string" ? error : renderDeferred(t, error)}</div>;
   }
 
   const profile = me?.profile ?? {};
@@ -76,7 +79,7 @@ export default function ProfilePage() {
         {row(t('salesman.profile.designation'), employee.designation, Briefcase)}
         {row(t('salesman.profile.mobile'), employee.phone || profile.phone, Phone)}
         {row(t('salesman.profile.organization'), me?.organization?.name, Building2)}
-        {row(t('salesman.profile.joiningDate'), employee.joining_date ? new Date(employee.joining_date).toLocaleDateString() : null, Calendar)}
+        {row(t('salesman.profile.joiningDate'), employee.joining_date ? new Date(employee.joining_date).toLocaleDateString(locale) : null, Calendar)}
         {row(t('salesman.profile.employeeCode'), employee.employee_id, Hash)}
       </div>
 

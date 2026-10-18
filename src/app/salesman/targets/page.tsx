@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Target, Loader2, AlertCircle } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { localeFor } from "@/lib/regional/settings";
+import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
 
 interface Target {
   id: string;
@@ -24,10 +26,11 @@ const METRIC_KEYS: Record<string, 'salesman.targets.metric.revenue' | 'salesman.
 };
 
 export default function MyTargetsPage() {
-  const { t } = useRegional();
+  const { t, language } = useRegional();
+  const locale = localeFor(language);
   const [targets, setTargets] = useState<Target[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | DeferredMessage | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,10 +47,10 @@ export default function MyTargetsPage() {
         const mine = empId ? (tData.targets ?? []).filter((t: Target) => t.employee_id === empId) : (tData.targets ?? []);
         setTargets(mine);
       } else {
-        setError(tData.error || t('salesman.targets.loadError'));
+        setError(tData.error || { key: 'salesman.targets.loadError' });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('salesman.att.networkError'));
+      setError(err instanceof Error ? err.message : { key: 'salesman.att.networkError' });
     } finally {
       setLoading(false);
     }
@@ -66,7 +69,7 @@ export default function MyTargetsPage() {
 
       {error && (
         <div className="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">
-          <AlertCircle className="size-4 mt-0.5 shrink-0" /> {error}
+          <AlertCircle className="size-4 mt-0.5 shrink-0" /> {typeof error === "string" ? error : renderDeferred(t, error)}
         </div>
       )}
 
@@ -97,7 +100,7 @@ export default function MyTargetsPage() {
                   </div>
                 </div>
                 <div className="text-xs text-light-text mt-2">
-                  <bdi>{new Date(tg.start_date).toLocaleDateString()} → {new Date(tg.end_date).toLocaleDateString()}</bdi>
+                  <bdi>{new Date(tg.start_date).toLocaleDateString(locale)} → {new Date(tg.end_date).toLocaleDateString(locale)}</bdi>
                 </div>
               </div>
             );

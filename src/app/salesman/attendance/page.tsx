@@ -6,6 +6,9 @@ import { Clock, Loader2, AlertCircle, CheckCircle2, LogIn, LogOut } from "lucide
 import { cn } from "@/lib/utils";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { localeFor } from "@/lib/regional/settings";
+import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
+import type { MessageKey } from "@/lib/regional/messages";
 
 interface AttendanceRecord {
   id: string;
@@ -16,14 +19,19 @@ interface AttendanceRecord {
   total_hours?: number | null;
 }
 
+/** Error/status values: raw server strings stay untranslated; app-owned messages
+ * are stored as keys and translated during render so they follow language switches. */
+type Notice = string | DeferredMessage;
+
 export default function AttendancePage() {
-  const { t } = useRegional();
+  const { t, language } = useRegional();
+  const locale = localeFor(language);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [error, setError] = useState<Notice | null>(null);
+  const [message, setMessage] = useState<{ type: "ok" | "error"; text: Notice } | null>(null);
   const [acting, setActing] = useState(false);
-  const [gpsStatus, setGpsStatus] = useState<string | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<DeferredMessage | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -32,9 +40,9 @@ export default function AttendancePage() {
       const res = await authorizedFetch("/api/attendance?limit=30");
       const data = await res.json();
       if (data.ok) setRecords(data.records ?? []);
-      else setError(data.error || t('salesman.att.loadError'));
+      else setError(data.error || { key: 'salesman.att.loadError' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('salesman.att.networkError'));
+      setError(err instanceof Error ? err.message : { key: 'salesman.att.networkError' });
     } finally {
       setLoading(false);
     }
@@ -47,11 +55,11 @@ export default function AttendancePage() {
   const clock = async (action: "clock_in" | "clock_out") => {
     setActing(true);
     setMessage(null);
-    setGpsStatus(t('salesman.att.gettingLocation'));
+    setGpsStatus({ key: 'salesman.att.gettingLocation' });
     try {
       const position = await acquireBrowserLocation();
       const pos = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-      setGpsStatus(action === "clock_in" ? t('salesman.att.clockingIn') : t('salesman.att.clockingOut'));
+      setGpsStatus({ key: action === "clock_in" ? 'salesman.att.clockingIn' : 'salesman.att.clockingOut' });
       const res = await authorizedFetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -59,7 +67,12 @@ export default function AttendancePage() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed");
-      setMessage({ type: "ok", text: action === "clock_in" ? t('salesman.att.clockedIn') : t('salesman.att.clockedOut').replace('{hours}', String(data.record?.total_hours ?? "—")) });
+      setMessage({
+        type: "ok",
+        text: action === "clock_in"
+          ? { key: 'salesman.att.clockedIn' }
+          : { key: 'salesman.att.clockedOut', values: { hours: String(data.record?.total_hours ?? "—") } },
+      });
       await load();
     } catch (err) {
       setMessage({ type: "error", text: getBrowserLocationErrorMessage(err) });
@@ -86,16 +99,16 @@ export default function AttendancePage() {
           message.type === "ok" ? "border-success/30 bg-success/10 text-success" : "border-destructive/30 bg-destructive-bg text-destructive",
         )}>
           {message.type === "ok" ? <CheckCircle2 className="size-4 mt-0.5 shrink-0" /> : <AlertCircle className="size-4 mt-0.5 shrink-0" />}
-          {message.text}
+          {typeof message.text === "string" ? message.text : renderDeferred(t, message.text)}
         </div>
       )}
 
       {error && (
         <div className="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">
-          <AlertCircle className="size-4 mt-0.5 shrink-0" /> {error}
+          <AlertCircle className="size-4 mt-0.5 shrink-0" /> {typeof error === "string" ? error : renderDeferred(t, error)}
         </div>
       )}
-      {gpsStatus && <div className="text-sm text-body">{gpsStatus}</div>}
+      {gpsStatus && <div className="text-sm text-body">{renderDeferred(t, gpsStatus)}</div>}
 
       <div className="rounded-2xl border border-border bg-card p-6 grid gap-5">
         <div>
@@ -104,7 +117,7 @@ export default function AttendancePage() {
           </h2>
           <p className="text-sm text-body mt-1">
             {today?.duty_start
-              ? <><bdi>{t('salesman.att.clockedInAt').replace('{time}', new Date(today.duty_start).toLocaleTimeString())}</bdi>{today.duty_end ? <bdi>{` · ${t('salesman.att.outAt').replace('{time}', new Date(today.duty_end).toLocaleTimeString())}`}</bdi> : ""}</>
+              ? <><bdi>{renderDeferred(t, { key: 'salesman.att.clockedInAt', values: { time: new Date(today.duty_start).toLocaleTimeString(locale) } })}</bdi>{today.duty_end ? <bdi>{` · ${renderDeferred(t, { key: 'salesman.att.outAt', values: { time: new Date(today.duty_end).toLocaleTimeString(locale) } })}`}</bdi> : ""}</>
               : t('salesman.att.noClockIn')}
           </p>
         </div>
@@ -129,7 +142,7 @@ export default function AttendancePage() {
           </button>
         ) : (
           <div className="flex items-center gap-2 rounded-lg bg-success/10 px-4 py-3 text-sm text-success">
-            <CheckCircle2 className="size-4" /> {t('salesman.att.dutyComplete')}{typeof today?.total_hours === "number" ? ` — ${t('salesman.att.hours').replace('{count}', String(today.total_hours))}` : ""}.
+            <CheckCircle2 className="size-4" /> {t('salesman.att.dutyComplete')}{typeof today?.total_hours === "number" ? ` — ${renderDeferred(t, { key: 'salesman.att.hours', values: { count: today.total_hours } })}` : ""}.
           </div>
         )}
       </div>
@@ -147,10 +160,10 @@ export default function AttendancePage() {
             {records.map((r) => (
               <div key={r.id} className="flex items-center justify-between px-5 py-3">
                 <div>
-                  <div className="font-medium text-foreground">{new Date(r.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</div>
+                  <div className="font-medium text-foreground">{new Date(r.date + "T00:00:00").toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" })}</div>
                   <div className="text-xs text-body">
-                    {r.duty_start ? t('salesman.att.in').replace('{time}', new Date(r.duty_start).toLocaleTimeString()) : t('salesman.att.noClockIn')}
-                    {r.duty_end ? ` · ${t('salesman.att.out').replace('{time}', new Date(r.duty_end).toLocaleTimeString())}` : ""}
+                    {r.duty_start ? renderDeferred(t, { key: 'salesman.att.in', values: { time: new Date(r.duty_start).toLocaleTimeString(locale) } }) : t('salesman.att.noClockInHistory')}
+                    {r.duty_end ? ` · ${renderDeferred(t, { key: 'salesman.att.out', values: { time: new Date(r.duty_end).toLocaleTimeString(locale) } })}` : ""}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -166,7 +179,7 @@ export default function AttendancePage() {
   );
 }
 
-function StatusBadge({ status, t }: { status: string; t: (key: any) => string }) {
+function StatusBadge({ status, t }: { status: string; t: (key: MessageKey) => string }) {
   const colors: Record<string, string> = {
     present: "bg-success/10 text-success",
     absent: "bg-destructive/10 text-destructive",

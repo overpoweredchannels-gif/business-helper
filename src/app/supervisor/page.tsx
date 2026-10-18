@@ -5,6 +5,7 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Loader2, AlertCircle, Users, CheckCircle2, MapPin, XCircle, Clock, UserX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
 
 interface Member {
   id: string;
@@ -55,7 +56,7 @@ export default function SupervisorOverviewPage() {
   const { t } = useRegional();
   const [data, setData] = useState<TeamState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | DeferredMessage | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,10 +67,10 @@ export default function SupervisorOverviewPage() {
       if (json.ok) {
         setData(json);
       } else {
-        setError(json.error || t('supervisor.home.loadError'));
+        setError(json.error || { key: 'supervisor.home.loadError' });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('salesman.att.networkError'));
+      setError(err instanceof Error ? err.message : { key: 'salesman.att.networkError' });
     } finally {
       setLoading(false);
     }
@@ -89,9 +90,12 @@ export default function SupervisorOverviewPage() {
   }
 
   if (error || !data) {
+    const errorText = error
+      ? (typeof error === "string" ? error : renderDeferred(t, error))
+      : t('supervisor.home.unavailable');
     return (
       <div className="flex items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">
-        <AlertCircle className="size-4 shrink-0" /> {error ?? t('supervisor.home.unavailable')}
+        <AlertCircle className="size-4 shrink-0" /> {errorText}
       </div>
     );
   }

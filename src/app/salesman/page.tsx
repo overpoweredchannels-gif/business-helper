@@ -6,6 +6,8 @@ import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { EmployeeLiveTracking } from "@/components/dashboard";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { localeFor } from "@/lib/regional/settings";
+import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
 import {
   AlertCircle, ArrowUpRight, BarChart3, Bell, Briefcase, CalendarDays, ChevronRight,
   CircleDollarSign, ClipboardList, Hash, Loader2, MapPin, Package, Plus,
@@ -43,14 +45,15 @@ type Draft = { id: string; status: string };
 type NotificationItem = { id: string; title: string; body: string };
 
 export default function SalesmanDashboard() {
-  const { t } = useRegional();
+  const { t, language } = useRegional();
+  const locale = localeFor(language);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [dateRange, setDateRange] = useState<7 | 30>(7);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | DeferredMessage | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,7 +61,10 @@ export default function SalesmanDashboard() {
     try {
       const overviewResponse = await authorizedFetch("/api/identity/staff/overview");
       const overview = await overviewResponse.json();
-      if (!overviewResponse.ok || !overview.ok) throw new Error(overview.error ?? t('salesman.dash.loadError'));
+      if (!overviewResponse.ok || !overview.ok) {
+        setError(overview.error || { key: 'salesman.dash.loadError' });
+        return;
+      }
       const nextWorkspace = overview.workspace as Workspace;
       setWorkspace(nextWorkspace);
 
@@ -74,7 +80,7 @@ export default function SalesmanDashboard() {
       if (draftData.ok) setDrafts(draftData.drafts ?? []);
       if (notificationData.ok) setNotifications(notificationData.notifications ?? []);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('salesman.dash.loadError'));
+      setError(reason instanceof Error ? reason.message : { key: 'salesman.dash.loadError' });
     } finally {
       setLoading(false);
     }
@@ -92,7 +98,10 @@ export default function SalesmanDashboard() {
     return <div className="flex flex-col items-center justify-center py-24 gap-3"><Loader2 className="size-8 text-primary animate-spin" /><p className="text-sm text-body">{t('salesman.dash.loading')}</p></div>;
   }
   if (error || !workspace) {
-    return <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-5 text-sm text-destructive flex gap-2"><AlertCircle className="size-4 mt-0.5" />{error ?? t('salesman.dash.unavailable')}</div>;
+    const errorText = error
+      ? (typeof error === "string" ? error : renderDeferred(t, error))
+      : t('salesman.dash.unavailable');
+    return <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-5 text-sm text-destructive flex gap-2"><AlertCircle className="size-4 mt-0.5" />{errorText}</div>;
   }
 
   const employee = workspace.employee;
@@ -116,7 +125,7 @@ export default function SalesmanDashboard() {
             {employee.employee_id && <span className="inline-flex items-center gap-1"><Hash className="size-3" /><bdi>{employee.employee_id}</bdi></span>}
             {employee.department && <span className="inline-flex items-center gap-1"><Briefcase className="size-3" /><bdi>{employee.department}</bdi></span>}
             {employee.phone && <span className="inline-flex items-center gap-1"><User className="size-3" /><bdi>{employee.phone}</bdi></span>}
-            {employee.joining_date && <span className="inline-flex items-center gap-1"><CalendarDays className="size-3" />{t('salesman.dash.joined').replace('{date}', formatDate(employee.joining_date))}</span>}
+            {employee.joining_date && <span className="inline-flex items-center gap-1"><CalendarDays className="size-3" />{t('salesman.dash.joined').replace('{date}', formatDate(employee.joining_date, locale))}</span>}
           </div>
         </div>
         <Link href="/salesman/profile" className="text-sm text-primary hover:underline">{t('salesman.dash.viewProfile')}</Link>
@@ -137,12 +146,12 @@ export default function SalesmanDashboard() {
 
       <section id="sales" className="grid gap-6 lg:grid-cols-2 scroll-mt-20">
         <Panel title={t('salesman.dash.salesByDate')} icon={CalendarDays} action={<div className="flex rounded-lg border border-border p-0.5">{([7, 30] as const).map((range) => <button key={range} onClick={() => setDateRange(range)} className={`rounded-md px-2.5 py-1 text-xs ${dateRange === range ? "bg-primary text-primary-foreground" : "text-body"}`}>{t('salesman.dash.days').replace('{count}', String(range))}</button>)}</div>}>
-          {visibleDates.length === 0 ? <Empty text={t('salesman.dash.noSales')} /> : <div className="grid gap-3">{visibleDates.map((row) => <div key={row.date} className="grid grid-cols-[74px_1fr_auto] items-center gap-3 text-xs"><span className="text-body">{shortDate(row.date)}</span><div className="h-2 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(3, row.total / maxDay * 100)}%` }} /></div><span className="font-medium text-foreground"><bdi>{money(row.total)}</bdi></span></div>)}</div>}
+          {visibleDates.length === 0 ? <Empty text={t('salesman.dash.noSales')} /> : <div className="grid gap-3">{visibleDates.map((row) => <div key={row.date} className="grid grid-cols-[74px_1fr_auto] items-center gap-3 text-xs"><span className="text-body">{shortDate(row.date, locale)}</span><div className="h-2 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(3, row.total / maxDay * 100)}%` }} /></div><span className="font-medium text-foreground"><bdi>{money(row.total)}</bdi></span></div>)}</div>}
         </Panel>
         <Panel title={t('salesman.dash.byProducts')} icon={Package}><Ranking rows={sales.byProduct.slice(0, 8).map((row) => ({ id: row.product_id, name: row.name, value: money(row.total), detail: t('salesman.dash.units').replace('{count}', String(row.quantity)) }))} empty={t('salesman.dash.noProductSales')} /></Panel>
         <Panel title={t('salesman.dash.byCustomer')} icon={Store}><Ranking rows={sales.byCustomer.slice(0, 8).map((row) => ({ id: row.customer_id, name: row.name, value: money(row.total), detail: t('salesman.dash.invoices').replace('{count}', String(row.count)) }))} empty={t('salesman.dash.noCustomerSales')} /></Panel>
         <Panel title={t('salesman.dash.recentSales')} icon={ShoppingBag} action={<Link href="/salesman/drafts" className="text-xs text-primary hover:underline">{t('salesman.dash.myDrafts')}</Link>}>
-          {sales.recent.length === 0 ? <Empty text={t('salesman.dash.noSales')} /> : <div className="divide-y divide-border">{sales.recent.slice(0, 8).map((sale) => <div key={sale.id} className="flex items-center justify-between gap-3 py-3"><div className="min-w-0"><div className="text-sm font-medium text-foreground truncate"><bdi>{sale.invoice_number}</bdi></div><div className="text-xs text-body truncate"><bdi>{sale.customers?.shop_name ?? sale.customers?.customer_name ?? t('salesman.dash.customerFallback')}</bdi> · {formatDate(sale.sale_date ?? sale.created_at)}</div></div><span className="text-sm font-semibold text-foreground"><bdi>{money(sale.total_amount)}</bdi></span></div>)}</div>}
+          {sales.recent.length === 0 ? <Empty text={t('salesman.dash.noSales')} /> : <div className="divide-y divide-border">{sales.recent.slice(0, 8).map((sale) => <div key={sale.id} className="flex items-center justify-between gap-3 py-3"><div className="min-w-0"><div className="text-sm font-medium text-foreground truncate"><bdi>{sale.invoice_number}</bdi></div><div className="text-xs text-body truncate"><bdi>{sale.customers?.shop_name ?? sale.customers?.customer_name ?? t('salesman.dash.customerFallback')}</bdi> · {formatDate(sale.sale_date ?? sale.created_at, locale)}</div></div><span className="text-sm font-semibold text-foreground"><bdi>{money(sale.total_amount)}</bdi></span></div>)}</div>}
         </Panel>
       </section>
 
@@ -181,5 +190,5 @@ function MiniAction({ href, icon: Icon, title, detail }: { href: string; icon: R
 }
 function Empty({ text }: { text: string }) { return <p className="py-5 text-center text-sm text-body">{text}</p>; }
 function money(value: number) { return new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(Number(value || 0)); }
-function formatDate(value: string) { return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
-function shortDate(value: string) { return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
+function formatDate(value: string, locale: string) { return new Date(value).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" }); }
+function shortDate(value: string, locale: string) { return new Date(`${value}T00:00:00`).toLocaleDateString(locale, { month: "short", day: "numeric" }); }

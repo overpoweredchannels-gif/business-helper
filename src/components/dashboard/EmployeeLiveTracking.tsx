@@ -8,6 +8,8 @@ import { getMapProvider } from "@/lib/maps/map-provider";
 import { getPlaceName } from "@/lib/maps/client-maps";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { localeFor } from "@/lib/regional/settings";
+import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
 
 interface MeResponse {
   ok: boolean;
@@ -29,10 +31,11 @@ interface LocationPoint {
 }
 
 export function EmployeeLiveTracking() {
-  const { t } = useRegional();
+  const { t, language } = useRegional();
+  const locale = localeFor(language);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | DeferredMessage | null>(null);
+  const [message, setMessage] = useState<string | DeferredMessage | null>(null);
   const [tracking, setTracking] = useState(false);
   const [booting, setBooting] = useState(false);
   const [lastLocation, setLastLocation] = useState<LocationPoint | null>(null);
@@ -80,7 +83,7 @@ export function EmployeeLiveTracking() {
           watchIdRef.current = null;
           sessionIdRef.current = null;
           setTracking(false);
-          setMessage(data.error || t('tracking.dutyEnded'));
+          setMessage(data.error || { key: 'tracking.dutyEnded' });
           setError(null);
           return;
         }
@@ -90,10 +93,13 @@ export function EmployeeLiveTracking() {
           lastSavedLocationRef.current = point;
           setError(null);
         } else {
-          throw new Error(data.error || t('tracking.uploadFailed'));
+          // Preserve existing visible behavior: non-OK uploads show the generic
+          // save-failed message (the original threw here and the catch replaced
+          // it). Stored as a key so it follows language switches.
+          setError({ key: 'tracking.saveFailed' });
         }
       } catch {
-        setError(t('tracking.saveFailed'));
+        setError({ key: 'tracking.saveFailed' });
       }
     },
     []
@@ -161,7 +167,7 @@ export function EmployeeLiveTracking() {
         handlePosition,
         (geoError) => {
           if (geoError.code === geoError.TIMEOUT || geoError.code === 3) {
-            setMessage("Live tracking is active and waiting for the next GPS update.");
+            setMessage({ key: 'tracking.waitingForGps' });
             return;
           }
           setError(getBrowserLocationErrorMessage(geoError));
@@ -185,10 +191,10 @@ export function EmployeeLiveTracking() {
           data.me.employee?.full_name || data.me.profile?.full_name || null
         );
       } else {
-        setError(data.error || t('tracking.profileError'));
+        setError(data.error || { key: 'tracking.profileError' });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('tracking.networkError'));
+      setError(err instanceof Error ? err.message : { key: 'tracking.networkError' });
     } finally {
       setLoading(false);
     }
@@ -211,7 +217,7 @@ export function EmployeeLiveTracking() {
         sessionIdRef.current = data.dutySessionId;
         setTracking(true);
         resumeWatch(data.dutySessionId);
-        setMessage(t('tracking.resumed'));
+        setMessage({ key: 'tracking.resumed' });
       }
     } catch {
       // status check is best-effort
@@ -231,17 +237,17 @@ export function EmployeeLiveTracking() {
     setMessage(null);
 
     if (!profileId || !organizationId) {
-      setError(t('tracking.noProfile'));
+      setError({ key: 'tracking.noProfile' });
       return;
     }
 
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setError(t('tracking.noGeolocation'));
+      setError({ key: 'tracking.noGeolocation' });
       return;
     }
 
     setBooting(true);
-    setMessage(t('tracking.acquiring'));
+    setMessage({ key: 'tracking.acquiring' });
     try {
       const position = await acquireBrowserLocation();
 
@@ -269,7 +275,10 @@ export function EmployeeLiveTracking() {
       });
       const data = (await res.json()) as { ok?: boolean; dutySessionId?: string | null; message?: string; error?: string };
       if (!data.ok || !data.dutySessionId) {
-        throw new Error(data.error || data.message || t('tracking.startFailed'));
+        // Server message stays raw; app fallback is a key. (Original threw here
+        // and the catch surfaced err.message; direct set preserves that.)
+        setError(data.error || data.message || { key: 'tracking.startFailed' });
+        return;
       }
 
       sessionIdRef.current = data.dutySessionId;
@@ -279,7 +288,7 @@ export function EmployeeLiveTracking() {
       void uploadPoint(data.dutySessionId, startPoint);
 
       setTracking(true);
-      setMessage(t('tracking.started'));
+      setMessage({ key: 'tracking.started' });
 
       resumeWatch(data.dutySessionId);
     } catch (err) {
@@ -307,7 +316,7 @@ export function EmployeeLiveTracking() {
 
     sessionIdRef.current = null;
     lastSavedLocationRef.current = null;
-    setMessage(t('tracking.stopped'));
+    setMessage({ key: 'tracking.stopped' });
   }, [profileId, organizationId, stopWatch]);
 
   useEffect(() => {
@@ -375,11 +384,11 @@ export function EmployeeLiveTracking() {
       </div>
 
       {message && (
-        <p className="mb-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2 text-xs text-success">{message}</p>
+        <p className="mb-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2 text-xs text-success">{typeof message === "string" ? message : renderDeferred(t, message)}</p>
       )}
       {error && (
         <p className="mb-2 flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          <AlertCircle className="size-3.5 mt-0.5 shrink-0" /> {error}
+          <AlertCircle className="size-3.5 mt-0.5 shrink-0" /> {typeof error === "string" ? error : renderDeferred(t, error)}
         </p>
       )}
 
@@ -423,7 +432,7 @@ export function EmployeeLiveTracking() {
           </div>
           {lastSavedAt && (
             <div className="text-[11px] text-body">
-              {t('tracking.lastUpdated').replace('{time}', new Date(lastSavedAt).toLocaleTimeString())}
+              {renderDeferred(t, { key: 'tracking.lastUpdated', values: { time: new Date(lastSavedAt).toLocaleTimeString(locale) } })}
             </div>
           )}
         </div>

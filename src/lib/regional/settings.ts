@@ -29,6 +29,17 @@ export function isCurrency(value: unknown): value is Currency {
 }
 export function direction(language: Language): 'rtl' | 'ltr' { return language === 'ur' ? 'rtl' : 'ltr'; }
 
+/** Display locale for dates/times in the selected UI language. Timezone handling
+ * is intentionally untouched — callers must not pass a timeZone option here. */
+export function localeFor(language: Language): string {
+  switch (language) {
+    case 'es': return 'es-ES';
+    case 'it': return 'it-IT';
+    case 'ur': return 'ur-PK';
+    default: return 'en-PK';
+  }
+}
+
 /** Canonical browser-language cookie parsing, shared by the pre-paint bootstrap
  * and the React provider. Accepts exactly the supported language codes;
  * encoded, malformed, empty or unknown values fall back to null (English/LTR).
