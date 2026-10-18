@@ -5,8 +5,28 @@ export type BarcodeLine = { product_id: string | null; quantity: string; selling
 export function findBarcodeProduct<T extends BarcodeProduct>(products: T[], raw: string): T {
   const code = raw.trim();
   if (!code || code.length > 200) throw new Error("Scan or enter a valid barcode.");
-  const matches = products.filter(product => product.is_active !== false && product.barcode?.trim() === code);
-  if (!matches.length) throw new Error(`No active product has barcode ${code}. Add it in Products first.`);
+  
+  // Normalized matching: case-insensitive, trim whitespace
+  // This handles scanners that emit different case than stored
+  const normalizedCode = code.toLowerCase();
+  const matches = products.filter(product => {
+    if (product.is_active === false) return false;
+    const stored = product.barcode?.trim().toLowerCase();
+    return stored === normalizedCode;
+  });
+  
+  if (!matches.length) {
+    // Provide diagnostic info for troubleshooting
+    const sampleBarcodes = products
+      .filter(p => p.is_active !== false && p.barcode)
+      .slice(0, 3)
+      .map(p => p.barcode);
+    throw new Error(
+      `No active product has barcode ${code}. Add it in Products first. ` +
+      `(Scanned: "${code}" [${code.length} chars]. ` +
+      `Sample stored: ${sampleBarcodes.join(', ') || 'none'})`
+    );
+  }
   if (matches.length > 1) throw new Error("This barcode belongs to more than one active product. Correct the duplicate barcodes before selling.");
   return matches[0];
 }
