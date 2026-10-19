@@ -12,6 +12,8 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "@/lib/supabase/client";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import { LanguageSwitcher } from "@/components/regional/LanguageSwitcher";
 
 type LoginMethod = "email" | "staff";
 
@@ -252,6 +254,7 @@ function LeftPanel() {
 }
 
 function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { email?: string }) => void }) {
+  const { t } = useRegional();
   const router = useRouter();
   const [method, setMethod] = useState<LoginMethod>("email");
   const [email, setEmail] = useState("");
@@ -332,7 +335,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
   return (
     <form onSubmit={handleSubmit} autoComplete="on" className="animate-slideUp">
       <div className="text-center mb-6">
-        <h1 className="font-heading font-bold text-2xl text-foreground">Sign in to your account</h1>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('auth.signin.title')}</h1>
         <p className="text-body text-sm mt-1.5">Welcome back! Enter your credentials to continue.</p>
       </div>
 
@@ -729,6 +732,7 @@ interface AuthUIProps {
 }
 
 export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
+  const { t } = useRegional();
   const [view, setView] = useState<AuthView>(defaultMode);
   const [email, setEmail] = useState<string>("");
 
@@ -746,7 +750,10 @@ export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
 
       <LeftPanel />
 
-      <div className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8 relative">
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+          <LanguageSwitcher />
+        </div>
         <div className="w-full max-w-[420px]">
           <div className="lg:hidden text-center mb-8 animate-fadeIn">
             <div className="inline-flex items-center gap-2">
