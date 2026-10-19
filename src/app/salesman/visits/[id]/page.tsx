@@ -6,6 +6,8 @@ import { useCatalogScopeGuard } from "@/lib/catalog/use-catalog-scope-guard";
 import { VisitProductLookup, VISIT_PRODUCT_SEARCH_PAGE_SIZE, type VisitProduct, type VisitProductPage } from "@/components/salesman/VisitProductLookup";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import type { MessageKey } from "@/lib/regional/messages";
 import {
   Loader2, MapPin, Navigation, FileText, CheckCircle2, AlertCircle, ArrowLeft,
   Plus, Trash2, Camera, Image as ImageIcon,
@@ -60,6 +62,7 @@ function getPosition(): Promise<GeoPosition> {
 }
 
 export default function VisitDetailPage() {
+  const { t } = useRegional();
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const visitId = params.id;
@@ -120,7 +123,7 @@ export default function VisitDetailPage() {
         setNotes(data.visit.notes ?? "");
         setSavedNotes(data.visit.notes ?? "");
       } else {
-        setError(data.error || "Visit not found");
+        setError(data.error || t('salesman.visitDetail.notFound'));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
@@ -167,7 +170,7 @@ export default function VisitDetailPage() {
       setSuccess("Visit started. You can now add notes.");
       await loadVisit(employeeId!);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start visit");
+      setError(err instanceof Error ? err.message : t('salesman.visitDetail.startFailed'));
     } finally {
       setActionLoading(false);
       setGpsMessage(null);
@@ -350,15 +353,15 @@ export default function VisitDetailPage() {
       {isPlanned && (
         <div className="rounded-2xl border border-border bg-card p-6 text-center">
           <MapPin className="size-8 text-primary mx-auto mb-3" />
-          <h2 className="font-semibold text-foreground mb-1">Start this visit</h2>
-          <p className="text-sm text-body mb-5">We will verify your GPS location is near the customer (within 100m).</p>
+          <h2 className="font-semibold text-foreground mb-1">{t('salesman.visitDetail.startTitle')}</h2>
+          <p className="text-sm text-body mb-5">{t('salesman.visitDetail.startHint')}</p>
           <button
             onClick={startVisit}
             disabled={actionLoading || !employeeId}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-primary px-8 text-primary-foreground font-medium disabled:opacity-50"
           >
             {actionLoading ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
-            {actionLoading ? "Starting..." : "Start visit"}
+            {actionLoading ? t('salesman.visitDetail.starting') : t('salesman.visitDetail.start')}
           </button>
         </div>
       )}
@@ -366,22 +369,22 @@ export default function VisitDetailPage() {
       {isInProgress && (
         <>
           <div className="rounded-2xl border border-border bg-card p-6">
-            <h2 className="font-semibold text-foreground mb-3">Visit notes</h2>
+            <h2 className="font-semibold text-foreground mb-3">{t('salesman.visitDetail.notes')}</h2>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
-              placeholder="Write notes about this visit..."
+              placeholder={t('salesman.visitDetail.notesPlaceholder')}
               className="w-full rounded-lg border border-input bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <div className="flex items-center justify-between mt-3">
-              <span className="text-xs text-light-text">{savedNotes ? "Last saved: notes present" : "No saved notes"}</span>
+              <span className="text-xs text-light-text">{savedNotes ? t('salesman.visitDetail.lastSaved') : t('salesman.visitDetail.noSavedNotes')}</span>
               <button
                 onClick={saveNotes}
                 disabled={actionLoading}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
               >
-                <FileText className="size-4" /> {actionLoading ? "Saving..." : "Save notes"}
+                <FileText className="size-4" /> {actionLoading ? t('salesman.visitDetail.saving') : t('salesman.visitDetail.saveNotes')}
               </button>
             </div>
           </div>
