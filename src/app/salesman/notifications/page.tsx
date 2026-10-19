@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Bell, Loader2, CheckCheck, Trash2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import type { MessageKey } from "@/lib/regional/messages";
 
 const CATEGORY_COLORS: Record<string, string> = {
   draft_sale: "bg-warning/10 text-warning",
@@ -20,12 +22,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   general: "bg-muted text-muted-foreground",
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  draft_sale: "Draft sale", approval: "Approval", target: "Target", route: "Route", duty: "Duty",
-  off_route: "Off route", missed_customer: "Missed customer", inventory: "Inventory",
-  attendance: "Attendance", leave: "Leave", collection: "Collection", general: "General",
-};
-
 interface Notif {
   id: string;
   category: string;
@@ -36,17 +32,24 @@ interface Notif {
 }
 
 export default function NotificationsPage() {
+  const { t } = useRegional();
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+
+  const CATEGORY_LABELS: Record<string, MessageKey> = {
+    draft_sale: 'salesman.notif.cat.draft_sale', approval: 'salesman.notif.cat.approval', target: 'salesman.notif.cat.target', route: 'salesman.notif.cat.route', duty: 'salesman.notif.cat.duty',
+    off_route: 'salesman.notif.cat.off_route', missed_customer: 'salesman.notif.cat.missed_customer', inventory: 'salesman.notif.cat.inventory',
+    attendance: 'salesman.notif.cat.attendance', leave: 'salesman.notif.cat.leave', collection: 'salesman.notif.cat.collection', general: 'salesman.notif.cat.general',
+  };
 
   const load = async () => {
     try {
       const res = await authorizedFetch("/api/notifications?limit=100");
       const data = await res.json();
       if (data.ok) setNotifs(data.notifications ?? []);
-      else setError(data.error || "Failed to load notifications");
+      else setError(data.error || t('salesman.notif.loadFailed'));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
     } finally {
@@ -66,10 +69,10 @@ export default function NotificationsPage() {
     });
     const data = await res.json();
     if (data.ok) {
-      setMessage({ type: "ok", text: "Marked all as read." });
+      setMessage({ type: "ok", text: t('salesman.notif.markedAllRead') });
       setNotifs(notifs.map((n) => ({ ...n, is_read: true })));
     } else {
-      setMessage({ type: "error", text: data.error || "Failed to update" });
+      setMessage({ type: "error", text: data.error || t('salesman.notif.updateFailed') });
     }
   };
 
@@ -97,15 +100,15 @@ export default function NotificationsPage() {
     <div className="grid gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading font-bold text-2xl text-foreground">Notifications</h1>
-          <p className="text-sm text-body mt-1">{unread > 0 ? `${unread} unread` : "All caught up"}</p>
+          <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.notif.title')}</h1>
+          <p className="text-sm text-body mt-1">{unread > 0 ? t('salesman.notif.unread').replace('{count}', String(unread)) : t('salesman.notif.allCaughtUp')}</p>
         </div>
         <button
           onClick={markAllRead}
           disabled={unread === 0}
           className="inline-flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
         >
-          <CheckCheck className="size-4" /> Mark all read
+          <CheckCheck className="size-4" /> {t('salesman.notif.markAllRead')}
         </button>
       </div>
 
@@ -126,12 +129,12 @@ export default function NotificationsPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading notifications...</p>
+          <p className="text-sm text-body">{t('salesman.notif.loading')}</p>
         </div>
       ) : notifs.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <Bell className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No notifications.</p>
+          <p className="text-sm text-body">{t('salesman.notif.noNotif')}</p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card divide-y divide-border">
@@ -141,7 +144,7 @@ export default function NotificationsPage() {
               className={cn("flex items-start gap-3 px-5 py-4", !n.is_read && "bg-primary-light/50")}
             >
               <div className={cn("mt-0.5 px-2 py-1 rounded-full text-[11px] font-medium shrink-0", CATEGORY_COLORS[n.category] ?? "bg-muted text-muted-foreground")}>
-                {CATEGORY_LABELS[n.category] ?? n.category}
+                {CATEGORY_LABELS[n.category] ? t(CATEGORY_LABELS[n.category]) : n.category}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
@@ -153,10 +156,10 @@ export default function NotificationsPage() {
               </div>
               <div className="flex flex-col gap-2 shrink-0">
                 {!n.is_read && (
-                  <button onClick={() => markRead(n.id)} className="text-xs text-primary hover:underline">Mark read</button>
+                  <button onClick={() => markRead(n.id)} className="text-xs text-primary hover:underline">{t('salesman.notif.markRead')}</button>
                 )}
                 <button onClick={() => deleteOne(n.id)} className="text-xs text-destructive hover:underline flex items-center gap-1">
-                  <Trash2 className="size-3" /> Remove
+                  <Trash2 className="size-3" /> {t('salesman.notif.remove')}
                 </button>
               </div>
             </div>
