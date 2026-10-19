@@ -20691,7 +20691,7 @@ setCustomerOrganizationName("");
               />
             </div>
 
-            <BarcodeInput label="Product barcode" value={productBarcode} onChange={setProductBarcode} onScan={setProductBarcode} />
+            <BarcodeInput label="Product barcode" value={productBarcode} onChange={setProductBarcode} onScan={setProductBarcode} autoFocus />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
