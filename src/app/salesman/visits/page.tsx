@@ -5,6 +5,8 @@ import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { MapPin, Loader2, CheckCircle2, Clock as ClockIcon, XCircle, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import type { MessageKey } from "@/lib/regional/messages";
 
 interface Visit {
   id: string;
@@ -19,6 +21,7 @@ interface Visit {
 }
 
 export default function VisitsPage() {
+  const { t } = useRegional();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,12 +34,12 @@ export default function VisitsPage() {
       if (data.ok && data.me?.employee) {
         setEmployeeId(data.me.employee.id);
       } else {
-        setError("No staff profile linked to this account.");
+        setError(t('salesman.visits.noProfile'));
       }
     } catch {
-      setError("Could not load your profile.");
+      setError(t('salesman.visits.loadError'));
     }
-  }, []);
+  }, [t]);
 
   const loadVisits = useCallback(async (empId: string) => {
     setLoading(true);
@@ -47,14 +50,14 @@ export default function VisitsPage() {
       if (data.ok) {
         setVisits(data.visits ?? []);
       } else {
-        setError(data.error || "Failed to load visits");
+        setError(data.error || t('salesman.visits.loadFailed'));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadMe();
@@ -74,8 +77,8 @@ export default function VisitsPage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Today's Visits</h1>
-        <p className="text-sm text-body mt-1">Start a visit when you reach a customer.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.visits.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('salesman.visits.subtitle')}</p>
       </div>
 
       {error && <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">{error}</div>}
@@ -83,30 +86,30 @@ export default function VisitsPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading visits...</p>
+          <p className="text-sm text-body">{t('salesman.visits.loading')}</p>
         </div>
       ) : visits.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <MapPin className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No visits scheduled for today yet.</p>
-          <p className="text-xs text-light-text mt-1">Your manager can plan visits for you from the business app.</p>
+          <p className="text-sm text-body">{t('salesman.visits.noVisits')}</p>
+          <p className="text-xs text-light-text mt-1">{t('salesman.visits.noVisitsHint')}</p>
         </div>
       ) : (
-        <VisitGroup title="In progress" visits={grouped.in_progress} icon={<ClockIcon className="size-4 text-primary" />} />
+        <VisitGroup title={t('salesman.visits.inProgress')} visits={grouped.in_progress} icon={<ClockIcon className="size-4 text-primary" />} t={t} />
       )}
 
       {visits.length > 0 && (
         <div className="grid gap-6">
-          <VisitGroup title="Planned" visits={grouped.planned} icon={<MapPin className="size-4 text-primary" />} />
-          <VisitGroup title="Completed" visits={grouped.completed} icon={<CheckCircle2 className="size-4 text-success" />} />
-          <VisitGroup title="Missed" visits={grouped.missed} icon={<XCircle className="size-4 text-destructive" />} />
+          <VisitGroup title={t('salesman.visits.planned')} visits={grouped.planned} icon={<MapPin className="size-4 text-primary" />} t={t} />
+          <VisitGroup title={t('salesman.visits.completed')} visits={grouped.completed} icon={<CheckCircle2 className="size-4 text-success" />} t={t} />
+          <VisitGroup title={t('salesman.visits.missed')} visits={grouped.missed} icon={<XCircle className="size-4 text-destructive" />} t={t} />
         </div>
       )}
     </div>
   );
 }
 
-function VisitGroup({ title, visits, icon }: { title: string; visits: Visit[]; icon: React.ReactNode }) {
+function VisitGroup({ title, visits, icon, t }: { title: string; visits: Visit[]; icon: React.ReactNode; t: (key: MessageKey) => string }) {
   if (visits.length === 0) return null;
   return (
     <div>
@@ -116,13 +119,13 @@ function VisitGroup({ title, visits, icon }: { title: string; visits: Visit[]; i
           <Link key={v.id} href={`/salesman/visits/${v.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/40 transition-colors">
             <div className="min-w-0">
               <div className="text-sm font-medium text-foreground truncate">
-                {v.customers?.shop_name || v.customers?.customer_name || "Customer"}
+                {v.customers?.shop_name || v.customers?.customer_name || t('salesman.visits.customerFallback')}
               </div>
               {v.customers?.phone && <div className="text-xs text-body">{v.customers.phone}</div>}
-              {v.ended_at && <div className="text-[11px] text-light-text">Ended {new Date(v.ended_at).toLocaleTimeString()}</div>}
+              {v.ended_at && <div className="text-[11px] text-light-text">{t('salesman.visits.ended').replace('{time}', new Date(v.ended_at).toLocaleTimeString())}</div>}
             </div>
             <div className="flex items-center gap-2">
-              <VisitStatus status={v.visit_status} />
+              <VisitStatus status={v.visit_status} t={t} />
               <ChevronRight className="size-4 text-light-text" />
             </div>
           </Link>
@@ -132,7 +135,7 @@ function VisitGroup({ title, visits, icon }: { title: string; visits: Visit[]; i
   );
 }
 
-function VisitStatus({ status }: { status: string }) {
+function VisitStatus({ status, t }: { status: string; t: (key: MessageKey) => string }) {
   const styles: Record<string, string> = {
     planned: "bg-muted text-muted-foreground",
     in_progress: "bg-primary-light text-primary",
@@ -141,7 +144,7 @@ function VisitStatus({ status }: { status: string }) {
     cancelled: "bg-muted text-muted-foreground",
   };
   const labels: Record<string, string> = {
-    planned: "Planned", in_progress: "Active", completed: "Done", missed: "Missed", cancelled: "Cancelled",
+    planned: t('salesman.visits.status.planned'), in_progress: t('salesman.visits.status.active'), completed: t('salesman.visits.status.done'), missed: t('salesman.visits.status.missed'), cancelled: t('salesman.visits.status.cancelled'),
   };
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap", styles[status] ?? "bg-muted text-muted-foreground")}>
