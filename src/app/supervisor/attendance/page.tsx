@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Loader2, AlertCircle, MapPin, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Member {
   id: string;
@@ -51,6 +52,7 @@ const ATT_TONE: Record<string, string> = {
 };
 
 export default function SupervisorAttendancePage() {
+  const { t } = useRegional();
   const [data, setData] = useState<TeamState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,8 +96,8 @@ export default function SupervisorAttendancePage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Team Attendance</h1>
-        <p className="text-sm text-body mt-1">Today's attendance status for all team members.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('supervisor.att.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('supervisor.att.subtitle')}</p>
       </div>
 
       <div className="rounded-2xl border border-border bg-card overflow-hidden">

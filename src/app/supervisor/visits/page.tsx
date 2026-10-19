@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Loader2, AlertCircle, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Member {
   id: string;
@@ -18,6 +19,7 @@ interface TeamState {
 }
 
 export default function SupervisorVisitsPage() {
+  const { t } = useRegional();
   const [data, setData] = useState<TeamState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,8 +67,8 @@ export default function SupervisorVisitsPage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Team Visits</h1>
-        <p className="text-sm text-body mt-1">Field visit activity for today.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('supervisor.visits.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('supervisor.visits.subtitle')}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -76,7 +78,7 @@ export default function SupervisorVisitsPage() {
       </div>
 
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">Team Members</div>
+        <div className="px-4 py-3 border-b border-border">{t('supervisor.visits.member')}</div>
         <div className="divide-y divide-border/40">
           {data.members.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-light-text">No team members assigned.</div>
