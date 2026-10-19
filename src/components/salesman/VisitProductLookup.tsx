@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { Search } from "lucide-react";
 import { rankSearchResults } from "@/lib/products/search-rank";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 /** Product row shape returned by GET /api/products/list. */
 export interface VisitProduct {
@@ -52,6 +53,7 @@ export function VisitProductLookup({
   onAddProduct: (product: VisitProduct) => void;
   invalidationRef: { current: number };
 }) {
+  const { t } = useRegional();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<VisitProduct[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "loading-more" | "failed" | "done">("idle");
@@ -150,24 +152,24 @@ export function VisitProductLookup({
   return (
     <div>
       <div className="relative mb-4">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <Search className="absolute start-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onInputKeyDown}
-          placeholder="Search products by name or SKU..."
+          placeholder={t('salesman.lookup.searchPlaceholder')}
           role="combobox"
           aria-expanded={showResults && results.length > 0}
           aria-controls={listId}
           aria-activedescendant={activeIndex != null && results[activeIndex] ? `${listId}-option-${results[activeIndex].id}` : undefined}
-          className="w-full rounded-lg border border-input bg-card px-3.5 py-2.5 pl-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-lg border border-input bg-card px-3.5 py-2.5 ps-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {query && (
           <button
             type="button"
-            aria-label="Clear search"
+            aria-label={t('salesman.lookup.clearSearch')}
             onClick={() => setQuery("")}
-            className="absolute right-2.5 top-1/2 min-h-11 min-w-11 -translate-y-1/2 rounded-md px-2 text-lg leading-none text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute end-2.5 top-1/2 min-h-11 min-w-11 -translate-y-1/2 rounded-md px-2 text-lg leading-none text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             ×
           </button>
@@ -178,25 +180,25 @@ export function VisitProductLookup({
         <div className="mb-4">
           {(status === "loading" || status === "loading-more") && (
             <p role="status" aria-live="polite" className="px-1 py-2 text-sm text-muted-foreground">
-              {status === "loading" ? "Searching products..." : "Loading more..."}
+              {status === "loading" ? t('salesman.lookup.searchPlaceholder') : t('salesman.lookup.showMore')}
             </p>
           )}
 
           {status === "failed" && (
             <div role="alert" className="space-y-2 rounded-lg border border-destructive/30 bg-destructive-bg p-3">
-              <p className="text-sm text-destructive">Couldn&apos;t search products. {error}</p>
+              <p className="text-sm text-destructive">{t('salesman.lookup.searchFailed')} {error}</p>
               <button
                 type="button"
                 onClick={retry}
                 className="min-h-11 rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                Retry
+                {t('salesman.lookup.retry')}
               </button>
             </div>
           )}
 
           {status === "done" && results.length === 0 && (
-            <p className="px-1 py-2 text-sm text-muted-foreground">No products found for &ldquo;{query.trim()}&rdquo;.</p>
+            <p className="px-1 py-2 text-sm text-muted-foreground">{t('salesman.lookup.noResults').replace('{query}', query.trim())}</p>
           )}
 
           {results.length > 0 && (
@@ -236,7 +238,7 @@ export function VisitProductLookup({
               onClick={loadMore}
               className="mt-2 min-h-11 w-full rounded-lg border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Show more
+              {t('salesman.lookup.showMore')}
             </button>
           )}
         </div>
