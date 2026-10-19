@@ -3,6 +3,7 @@
 import { TrendingUp, DollarSign, Users, Package, ClipboardList, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KPICard } from "./widgets";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface MyCustomer {
   id: string;
@@ -66,9 +67,10 @@ export function StaffDashboardView({
   onQuickAction,
   onKPIClick,
 }: StaffDashboardViewProps) {
+  const { t } = useRegional();
   const now = new Date();
   const hour = now.getHours();
-  const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
+  const greeting = hour < 12 ? t('dashboard.goodMorning') : hour < 17 ? t('dashboard.goodAfternoon') : t('dashboard.goodEvening');
   const dateStr = now.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
@@ -259,7 +261,7 @@ export function StaffDashboardView({
             onClick={() => onQuickAction?.("New Sale")}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
-            New Sale <ArrowUpRight className="size-4" />
+            {t('dashboard.newSale')} <ArrowUpRight className="size-4" />
           </button>
         )}
       </div>
