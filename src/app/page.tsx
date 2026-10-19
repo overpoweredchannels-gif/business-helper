@@ -2,6 +2,8 @@
 
 import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
 import { RegionalSettingsPanel } from "@/components/regional/RegionalSettingsPanel";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import { navigationLabel } from "@/lib/regional/navigation";
 import { allPages } from "@/lib/supabase/all-pages";
 import { highlightSearchMatches, rankSearchResults, rankSearchResultsWithTiers, type SearchRankFields } from "@/lib/products/search-rank";
 import { ProductCatalogState, ProductCatalogErrorBanner } from "@/components/products/ProductCatalogState";
@@ -297,6 +299,7 @@ async function authorizedFetch(input: string, init: RequestInit = {}): Promise<R
 
 export default function Home() {
   const router = useRouter();
+  const { t, language } = useRegional();
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [printPreviewTitle, setPrintPreviewTitle] = useState("");
@@ -18016,27 +18019,27 @@ setCustomerOrganizationName("");
             </section>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Customer</span>
-                <ProductSearchSelect label="Customer" searchPlaceholder="Search customer, shop or phone" value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={invoiceCustomerOptions} />
+                <span>{t('sell.customer')}</span>
+                <ProductSearchSelect label={t('sell.customer')} searchPlaceholder={t('sell.searchCustomer')} value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={invoiceCustomerOptions} />
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Invoice Number</span>
+                <span>{t('sell.invoiceNumber')}</span>
                 <input
                   type="text"
-                  value="Auto-generated on submit (S-xxxxxx)"
+                  value={t('sell.invoiceNumberAuto')}
                   readOnly
                   className="w-full rounded border border-border px-3 py-2 bg-muted text-muted-foreground"
                 />
                 <span className="text-xs text-muted-foreground/80">
-                  TradeOS generates the system invoice number (S-xxxxxx) automatically.
+                  {t('sell.invoiceNumberHint')}
                 </span>
               </label>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Sale Date</span>
+                <span>{t('sell.saleDate')}</span>
                 <input
                   type="date"
                   value={salesInvoiceDate}
@@ -18048,14 +18051,14 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Payment Type</span>
+                <span>{t('sell.paymentType')}</span>
                 <select
                   value={salesPaymentType}
                   onChange={(e) => handleSalesPaymentTypeChange(e.target.value as "cash" | "credit")}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
-                  <option value="cash">Cash</option>
-                  <option value="credit">Credit</option>
+                  <option value="cash">{t('sell.paymentCash')}</option>
+                  <option value="credit">{t('sell.paymentCredit')}</option>
                 </select>
               </label>
             </div>
@@ -18063,7 +18066,7 @@ setCustomerOrganizationName("");
             <fieldset disabled={!isOwnerOrAdmin()} className="grid gap-4 sm:grid-cols-2 disabled:opacity-60">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span className="flex items-center gap-2">
-                  Invoice Discount (Optional)
+                  {t('sell.invoiceDiscount')}
                   <span className="flex rounded border border-border overflow-hidden">
                     <button
                       type="button"
@@ -18073,7 +18076,7 @@ setCustomerOrganizationName("");
                       }}
                       className={`px-2 py-0.5 text-xs ${salesDiscountType === "flat" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
                     >
-                      Flat
+                      {t('sell.discountFlat')}
                     </button>
                     <button
                       type="button"
@@ -18105,7 +18108,7 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Tax Rate % (Optional)</span>
+                <span>{t('sell.taxRate')}</span>
                 <input
                   type="text" inputMode="decimal"
                   value={salesTaxRate}
@@ -18129,8 +18132,8 @@ setCustomerOrganizationName("");
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>Customer credit policy: {creditPolicyLabels[selectedCustomerCreditPolicy] ?? "Cash Only"}</div>
                   <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
-                  <div>Current invoice total: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
-                  <div>Projected balance: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(projectedCustomerBalance)}</div>
+                  <div>Current invoice total: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
+                  <div>Projected balance: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(projectedCustomerBalance)}</div>
                   {policyUsesCreditLimit(selectedCustomerCreditPolicy) && (
                     <div>Credit limit: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
                   )}
@@ -18153,8 +18156,8 @@ setCustomerOrganizationName("");
                 <h3 className="mb-2 text-base font-medium">Owner Override Required</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
-                  <div>Current invoice total: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
-                  <div>Projected balance: {currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(projectedCustomerBalance)}</div>
+                  <div>Current invoice total: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
+                  <div>Projected balance: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(projectedCustomerBalance)}</div>
                   {creditOverrideConfirmation.overLimit && (
                     <>
                       <div>Credit limit: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
@@ -18207,24 +18210,24 @@ setCustomerOrganizationName("");
                     return (
                     <div key={index} data-invoice-line className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
+                        <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveSalesLine(index)}
                           className="text-xs text-destructive hover:text-destructive/90"
                         >
-                          Remove
+                          {t('sell.remove')}
                         </button>
                       </div>
 
                       <div className="grid gap-2 sm:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Product</span>
+                          <span>{t('sell.product')}</span>
                           <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={invoiceProductOptions} rankedFields={invoiceProductRankFields} />
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Sell as</span>
+                          <span>{t('sell.sellAs')}</span>
                           <select
                             value={line.unit_mode ?? "main"}
                             onChange={(e) =>
@@ -18234,7 +18237,7 @@ setCustomerOrganizationName("");
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="main">
-                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : t('sell.mainUnit')}
                             </option>
                             {lineProduct && hasSubunit(lineProduct) && (
                               <option value="subunit">
@@ -18245,7 +18248,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
+                          <span>{t('sell.quantity')} ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.units')})</span>
                           <input
                             type="text" inputMode="decimal"
                             value={line.quantity}
@@ -18256,7 +18259,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
+                          <span>{t('sell.pricePer')}{' '}{lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.unit')}</span>
                           <input
                             type="text" inputMode="decimal"
                             value={line.selling_price}
@@ -18267,7 +18270,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Line Discount</span>
+                          <span>{t('sell.lineDiscount')}</span>
                           <input
                             type="text" inputMode="decimal"
                             value={line.discount}
@@ -18278,7 +18281,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Bonus (free)</span>
+                          <span>{t('sell.bonusFree')}</span>
                           <input
                             type="text" inputMode="decimal"
                             value={line.bonus}
@@ -18299,27 +18302,27 @@ setCustomerOrganizationName("");
                 data-entry-add onClick={handleAddSalesLine}
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
-                + Add Product Line
+                {t('sell.addProductLine')}
               </button>
             </div>
 
             {salesLines.length > 0 && (
               <div className="rounded border border-border bg-card p-4 text-sm text-foreground/80">
                 {currentSaleDraft.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received").map(issue => <p key={issue.field + issue.message} className="mb-2 text-destructive" role="alert">{issue.message}</p>)}
-                {!currentSaleAmounts && <p className="mb-2 text-destructive" role="status">Sale totals are unavailable until all fields are valid.</p>}
-                <div className="flex justify-between"><span>Line Subtotal</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.lineSubtotal) : "Unavailable"}</span></div>
+                {!currentSaleAmounts && <p className="mb-2 text-destructive" role="status">{t('sell.totalsUnavailable')}</p>}
+                <div className="flex justify-between"><span>{t('sell.lineSubtotal')}</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.lineSubtotal) : t('sell.unavailable')}</span></div>
                 {(salesLines.some((line) => Number(line.discount) > 0) || salesDiscountAmount.trim() !== "") && (
-                  <div className="flex justify-between"><span>Line Discounts</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.lineDiscount) : "Unavailable"}</span></div>
+                  <div className="flex justify-between"><span>{t('sell.lineDiscounts')}</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.lineDiscount) : t('sell.unavailable')}</span></div>
                 )}
                 {salesDiscountAmount.trim() !== "" && (
-                  <div className="flex justify-between"><span>Invoice Discount{salesDiscountType === "percent" ? ` (${salesDiscountAmount}%)` : ""}</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.invoiceDiscount) : "Unavailable"}</span></div>
+                  <div className="flex justify-between"><span>{t('sell.invoiceDiscountRow')}{salesDiscountType === "percent" ? ` (${salesDiscountAmount}%)` : ""}</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.invoiceDiscount) : t('sell.unavailable')}</span></div>
                 )}
                 {salesTaxRate.trim() !== "" && (
-                  <div className="flex justify-between"><span>Tax ({salesTaxRate}%)</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.tax) : "Unavailable"}</span></div>
+                  <div className="flex justify-between"><span>{t('sell.tax')} ({salesTaxRate}%)</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.tax) : t('sell.unavailable')}</span></div>
                 )}
                 <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium text-foreground">
-                  <span>Invoice Total</span>
-                  <span>{currentSalesInvoiceTotal === undefined ? "Unavailable" : pkrFormatter.format(currentSalesInvoiceTotal)}</span>
+                  <span>{t('sell.invoiceTotal')}</span>
+                  <span>{currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(currentSalesInvoiceTotal)}</span>
                 </div>
               </div>
             )}
@@ -18330,7 +18333,7 @@ setCustomerOrganizationName("");
               disabled={salesInvoiceLoading || !salesLines.length || !selectedCustomerIdForSale || !currentSaleDraft.valid}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
-              {salesInvoiceLoading ? "Saving..." : isOwnerOrAdmin() ? "Save Sales Invoice" : "Send for owner approval"}
+              {salesInvoiceLoading ? t('sell.saving') : isOwnerOrAdmin() ? t('sell.saveInvoice') : t('sell.sendForApproval')}
             </button>
 
             </div>
@@ -18344,7 +18347,7 @@ setCustomerOrganizationName("");
         )}
         {isOwnerOrAdmin() && (!quickSaleMode || salesTab === "history") && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Sales History</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.salesHistory')}</h2>
           <p className="mb-3 text-xs text-muted-foreground/80">
             Older unallocated customer payments are applied to the oldest credit invoices first.
           </p>
@@ -18353,7 +18356,7 @@ setCustomerOrganizationName("");
               type="text"
               value={salesHistorySearch}
               onChange={(e) => setSalesHistorySearch(e.target.value)}
-              placeholder="Search by customer name or invoice number..."
+              placeholder={t('sell.searchHistory')}
               className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             />
             <input
@@ -23219,7 +23222,7 @@ setCustomerOrganizationName("");
                       );
                       const grantedSectionLabels = (profilePermissions?.granted_sections ?? [])
                         .map((sectionId) =>
-                          navigationItems.find((item) => item.id === sectionId)?.label ?? sectionId
+                          navigationLabel(sectionId, navigationItems.find((item) => item.id === sectionId)?.label ?? sectionId, language)
                         );
                       const permissionSummary = grantedSectionLabels;
                       const profileIsOwnerOrAdmin = profile.role === "owner" || profile.role === "admin";
