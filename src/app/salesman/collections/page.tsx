@@ -6,6 +6,8 @@ import {
   Banknote, Loader2, ChevronDown, AlertCircle, CheckCircle2, Plus, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import type { MessageKey } from "@/lib/regional/messages";
 
 interface Collection {
   id: string;
@@ -24,6 +26,7 @@ interface Customer {
 }
 
 export default function CollectionsPage() {
+  const { t } = useRegional();
   const [collections, setCollections] = useState<Collection[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,8 +99,8 @@ export default function CollectionsPage() {
     <div className="grid gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading font-bold text-2xl text-foreground">Collections</h1>
-          <p className="text-sm text-body mt-1">Record cash, cheque, or bank transfer payments from customers.</p>
+          <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.collections.title')}</h1>
+          <p className="text-sm text-body mt-1">{t('salesman.collections.subtitle')}</p>
         </div>
         <button
           onClick={() => setShowNew(!showNew)}
@@ -110,11 +113,11 @@ export default function CollectionsPage() {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded-2xl border border-border bg-card p-5">
-          <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">Pending approval</div>
+          <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">{t('salesman.collections.pendingApproval')}</div>
           <div className="font-heading font-bold text-2xl text-warning">{fmt(pendingTotal)}</div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-5">
-          <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">Approved total</div>
+          <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">{t('salesman.collections.approvedTotal')}</div>
           <div className="font-heading font-bold text-2xl text-success">{fmt(approvedTotal)}</div>
         </div>
       </div>
@@ -137,10 +140,10 @@ export default function CollectionsPage() {
 
       {showNew && (
         <div className="rounded-2xl border border-border bg-card p-6 grid gap-5">
-          <h2 className="font-semibold text-foreground">Record a collection</h2>
+          <h2 className="font-semibold text-foreground">{t('salesman.collections.recordTitle')}</h2>
 
           <div>
-            <label className="text-sm font-medium text-foreground">Customer</label>
+            <label className="text-sm font-medium text-foreground">{t('salesman.collections.customer')}</label>
             <div className="relative mt-1.5">
               <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
               <select
@@ -148,7 +151,7 @@ export default function CollectionsPage() {
                 onChange={(e) => setCustomerId(e.target.value)}
                 className="w-full h-11 rounded-lg border border-input bg-card px-3.5 pr-10 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none"
               >
-                <option value="">Select customer...</option>
+                <option value="">{t('salesman.collections.selectCustomer')}</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>{c.shop_name || c.customer_name}</option>
                 ))}
@@ -158,7 +161,7 @@ export default function CollectionsPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-foreground">Amount</label>
+              <label className="text-sm font-medium text-foreground">{t('salesman.collections.amount')}</label>
               <input
                 type="number"
                 min="0"
@@ -169,16 +172,16 @@ export default function CollectionsPage() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground">Method</label>
+              <label className="text-sm font-medium text-foreground">{t('salesman.collections.method')}</label>
               <div className="mt-1.5">
                 <select
                   value={method}
                   onChange={(e) => setMethod(e.target.value as any)}
                   className="w-full h-11 rounded-lg border border-input bg-card px-3.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none"
                 >
-                  <option value="cash">Cash</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="cash">{t('salesman.collections.method.cash')}</option>
+                  <option value="cheque">{t('salesman.collections.method.cheque')}</option>
+                  <option value="bank_transfer">{t('salesman.collections.method.bank_transfer')}</option>
                 </select>
               </div>
             </div>
