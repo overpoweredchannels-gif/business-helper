@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { CalendarPlus, Loader2, AlertCircle, CalendarClock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface LeaveRequest {
   id: string;
@@ -32,6 +33,7 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export default function LeavePage() {
+  const { t } = useRegional();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,8 +95,8 @@ export default function LeavePage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Leave Requests</h1>
-        <p className="text-sm text-body mt-1">Request time off and track approval status.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.leave.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('salesman.leave.subtitle')}</p>
       </div>
 
       <div className="rounded-2xl border border-border bg-card p-5">
