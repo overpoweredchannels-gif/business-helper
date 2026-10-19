@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Route as RouteIcon, Loader2, MapPin, ChevronRight, AlertCircle } from "lucide-react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface RouteItem {
   id: string;
@@ -15,6 +16,7 @@ interface RouteItem {
 }
 
 export default function MyRoutesPage() {
+  const { t } = useRegional();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +59,7 @@ export default function MyRoutesPage() {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading your routes...</p>
+        <p className="text-sm text-body">{t('salesman.routes.loading')}</p>
       </div>
     );
   }
@@ -65,8 +67,8 @@ export default function MyRoutesPage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">My Routes</h1>
-        <p className="text-sm text-body mt-1">Routes assigned to you for field visits.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.routes.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('salesman.routes.subtitle')}</p>
       </div>
 
       {error && (
@@ -78,7 +80,7 @@ export default function MyRoutesPage() {
       {!error && routes.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <RouteIcon className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No routes assigned to you yet.</p>
+          <p className="text-sm text-body">{t('salesman.routes.noRoutes')}</p>
           <p className="text-xs text-light-text mt-1">Ask your manager to assign a route from the business app.</p>
         </div>
       ) : (
