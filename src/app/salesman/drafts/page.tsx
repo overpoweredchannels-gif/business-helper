@@ -7,6 +7,8 @@ import {
   ClipboardList, Loader2, Search, Plus, Trash2, AlertCircle, CheckCircle2, X, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import type { MessageKey } from "@/lib/regional/messages";
 
 interface Draft {
   id: string;
@@ -49,6 +51,7 @@ interface DraftItem {
 }
 
 export default function DraftsPage() {
+  const { t } = useRegional();
   const searchParams = useSearchParams();
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,27 +80,27 @@ export default function DraftsPage() {
       if (data.ok) {
         setDrafts(data.drafts ?? []);
       } else {
-        setError(data.error || "Failed to load drafts");
+        setError(data.error || t('salesman.drafts.loadFailed'));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const loadFormData = useCallback(async () => {
     try {
       const response = await authorizedFetch("/api/identity/staff/sales-options");
       const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error ?? "Could not load customers and products");
+      if (!response.ok || !data.ok) throw new Error(data.error ?? t('salesman.drafts.loadOptionsFailed'));
       setCustomers(Array.isArray(data.customers) ? data.customers : []);
       setProducts(Array.isArray(data.products) ? data.products : []);
       setAssignment(data.assignment ?? null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not load sale options");
+      setError(reason instanceof Error ? reason.message : t('salesman.drafts.loadOptionsFailed'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadDrafts();
@@ -134,8 +137,8 @@ export default function DraftsPage() {
     setSaving(true);
     setMessage(null);
     try {
-      if (!customerId) throw new Error("Select a customer");
-      if (items.length === 0) throw new Error("Add at least one product");
+      if (!customerId) throw new Error(t('salesman.drafts.selectCustomer'));
+      if (items.length === 0) throw new Error(t('salesman.drafts.addProduct'));
       const res = await authorizedFetch("/api/sales/drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -147,7 +150,7 @@ export default function DraftsPage() {
         }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to create draft");
+      if (!data.ok) throw new Error(data.error || t('salesman.drafts.createFailed'));
       setMessage({ type: "ok", text: `Draft ${data.draft?.so_number ?? ""} created and sent for approval.` });
       setItems([]);
       setCustomerId("");
@@ -155,7 +158,7 @@ export default function DraftsPage() {
       setShowNew(false);
       await loadDrafts();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to create draft" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('salesman.drafts.createFailed') });
     } finally {
       setSaving(false);
     }
@@ -188,15 +191,15 @@ export default function DraftsPage() {
     <div className="grid gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading font-bold text-2xl text-foreground">My Sales</h1>
-          <p className="text-sm text-body mt-1">Create sales for any active customer in your organization. The owner approves them before invoicing.</p>
+          <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.drafts.title')}</h1>
+          <p className="text-sm text-body mt-1">{t('salesman.drafts.subtitle')}</p>
         </div>
         <button
           onClick={() => setShowNew(!showNew)}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground"
         >
           {showNew ? <X className="size-4" /> : <Plus className="size-4" />}
-          {showNew ? "Close" : "New Sale"}
+          {showNew ? t('salesman.drafts.close') : t('salesman.drafts.newSale')}
         </button>
       </div>
 
@@ -219,36 +222,36 @@ export default function DraftsPage() {
       {showNew && (
         <div className="rounded-2xl border border-border bg-card p-6 grid gap-5">
           <div>
-            <h2 className="font-semibold text-foreground mb-1">New Sale</h2>
+            <h2 className="font-semibold text-foreground mb-1">{t('salesman.drafts.newSale')}</h2>
             <p className="text-xs text-body mb-4">
-              {[assignment?.territory?.name, assignment?.route?.name].filter(Boolean).join(" · ") || "Direct customer assignments"} · {customers.length} eligible customer(s)
+              {[assignment?.territory?.name, assignment?.route?.name].filter(Boolean).join(" · ") || t('salesman.drafts.directAssignments')} · {customers.length} {t('salesman.drafts.eligibleCustomers')}
             </p>
-            <label className="text-sm font-medium text-foreground">Customer</label>
+            <label className="text-sm font-medium text-foreground">{t('salesman.drafts.customer')}</label>
             <div className="relative mt-1.5">
-              <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+              <ChevronDown className="absolute end-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
               <select
                 value={customerId}
                 onChange={(e) => void selectCustomer(e.target.value)}
-                className="w-full h-11 rounded-lg border border-input bg-card px-3.5 pr-10 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none"
+                className="w-full h-11 rounded-lg border border-input bg-card px-3.5 pe-10 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none"
               >
-                <option value="">Select customer...</option>
+                <option value="">{t('salesman.drafts.selectCustomerPlaceholder')}</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>{c.shop_name || c.customer_name}</option>
                 ))}
               </select>
             </div>
-            {customers.length === 0 && <p className="mt-2 text-xs text-destructive">No active customers are available. Ask the owner to add a customer.</p>}
+            {customers.length === 0 && <p className="mt-2 text-xs text-destructive">{t('salesman.drafts.noCustomers')}</p>}
           </div>
 
           <div>
-            <label className="text-sm font-medium text-foreground">Products</label>
+            <label className="text-sm font-medium text-foreground">{t('salesman.drafts.products')}</label>
             <div className="relative mt-1.5 mb-3">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Search className="absolute start-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <input
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Search products..."
-                className="w-full rounded-lg border border-input bg-card px-3.5 py-2.5 pl-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder={t('salesman.drafts.searchProducts')}
+                className="w-full rounded-lg border border-input bg-card px-3.5 py-2.5 ps-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
             {productSearch.trim() && (
@@ -257,16 +260,16 @@ export default function DraftsPage() {
                   .filter((p) => (p.name + " " + (p.sku ?? "")).toLowerCase().includes(productSearch.toLowerCase()))
                   .slice(0, 15)
                   .map((p) => (
-                    <button key={p.id} onClick={() => addItem(p)} className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted/40 text-left">
+                    <button key={p.id} onClick={() => addItem(p)} className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted/40 text-start">
                       <div>
                         <div className="text-foreground font-medium">{p.name}</div>
-                        <div className="text-xs text-body">Stock: {p.current_stock}</div>
+                        <div className="text-xs text-body">{t('salesman.drafts.stock')}: {p.current_stock}</div>
                       </div>
-                        <div className="text-right"><div className="text-sm font-semibold text-foreground">{fmt(recentPrices[String(p.id)] ?? p.default_selling_price)}</div>{recentPrices[String(p.id)] != null && <div className="text-[10px] text-primary">Last customer price</div>}</div>
+                        <div className="text-end"><div className="text-sm font-semibold text-foreground">{fmt(recentPrices[String(p.id)] ?? p.default_selling_price)}</div>{recentPrices[String(p.id)] != null && <div className="text-[10px] text-primary">{t('salesman.drafts.lastCustomerPrice')}</div>}</div>
                     </button>
                   ))}
                 {products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
-                  <div className="px-4 py-3 text-sm text-body">No products found.</div>
+                  <div className="px-4 py-3 text-sm text-body">{t('salesman.drafts.noProductsFound')}</div>
                 )}
               </div>
             )}
@@ -277,7 +280,7 @@ export default function DraftsPage() {
                   <div key={item.productId} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-foreground truncate">{item.productName}</div>
-                      <label className="mt-1 flex items-center gap-1 text-xs text-body">Price <input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updatePrice(item.productId, Number(event.target.value))} className="w-24 rounded border border-input bg-card px-2 py-1 text-xs text-foreground" /></label>
+                      <label className="mt-1 flex items-center gap-1 text-xs text-body">{t('salesman.drafts.price')} <input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updatePrice(item.productId, Number(event.target.value))} className="w-24 rounded border border-input bg-card px-2 py-1 text-xs text-foreground" /></label>
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => updateQty(item.productId, item.quantity - 1)} className="size-7 rounded-md border border-border text-foreground hover:bg-muted">−</button>
@@ -299,12 +302,12 @@ export default function DraftsPage() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-foreground">Notes (optional)</label>
+            <label className="text-sm font-medium text-foreground">{t('salesman.drafts.notes')}</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              placeholder="Order notes..."
+              placeholder={t('salesman.drafts.orderNotes')}
               className="w-full mt-1.5 rounded-lg border border-input bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
@@ -315,7 +318,7 @@ export default function DraftsPage() {
             className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-primary px-6 text-primary-foreground font-medium disabled:opacity-50"
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-            {saving ? "Sending for approval..." : "Send for approval"}
+            {saving ? t('salesman.drafts.sending') : t('salesman.drafts.sendForApproval')}
           </button>
         </div>
       )}
@@ -323,13 +326,13 @@ export default function DraftsPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading drafts...</p>
+          <p className="text-sm text-body">{t('salesman.drafts.loading')}</p>
         </div>
       ) : drafts.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <ClipboardList className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No drafts yet.</p>
-          <p className="text-xs text-light-text mt-1">Create a draft from a visit or use the New draft button.</p>
+          <p className="text-sm text-body">{t('salesman.drafts.noDrafts')}</p>
+          <p className="text-xs text-light-text mt-1">{t('salesman.drafts.noDraftsHint')}</p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card divide-y divide-border">
@@ -346,7 +349,7 @@ export default function DraftsPage() {
                 )}
               </div>
               <div className="flex items-center gap-3">
-                <StatusBadge status={d.status} />
+                <StatusBadge status={d.status} t={t} />
                 <span className="font-semibold text-foreground">{fmt(d.total_amount)}</span>
               </div>
             </div>
@@ -357,7 +360,7 @@ export default function DraftsPage() {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, t }: { status: string; t: (key: MessageKey) => string }) {
   const styles: Record<string, string> = {
     pending_approval: "bg-warning/10 text-warning",
     approved: "bg-success/10 text-success",
@@ -365,16 +368,16 @@ function StatusBadge({ status }: { status: string }) {
     converted: "bg-primary/10 text-primary",
     draft: "bg-muted text-muted-foreground",
   };
-  const labels: Record<string, string> = {
-    pending_approval: "Pending approval",
-    approved: "Approved",
-    rejected: "Rejected",
-    converted: "Converted to invoice",
-    draft: "Draft",
+  const labels: Record<string, MessageKey> = {
+    pending_approval: 'salesman.drafts.status.pending_approval',
+    approved: 'salesman.drafts.status.approved',
+    rejected: 'salesman.drafts.status.rejected',
+    converted: 'salesman.drafts.status.converted',
+    draft: 'salesman.drafts.status.draft',
   };
   return (
     <span className={cn("px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap", styles[status] ?? "bg-muted text-muted-foreground")}>
-      {labels[status] ?? status}
+      {labels[status] ? t(labels[status]) : status}
     </span>
   );
 }
