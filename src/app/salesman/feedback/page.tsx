@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { MessageSquareText, Loader2, ChevronDown, AlertCircle, CheckCircle2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Feedback {
   id: string;
@@ -23,6 +24,7 @@ interface Customer {
 }
 
 export default function MyFeedbackPage() {
+  const { t } = useRegional();
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,8 +90,8 @@ export default function MyFeedbackPage() {
     <div className="grid gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading font-bold text-2xl text-foreground">Customer Feedback</h1>
-          <p className="text-sm text-body mt-1">Record complaints, feedback, or requests from customers.</p>
+          <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.feedback.title')}</h1>
+          <p className="text-sm text-body mt-1">{t('salesman.feedback.subtitle')}</p>
         </div>
         <button
           onClick={() => setShowNew(!showNew)}
@@ -118,7 +120,7 @@ export default function MyFeedbackPage() {
 
       {showNew && (
         <div className="rounded-2xl border border-border bg-card p-6 grid gap-5">
-          <h2 className="font-semibold text-foreground">Record feedback</h2>
+          <h2 className="font-semibold text-foreground">{t('salesman.feedback.recordTitle')}</h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
