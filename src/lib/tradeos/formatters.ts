@@ -19,6 +19,32 @@ export function getActiveCurrency(): Currency {
   return activeCurrency;
 }
 
+/** Owner-entered FX rate: PKR per 1 unit of the active display currency.
+ * When set (and the active currency is not PKR), formatted amounts are
+ * converted: displayed = stored PKR / rate. Null means "no rate available" —
+ * formatting then falls back to plain denomination display (no invented
+ * conversion). The RegionalProvider owns fetching and pushing the rate. */
+let activeRatePkrPerUnit: number | null = null;
+
+export function setActiveFxRate(ratePkrPerUnit: number | null) {
+  activeRatePkrPerUnit =
+    typeof ratePkrPerUnit === "number" && Number.isFinite(ratePkrPerUnit) && ratePkrPerUnit > 0
+      ? ratePkrPerUnit
+      : null;
+}
+
+export function getActiveFxRate(): number | null {
+  return activeRatePkrPerUnit;
+}
+
+function toDisplayValue(value: unknown): number {
+  const stored = safeNumber(value);
+  if (activeCurrency !== "PKR" && activeRatePkrPerUnit) {
+    return stored / activeRatePkrPerUnit;
+  }
+  return stored;
+}
+
 export const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -79,7 +105,7 @@ export const formatPKR = (value: unknown) =>
     style: "currency",
     currency: activeCurrency,
     maximumFractionDigits: 2,
-  }).format(safeNumber(value));
+  }).format(toDisplayValue(value));
 
 export const formatCurrency = formatPKR;
 
