@@ -9439,6 +9439,29 @@ setCustomerOrganizationName("");
       Number(filters.productId !== "all") +
       Number(filters.batch.trim() !== "") +
       (paymentFilter !== undefined ? Number(paymentFilter.value !== "all") : 0);
+    const statusLabelByValue: Record<string, string> = {
+      pending: t('buy.expenseReviewPending'),
+      no_additional_expense: t('buy.noAdditionalExpense'),
+      expenses_added: t('buy.expensesAdded'),
+      review_later: t('buy.reviewLater'),
+      ordered: t('buy.statusOrdered'),
+      partial: t('buy.statusPartiallyReceived'),
+      received: t('buy.statusReceived'),
+      cancelled: t('buy.statusCancelled'),
+      confirmed: t('buy.statusConfirmed'),
+    };
+    const paymentLabelByValue: Record<string, string> = {
+      paid: t('money.paid'),
+      partially_paid: t('buy.statusPartiallyPaid'),
+      unpaid: t('buy.statusUnpaid'),
+    };
+    const sortLabelByValue: Record<string, string> = {
+      date_desc: t('buy.sortNewestFirst'),
+      date_asc: t('buy.sortOldestFirst'),
+      number: t('buy.sortNumber'),
+      supplier: t('buy.sortSupplier'),
+      status: t('buy.sortStatus'),
+    };
     return (
       <div className="mb-4 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -9446,17 +9469,17 @@ setCustomerOrganizationName("");
             type="text"
             value={filters.search}
             onChange={(e) => set("search", e.target.value)}
-            placeholder="Search number, supplier, product, batch..."
-            aria-label="Search purchase records"
+            placeholder={t('buy.searchPlaceholder')}
+            aria-label={t('buy.searchAria')}
             className="min-w-[200px] flex-1 rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 placeholder:text-muted-foreground/50 focus:border-primary/40 focus:outline-none"
           />
           <select
             value={filters.supplierId}
             onChange={(e) => set("supplierId", e.target.value)}
-            aria-label="Filter by supplier"
+            aria-label={t('buy.filterBySupplier')}
             className="max-w-[180px] rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
           >
-            <option value="all">All suppliers</option>
+            <option value="all">{t('buy.allSuppliers')}</option>
             {suppliers.map((supplier) => (
               <option key={supplier.id} value={supplier.id}>
                 {supplier.supplier_name}
@@ -9466,13 +9489,13 @@ setCustomerOrganizationName("");
           <select
             value={filters.status}
             onChange={(e) => set("status", e.target.value)}
-            aria-label="Filter by status"
+            aria-label={t('buy.filterByStatus')}
             className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
           >
-            <option value="all">All statuses</option>
+            <option value="all">{t('buy.allStatuses')}</option>
             {statusOptions.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {statusLabelByValue[option.value] ?? option.label}
               </option>
             ))}
           </select>
@@ -9480,13 +9503,13 @@ setCustomerOrganizationName("");
             <select
               value={paymentFilter.value}
               onChange={(e) => paymentFilter.onChange(e.target.value)}
-              aria-label="Filter by payment status"
+              aria-label={t('buy.filterByPaymentStatus')}
               className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
             >
-              <option value="all">All payment statuses</option>
+              <option value="all">{t('buy.allPaymentStatuses')}</option>
               {PURCHASE_INVOICE_PAYMENT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {paymentLabelByValue[option.value] ?? option.label}
                 </option>
               ))}
             </select>
@@ -9494,12 +9517,12 @@ setCustomerOrganizationName("");
           <select
             value={filters.sort}
             onChange={(e) => set("sort", e.target.value as PurchaseListSort)}
-            aria-label="Sort purchase records"
+            aria-label={t('buy.sortAria')}
             className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
           >
             {PURCHASE_LIST_SORT_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {sortLabelByValue[option.value] ?? option.label}
               </option>
             ))}
           </select>
@@ -9509,24 +9532,24 @@ setCustomerOrganizationName("");
             type="date"
             value={filters.dateFrom}
             onChange={(e) => set("dateFrom", e.target.value)}
-            aria-label="Filter from date"
+            aria-label={t('buy.filterFromDate')}
             className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
           />
-          <span className="text-xs text-muted-foreground">to</span>
+          <span className="text-xs text-muted-foreground">{t('buy.dateSeparator')}</span>
           <input
             type="date"
             value={filters.dateTo}
             onChange={(e) => set("dateTo", e.target.value)}
-            aria-label="Filter to date"
+            aria-label={t('buy.filterToDate')}
             className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
           />
           <select
             value={filters.productId}
             onChange={(e) => set("productId", e.target.value)}
-            aria-label="Filter by product"
+            aria-label={t('buy.filterByProduct')}
             className="max-w-[180px] rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80"
           >
-            <option value="all">All products</option>
+            <option value="all">{t('buy.allProducts')}</option>
             {products.map((product) => (
               <option key={String(product.id)} value={String(product.id)}>
                 {product.name}
@@ -9537,8 +9560,8 @@ setCustomerOrganizationName("");
             type="text"
             value={filters.batch}
             onChange={(e) => set("batch", e.target.value)}
-            placeholder="Batch no."
-            aria-label="Filter by batch number"
+            placeholder={t('buy.batchPlaceholder')}
+            aria-label={t('buy.filterByBatch')}
             className="w-[140px] rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 placeholder:text-muted-foreground/50"
           />
           {isFiltered && (
@@ -9550,14 +9573,14 @@ setCustomerOrganizationName("");
               }}
               className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
             >
-              Clear filters
+              {t('buy.clearFilters')}
             </button>
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          {resultCount} result{resultCount === 1 ? "" : "s"}
+          {resultCount} {resultCount === 1 ? t('buy.resultSingular') : t('buy.resultPlural')}
           {isFiltered
-            ? ` (${activeFilterCount} active filter${activeFilterCount === 1 ? "" : "s"})`
+            ? ` (${activeFilterCount} ${activeFilterCount === 1 ? t('buy.activeFilterSingular') : t('buy.activeFilterPlural')})`
             : ""}
         </p>
       </div>
@@ -19807,12 +19830,12 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "supplier-payments" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Supplier Payments</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('buy.supplierPayments')}</h2>
             <div className="flex flex-wrap gap-2">
               {canImportExport && (
                 <ImportExportSection
                   entityKey="supplier_payments"
-                  entityLabel="Supplier Payments"
+                  entityLabel={t('buy.supplierPayments')}
                   supabase={supabase}
                   organizationId={currentOrganizationId}
                   actorProfileId={currentProfile?.id ?? null}
@@ -19825,7 +19848,7 @@ setCustomerOrganizationName("");
                 onClick={handleExportSupplierBalancesCsv}
                 className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
               >
-                Export Supplier Balances CSV
+                {t('buy.exportBalancesCsv')}
               </button>
             </div>
           </div>
@@ -19835,7 +19858,7 @@ setCustomerOrganizationName("");
                onChange={(e) => handleSupplierPaymentSupplierChange(e.target.value)}
                className="rounded border border-border px-2 py-2"
              >
-               <option value="">Select Supplier</option>
+               <option value="">{t('buy.selectSupplier')}</option>
                {activeSuppliers.map((s) => (
                  <option key={s.id} value={s.id}>{s.supplier_name}</option>
                ))}
@@ -19845,7 +19868,7 @@ setCustomerOrganizationName("");
                type="number"
                value={supplierPaymentAmount}
                onChange={(e) => handleSupplierPaymentAmountChange(e.target.value)}
-               placeholder="Amount"
+               placeholder={t('money.amount')}
                className="rounded border border-border px-2 py-2"
              />
 
@@ -19861,8 +19884,8 @@ setCustomerOrganizationName("");
                onChange={(e) => setSupplierPaymentMethod(e.target.value as "cash" | "bank")}
                className="rounded border border-border px-2 py-2"
              >
-               <option value="cash">Cash</option>
-               <option value="bank">Bank</option>
+               <option value="cash">{t('money.cash')}</option>
+               <option value="bank">{t('money.bank')}</option>
              </select>
            </div>
 
@@ -19870,41 +19893,41 @@ setCustomerOrganizationName("");
              type="text"
              value={supplierPaymentNotes}
              onChange={(e) => setSupplierPaymentNotes(e.target.value)}
-             placeholder="Notes (optional)"
+             placeholder={t('buy.notesOptionalPlaceholder')}
              className="w-full sm:col-span-4 rounded border border-border px-2 py-2"
            />
 
           {selectedSupplierPaymentId && (
             <div className="mt-4 rounded border border-border bg-card p-4">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-lg font-medium text-foreground">Allocate to Purchase Invoices</h3>
+                <h3 className="text-lg font-medium text-foreground">{t('buy.allocateTitle')}</h3>
                 <button
                   type="button"
                   onClick={handleAutoAllocateSupplierPayment}
                   className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
                 >
-                  Auto Allocate Oldest First
+                  {t('buy.autoAllocate')}
                 </button>
               </div>
               <p className="mb-3 text-xs text-muted-foreground/80">
-                Older supplier payments without invoice allocations are applied to the oldest unpaid purchase invoices first.
+                {t('buy.allocateHint')}
               </p>
 
               <div className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
                 <div className="rounded border border-border bg-muted/30 p-3">
-                  <div className="text-muted-foreground/80">Payment Amount</div>
+                  <div className="text-muted-foreground/80">{t('buy.paymentAmount')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(Number.isFinite(supplierPaymentAmountValue) ? supplierPaymentAmountValue : 0)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-muted/30 p-3">
-                  <div className="text-muted-foreground/80">Total Allocated</div>
+                  <div className="text-muted-foreground/80">{t('buy.totalAllocated')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierPaymentAllocationTotal)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-muted/30 p-3">
-                  <div className="text-muted-foreground/80">Unallocated Amount</div>
+                  <div className="text-muted-foreground/80">{t('buy.unallocatedAmount')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierPaymentUnallocatedAmount)}
                   </div>
@@ -19912,43 +19935,43 @@ setCustomerOrganizationName("");
               </div>
 
               {unpaidPurchaseInvoicesForSelectedPaymentSupplier.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No unpaid purchase invoices for this supplier.</p>
+                <p className="text-sm text-muted-foreground">{t('buy.noUnpaidInvoices')}</p>
               ) : (
                 <div className="space-y-3">
                   {unpaidPurchaseInvoicesForSelectedPaymentSupplier.map((invoice) => (
                     <div key={invoice.transaction.id} className="rounded border border-border bg-muted/30 p-3">
                       <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Invoice</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.invoiceLabel')}</div>
                           <div className="font-medium text-foreground">{invoice.transaction.invoice_number}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Purchase Date</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.purchaseDate')}</div>
                           <div>{invoice.purchaseDate ?? "-"}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Supplier</div>
-                          <div>{invoice.supplier?.supplier_name ?? "Unknown"}</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.supplier')}</div>
+                          <div>{invoice.supplier?.supplier_name ?? t('sell.unknown')}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Purchase Total</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.purchaseTotal')}</div>
                           <div>{pkrFormatter.format(invoice.purchaseTotal)}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Already Allocated</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.alreadyAllocated')}</div>
                           <div>{pkrFormatter.format(invoice.explicitAllocatedAmount)}</div>
                           {invoice.fallbackAllocatedAmount > 0 && (
                             <div className="text-xs text-muted-foreground/80">
-                              Remaining also reflects {pkrFormatter.format(invoice.fallbackAllocatedAmount)} older unallocated payment
+                              {t('buy.remainingReflectsNote').replace('{amount}', pkrFormatter.format(invoice.fallbackAllocatedAmount))}
                             </div>
                           )}
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Remaining Payable</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.remainingPayable')}</div>
                           <div>{pkrFormatter.format(invoice.remainingPayableAmount)}</div>
                         </div>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Allocation Amount</span>
+                          <span>{t('buy.allocationAmount')}</span>
                           <input
                             type="number"
                             min="0"
@@ -19975,16 +19998,16 @@ setCustomerOrganizationName("");
               disabled={supplierPaymentLoading}
               className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
-              {supplierPaymentLoading ? "Saving..." : "Save Supplier Payment"}
+              {supplierPaymentLoading ? t('sell.saving') : t('buy.saveSupplierPayment')}
             </button>
             {supplierPaymentMessage && <p className="mt-2 text-sm text-success">{supplierPaymentMessage}</p>}
             {supplierPaymentError && <p className="mt-2 text-sm text-destructive">{supplierPaymentError}</p>}
           </div>
 
           <div className="mt-6 border-t border-border pt-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Supplier Payment History</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('buy.supplierPaymentHistory')}</h3>
             {supplierPaymentHistory.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No supplier payments recorded yet.</p>
+              <p className="text-sm text-muted-foreground">{t('buy.noSupplierPayments')}</p>
             ) : (
               <ul className="space-y-3">
                 {supplierPaymentHistory.map((historyItem) => (
@@ -19994,43 +20017,43 @@ setCustomerOrganizationName("");
                   >
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Supplier</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.supplier')}</div>
                         <div className="font-medium text-foreground">
-                          {historyItem.supplier?.supplier_name ?? "Unknown"}
+                          {historyItem.supplier?.supplier_name ?? t('sell.unknown')}
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Payment Date</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.paymentDate')}</div>
                         <div>{getDateOnly(historyItem.payment.created_at) ?? "-"}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Total Payment</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.totalPayment')}</div>
                         <div>{pkrFormatter.format(historyItem.paymentAmount)}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Explicitly Allocated</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.explicitlyAllocated')}</div>
                         <div>{pkrFormatter.format(historyItem.explicitlyAllocatedAmount)}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Unallocated</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.unallocated')}</div>
                         <div>{pkrFormatter.format(historyItem.unallocatedAmount)}</div>
                       </div>
                     </div>
 
                     {historyItem.payment.notes && (
-                      <p className="mt-2 text-sm text-muted-foreground">Notes: {historyItem.payment.notes}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">{t('buy.notesPrefix')} {historyItem.payment.notes}</p>
                     )}
 
                     {historyItem.allocationExceedsPayment && (
                       <p className="mt-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                        Allocation data exceeds payment amount
+                        {t('buy.allocationExceeds')}
                       </p>
                     )}
 
                     {historyItem.allocations.length > 0 && (
                       <div className="mt-3 rounded border border-border bg-muted/30 p-3">
                         <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
-                          Allocations
+                          {t('buy.allocations')}
                         </div>
                         <ul className="space-y-1">
                           {historyItem.allocations.map((allocationItem) => (
@@ -20039,7 +20062,7 @@ setCustomerOrganizationName("");
                               className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
                             >
                               <span>
-                                Purchase invoice: {allocationItem.transaction?.invoice_number ?? "Unknown"}
+                                {t('buy.purchaseInvoicePrefix')} {allocationItem.transaction?.invoice_number ?? t('sell.unknown')}
                               </span>
                               <span>{pkrFormatter.format(allocationItem.amount)}</span>
                             </li>
@@ -20058,14 +20081,14 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "supplier-ledger" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Supplier Ledger</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('buy.supplierLedger')}</h2>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleExportSupplierBalancesCsv}
                 className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
               >
-                Export Supplier Balances CSV
+                {t('buy.exportBalancesCsv')}
               </button>
               <button
                 type="button"
@@ -20073,23 +20096,23 @@ setCustomerOrganizationName("");
                 disabled={!selectedSupplierLedgerId}
                 className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
               >
-                Print Supplier Ledger
+                {t('buy.printSupplierLedger')}
               </button>
             </div>
           </div>
           <p className="mb-4 text-xs text-muted-foreground/80">
-            Older supplier payments without invoice allocations are applied to the oldest unpaid purchase invoices first.
+            {t('buy.allocateHint')}
           </p>
 
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Supplier</span>
+              <span>{t('buy.supplier')}</span>
               <select
                 value={selectedSupplierLedgerId}
                 onChange={(e) => setSelectedSupplierLedgerId(e.target.value)}
                 className="rounded border border-border px-2 py-2"
               >
-                <option value="">Select Supplier</option>
+                <option value="">{t('buy.selectSupplier')}</option>
                 {suppliers.map((supplier) => (
                   <option key={supplier.id} value={supplier.id}>{supplier.supplier_name}</option>
                 ))}
@@ -20097,7 +20120,7 @@ setCustomerOrganizationName("");
             </label>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Start Date</span>
+              <span>{t('buy.startDate')}</span>
               <input
                 type="date"
                 value={supplierLedgerStartDate}
@@ -20107,7 +20130,7 @@ setCustomerOrganizationName("");
             </label>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>End Date</span>
+              <span>{t('buy.endDate')}</span>
               <input
                 type="date"
                 value={supplierLedgerEndDate}
@@ -20123,21 +20146,21 @@ setCustomerOrganizationName("");
               onClick={() => applySupplierLedgerMonthRange(0)}
               className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
             >
-              This Month
+              {t('buy.thisMonth')}
             </button>
             <button
               type="button"
               onClick={() => applySupplierLedgerMonthRange(-1)}
               className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
             >
-              Last Month
+              {t('buy.lastMonth')}
             </button>
             <button
               type="button"
               onClick={applySupplierLedgerAllTime}
               className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
             >
-              All Time
+              {t('buy.allTime')}
             </button>
           </div>
 
@@ -20146,30 +20169,30 @@ setCustomerOrganizationName("");
           )}
 
           {!selectedSupplierLedgerId ? (
-            <p className="mt-4 text-sm text-muted-foreground">Select a supplier to view the ledger.</p>
+            <p className="mt-4 text-sm text-muted-foreground">{t('buy.selectSupplierToView')}</p>
           ) : (
             <div className="mt-4 space-y-4">
               <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded border border-border bg-card p-3">
-                  <div className="text-muted-foreground/80">Total Purchases</div>
+                  <div className="text-muted-foreground/80">{t('buy.totalPurchases')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierLedgerTotalPurchases)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-card p-3">
-                  <div className="text-muted-foreground/80">Total Payments</div>
+                  <div className="text-muted-foreground/80">{t('buy.totalPayments')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierLedgerTotalPayments)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-card p-3">
-                  <div className="text-muted-foreground/80">Current Ledger Balance</div>
+                  <div className="text-muted-foreground/80">{t('buy.currentLedgerBalance')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierLedgerCurrentBalance)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-card p-3">
-                  <div className="text-muted-foreground/80">Unallocated Payments</div>
+                  <div className="text-muted-foreground/80">{t('buy.unallocatedPayments')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierLedgerUnallocatedPayments)}
                   </div>
@@ -20180,19 +20203,19 @@ setCustomerOrganizationName("");
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
-                      <th className="px-3 py-2">Date</th>
-                      <th className="px-3 py-2">Reference</th>
-                      <th className="px-3 py-2">Notes</th>
-                      <th className="px-3 py-2">Debit</th>
-                      <th className="px-3 py-2">Credit</th>
-                      <th className="px-3 py-2">Running Balance</th>
+                      <th className="px-3 py-2">{t('sell.dateLabel')}</th>
+                      <th className="px-3 py-2">{t('buy.reference')}</th>
+                      <th className="px-3 py-2">{t('sell.notesLabel')}</th>
+                      <th className="px-3 py-2">{t('buy.debit')}</th>
+                      <th className="px-3 py-2">{t('buy.credit')}</th>
+                      <th className="px-3 py-2">{t('buy.runningBalance')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     <tr>
                       <td className="px-3 py-2">-</td>
-                      <td className="px-3 py-2 font-medium text-foreground">Opening balance</td>
-                      <td className="px-3 py-2">MVP opening balance</td>
+                      <td className="px-3 py-2 font-medium text-foreground">{t('inventory.openingBalance')}</td>
+                      <td className="px-3 py-2">{t('buy.openingBalanceNote')}</td>
                       <td className="px-3 py-2">{pkrFormatter.format(0)}</td>
                       <td className="px-3 py-2">{pkrFormatter.format(0)}</td>
                       <td className="px-3 py-2 font-medium text-foreground">{pkrFormatter.format(0)}</td>
@@ -20200,7 +20223,7 @@ setCustomerOrganizationName("");
                     {supplierLedgerEntries.length === 0 ? (
                       <tr>
                         <td className="px-3 py-3 text-muted-foreground" colSpan={6}>
-                          No supplier ledger entries in this date range.
+                          {t('buy.noLedgerEntries')}
                         </td>
                       </tr>
                     ) : (
@@ -20444,9 +20467,9 @@ setCustomerOrganizationName("");
 
         {activeSectionAllowed && activeSection === "supplier-ledger" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Payables Dashboard</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.payablesDashboard')}</h2>
           {suppliers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No suppliers.</p>
+            <p className="text-sm text-muted-foreground">{t('buy.noSuppliers')}</p>
           ) : (
             <ul className="space-y-2">
               {payablesStats.map((p) => (
@@ -20455,9 +20478,9 @@ setCustomerOrganizationName("");
                     <div className="font-medium text-foreground">{p.supplierName}</div>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-foreground/80">
-                    <div>Total Purchases: {p.totalPurchases}</div>
-                    <div>Payments: {p.paymentsMade}</div>
-                    <div>Remaining Payable: {p.remainingPayable}</div>
+                    <div>{t('buy.totalPurchases')}: {p.totalPurchases}</div>
+                    <div>{t('buy.paymentsWord')}: {p.paymentsMade}</div>
+                    <div>{t('buy.remainingPayable')}: {p.remainingPayable}</div>
                   </div>
                 </li>
               ))}
@@ -21816,7 +21839,7 @@ setCustomerOrganizationName("");
                 : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
             }`}
           >
-            Purchase Invoice
+            {t('buy.tabInvoice')}
           </button>
           <button
             type="button"
@@ -21827,7 +21850,7 @@ setCustomerOrganizationName("");
                 : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
             }`}
           >
-            Purchase Orders
+            {t('buy.tabOrders')}
           </button>
           <button
             type="button"
@@ -21838,7 +21861,7 @@ setCustomerOrganizationName("");
                 : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
             }`}
           >
-            Returns
+            {t('buy.tabReturns')}
           </button>
         </div>
 
@@ -21846,11 +21869,11 @@ setCustomerOrganizationName("");
         <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Purchase Invoice</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('buy.tabInvoice')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="purchases"
-                entityLabel="Purchases"
+                entityLabel={t('buy.purchases')}
                 supabase={supabase}
                 organizationId={currentOrganizationId}
                 actorProfileId={currentProfile?.id ?? null}
@@ -21862,13 +21885,13 @@ setCustomerOrganizationName("");
           <div className="space-y-4" {...entryNavigationHandlers}>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Supplier</span>
+                <span>{t('buy.supplier')}</span>
                 <select
                   value={selectedSupplierId ?? ""}
                   onChange={(e) => setSelectedSupplierId(e.target.value === "" ? null : e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
-                  <option value="">Select Supplier</option>
+                  <option value="">{t('buy.selectSupplier')}</option>
                   {activeSuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.supplier_name}
@@ -21878,26 +21901,26 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Supplier Invoice Number (Optional)</span>
+                <span>{t('buy.supplierInvoiceNumber')}</span>
                 <input
                   type="text"
                   value={supplierInvoiceNumber}
                   onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
-                  placeholder="e.g. supplier's own paper invoice reference"
+                  placeholder={t('buy.supplierInvoicePlaceholder')}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
                 <span className="text-xs text-muted-foreground/80">
-                  TradeOS generates the system invoice number (PUR-xxxxxx) automatically.
+                  {t('buy.invoiceNumberNote')}
                 </span>
               </label>
             </div>
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
-              <p className="mb-3 text-sm text-muted-foreground">Press Enter for the next field. At the end of a line, Enter opens the next product. Shift+Enter goes back. Use Save when the invoice is ready.</p>
+              <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productLines')}</h3>
+              <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {purchaseLines.length === 0 ? (
-                <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
+                <p className="mb-4 text-sm text-muted-foreground/80">{t('sell.noProductLines')}</p>
               ) : (
                 <InvoiceLineNavigation onAddLine={handleAddPurchaseLine}>
                   {purchaseLines.map((line, index) => {
@@ -21907,19 +21930,19 @@ setCustomerOrganizationName("");
                     return (
                     <div key={index} data-invoice-line className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
+                        <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => handleRemovePurchaseLine(index)}
                           className="text-xs text-destructive hover:text-destructive/90"
                         >
-                          Remove
+                          {t('sell.remove')}
                         </button>
                       </div>
 
                       <div className="grid gap-2 sm:grid-cols-4">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Product</span>
+                          <span>{t('sell.product')}</span>
                           <select
                             required
                             value={line.product_id ?? ""}
@@ -21928,7 +21951,7 @@ setCustomerOrganizationName("");
                             }
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
-                            <option value="">Select Product</option>
+                            <option value="">{t('sell.selectProduct')}</option>
                             {activeProducts.map((product) => (
                               <option key={product.id} value={product.id}>
                                 {product.name}{product.brand_id ? ` — ${brands.find(brand => brand.id === product.brand_id)?.name ?? ""}` : ""}{product.sku ? ` (${product.sku})` : ""}
@@ -21938,7 +21961,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Buy as</span>
+                          <span>{t('sell.orderBuyAs')}</span>
                           <select
                             value={line.unit_mode ?? "main"}
                             onChange={(e) =>
@@ -21948,7 +21971,7 @@ setCustomerOrganizationName("");
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="main">
-                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : t('sell.mainUnit')}
                             </option>
                             {lineProduct && hasSubunit(lineProduct) && (
                               <option value="subunit">
@@ -21959,7 +21982,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
+                          <span>{t('sell.quantity')} ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.units')})</span>
                           <input
                             type="number"
                             required min="0.000001" step="any"
@@ -21970,7 +21993,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
+                          <span>{t('sell.pricePer')} {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.unit')}</span>
                           <input
                             type="number"
                             required min="0" step="any"
@@ -21983,7 +22006,7 @@ setCustomerOrganizationName("");
 
                       <div className="mt-2 grid gap-2 sm:grid-cols-3">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Selling Price</span>
+                          <span>{t('products.sellingPrice')}</span>
                           <input
                             type="number"
                             value={line.selling_price}
@@ -21993,7 +22016,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Batch Number</span>
+                          <span>{t('buy.batchNumber')}</span>
                           <input
                             type="text"
                             value={line.batch_number}
@@ -22003,7 +22026,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Expiry Date</span>
+                          <span>{t('buy.expiryDate')}</span>
                           <input
                             type="date"
                             value={line.expiry_date}
@@ -22023,7 +22046,7 @@ setCustomerOrganizationName("");
                 data-entry-add onClick={handleAddPurchaseLine}
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
-                + Add Product Line
+                {t('sell.addProductLine')}
               </button>
             </div>
 
@@ -22033,7 +22056,7 @@ setCustomerOrganizationName("");
               disabled={invoiceLoading}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
-              {invoiceLoading ? "Creating..." : "Save Purchase Invoice"}
+              {invoiceLoading ? t('buy.creating') : t('buy.saveInvoice')}
             </button>
           </div>
 
@@ -22042,10 +22065,10 @@ setCustomerOrganizationName("");
           {newPurchaseExpenseReminder && (
             <div className="mt-4 rounded border border-warning/20 bg-warning/5 p-4">
               <p className="text-sm font-medium text-warning/80">
-                Did you pay any transport, fuel, vehicle rent, loading, travel, or other expense to bring this stock to your warehouse?
+                {t('buy.expenseReminderQuestion')}
               </p>
               <p className="mt-1 text-xs text-warning">
-                Invoice: {newPurchaseExpenseReminder.invoiceNumber}
+                {t('buy.invoicePrefix')} {newPurchaseExpenseReminder.invoiceNumber}
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <button
@@ -22058,7 +22081,7 @@ setCustomerOrganizationName("");
                   }
                   className="rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90"
                 >
-                  Add Purchase Expense
+                  {t('buy.addPurchaseExpense')}
                 </button>
                 <button
                   type="button"
@@ -22070,7 +22093,7 @@ setCustomerOrganizationName("");
                   }
                   className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                 >
-                  No Additional Expense
+                  {t('buy.noAdditionalExpense')}
                 </button>
                 <button
                   type="button"
@@ -22079,7 +22102,7 @@ setCustomerOrganizationName("");
                   }
                   className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                 >
-                  Review Later
+                  {t('buy.reviewLater')}
                 </button>
               </div>
             </div>
@@ -22090,11 +22113,11 @@ setCustomerOrganizationName("");
         </section>
 
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Purchase History</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.history')}</h2>
           {purchaseLoading ? (
-            <p className="text-sm text-muted-foreground">Loading purchase history...</p>
+            <p className="text-sm text-muted-foreground">{t('buy.loadingHistory')}</p>
           ) : purchaseTransactions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No purchase invoices found.</p>
+            <p className="text-sm text-muted-foreground">{t('buy.noInvoicesFound')}</p>
           ) : (
             <>
               {renderPurchaseListFilterBar(
@@ -22109,7 +22132,7 @@ setCustomerOrganizationName("");
               )}
               {filteredPurchaseTransactions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No purchase invoices match your filters.
+                  {t('buy.noInvoicesMatch')}
                 </p>
               ) : (
             <ul className="space-y-3">
@@ -22119,12 +22142,12 @@ setCustomerOrganizationName("");
                 const expenseReviewStatus = transaction.expense_review_status ?? "pending";
                 const expenseReviewLabel =
                   expenseReviewStatus === "expenses_added"
-                    ? "Expenses added"
+                    ? t('buy.expensesAdded')
                     : expenseReviewStatus === "no_additional_expense"
-                      ? "No additional expense"
+                      ? t('buy.noAdditionalExpense')
                       : expenseReviewStatus === "review_later"
-                        ? "Review later"
-                        : "Expense review pending";
+                        ? t('buy.reviewLater')
+                        : t('buy.expenseReviewPending');
                 const lineItems = purchaseItems.filter(
                   (item) => item.purchase_transaction_id === transaction.id
                 );
@@ -22161,13 +22184,13 @@ setCustomerOrganizationName("");
                   )
                 );
                 const quantityUnitLabel =
-                  distinctUnitTypes.length === 1 ? distinctUnitTypes[0] : "units";
+                  distinctUnitTypes.length === 1 ? distinctUnitTypes[0] : t('sell.units');
                 const averageLandedCost =
                   totalPurchasedQuantity > 0 ? landedInvoiceCost / totalPurchasedQuantity : null;
                 const averageLandedCostLabel =
                   distinctProductIds.length === 1
-                    ? `Average landed cost per ${quantityUnitLabel}`
-                    : "Blended average across this invoice";
+                    ? `${t('buy.averageLandedCostPer')} ${quantityUnitLabel}`
+                    : t('buy.blendedAverage');
                 const supplierPaymentSummary =
                   supplierPaymentAllocationByPurchaseTransaction[transaction.id];
                 const purchasePaymentTotal =
@@ -22178,10 +22201,10 @@ setCustomerOrganizationName("");
                 const rawPurchasePaymentStatus = getPurchaseTransactionPaymentStatus(transaction);
                 const purchasePaymentStatus =
                   rawPurchasePaymentStatus === "paid"
-                    ? "Paid"
+                    ? t('money.paid')
                     : rawPurchasePaymentStatus === "partially_paid"
-                      ? "Partially Paid"
-                      : "Unpaid";
+                      ? t('buy.statusPartiallyPaid')
+                      : t('buy.statusUnpaid');
 
                 return (
                   <li
@@ -22190,19 +22213,19 @@ setCustomerOrganizationName("");
                   >
                     <div className="mb-3 grid gap-2 sm:grid-cols-4">
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Invoice</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.invoiceLabel')}</div>
                         <div className="font-medium text-foreground">{transaction.invoice_number}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Supplier</div>
-                        <div>{supplier?.supplier_name ?? "Unknown"}</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.supplier')}</div>
+                        <div>{supplier?.supplier_name ?? t('sell.unknown')}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Date</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.dateLabel')}</div>
                         <div className="text-muted-foreground/80">{date}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Expense Review</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.expenseReview')}</div>
                         <span className="inline-flex rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
                           {expenseReviewLabel}
                         </span>
@@ -22210,22 +22233,22 @@ setCustomerOrganizationName("");
                     </div>
 
                     <div className="mb-3 rounded border border-success/10 bg-success/5 p-3">
-                      <h3 className="mb-2 text-sm font-medium text-success/90">Payment Summary</h3>
+                      <h3 className="mb-2 text-sm font-medium text-success/90">{t('buy.paymentSummary')}</h3>
                       <div className="grid gap-2 text-xs text-success/90 sm:grid-cols-2 lg:grid-cols-4">
                         <div>
-                          <div className="uppercase tracking-wide text-success">Purchase Total</div>
+                          <div className="uppercase tracking-wide text-success">{t('buy.purchaseTotal')}</div>
                           <div className="font-medium">{pkrFormatter.format(purchasePaymentTotal)}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-success">Paid Amount</div>
+                          <div className="uppercase tracking-wide text-success">{t('buy.paidAmount')}</div>
                           <div className="font-medium">{pkrFormatter.format(purchasePaidAmount)}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-success">Remaining Payable</div>
+                          <div className="uppercase tracking-wide text-success">{t('buy.remainingPayable')}</div>
                           <div className="font-medium">{pkrFormatter.format(Math.max(0, purchaseRemainingPayable))}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-success">Payment Status</div>
+                          <div className="uppercase tracking-wide text-success">{t('buy.paymentStatus')}</div>
                           <div className="font-medium">{purchasePaymentStatus}</div>
                         </div>
                       </div>
@@ -22237,7 +22260,7 @@ setCustomerOrganizationName("");
                         onClick={() => handlePrintPurchaseInvoice(transaction)}
                         className="rounded border border-primary px-3 py-2 text-xs text-primary hover:bg-primary/5"
                       >
-                        Print Purchase
+                        {t('buy.printPurchase')}
                       </button>
                       {(expenseReviewStatus === "pending" || expenseReviewStatus === "review_later") && (
                         <>
@@ -22246,14 +22269,14 @@ setCustomerOrganizationName("");
                             onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
                             className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                           >
-                            Add Purchase Expense
+                            {t('buy.addPurchaseExpense')}
                           </button>
                           <button
                             type="button"
                             onClick={() => updatePurchaseExpenseStatus(transaction.id, "no_additional_expense")}
                             className="rounded border border-border px-3 py-2 text-xs text-foreground/80 hover:bg-muted/30"
                           >
-                            No Additional Expense
+                            {t('buy.noAdditionalExpense')}
                           </button>
                         </>
                       )}
@@ -22263,7 +22286,7 @@ setCustomerOrganizationName("");
                           onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
                           className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                         >
-                          Add Another Expense
+                          {t('buy.addAnotherExpense')}
                         </button>
                       )}
                       {expenseReviewStatus === "no_additional_expense" && (
@@ -22272,28 +22295,28 @@ setCustomerOrganizationName("");
                           onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
                           className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                         >
-                          Add Expense
+                          {t('buy.addExpense')}
                         </button>
                       )}
                     </div>
 
                     <div className="mb-3 rounded border border-primary/10 bg-primary/5 p-3">
-                      <h3 className="mb-2 text-sm font-medium text-primary/90">Cost Summary</h3>
+                      <h3 className="mb-2 text-sm font-medium text-primary/90">{t('buy.costSummary')}</h3>
                       <div className="grid gap-2 text-xs text-primary/90 sm:grid-cols-2 lg:grid-cols-5">
                         <div>
-                          <div className="uppercase tracking-wide text-primary">Purchase Value</div>
+                          <div className="uppercase tracking-wide text-primary">{t('buy.purchaseValue')}</div>
                           <div className="font-medium">{pkrFormatter.format(purchaseValue)}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-primary">Linked Expenses</div>
+                          <div className="uppercase tracking-wide text-primary">{t('buy.linkedExpenses')}</div>
                           <div className="font-medium">{pkrFormatter.format(linkedExpenseTotal)}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-primary">Landed Invoice Cost</div>
+                          <div className="uppercase tracking-wide text-primary">{t('buy.landedInvoiceCost')}</div>
                           <div className="font-medium">{pkrFormatter.format(landedInvoiceCost)}</div>
                         </div>
                         <div>
-                          <div className="uppercase tracking-wide text-primary">Total Purchased Quantity</div>
+                          <div className="uppercase tracking-wide text-primary">{t('buy.totalPurchasedQuantity')}</div>
                           <div className="font-medium">
                             {totalPurchasedQuantity} {quantityUnitLabel}
                           </div>
@@ -22308,15 +22331,15 @@ setCustomerOrganizationName("");
                     </div>
 
                     <div className="mb-3 rounded border border-border bg-muted/30 p-3">
-                      <h3 className="mb-2 text-sm font-medium text-foreground">Linked Purchase Expenses</h3>
+                      <h3 className="mb-2 text-sm font-medium text-foreground">{t('buy.linkedPurchaseExpenses')}</h3>
                       {linkedPurchaseExpenses.length === 0 ? (
-                        <p className="text-xs text-muted-foreground/80">No purchase-linked expenses recorded.</p>
+                        <p className="text-xs text-muted-foreground/80">{t('buy.noLinkedExpenses')}</p>
                       ) : (
                         <ul className="space-y-2">
                           {linkedPurchaseExpenses.map((expense) => {
                             const expenseDate = expense.created_at
                               ? new Date(expense.created_at).toLocaleDateString()
-                              : "No date";
+                              : t('buy.noDate');
                             return (
                               <li
                                 key={expense.id}
@@ -22325,13 +22348,13 @@ setCustomerOrganizationName("");
                                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                   <div>
                                     <div className="font-medium text-foreground">{expense.expense_type}</div>
-                                    <div className="text-muted-foreground/80">Date: {expenseDate}</div>
+                                    <div className="text-muted-foreground/80">{t('buy.datePrefix')} {expenseDate}</div>
                                   </div>
                                   <div className="font-medium text-foreground">
                                     {pkrFormatter.format(Number(expense.amount || 0))}
                                   </div>
                                 </div>
-                                {expense.notes && <div className="mt-1">Notes: {expense.notes}</div>}
+                                {expense.notes && <div className="mt-1">{t('buy.notesPrefix')} {expense.notes}</div>}
                               </li>
                             );
                           })}
@@ -22341,7 +22364,7 @@ setCustomerOrganizationName("");
 
                     {lineItems.length === 0 ? (
                       <div className="rounded border border-border bg-muted/30 p-3 text-xs text-muted-foreground/80">
-                        No purchase lines recorded for this invoice.
+                        {t('buy.noLinesRecorded')}
                       </div>
                     ) : (
                       <div className="space-y-3">
@@ -22355,35 +22378,35 @@ setCustomerOrganizationName("");
                             >
                               <div className="grid gap-2 sm:grid-cols-2">
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Product</div>
-                                  <div className="font-medium text-foreground">{product?.name ?? "Unknown"}</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.product')}</div>
+                                  <div className="font-medium text-foreground">{product?.name ?? t('sell.unknown')}</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Quantity</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.quantity')}</div>
                                   <div>{item.quantity}</div>
                                 </div>
                               </div>
                               <div className="mt-2 grid gap-2 sm:grid-cols-3">
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Purchase Price</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('products.purchasePrice')}</div>
                                   <div>{item.purchase_price}</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Selling Price</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('products.sellingPrice')}</div>
                                   <div>{item.selling_price ?? "-"}</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Line Total</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.lineTotal')}</div>
                                   <div>{lineTotal}</div>
                                 </div>
                               </div>
                               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Batch Number</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.batchNumber')}</div>
                                   <div>{item.batch_number ?? "-"}</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Expiry Date</div>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.expiryDate')}</div>
                                   <div>{item.expiry_date ?? "-"}</div>
                                 </div>
                               </div>
@@ -22406,17 +22429,17 @@ setCustomerOrganizationName("");
         {purchaseTab === "orders" && (
         <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Create Purchase Order</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.createOrder')}</h2>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Supplier</span>
+                <span>{t('buy.supplier')}</span>
                 <select
                   value={poSupplierId}
                   onChange={(e) => setPoSupplierId(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
-                  <option value="">Select Supplier</option>
+                  <option value="">{t('buy.selectSupplier')}</option>
                   {activeSuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.supplier_name}
@@ -22426,7 +22449,7 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Order Date</span>
+                <span>{t('sell.orderDate')}</span>
                 <input
                   type="date"
                   value={poOrderDate}
@@ -22436,7 +22459,7 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Expected Date (Optional)</span>
+                <span>{t('sell.expectedDateOptional')}</span>
                 <input
                   type="date"
                   value={poExpectedDate}
@@ -22447,7 +22470,7 @@ setCustomerOrganizationName("");
             </div>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Notes (Optional)</span>
+              <span>{t('sell.notesOptional')}</span>
               <textarea
                 value={poNotes}
                 onChange={(e) => setPoNotes(e.target.value)}
@@ -22457,11 +22480,11 @@ setCustomerOrganizationName("");
             </label>
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
-              <p className="mb-3 text-sm text-muted-foreground">Press Enter for the next field. At the end of a line, Enter opens the next product. Shift+Enter goes back. Use Save when the invoice is ready.</p>
+              <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productLines')}</h3>
+              <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {poLines.length === 0 ? (
-                <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
+                <p className="mb-4 text-sm text-muted-foreground/80">{t('sell.noProductLines')}</p>
               ) : (
                 <div className="mb-4 space-y-3">
                   {poLines.map((line, index) => {
@@ -22471,18 +22494,18 @@ setCustomerOrganizationName("");
                     return (
                     <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
+                        <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => handleRemovePoLine(index)}
                           className="text-xs text-destructive hover:text-destructive/90"
                         >
-                          Remove
+                          {t('sell.remove')}
                         </button>
                       </div>
                       <div className="grid gap-2 sm:grid-cols-5">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Product</span>
+                          <span>{t('sell.product')}</span>
                           <select
                             value={line.product_id ?? ""}
                             onChange={(e) =>
@@ -22490,7 +22513,7 @@ setCustomerOrganizationName("");
                             }
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
-                            <option value="">Select Product</option>
+                            <option value="">{t('sell.selectProduct')}</option>
                             {activeProducts.map((product) => (
                               <option key={product.id} value={product.id}>
                                 {product.name}
@@ -22499,7 +22522,7 @@ setCustomerOrganizationName("");
                           </select>
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Buy as</span>
+                          <span>{t('sell.orderBuyAs')}</span>
                           <select
                             value={line.unit_mode ?? "main"}
                             onChange={(e) =>
@@ -22509,7 +22532,7 @@ setCustomerOrganizationName("");
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="main">
-                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : t('sell.mainUnit')}
                             </option>
                             {lineProduct && hasSubunit(lineProduct) && (
                               <option value="subunit">
@@ -22519,7 +22542,7 @@ setCustomerOrganizationName("");
                           </select>
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
+                          <span>{t('sell.quantity')} ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.units')})</span>
                           <input
                             type="number"
                             min="0"
@@ -22529,7 +22552,7 @@ setCustomerOrganizationName("");
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
+                          <span>{t('sell.pricePer')} {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.unit')}</span>
                           <input
                             type="number"
                             min="0"
@@ -22539,7 +22562,7 @@ setCustomerOrganizationName("");
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Batch Number</span>
+                          <span>{t('buy.batchNumber')}</span>
                           <input
                             type="text"
                             value={line.batch_number}
@@ -22559,7 +22582,7 @@ setCustomerOrganizationName("");
                 onClick={handleAddPoLine}
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
-                + Add Product Line
+                {t('sell.addProductLine')}
               </button>
             </div>
 
@@ -22569,7 +22592,7 @@ setCustomerOrganizationName("");
               disabled={poLoading}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
-              {poLoading ? "Creating..." : "Save Purchase Order"}
+              {poLoading ? t('buy.creating') : t('buy.saveOrder')}
             </button>
           </div>
 
@@ -22578,11 +22601,11 @@ setCustomerOrganizationName("");
         </section>
 
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Purchase Orders</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.tabOrders')}</h2>
           {purchaseOrdersLoading ? (
-            <p className="text-sm text-muted-foreground">Loading purchase orders...</p>
+            <p className="text-sm text-muted-foreground">{t('buy.loadingOrders')}</p>
           ) : purchaseOrders.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No purchase orders found.</p>
+            <p className="text-sm text-muted-foreground">{t('buy.noOrdersFound')}</p>
           ) : (
             <>
               {renderPurchaseListFilterBar(
@@ -22604,24 +22627,24 @@ setCustomerOrganizationName("");
                 return (
                   <div className="mb-4 flex flex-wrap gap-2 text-xs">
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      Open orders: <b>{active.length}</b>
+                      {t('buy.openOrders')} <b>{active.length}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      Expected delivery: <b>{active.filter((po) => po.expected_date).length}</b>
+                      {t('buy.expectedDelivery')} <b>{active.filter((po) => po.expected_date).length}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      Overdue:{" "}
+                      {t('sell.statusOverdue')}:{" "}
                       <b className={overdue.length > 0 ? "text-destructive" : ""}>{overdue.length}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      Received fully: <b>{filteredPurchaseOrders.filter((po) => po.status === "received").length}</b>
+                      {t('buy.receivedFully')} <b>{filteredPurchaseOrders.filter((po) => po.status === "received").length}</b>
                     </span>
                   </div>
                 );
               })()}
               {filteredPurchaseOrders.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No purchase orders match your filters.
+                  {t('buy.noOrdersMatch')}
                 </p>
               ) : (
             <ul className="space-y-3">
@@ -22653,16 +22676,27 @@ setCustomerOrganizationName("");
                                     : "bg-muted text-muted-foreground"
                             }`}
                           >
-                            {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
+                            {po.status === "ordered"
+                              ? t('buy.statusOrdered')
+                              : po.status === "partial"
+                                ? t('buy.statusPartiallyReceived')
+                                : po.status === "received"
+                                  ? t('buy.statusReceived')
+                                  : po.status === "cancelled"
+                                    ? t('buy.statusCancelled')
+                                    : (po.status as string).charAt(0).toUpperCase() + (po.status as string).slice(1)}
                           </span>
                         </div>
                         <div className="text-xs text-muted-foreground/80">
-                          Supplier: {supplier?.supplier_name ?? "Unknown"} · Ordered{" "}
+                          {t('buy.supplierPrefix')} {supplier?.supplier_name ?? t('sell.unknown')} · {t('buy.orderedLabel')}{" "}
                           {formatDate(po.order_date ?? po.created_at)}
-                          {po.expected_date ? ` · Expected ${formatDate(po.expected_date)}` : ""}
+                          {po.expected_date ? ` · ${t('sell.expectedLabel')} ${formatDate(po.expected_date)}` : ""}
                         </div>
                         <div className="text-xs text-muted-foreground/80">
-                          {lineItems.length} line(s) · {received} of {ordered} units received
+                          {t('buy.linesReceived')
+                            .replace('{lines}', String(lineItems.length))
+                            .replace('{received}', String(received))
+                            .replace('{ordered}', String(ordered))}
                         </div>
                         {(() => {
                           const pct = ordered > 0 ? Math.min(100, Math.round((received / ordered) * 100)) : (po.status === "received" ? 100 : 0);
@@ -22695,7 +22729,7 @@ setCustomerOrganizationName("");
                                 <span className="shrink-0 text-xs text-foreground/80">{pct}%</span>
                                 {isOverdue && (
                                   <span className="shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
-                                    Overdue
+                                    {t('sell.statusOverdue')}
                                   </span>
                                 )}
                               </div>
@@ -22711,7 +22745,7 @@ setCustomerOrganizationName("");
                                 : 0;
                               return (
                                 <div key={item.id} className="flex items-center gap-2 text-[11px] text-muted-foreground/80">
-                                  <span className="w-40 truncate">{product?.name ?? `Product ${item.product_id}`}</span>
+                                  <span className="w-40 truncate">{product?.name ?? `${t('sell.product')} ${item.product_id}`}</span>
                                   <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
                                     <div
                                       className={`h-1.5 rounded-full ${itemPct >= 100 ? "bg-success" : itemPct > 0 ? "bg-primary" : "bg-muted-foreground/30"}`}
@@ -22726,7 +22760,7 @@ setCustomerOrganizationName("");
                             })}
                           </div>
                         )}
-                        {po.notes && <div className="text-xs text-muted-foreground/80">Notes: {po.notes}</div>}
+                        {po.notes && <div className="text-xs text-muted-foreground/80">{t('buy.notesPrefix')} {po.notes}</div>}
                       </div>
                       <div className="flex shrink-0 flex-wrap gap-2">
                         {(po.status === "ordered" || po.status === "partial") && (
@@ -22735,7 +22769,7 @@ setCustomerOrganizationName("");
                             onClick={() => handleStartReceive(po.id)}
                             className="rounded bg-success px-3 py-1.5 text-sm text-white transition hover:bg-success/90"
                           >
-                            Receive
+                            {t('buy.receive')}
                           </button>
                         )}
                         <button
@@ -22743,7 +22777,7 @@ setCustomerOrganizationName("");
                           onClick={() => handlePrintPurchaseOrder(po.id)}
                           className="rounded border border-primary px-3 py-1.5 text-sm text-primary hover:bg-primary/5"
                         >
-                          Print
+                          {t('sell.print')}
                         </button>
                         {(po.status === "ordered" || po.status === "partial") && (
                           <button
@@ -22751,7 +22785,7 @@ setCustomerOrganizationName("");
                             onClick={() => handleCancelPurchaseOrder(po.id)}
                             className="rounded border border-destructive px-3 py-1.5 text-sm text-destructive hover:bg-destructive/5"
                           >
-                            Cancel
+                            {t('common.cancel')}
                           </button>
                         )}
                       </div>
@@ -22771,18 +22805,17 @@ setCustomerOrganizationName("");
           return (
             <section id="purchase-order-receive" className="mt-8 rounded border border-success/20 bg-success/5 p-5">
               <h2 className="mb-1 text-lg font-medium text-foreground">
-                Receive Purchase Order {po?.po_number ?? ""}
+                {t('buy.receiveOrderTitle')} {po?.po_number ?? ""}
               </h2>
               <p className="mb-4 text-sm text-muted-foreground">
-                Receiving creates a purchase invoice (PUR-xxxxxx) and adds the received quantities to stock
-                through the inventory ledger. Supplier: {supplier?.supplier_name ?? "Unknown"}.
+                {t('buy.receiveHint')} {supplier?.supplier_name ?? t('sell.unknown')}.
               </p>
 
               {receiveMessage && <p className="mb-4 text-sm text-success">{receiveMessage}</p>}
               {receiveError && <p className="mb-4 text-sm text-destructive">{receiveError}</p>}
 
               {receiveLines.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No lines on this purchase order.</p>
+                <p className="text-sm text-muted-foreground">{t('buy.noLinesOnOrder')}</p>
               ) : (
                 <div className="space-y-3">
                   {receiveLines.map((line) => {
@@ -22791,14 +22824,18 @@ setCustomerOrganizationName("");
                     return (
                       <div key={line.itemId} className="rounded border border-border bg-card p-3">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-sm font-medium text-foreground">{product?.name ?? "Unknown Product"}</span>
+                          <span className="text-sm font-medium text-foreground">{product?.name ?? t('sell.unknownProduct')}</span>
                           <span className="text-xs text-muted-foreground/80">
-                            Ordered {line.quantityOrdered} {product ? unitLabelFor(product, line.unitMode) : ""} · Already received {line.quantityReceived} · Remaining {remaining}
+                            {t('buy.receiveLineMeta')
+                              .replace('{ordered}', String(line.quantityOrdered))
+                              .replace('{unit}', product ? unitLabelFor(product, line.unitMode) : "")
+                              .replace('{received}', String(line.quantityReceived))
+                              .replace('{remaining}', String(remaining))}
                           </span>
                         </div>
                         <div className="grid gap-2 sm:grid-cols-4">
                           <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                            <span>Receive Quantity ({product ? unitLabelFor(product, line.unitMode) : "units"})</span>
+                            <span>{t('buy.receiveQuantity')} ({product ? unitLabelFor(product, line.unitMode) : t('sell.units')})</span>
                             <input
                               type="number"
                               min="0"
@@ -22809,7 +22846,7 @@ setCustomerOrganizationName("");
                             />
                           </label>
                           <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                            <span>Unit Price</span>
+                            <span>{t('buy.unitPrice')}</span>
                             <input
                               type="number"
                               min="0"
@@ -22819,7 +22856,7 @@ setCustomerOrganizationName("");
                             />
                           </label>
                           <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                            <span>Batch Number</span>
+                            <span>{t('buy.batchNumber')}</span>
                             <input
                               type="text"
                               value={line.batchNumber}
@@ -22828,7 +22865,7 @@ setCustomerOrganizationName("");
                             />
                           </label>
                           <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                            <span>Expiry Date</span>
+                            <span>{t('buy.expiryDate')}</span>
                             <input
                               type="date"
                               value={line.expiryDate}
@@ -22850,7 +22887,7 @@ setCustomerOrganizationName("");
                   disabled={receiveLoading}
                   className="rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
                 >
-                  {receiveLoading ? "Receiving..." : "Confirm Receive"}
+                  {receiveLoading ? t('buy.receiving') : t('buy.confirmReceive')}
                 </button>
                 <button
                   type="button"
@@ -22863,7 +22900,7 @@ setCustomerOrganizationName("");
                   disabled={receiveLoading}
                   className="rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30"
                 >
-                  Close
+                  {t('common.close')}
                 </button>
               </div>
             </section>
@@ -22875,21 +22912,20 @@ setCustomerOrganizationName("");
         {purchaseTab === "returns" && (
         <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Create Purchase Return</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.createReturn')}</h2>
           <p className="mb-4 text-sm text-muted-foreground">
-            Record goods returned to a supplier. Returned quantities are removed from stock through the
-            inventory ledger.
+            {t('buy.returnIntro')}
           </p>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Supplier</span>
+                <span>{t('buy.supplier')}</span>
                 <select
                   value={returnSupplierId}
                   onChange={(e) => setReturnSupplierId(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
-                  <option value="">Select Supplier</option>
+                  <option value="">{t('buy.selectSupplier')}</option>
                   {activeSuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.supplier_name}
@@ -22899,7 +22935,7 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Return Date</span>
+                <span>{t('sell.returnDate')}</span>
                 <input
                   type="date"
                   value={returnDate}
@@ -22909,13 +22945,13 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Linked Purchase Invoice (Optional)</span>
+                <span>{t('buy.linkedInvoiceOptional')}</span>
                 <select
                   value={returnPurchaseTransactionId}
                   onChange={(e) => handlePurchaseReturnInvoiceChange(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
-                  <option value="">None</option>
+                  <option value="">{t('common.none')}</option>
                   {purchaseTransactions.map((transaction) => (
                     <option key={transaction.id} value={transaction.id}>
                       {transaction.invoice_number}
@@ -22926,7 +22962,7 @@ setCustomerOrganizationName("");
             </div>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Reason (Optional)</span>
+              <span>{t('sell.reasonOptional')}</span>
               <textarea
                 value={returnReason}
                 onChange={(e) => setReturnReason(e.target.value)}
@@ -22936,11 +22972,11 @@ setCustomerOrganizationName("");
             </label>
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
-              <p className="mb-3 text-sm text-muted-foreground">Press Enter for the next field. At the end of a line, Enter opens the next product. Shift+Enter goes back. Use Save when the invoice is ready.</p>
+              <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productLines')}</h3>
+              <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {returnLines.length === 0 ? (
-                <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
+                <p className="mb-4 text-sm text-muted-foreground/80">{t('sell.noProductLines')}</p>
               ) : (
                 <div className="mb-4 space-y-3">
                   {returnLines.map((line, index) => {
@@ -22950,18 +22986,18 @@ setCustomerOrganizationName("");
                     return (
                     <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
+                        <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveReturnLine(index)}
                           className="text-xs text-destructive hover:text-destructive/90"
                         >
-                          Remove
+                          {t('sell.remove')}
                         </button>
                       </div>
                       <div className="grid gap-2 sm:grid-cols-5">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Product</span>
+                          <span>{t('sell.product')}</span>
                           <select
                             value={line.product_id ?? ""}
                             onChange={(e) =>
@@ -22969,7 +23005,7 @@ setCustomerOrganizationName("");
                             }
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
-                            <option value="">Select Product</option>
+                            <option value="">{t('sell.selectProduct')}</option>
                             {activeProducts.map((product) => (
                               <option key={product.id} value={product.id}>
                                 {product.name}
@@ -22978,7 +23014,7 @@ setCustomerOrganizationName("");
                           </select>
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Return as</span>
+                          <span>{t('sell.returnAs')}</span>
                           <select
                             value={line.unit_mode ?? "main"}
                             onChange={(e) => handleReturnLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main")}
@@ -22986,7 +23022,7 @@ setCustomerOrganizationName("");
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="main">
-                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : t('sell.mainUnit')}
                             </option>
                             {lineProduct && hasSubunit(lineProduct) && (
                               <option value="subunit">
@@ -22996,7 +23032,7 @@ setCustomerOrganizationName("");
                           </select>
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
+                          <span>{t('sell.quantity')} ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.units')})</span>
                           <input
                             type="number"
                             min="0"
@@ -23006,7 +23042,7 @@ setCustomerOrganizationName("");
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
+                          <span>{t('sell.pricePer')} {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.unit')}</span>
                           <input
                             type="number"
                             min="0"
@@ -23016,7 +23052,7 @@ setCustomerOrganizationName("");
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Batch Number</span>
+                          <span>{t('buy.batchNumber')}</span>
                           <input
                             type="text"
                             value={line.batch_number}
@@ -23036,7 +23072,7 @@ setCustomerOrganizationName("");
                 onClick={handleAddReturnLine}
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
-                + Add Product Line
+                {t('sell.addProductLine')}
               </button>
             </div>
 
@@ -23046,7 +23082,7 @@ setCustomerOrganizationName("");
               disabled={returnLoading}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
-              {returnLoading ? "Saving..." : "Save Purchase Return"}
+              {returnLoading ? t('sell.saving') : t('buy.saveReturn')}
             </button>
           </div>
 
@@ -23055,11 +23091,11 @@ setCustomerOrganizationName("");
         </section>
 
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Purchase Return History</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.returnHistory')}</h2>
           {purchaseReturnsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading purchase returns...</p>
+            <p className="text-sm text-muted-foreground">{t('buy.loadingReturns')}</p>
           ) : purchaseReturns.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No purchase returns found.</p>
+            <p className="text-sm text-muted-foreground">{t('buy.noReturnsFound')}</p>
           ) : (
             <>
               {renderPurchaseListFilterBar(
@@ -23070,7 +23106,7 @@ setCustomerOrganizationName("");
               )}
               {filteredPurchaseReturns.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No purchase returns match your filters.
+                  {t('buy.noReturnsMatch')}
                 </p>
               ) : (
             <ul className="space-y-3">
@@ -23100,18 +23136,22 @@ setCustomerOrganizationName("");
                                 : "bg-destructive/10 text-destructive"
                             }`}
                           >
-                            {purchaseReturn.status.charAt(0).toUpperCase() + purchaseReturn.status.slice(1)}
+                            {purchaseReturn.status === "confirmed"
+                              ? t('buy.statusConfirmed')
+                              : purchaseReturn.status === "cancelled"
+                                ? t('buy.statusCancelled')
+                                : (purchaseReturn.status as string).charAt(0).toUpperCase() + (purchaseReturn.status as string).slice(1)}
                           </span>
                         </div>
                         <div className="text-xs text-muted-foreground/80">
-                          Supplier: {supplier?.supplier_name ?? "Unknown"} · Returned{" "}
+                          {t('buy.supplierPrefix')} {supplier?.supplier_name ?? t('sell.unknown')} · {t('buy.returnedLabel')}{" "}
                           {formatDate(purchaseReturn.return_date ?? purchaseReturn.created_at)}
                         </div>
                         <div className="text-xs text-muted-foreground/80">
-                          {lineItems.length} line(s) · {totalQuantity} units · {pkrFormatter.format(totalValue)}
+                          {lineItems.length} {t('sell.line').toLowerCase()}(s) · {totalQuantity} {t('sell.units')} · {pkrFormatter.format(totalValue)}
                         </div>
                         {purchaseReturn.reason && (
-                          <div className="text-xs text-muted-foreground/80">Reason: {purchaseReturn.reason}</div>
+                          <div className="text-xs text-muted-foreground/80">{t('sell.reasonLabel')}: {purchaseReturn.reason}</div>
                         )}
                       </div>
                       <div className="flex shrink-0 flex-wrap gap-2">
@@ -23120,14 +23160,14 @@ setCustomerOrganizationName("");
                           onClick={() => handlePrintPurchaseReturn(purchaseReturn.id)}
                           className="rounded border border-primary px-3 py-1.5 text-sm text-primary hover:bg-primary/5"
                         >
-                          Print
+                          {t('sell.print')}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeletePurchaseReturn(purchaseReturn.id)}
                           className="rounded border border-destructive px-3 py-1.5 text-sm text-destructive hover:bg-destructive/5"
                         >
-                          Delete
+                          {t('common.delete')}
                         </button>
                       </div>
                     </div>
