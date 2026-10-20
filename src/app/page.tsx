@@ -17303,10 +17303,9 @@ setCustomerOrganizationName("");
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">Inventory</h2>
+              <h2 className="text-xl font-medium text-foreground">{t('stock.inventory')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Stock ledger, adjustments, and reorder recommendations. Viewing requires the View Reports
-                permission; recording adjustments requires Manage Inventory.
+                {t('inventory.subtitle')}
               </p>
             </div>
             <button
@@ -17314,7 +17313,7 @@ setCustomerOrganizationName("");
               onClick={handleExportInventoryCsv}
               className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
-              Export Inventory CSV
+              {t('inventory.exportCsv')}
             </button>
           </div>
 
@@ -17328,7 +17327,7 @@ setCustomerOrganizationName("");
                   : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
               }`}
             >
-              Inventory Dashboard
+              {t('inventory.dashboardTab')}
             </button>
             <button
               type="button"
@@ -17339,7 +17338,7 @@ setCustomerOrganizationName("");
                   : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
               }`}
             >
-              Stock Adjustment
+              {t('inventory.adjustmentTab')}
             </button>
             <button
               type="button"
@@ -17350,7 +17349,7 @@ setCustomerOrganizationName("");
                   : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
               }`}
             >
-              Stock Ledger
+              {t('inventory.ledgerTab')}
             </button>
             <button
               type="button"
@@ -17361,7 +17360,7 @@ setCustomerOrganizationName("");
                   : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
               }`}
             >
-              Import Products
+              {t('inventory.importProducts')}
             </button>
           </div>
 
@@ -17370,24 +17369,24 @@ setCustomerOrganizationName("");
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
                 <div className="text-2xl font-semibold text-destructive">{inventorySummaryCounts.outOfStock}</div>
-                <div className="text-sm text-destructive/80">Out of Stock</div>
+                <div className="text-sm text-destructive/80">{t('stock.outOfStock')}</div>
               </div>
               <div className="rounded border border-orange-200 bg-orange-50 p-4">
                 <div className="text-2xl font-semibold text-orange-700">{inventorySummaryCounts.urgentReorder}</div>
-                <div className="text-sm text-orange-700/80">Urgent Reorder</div>
+                <div className="text-sm text-orange-700/80">{t('inventory.urgentReorder')}</div>
               </div>
               <div className="rounded border border-border bg-card p-4">
                 <div className="text-2xl font-semibold text-foreground">{inventorySummaryCounts.missingReorderLevel}</div>
-                <div className="text-sm text-muted-foreground">Missing Reorder Level</div>
+                <div className="text-sm text-muted-foreground">{t('inventory.missingReorderLevel')}</div>
               </div>
               <div className="rounded border border-success/20 bg-success/5 p-4">
                 <div className="text-2xl font-semibold text-success">{inventorySummaryCounts.healthy}</div>
-                <div className="text-sm text-success/80">Healthy</div>
+                <div className="text-sm text-success/80">{t('stock.healthy')}</div>
               </div>
             </div>
 
             {products.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No products to show.</p>
+              <p className="text-sm text-muted-foreground">{t('inventory.noProducts')}</p>
             ) : (
               <ul className="space-y-2">
                 {inventoryStats.map((s) => (
@@ -17397,12 +17396,12 @@ setCustomerOrganizationName("");
                   >
                     <div>
                       <div className="font-medium text-foreground">{s.productName}</div>
-                      <div className="text-xs text-muted-foreground">Default Price: {s.defaultSellingPrice ?? "-"}</div>
+                      <div className="text-xs text-muted-foreground">{t('inventory.defaultPrice')}: {s.defaultSellingPrice ?? "-"}</div>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-foreground/80">
-                      <div>Purchased: {s.purchasedQty}</div>
-                      <div>Sold: {s.soldQty}</div>
-                      <div>Stock: {s.currentStock}</div>
+                      <div>{t('inventory.purchased')}: {s.purchasedQty}</div>
+                      <div>{t('inventory.sold')}: {s.soldQty}</div>
+                      <div>{t('products.stock')}: {s.currentStock}</div>
                       {(() => {
                         const snapshot = inventorySnapshots.find(
                           (item) => String(item.productId) === String(s.productId)
@@ -17410,10 +17409,10 @@ setCustomerOrganizationName("");
                         if (!snapshot || snapshot.status === "healthy") return null;
                         const label =
                           snapshot.status === "out_of_stock"
-                            ? "OUT OF STOCK"
+                            ? t('inventory.badgeOutOfStock')
                             : snapshot.status === "urgent_reorder"
-                              ? "LOW STOCK"
-                              : "SET REORDER LEVEL";
+                              ? t('inventory.badgeLowStock')
+                              : t('inventory.badgeSetReorder');
                         const badgeClass =
                           snapshot.status === "out_of_stock"
                             ? "bg-destructive/10 text-destructive"
@@ -17432,45 +17431,45 @@ setCustomerOrganizationName("");
 
             <div className="rounded border border-border bg-card p-4">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <h3 className="text-lg font-medium text-foreground">Inventory Reorder Recommendations</h3>
+                <h3 className="text-lg font-medium text-foreground">{t('inventory.reorderTitle')}</h3>
                 <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
                   <select
                     value={reorderRecommendationFilter}
                     onChange={(e) => setReorderRecommendationFilter(e.target.value)}
                     className="rounded border border-border px-3 py-2 text-sm"
                   >
-                    <option value="all">All</option>
-                    <option value="Out of Stock">Out of Stock</option>
-                    <option value="Urgent Reorder">Urgent Reorder</option>
-                    <option value="Low Stock Soon">Low Stock Soon</option>
-                    <option value="Healthy">Healthy</option>
-                    <option value="missing-reorder-level">Missing Reorder Level</option>
+                    <option value="all">{t('inventory.filterAll')}</option>
+                    <option value="Out of Stock">{t('stock.outOfStock')}</option>
+                    <option value="Urgent Reorder">{t('inventory.urgentReorder')}</option>
+                    <option value="Low Stock Soon">{t('inventory.lowStockSoon')}</option>
+                    <option value="Healthy">{t('stock.healthy')}</option>
+                    <option value="missing-reorder-level">{t('inventory.missingReorderLevel')}</option>
                   </select>
                   <input
                     type="search"
                     value={reorderRecommendationSearch}
                     onChange={(e) => setReorderRecommendationSearch(e.target.value)}
-                    placeholder="Search product, brand, category"
+                    placeholder={t('inventory.reorderSearchPlaceholder')}
                     className="rounded border border-border px-3 py-2 text-sm"
                   />
                 </div>
               </div>
 
               {filteredReorderRecommendations.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No reorder recommendations match the current filters.</p>
+                <p className="text-sm text-muted-foreground">{t('inventory.noRecommendations')}</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
                     <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                       <tr>
-                        <th className="px-3 py-2">Product</th>
-                        <th className="px-3 py-2">Current Stock</th>
-                        <th className="px-3 py-2">Reorder Level</th>
-                        <th className="px-3 py-2">Recent 30-day Sales</th>
-                        <th className="px-3 py-2">Daily Avg</th>
-                        <th className="px-3 py-2">Days Left</th>
-                        <th className="px-3 py-2">Suggested Reorder</th>
-                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">{t('sell.product')}</th>
+                        <th className="px-3 py-2">{t('inventory.currentStock')}</th>
+                        <th className="px-3 py-2">{t('products.reorderLevel')}</th>
+                        <th className="px-3 py-2">{t('inventory.recentSales30d')}</th>
+                        <th className="px-3 py-2">{t('inventory.dailyAvg')}</th>
+                        <th className="px-3 py-2">{t('products.daysLeft')}</th>
+                        <th className="px-3 py-2">{t('inventory.suggestedReorder')}</th>
+                        <th className="px-3 py-2">{t('sell.statusLabel')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -17479,7 +17478,7 @@ setCustomerOrganizationName("");
                           <td className="px-3 py-3">
                             <div className="font-medium text-foreground">{recommendation.productName}</div>
                             <div className="text-xs text-muted-foreground/80">
-                              {recommendation.brandName || "No brand"} · {recommendation.categoryName || "No category"}
+                              {recommendation.brandName || t('inventory.noBrand')} · {recommendation.categoryName || t('inventory.noCategory')}
                             </div>
                           </td>
                           <td className="px-3 py-3">
@@ -17488,25 +17487,25 @@ setCustomerOrganizationName("");
                           <td className="px-3 py-3">
                             {recommendation.reorderLevel > 0
                               ? `${recommendation.reorderLevel} ${recommendation.unitType}`
-                              : "Set reorder level first"}
+                              : t('inventory.setReorderFirst')}
                           </td>
                           <td className="px-3 py-3">
                             {recommendation.recentSalesQuantity} {recommendation.unitType}
                           </td>
                           <td className="px-3 py-3">
                             {recommendation.dailyAverageSales > 0
-                              ? `${recommendation.dailyAverageSales.toFixed(2)} ${recommendation.unitType}/day`
-                              : "No recent sales"}
+                              ? `${recommendation.dailyAverageSales.toFixed(2)} ${recommendation.unitType}${t('inventory.perDay')}`
+                              : t('inventory.noRecentSales')}
                           </td>
                           <td className="px-3 py-3">
                             {recommendation.estimatedDaysLeft === null
-                              ? "No recent sales"
-                              : `${Math.max(0, recommendation.estimatedDaysLeft).toFixed(1)} days`}
+                              ? t('inventory.noRecentSales')
+                              : `${Math.max(0, recommendation.estimatedDaysLeft).toFixed(1)} ${t('inventory.daysWord')}`}
                           </td>
                           <td className="px-3 py-3">
                             {recommendation.reorderLevel > 0
                               ? `${recommendation.suggestedReorderQuantity} ${recommendation.unitType}`
-                              : "Set reorder level first"}
+                              : t('inventory.setReorderFirst')}
                           </td>
                           <td className="px-3 py-3">
                             <span
@@ -17520,7 +17519,7 @@ setCustomerOrganizationName("");
                                       : "bg-success/10 text-success"
                               }`}
                             >
-                              {recommendation.status}
+                              {recommendation.status === "Out of Stock" ? t('stock.outOfStock') : recommendation.status === "Urgent Reorder" ? t('inventory.urgentReorder') : recommendation.status === "Low Stock Soon" ? t('inventory.lowStockSoon') : t('stock.healthy')}
                             </span>
                           </td>
                         </tr>
@@ -17537,17 +17536,15 @@ setCustomerOrganizationName("");
           <div className="space-y-6">
             {!canManageInventory && (
               <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
-                You have view access to this section, but only staff with the Manage Inventory permission can record
-                stock adjustments. Owners and admins can always adjust stock.
+                {t('inventory.viewAccessWarning')}
               </div>
             )}
 
             <div className="rounded border border-border bg-card p-4">
-              <h3 className="mb-1 text-lg font-medium text-foreground">Bulk Add-to-Stock</h3>
+              <h3 className="mb-1 text-lg font-medium text-foreground">{t('inventory.bulkTitle')}</h3>
               <p className="mb-3 text-sm text-muted-foreground">
-                Paste one product per line — use <code className="rounded bg-muted px-1">Product Name [tab|comma] Qty</code> or
-                <code className="rounded bg-muted px-1">Product Name Qty</code>. Rows are matched by name, SKU, or barcode
-                against your active products.
+                {t('inventory.bulkHintStart')} <code className="rounded bg-muted px-1">Product Name [tab|comma] Qty</code> {t('inventory.bulkHintOr')}
+                <code className="rounded bg-muted px-1">Product Name Qty</code>{t('inventory.bulkHintEnd')}
               </p>
               {bulkStockMessage && <p className="mb-3 whitespace-pre-wrap text-sm text-success">{bulkStockMessage}</p>}
               {bulkStockError && <p className="mb-3 whitespace-pre-wrap text-sm text-destructive">{bulkStockError}</p>}
@@ -17567,7 +17564,7 @@ setCustomerOrganizationName("");
                   disabled={bulkStockSubmitting}
                   className="rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5 disabled:opacity-40"
                 >
-                  Preview Lines
+                  {t('inventory.previewLines')}
                 </button>
                 <button
                   type="button"
@@ -17575,7 +17572,7 @@ setCustomerOrganizationName("");
                   disabled={bulkStockSubmitting || bulkStockLines.filter((line) => line.matched && safeNumber(line.qty) > 0).length === 0}
                   className="rounded bg-primary px-4 py-2 text-sm text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
                 >
-                  {bulkStockSubmitting ? "Adding..." : `Add Stock (${bulkStockLines.filter((line) => line.matched && safeNumber(line.qty) > 0).length} lines)`}
+                  {bulkStockSubmitting ? t('inventory.adding') : `${t('inventory.addStock')} (${bulkStockLines.filter((line) => line.matched && safeNumber(line.qty) > 0).length} ${t('inventory.linesWord')})`}
                 </button>
               </div>
 
@@ -17584,10 +17581,10 @@ setCustomerOrganizationName("");
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground/80">
-                        <th className="py-2 pr-3 font-medium">Product</th>
-                        <th className="py-2 pr-3 font-medium">Current Stock</th>
-                        <th className="py-2 pr-3 font-medium">Qty to Add</th>
-                        <th className="py-2 font-medium">Status</th>
+                        <th className="py-2 pr-3 font-medium">{t('sell.product')}</th>
+                        <th className="py-2 pr-3 font-medium">{t('inventory.currentStock')}</th>
+                        <th className="py-2 pr-3 font-medium">{t('inventory.qtyToAdd')}</th>
+                        <th className="py-2 font-medium">{t('sell.statusLabel')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -17598,9 +17595,9 @@ setCustomerOrganizationName("");
                           <td className="py-2 pr-3 text-foreground/80">{line.matched ? line.qty : "—"}</td>
                           <td className="py-2">
                             {line.matched ? (
-                              <span className="text-success">Matched</span>
+                              <span className="text-success">{t('inventory.matched')}</span>
                             ) : (
-                              <span className="text-destructive">Unmatched</span>
+                              <span className="text-destructive">{t('inventory.unmatched')}</span>
                             )}
                           </td>
                         </tr>
@@ -17608,17 +17605,16 @@ setCustomerOrganizationName("");
                     </tbody>
                   </table>
                   <p className="mt-2 text-xs text-muted-foreground/80">
-                    Unmatched rows are ignored on submit — fix the spelling or paste a different identifier (SKU / barcode).
+                    {t('inventory.unmatchedNote')}
                   </p>
                 </div>
               )}
             </div>
 
             <div className="rounded border border-border bg-card p-4">
-              <h3 className="mb-1 text-lg font-medium text-foreground">Record Stock Adjustment</h3>
+              <h3 className="mb-1 text-lg font-medium text-foreground">{t('inventory.recordAdjustmentTitle')}</h3>
               <p className="mb-4 text-sm text-muted-foreground">
-                Use adjustments for stock counts, damages, expired goods, and corrections. Adjustments never drive
-                stock below zero, and each one is written to the stock ledger with the reason below.
+                {t('inventory.adjustmentHint')}
               </p>
 
               {adjustmentMessage && <p className="mb-4 text-sm text-success">{adjustmentMessage}</p>}
@@ -17632,14 +17628,14 @@ setCustomerOrganizationName("");
                 className="grid gap-3 lg:grid-cols-2"
               >
                 <div className="flex flex-col gap-1">
-                  <label className="text-sm text-foreground/80">Product *</label>
+                  <label className="text-sm text-foreground/80">{t('sell.product')} *</label>
                   <select
                     value={adjustmentProductId}
                     onChange={(e) => setAdjustmentProductId(e.target.value)}
                     className="rounded border border-border px-3 py-2 text-sm"
                     disabled={adjustmentSubmitting}
                   >
-                    <option value="">Select product</option>
+                    <option value="">{t('inventory.selectProduct')}</option>
                     {activeProducts.map((product) => (
                       <option key={product.id} value={product.id}>
                         {product.name}
@@ -17650,19 +17646,19 @@ setCustomerOrganizationName("");
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-sm text-foreground/80">Direction *</label>
+                    <label className="text-sm text-foreground/80">{t('inventory.direction')} *</label>
                     <select
                       value={adjustmentDirection}
                       onChange={(e) => setAdjustmentDirection(e.target.value as "in" | "out")}
                       className="rounded border border-border px-3 py-2 text-sm"
                       disabled={adjustmentSubmitting}
                     >
-                      <option value="in">Increase stock (+)</option>
-                      <option value="out">Decrease stock (-)</option>
+                      <option value="in">{t('inventory.increaseStock')}</option>
+                      <option value="out">{t('inventory.decreaseStock')}</option>
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-sm text-foreground/80">Quantity *</label>
+                    <label className="text-sm text-foreground/80">{t('stock.quantity')} *</label>
                     <input
                       type="number"
                       min="0"
@@ -17677,21 +17673,21 @@ setCustomerOrganizationName("");
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-sm text-foreground/80">Reason *</label>
+                  <label className="text-sm text-foreground/80">{t('inventory.reason')} *</label>
                   <input
                     type="text"
                     value={adjustmentReason}
                     onChange={(e) => setAdjustmentReason(e.target.value)}
                     className="rounded border border-border px-3 py-2 text-sm"
                     disabled={adjustmentSubmitting}
-                    placeholder="e.g. Damage found during stock count"
+                    placeholder={t('inventory.reasonPlaceholder')}
                     maxLength={500}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-sm text-foreground/80">Batch number (optional)</label>
+                    <label className="text-sm text-foreground/80">{t('inventory.batchOptional')}</label>
                     <input
                       type="text"
                       value={adjustmentBatchNumber}
@@ -17703,7 +17699,7 @@ setCustomerOrganizationName("");
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-sm text-foreground/80">Expiry date (optional)</label>
+                    <label className="text-sm text-foreground/80">{t('inventory.expiryOptional')}</label>
                     <input
                       type="date"
                       value={adjustmentExpiryDate}
@@ -17729,34 +17725,34 @@ setCustomerOrganizationName("");
                     }}
                     className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                   >
-                    Reset
+                    {t('inventory.reset')}
                   </button>
                   <button
                     type="submit"
                     disabled={adjustmentSubmitting || !canManageInventory}
                     className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {adjustmentSubmitting ? "Adjusting..." : "Record Adjustment"}
+                    {adjustmentSubmitting ? t('inventory.adjusting') : t('inventory.recordAdjustment')}
                   </button>
                 </div>
               </form>
             </div>
 
             <div className="rounded border border-border bg-card p-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Recent Adjustments</h3>
+              <h3 className="mb-3 text-lg font-medium text-foreground">{t('inventory.recentAdjustments')}</h3>
               {recentAdjustments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No adjustments recorded yet.</p>
+                <p className="text-sm text-muted-foreground">{t('inventory.noAdjustments')}</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
                     <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                       <tr>
-                        <th className="px-3 py-2">Date</th>
-                        <th className="px-3 py-2">Product</th>
-                        <th className="px-3 py-2">Change</th>
-                        <th className="px-3 py-2">Reason</th>
-                        <th className="px-3 py-2">Batch</th>
-                        <th className="px-3 py-2">Expiry</th>
+                        <th className="px-3 py-2">{t('money.date')}</th>
+                        <th className="px-3 py-2">{t('sell.product')}</th>
+                        <th className="px-3 py-2">{t('inventory.change')}</th>
+                        <th className="px-3 py-2">{t('inventory.reason')}</th>
+                        <th className="px-3 py-2">{t('inventory.batch')}</th>
+                        <th className="px-3 py-2">{t('inventory.expiry')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -17764,7 +17760,7 @@ setCustomerOrganizationName("");
                         <tr key={transaction.id}>
                           <td className="px-3 py-3">{formatDateTime(transaction.created_at)}</td>
                           <td className="px-3 py-3">
-                            {productNameById.get(String(transaction.product_id)) ?? `Product ${transaction.product_id}`}
+                            {productNameById.get(String(transaction.product_id)) ?? `${t('sell.product')} ${transaction.product_id}`}
                           </td>
                           <td
                             className={`px-3 py-3 font-medium ${
@@ -17791,9 +17787,9 @@ setCustomerOrganizationName("");
             <div className="rounded border border-border bg-card p-4">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h3 className="text-lg font-medium text-foreground">Stock Ledger</h3>
+                  <h3 className="text-lg font-medium text-foreground">{t('inventory.ledgerTab')}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Every stock movement in and out of the business, with running balances per product.
+                    {t('inventory.ledgerSubtitle')}
                   </p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3 lg:w-[640px]">
@@ -17802,20 +17798,20 @@ setCustomerOrganizationName("");
                     onChange={(e) => setLedgerMovementFilter(e.target.value)}
                     className="rounded border border-border px-3 py-2 text-sm"
                   >
-                    <option value="all">All movements</option>
-                    <option value="purchase_in">Purchase Receipts</option>
-                    <option value="sale_out">Sales Issues</option>
-                    <option value="return_out">Purchase Returns</option>
-                    <option value="return_in">Sales Returns</option>
-                    <option value="adjustment_in">Adjustments In</option>
-                    <option value="adjustment_out">Adjustments Out</option>
+                    <option value="all">{t('inventory.allMovements')}</option>
+                    <option value="purchase_in">{t('inventory.purchaseReceipts')}</option>
+                    <option value="sale_out">{t('inventory.salesIssues')}</option>
+                    <option value="return_out">{t('inventory.purchaseReturns')}</option>
+                    <option value="return_in">{t('inventory.salesReturns')}</option>
+                    <option value="adjustment_in">{t('inventory.adjustmentsIn')}</option>
+                    <option value="adjustment_out">{t('inventory.adjustmentsOut')}</option>
                   </select>
                   <select
                     value={ledgerProductFilter}
                     onChange={(e) => setLedgerProductFilter(e.target.value)}
                     className="rounded border border-border px-3 py-2 text-sm"
                   >
-                    <option value="all">All products</option>
+                    <option value="all">{t('inventory.allProducts')}</option>
                     {products.map((product) => (
                       <option key={product.id} value={product.id}>
                         {product.name}
@@ -17826,23 +17822,23 @@ setCustomerOrganizationName("");
                     type="search"
                     value={ledgerSearch}
                     onChange={(e) => setLedgerSearch(e.target.value)}
-                    placeholder="Search product or batch"
+                    placeholder={t('inventory.ledgerSearchPlaceholder')}
                     className="rounded border border-border px-3 py-2 text-sm"
                   />
                 </div>
               </div>
 
               {inventoryTransactionsLoading && (
-                <p className="mb-3 text-sm text-muted-foreground">Loading ledger...</p>
+                <p className="mb-3 text-sm text-muted-foreground">{t('inventory.loadingLedger')}</p>
               )}
 
               {ledgerQuery.rows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No ledger movements match the current filters.</p>
+                <p className="text-sm text-muted-foreground">{t('inventory.noLedgerMovements')}</p>
               ) : (
                 <>
                   {ledgerProductFilter !== "all" && (
                     <p className="mb-3 text-sm text-muted-foreground">
-                      Opening balance:{" "}
+                      {t('inventory.openingBalance')}:{" "}
                       {formatMovementChange(ledgerQuery.openingBalances.get(String(ledgerProductFilter)) ?? 0)}
                     </p>
                   )}
@@ -17850,14 +17846,14 @@ setCustomerOrganizationName("");
                     <table className="min-w-full divide-y divide-gray-200 text-sm">
                       <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                         <tr>
-                          <th className="px-3 py-2">Date</th>
-                          <th className="px-3 py-2">Product</th>
-                          <th className="px-3 py-2">Movement</th>
-                          <th className="px-3 py-2">Change</th>
-                          <th className="px-3 py-2">Batch</th>
-                          <th className="px-3 py-2">Expiry</th>
-                          <th className="px-3 py-2">Reason / Reference</th>
-                          <th className="px-3 py-2">Balance</th>
+                          <th className="px-3 py-2">{t('money.date')}</th>
+                          <th className="px-3 py-2">{t('sell.product')}</th>
+                          <th className="px-3 py-2">{t('inventory.movement')}</th>
+                          <th className="px-3 py-2">{t('inventory.change')}</th>
+                          <th className="px-3 py-2">{t('inventory.batch')}</th>
+                          <th className="px-3 py-2">{t('inventory.expiry')}</th>
+                          <th className="px-3 py-2">{t('inventory.reasonReference')}</th>
+                          <th className="px-3 py-2">{t('inventory.balance')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -17865,7 +17861,7 @@ setCustomerOrganizationName("");
                           <tr key={transaction.id}>
                             <td className="px-3 py-3">{formatDateTime(transaction.created_at)}</td>
                             <td className="px-3 py-3">
-                              {productNameById.get(String(transaction.product_id)) ?? `Product ${transaction.product_id}`}
+                              {productNameById.get(String(transaction.product_id)) ?? `${t('sell.product')} ${transaction.product_id}`}
                             </td>
                             <td className="px-3 py-3">{movementLabel(transaction.movement_type)}</td>
                             <td
@@ -17881,11 +17877,11 @@ setCustomerOrganizationName("");
                               {(() => {
                                 if (transaction.reference_type === "purchase_transaction") {
                                   const label = invoiceNumbersByReferenceId.get(transaction.reference_id ?? "");
-                                  return label || "Purchase";
+                                  return label || t('inventory.purchaseFallback');
                                 }
                                 if (transaction.reference_type === "sales_transaction") {
                                   const label = invoiceNumbersByReferenceId.get(transaction.reference_id ?? "");
-                                  return label || "Sale";
+                                  return label || t('inventory.saleFallback');
                                 }
                                 return transaction.reason ?? "-";
                               })()}
@@ -17902,20 +17898,19 @@ setCustomerOrganizationName("");
 
             {selectedLedgerProductBatches.length > 0 && (
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-1 text-lg font-medium text-foreground">Batch Availability</h3>
+                <h3 className="mb-1 text-lg font-medium text-foreground">{t('inventory.batchAvailability')}</h3>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Per-batch balance for the selected product — the structure FIFO costing will consume in a later
-                  phase. Batches with an expiry date are ordered earliest first.
+                  {t('inventory.batchAvailabilityHint')}
                 </p>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
                     <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                       <tr>
-                        <th className="px-3 py-2">Batch</th>
-                        <th className="px-3 py-2">Expiry</th>
-                        <th className="px-3 py-2">Received</th>
-                        <th className="px-3 py-2">Issued</th>
-                        <th className="px-3 py-2">Balance</th>
+                        <th className="px-3 py-2">{t('inventory.batch')}</th>
+                        <th className="px-3 py-2">{t('inventory.expiry')}</th>
+                        <th className="px-3 py-2">{t('inventory.received')}</th>
+                        <th className="px-3 py-2">{t('inventory.issued')}</th>
+                        <th className="px-3 py-2">{t('inventory.balance')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -17940,8 +17935,7 @@ setCustomerOrganizationName("");
           <div className="space-y-6">
             {!canManageInventory && (
               <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
-                You have view access to this section, but only staff with the Manage Inventory permission can
-                import products. Owners and admins can always import.
+                {t('inventory.importViewAccessWarning')}
               </div>
             )}
             <ImportWizard
@@ -20597,7 +20591,7 @@ setCustomerOrganizationName("");
         {currentProfile?.role === "owner" && <SetupReview entity="products" onSaved={() => { void fetchProducts(); }} />}
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-xl font-medium text-foreground">
-            {editingProductId ? `Edit Product: ${name}` : "Add Product"}
+            {editingProductId ? `${t('products.editProduct')}: ${name}` : t('stock.addProduct')}
           </h2>
           <div className="flex items-center gap-2">
             {canImportExport && (
@@ -20617,7 +20611,7 @@ setCustomerOrganizationName("");
                 onClick={resetProductForm}
                 className="rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted"
               >
-                Cancel Edit
+                {t('products.cancelEdit')}
               </button>
             )}
           </div>
@@ -20629,7 +20623,7 @@ setCustomerOrganizationName("");
         <form onSubmit={handleSubmit} className="space-y-4" {...entryNavigationHandlers}>
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground/80">
-              Product Name
+              {t('products.name')}
             </label>
             <input
               type="text"
@@ -20643,14 +20637,14 @@ setCustomerOrganizationName("");
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Brand
+                {t('products.brand')}
               </label>
               <select
                 value={selectedBrandId ?? ""}
                 onChange={(e) => setSelectedBrandId(e.target.value === "" ? null : e.target.value)}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               >
-                <option value="">None</option>
+                <option value="">{t('common.none')}</option>
                 {brands.map((brand) => (
                   <option key={brand.id} value={String(brand.id)}>
                     {brand.name}
@@ -20661,14 +20655,14 @@ setCustomerOrganizationName("");
 
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Category
+                {t('stock.category')}
               </label>
               <select
                 value={selectedCategoryId ?? ""}
                 onChange={(e) => setSelectedCategoryId(e.target.value === "" ? null : e.target.value)}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               >
-                <option value="">None</option>
+                <option value="">{t('common.none')}</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
@@ -20681,7 +20675,7 @@ setCustomerOrganizationName("");
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                SKU
+                {t('products.sku')}
               </label>
               <input
                 type="text"
@@ -20691,13 +20685,13 @@ setCustomerOrganizationName("");
               />
             </div>
 
-            <BarcodeInput label="Product barcode" value={productBarcode} onChange={setProductBarcode} onScan={setProductBarcode} autoFocus />
+            <BarcodeInput label={t('products.barcode')} value={productBarcode} onChange={setProductBarcode} onScan={setProductBarcode} autoFocus />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Unit Type
+                {t('products.unitType')}
               </label>
               <input
                 type="text"
@@ -20710,20 +20704,20 @@ setCustomerOrganizationName("");
 
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Subunit Type
+                {t('products.subunitType')}
               </label>
               <input
                 type="text"
                 value={subunitType}
                 onChange={(e) => setSubunitType(e.target.value)}
-                placeholder="e.g. Pieces (optional)"
+                placeholder={t('products.subunitPlaceholder')}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               />
             </div>
 
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Units Per Pack
+                {t('products.unitsPerPack')}
               </label>
               <input
                 type="number"
@@ -20739,7 +20733,7 @@ setCustomerOrganizationName("");
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Purchase Price
+                {t('products.purchasePrice')}
               </label>
               <input
                 type="number"
@@ -20753,7 +20747,7 @@ setCustomerOrganizationName("");
 
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Default Purchase Price
+                {t('products.defaultPurchasePrice')}
               </label>
               <input
                 type="number"
@@ -20767,7 +20761,7 @@ setCustomerOrganizationName("");
 
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Selling Price
+                {t('products.sellingPrice')}
               </label>
               <input
                 type="number"
@@ -20783,7 +20777,7 @@ setCustomerOrganizationName("");
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Minimum Stock Level
+                {t('products.minimumStockLevel')}
               </label>
               <input
                 type="number"
@@ -20797,7 +20791,7 @@ setCustomerOrganizationName("");
 
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground/80">
-                Reorder Level
+                {t('products.reorderLevel')}
               </label>
               <input
                 type="number"
@@ -20818,7 +20812,7 @@ setCustomerOrganizationName("");
                 onChange={(e) => setTrackBatch(e.target.checked)}
                 className="h-4 w-4 rounded border-border text-primary focus:ring-blue-500"
               />
-              Track Batch
+              {t('products.trackBatch')}
             </label>
 
             <label className="flex items-center gap-2 text-sm text-foreground/80">
@@ -20828,7 +20822,7 @@ setCustomerOrganizationName("");
                 onChange={(e) => setTrackExpiry(e.target.checked)}
                 className="h-4 w-4 rounded border-border text-primary focus:ring-blue-500"
               />
-              Track Expiry
+              {t('products.trackExpiry')}
             </label>
 
             <label className="flex items-center gap-2 text-sm text-foreground/80">
@@ -20838,22 +20832,22 @@ setCustomerOrganizationName("");
                 onChange={(e) => setProductIsActive(e.target.checked)}
                 className="h-4 w-4 rounded border-border text-primary focus:ring-blue-500"
               />
-              Active
+              {t('products.active')}
             </label>
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground/80">
-              Overselling Policy
+              {t('products.oversellingPolicy')}
             </label>
             <select
               value={productOversellingPolicy}
               onChange={(e) => setProductOversellingPolicy(e.target.value)}
               className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             >
-              <option value="inherit">Inherit (category / organization default)</option>
-              <option value="allow">Allow overselling</option>
-              <option value="block">Block overselling</option>
+              <option value="inherit">{t('products.oversellingInherit')}</option>
+              <option value="allow">{t('products.oversellingAllow')}</option>
+              <option value="block">{t('products.oversellingBlock')}</option>
             </select>
           </div>
 
@@ -20862,108 +20856,110 @@ setCustomerOrganizationName("");
             disabled={loading}
             className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
           >
-            {loading ? "Saving..." : editingProductId ? "Update Product" : "Save Product"}
+            {loading ? t('products.saving') : editingProductId ? t('products.updateProduct') : t('products.saveProduct')}
           </button>
         </form>
 
         {productToView && (
           <section className="mt-8 rounded border border-border bg-muted/30 p-5">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-medium text-foreground">Product Details</h2>
+              <h2 className="text-xl font-medium text-foreground">{t('products.detailsTitle')}</h2>
               <button
                 type="button"
                 onClick={() => setProductToView(null)}
                 className="rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted"
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div>
-                <div className="text-xs text-muted-foreground/80">Name</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.detailsName')}</div>
                 <div className="text-sm font-medium text-foreground">{productToView.name}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Status</div>
-                <div className="text-sm font-medium text-foreground">{productToView.is_active === false ? "Inactive" : "Active"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('sell.statusLabel')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.is_active === false ? t('products.inactive') : t('products.active')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Brand</div>
-                <div className="text-sm font-medium text-foreground">{brands.find((b) => b.id === productToView.brand_id)?.name ?? "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.brand')}</div>
+                <div className="text-sm font-medium text-foreground">{brands.find((b) => b.id === productToView.brand_id)?.name ?? t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Category</div>
-                <div className="text-sm font-medium text-foreground">{categories.find((c) => c.id === productToView.category_id)?.name ?? "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('stock.category')}</div>
+                <div className="text-sm font-medium text-foreground">{categories.find((c) => c.id === productToView.category_id)?.name ?? t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Unit Type</div>
-                <div className="text-sm font-medium text-foreground">{productToView.unit_type ?? "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.unitType')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.unit_type ?? t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Subunit Type</div>
-                <div className="text-sm font-medium text-foreground">{productToView.subunit_type ?? "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.subunitType')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.subunit_type ?? t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Units Per Pack</div>
-                <div className="text-sm font-medium text-foreground">{productToView.units_per_pack ?? "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.unitsPerPack')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.units_per_pack ?? t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">SKU</div>
-                <div className="text-sm font-medium text-foreground">{productToView.sku ?? "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.sku')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.sku ?? t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Barcode</div>
-                <div className="text-sm font-medium text-foreground">{productToView.barcode ?? "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('stock.barcode')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.barcode ?? t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Purchase Price</div>
-                <div className="text-sm font-medium text-foreground">{productToView.last_purchase_price != null ? formatPKR(Number(productToView.last_purchase_price)) : "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.purchasePrice')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.last_purchase_price != null ? formatPKR(Number(productToView.last_purchase_price)) : t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Default Purchase Price</div>
-                <div className="text-sm font-medium text-foreground">{productToView.default_purchase_price != null ? formatPKR(Number(productToView.default_purchase_price)) : "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.defaultPurchasePrice')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.default_purchase_price != null ? formatPKR(Number(productToView.default_purchase_price)) : t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Selling Price</div>
-                <div className="text-sm font-medium text-foreground">{productToView.default_selling_price != null ? formatPKR(Number(productToView.default_selling_price)) : "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.sellingPrice')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.default_selling_price != null ? formatPKR(Number(productToView.default_selling_price)) : t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Available Stock</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.availableStock')}</div>
                 <div className="text-sm font-medium tabular-nums text-foreground">{formatAvailableStock(getAvailableStockForProduct(productToView.id))}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Minimum Stock Level</div>
-                <div className="text-sm font-medium text-foreground">{productToView.minimum_stock_level ?? "None"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.minimumStockLevel')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.minimum_stock_level ?? t('common.none')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Reorder Level</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.reorderLevel')}</div>
                 <div className="text-sm font-medium text-foreground">{productToView.reorder_level ?? 0}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Track Batch</div>
-                <div className="text-sm font-medium text-foreground">{productToView.track_batch ? "Yes" : "No"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.trackBatch')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.track_batch ? t('common.yes') : t('common.no')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Track Expiry</div>
-                <div className="text-sm font-medium text-foreground">{productToView.track_expiry ? "Yes" : "No"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.trackExpiry')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.track_expiry ? t('common.yes') : t('common.no')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Overselling Policy</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.oversellingPolicy')}</div>
                 <div className="text-sm font-medium text-foreground">
                   {productToView.overselling_policy === "block"
-                    ? "Blocked"
+                    ? t('products.oversellingBlocked')
                     : productToView.overselling_policy === "allow"
-                      ? "Allowed"
-                      : `Inherit (${getEffectiveOversellingPolicy(productToView) === "block" ? "blocked" : "allowed"} effective)`}
+                      ? t('products.oversellingAllowed')
+                      : getEffectiveOversellingPolicy(productToView) === "block"
+                        ? t('products.oversellingInheritEffectiveBlocked')
+                        : t('products.oversellingInheritEffectiveAllowed')}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Creation Date</div>
-                <div className="text-sm font-medium text-foreground">{productToView.created_at ? formatDateTime(productToView.created_at) : "Unknown"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.creationDate')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.created_at ? formatDateTime(productToView.created_at) : t('products.unknown')}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground/80">Last Update</div>
-                <div className="text-sm font-medium text-foreground">{productToView.updated_at ? formatDateTime(productToView.updated_at) : "Unknown"}</div>
+                <div className="text-xs text-muted-foreground/80">{t('products.lastUpdate')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.updated_at ? formatDateTime(productToView.updated_at) : t('products.unknown')}</div>
               </div>
               {(() => {
                 const latestPurchaseItem = [...purchaseItems]
@@ -20972,12 +20968,12 @@ setCustomerOrganizationName("");
                 return (
                   <>
                     <div>
-                      <div className="text-xs text-muted-foreground/80">Latest Batch Number</div>
-                      <div className="text-sm font-medium text-foreground">{latestPurchaseItem?.batch_number ?? "None"}</div>
+                      <div className="text-xs text-muted-foreground/80">{t('products.latestBatchNumber')}</div>
+                      <div className="text-sm font-medium text-foreground">{latestPurchaseItem?.batch_number ?? t('common.none')}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground/80">Latest Expiry Date</div>
-                      <div className="text-sm font-medium text-foreground">{latestPurchaseItem?.expiry_date ? formatDate(String(latestPurchaseItem.expiry_date)) : "None"}</div>
+                      <div className="text-xs text-muted-foreground/80">{t('products.latestExpiryDate')}</div>
+                      <div className="text-sm font-medium text-foreground">{latestPurchaseItem?.expiry_date ? formatDate(String(latestPurchaseItem.expiry_date)) : t('common.none')}</div>
                     </div>
                   </>
                 );
@@ -21050,33 +21046,33 @@ setCustomerOrganizationName("");
             return (
               <>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-xl font-medium text-foreground">Product Insights</h2>
+                  <h2 className="text-xl font-medium text-foreground">{t('products.insightsTitle')}</h2>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      Out of stock: <b className={outOfStockCount > 0 ? "text-destructive" : ""}>{outOfStockCount}</b>
+                      {t('products.chipOutOfStock')}: <b className={outOfStockCount > 0 ? "text-destructive" : ""}>{outOfStockCount}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      Reorder needed: <b className={reorderNeededCount > 0 ? "text-warning" : ""}>{reorderNeededCount}</b>
+                      {t('products.chipReorderNeeded')}: <b className={reorderNeededCount > 0 ? "text-warning" : ""}>{reorderNeededCount}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      Low (≈7 days left): <b className={lowCount > 0 ? "text-warning" : ""}>{lowCount}</b>
+                      {t('products.chipLow')}: <b className={lowCount > 0 ? "text-warning" : ""}>{lowCount}</b>
                     </span>
-                    <span className="rounded bg-card px-2 py-1 text-foreground/80">Healthy: {rows.filter((r) => r.status === "Healthy").length}</span>
+                    <span className="rounded bg-card px-2 py-1 text-foreground/80">{t('stock.healthy')}: {rows.filter((r) => r.status === "Healthy").length}</span>
                   </div>
                 </div>
 
                 {topAlerts.length > 0 && (
                   <div className="mb-5">
-                    <h3 className="mb-2 text-sm font-medium text-foreground/80">Reorder Alerts</h3>
+                    <h3 className="mb-2 text-sm font-medium text-foreground/80">{t('products.reorderAlerts')}</h3>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground/80">
-                            <th className="py-2 pr-3 font-medium">Product</th>
-                            <th className="py-2 pr-3 font-medium">Status</th>
-                            <th className="py-2 pr-3 font-medium">Stock</th>
-                            <th className="py-2 pr-3 font-medium">Sold (30d)</th>
-                            <th className="py-2 font-medium">Days Left</th>
+                            <th className="py-2 pr-3 font-medium">{t('sell.product')}</th>
+                            <th className="py-2 pr-3 font-medium">{t('sell.statusLabel')}</th>
+                            <th className="py-2 pr-3 font-medium">{t('products.stock')}</th>
+                            <th className="py-2 pr-3 font-medium">{t('products.sold30d')}</th>
+                            <th className="py-2 font-medium">{t('products.daysLeft')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -21091,7 +21087,7 @@ setCustomerOrganizationName("");
                                       : "text-warning"
                                   }
                                 >
-                                  {r.status}
+                                  {r.status === "Out of Stock" ? t('stock.outOfStock') : r.status === "Reorder Needed" ? t('products.statusReorderNeeded') : r.status === "Low (≈7 days left)" ? t('products.chipLow') : t('stock.healthy')}
                                 </span>
                               </td>
                               <td className="py-2 pr-3 text-foreground/80">{r.stock}</td>
@@ -21109,15 +21105,15 @@ setCustomerOrganizationName("");
 
                 {highMargin.length > 0 && (
                   <div>
-                    <h3 className="mb-2 text-sm font-medium text-foreground/80">Highest Margin Products</h3>
+                    <h3 className="mb-2 text-sm font-medium text-foreground/80">{t('products.highestMargin')}</h3>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground/80">
-                            <th className="py-2 pr-3 font-medium">Product</th>
-                            <th className="py-2 pr-3 font-medium">Selling Price</th>
-                            <th className="py-2 pr-3 font-medium">Unit Margin</th>
-                            <th className="py-2 font-medium">Margin %</th>
+                            <th className="py-2 pr-3 font-medium">{t('sell.product')}</th>
+                            <th className="py-2 pr-3 font-medium">{t('products.sellingPrice')}</th>
+                            <th className="py-2 pr-3 font-medium">{t('products.unitMargin')}</th>
+                            <th className="py-2 font-medium">{t('products.marginPct')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -21141,12 +21137,12 @@ setCustomerOrganizationName("");
 
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 ref={productsListHeadingRef} tabIndex={-1} className="text-xl font-medium text-foreground">Existing Products</h2>
+            <h2 ref={productsListHeadingRef} tabIndex={-1} className="text-xl font-medium text-foreground">{t('products.existingTitle')}</h2>
             <div className="flex items-center gap-2">
               <SearchSuggestField
                 key={searchScopeKey}
-                label="Search products"
-                placeholder="Search by name, SKU, barcode, brand, category..."
+                label={t('products.searchLabel')}
+                placeholder={t('products.searchPlaceholder')}
                 value={productSearch}
                 onChange={setProductSearch}
                 items={productSuggestionData.items}
@@ -21170,7 +21166,7 @@ setCustomerOrganizationName("");
                   onClick={() => { setProductSearch(""); setSelectedProductId(null); }}
                   className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-muted"
                 >
-                  Clear
+                  {t('common.clear')}
                 </button>
               )}
             </div>
@@ -21203,18 +21199,18 @@ setCustomerOrganizationName("");
                           ),
                         )}
                         {product.is_active === false && (
-                          <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Inactive</span>
+                          <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{t('products.inactive')}</span>
                         )}
                       </div>
-                      <div className="text-xs text-muted-foreground/80">Brand: {brand?.name ?? "None"}</div>
-                      <div className="text-xs text-muted-foreground/80">Category: {category?.name ?? "None"}</div>
-                      <div className="text-xs text-muted-foreground/80">Unit Type: {product.unit_type ?? "None"}</div>
-                      {product.sku && <div className="text-xs text-muted-foreground/80">SKU: {product.sku}</div>}
-                      {product.barcode && <div className="text-xs text-muted-foreground/80">Barcode: {product.barcode}</div>}
-                      <div className="text-xs text-muted-foreground/80">Stock: {getAvailableStockForProduct(product.id)}</div>
-                      <div className="text-xs text-muted-foreground/80">Track Batch: {product.track_batch ? "Yes" : "No"}</div>
-                      <div className="text-xs text-muted-foreground/80">Track Expiry: {product.track_expiry ? "Yes" : "No"}</div>
-                      <div className="text-xs text-muted-foreground/80">Reorder Level: {product.reorder_level ?? 0}</div>
+                      <div className="text-xs text-muted-foreground/80">{t('products.brand')}: {brand?.name ?? t('common.none')}</div>
+                      <div className="text-xs text-muted-foreground/80">{t('stock.category')}: {category?.name ?? t('common.none')}</div>
+                      <div className="text-xs text-muted-foreground/80">{t('products.unitType')}: {product.unit_type ?? t('common.none')}</div>
+                      {product.sku && <div className="text-xs text-muted-foreground/80">{t('products.sku')}: {product.sku}</div>}
+                      {product.barcode && <div className="text-xs text-muted-foreground/80">{t('stock.barcode')}: {product.barcode}</div>}
+                      <div className="text-xs text-muted-foreground/80">{t('products.stock')}: {getAvailableStockForProduct(product.id)}</div>
+                      <div className="text-xs text-muted-foreground/80">{t('products.trackBatch')}: {product.track_batch ? t('common.yes') : t('common.no')}</div>
+                      <div className="text-xs text-muted-foreground/80">{t('products.trackExpiry')}: {product.track_expiry ? t('common.yes') : t('common.no')}</div>
+                      <div className="text-xs text-muted-foreground/80">{t('products.reorderLevel')}: {product.reorder_level ?? 0}</div>
                     </div>
                     <div className="flex shrink-0 gap-2">
                       <button
@@ -21222,14 +21218,14 @@ setCustomerOrganizationName("");
                         onClick={() => setProductToView(product)}
                         className="rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
                       >
-                        View
+                        {t('products.view')}
                       </button>
                       <button
                         type="button"
                         onClick={() => startEditProduct(product)}
                         className="rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
                       >
-                        Edit
+                        {t('common.edit')}
                       </button>
                       <button
                         type="button"
@@ -21237,7 +21233,7 @@ setCustomerOrganizationName("");
                         disabled={product.is_active === false || archivingProductId === product.id}
                         className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90 disabled:cursor-not-allowed disabled:bg-muted"
                       >
-                        {archivingProductId === product.id ? "Archiving..." : "Archive"}
+                        {archivingProductId === product.id ? t('products.archiving') : t('products.archive')}
                       </button>
                     </div>
                   </li>
