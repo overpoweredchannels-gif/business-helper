@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { ChevronRight, ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import { dashboardReadStatusLabel, type DashboardReadStatus } from "@/lib/dashboard/data-read-state";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface SmartModuleProps {
   title: string;
@@ -17,6 +18,7 @@ interface SmartModuleProps {
 }
 
 export function SmartModule({ title, summary, onOpen, children, badge, badgeColor = "default", readStatus = "successful-populated", lastSuccessfulAt }: SmartModuleProps) {
+  const { t } = useRegional();
   const [expanded, setExpanded] = useState(false);
   const readComplete = readStatus === "successful-empty" || readStatus === "successful-populated";
   const visibleChildren = readComplete ? children : undefined;
@@ -60,7 +62,7 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
               )}
             </div>
             <p className="text-xs text-light-text mt-0.5 truncate">{readLabel ?? summary}</p>
-            {readStatus === "failed" && lastSuccessfulAt && <p className="text-[11px] text-muted-foreground">Last successful update: {new Date(lastSuccessfulAt).toLocaleString()}</p>}
+            {readStatus === "failed" && lastSuccessfulAt && <p className="text-[11px] text-muted-foreground">{t('dashboard.lastSuccessfulUpdate')}: {new Date(lastSuccessfulAt).toLocaleString()}</p>}
           </div>
         </div>
         {onOpen && (
@@ -68,7 +70,7 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
             onClick={(e) => { e.stopPropagation(); onOpen(); }}
             className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary-hover transition-colors shrink-0 ml-3"
           >
-            Open
+            {t('common.open')}
             <ArrowUpRight className="size-3" />
           </button>
         )}
