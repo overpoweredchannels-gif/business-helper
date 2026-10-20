@@ -38,12 +38,21 @@ export function BarcodeInput({ value, onChange, onScan, disabled, autoFocus = fa
       }, 150);
     }
   };
-  const scan = () => { 
+  const scan = () => {
     if (inputTimer.current) clearTimeout(inputTimer.current);
-    if (!text.trim() || disabled) return; 
-    onScan(text.trim()); 
-    if (value === undefined) setLocalValue(""); 
-    input.current?.focus(); 
+    // Read the live input value rather than the render-captured state: the
+    // rapid-detect timer fires from an earlier render whose state lags one
+    // keystroke behind the DOM it validated against, which used to submit
+    // the scanned code with its last character missing.
+    const scanned = (input.current?.value ?? text).trim();
+    if (!scanned || disabled) return;
+    onScan(scanned);
+    input.current?.focus();
+    // Uncontrolled mode: keep the scanned code visible as cashier
+    // confirmation, selected so the next scan or keystroke replaces it
+    // instead of appending to it. Controlled parents own the value and
+    // keep their existing behavior untouched.
+    if (value === undefined) input.current?.select();
   };
   return <div className="space-y-2" data-help-topic="barcode">
     <label className="block text-sm font-medium">{displayLabel}<input ref={input} value={text} autoFocus={autoFocus} disabled={disabled} type="text" autoComplete="off" spellCheck={false} maxLength={200} placeholder={t('barcode.placeholder')} onChange={event => change(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); scan(); } }} className="mt-1 w-full rounded border border-input bg-background px-3 py-2 focus:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>

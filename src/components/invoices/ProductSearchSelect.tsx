@@ -6,12 +6,19 @@ import { activeSuggestionIndex } from "./search-selection";
 import { highlightSearchMatches, rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 
-export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankedFields, maxSuggestions = 12 }: {
+export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankedFields, maxSuggestions = 12, onBarcodeEnter }: {
   value: string;
   onChange: (value: string) => void;
   products: Array<{ id: string; label: string }>;
   label?: string;
   searchPlaceholder?: string;
+  /** Optional exact-barcode Enter hook (used by the Retail POS find-product
+   * box): on Enter, the caller is offered the current text first; when it
+   * returns true the text was an exact saved barcode and the caller has
+   * added the product through its scan path, so suggestion selection is
+   * skipped. Returning false (or omitting the prop) keeps the existing
+   * dropdown behavior completely unchanged. */
+  onBarcodeEnter?: (text: string) => boolean;
   /** Prebuilt id → structured rank fields, built by the caller in one pass and
    * memoized. When provided, suggestions are relevance-ranked with the shared
    * search contract (O(1) field lookup per candidate). Used for products and
@@ -91,10 +98,20 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
           const direction = event.key === "ArrowDown" ? 1 : -1;
           setActive(open ? activeSuggestionIndex(matches, value, activeIndex + direction) : null);
           setOpen(true);
-        } else if (event.key === "Enter" && !event.shiftKey && open) {
-          event.preventDefault(); event.stopPropagation();
-          if (!event.repeat && matches[activeIndex]) choose(matches[activeIndex].id);
-          else input.current?.reportValidity();
+        } else if (event.key === "Enter" && !event.shiftKey) {
+          if (!event.repeat && onBarcodeEnter) {
+            const text = (query ?? "").trim();
+            if (text && onBarcodeEnter(text)) {
+              event.preventDefault(); event.stopPropagation();
+              setQuery(null); setOpen(false); setActive(null);
+              return;
+            }
+          }
+          if (open) {
+            event.preventDefault(); event.stopPropagation();
+            if (!event.repeat && matches[activeIndex]) choose(matches[activeIndex].id);
+            else input.current?.reportValidity();
+          }
         } else if (event.key === "Escape") {
           event.preventDefault(); event.stopPropagation(); setOpen(false);
         }

@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { buildCustomerSuggestionData } from "@/components/search/suggestion-items";
-import type { BarcodeLine } from "@/lib/invoices/barcode";
+import { findBarcodeProduct, type BarcodeLine } from "@/lib/invoices/barcode";
 import type { Product, Customer } from "@/lib/tradeos/types";
 import type { SearchRankFields } from "@/lib/products/search-rank";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
+import { formatPKR } from "@/lib/tradeos/formatters";
 
 export type CounterSale = {
   lines: BarcodeLine[]; customerId: string | null; date: string;
@@ -15,12 +16,6 @@ export type CounterSale = {
 };
 type HeldSale = { id: string; savedAt: string; sale: CounterSale };
 type BasketTemplate = { id: string; name: string; sale: CounterSale; savedAt: string };
-const money = (value: number) => new Intl.NumberFormat("en-PK", {
-  style: "currency",
-  currency: "PKR",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-}).format(value);
 
 export function RetailPOS({ scope, sale, products, customers, busy, owner, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; busy: boolean; owner: boolean;
@@ -118,6 +113,75 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [sale.lines.length]);
+  // One scan path for every way a barcode can arrive (barcode box, global
+  // scanner capture, find-product Enter): the parent adds the line, then
+  // focus moves to that line's quantity field.
+  const handleScannedCode = (code: string): boolean => {
+    const productId = onScan(code);
+    if (!productId) return false;
+    const lineIndex = sale.lines.findIndex(line => String(line.product_id) === productId && (line.unit_mode ?? "main") === scanUnit);
+    setFocusQuantityFor(lineIndex >= 0 ? lineIndex : sale.lines.length);
+    return true;
+  };
+  // Scanner-wedge capture. A wedge scanner "types" the code with inhumanly
+  // even, tiny gaps and finishes with Enter. When focus sits somewhere that
+  // does not consume characters as free text (bare page, a button, a
+  // checkbox, or a quantity field), a rapid burst ending in Enter is a
+  // scan: route it through the scan handler instead of letting the digits
+  // land in the focused field or the Enter activate the focused button.
+  // The listener runs in the capture phase so a detected scan Enter is
+  // consumed before the section's entry-navigation handler can treat it as
+  // "advance / run the primary action". Human-speed typing never builds a
+  // burst (any gap >= 50ms resets it) and is left completely untouched, as
+  // are text inputs, textareas and selects other than the quantity fields.
+  const scanBurst = useRef("");
+  const scanLastKeyAt = useRef(0);
+  const scanQuantitySnapshot = useRef<{ index: number; value: string } | null>(null);
+  const scanLatest = useRef({ busy, onLine, handleScannedCode });
+  useEffect(() => { scanLatest.current = { busy, onLine, handleScannedCode }; });
+  useEffect(() => {
+    const GAP_MS = 50;
+    const resetBurst = () => { scanBurst.current = ""; scanQuantitySnapshot.current = null; };
+    const onKeyDown = (event: KeyboardEvent) => {
+      const latest = scanLatest.current;
+      const dialogOpen = Array.from(document.querySelectorAll('[role="dialog"]')).some(el => el.getClientRects().length > 0);
+      if (latest.busy || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || dialogOpen) { resetBurst(); return; }
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const quantityIndex = target instanceof HTMLInputElement ? target.dataset.posQuantity : undefined;
+      const capturable = target !== null && (
+        target === document.body ||
+        target instanceof HTMLButtonElement ||
+        (target instanceof HTMLInputElement && (target.type === "checkbox" || quantityIndex !== undefined))
+      );
+      if (!capturable) { resetBurst(); return; }
+      const now = Date.now();
+      if (event.key === "Enter") {
+        const code = scanBurst.current;
+        const rapid = code.length > 0 && now - scanLastKeyAt.current < GAP_MS;
+        const snapshot = scanQuantitySnapshot.current;
+        resetBurst();
+        if (code.length >= 4 && rapid) {
+          event.preventDefault();
+          event.stopPropagation();
+          // Restore the quantity value the burst typed over, then add the
+          // scanned line through the normal scan path.
+          if (snapshot) latest.onLine(snapshot.index, "quantity", snapshot.value);
+          latest.handleScannedCode(code);
+        }
+        return;
+      }
+      if (event.key === "Shift") return;
+      if (event.key.length !== 1) { resetBurst(); return; }
+      if (scanBurst.current && now - scanLastKeyAt.current >= GAP_MS) resetBurst();
+      if (!scanBurst.current && quantityIndex !== undefined && target instanceof HTMLInputElement) {
+        scanQuantitySnapshot.current = { index: Number(quantityIndex), value: target.value };
+      }
+      scanBurst.current += event.key;
+      scanLastKeyAt.current = now;
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
   const persist = (rows: HeldSale[]) => {
     try { localStorage.setItem(storageKey, JSON.stringify(rows)); setHeld(rows); return true; }
     catch { setNotice("Browser storage is full or unavailable. Your current sale has been kept open."); return false; }
@@ -201,8 +265,15 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
       <button type="button" disabled={busy} onClick={onAdvanced} className="min-h-11 rounded-lg border px-4 text-sm font-medium">Full invoice / Advanced options</button>
     </div>
     <fieldset disabled={busy} className="grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
-      <div><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={code => { const productId = onScan(code); if (!productId) return; const lineIndex = sale.lines.findIndex(line => String(line.product_id) === productId && (line.unit_mode ?? "main") === scanUnit); setFocusQuantityFor(lineIndex >= 0 ? lineIndex : sale.lines.length); }} /></div>
-      <div className="space-y-3"><label className="block text-sm font-medium">Find product</label><ProductSearchSelect key={searchKey} value="" products={productOptions} rankedFields={productRankFields} onChange={id => { if (id) { setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} />
+      <div><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={handleScannedCode} /></div>
+      <div className="space-y-3"><label className="block text-sm font-medium">Find product</label><ProductSearchSelect key={searchKey} value="" products={productOptions} rankedFields={productRankFields} onBarcodeEnter={text => {
+        // An exact saved barcode typed here adds through the scan path
+        // instead of needing a dropdown pick. Anything else returns false
+        // and keeps the normal suggestion behavior — no error is raised
+        // for plain search text.
+        try { findBarcodeProduct(products, text); } catch { return false; }
+        return handleScannedCode(text);
+      }} onChange={id => { if (id) { setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} />
         <label className="flex items-center gap-3 text-sm">Add one<select value={scanUnit} onChange={event => onUnit(event.target.value as "main" | "subunit")} className="min-h-11 rounded border border-input bg-background px-3"><option value="subunit">Piece / sub-unit</option><option value="main">Box / main unit</option></select></label>
         <label className="block text-sm font-medium">Customer</label><ProductSearchSelect label="Customer" value={sale.customerId ?? ""} rankedFields={customerRankFields} products={customerOptions} onChange={onCustomer} />
       </div>
@@ -212,12 +283,12 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
         <td className="p-3 font-medium">{productName}{Number(line.bonus) > 0 && <small className="block">+ {line.bonus} free</small>}{bonusIssue(index) && <small className="block text-destructive" role="alert">{bonusIssue(index)}</small>}</td>
         <td className="p-2"><select aria-label={`Unit for ${productName}`} value={line.unit_mode ?? "main"} disabled={busy} onChange={event => onLine(index, "unit_mode", event.target.value)} className="min-h-11 rounded border border-input bg-background px-2"><option value="main">{product?.unit_type || "Main"}</option>{Number(product?.units_per_pack) > 0 && <option value="subunit">{product?.subunit_type || "Piece"}</option>}</select></td>
         {(["quantity", "selling_price", "discount"] as const).map(field => <td key={field} className="p-2"><input data-pos-quantity={field === "quantity" ? index : undefined} aria-label={`${field === "selling_price" ? "Price" : field} for ${productName}`} type="text" inputMode="decimal" value={line[field]} disabled={busy} onChange={event => onLine(index, field, event.target.value)} className="min-h-11 w-24 rounded border border-input bg-background px-2 tabular-nums" />{fieldIssue(field, index) && <span className="block max-w-32 text-xs text-destructive" role="alert">{fieldIssue(field, index)}</span>}</td>)}
-        <td className="p-3 font-medium tabular-nums">{lineTotal === null ? <span className="text-muted-foreground">Unavailable</span> : money(lineTotal)}</td>
+        <td className="p-3 font-medium tabular-nums">{lineTotal === null ? <span className="text-muted-foreground">Unavailable</span> : formatPKR(lineTotal)}</td>
         <td className="p-2"><button type="button" disabled={busy} aria-label={`Remove ${productName}`} onClick={() => onRemove(index)} className="min-h-11 rounded border border-destructive/40 px-3 text-destructive">Remove</button></td>
       </tr>)}{!sale.lines.length && <tr><td colSpan={7} className="p-10 text-center text-muted-foreground">Ready for the next customer. Scan a product to begin.</td></tr>}</tbody></table></div>
     <div data-pos-mobile-basket className="space-y-3 sm:hidden" aria-label="Basket">
       {saleRows.map(({ line, index, product, lineTotal, productName }) => <article data-pos-mobile-row key={index} className="rounded-xl border border-border bg-card p-3">
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium [overflow-wrap:anywhere]">{productName}</p>{Number(line.bonus) > 0 && <small className="block">+ {line.bonus} free</small>}{bonusIssue(index) && <small className="block text-destructive" role="alert">{bonusIssue(index)}</small>}</div><p className="shrink-0 font-semibold tabular-nums">{lineTotal === null ? <span className="text-muted-foreground">Unavailable</span> : money(lineTotal)}</p></div>
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium [overflow-wrap:anywhere]">{productName}</p>{Number(line.bonus) > 0 && <small className="block">+ {line.bonus} free</small>}{bonusIssue(index) && <small className="block text-destructive" role="alert">{bonusIssue(index)}</small>}</div><p className="shrink-0 font-semibold tabular-nums">{lineTotal === null ? <span className="text-muted-foreground">Unavailable</span> : formatPKR(lineTotal)}</p></div>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <label className="min-w-0 text-xs font-medium">Quantity<input data-pos-quantity={index} aria-label={`Quantity for ${productName}`} type="text" inputMode="decimal" value={line.quantity} disabled={busy} onChange={event => onLine(index, "quantity", event.target.value)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" />{fieldIssue("quantity", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("quantity", index)}</span>}</label>
           <label className="min-w-0 text-xs font-medium">Unit<select aria-label={`Unit for ${productName}`} value={line.unit_mode ?? "main"} disabled={busy} onChange={event => onLine(index, "unit_mode", event.target.value)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-2 text-sm"><option value="main">{product?.unit_type || "Main"}</option>{Number(product?.units_per_pack) > 0 && <option value="subunit">{product?.subunit_type || "Piece"}</option>}</select></label>
@@ -241,12 +312,12 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
         </select>
         <input id="pos-invoice-discount" aria-label={sale.discountType === "percent" ? "Sale discount percentage" : "Sale discount amount"} type="text" inputMode="decimal" value={sale.discount} disabled={busy} onChange={event => onDiscount(event.target.value)} placeholder={sale.discountType === "percent" ? "0–100" : "0.00"} className="min-h-11 w-32 rounded border border-input bg-background px-3 text-base tabular-nums" />
       </div>
-      {draftResult.amounts && Number(sale.discount) > 0 && <p className="mt-2 text-sm tabular-nums">Discount before tax: {money(draftResult.amounts.invoiceDiscount)}</p>}
+      {draftResult.amounts && Number(sale.discount) > 0 && <p className="mt-2 text-sm tabular-nums">Discount before tax: {formatPKR(draftResult.amounts.invoiceDiscount)}</p>}
     </div>}
     {draftResult.issues.filter(issue => issue.field === "invoice_discount").map(issue => <p key={issue.message} className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{issue.message}</p>)}
     <div data-pos-payment-bar className="flex flex-col gap-4 rounded-xl border border-primary/30 bg-card p-4 shadow-lg sm:flex-row sm:items-end sm:justify-between">
-      <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">Unavailable</span> : money(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">Complete or correct the highlighted sale fields to calculate the total.</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>Includes tax from advanced options.</small>}</div>
-      {owner && sale.paymentType === "cash" && <div className="sm:min-w-52"><label className="block text-sm">Cash received<input aria-label="Cash received" type="text" inputMode="decimal" value={cashReceived} placeholder={total === null ? "Sale total unavailable" : String(total)} onChange={event => onCashReceived(event.target.value)} disabled={busy} className="mt-1 block min-h-11 w-full rounded border border-input bg-background px-3 tabular-nums sm:w-40" /></label><div className="mt-2 flex flex-wrap gap-2">{quickCashPresets.map(preset => <button key={preset.label} type="button" disabled={busy} className="min-h-11 rounded border px-2 text-xs disabled:opacity-40" onClick={() => onCashReceived(String(preset.value))}>{preset.label}</button>)}</div>{draftResult.issues.filter(issue => issue.field === "cash_received").map(issue => <p key={issue.message} className="mt-2 text-sm text-destructive" role="alert">{draftResult.cashSummary?.status === "cash-short" ? <>Cash short by <span className="tabular-nums">{money(draftResult.cashSummary.shortfall)}</span>.</> : issue.message}</p>)}{!draftResult.issues.some(issue => issue.field === "cash_received") && (cashReceived.trim() === "" ? <p className="mt-2 text-sm text-muted-foreground">Leave blank to use the exact sale total.</p> : draftResult.cashSummary ? <p className="mt-2 text-sm">Change due: <span className="tabular-nums">{money(draftResult.cashSummary.change)}</span></p> : <p className="mt-2 text-sm text-muted-foreground">Cash summary unavailable until the sale total is valid.</p>)}</div>}
+      <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">Unavailable</span> : formatPKR(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">Complete or correct the highlighted sale fields to calculate the total.</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>Includes tax from advanced options.</small>}</div>
+      {owner && sale.paymentType === "cash" && <div className="sm:min-w-52"><label className="block text-sm">Cash received<input aria-label="Cash received" type="text" inputMode="decimal" value={cashReceived} placeholder={total === null ? "Sale total unavailable" : String(total)} onChange={event => onCashReceived(event.target.value)} disabled={busy} className="mt-1 block min-h-11 w-full rounded border border-input bg-background px-3 tabular-nums sm:w-40" /></label><div className="mt-2 flex flex-wrap gap-2">{quickCashPresets.map(preset => <button key={preset.label} type="button" disabled={busy} className="min-h-11 rounded border px-2 text-xs disabled:opacity-40" onClick={() => onCashReceived(String(preset.value))}>{preset.label}</button>)}</div>{draftResult.issues.filter(issue => issue.field === "cash_received").map(issue => <p key={issue.message} className="mt-2 text-sm text-destructive" role="alert">{draftResult.cashSummary?.status === "cash-short" ? <>Cash short by <span className="tabular-nums">{formatPKR(draftResult.cashSummary.shortfall)}</span>.</> : issue.message}</p>)}{!draftResult.issues.some(issue => issue.field === "cash_received") && (cashReceived.trim() === "" ? <p className="mt-2 text-sm text-muted-foreground">Leave blank to use the exact sale total.</p> : draftResult.cashSummary ? <p className="mt-2 text-sm">Change due: <span className="tabular-nums">{formatPKR(draftResult.cashSummary.change)}</span></p> : <p className="mt-2 text-sm text-muted-foreground">Cash summary unavailable until the sale total is valid.</p>)}</div>}
       <div className="flex flex-col gap-2 sm:flex-row"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">Hold sale</button><button data-entry-add type="button" disabled={busy || !sale.lines.length || !sale.customerId || !draftResult.valid} onClick={onSave} className="min-h-12 w-full rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40 sm:w-auto">{busy ? "Saving…" : owner ? sale.paymentType === "credit" ? "Save credit sale" : "Pay & Save" : "Send for approval"}</button></div>
     </div>
     {notice && <p role="status" className="rounded-lg border p-3 text-sm">{notice}</p>}
@@ -261,7 +332,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
     </details>
     <details className="rounded-xl border bg-card p-4"><summary className="cursor-pointer font-semibold">Held sales ({held.length})</summary><p className="my-3 text-sm text-muted-foreground">Saved only on this browser for your account and business. Hold or finish the current sale before resuming another. Stock is checked again when saving.</p>
       <label className="mb-3 block text-sm">Search held sales<input type="search" value={storedSearch} onChange={event => setStoredSearch(event.target.value)} placeholder="Customer, product, amount, date" className="mt-1 min-h-11 w-full rounded border border-input bg-background px-3" /></label>
-      {visibleHeld.length === 0 ? <p className="text-sm text-muted-foreground">No held sales match this filter.</p> : visibleHeld.map(row => { const heldTotal = getSaleTotal(row.sale); return <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 border-t py-3"><span>{customers.find(c => c.id === row.sale.customerId)?.customer_name ?? "Customer"} · {row.sale.lines.length} lines · {new Date(row.savedAt).toLocaleString()} · {heldTotal === null ? "Total unavailable" : money(heldTotal)}</span><button type="button" disabled={busy || sale.lines.length > 0} onClick={() => resume(row)} className="min-h-11 rounded border border-primary px-4 text-primary disabled:opacity-40">Resume</button></div>; })}
+      {visibleHeld.length === 0 ? <p className="text-sm text-muted-foreground">No held sales match this filter.</p> : visibleHeld.map(row => { const heldTotal = getSaleTotal(row.sale); return <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 border-t py-3"><span>{customers.find(c => c.id === row.sale.customerId)?.customer_name ?? "Customer"} · {row.sale.lines.length} lines · {new Date(row.savedAt).toLocaleString()} · {heldTotal === null ? "Total unavailable" : formatPKR(heldTotal)}</span><button type="button" disabled={busy || sale.lines.length > 0} onClick={() => resume(row)} className="min-h-11 rounded border border-primary px-4 text-primary disabled:opacity-40">Resume</button></div>; })}
     </details>
   </div>;
 }

@@ -1,5 +1,5 @@
 import { calculateSaleAmounts, calculateSaleLineTotal, roundMoney } from "@/lib/sales/sale-amounts";
-import { formatDate } from "@/lib/tradeos/formatters";
+import { formatDate, formatPKR } from "@/lib/tradeos/formatters";
 import type { PrintTemplate } from "./print-template-types";
 
 export type ReceiptLine = {
@@ -64,13 +64,6 @@ type AtomicSaleReceiptResult = {
   customer_name: string;
   items: Array<Record<string, unknown>>;
 };
-
-const money = (value: number) => new Intl.NumberFormat("en-PK", {
-  style: "currency",
-  currency: "PKR",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-}).format(Number.isFinite(value) ? value : 0);
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -160,10 +153,10 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
     const values: Record<string, string> = {
       product: line.name,
       quantity: `${line.quantity} ${line.unit}`,
-      price: money(Number(line.price)),
-      discount: money(Number(line.discount || 0)),
+      price: formatPKR(Number(line.price)),
+      discount: formatPKR(Number(line.discount || 0)),
       bonus: line.bonus ? `${line.bonus} ${line.unit}` : "",
-      total: money(line.amount),
+      total: formatPKR(line.amount),
     };
     return `<tr data-receipt-line="">${template.columns.labels.map(column =>
       `<td style="font-size:${template.columns.rowSizePx}px">${escapeHtml(values[column.key] ?? "")}</td>`,
@@ -175,7 +168,7 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
     template.header.showCustomer ? receipt.customer : "",
   ].filter(Boolean).map(escapeHtml).join(" · ");
   const summary = summaryRows.map(row =>
-    `<div class="summary-row${row.key === "total" ? " grand-total" : ""}"><span>${escapeHtml(row.label)}</span><strong>${money(roundMoney(row.amount))}</strong></div>`,
+    `<div class="summary-row${row.key === "total" ? " grand-total" : ""}"><span>${escapeHtml(row.label)}</span><strong>${formatPKR(roundMoney(row.amount))}</strong></div>`,
   ).join("");
   const orgName = template.header.showOrgName
     ? `<h1>${escapeHtml(receipt.business)}</h1>`

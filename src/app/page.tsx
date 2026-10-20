@@ -1996,6 +1996,10 @@ setCustomerOrganizationName("");
     newLines[index] = { ...newLines[index], [field]: value } as SalesLine;
     // if product selected, populate default selling price (per main unit)
     if (field === "product_id" && value) {
+      // A product chosen by search/pick resolves any earlier scan
+      // complaint; the barcode box only adds lines and must never leave a
+      // stale error sitting next to a valid basket.
+      setSalesError(null);
       const prod = products.find((p) => String(p.id) === value);
       if (prod) {
         const recent = selectedCustomerIdForSale
@@ -18013,7 +18017,7 @@ setCustomerOrganizationName("");
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
               products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
               onScan={code => { try { const product = findBarcodeProduct(products, code); clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); return String(product.id); } catch (error) { setSalesError(error instanceof Error ? error.message : t('sell.barcodeNotFound')); return null; } }}
-              onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSaleScanFocus(value => value + 1); } }}
+              onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
@@ -18354,7 +18358,7 @@ setCustomerOrganizationName("");
             </button>
 
             </div>
-            {quickSaleMode && lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} />}
+            {quickSaleMode && lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} autoPrint />}
             {salesMessage && <p className="mt-4 text-sm text-success">{salesMessage}</p>}
             {salesError && <p className="mt-4 text-sm text-destructive">{salesError}</p>}
             {!isOwnerOrAdmin() && <MyPendingSales key={salesMessage ?? "pending"} />}

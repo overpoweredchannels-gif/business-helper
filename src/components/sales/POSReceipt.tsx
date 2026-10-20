@@ -8,15 +8,15 @@ import type { PrintTemplate } from "@/lib/print/print-template-types";
 import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptSummaryRows, getReceiptWidthMm, type Receipt, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { formatPKR } from "@/lib/tradeos/formatters";
 
 export type { Receipt } from "@/lib/print/retail-receipt";
 
-const money = (value: number) => new Intl.NumberFormat("en-PK", {
-  style: "currency",
-  currency: "PKR",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-}).format(Number.isFinite(value) ? value : 0);
+/** Receipts (scope + number) that have already been auto-printed this
+ * session. Module-level on purpose: the sales section unmounts when the
+ * user switches tabs, so a component ref would forget and re-print the
+ * last receipt when they come back. */
+const autoPrintedReceiptKeys = new Set<string>();
 
 /** Receipt summary labels resolved in the active UI language. */
 function useReceiptSummaryLabels(): ReceiptSummaryLabels {
@@ -71,10 +71,10 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
         const values: Record<string, string> = {
           product: line.name,
           quantity: `${line.quantity} ${line.unit}`,
-          price: money(Number(line.price)),
-          discount: money(Number(line.discount || 0)),
+          price: formatPKR(Number(line.price)),
+          discount: formatPKR(Number(line.discount || 0)),
           bonus: line.bonus ? `${line.bonus} ${line.unit}` : "",
-          total: money(line.amount),
+          total: formatPKR(line.amount),
         };
         return <td key={column.key} className="border-b py-1 pr-1 align-top" style={{ borderColor: template.page.rule, fontSize: template.columns.rowSizePx, fontWeight: template.boldBody ? 700 : 400, overflowWrap: "anywhere" }}>{values[column.key] ?? ""}</td>;
       })}
@@ -82,7 +82,7 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
     <div className="mt-2 border-t pt-1" style={{ borderColor: template.page.rule, fontSize: template.footer.labelSizePx }}>
       {summaryRows.map(row => <div key={row.key} className={`flex justify-between gap-1 py-0.5 ${row.key === "total" ? "border-t pt-1 font-bold" : ""}`} style={row.key === "total" ? { borderColor: template.page.rule, fontSize: template.footer.valueSizePx } : undefined}>
         <span className="overflow-wrap-anywhere">{row.label}</span>
-        <strong className="text-right tabular-nums" style={{ overflowWrap: "anywhere" }}>{money(row.amount)}</strong>
+        <strong className="text-right tabular-nums" style={{ overflowWrap: "anywhere" }}>{formatPKR(row.amount)}</strong>
       </div>)}
     </div>
     {template.header.showOrgName && template.header.orgNamePosition === "bottom" && orgName}
@@ -90,7 +90,7 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
   </div>;
 }
 
-export function POSReceipt({ receipt }: { receipt: Receipt }) {
+export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; autoPrint?: boolean }) {
   const labels = useReceiptSummaryLabels();
   const [open, setOpen] = useState(false);
   const [customizing, setCustomizing] = useState(false);
@@ -104,6 +104,10 @@ export function POSReceipt({ receipt }: { receipt: Receipt }) {
   const printFrame = useRef<HTMLIFrameElement | null>(null);
   const printCleanup = useRef<(() => void) | null>(null);
   const printLock = useRef(false);
+  // Whether an auto-opened preview is still waiting for its template
+  // before printing. A ref (not state) so StrictMode's double effect
+  // invocation cannot print the same receipt twice.
+  const autoPrintPending = useRef(false);
 
   useEffect(() => {
     let live = true;
@@ -128,6 +132,8 @@ export function POSReceipt({ receipt }: { receipt: Receipt }) {
   }, [defaultTemplate, receipt.scope]);
 
   const dismissReceipt = useCallback(() => {
+    // A dismissed preview must not print later when its template arrives.
+    autoPrintPending.current = false;
     printCleanup.current?.();
     setOpen(false);
   }, []);
@@ -237,6 +243,26 @@ export function POSReceipt({ receipt }: { receipt: Receipt }) {
       setError("The receipt could not be prepared for printing. The preview is still available.");
     }
   }, [receipt, template, templateReady, labels]);
+
+  // Auto-print (POS quick sale): open the preview for each new receipt and
+  // print it as soon as its template is ready. The receipt key is recorded
+  // before opening so a re-render or StrictMode double-effect cannot queue
+  // the same receipt twice; the manual button and modal remain the fallback
+  // when printing is blocked, fails, or is dismissed.
+  useEffect(() => {
+    if (!autoPrint) return;
+    const key = `${receipt.scope}:${receipt.number}`;
+    if (autoPrintedReceiptKeys.has(key)) return;
+    autoPrintedReceiptKeys.add(key);
+    autoPrintPending.current = true;
+    setOpen(true);
+  }, [autoPrint, receipt.scope, receipt.number]);
+
+  useEffect(() => {
+    if (!open || !templateReady || !autoPrintPending.current) return;
+    autoPrintPending.current = false;
+    void print();
+  }, [open, templateReady, print]);
 
   const preview = useMemo(() => <POSReceiptPreview receipt={receipt} template={activeTemplate} />, [receipt, activeTemplate]);
   return <>
