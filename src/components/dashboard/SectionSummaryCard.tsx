@@ -3,6 +3,7 @@
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dashboardReadStatusLabel, type DashboardReadStatus } from "@/lib/dashboard/data-read-state";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 export interface SectionSummaryMetric {
   label: string;
@@ -41,6 +42,7 @@ const toneClass: Record<NonNullable<SectionSummaryMetric["tone"]>, string> = {
  * summarises the section - the full list stays one tap away in the sidebar.
  */
 export function SectionSummaryCard({ summary }: { summary: SectionSummary }) {
+  const { t } = useRegional();
   return (
     <section className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-3">
@@ -53,7 +55,7 @@ export function SectionSummaryCard({ summary }: { summary: SectionSummary }) {
           onClick={summary.onOpen}
           className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          Open
+          {t('common.open')}
           <ArrowRight className="size-3" />
         </button>
       </div>

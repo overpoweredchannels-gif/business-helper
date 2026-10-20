@@ -87,7 +87,7 @@ export const formatDate = (value: unknown) => {
   if (typeof value !== "string" || !value.trim()) return "-";
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "-";
-  return date.toLocaleDateString("en-PK", {
+  return date.toLocaleDateString(activeNumberLocale, {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -98,7 +98,7 @@ export const formatDateTime = (value: unknown) => {
   if (typeof value !== "string" || !value.trim()) return "-";
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "-";
-  return date.toLocaleString("en-PK", {
+  return date.toLocaleString(activeNumberLocale, {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -108,7 +108,7 @@ export const formatDateTime = (value: unknown) => {
 };
 
 export const formatNumber = (value: unknown) =>
-  new Intl.NumberFormat("en-PK", {
+  new Intl.NumberFormat(activeNumberLocale, {
     maximumFractionDigits: 2,
   }).format(safeNumber(value));
 
