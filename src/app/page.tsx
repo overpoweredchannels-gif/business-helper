@@ -21282,12 +21282,12 @@ setCustomerOrganizationName("");
           {currentProfile?.role === "owner" && <SetupReview entity="customers" onSaved={() => { void fetchCustomers(); }} />}
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">
-              {customerEditingId ? "Edit Customer" : "Customer Management"}
+              {customerEditingId ? t('customers.editCustomer') : t('customers.management')}
             </h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="customers"
-                entityLabel="Customers"
+                entityLabel={t('customers.title')}
                 supabase={supabase}
                 organizationId={currentOrganizationId}
                 actorProfileId={currentProfile?.id ?? null}
@@ -21298,20 +21298,20 @@ setCustomerOrganizationName("");
           </div>
           <div className="mb-5 flex gap-2 border-b border-border pb-3">
             <button type="button" onClick={() => setCustomerWorkspaceTab("management")}
-              className={cn("rounded px-3 py-2 text-sm", customerWorkspaceTab === "management" ? "bg-primary text-white" : "border border-border bg-card text-foreground/80")}>Customer Management</button>
+              className={cn("rounded px-3 py-2 text-sm", customerWorkspaceTab === "management" ? "bg-primary text-white" : "border border-border bg-card text-foreground/80")}>{t('customers.management')}</button>
             <button type="button" onClick={() => setCustomerWorkspaceTab("history")}
-              className={cn("rounded px-3 py-2 text-sm", customerWorkspaceTab === "history" ? "bg-primary text-white" : "border border-border bg-card text-foreground/80")}>Customer History</button>
+              className={cn("rounded px-3 py-2 text-sm", customerWorkspaceTab === "history" ? "bg-primary text-white" : "border border-border bg-card text-foreground/80")}>{t('customers.tabHistory')}</button>
           </div>
           {customerWorkspaceTab === "management" ? (
           <>
           <div className="space-y-4">
             {customerEditingId && (
               <p className="rounded border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary/90">
-                Editing customer — changes are applied when you click Update Customer.
+                {t('customers.editingNotice')}
               </p>
             )}
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Customer Name</span>
+              <span>{t('customers.customerName')}</span>
               <input
                 type="text"
                 value={customerName}
@@ -21322,14 +21322,14 @@ setCustomerOrganizationName("");
             </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Shop Name</span><input type="text" value={shopName} onChange={(e) => setShopName(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Organization Name</span><input type="text" value={customerOrganizationName} onChange={(e) => setCustomerOrganizationName(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Contact Person</span><input type="text" value={customerContactPerson} onChange={(e) => setCustomerContactPerson(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Phone</span><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>WhatsApp</span><input type="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>City</span><input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.shopName')}</span><input type="text" value={shopName} onChange={(e) => setShopName(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.organizationName')}</span><input type="text" value={customerOrganizationName} onChange={(e) => setCustomerOrganizationName(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.contactPerson')}</span><input type="text" value={customerContactPerson} onChange={(e) => setCustomerContactPerson(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.phone')}</span><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.whatsapp')}</span><input type="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.city')}</span><input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Area</span>
+                <span>{t('customers.area')}</span>
                 <input
                   type="text"
                   value={area}
@@ -21339,7 +21339,7 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Customer Type (select or type your own)</span>
+                <span>{t('customers.customerType')}</span>
                 <input
                   type="text"
                   list="customer-type-options"
@@ -21351,22 +21351,22 @@ setCustomerOrganizationName("");
               </label>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Complete Address</span><textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>Shipping Address</span><textarea value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} rows={3} placeholder="Leave blank when same as complete address" className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.completeAddress')}</span><textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.shippingAddress')}</span><textarea value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} rows={3} placeholder={t('customers.shippingAddressPlaceholder')} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Credit Policy</span>
+                <span>{t('customers.creditPolicy')}</span>
                 <select
                   value={creditPolicy}
                   onChange={(e) => handleCreditPolicyChange(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
-                  <option value="cash_only">Cash Only / Credit Restricted</option>
-                  <option value="limit_only">Credit Limit Only</option>
-                  <option value="days_only">Credit Days Only</option>
-                  <option value="limit_and_days">Credit Limit and Days</option>
-                  <option value="unrestricted">Unrestricted Credit</option>
+                  <option value="cash_only">{t('customers.creditCashOnlyOption')}</option>
+                  <option value="limit_only">{t('customers.policyLimitOnly')}</option>
+                  <option value="days_only">{t('customers.policyDaysOnly')}</option>
+                  <option value="limit_and_days">{t('customers.policyLimitAndDays')}</option>
+                  <option value="unrestricted">{t('customers.policyUnrestricted')}</option>
                 </select>
               </label>
             </div>
@@ -21375,7 +21375,7 @@ setCustomerOrganizationName("");
               <div className="grid gap-4 sm:grid-cols-2">
                 {policyUsesCreditLimit(creditPolicy) && (
                   <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                    <span>Credit Limit</span>
+                    <span>{t('customers.creditLimit')}</span>
                     <input
                       type="number"
                       value={creditLimit}
@@ -21390,7 +21390,7 @@ setCustomerOrganizationName("");
 
                 {policyUsesCreditDays(creditPolicy) && (
                   <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                    <span>Credit Days</span>
+                    <span>{t('customers.creditDays')}</span>
                     <input
                       type="number"
                       value={creditDays}
@@ -21415,7 +21415,7 @@ setCustomerOrganizationName("");
                       onChange={(e) => setAllowOverLimit(e.target.checked)}
                       className="h-4 w-4 rounded border-border"
                     />
-                    <span>Allow Sale Above Credit Limit</span>
+                    <span>{t('customers.allowOverLimit')}</span>
                   </label>
                 )}
 
@@ -21427,14 +21427,14 @@ setCustomerOrganizationName("");
                       onChange={(e) => setAllowOverdueSales(e.target.checked)}
                       className="h-4 w-4 rounded border-border"
                     />
-                    <span>Allow Sale When Previous Credit Is Overdue</span>
+                    <span>{t('customers.allowOverdue')}</span>
                   </label>
                 )}
               </div>
             )}
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Notes (Optional)</span>
+              <span>{t('sell.notesOptional')}</span>
               <input
                 type="text"
                 value={customerNotes}
@@ -21449,7 +21449,7 @@ setCustomerOrganizationName("");
               disabled={customersLoading}
               className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
             >
-              {customersLoading ? "Saving..." : customerEditingId ? "Update Customer" : "Save Customer"}
+              {customersLoading ? t('sell.saving') : customerEditingId ? t('customers.updateCustomer') : t('customers.saveCustomer')}
             </button>
 
             {customerEditingId && (
@@ -21459,7 +21459,7 @@ setCustomerOrganizationName("");
                 disabled={customersLoading}
                 className="w-full rounded border border-border bg-card px-4 py-2 text-foreground/80 transition hover:bg-muted/30"
               >
-                Cancel Edit
+                {t('sell.cancelEdit')}
               </button>
             )}
           </div>
@@ -21469,11 +21469,11 @@ setCustomerOrganizationName("");
 
           <div className="mt-6 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-medium text-foreground/80">Search Customers</label>
+              <label className="mb-2 block text-sm font-medium text-foreground/80">{t('customers.searchLabel')}</label>
               <SearchSuggestField
                 key={searchScopeKey}
-                label="Search customers"
-                placeholder="Search by name, shop, or phone"
+                label={t('customers.searchFieldLabel')}
+                placeholder={t('customers.searchPlaceholder')}
                 value={customerSearch}
                 onChange={setCustomerSearch}
                 items={customerSuggestionData.items}
@@ -21486,7 +21486,7 @@ setCustomerOrganizationName("");
             </div>
 
             <div>
-              <h3 ref={customersListHeadingRef} tabIndex={-1} className="mb-3 text-lg font-medium text-foreground">Existing Customers</h3>
+              <h3 ref={customersListHeadingRef} tabIndex={-1} className="mb-3 text-lg font-medium text-foreground">{t('customers.existingCustomers')}</h3>
               {customersReadStatus === "failed" && (
                 <div className="mb-3">
                   <CustomerCatalogErrorBanner onRetry={retryCustomersLoad} hasStaleData={customers.length > 0} />
@@ -21496,16 +21496,16 @@ setCustomerOrganizationName("");
                 <ul className="space-y-2">
                   {filteredCustomers.map((customer) => {
                     const policy = customer.credit_policy ?? "cash_only";
-                    const policyLabel = creditPolicyLabels[policy] ?? creditPolicyLabels.cash_only;
+                    const policyLabel = ({ cash_only: t('customers.policyCashOnly'), limit_only: t('customers.policyLimitOnly'), days_only: t('customers.policyDaysOnly'), limit_and_days: t('customers.policyLimitAndDays'), unrestricted: t('customers.policyUnrestricted') } as Record<string, string>)[policy] ?? t('customers.policyCashOnly');
                     const creditLimitSummary = pkrFormatter.format(Number(customer.credit_limit || 0));
                     const creditDaysSummary = Number(customer.credit_days || 0);
                     const creditSummary =
                       policy === "limit_only"
-                        ? `Limit: ${creditLimitSummary}`
+                        ? t('customers.creditSummaryLimit').replace('{amount}', creditLimitSummary)
                         : policy === "days_only"
-                          ? `Terms: ${creditDaysSummary} days`
+                          ? t('customers.creditSummaryTerms').replace('{days}', String(creditDaysSummary))
                           : policy === "limit_and_days"
-                            ? `Limit + Terms: ${creditLimitSummary}, ${creditDaysSummary} days`
+                            ? t('customers.creditSummaryLimitTerms').replace('{amount}', creditLimitSummary).replace('{days}', String(creditDaysSummary))
                             : policyLabel;
 
                     return (
@@ -21518,15 +21518,15 @@ setCustomerOrganizationName("");
                             {customer.customer_name}
                             {customer.is_active === false && (
                               <span className="ml-2 rounded bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
-                                Archived
+                                {t('common.archived')}
                               </span>
                             )}
                           </div>
-                          <div>Shop: {customer.shop_name ?? "None"}</div>
-                          <div>Type: {customer.customer_type ?? "None"}</div>
-                          <div>Phone: {customer.phone ?? "None"}</div>
-                          <div>City: {customer.city ?? "None"}</div>
-                          <div>Credit Policy: {creditSummary}</div>
+                          <div>{t('customers.shopPrefix')} {customer.shop_name ?? t('common.none')}</div>
+                          <div>{t('customers.typePrefix')} {customer.customer_type ?? t('common.none')}</div>
+                          <div>{t('customers.phonePrefix')} {customer.phone ?? t('common.none')}</div>
+                          <div>{t('customers.cityPrefix')} {customer.city ?? t('common.none')}</div>
+                          <div>{t('customers.creditPolicyPrefix')} {creditSummary}</div>
                           {(() => {
                             const customerTxIds = new Set(
                               salesTransactions
@@ -21557,15 +21557,15 @@ setCustomerOrganizationName("");
                             if (top.length === 0) return null;
                             return (
                               <div className="pt-1 text-xs text-muted-foreground/80">
-                                <div className="mb-1 font-medium text-foreground/90">Reorder pattern</div>
+                                <div className="mb-1 font-medium text-foreground/90">{t('customers.reorderPattern')}</div>
                                 <ul className="space-y-0.5">
                                   {top.map(([productId, info]) => {
                                     const product = products.find((p) => String(p.id) === String(productId));
                                     return (
                                       <li key={productId} className="flex flex-wrap gap-1">
-                                        <span className="w-44 truncate">{product?.name ?? `Product ${productId}`}</span>
-                                        <span>~{info.qty} qty total</span>
-                                        {info.last && <span className="text-muted-foreground/60">last {formatDate(info.last)}</span>}
+                                        <span className="w-44 truncate">{product?.name ?? t('customers.productFallback').replace('{id}', String(productId))}</span>
+                                        <span>{t('customers.qtyTotal').replace('{qty}', String(info.qty))}</span>
+                                        {info.last && <span className="text-muted-foreground/60">{t('customers.lastPrefix')} {formatDate(info.last)}</span>}
                                       </li>
                                     );
                                   })}
@@ -21576,17 +21576,17 @@ setCustomerOrganizationName("");
                           <div className="flex flex-wrap gap-2 text-xs">
                             {customer.allow_over_limit && (
                               <span className="rounded bg-warning/10 px-2 py-1 text-warning">
-                                Above-limit sales allowed
+                                {t('customers.aboveLimitAllowed')}
                               </span>
                             )}
                             {customer.allow_overdue_sales && (
                               <span className="rounded bg-warning/10 px-2 py-1 text-warning">
-                                Overdue sales allowed
+                                {t('customers.overdueAllowed')}
                               </span>
                             )}
                           </div>
                           {customer.notes && (
-                            <div className="text-xs text-muted-foreground/80">Notes: {customer.notes}</div>
+                            <div className="text-xs text-muted-foreground/80">{t('customers.notesPrefix')} {customer.notes}</div>
                           )}
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -21595,14 +21595,14 @@ setCustomerOrganizationName("");
                             onClick={() => handleStartCustomerEdit(customer.id)}
                             className="rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
                           >
-                            Edit
+                            {t('common.edit')}
                           </button>
                           <button
                             type="button"
                             onClick={() => setViewCustomerHistoryId(customer.id)}
                             className="rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
                           >
-                            History
+                            {t('customers.history')}
                           </button>
                           {customer.is_active === false ? (
                             <button
@@ -21610,7 +21610,7 @@ setCustomerOrganizationName("");
                               onClick={() => handleRestoreCustomer(customer.id)}
                               className="rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
                             >
-                              Restore
+                              {t('common.restore')}
                             </button>
                           ) : (
                             <button
@@ -21618,7 +21618,7 @@ setCustomerOrganizationName("");
                               onClick={() => handleArchiveCustomer(customer.id)}
                               className="rounded border border-destructive px-3 py-1 text-sm text-destructive transition hover:bg-destructive/5"
                             >
-                              Archive
+                              {t('products.archive')}
                             </button>
                           )}
                         </div>
@@ -21648,13 +21648,13 @@ setCustomerOrganizationName("");
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="relative w-full max-w-5xl max-h-[90vh] overflow-auto rounded-lg border border-border bg-background p-4 shadow-xl">
               <div className="mb-4 flex items-center justify-between border-b border-border pb-3">
-                <h2 className="text-lg font-semibold text-foreground">Customer History</h2>
+                <h2 className="text-lg font-semibold text-foreground">{t('customers.tabHistory')}</h2>
                 <button
                   type="button"
                   onClick={() => setViewCustomerHistoryId(null)}
                   className="rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted/30"
                 >
-                  Close
+                  {t('common.close')}
                 </button>
               </div>
               <CustomerHistory
@@ -21668,12 +21668,12 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "suppliers" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">
-            {supplierEditingId ? "Edit Supplier" : "Supplier Management"}
+            {supplierEditingId ? t('suppliers.editSupplier') : t('suppliers.management')}
           </h2>
-          <details className="mb-5 rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium">View imported supplier history</summary><div className="mt-3"><HistoricalRecords organizationId={currentOrganizationId} partyType="supplier" /></div></details>
+          <details className="mb-5 rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium">{t('suppliers.viewImportedHistory')}</summary><div className="mt-3"><HistoricalRecords organizationId={currentOrganizationId} partyType="supplier" /></div></details>
           <div className="space-y-4">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Supplier Name</span>
+              <span>{t('suppliers.supplierName')}</span>
               <input
                 type="text"
                 value={supplierName}
@@ -21685,7 +21685,7 @@ setCustomerOrganizationName("");
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Contact Person</span>
+                <span>{t('customers.contactPerson')}</span>
                 <input
                   type="text"
                   value={contactPerson}
@@ -21695,7 +21695,7 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Phone</span>
+                <span>{t('customers.phone')}</span>
                 <input
                   type="text"
                   value={supplierPhone}
@@ -21707,7 +21707,7 @@ setCustomerOrganizationName("");
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>WhatsApp</span>
+                <span>{t('customers.whatsapp')}</span>
                 <input
                   type="text"
                   value={supplierWhatsapp}
@@ -21717,7 +21717,7 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>City</span>
+                <span>{t('customers.city')}</span>
                 <input
                   type="text"
                   value={supplierCity}
@@ -21728,7 +21728,7 @@ setCustomerOrganizationName("");
             </div>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Notes</span>
+              <span>{t('sell.notesLabel')}</span>
               <textarea
                 value={supplierNotes}
                 onChange={(e) => setSupplierNotes(e.target.value)}
@@ -21744,7 +21744,7 @@ setCustomerOrganizationName("");
                 disabled={suppliersLoading}
                 className="flex-1 rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
               >
-                {supplierEditingId ? "Update Supplier" : "Save Supplier"}
+                {supplierEditingId ? t('suppliers.updateSupplier') : t('suppliers.saveSupplier')}
               </button>
               {supplierEditingId && (
                 <button
@@ -21753,7 +21753,7 @@ setCustomerOrganizationName("");
                   disabled={suppliersLoading}
                   className="rounded border border-border px-4 py-2 text-foreground/80 transition hover:bg-muted/30"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               )}
             </div>
@@ -21764,22 +21764,22 @@ setCustomerOrganizationName("");
 
           <div className="mt-6 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-medium text-foreground/80">Search Suppliers</label>
+              <label className="mb-2 block text-sm font-medium text-foreground/80">{t('suppliers.searchLabel')}</label>
               <input
                 type="text"
                 value={supplierSearch}
                 onChange={(e) => setSupplierSearch(e.target.value)}
-                placeholder="Search by name, contact, or phone"
+                placeholder={t('suppliers.searchPlaceholder')}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               />
             </div>
 
             <div>
-              <h3 className="mb-3 text-lg font-medium text-foreground">Existing Suppliers</h3>
+              <h3 className="mb-3 text-lg font-medium text-foreground">{t('suppliers.existingSuppliers')}</h3>
               {suppliersLoading ? (
-                <p className="text-sm text-muted-foreground">Loading suppliers...</p>
+                <p className="text-sm text-muted-foreground">{t('suppliers.loadingSuppliers')}</p>
               ) : filteredSuppliers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No suppliers found.</p>
+                <p className="text-sm text-muted-foreground">{t('suppliers.noSuppliersFound')}</p>
               ) : (
                 <ul className="space-y-2">
                   {filteredSuppliers.map((supplier) => (
@@ -21791,12 +21791,12 @@ setCustomerOrganizationName("");
                         <div className="font-medium text-foreground">
                           {supplier.supplier_name}
                           {supplier.is_active === false && (
-                            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Archived</span>
+                            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{t('common.archived')}</span>
                           )}
                         </div>
-                        <div>Contact: {supplier.contact_person ?? "None"}</div>
-                        <div>Phone: {supplier.phone ?? "None"}</div>
-                        <div>City: {supplier.city ?? "None"}</div>
+                        <div>{t('suppliers.contactPrefix')} {supplier.contact_person ?? t('common.none')}</div>
+                        <div>{t('customers.phonePrefix')} {supplier.phone ?? t('common.none')}</div>
+                        <div>{t('customers.cityPrefix')} {supplier.city ?? t('common.none')}</div>
                       </div>
                       <div className="flex shrink-0 gap-2">
                         <button
@@ -21804,7 +21804,7 @@ setCustomerOrganizationName("");
                           onClick={() => handleEditSupplier(supplier)}
                           className="rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
                         >
-                          Edit
+                          {t('common.edit')}
                         </button>
                         <button
                           type="button"
@@ -21815,7 +21815,7 @@ setCustomerOrganizationName("");
                               : "bg-destructive"
                           }`}
                         >
-                          {supplier.is_active === false ? "Restore" : "Archive"}
+                          {supplier.is_active === false ? t('common.restore') : t('products.archive')}
                         </button>
                       </div>
                     </li>
