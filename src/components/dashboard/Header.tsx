@@ -7,6 +7,7 @@ import { activeSuggestionIndex } from "@/components/invoices/search-selection";
 import { SuggestionPopover, type SuggestionStatus, type SuggestionStatusNote } from "@/components/search/SuggestionPopover";
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { LanguageSwitcher } from "@/components/regional/LanguageSwitcher";
 
 export interface SearchSuggestion {
   id: string;
@@ -374,6 +375,9 @@ export function Header({
           >
             <Sparkles className="size-4.5" />
           </button>
+
+          {/* Language Switcher */}
+          <LanguageSwitcher />
 
           {/* Notifications */}
           <div
