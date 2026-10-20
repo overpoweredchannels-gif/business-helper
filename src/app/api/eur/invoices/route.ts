@@ -23,7 +23,7 @@ import { parseRateToMicro } from '@/lib/money/currency';
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
-  const permission = await requirePermission(request, 'create_invoice');
+  const permission = await requirePermission(request, 'sales_create');
   if (!permission.allowed || !permission.actor?.organizationId) {
     return NextResponse.json(
       { ok: false, error: permission.reason ?? 'Forbidden' },
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
  * List EUR invoices for the organization.
  */
 export async function GET(request: NextRequest) {
-  const permission = await requirePermission(request, 'view_invoices');
+  const permission = await requirePermission(request, 'sales_view');
   if (!permission.allowed || !permission.actor?.organizationId) {
     return NextResponse.json(
       { ok: false, error: permission.reason ?? 'Forbidden' },

@@ -1,6 +1,6 @@
 "use client";
 
-import { EurInvoiceForm } from "@/components/eur/EurInvoiceForm";
+import EurInvoiceForm from "@/components/eur/EurInvoiceForm";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 export default function NewEurInvoicePage() {

@@ -18,7 +18,7 @@ import { createSupabaseService } from '@/lib/supabase/server';
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
-  const permission = await requirePermission(request, 'view_reports');
+  const permission = await requirePermission(request, 'reports_view');
   if (!permission.allowed || !permission.actor?.organizationId) {
     return NextResponse.json(
       { ok: false, error: permission.reason ?? 'Forbidden' },
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
  * The new quote supersedes the previous active quote for the same currency.
  */
 export async function POST(request: NextRequest) {
-  const permission = await requirePermission(request, 'manage_settings');
+  const permission = await requirePermission(request, 'administration');
   if (!permission.allowed || !permission.actor?.organizationId) {
     return NextResponse.json(
       { ok: false, error: permission.reason ?? 'Forbidden' },
