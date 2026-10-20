@@ -11837,7 +11837,7 @@ setCustomerOrganizationName("");
 
   const openPrintPreview = (title: string, html: string) => {
     if (!html.trim()) return;
-    setPrintPreviewTitle(title.trim() || "Print Preview");
+    setPrintPreviewTitle(title.trim() || t('print.previewTitle'));
     setPrintPreviewHtml(html);
     setIsPrintPreviewOpen(true);
   };
@@ -16221,14 +16221,14 @@ setCustomerOrganizationName("");
                   onClick={() => window.print()}
                   className="rounded bg-primary px-4 py-2 text-sm text-white hover:bg-primary/90"
                 >
-                  Print
+                  {t('print.printButton')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsPrintPreviewOpen(false)}
                   className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                 >
-                  Close
+                  {t('common.close')}
                 </button>
               </div>
             </div>
