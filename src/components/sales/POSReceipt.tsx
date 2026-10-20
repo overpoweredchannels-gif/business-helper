@@ -135,6 +135,11 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
     // A dismissed preview must not print later when its template arrives.
     autoPrintPending.current = false;
     printCleanup.current?.();
+    // Force-release the print state: if the browser's print dialog was
+    // cancelled without firing afterprint, cleanup may never run and the
+    // modal would otherwise be stuck on "Preparing receipt…" forever.
+    printLock.current = false;
+    setPrinting(false);
     setOpen(false);
   }, []);
 
