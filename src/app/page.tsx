@@ -10684,25 +10684,25 @@ setCustomerOrganizationName("");
   };
   const businessIntelligenceAnalytics = buildBusinessIntelligenceAnalytics();
   const biMetricViews = [
-    { value: "overview", label: "Overview" },
-    { value: "products", label: "Products" },
-    { value: "customers", label: "Customers" },
-    { value: "staff", label: "Staff" },
-    { value: "expenses", label: "Expenses" },
-    { value: "inventory", label: "Inventory" },
-    { value: "trends", label: "Trends" },
-    { value: "seasonal", label: "Seasonal" },
+    { value: "overview", label: t('bi.viewOverview') },
+    { value: "products", label: t('bi.viewProducts') },
+    { value: "customers", label: t('bi.viewCustomers') },
+    { value: "staff", label: t('bi.viewStaff') },
+    { value: "expenses", label: t('bi.viewExpenses') },
+    { value: "inventory", label: t('bi.viewInventory') },
+    { value: "trends", label: t('bi.viewTrends') },
+    { value: "seasonal", label: t('bi.viewSeasonal') },
   ];
   const biDateRangeOptions = [
-    { value: "today", label: "Today" },
-    { value: "yesterday", label: "Yesterday" },
-    { value: "last_7_days", label: "Last 7 Days" },
-    { value: "last_30_days", label: "Last 30 Days" },
-    { value: "this_month", label: "This Month" },
-    { value: "last_month", label: "Last Month" },
-    { value: "this_year", label: "This Year" },
-    { value: "all_time", label: "All Time" },
-    { value: "custom", label: "Custom" },
+    { value: "today", label: t('bi.rangeToday') },
+    { value: "yesterday", label: t('bi.rangeYesterday') },
+    { value: "last_7_days", label: t('bi.rangeLast7') },
+    { value: "last_30_days", label: t('bi.rangeLast30') },
+    { value: "this_month", label: t('bi.rangeThisMonth') },
+    { value: "last_month", label: t('bi.rangeLastMonth') },
+    { value: "this_year", label: t('bi.rangeThisYear') },
+    { value: "all_time", label: t('bi.rangeAllTime') },
+    { value: "custom", label: t('bi.rangeCustom') },
   ];
   const getBiBarWidth = (value: number, maxValue: number) => `${maxValue > 0 ? Math.max(4, (value / maxValue) * 100) : 0}%`;
   const exportBiProductAnalyticsCsv = () => {
@@ -11194,8 +11194,8 @@ setCustomerOrganizationName("");
       : 100;
   const hasMissingSalesCost = profitLossTotals.missingCostSalesLineCount > 0;
   const netProfitLabel = hasMissingSalesCost
-    ? "Estimated Net Profit — incomplete cost data"
-    : "Net Profit";
+    ? t('profit.estimatedNetProfit')
+    : t('profit.netProfit');
 
   const expenseCategoryBreakdown = Object.values(
     expensesInPeriod.reduce<Record<string, { expenseType: string; entryCount: number; totalAmount: number }>>(
@@ -15791,11 +15791,11 @@ setCustomerOrganizationName("");
           </div>
 
           <section className="rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Account</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('sections.account')}</h2>
           <div className="space-y-3 text-sm text-foreground/80">
-            <div>Logged in as: <span className="font-medium text-foreground">{currentUser?.email}</span></div>
+            <div>{t('account.loggedInAs')}: <span className="font-medium text-foreground">{currentUser?.email}</span></div>
             {currentProfile?.organization_id && (
-              <div>Organization: <span className="font-medium text-foreground">{currentOrganizationId}</span></div>
+              <div>{t('account.organization')}: <span className="font-medium text-foreground">{currentOrganizationId}</span></div>
             )}
             <button
               type="button"
@@ -15821,114 +15821,114 @@ setCustomerOrganizationName("");
     switch (section) {
       case "sales":
         return {
-          title: "Sales",
-          description: "Most recent sales invoices.",
+          title: t('summary.salesTitle'),
+          description: t('summary.salesDesc'),
           onOpen: () => handleSectionChange("sales"),
           metrics: [
-            { label: "Invoices", value: String(salesTransactions.length), readStatus: dashboardReadStatusFor("sales-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions") },
-            { label: "Total value", value: money(salesTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)), readStatus: dashboardReadStatusFor("sales-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions") },
+            { label: t('summary.invoices'), value: String(salesTransactions.length), readStatus: dashboardReadStatusFor("sales-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions") },
+            { label: t('summary.totalValue'), value: money(salesTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)), readStatus: dashboardReadStatusFor("sales-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions") },
           ],
-          rowsLabel: "Latest invoices",
+          rowsLabel: t('summary.latestInvoices'),
           rows: recentSalesInvoices.slice(0, 4).map((tx) => ({ label: `#${tx.invoice_number}`, value: money(tx.total_amount) })),
-          emptyText: "No sales recorded yet.",
+          emptyText: t('summary.noSales'),
           rowsReadStatus: dashboardReadStatusFor("sales-transactions"),
           rowsLastSuccessfulAt: dashboardLastSuccessFor("sales-transactions"),
         };
       case "purchases":
         return {
-          title: "Purchases",
-          description: "Most recent supplier bills.",
+          title: t('summary.purchasesTitle'),
+          description: t('summary.purchasesDesc'),
           onOpen: () => handleSectionChange("purchases"),
           metrics: [
-            { label: "Bills", value: String(purchaseTransactions.length), readStatus: dashboardReadStatusFor("purchase-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions") },
-            { label: "Total value", value: money(purchaseTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)), readStatus: dashboardReadStatusFor("purchase-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions") },
+            { label: t('summary.bills'), value: String(purchaseTransactions.length), readStatus: dashboardReadStatusFor("purchase-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions") },
+            { label: t('summary.totalValue'), value: money(purchaseTransactions.reduce((total, tx) => total + safeNumber(tx.total_amount), 0)), readStatus: dashboardReadStatusFor("purchase-transactions"), lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions") },
           ],
-          rowsLabel: "Latest bills",
+          rowsLabel: t('summary.latestBills'),
           rows: recentPurchaseInvoices.slice(0, 4).map((tx) => ({ label: `#${tx.invoice_number}`, value: money(tx.total_amount) })),
-          emptyText: "No purchases recorded yet.",
+          emptyText: t('summary.noPurchases'),
           rowsReadStatus: dashboardReadStatusFor("purchase-transactions"),
           rowsLastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions"),
         };
       case "customer-payments":
         return {
-          title: "Customer Payments",
-          description: "Money received from customers.",
+          title: t('payments.title'),
+          description: t('summary.customerPaymentsDesc'),
           onOpen: () => handleSectionChange("customer-payments"),
           metrics: [
-            { label: "Payments", value: String(customerPayments.length) },
-            { label: "Total received", value: money(customerPayments.reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
+            { label: t('summary.payments'), value: String(customerPayments.length) },
+            { label: t('summary.totalReceived'), value: money(customerPayments.reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
           ],
-          rowsLabel: "Recent payments",
+          rowsLabel: t('summary.recentPayments'),
           rows: [...customerPayments].reverse().slice(0, 4).map((payment) => ({ label: formatDateTime(payment?.payment_date ?? payment?.created_at), value: money(payment?.amount) })),
-          emptyText: "No customer payments recorded yet.",
+          emptyText: t('payments.noneYet'),
         };
       case "supplier-payments":
         return {
-          title: "Supplier Payments",
-          description: "Money paid out to suppliers.",
+          title: t('summary.supplierPaymentsTitle'),
+          description: t('summary.supplierPaymentsDesc'),
           onOpen: () => handleSectionChange("supplier-payments"),
           metrics: [
-            { label: "Payments", value: String(supplierPayments.length) },
-            { label: "Total paid", value: money(supplierPayments.reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
+            { label: t('summary.payments'), value: String(supplierPayments.length) },
+            { label: t('summary.totalPaid'), value: money(supplierPayments.reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
           ],
-          rowsLabel: "Recent payments",
+          rowsLabel: t('summary.recentPayments'),
           rows: [...supplierPayments].reverse().slice(0, 4).map((payment) => ({ label: formatDateTime(payment?.payment_date ?? payment?.created_at), value: money(payment?.amount) })),
-          emptyText: "No supplier payments recorded yet.",
+          emptyText: t('summary.noSupplierPayments'),
         };
       case "expenses":
         return {
-          title: "Expenses",
-          description: "What the business has spent.",
+          title: t('summary.expensesTitle'),
+          description: t('summary.expensesDesc'),
           onOpen: () => handleSectionChange("expenses"),
           metrics: [
-            { label: "Entries", value: String(expenses.length), readStatus: dashboardReadStatusFor("expenses"), lastSuccessfulAt: dashboardLastSuccessFor("expenses") },
-            { label: "Total spent", value: money(expenses.reduce((total, expense) => total + safeNumber(expense?.amount), 0)), readStatus: dashboardReadStatusFor("expenses"), lastSuccessfulAt: dashboardLastSuccessFor("expenses") },
+            { label: t('summary.entries'), value: String(expenses.length), readStatus: dashboardReadStatusFor("expenses"), lastSuccessfulAt: dashboardLastSuccessFor("expenses") },
+            { label: t('summary.totalSpent'), value: money(expenses.reduce((total, expense) => total + safeNumber(expense?.amount), 0)), readStatus: dashboardReadStatusFor("expenses"), lastSuccessfulAt: dashboardLastSuccessFor("expenses") },
           ],
-          rowsLabel: "Recent expenses",
-          rows: [...expenses].reverse().slice(0, 4).map((expense) => ({ label: String(expense?.expense_type ?? "Expense"), value: money(expense?.amount) })),
-          emptyText: "No expenses recorded yet.",
+          rowsLabel: t('summary.recentExpenses'),
+          rows: [...expenses].reverse().slice(0, 4).map((expense) => ({ label: String(expense?.expense_type ?? t('summary.expenseFallback')), value: money(expense?.amount) })),
+          emptyText: t('expenses.noneYet'),
           rowsReadStatus: dashboardReadStatusFor("expenses"),
           rowsLastSuccessfulAt: dashboardLastSuccessFor("expenses"),
         };
       case "customers":
         return {
-          title: "Customers",
-          description: "Who you sell to.",
+          title: t('summary.customersLabel'),
+          description: t('summary.customersDesc'),
           onOpen: () => handleSectionChange("customers"),
-          metrics: [{ label: "Customers", value: String(totalCustomers), readStatus: dashboardReadStatusFor("customers"), lastSuccessfulAt: dashboardLastSuccessFor("customers") }],
-          rowsLabel: "Newest customers",
+          metrics: [{ label: t('summary.customersLabel'), value: String(totalCustomers), readStatus: dashboardReadStatusFor("customers"), lastSuccessfulAt: dashboardLastSuccessFor("customers") }],
+          rowsLabel: t('summary.newestCustomers'),
           rows: [...customers].reverse().slice(0, 4).map((customer) => ({ label: customer.customer_name, value: customer.city ?? customer.phone ?? "" })),
-          emptyText: "No customers added yet.",
+          emptyText: t('summary.noCustomers'),
           rowsReadStatus: dashboardReadStatusFor("customers"),
           rowsLastSuccessfulAt: dashboardLastSuccessFor("customers"),
         };
       case "suppliers":
         return {
-          title: "Suppliers",
-          description: "Who you buy from.",
+          title: t('summary.suppliersTitle'),
+          description: t('summary.suppliersDesc'),
           onOpen: () => handleSectionChange("suppliers"),
           metrics: [
-            { label: "Suppliers", value: String(totalSuppliers), readStatus: dashboardReadStatusFor("suppliers"), lastSuccessfulAt: dashboardLastSuccessFor("suppliers") },
-            { label: "You owe", value: money(totalPayables), tone: totalPayables > 0 ? "warning" : "success", readStatus: dashboardMetricReadStates.payables, lastSuccessfulAt: dashboardMetricLastSuccessfulAt.payables },
+            { label: t('summary.suppliersLabel'), value: String(totalSuppliers), readStatus: dashboardReadStatusFor("suppliers"), lastSuccessfulAt: dashboardLastSuccessFor("suppliers") },
+            { label: t('summary.youOwe'), value: money(totalPayables), tone: totalPayables > 0 ? "warning" : "success", readStatus: dashboardMetricReadStates.payables, lastSuccessfulAt: dashboardMetricLastSuccessfulAt.payables },
           ],
-          rowsLabel: "Newest suppliers",
+          rowsLabel: t('summary.newestSuppliers'),
           rows: [...suppliers].reverse().slice(0, 4).map((supplier) => ({ label: supplier.supplier_name, value: supplier.city ?? supplier.phone ?? "" })),
-          emptyText: "No suppliers added yet.",
+          emptyText: t('summary.noSuppliers'),
           rowsReadStatus: dashboardReadStatusFor("suppliers"),
           rowsLastSuccessfulAt: dashboardLastSuccessFor("suppliers"),
         };
       case "products":
         return {
-          title: "Products",
-          description: "Your catalogue and stock attention.",
+          title: t('summary.productsTitle'),
+          description: t('summary.productsDesc'),
           onOpen: () => handleSectionChange("products"),
           metrics: [
-            { label: "Products", value: String(totalProducts), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
-            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: t('summary.productsLabel'), value: String(totalProducts), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: t('summary.lowStock'), value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
           ],
-          rowsLabel: "Needs reorder",
-          rows: lowStockProducts.slice(0, 4).map((item) => ({ label: item.productName, value: `${item.currentStock} in stock` })),
-          emptyText: "No stock attention needed.",
+          rowsLabel: t('summary.needsReorder'),
+          rows: lowStockProducts.slice(0, 4).map((item) => ({ label: item.productName, value: t('dashboard.inStockCount').replace('{count}', String(item.currentStock)) })),
+          emptyText: t('summary.noStockAttention'),
           rowsReadStatus: dashboardReadStatusFor("products"),
           rowsLastSuccessfulAt: dashboardLastSuccessFor("products"),
         };
@@ -15937,13 +15937,13 @@ setCustomerOrganizationName("");
           .map((brand) => ({ name: brand.name, count: products.filter((product) => product.brand_id === brand.id).length }))
           .sort((left, right) => right.count - left.count);
         return {
-          title: "Brands",
-          description: "How your catalogue splits by brand.",
+          title: t('summary.brandsTitle'),
+          description: t('summary.brandsDesc'),
           onOpen: () => handleSectionChange("brands"),
-          metrics: [{ label: "Brands", value: String(brands.length) }],
-          rowsLabel: "Most products",
-          rows: counts.slice(0, 4).map((entry) => ({ label: entry.name, value: `${entry.count} products` })),
-          emptyText: "No brands added yet.",
+          metrics: [{ label: t('summary.brandsLabel'), value: String(brands.length) }],
+          rowsLabel: t('summary.mostProducts'),
+          rows: counts.slice(0, 4).map((entry) => ({ label: entry.name, value: t('summary.countProducts').replace('{count}', String(entry.count)) })),
+          emptyText: t('summary.noBrands'),
         };
       }
       case "categories": {
@@ -15951,27 +15951,27 @@ setCustomerOrganizationName("");
           .map((category) => ({ name: category.name, count: products.filter((product) => product.category_id === category.id).length }))
           .sort((left, right) => right.count - left.count);
         return {
-          title: "Categories",
-          description: "How your catalogue splits by category.",
+          title: t('summary.categoriesTitle'),
+          description: t('summary.categoriesDesc'),
           onOpen: () => handleSectionChange("categories"),
-          metrics: [{ label: "Categories", value: String(categories.length) }],
-          rowsLabel: "Most products",
-          rows: counts.slice(0, 4).map((entry) => ({ label: entry.name, value: `${entry.count} products` })),
-          emptyText: "No categories added yet.",
+          metrics: [{ label: t('summary.categoriesLabel'), value: String(categories.length) }],
+          rowsLabel: t('summary.mostProducts'),
+          rows: counts.slice(0, 4).map((entry) => ({ label: entry.name, value: t('summary.countProducts').replace('{count}', String(entry.count)) })),
+          emptyText: t('summary.noCategories'),
         };
       }
       case "inventory":
         return {
-          title: "Inventory",
-          description: "Stock value and what needs attention.",
+          title: t('summary.inventoryTitle'),
+          description: t('summary.inventoryDesc'),
           onOpen: () => handleSectionChange("inventory"),
           metrics: [
-            { label: "Stock value", value: money(inventoryValue), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
-            { label: "Low stock", value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
-            { label: "Out of stock", value: String(reorderRecommendationSummary.outOfStockCount), tone: reorderRecommendationSummary.outOfStockCount > 0 ? "danger" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: t('summary.stockValue'), value: money(inventoryValue), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: t('summary.lowStock'), value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            { label: t('summary.outOfStock'), value: String(reorderRecommendationSummary.outOfStockCount), tone: reorderRecommendationSummary.outOfStockCount > 0 ? "danger" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
           ],
-          rows: lowStockProducts.slice(0, 4).map((item) => ({ label: item.productName, value: `${item.currentStock} in stock` })),
-          emptyText: "Stock levels look healthy.",
+          rows: lowStockProducts.slice(0, 4).map((item) => ({ label: item.productName, value: t('dashboard.inStockCount').replace('{count}', String(item.currentStock)) })),
+          emptyText: t('summary.stockHealthy'),
           rowsReadStatus: dashboardReadStatusFor("products"),
           rowsLastSuccessfulAt: dashboardLastSuccessFor("products"),
         };
@@ -15982,27 +15982,27 @@ setCustomerOrganizationName("");
           return Boolean(due && due < todayDateValue);
         });
         return {
-          title: "Task Manager",
-          description: "Open work and anything overdue.",
+          title: t('summary.taskManagerTitle'),
+          description: t('summary.taskManagerDesc'),
           onOpen: () => handleSectionChange("task-manager"),
           metrics: [
-            { label: "Open tasks", value: String(open.length) },
-            { label: "Overdue", value: String(overdue.length), tone: overdue.length > 0 ? "danger" : "success" },
+            { label: t('summary.openTasks'), value: String(open.length) },
+            { label: t('summary.overdue'), value: String(overdue.length), tone: overdue.length > 0 ? "danger" : "success" },
           ],
-          rowsLabel: "Open tasks",
+          rowsLabel: t('summary.openTasks'),
           rows: open.slice(0, 4).map((task) => ({ label: task.title, value: getDateOnly(task.due_date) ?? task.priority })),
-          emptyText: "Nothing open right now.",
+          emptyText: t('summary.nothingOpen'),
         };
       }
       case "activity-logs":
         return {
-          title: "Activity Logs",
-          description: "The most recent recorded actions.",
+          title: t('summary.activityLogsTitle'),
+          description: t('summary.activityLogsDesc'),
           onOpen: () => handleSectionChange("activity-logs"),
-          metrics: [{ label: "Recorded actions", value: String(auditLogs.length) }],
-          rowsLabel: "Latest activity",
+          metrics: [{ label: t('summary.recordedActions'), value: String(auditLogs.length) }],
+          rowsLabel: t('summary.latestActivity'),
           rows: [...auditLogs].reverse().slice(0, 4).map((log) => ({ label: log.description ?? log.action, value: formatDateTime(log.created_at) })),
-          emptyText: "No activity recorded yet.",
+          emptyText: t('summary.noActivity'),
         };
       default:
         return { title: section, onOpen: () => handleSectionChange(section), metrics: [] };
@@ -16035,8 +16035,8 @@ setCustomerOrganizationName("");
   const businessRecordsExportWidget = currentProfile?.role === "owner" ? (
     <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
       <section className="rounded-xl border border-primary/30 bg-card p-5">
-        <h2 className="text-lg font-semibold">Export business records</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF.</p>
+        <h2 className="text-lg font-semibold">{t('records.title')}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t('records.widgetHint')}</p>
         <BusinessRecordsExport />
       </section>
     </DashboardWidget>
@@ -16242,9 +16242,9 @@ setCustomerOrganizationName("");
 
         {!activeSectionAllowed && (
         <section className="rounded border border-destructive/20 bg-destructive/5 p-5">
-          <h2 className="text-xl font-medium text-destructive/90">Permission Required</h2>
+          <h2 className="text-xl font-medium text-destructive/90">{t('sections.permissionRequired')}</h2>
           <p className="mt-2 text-sm text-destructive/90">
-            You do not have permission to view this section. Contact the owner.
+            {t('sections.permissionBody')}
           </p>
         </section>
         )}
@@ -16331,10 +16331,10 @@ setCustomerOrganizationName("");
             lowStockAlerts={{ value: String(reorderRecommendationSummary.urgentReorderCount), count: reorderRecommendationSummary.urgentReorderCount }}
             healthScore={businessHealthScore.score}
             healthMetrics={[
-              { label: "Cash Flow", value: formatPKR(totalReceivables - totalPayables), status: totalReceivables > totalPayables ? "good" as const : "warning" as const },
-              { label: "Inventory Health", value: `${lowStockProducts.length} low stock`, status: lowStockProducts.length > 5 ? "critical" as const : lowStockProducts.length > 2 ? "warning" as const : "good" as const },
-              { label: "Profit Margin", value: businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? `${((businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100).toFixed(1)}%` : "0%", status: "good" as const },
-              { label: "Stock Health", value: `${reorderRecommendationSummary.outOfStockCount} out of stock`, status: reorderRecommendationSummary.outOfStockCount > 3 ? "critical" as const : "good" as const },
+              { label: t('dashboard.cashFlow'), value: formatPKR(totalReceivables - totalPayables), status: totalReceivables > totalPayables ? "good" as const : "warning" as const },
+              { label: t('dashboard.inventoryHealth'), value: t('dashboard.lowStockCount').replace('{count}', String(lowStockProducts.length)), status: lowStockProducts.length > 5 ? "critical" as const : lowStockProducts.length > 2 ? "warning" as const : "good" as const },
+              { label: t('dashboard.profitMargin'), value: businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? `${((businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100).toFixed(1)}%` : "0%", status: "good" as const },
+              { label: t('dashboard.stockHealth'), value: t('dashboard.outOfStockCount').replace('{count}', String(reorderRecommendationSummary.outOfStockCount)), status: reorderRecommendationSummary.outOfStockCount > 3 ? "critical" as const : "good" as const },
             ]}
             lowStockItems={reorderRecommendationSummary.urgentReorderCount}
             pendingTasks={pendingTasks.map((t) => ({ id: t.id, title: t.title, priority: t.priority, dueDate: t.due_date ?? undefined }))}
@@ -16347,24 +16347,24 @@ setCustomerOrganizationName("");
               ...recentSalesInvoices.slice(0, 5).map((inv) => ({
                 id: `sale-${inv.id}`,
                 type: "sale" as const,
-                description: `Sale #${inv.invoice_number}`,
+                description: t('dashboard.saleNumber').replace('{number}', inv.invoice_number),
                 time: formatDateTime(inv.created_at),
               })),
               ...recentPurchaseInvoices.slice(0, 3).map((inv) => ({
                 id: `purchase-${inv.id}`,
                 type: "purchase" as const,
-                description: `Purchase #${inv.invoice_number}`,
+                description: t('dashboard.purchaseNumber').replace('{number}', inv.invoice_number),
                 time: formatDateTime(inv.created_at),
               })),
             ]}
             smartModules={[
-              { id: "products", title: "Products", summary: `${totalProducts} products in catalog`, readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products"), onOpen: () => handleSectionChange("products") },
-              { id: "customers", title: "Customers", summary: `${totalCustomers} registered customers`, readStatus: dashboardReadStatusFor("customers"), lastSuccessfulAt: dashboardLastSuccessFor("customers"), onOpen: () => handleSectionChange("customers") },
-              { id: "suppliers", title: "Suppliers", summary: `${totalSuppliers} suppliers`, readStatus: dashboardReadStatusFor("suppliers"), lastSuccessfulAt: dashboardLastSuccessFor("suppliers"), onOpen: () => handleSectionChange("suppliers") },
+              { id: "products", title: t('stock.products'), summary: t('dashboard.productsInCatalog').replace('{count}', String(totalProducts)), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products"), onOpen: () => handleSectionChange("products") },
+              { id: "customers", title: t('nav.customers'), summary: t('dashboard.registeredCustomers').replace('{count}', String(totalCustomers)), readStatus: dashboardReadStatusFor("customers"), lastSuccessfulAt: dashboardLastSuccessFor("customers"), onOpen: () => handleSectionChange("customers") },
+              { id: "suppliers", title: t('dashboard.moduleSuppliers'), summary: t('dashboard.suppliersCount').replace('{count}', String(totalSuppliers)), readStatus: dashboardReadStatusFor("suppliers"), lastSuccessfulAt: dashboardLastSuccessFor("suppliers"), onOpen: () => handleSectionChange("suppliers") },
               {
                 id: "sales",
-                title: "Sales",
-                summary: `${recentSalesInvoices.length} recent sales transactions`,
+                title: t('sell.salesColumn'),
+                summary: t('dashboard.recentSalesTransactions').replace('{count}', String(recentSalesInvoices.length)),
                 readStatus: dashboardReadStatusFor("sales-transactions"),
                 lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions"),
                 onOpen: () => handleSectionChange("sales"),
@@ -16381,8 +16381,8 @@ setCustomerOrganizationName("");
               },
               {
                 id: "purchases",
-                title: "Purchases",
-                summary: `${recentPurchaseInvoices.length} recent purchases`,
+                title: t('buy.purchases'),
+                summary: t('dashboard.recentPurchasesCount').replace('{count}', String(recentPurchaseInvoices.length)),
                 readStatus: dashboardReadStatusFor("purchase-transactions"),
                 lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions"),
                 onOpen: () => handleSectionChange("purchases"),
@@ -16399,11 +16399,11 @@ setCustomerOrganizationName("");
               },
               {
                 id: "inventory",
-                title: "Inventory",
-                summary: `${reorderRecommendationSummary.urgentReorderCount} items need reorder`,
+                title: t('stock.inventory'),
+                summary: t('dashboard.itemsNeedReorder').replace('{count}', String(reorderRecommendationSummary.urgentReorderCount)),
                 readStatus: dashboardReadStatusFor("products"),
                 lastSuccessfulAt: dashboardLastSuccessFor("products"),
-                badge: reorderRecommendationSummary.urgentReorderCount > 0 ? "Action needed" : undefined,
+                badge: reorderRecommendationSummary.urgentReorderCount > 0 ? t('dashboard.actionNeeded') : undefined,
                 badgeColor: "warning" as const,
                 onOpen: () => handleSectionChange("inventory"),
                 children: lowStockProducts.length > 0 ? (
@@ -16415,7 +16415,7 @@ setCustomerOrganizationName("");
                           "shrink-0 font-medium",
                           item.currentStock === 0 ? "text-destructive" : "text-warning",
                         )}>
-                          {item.currentStock} in stock
+                          {t('dashboard.inStockCount').replace('{count}', String(item.currentStock))}
                         </span>
                       </div>
                     ))}
@@ -16429,13 +16429,13 @@ setCustomerOrganizationName("");
                 insight: latestAlert.summary || latestAlert.title,
                 confidence: 85,
                 action: latestAlert.recommended_action ?? undefined,
-                reason: `Based on ${latestAlert.source_type || "recent data"}`,
+                reason: t('dashboard.basedOn').replace('{source}', latestAlert.source_type || t('dashboard.recentData')),
                 onLearnMore: () => handleSectionChange("ai-analytics"),
               } : businessIntelligenceAnalytics.insights.lowStockWarning ? {
                 insight: businessIntelligenceAnalytics.insights.lowStockWarning,
                 confidence: 90,
-                action: "Review inventory",
-                reason: "Automated stock level analysis",
+                action: t('dashboard.reviewInventory'),
+                reason: t('dashboard.stockAnalysisReason'),
                 onLearnMore: () => handleSectionChange("inventory"),
               } : undefined;
             })()}
@@ -16480,26 +16480,26 @@ setCustomerOrganizationName("");
         <section className="mb-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">Business Intelligence &amp; Deep Analytics</h2>
+              <h2 className="text-xl font-medium text-foreground">{t('bi.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Analyze product, customer, staff, inventory, expense, and profit performance from your OP OWNER data.
+                {t('bi.subtitle')}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={openAiAnalyticsFromBusinessIntelligence} className="rounded border border-primary bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90">
-                Ask AI About These Analytics
+                {t('bi.askAi')}
               </button>
               <button type="button" onClick={exportBiProductAnalyticsCsv} className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5">
-                Export product CSV
+                {t('bi.exportProductCsv')}
               </button>
               <button type="button" onClick={exportBiCustomerAnalyticsCsv} className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5">
-                Export customer CSV
+                {t('bi.exportCustomerCsv')}
               </button>
               <button type="button" onClick={exportBiStaffAnalyticsCsv} className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5">
-                Export staff CSV
+                {t('bi.exportStaffCsv')}
               </button>
               <button type="button" onClick={exportBiExpenseAnalyticsCsv} className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5">
-                Export expense CSV
+                {t('bi.exportExpenseCsv')}
               </button>
             </div>
           </div>
@@ -16510,7 +16510,7 @@ setCustomerOrganizationName("");
           <div className="mb-5 rounded border border-border bg-card p-4">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                <span>Date range</span>
+                <span>{t('bi.dateRange')}</span>
                 <select
                   value={biDateRange}
                   onChange={(event) => {
@@ -16526,45 +16526,45 @@ setCustomerOrganizationName("");
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                <span>Search</span>
+                <span>{t('common.search')}</span>
                 <input
                   value={biSearch}
                   onChange={(event) => setBiSearch(event.target.value)}
-                  placeholder="Product, customer, invoice, staff..."
+                  placeholder={t('bi.searchPlaceholder')}
                   className="rounded border border-border px-3 py-2"
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                <span>Category</span>
+                <span>{t('bi.category')}</span>
                 <select value={biCategoryFilter} onChange={(event) => setBiCategoryFilter(event.target.value)} className="rounded border border-border px-3 py-2">
-                  <option value="all">All categories</option>
+                  <option value="all">{t('bi.allCategories')}</option>
                   {categories.map((category) => (
                     <option key={category.id} value={category.id}>{category.name}</option>
                   ))}
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                <span>Staff</span>
+                <span>{t('bi.staff')}</span>
                 <select value={biStaffFilter} onChange={(event) => setBiStaffFilter(event.target.value)} className="rounded border border-border px-3 py-2">
-                  <option value="all">All staff</option>
+                  <option value="all">{t('bi.allStaff')}</option>
                   {staffProfiles.map((profile) => (
                     <option key={profile.id} value={profile.id}>{profile.display_name || profile.email || profile.id}</option>
                   ))}
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                <span>Customer</span>
+                <span>{t('bi.customer')}</span>
                 <select value={biCustomerFilter} onChange={(event) => setBiCustomerFilter(event.target.value)} className="rounded border border-border px-3 py-2">
-                  <option value="all">All customers</option>
+                  <option value="all">{t('bi.allCustomers')}</option>
                   {customers.map((customer) => (
                     <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
                   ))}
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                <span>Product</span>
+                <span>{t('bi.product')}</span>
                 <select value={biProductFilter} onChange={(event) => setBiProductFilter(event.target.value)} className="rounded border border-border px-3 py-2">
-                  <option value="all">All products</option>
+                  <option value="all">{t('bi.allProducts')}</option>
                   {products.map((product) => (
                     <option key={product.id} value={String(product.id)}>{product.name}</option>
                   ))}
@@ -16573,7 +16573,7 @@ setCustomerOrganizationName("");
               {biDateRange === "custom" && (
                 <>
                   <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                    <span>Start date</span>
+                    <span>{t('bi.startDate')}</span>
                     <input
                       type="date"
                       value={biStartDate}
@@ -16585,7 +16585,7 @@ setCustomerOrganizationName("");
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                    <span>End date</span>
+                    <span>{t('bi.endDate')}</span>
                     <input
                       type="date"
                       value={biEndDate}
@@ -16614,31 +16614,31 @@ setCustomerOrganizationName("");
               ))}
             </div>
             <p className="mt-3 text-xs text-muted-foreground/80">
-              Current analytics range: {businessIntelligenceAnalytics.range.label}
+              {t('bi.currentRange')}: {businessIntelligenceAnalytics.range.label}
               {businessIntelligenceAnalytics.range.start || businessIntelligenceAnalytics.range.end
-                ? ` (${businessIntelligenceAnalytics.range.start || "start"} to ${businessIntelligenceAnalytics.range.end || "today"})`
-                : " (all loaded history)"}
+                ? ` (${businessIntelligenceAnalytics.range.start || t('bi.rangeStartFallback')} to ${businessIntelligenceAnalytics.range.end || t('bi.rangeTodayFallback')})`
+                : ` (${t('bi.allLoadedHistory')})`}
             </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Total Sales", formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount)],
-              ["Sales Invoices", businessIntelligenceAnalytics.overview.salesInvoiceCount],
-              ["Total Purchases", formatPKR(businessIntelligenceAnalytics.overview.totalPurchasesAmount)],
-              ["Purchase Invoices", businessIntelligenceAnalytics.overview.purchaseInvoiceCount],
-              ["Collections", formatPKR(businessIntelligenceAnalytics.overview.customerCollectionsTotal)],
-              ["Supplier Payments", formatPKR(businessIntelligenceAnalytics.overview.supplierPaymentsTotal)],
-              ["Expenses", formatPKR(businessIntelligenceAnalytics.overview.expensesTotal)],
-              ["Estimated Net Profit", formatPKR(businessIntelligenceAnalytics.overview.estimatedNetProfit)],
-              ["Estimated Gross Profit", formatPKR(businessIntelligenceAnalytics.overview.estimatedGrossProfit)],
-              ["Average Sale Value", formatPKR(businessIntelligenceAnalytics.overview.averageSaleValue)],
-              ["Active Customers", businessIntelligenceAnalytics.overview.activeCustomerCount],
-              ["Products Sold", businessIntelligenceAnalytics.overview.productsSoldCount],
-              ["Low Stock", businessIntelligenceAnalytics.overview.lowStockCount],
-              ["Out of Stock", businessIntelligenceAnalytics.overview.outOfStockCount],
-              ["Unknown Cost Lines", businessIntelligenceAnalytics.overview.unknownCostLines],
-              ["Unknown Cost Revenue", formatPKR(businessIntelligenceAnalytics.overview.unknownCostRevenue)],
+              [t('bi.totalSales'), formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount)],
+              [t('bi.salesInvoices'), businessIntelligenceAnalytics.overview.salesInvoiceCount],
+              [t('bi.totalPurchases'), formatPKR(businessIntelligenceAnalytics.overview.totalPurchasesAmount)],
+              [t('bi.purchaseInvoices'), businessIntelligenceAnalytics.overview.purchaseInvoiceCount],
+              [t('bi.collections'), formatPKR(businessIntelligenceAnalytics.overview.customerCollectionsTotal)],
+              [t('bi.supplierPayments'), formatPKR(businessIntelligenceAnalytics.overview.supplierPaymentsTotal)],
+              [t('bi.expenses'), formatPKR(businessIntelligenceAnalytics.overview.expensesTotal)],
+              [t('bi.estimatedNetProfit'), formatPKR(businessIntelligenceAnalytics.overview.estimatedNetProfit)],
+              [t('bi.estimatedGrossProfit'), formatPKR(businessIntelligenceAnalytics.overview.estimatedGrossProfit)],
+              [t('bi.averageSaleValue'), formatPKR(businessIntelligenceAnalytics.overview.averageSaleValue)],
+              [t('bi.activeCustomers'), businessIntelligenceAnalytics.overview.activeCustomerCount],
+              [t('bi.productsSold'), businessIntelligenceAnalytics.overview.productsSoldCount],
+              [t('bi.lowStock'), businessIntelligenceAnalytics.overview.lowStockCount],
+              [t('bi.outOfStock'), businessIntelligenceAnalytics.overview.outOfStockCount],
+              [t('bi.unknownCostLines'), businessIntelligenceAnalytics.overview.unknownCostLines],
+              [t('bi.unknownCostRevenue'), formatPKR(businessIntelligenceAnalytics.overview.unknownCostRevenue)],
             ].map(([label, value]) => (
               <div key={String(label)} className="rounded border border-border bg-card p-4 shadow-sm">
                 <div className="text-sm text-muted-foreground/80">{label}</div>
@@ -16649,16 +16649,16 @@ setCustomerOrganizationName("");
 
           {businessIntelligenceAnalytics.overview.unknownCostLines > 0 && (
             <div className="mt-4 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning">
-              Some sales lines do not have reliable cost. Profit is estimated and unknown costs are not treated as zero.
+              {t('bi.unknownCostWarning')}
             </div>
           )}
 
           {(biMetricView === "overview" || biMetricView === "products") && (
             <div className="mt-6 grid gap-4 xl:grid-cols-3">
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Top Selling Products by Quantity</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.topSellingByQuantity')}</h3>
                 {businessIntelligenceAnalytics.topByQuantity.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No product sales in this range.</p>
+                  <p className="text-sm text-muted-foreground">{t('bi.noProductSales')}</p>
                 ) : (
                   <div className="space-y-3">
                     {businessIntelligenceAnalytics.topByQuantity.map((product) => {
@@ -16680,17 +16680,17 @@ setCustomerOrganizationName("");
               </div>
 
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Most Profitable Products</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.mostProfitable')}</h3>
                 {businessIntelligenceAnalytics.mostProfitable.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No costed product profit in this range.</p>
+                  <p className="text-sm text-muted-foreground">{t('bi.noCostedProfit')}</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-left text-sm">
                       <thead className="text-xs uppercase text-muted-foreground/80">
                         <tr>
-                          <th className="py-2 pr-3">Product</th>
-                          <th className="py-2 pr-3">Profit</th>
-                          <th className="py-2 pr-3">Margin</th>
+                          <th className="py-2 pr-3">{t('bi.product')}</th>
+                          <th className="py-2 pr-3">{t('bi.colProfit')}</th>
+                          <th className="py-2 pr-3">{t('bi.colMargin')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -16708,22 +16708,22 @@ setCustomerOrganizationName("");
               </div>
 
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Product Stock Watch</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.stockWatch')}</h3>
                 <div className="space-y-3">
                   {businessIntelligenceAnalytics.outOfStockProducts.slice(0, 5).map((product) => (
                     <div key={product.productId} className="rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm">
                       <div className="font-medium text-destructive/90">{product.productName}</div>
-                      <div className="text-destructive">Out of stock · Reorder {product.suggestedReorderQuantity}</div>
+                      <div className="text-destructive">{t('bi.outOfStockReorder').replace('{count}', String(product.suggestedReorderQuantity))}</div>
                     </div>
                   ))}
                   {businessIntelligenceAnalytics.lowStockProducts.slice(0, 5).map((product) => (
                     <div key={product.productId} className="rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm">
                       <div className="font-medium text-warning/80">{product.productName}</div>
-                      <div className="text-warning">Stock {product.currentStock} · Reorder level {product.reorderLevel}</div>
+                      <div className="text-warning">{t('bi.stockReorderLevel').replace('{stock}', String(product.currentStock)).replace('{level}', String(product.reorderLevel))}</div>
                     </div>
                   ))}
                   {businessIntelligenceAnalytics.outOfStockProducts.length === 0 && businessIntelligenceAnalytics.lowStockProducts.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No urgent stock warnings in this filtered view.</p>
+                    <p className="text-sm text-muted-foreground">{t('bi.noStockWarnings')}</p>
                   )}
                 </div>
               </div>
@@ -16733,9 +16733,9 @@ setCustomerOrganizationName("");
           {(biMetricView === "overview" || biMetricView === "customers") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Top Customers by Sales</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.topCustomersBySales')}</h3>
                 {businessIntelligenceAnalytics.topCustomersBySales.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No customer sales in this range.</p>
+                  <p className="text-sm text-muted-foreground">{t('bi.noCustomerSales')}</p>
                 ) : (
                   <div className="space-y-3">
                     {businessIntelligenceAnalytics.topCustomersBySales.map((customer) => {
@@ -16756,15 +16756,15 @@ setCustomerOrganizationName("");
                 )}
               </div>
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Customer Payment &amp; Credit Signals</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.customerCreditSignals')}</h3>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
                     <thead className="text-xs uppercase text-muted-foreground/80">
                       <tr>
-                        <th className="py-2 pr-3">Customer</th>
-                        <th className="py-2 pr-3">Payments</th>
-                        <th className="py-2 pr-3">Outstanding</th>
-                        <th className="py-2 pr-3">Overdue</th>
+                        <th className="py-2 pr-3">{t('bi.customer')}</th>
+                        <th className="py-2 pr-3">{t('bi.colPayments')}</th>
+                        <th className="py-2 pr-3">{t('bi.colOutstanding')}</th>
+                        <th className="py-2 pr-3">{t('bi.colOverdue')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -16778,7 +16778,7 @@ setCustomerOrganizationName("");
                       ))}
                       {businessIntelligenceAnalytics.customersWithHighOutstanding.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="py-3 text-muted-foreground">No outstanding customer balances in this filtered view.</td>
+                          <td colSpan={4} className="py-3 text-muted-foreground">{t('bi.noOutstanding')}</td>
                         </tr>
                       )}
                     </tbody>
@@ -16791,19 +16791,19 @@ setCustomerOrganizationName("");
           {(biMetricView === "overview" || biMetricView === "staff") && (
             <div className="mt-6 rounded border border-border bg-card p-4">
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-lg font-medium text-foreground">Staff Performance</h3>
-                <p className="text-xs text-muted-foreground/80">Staff attribution depends on which records contain creator/profile information.</p>
+                <h3 className="text-lg font-medium text-foreground">{t('bi.staffPerformance')}</h3>
+                <p className="text-xs text-muted-foreground/80">{t('bi.staffAttributionNote')}</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
                   <thead className="text-xs uppercase text-muted-foreground/80">
                     <tr>
-                      <th className="py-2 pr-3">Staff</th>
-                      <th className="py-2 pr-3">Sales</th>
-                      <th className="py-2 pr-3">Collected</th>
-                      <th className="py-2 pr-3">Tasks</th>
-                      <th className="py-2 pr-3">Duty Hours</th>
-                      <th className="py-2 pr-3">Last Location</th>
+                      <th className="py-2 pr-3">{t('bi.staff')}</th>
+                      <th className="py-2 pr-3">{t('bi.colSales')}</th>
+                      <th className="py-2 pr-3">{t('bi.colCollected')}</th>
+                      <th className="py-2 pr-3">{t('bi.colTasks')}</th>
+                      <th className="py-2 pr-3">{t('bi.colDutyHours')}</th>
+                      <th className="py-2 pr-3">{t('bi.colLastLocation')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -16819,7 +16819,7 @@ setCustomerOrganizationName("");
                     ))}
                     {businessIntelligenceAnalytics.staffAnalytics.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-3 text-muted-foreground">No staff activity matched these filters.</td>
+                        <td colSpan={6} className="py-3 text-muted-foreground">{t('bi.noStaffActivity')}</td>
                       </tr>
                     )}
                   </tbody>
@@ -16831,9 +16831,9 @@ setCustomerOrganizationName("");
           {(biMetricView === "overview" || biMetricView === "expenses") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Expense Categories</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.expenseCategories')}</h3>
                 {businessIntelligenceAnalytics.expensesByType.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No expenses in this range.</p>
+                  <p className="text-sm text-muted-foreground">{t('bi.noExpenses')}</p>
                 ) : (
                   <div className="space-y-3">
                     {businessIntelligenceAnalytics.expensesByType.map((expense) => {
@@ -16854,18 +16854,18 @@ setCustomerOrganizationName("");
                 )}
               </div>
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Expense Split</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.expenseSplit')}</h3>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded border border-border bg-muted/30 p-3">
-                    <div className="text-xs text-muted-foreground/80">Purchase-linked</div>
+                    <div className="text-xs text-muted-foreground/80">{t('bi.purchaseLinked')}</div>
                     <div className="mt-1 font-semibold text-foreground">{formatPKR(businessIntelligenceAnalytics.purchaseLinkedExpenseTotal)}</div>
                   </div>
                   <div className="rounded border border-border bg-muted/30 p-3">
-                    <div className="text-xs text-muted-foreground/80">Sales-linked</div>
+                    <div className="text-xs text-muted-foreground/80">{t('bi.salesLinked')}</div>
                     <div className="mt-1 font-semibold text-foreground">{formatPKR(businessIntelligenceAnalytics.salesLinkedExpenseTotal)}</div>
                   </div>
                   <div className="rounded border border-border bg-muted/30 p-3">
-                    <div className="text-xs text-muted-foreground/80">Operating</div>
+                    <div className="text-xs text-muted-foreground/80">{t('bi.operating')}</div>
                     <div className="mt-1 font-semibold text-foreground">{formatPKR(businessIntelligenceAnalytics.operatingExpenseTotal)}</div>
                   </div>
                 </div>
@@ -16876,19 +16876,19 @@ setCustomerOrganizationName("");
           {(biMetricView === "overview" || biMetricView === "inventory") && (
             <div className="mt-6 rounded border border-border bg-card p-4">
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-lg font-medium text-foreground">Inventory Movement</h3>
-                <span className="text-sm text-muted-foreground">Estimated stock value: {formatPKR(businessIntelligenceAnalytics.inventoryStockValue)}</span>
+                <h3 className="text-lg font-medium text-foreground">{t('bi.inventoryMovement')}</h3>
+                <span className="text-sm text-muted-foreground">{t('bi.estimatedStockValue')}: {formatPKR(businessIntelligenceAnalytics.inventoryStockValue)}</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
                   <thead className="text-xs uppercase text-muted-foreground/80">
                     <tr>
-                      <th className="py-2 pr-3">Product</th>
-                      <th className="py-2 pr-3">Sold</th>
-                      <th className="py-2 pr-3">Stock</th>
-                      <th className="py-2 pr-3">Days Left</th>
-                      <th className="py-2 pr-3">Suggested Reorder</th>
-                      <th className="py-2 pr-3">Status</th>
+                      <th className="py-2 pr-3">{t('bi.product')}</th>
+                      <th className="py-2 pr-3">{t('bi.colSold')}</th>
+                      <th className="py-2 pr-3">{t('bi.colStock')}</th>
+                      <th className="py-2 pr-3">{t('bi.colDaysLeft')}</th>
+                      <th className="py-2 pr-3">{t('bi.colSuggestedReorder')}</th>
+                      <th className="py-2 pr-3">{t('sell.statusLabel')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -16901,8 +16901,8 @@ setCustomerOrganizationName("");
                           <td className="py-2 pr-3">{product.productName}</td>
                           <td className="py-2 pr-3">{product.quantitySold}</td>
                           <td className="py-2 pr-3">{product.currentStock}</td>
-                          <td className="py-2 pr-3">{product.estimatedDaysLeft === null ? "No recent sales" : product.estimatedDaysLeft.toFixed(1)}</td>
-                          <td className="py-2 pr-3">{product.reorderLevel > 0 ? product.suggestedReorderQuantity : "Set reorder level first"}</td>
+                          <td className="py-2 pr-3">{product.estimatedDaysLeft === null ? t('bi.noRecentSales') : product.estimatedDaysLeft.toFixed(1)}</td>
+                          <td className="py-2 pr-3">{product.reorderLevel > 0 ? product.suggestedReorderQuantity : t('bi.setReorderLevelFirst')}</td>
                           <td className="py-2 pr-3">{product.stockStatus}</td>
                         </tr>
                       ))}
@@ -16915,9 +16915,9 @@ setCustomerOrganizationName("");
           {(biMetricView === "overview" || biMetricView === "trends") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Daily Sales Trend</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.dailySalesTrend')}</h3>
                 {businessIntelligenceAnalytics.dailyTrends.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No trend data in this range.</p>
+                  <p className="text-sm text-muted-foreground">{t('bi.noTrendData')}</p>
                 ) : (
                   <div className="space-y-3">
                     {businessIntelligenceAnalytics.dailyTrends.slice(-14).map((day) => {
@@ -16938,7 +16938,7 @@ setCustomerOrganizationName("");
                 )}
               </div>
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Daily Profit / Expense Trend</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.dailyProfitExpenseTrend')}</h3>
                 <div className="space-y-3">
                   {businessIntelligenceAnalytics.dailyTrends.slice(-14).map((day) => {
                     const maxValue = Math.max(...businessIntelligenceAnalytics.dailyTrends.map((item) => Math.max(Math.abs(item.profit), item.expenses)), 0);
@@ -16946,7 +16946,7 @@ setCustomerOrganizationName("");
                       <div key={day.date}>
                         <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                           <span>{formatDate(day.date)}</span>
-                          <span>Profit {formatPKR(day.profit)} · Expense {formatPKR(day.expenses)}</span>
+                          <span>{t('bi.profitWord')} {formatPKR(day.profit)} · {t('bi.expenseWord')} {formatPKR(day.expenses)}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-1">
                           <div className="h-2 rounded bg-muted">
@@ -16959,7 +16959,7 @@ setCustomerOrganizationName("");
                       </div>
                     );
                   })}
-                  {businessIntelligenceAnalytics.dailyTrends.length === 0 && <p className="text-sm text-muted-foreground">No profit trend data in this range.</p>}
+                  {businessIntelligenceAnalytics.dailyTrends.length === 0 && <p className="text-sm text-muted-foreground">{t('bi.noProfitTrendData')}</p>}
                 </div>
               </div>
             </div>
@@ -16968,20 +16968,20 @@ setCustomerOrganizationName("");
           {(biMetricView === "overview" || biMetricView === "seasonal") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Seasonal Movement</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.seasonalMovement')}</h3>
                 {!businessIntelligenceAnalytics.enoughSeasonalData && (
                   <p className="mb-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning">
-                    More data is needed for strong seasonal analysis.
+                    {t('bi.moreSeasonalData')}
                   </p>
                 )}
                 <div className="space-y-2 text-sm text-foreground/80">
-                  <div>Best month: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.bestMonth?.label ?? "Not enough data"}</span> {businessIntelligenceAnalytics.bestMonth ? formatPKR(businessIntelligenceAnalytics.bestMonth.value) : ""}</div>
-                  <div>Best day of week: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.bestWeekday?.label ?? "Not enough data"}</span> {businessIntelligenceAnalytics.bestWeekday ? formatPKR(businessIntelligenceAnalytics.bestWeekday.value) : ""}</div>
-                  <div>Strongest product month: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.strongestProductMonth ? `${businessIntelligenceAnalytics.strongestProductMonth.productName} in ${businessIntelligenceAnalytics.strongestProductMonth.month}` : "Not enough data"}</span></div>
+                  <div>{t('bi.bestMonth')}: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.bestMonth?.label ?? t('bi.notEnoughData')}</span> {businessIntelligenceAnalytics.bestMonth ? formatPKR(businessIntelligenceAnalytics.bestMonth.value) : ""}</div>
+                  <div>{t('bi.bestDayOfWeek')}: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.bestWeekday?.label ?? t('bi.notEnoughData')}</span> {businessIntelligenceAnalytics.bestWeekday ? formatPKR(businessIntelligenceAnalytics.bestWeekday.value) : ""}</div>
+                  <div>{t('bi.strongestProductMonth')}: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.strongestProductMonth ? `${businessIntelligenceAnalytics.strongestProductMonth.productName} ${t('bi.inMonth')} ${businessIntelligenceAnalytics.strongestProductMonth.month}` : t('bi.notEnoughData')}</span></div>
                 </div>
               </div>
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Monthly Sales</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.monthlySales')}</h3>
                 <div className="space-y-3">
                   {businessIntelligenceAnalytics.monthlySales.map((month) => {
                     const maxValue = Math.max(...businessIntelligenceAnalytics.monthlySales.map((item) => item.value), 0);
@@ -16997,7 +16997,7 @@ setCustomerOrganizationName("");
                       </div>
                     );
                   })}
-                  {businessIntelligenceAnalytics.monthlySales.length === 0 && <p className="text-sm text-muted-foreground">No monthly sales data.</p>}
+                  {businessIntelligenceAnalytics.monthlySales.length === 0 && <p className="text-sm text-muted-foreground">{t('bi.noMonthlySales')}</p>}
                 </div>
               </div>
             </div>
@@ -17005,14 +17005,14 @@ setCustomerOrganizationName("");
 
           <div className="mt-6 grid gap-4 lg:grid-cols-3">
             {[
-              ["Best product", businessIntelligenceAnalytics.insights.bestProduct ? `${businessIntelligenceAnalytics.insights.bestProduct.productName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestProduct.salesValue)}` : "No sales signal yet"],
-              ["Most profitable product", businessIntelligenceAnalytics.insights.bestProfitProduct ? `${businessIntelligenceAnalytics.insights.bestProfitProduct.productName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestProfitProduct.grossProfit)}` : "No costed profit signal yet"],
-              ["Highest expense category", businessIntelligenceAnalytics.insights.highestExpenseCategory ? `${businessIntelligenceAnalytics.insights.highestExpenseCategory.expenseType} · ${formatPKR(businessIntelligenceAnalytics.insights.highestExpenseCategory.totalAmount)}` : "No expense signal yet"],
-              ["Best customer", businessIntelligenceAnalytics.insights.bestCustomer ? `${businessIntelligenceAnalytics.insights.bestCustomer.customerName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestCustomer.totalSales)}` : "No customer signal yet"],
-              ["Low stock warning", businessIntelligenceAnalytics.insights.lowStockWarning],
-              ["Staff activity note", businessIntelligenceAnalytics.insights.staffActivityNote],
-              ["Market signal note", businessIntelligenceAnalytics.insights.marketSignalNote],
-              ["AI analytics note", "AI explanation for analytics will be added next, so the owner can ask why sales increased or dropped."],
+              [t('bi.insightBestProduct'), businessIntelligenceAnalytics.insights.bestProduct ? `${businessIntelligenceAnalytics.insights.bestProduct.productName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestProduct.salesValue)}` : t('bi.noSalesSignal')],
+              [t('bi.insightMostProfitable'), businessIntelligenceAnalytics.insights.bestProfitProduct ? `${businessIntelligenceAnalytics.insights.bestProfitProduct.productName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestProfitProduct.grossProfit)}` : t('bi.noProfitSignal')],
+              [t('bi.insightHighestExpenseCategory'), businessIntelligenceAnalytics.insights.highestExpenseCategory ? `${businessIntelligenceAnalytics.insights.highestExpenseCategory.expenseType} · ${formatPKR(businessIntelligenceAnalytics.insights.highestExpenseCategory.totalAmount)}` : t('bi.noExpenseSignal')],
+              [t('bi.insightBestCustomer'), businessIntelligenceAnalytics.insights.bestCustomer ? `${businessIntelligenceAnalytics.insights.bestCustomer.customerName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestCustomer.totalSales)}` : t('bi.noCustomerSignal')],
+              [t('bi.insightLowStockWarning'), businessIntelligenceAnalytics.insights.lowStockWarning],
+              [t('bi.insightStaffActivity'), businessIntelligenceAnalytics.insights.staffActivityNote],
+              [t('bi.insightMarketSignal'), businessIntelligenceAnalytics.insights.marketSignalNote],
+              [t('bi.insightAiNote'), t('bi.aiNoteBody')],
             ].map(([title, body]) => (
               <div key={String(title)} className="rounded border border-border bg-card p-4">
                 <div className="text-sm font-medium text-foreground">{title}</div>
@@ -17025,10 +17025,9 @@ setCustomerOrganizationName("");
 
         {activeSectionAllowed && activeSection === "business-records" && (
         <section className="mb-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="text-xl font-medium text-foreground">Export business records</h2>
+          <h2 className="text-xl font-medium text-foreground">{t('records.title')}</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Choose any date range to review transactions, payments, stock movements and recorded activity, then save the PDF. This stays available even if you
-            remove the dashboard card.
+            {t('records.sectionHint')}
           </p>
           <BusinessRecordsExport />
         </section>
@@ -17037,19 +17036,19 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "profit-loss" && (
         <section className="mb-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Profit Dashboard</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('profit.title')}</h2>
             <button
               type="button"
               onClick={handleExportProfitLossCsv}
               className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
-              Export P&amp;L CSV
+              {t('profit.exportCsv')}
             </button>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Start Date</span>
+              <span>{t('profit.startDate')}</span>
               <input
                 type="date"
                 value={profitLossStartDate}
@@ -17058,7 +17057,7 @@ setCustomerOrganizationName("");
               />
             </label>
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>End Date</span>
+              <span>{t('profit.endDate')}</span>
               <input
                 type="date"
                 value={profitLossEndDate}
@@ -17075,21 +17074,21 @@ setCustomerOrganizationName("");
               onClick={() => applyProfitLossMonthRange(0)}
               className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
-              This Month
+              {t('buy.thisMonth')}
             </button>
             <button
               type="button"
               onClick={() => applyProfitLossMonthRange(-1)}
               className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
-              Last Month
+              {t('buy.lastMonth')}
             </button>
             <button
               type="button"
               onClick={applyProfitLossAllTime}
               className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
-              All Time
+              {t('buy.allTime')}
             </button>
           </div>
 
@@ -17099,37 +17098,37 @@ setCustomerOrganizationName("");
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Total Revenue</div>
+              <div className="text-sm text-muted-foreground/80">{t('profit.totalRevenue')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(profitLossTotals.totalRevenue)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Known Cost of Goods Sold</div>
+              <div className="text-sm text-muted-foreground/80">{t('profit.knownCogs')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(profitLossTotals.knownCostOfGoodsSold)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Gross Profit on Costed Sales</div>
+              <div className="text-sm text-muted-foreground/80">{t('profit.grossProfitCosted')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(grossProfitOnCostedSales)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Purchase-Linked Expenses</div>
+              <div className="text-sm text-muted-foreground/80">{t('profit.purchaseLinkedExpenses')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(purchaseLinkedExpenses)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Operating Expenses</div>
+              <div className="text-sm text-muted-foreground/80">{t('profit.operatingExpenses')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(operatingExpenses)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Total Recorded Expenses</div>
+              <div className="text-sm text-muted-foreground/80">{t('profit.totalRecordedExpenses')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {pkrFormatter.format(totalRecordedExpenses)}
               </div>
@@ -17141,7 +17140,7 @@ setCustomerOrganizationName("");
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Cost Coverage</div>
+              <div className="text-sm text-muted-foreground/80">{t('profit.costCoverage')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {costCoverage.toFixed(2)}%
               </div>
@@ -17150,15 +17149,15 @@ setCustomerOrganizationName("");
 
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Sales invoices in period</div>
+              <div className="text-sm text-muted-foreground/80">{t('profit.salesInvoicesInPeriod')}</div>
               <div className="mt-2 text-2xl font-semibold text-foreground">{salesTransactionsInPeriod.length}</div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Sales lines in period</div>
+              <div className="text-sm text-muted-foreground/80">{t('profit.salesLinesInPeriod')}</div>
               <div className="mt-2 text-2xl font-semibold text-foreground">{salesItemsInPeriod.length}</div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <div className="text-sm text-muted-foreground/80">Expense entries in period</div>
+              <div className="text-sm text-muted-foreground/80">{t('profit.expenseEntriesInPeriod')}</div>
               <div className="mt-2 text-2xl font-semibold text-foreground">{expensesInPeriod.length}</div>
             </div>
           </div>
@@ -17166,12 +17165,12 @@ setCustomerOrganizationName("");
           {costCoverage < 100 && (
             <div className="mt-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/80">
               <p className="font-medium">
-                Some sales do not contain a purchase-cost snapshot. Profit is estimated and may be overstated.
+                {t('profit.missingCostWarning')}
               </p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <div>Sales lines missing cost: {profitLossTotals.missingCostSalesLineCount}</div>
+                <div>{t('profit.salesLinesMissingCost')}: {profitLossTotals.missingCostSalesLineCount}</div>
                 <div>
-                  Revenue affected by missing cost: {pkrFormatter.format(profitLossTotals.missingCostSalesValue)}
+                  {t('profit.revenueAffected')}: {pkrFormatter.format(profitLossTotals.missingCostSalesValue)}
                 </div>
               </div>
             </div>
@@ -17179,17 +17178,17 @@ setCustomerOrganizationName("");
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Expense Category Breakdown</h3>
+              <h3 className="mb-3 text-lg font-medium text-foreground">{t('profit.expenseCategoryBreakdown')}</h3>
               {expenseCategoryBreakdown.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No expenses in this period.</p>
+                <p className="text-sm text-muted-foreground">{t('profit.noExpensesInPeriod')}</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead className="text-xs uppercase text-muted-foreground/80">
                       <tr>
-                        <th className="py-2 pr-3">Expense Type</th>
-                        <th className="py-2 pr-3">Entries</th>
-                        <th className="py-2 text-right">Total Amount</th>
+                        <th className="py-2 pr-3">{t('expenses.type')}</th>
+                        <th className="py-2 pr-3">{t('profit.entries')}</th>
+                        <th className="py-2 text-right">{t('sell.totalAmount')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -17209,20 +17208,20 @@ setCustomerOrganizationName("");
             </div>
 
             <div className="rounded border border-border bg-card p-4 shadow-sm">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Top Product Profitability</h3>
+              <h3 className="mb-3 text-lg font-medium text-foreground">{t('profit.topProductProfitability')}</h3>
               {productProfitability.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No costed product sales in this period.</p>
+                <p className="text-sm text-muted-foreground">{t('profit.noCostedSales')}</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead className="text-xs uppercase text-muted-foreground/80">
                       <tr>
-                        <th className="py-2 pr-3">Product</th>
-                        <th className="py-2 pr-3">Qty</th>
-                        <th className="py-2 pr-3">Revenue</th>
-                        <th className="py-2 pr-3">Cost</th>
-                        <th className="py-2 pr-3">Gross Profit</th>
-                        <th className="py-2 text-right">Margin</th>
+                        <th className="py-2 pr-3">{t('sell.product')}</th>
+                        <th className="py-2 pr-3">{t('profit.qty')}</th>
+                        <th className="py-2 pr-3">{t('sell.revenue')}</th>
+                        <th className="py-2 pr-3">{t('sell.cost')}</th>
+                        <th className="py-2 pr-3">{t('profit.grossProfit')}</th>
+                        <th className="py-2 text-right">{t('profit.margin')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -17231,7 +17230,7 @@ setCustomerOrganizationName("");
                           <td className="py-2 pr-3">
                             <div className="font-medium text-foreground">{product.productName}</div>
                             {product.hasUnknownCostLines && (
-                              <div className="text-xs text-warning">Partial cost data</div>
+                              <div className="text-xs text-warning">{t('profit.partialCostData')}</div>
                             )}
                           </td>
                           <td className="py-2 pr-3 text-foreground/80">{product.quantitySold}</td>
@@ -17257,11 +17256,11 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "brands" && (
         <section className="mb-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Brand Management</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('brands.title')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="brands"
-                entityLabel="Brands"
+                entityLabel={t('brands.entityLabel')}
                 supabase={supabase}
                 organizationId={currentOrganizationId}
                 actorProfileId={currentProfile?.id ?? null}
@@ -17272,7 +17271,7 @@ setCustomerOrganizationName("");
           </div>
           <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Brand Name</span>
+              <span>{t('brands.name')}</span>
               <input
                 type="text"
                 value={brandName}
@@ -17286,7 +17285,7 @@ setCustomerOrganizationName("");
               disabled={brandsLoading}
               className="h-12 rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
             >
-              Add Brand
+              {t('brands.add')}
             </button>
           </div>
 
@@ -17294,11 +17293,11 @@ setCustomerOrganizationName("");
           {brandError && <p className="mt-4 text-sm text-destructive">{brandError}</p>}
 
           <div className="mt-6">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Existing Brands</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('brands.existing')}</h3>
             {brandsLoading ? (
-              <p className="text-sm text-muted-foreground">Loading brands...</p>
+              <p className="text-sm text-muted-foreground">{t('brands.loading')}</p>
             ) : brands.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No brands found.</p>
+              <p className="text-sm text-muted-foreground">{t('brands.none')}</p>
             ) : (
               <ul className="space-y-2">
                 {brands.map((brand) => (
@@ -17312,7 +17311,7 @@ setCustomerOrganizationName("");
                       onClick={() => handleDeleteBrand(brand.id)}
                       className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
                   </li>
                 ))}
@@ -19505,12 +19504,12 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "customer-payments" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Customer Payments</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('payments.title')}</h2>
             <div className="flex flex-wrap gap-2">
               {canImportExport && (
                 <ImportExportSection
                   entityKey="customer_payments"
-                  entityLabel="Customer Payments"
+                  entityLabel={t('payments.title')}
                   supabase={supabase}
                   organizationId={currentOrganizationId}
                   actorProfileId={currentProfile?.id ?? null}
@@ -19523,7 +19522,7 @@ setCustomerOrganizationName("");
                 onClick={handleExportCustomerBalancesCsv}
                 className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
               >
-                Export Customer Balances CSV
+                {t('payments.exportBalancesCsv')}
               </button>
               <button
                 type="button"
@@ -19531,7 +19530,7 @@ setCustomerOrganizationName("");
                 disabled={!selectedCustomerPaymentId}
                 className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
               >
-                Print Customer Statement
+                {t('payments.printStatement')}
               </button>
             </div>
           </div>
@@ -19541,7 +19540,7 @@ setCustomerOrganizationName("");
                onChange={(e) => handleCustomerPaymentCustomerChange(e.target.value)}
                className="rounded border border-border px-2 py-2"
              >
-               <option value="">Select Customer</option>
+               <option value="">{t('payments.selectCustomer')}</option>
                {customers.map((c) => (
                  <option key={c.id} value={c.id}>{c.customer_name}</option>
                ))}
@@ -19551,7 +19550,7 @@ setCustomerOrganizationName("");
                type="number"
                value={customerPaymentAmount}
                onChange={(e) => handleCustomerPaymentAmountChange(e.target.value)}
-               placeholder="Amount"
+               placeholder={t('money.amount')}
                className="rounded border border-border px-2 py-2"
              />
 
@@ -19567,8 +19566,8 @@ setCustomerOrganizationName("");
                onChange={(e) => setCustomerPaymentMethod(e.target.value as "cash" | "bank")}
                className="rounded border border-border px-2 py-2"
              >
-               <option value="cash">Cash</option>
-               <option value="bank">Bank</option>
+               <option value="cash">{t('money.cash')}</option>
+               <option value="bank">{t('money.bank')}</option>
              </select>
            </div>
 
@@ -19576,41 +19575,41 @@ setCustomerOrganizationName("");
              type="text"
              value={customerPaymentNotes}
              onChange={(e) => setCustomerPaymentNotes(e.target.value)}
-             placeholder="Notes (optional)"
+             placeholder={t('payments.notesOptional')}
              className="w-full sm:col-span-4 rounded border border-border px-2 py-2"
            />
 
           {selectedCustomerPaymentId && (
             <div className="mt-4 rounded border border-border bg-card p-4">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-lg font-medium text-foreground">Allocate to Credit Invoices</h3>
+                <h3 className="text-lg font-medium text-foreground">{t('payments.allocateTitle')}</h3>
                 <button
                   type="button"
                   onClick={handleAutoAllocateCustomerPayment}
                   className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
                 >
-                  Auto Allocate Oldest First
+                  {t('payments.autoAllocate')}
                 </button>
               </div>
               <p className="mb-3 text-xs text-muted-foreground/80">
-                Older unallocated customer payments are applied to the oldest credit invoices first.
+                {t('payments.allocateHint')}
               </p>
 
               <div className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
                 <div className="rounded border border-border bg-muted/30 p-3">
-                  <div className="text-muted-foreground/80">Payment amount</div>
+                  <div className="text-muted-foreground/80">{t('payments.paymentAmount')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(Number.isFinite(customerPaymentAmountValue) ? customerPaymentAmountValue : 0)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-muted/30 p-3">
-                  <div className="text-muted-foreground/80">Total allocated</div>
+                  <div className="text-muted-foreground/80">{t('payments.totalAllocated')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(customerPaymentAllocationTotal)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-muted/30 p-3">
-                  <div className="text-muted-foreground/80">Unallocated amount</div>
+                  <div className="text-muted-foreground/80">{t('payments.unallocatedAmount')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(customerPaymentUnallocatedAmount)}
                   </div>
@@ -19618,47 +19617,47 @@ setCustomerOrganizationName("");
               </div>
 
               {unpaidCreditInvoicesForSelectedPaymentCustomer.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No unpaid credit invoices for this customer.</p>
+                <p className="text-sm text-muted-foreground">{t('payments.noUnpaidCreditInvoices')}</p>
               ) : (
                 <div className="space-y-3">
                   {unpaidCreditInvoicesForSelectedPaymentCustomer.map((invoice) => (
                     <div key={invoice.transaction.id} className="rounded border border-border bg-muted/30 p-3">
                       <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Invoice</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.invoiceLabel')}</div>
                           <div className="font-medium text-foreground">{invoice.transaction.invoice_number}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Sale Date</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.saleDate')}</div>
                           <div>{getDateOnly(invoice.transaction.sale_date) ?? "-"}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Invoice Total</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.invoiceTotal')}</div>
                           <div>{pkrFormatter.format(invoice.invoiceTotal)}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Allocated</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.allocated')}</div>
                           <div>{pkrFormatter.format(invoice.allocatedAmount)}</div>
                           {invoice.fallbackAllocatedAmount > 0 && (
                             <div className="text-xs text-muted-foreground/80">
-                              Includes {pkrFormatter.format(invoice.fallbackAllocatedAmount)} older unallocated payment
+                              {t('payments.includesOlder').replace('{amount}', pkrFormatter.format(invoice.fallbackAllocatedAmount))}
                             </div>
                           )}
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Remaining</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.remaining')}</div>
                           <div>{pkrFormatter.format(invoice.remainingUnpaidAmount)}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Due Date</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.dueDate')}</div>
                           <div>{invoice.creditDueDate ?? "-"}</div>
                         </div>
                         <div>
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Status</div>
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.statusLabel')}</div>
                           <div>{invoice.status}</div>
                         </div>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Allocation Amount</span>
+                          <span>{t('payments.allocationAmount')}</span>
                           <input
                             type="number"
                             min="0"
@@ -19685,25 +19684,25 @@ setCustomerOrganizationName("");
               disabled={customerPaymentLoading}
               className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
-              {customerPaymentLoading ? "Saving..." : "Save Customer Payment"}
+              {customerPaymentLoading ? t('common.saving') : t('payments.save')}
             </button>
             {customerPaymentMessage && <p className="mt-2 text-sm text-success">{customerPaymentMessage}</p>}
             {customerPaymentError && <p className="mt-2 text-sm text-destructive">{customerPaymentError}</p>}
           </div>
 
           <div className="mt-6 border-t border-border pt-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Customer Payment History</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('payments.history')}</h3>
             <input
               type="text"
               value={customerPaymentSearch}
               onChange={(e) => setCustomerPaymentSearch(e.target.value)}
-              placeholder="Search by customer name or invoice number..."
+              placeholder={t('sell.searchHistory')}
               className="mb-3 w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             />
             {customerPaymentSearch.trim() !== "" && customerInvoicesByCustomerForSearch.length > 0 && (
               <div className="mb-4 rounded border border-border bg-card p-3">
                 <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
-                  Invoice History for searched customer
+                  {t('payments.invoiceHistoryForCustomer')}
                 </div>
                 <ul className="space-y-1">
                   {customerInvoicesByCustomerForSearch.map((invoiceItem) => (
@@ -19728,7 +19727,7 @@ setCustomerOrganizationName("");
                           {invoiceItem.status}
                         </span>
                         {invoiceItem.remainingUnpaidAmount > 0 && (
-                          <span>Remaining: {pkrFormatter.format(invoiceItem.remainingUnpaidAmount)}</span>
+                          <span>{t('payments.remaining')}: {pkrFormatter.format(invoiceItem.remainingUnpaidAmount)}</span>
                         )}
                       </span>
                     </li>
@@ -19739,8 +19738,8 @@ setCustomerOrganizationName("");
             {filteredCustomerPaymentHistory.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {customerPaymentSearch.trim() !== ""
-                  ? "No customer payments match your search."
-                  : "No customer payments recorded yet."}
+                  ? t('payments.noMatch')
+                  : t('payments.noneYet')}
               </p>
             ) : (
               <ul className="space-y-3">
@@ -19751,13 +19750,13 @@ setCustomerOrganizationName("");
                   >
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Customer</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.customer')}</div>
                         <div className="font-medium text-foreground">
-                          {historyItem.customer?.customer_name ?? "Unknown"}
+                          {historyItem.customer?.customer_name ?? t('sell.unknown')}
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Payment Date</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.paymentDate')}</div>
                         <div>{getDateOnly(historyItem.payment.payment_date ?? historyItem.payment.created_at) ?? "-"}</div>
                         {historyItem.payment.payment_method && (
                           <div className="mt-1 inline-block rounded bg-muted/40 px-2 py-0.5 text-xs capitalize text-muted-foreground">
@@ -19766,43 +19765,43 @@ setCustomerOrganizationName("");
                         )}
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Total Payment</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.totalPayment')}</div>
                         <div>{pkrFormatter.format(historyItem.paymentAmount)}</div>
                         {(historyItem.payment.notes ?? "").toLowerCase().includes("against invoice") && (
                           <div className="mt-1 inline-block rounded bg-success/10 px-2 py-0.5 text-xs text-success">
-                            Payment received
+                            {t('payments.paymentReceived')}
                           </div>
                         )}
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Explicitly Allocated</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.explicitlyAllocated')}</div>
                         <div>{pkrFormatter.format(historyItem.explicitlyAllocatedAmount)}</div>
                       </div>
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Unallocated</div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.unallocated')}</div>
                         <div>{pkrFormatter.format(historyItem.unallocatedAmount)}</div>
                       </div>
                     </div>
 
                     {historyItem.payment.notes && (
-                      <p className="mt-2 text-sm text-muted-foreground">Notes: {historyItem.payment.notes}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">{t('sell.notesLabel')}: {historyItem.payment.notes}</p>
                     )}
 
                     {historyItem.unallocatedAmount > 0 && (
                       <p className="mt-2 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
-                        Unallocated payment balance
+                        {t('payments.unallocatedBalance')}
                       </p>
                     )}
                     {historyItem.allocationExceedsPayment && (
                       <p className="mt-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                        Allocation data exceeds payment amount
+                        {t('payments.allocationExceeds')}
                       </p>
                     )}
 
                     {historyItem.allocations.length > 0 && (
                       <div className="mt-3 rounded border border-border bg-muted/30 p-3">
                         <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
-                          Allocations
+                          {t('payments.allocations')}
                         </div>
                         <ul className="space-y-1">
                           {historyItem.allocations.map((allocationItem) => (
@@ -19811,7 +19810,7 @@ setCustomerOrganizationName("");
                               className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
                             >
                               <span>
-                                Sales invoice: {allocationItem.transaction?.invoice_number ?? "Unknown"}
+                                {t('payments.salesInvoice')}: {allocationItem.transaction?.invoice_number ?? t('sell.unknown')}
                               </span>
                               <span>{pkrFormatter.format(allocationItem.amount)}</span>
                             </li>
@@ -20250,18 +20249,18 @@ setCustomerOrganizationName("");
 
         {activeSectionAllowed && activeSection === "expenses" && (
         <section id="expense-management" className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Expense Management</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('expenses.title')}</h2>
           <form onSubmit={saveExpense} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Expense Type</span>
+                <span>{t('expenses.type')}</span>
                 <select
                   value={expenseType}
                   onChange={(e) => setExpenseType(e.target.value)}
                   required
                   className="rounded border border-border px-2 py-2"
                 >
-                  <option value="">Select Expense Type</option>
+                  <option value="">{t('expenses.selectType')}</option>
                   {expenseTypes.map((type) => (
                     <option key={type} value={type}>{type}</option>
                   ))}
@@ -20269,7 +20268,7 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Amount</span>
+                <span>{t('money.amount')}</span>
                 <input
                   type="number"
                   value={expenseAmount}
@@ -20283,7 +20282,7 @@ setCustomerOrganizationName("");
             </div>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Notes</span>
+              <span>{t('sell.notesLabel')}</span>
               <textarea
                 value={expenseNotes}
                 onChange={(e) => setExpenseNotes(e.target.value)}
@@ -20294,13 +20293,13 @@ setCustomerOrganizationName("");
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Supplier</span>
+                <span>{t('buy.supplier')}</span>
                 <select
                   value={selectedExpenseSupplierId}
                   onChange={(e) => setSelectedExpenseSupplierId(e.target.value)}
                   className="rounded border border-border px-2 py-2"
                 >
-                  <option value="">No Supplier</option>
+                  <option value="">{t('expenses.noSupplier')}</option>
                   {activeSuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>{supplier.supplier_name}</option>
                   ))}
@@ -20308,13 +20307,13 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Customer</span>
+                <span>{t('sell.customer')}</span>
                 <select
                   value={selectedExpenseCustomerId}
                   onChange={(e) => setSelectedExpenseCustomerId(e.target.value)}
                   className="rounded border border-border px-2 py-2"
                 >
-                  <option value="">No Customer</option>
+                  <option value="">{t('expenses.noCustomer')}</option>
                   {customers.map((customer) => (
                     <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
                   ))}
@@ -20324,13 +20323,13 @@ setCustomerOrganizationName("");
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Purchase Invoice</span>
+                <span>{t('expenses.purchaseInvoice')}</span>
                 <select
                   value={selectedExpensePurchaseId}
                   onChange={(e) => setSelectedExpensePurchaseId(e.target.value)}
                   className="rounded border border-border px-2 py-2"
                 >
-                  <option value="">No Purchase Invoice</option>
+                  <option value="">{t('expenses.noPurchaseInvoice')}</option>
                   {purchaseTransactions.map((transaction) => (
                     <option key={transaction.id} value={transaction.id}>{transaction.invoice_number}</option>
                   ))}
@@ -20338,13 +20337,13 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Sales Invoice</span>
+                <span>{t('expenses.salesInvoice')}</span>
                 <select
                   value={selectedExpenseSaleId}
                   onChange={(e) => setSelectedExpenseSaleId(e.target.value)}
                   className="rounded border border-border px-2 py-2"
                 >
-                  <option value="">No Sales Invoice</option>
+                  <option value="">{t('expenses.noSalesInvoice')}</option>
                   {salesTransactions.map((transaction) => (
                     <option key={transaction.id} value={transaction.id}>{transaction.invoice_number}</option>
                   ))}
@@ -20357,7 +20356,7 @@ setCustomerOrganizationName("");
               disabled={expenseLoading}
               className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
-              {expenseLoading ? "Saving..." : "Save Expense"}
+              {expenseLoading ? t('common.saving') : t('expenses.save')}
             </button>
 
             {expenseMessage && (
@@ -20376,9 +20375,9 @@ setCustomerOrganizationName("");
           </form>
 
           <div className="mt-6">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Recent Expenses</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('expenses.recent')}</h3>
             {expenses.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No expenses recorded yet.</p>
+              <p className="text-sm text-muted-foreground">{t('expenses.noneYet')}</p>
             ) : (
               <ul className="space-y-2">
                 {expenses.map((expense) => {
@@ -20392,7 +20391,7 @@ setCustomerOrganizationName("");
                   );
                   const expenseDate = expense.created_at
                     ? new Date(expense.created_at).toLocaleDateString()
-                    : "No date";
+                    : t('expenses.noDate');
                   const formattedAmount = new Intl.NumberFormat("en-PK", {
                     style: "currency",
                     currency: "PKR",
@@ -20403,19 +20402,19 @@ setCustomerOrganizationName("");
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <div className="font-medium text-foreground">{expense.expense_type}</div>
-                          <div className="text-xs text-muted-foreground/80">Date: {expenseDate}</div>
+                          <div className="text-xs text-muted-foreground/80">{t('money.date')}: {expenseDate}</div>
                         </div>
                         <div className="font-medium text-foreground">{formattedAmount}</div>
                       </div>
-                      {expense.notes && <div className="mt-2">Notes: {expense.notes}</div>}
+                      {expense.notes && <div className="mt-2">{t('sell.notesLabel')}: {expense.notes}</div>}
                       <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-                        {expense.supplier_id && <div>Supplier: {supplier?.supplier_name ?? "Unknown"}</div>}
-                        {expense.customer_id && <div>Customer: {customer?.customer_name ?? "Unknown"}</div>}
+                        {expense.supplier_id && <div>{t('buy.supplier')}: {supplier?.supplier_name ?? t('sell.unknown')}</div>}
+                        {expense.customer_id && <div>{t('sell.customer')}: {customer?.customer_name ?? t('sell.unknown')}</div>}
                         {expense.purchase_transaction_id && (
-                          <div>Purchase Invoice: {purchaseTransaction?.invoice_number ?? "Unknown"}</div>
+                          <div>{t('expenses.purchaseInvoice')}: {purchaseTransaction?.invoice_number ?? t('sell.unknown')}</div>
                         )}
                         {expense.sales_transaction_id && (
-                          <div>Sales Invoice: {salesTransaction?.invoice_number ?? "Unknown"}</div>
+                          <div>{t('expenses.salesInvoice')}: {salesTransaction?.invoice_number ?? t('sell.unknown')}</div>
                         )}
                       </div>
                     </li>
@@ -20430,11 +20429,11 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "customer-credit" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Receivables Dashboard</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('credit.title')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="customer_credit"
-                entityLabel="Customer Credit"
+                entityLabel={t('credit.entityLabel')}
                 supabase={supabase}
                 organizationId={currentOrganizationId}
                 actorProfileId={currentProfile?.id ?? null}
@@ -20444,7 +20443,7 @@ setCustomerOrganizationName("");
             )}
           </div>
           {customers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No customers.</p>
+            <p className="text-sm text-muted-foreground">{t('credit.noCustomers')}</p>
           ) : (
             <ul className="space-y-2">
               {receivablesStats.map((r) => (
@@ -20454,9 +20453,9 @@ setCustomerOrganizationName("");
                     <div className="text-xs text-muted-foreground">{r.shopName ?? ""}</div>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-foreground/80">
-                    <div>Total Sales: {r.totalSales}</div>
-                    <div>Payments: {r.paymentsReceived}</div>
-                    <div>Outstanding: {r.outstanding}</div>
+                    <div>{t('credit.totalSales')}: {r.totalSales}</div>
+                    <div>{t('buy.paymentsWord')}: {r.paymentsReceived}</div>
+                    <div>{t('credit.outstanding')}: {r.outstanding}</div>
                   </div>
                 </li>
               ))}
@@ -20492,11 +20491,11 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "categories" && (
         <section className="mb-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Category Management</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('categories.title')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="categories"
-                entityLabel="Categories"
+                entityLabel={t('categories.entityLabel')}
                 supabase={supabase}
                 organizationId={currentOrganizationId}
                 actorProfileId={currentProfile?.id ?? null}
@@ -20507,7 +20506,7 @@ setCustomerOrganizationName("");
           </div>
           <div className="space-y-4" {...entryNavigationHandlers}>
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Category Name</span>
+              <span>{t('categories.name')}</span>
               <input
                 type="text"
                 value={categoryName}
@@ -20517,13 +20516,13 @@ setCustomerOrganizationName("");
             </label>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Parent Category (Optional)</span>
+              <span>{t('categories.parent')}</span>
               <select
                 value={parentCategoryId ?? ""}
                 onChange={(e) => setParentCategoryId(e.target.value === "" ? null : e.target.value)}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               >
-                <option value="">None</option>
+                <option value="">{t('common.none')}</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
@@ -20533,15 +20532,15 @@ setCustomerOrganizationName("");
             </label>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Overselling Policy</span>
+              <span>{t('categories.oversellingPolicy')}</span>
               <select
                 value={categoryOversellingPolicy}
                 onChange={(e) => setCategoryOversellingPolicy(e.target.value)}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               >
-                <option value="inherit">Inherit (organization default)</option>
-                <option value="allow">Allow overselling</option>
-                <option value="block">Block overselling</option>
+                <option value="inherit">{t('categories.inheritOrg')}</option>
+                <option value="allow">{t('categories.allowOverselling')}</option>
+                <option value="block">{t('categories.blockOverselling')}</option>
               </select>
             </label>
 
@@ -20551,7 +20550,7 @@ setCustomerOrganizationName("");
               disabled={categoriesLoading}
               className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
             >
-              Add Category
+              {t('categories.add')}
             </button>
           </div>
 
@@ -20559,11 +20558,11 @@ setCustomerOrganizationName("");
           {categoryError && <p className="mt-4 text-sm text-destructive">{categoryError}</p>}
 
           <div className="mt-6">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Existing Categories</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('categories.existing')}</h3>
             {categoriesLoading ? (
-              <p className="text-sm text-muted-foreground">Loading categories...</p>
+              <p className="text-sm text-muted-foreground">{t('categories.loading')}</p>
             ) : categories.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No categories found.</p>
+              <p className="text-sm text-muted-foreground">{t('categories.noneFound')}</p>
             ) : (
               <ul className="space-y-2">
                 {categories.map((category) => {
@@ -20576,10 +20575,10 @@ setCustomerOrganizationName("");
                       <div className="flex flex-col">
                         <span>{category.name}</span>
                         {parentCategory && (
-                          <span className="text-xs text-muted-foreground/80">Parent: {parentCategory.name}</span>
+                          <span className="text-xs text-muted-foreground/80">{t('categories.parentPrefix')}: {parentCategory.name}</span>
                         )}
                         <span className="text-xs text-muted-foreground/80">
-                          Overselling: {category.overselling_policy === "block" ? "Blocked" : category.overselling_policy === "allow" ? "Allowed" : "Inherit"}
+                          {t('categories.oversellingPrefix')}: {category.overselling_policy === "block" ? t('categories.blocked') : category.overselling_policy === "allow" ? t('categories.allowed') : t('categories.inherit')}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -20588,16 +20587,16 @@ setCustomerOrganizationName("");
                           onChange={(e) => handleCategoryPolicyChange(category.id, e.target.value)}
                           className="rounded border border-border px-2 py-1 text-sm focus:border-ring focus:outline-none"
                         >
-                          <option value="inherit">Inherit</option>
-                          <option value="allow">Allow</option>
-                          <option value="block">Block</option>
+                          <option value="inherit">{t('categories.inherit')}</option>
+                          <option value="allow">{t('categories.allow')}</option>
+                          <option value="block">{t('categories.block')}</option>
                         </select>
                         <button
                           type="button"
                           onClick={() => handleDeleteCategory(category.id)}
                           className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
                         >
-                          Delete
+                          {t('common.delete')}
                         </button>
                       </div>
                     </li>
@@ -23186,14 +23185,14 @@ setCustomerOrganizationName("");
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">Staff & Permissions</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Manage staff roles, account status, and module access.</p>
+              <h2 className="text-xl font-medium text-foreground">{t('staff.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t('staff.subtitle')}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {canImportExport && (
                 <ImportExportSection
                   entityKey="staff"
-                  entityLabel="Staff"
+                  entityLabel={t('staff.entityLabel')}
                   supabase={supabase}
                   organizationId={currentOrganizationId}
                   actorProfileId={currentProfile?.id ?? null}
@@ -23206,41 +23205,39 @@ setCustomerOrganizationName("");
                 onClick={handleDeleteInactiveStaff}
                 className="rounded border border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
               >
-                Delete Inactive Staff
+                {t('staff.deleteInactive')}
               </button>
               <button
                 type="button"
                 onClick={() => fetchStaffProfilesAndPermissions(currentOrganizationId)}
                 className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
               >
-                Refresh Staff
+                {t('staff.refresh')}
               </button>
             </div>
           </div>
 
           <div className="mb-5 rounded border border-primary/20 bg-primary/5 p-4 text-sm text-primary">
-            Staff sign in with a Profile ID + Password (no email needed). Create an employee under Employees,
-            then generate a WhatsApp invite link. After staff activate their account, they appear here and you can
-            refine their permissions.
+            {t('staff.signInNote')}
           </div>
 
           {staffPermissionMessage && <p className="mb-4 text-sm text-success">{staffPermissionMessage}</p>}
           {staffPermissionError && <p className="mb-4 whitespace-pre-wrap text-sm text-destructive">{staffPermissionError}</p>}
 
           <div className="rounded border border-border bg-card p-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Staff Profiles</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('staff.profiles')}</h3>
             {staffProfiles.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No staff profiles found for this organization.</p>
+              <p className="text-sm text-muted-foreground">{t('staff.noneFound')}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
-                      <th className="px-3 py-2">Staff</th>
-                      <th className="px-3 py-2">Role</th>
-                      <th className="px-3 py-2">Active</th>
-                      <th className="px-3 py-2">Permission Summary</th>
-                      <th className="px-3 py-2">Actions</th>
+                      <th className="px-3 py-2">{t('staff.colStaff')}</th>
+                      <th className="px-3 py-2">{t('staff.colRole')}</th>
+                      <th className="px-3 py-2">{t('staff.colActive')}</th>
+                      <th className="px-3 py-2">{t('staff.colPermissionSummary')}</th>
+                      <th className="px-3 py-2">{t('staff.colActions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -23267,18 +23264,18 @@ setCustomerOrganizationName("");
                               type="text"
                               value={draft.display_name}
                               onChange={(e) => updateStaffProfileDraft(profile.id, "display_name", e.target.value)}
-                              placeholder="Display name"
+                              placeholder={t('staff.displayName')}
                               className="w-full rounded border border-border px-3 py-2"
                             />
                             <div className="mt-1 text-xs text-muted-foreground/80">
                               {profile.login_id ? (
-                                <span className="font-medium text-primary/80">Profile ID: {profile.login_id}</span>
+                                <span className="font-medium text-primary/80">{t('staff.profileId')}: {profile.login_id}</span>
                               ) : (
-                                profile.email ?? "No email"
+                                profile.email ?? t('staff.noEmail')
                               )}
                             </div>
                             {currentProfile?.id === profile.id && (
-                              <div className="mt-1 text-xs font-medium text-primary">Current user</div>
+                              <div className="mt-1 text-xs font-medium text-primary">{t('staff.currentUser')}</div>
                             )}
                           </td>
                           <td className="px-3 py-3">
@@ -23293,7 +23290,7 @@ setCustomerOrganizationName("");
                             </select>
                             {profileIsOwnerOrAdmin && (
                               <div className="mt-2 inline-flex rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                                Owner/Admin
+                                {t('staff.ownerAdmin')}
                               </div>
                             )}
                           </td>
@@ -23304,16 +23301,16 @@ setCustomerOrganizationName("");
                                 checked={draft.is_active}
                                 onChange={(e) => updateStaffProfileDraft(profile.id, "is_active", e.target.checked)}
                               />
-                              <span>{draft.is_active ? "Active" : "Inactive"}</span>
+                              <span>{draft.is_active ? t('staff.active') : t('staff.inactive')}</span>
                             </label>
                           </td>
                           <td className="min-w-[260px] px-3 py-3 text-xs text-muted-foreground">
                             {profileIsOwnerOrAdmin ? (
-                              <span>Full access</span>
+                              <span>{t('staff.fullAccess')}</span>
                             ) : permissionSummary.length > 0 ? (
                               <span>{permissionSummary.join(", ")}</span>
                             ) : (
-                              <span>No permissions selected</span>
+                              <span>{t('staff.noPermissions')}</span>
                             )}
                           </td>
                           <td className="px-3 py-3">
@@ -23323,14 +23320,14 @@ setCustomerOrganizationName("");
                                 onClick={() => setSelectedStaffProfileId(profile.id)}
                                 className="rounded border border-primary px-3 py-2 text-xs text-primary hover:bg-primary/5"
                               >
-                                Edit Permissions
+                                {t('staff.editPermissions')}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => saveStaffProfile(profile.id)}
                                 className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                               >
-                                Save Profile
+                                {t('staff.saveProfile')}
                               </button>
                             </div>
                           </td>
@@ -23344,15 +23341,15 @@ setCustomerOrganizationName("");
           </div>
 
           <div className="mt-5 rounded border border-border bg-card p-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Permissions</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('staff.permissions')}</h3>
             <label className="flex max-w-xl flex-col gap-2 text-sm text-foreground/80">
-              <span>Select Staff Member</span>
+              <span>{t('staff.selectStaffMember')}</span>
               <select
                 value={selectedStaffProfileId}
                 onChange={(e) => setSelectedStaffProfileId(e.target.value)}
                 className="rounded border border-border px-3 py-2"
               >
-                <option value="">Select staff</option>
+                <option value="">{t('staff.selectStaff')}</option>
                 {staffProfiles.map((profile) => (
                   <option key={profile.id} value={profile.id}>
                     {profile.display_name || profile.login_id || profile.email || profile.id}
@@ -23365,22 +23362,21 @@ setCustomerOrganizationName("");
               const selectedProfileIsOwner = selectedProfile?.role === "owner";
 
               if (!selectedProfile) {
-                return <p className="mt-4 text-sm text-muted-foreground">Select a staff member to edit permissions.</p>;
+                return <p className="mt-4 text-sm text-muted-foreground">{t('staff.selectToEdit')}</p>;
               }
 
               return (
                 <div className="mt-4">
                   {selectedProfileIsOwner && (
                     <div className="mb-4 rounded border border-primary/20 bg-primary/5 p-3 text-sm text-primary">
-                      Owners have full access. Permission checkboxes are mainly for non-owner staff.
+                      {t('staff.ownerNote')}
                     </div>
                   )}
 
                   <div className="mb-4 rounded border border-border bg-muted/30 p-4 text-sm text-foreground/80">
-                    <p className="font-medium text-foreground">Sections</p>
+                    <p className="font-medium text-foreground">{t('staff.sections')}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Tick the sidebar sections this staff member may open. Granted sections appear in their
-                      sidebar exactly like they do for the owner. Dashboard is always available.
+                      {t('staff.sectionsHint')}
                     </p>
                   </div>
                   <div className="grid gap-4 lg:grid-cols-2">
@@ -23441,8 +23437,8 @@ setCustomerOrganizationName("");
                   </div>
 
                   {staffSectionDraft.includes("sales") && <fieldset className="mt-4 rounded border border-border p-4">
-                    <legend className="px-2 font-medium">Sales access</legend>
-                    <p className="mb-3 text-sm text-muted-foreground">Choose only what this employee needs. Employees see their own sales. Invoice submissions still need owner approval.</p>
+                    <legend className="px-2 font-medium">{t('staff.salesAccess')}</legend>
+                    <p className="mb-3 text-sm text-muted-foreground">{t('staff.salesAccessHint')}</p>
                     <div className="grid gap-3 sm:grid-cols-2">{salesTools.map(tool => <label key={tool.id} className="flex items-center gap-2 text-sm">
                       <input type="checkbox" checked={configureSalesTools(staffSectionDraft).includes(`sales:${tool.id}`)} onChange={event => setStaffSectionDraft(current => {
                         const grants = configureSalesTools(current).filter(id => id !== `sales:${tool.id}`);
@@ -23456,7 +23452,7 @@ setCustomerOrganizationName("");
                     onClick={saveStaffPermissions}
                     className="mt-4 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90"
                   >
-                    Save Permissions
+                    {t('staff.savePermissions')}
                   </button>
                 </div>
               );
@@ -23469,9 +23465,9 @@ setCustomerOrganizationName("");
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">Market Intelligence</h2>
+              <h2 className="text-xl font-medium text-foreground">{t('mi.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Market Intelligence converts owner-reviewed business signals into advisory summaries, risk and opportunity scores, urgency, and practical owner actions.
+                {t('mi.subtitle')}
               </p>
             </div>
             <button
@@ -23517,19 +23513,19 @@ setCustomerOrganizationName("");
           <div className="rounded border border-success/20 bg-success/5 p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-success/90">Market Intelligence Summary</h3>
+                <h3 className="text-lg font-medium text-success/90">{t('mi.summary')}</h3>
                 <p className="mt-1 text-sm text-success/80">
                   Professional advisory output for executive summary, business impact, risk, opportunity, owner actions, and health impact.
                 </p>
               </div>
               <div className="rounded border border-success/20 bg-card p-3 text-sm text-success/80">
-                <div className="font-medium">High Risk Alerts</div>
+                <div className="font-medium">{t('mi.highRiskAlerts')}</div>
                 <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.highRisk}</div>
               </div>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded border border-success/20 bg-card p-3">
-                <div className="text-sm text-success">Active Items</div>
+                <div className="text-sm text-success">{t('mi.activeItems')}</div>
                 <div className="mt-1 text-2xl font-semibold text-success/90">{marketIntelligenceSummary.active}</div>
               </div>
               <div className="rounded border border-success/20 bg-card p-3">
@@ -23537,11 +23533,11 @@ setCustomerOrganizationName("");
                 <div className="mt-1 text-2xl font-semibold text-success/90">{marketIntelligenceSummary.highCritical}</div>
               </div>
               <div className="rounded border border-success/20 bg-card p-3">
-                <div className="text-sm text-success">High Opportunity Alerts</div>
+                <div className="text-sm text-success">{t('mi.highOpportunityAlerts')}</div>
                 <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.highOpportunity}</div>
               </div>
               <div className="rounded border border-success/20 bg-card p-3">
-                <div className="text-sm text-success">Items Requiring Attention</div>
+                <div className="text-sm text-success">{t('mi.itemsRequiringAttention')}</div>
                 <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.requiringAttention}</div>
               </div>
             </div>
@@ -23605,7 +23601,7 @@ setCustomerOrganizationName("");
           <div className="mt-5 rounded border border-primary/20 bg-card p-4">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-foreground">Import Queue</h3>
+                <h3 className="text-lg font-medium text-foreground">{t('mi.importQueue')}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Paste market news links, supplier updates, policy notes, or raw market observations here. Review them before converting into intelligence items.
                 </p>
@@ -24363,9 +24359,9 @@ setCustomerOrganizationName("");
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">Staff Duty</h2>
+              <h2 className="text-xl font-medium text-foreground">{t('sections.staffDuty')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Start duty, save browser location points, and monitor staff location while TradeOS is open.
+                {t('sections.staffDutyHint')}
               </p>
             </div>
             <button
@@ -24647,9 +24643,9 @@ setCustomerOrganizationName("");
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">Mobile App Readiness</h2>
+              <h2 className="text-xl font-medium text-foreground">{t('sections.mobileApp')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Install TradeOS from a mobile browser and prepare for future mobile workflows.
+                {t('sections.mobileAppHint')}
               </p>
             </div>
             <button
@@ -24724,11 +24720,11 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "employees" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Employees</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('sections.employees')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="employees"
-                entityLabel="Employees"
+                entityLabel={t('sections.employees')}
                 supabase={supabase}
                 organizationId={currentOrganizationId}
                 actorProfileId={currentProfile?.id ?? null}
@@ -24744,11 +24740,11 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "territories" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Territories</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('sections.territories')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="territories"
-                entityLabel="Territories"
+                entityLabel={t('sections.territories')}
                 supabase={supabase}
                 organizationId={currentOrganizationId}
                 actorProfileId={currentProfile?.id ?? null}
@@ -24764,11 +24760,11 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "routes" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Routes</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('sections.routes')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="routes"
-                entityLabel="Routes"
+                entityLabel={t('sections.routes')}
                 supabase={supabase}
                 organizationId={currentOrganizationId}
                 actorProfileId={currentProfile?.id ?? null}
@@ -24797,10 +24793,9 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "live-tracking" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5">
-            <h2 className="text-xl font-medium text-foreground">Live Tracking</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('sections.liveTracking')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Click any employee below to see their live location on the map, navigate to them, or view their
-              movement trail.
+              {t('sections.liveTrackingHint')}
             </p>
           </div>
           <LiveTrackingView />
@@ -24810,9 +24805,9 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "deployment" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-5">
-            <h2 className="text-xl font-medium text-foreground">Deployment Readiness</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('sections.deployment')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Vercel deployment preparation and environment checks for TradeOS.
+              {t('sections.deploymentHint')}
             </p>
           </div>
 
@@ -24942,8 +24937,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">Security Check</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Final security test mode and production readiness checklist.</p>
+              <h2 className="text-xl font-medium text-foreground">{t('sections.securityCheck')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t('sections.securityCheckHint')}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -25090,59 +25085,59 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">Activity Logs</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Owner activity history for important TradeOS actions.</p>
+              <h2 className="text-xl font-medium text-foreground">{t('logs.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t('logs.subtitle')}</p>
             </div>
             <button
               type="button"
               onClick={() => fetchAuditLogs(currentOrganizationId)}
               className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
             >
-              Refresh Logs
+              {t('logs.refresh')}
             </button>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded border border-border bg-card p-3">
-              <div className="text-sm text-muted-foreground/80">Total Logs</div>
+              <div className="text-sm text-muted-foreground/80">{t('logs.totalLogs')}</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.total}</div>
             </div>
             <div className="rounded border border-border bg-card p-3">
-              <div className="text-sm text-muted-foreground/80">Today's Activity</div>
+              <div className="text-sm text-muted-foreground/80">{t('logs.todayActivity')}</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.today}</div>
             </div>
             <div className="rounded border border-border bg-card p-3">
-              <div className="text-sm text-muted-foreground/80">Creates</div>
+              <div className="text-sm text-muted-foreground/80">{t('logs.creates')}</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.creates}</div>
             </div>
             <div className="rounded border border-border bg-card p-3">
-              <div className="text-sm text-muted-foreground/80">Updates / Deletes</div>
+              <div className="text-sm text-muted-foreground/80">{t('logs.updatesDeletes')}</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.updatesDeletes}</div>
             </div>
           </div>
 
           <div className="mt-5 rounded border border-border bg-card p-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Filters</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('logs.filters')}</h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <label className="flex flex-col gap-2 text-sm text-foreground/80 lg:col-span-2">
-                <span>Search</span>
+                <span>{t('common.search')}</span>
                 <input
                   type="search"
                   value={auditLogSearch}
                   onChange={(e) => setAuditLogSearch(e.target.value)}
-                  placeholder="Search action, entity, label, description, actor"
+                  placeholder={t('logs.searchPlaceholder')}
                   className="rounded border border-border px-3 py-2"
                 />
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Entity Type</span>
+                <span>{t('logs.entityType')}</span>
                 <select
                   value={auditLogEntityFilter}
                   onChange={(e) => setAuditLogEntityFilter(e.target.value)}
                   className="rounded border border-border px-3 py-2"
                 >
-                  <option value="all">All entity types</option>
+                  <option value="all">{t('logs.allEntityTypes')}</option>
                   {auditLogEntityTypes.map((entityType) => (
                     <option key={entityType} value={entityType}>{entityType.replace(/_/g, " ")}</option>
                   ))}
@@ -25150,13 +25145,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Action</span>
+                <span>{t('logs.action')}</span>
                 <select
                   value={auditLogActionFilter}
                   onChange={(e) => setAuditLogActionFilter(e.target.value)}
                   className="rounded border border-border px-3 py-2"
                 >
-                  <option value="all">All actions</option>
+                  <option value="all">{t('logs.allActions')}</option>
                   {auditLogActions.map((action) => (
                     <option key={action} value={action}>{action}</option>
                   ))}
@@ -25164,7 +25159,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Date From</span>
+                <span>{t('logs.dateFrom')}</span>
                 <input
                   type="date"
                   value={auditLogDateFrom}
@@ -25174,7 +25169,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Date To</span>
+                <span>{t('logs.dateTo')}</span>
                 <input
                   type="date"
                   value={auditLogDateTo}
@@ -25187,24 +25182,24 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
 
           <div className="mt-5 rounded border border-border bg-card p-4">
             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-medium text-foreground">Log Entries</h3>
-              <div className="text-sm text-muted-foreground/80">{filteredAuditLogs.length} shown</div>
+              <h3 className="text-lg font-medium text-foreground">{t('logs.entries')}</h3>
+              <div className="text-sm text-muted-foreground/80">{t('logs.shownCount').replace('{count}', String(filteredAuditLogs.length))}</div>
             </div>
 
             {filteredAuditLogs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No activity logs match the current filters.</p>
+              <p className="text-sm text-muted-foreground">{t('logs.noMatch')}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
-                      <th className="px-3 py-2">Time</th>
-                      <th className="px-3 py-2">Action</th>
-                      <th className="px-3 py-2">Entity Type</th>
-                      <th className="px-3 py-2">Entity Label</th>
-                      <th className="px-3 py-2">Description</th>
-                      <th className="px-3 py-2">Actor</th>
-                      <th className="px-3 py-2">Details</th>
+                      <th className="px-3 py-2">{t('logs.colTime')}</th>
+                      <th className="px-3 py-2">{t('logs.action')}</th>
+                      <th className="px-3 py-2">{t('logs.entityType')}</th>
+                      <th className="px-3 py-2">{t('logs.colEntityLabel')}</th>
+                      <th className="px-3 py-2">{t('logs.colDescription')}</th>
+                      <th className="px-3 py-2">{t('logs.colActor')}</th>
+                      <th className="px-3 py-2">{t('logs.colDetails')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -25229,18 +25224,18 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                               }
                               className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30"
                             >
-                              {isExpanded ? "Hide" : "Show"}
+                              {isExpanded ? t('logs.hide') : t('logs.show')}
                             </button>
                             {isExpanded && (
                               <div className="mt-3 grid min-w-[320px] gap-3 lg:grid-cols-2">
                                 <div>
-                                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">Old Values</div>
+                                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{t('logs.oldValues')}</div>
                                   <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-foreground p-3 text-xs text-background">
                                     {JSON.stringify(log.old_values ?? null, null, 2)}
                                   </pre>
                                 </div>
                                 <div>
-                                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">New Values</div>
+                                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">{t('logs.newValues')}</div>
                                   <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-foreground p-3 text-xs text-background">
                                     {JSON.stringify(log.new_values ?? null, null, 2)}
                                   </pre>
@@ -25261,13 +25256,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
 
         {activeSectionAllowed && activeSection === "task-manager" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Task Manager</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('tasks.title')}</h2>
 
           <div className="rounded border border-border bg-card p-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Create Task</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('tasks.create')}</h3>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Title</span>
+                <span>{t('tasks.titleLabel')}</span>
                 <input
                   type="text"
                   value={taskTitle}
@@ -25277,7 +25272,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Task Type</span>
+                <span>{t('tasks.type')}</span>
                 <select
                   value={taskType}
                   onChange={(e) => setTaskType(e.target.value)}
@@ -25290,7 +25285,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Priority</span>
+                <span>{t('tasks.priority')}</span>
                 <select
                   value={taskPriority}
                   onChange={(e) => setTaskPriority(e.target.value)}
@@ -25303,7 +25298,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Status</span>
+                <span>{t('sell.statusLabel')}</span>
                 <select
                   value={taskStatus}
                   onChange={(e) => setTaskStatus(e.target.value)}
@@ -25316,7 +25311,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Due Date</span>
+                <span>{t('tasks.dueDate')}</span>
                 <input
                   type="date"
                   value={taskDueDate}
@@ -25326,13 +25321,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Related Customer</span>
+                <span>{t('tasks.relatedCustomer')}</span>
                 <select
                   value={selectedTaskCustomerId}
                   onChange={(e) => setSelectedTaskCustomerId(e.target.value)}
                   className="rounded border border-border px-3 py-2"
                 >
-                  <option value="">No customer</option>
+                  <option value="">{t('tasks.noCustomer')}</option>
                   {customers.map((customer) => (
                     <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
                   ))}
@@ -25340,13 +25335,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Related Supplier</span>
+                <span>{t('tasks.relatedSupplier')}</span>
                 <select
                   value={selectedTaskSupplierId}
                   onChange={(e) => setSelectedTaskSupplierId(e.target.value)}
                   className="rounded border border-border px-3 py-2"
                 >
-                  <option value="">No supplier</option>
+                  <option value="">{t('tasks.noSupplier')}</option>
                   {activeSuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>{supplier.supplier_name}</option>
                   ))}
@@ -25354,13 +25349,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Related Product</span>
+                <span>{t('tasks.relatedProduct')}</span>
                 <select
                   value={selectedTaskProductId}
                   onChange={(e) => setSelectedTaskProductId(e.target.value)}
                   className="rounded border border-border px-3 py-2"
                 >
-                  <option value="">No product</option>
+                  <option value="">{t('tasks.noProduct')}</option>
                   {activeProducts.map((product) => (
                     <option key={product.id} value={String(product.id)}>{product.name}</option>
                   ))}
@@ -25368,13 +25363,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Related Purchase Invoice</span>
+                <span>{t('tasks.relatedPurchaseInvoice')}</span>
                 <select
                   value={selectedTaskPurchaseId}
                   onChange={(e) => setSelectedTaskPurchaseId(e.target.value)}
                   className="rounded border border-border px-3 py-2"
                 >
-                  <option value="">No purchase invoice</option>
+                  <option value="">{t('tasks.noPurchaseInvoice')}</option>
                   {purchaseTransactions.map((transaction) => (
                     <option key={transaction.id} value={transaction.id}>{transaction.invoice_number}</option>
                   ))}
@@ -25382,13 +25377,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Related Sales Invoice</span>
+                <span>{t('tasks.relatedSalesInvoice')}</span>
                 <select
                   value={selectedTaskSaleId}
                   onChange={(e) => setSelectedTaskSaleId(e.target.value)}
                   className="rounded border border-border px-3 py-2"
                 >
-                  <option value="">No sales invoice</option>
+                  <option value="">{t('tasks.noSalesInvoice')}</option>
                   {salesTransactions.map((transaction) => (
                     <option key={transaction.id} value={transaction.id}>{transaction.invoice_number}</option>
                   ))}
@@ -25397,7 +25392,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             </div>
 
             <label className="mt-4 flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Notes</span>
+              <span>{t('sell.notesLabel')}</span>
               <textarea
                 value={taskNotes}
                 onChange={(e) => setTaskNotes(e.target.value)}
@@ -25412,16 +25407,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               disabled={taskLoading}
               className="mt-4 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
-              {taskLoading ? "Saving..." : "Save Task"}
+              {taskLoading ? t('common.saving') : t('tasks.save')}
             </button>
             {taskMessage && <p className="mt-3 text-sm text-success">{taskMessage}</p>}
             {taskError && <p className="mt-3 whitespace-pre-wrap text-sm text-destructive">{taskError}</p>}
           </div>
 
           <div className="mt-6 rounded border border-warning/20 bg-warning/5 p-4">
-            <h3 className="mb-3 text-lg font-medium text-warning/80">Suggested Tasks</h3>
+            <h3 className="mb-3 text-lg font-medium text-warning/80">{t('tasks.suggested')}</h3>
             {taskSuggestions.length === 0 ? (
-              <p className="text-sm text-warning/90">No suggestions right now.</p>
+              <p className="text-sm text-warning/90">{t('tasks.noSuggestions')}</p>
             ) : (
               <div className="grid gap-3 lg:grid-cols-2">
                 {taskSuggestions.map((suggestion) => (
@@ -25438,7 +25433,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                       disabled={taskLoading}
                       className="mt-3 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:border-border disabled:text-muted-foreground"
                     >
-                      Create Task
+                      {t('tasks.createButton')}
                     </button>
                   </div>
                 ))}
@@ -25448,46 +25443,46 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
 
           <div className="mt-6 rounded border border-border bg-card p-4">
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <h3 className="text-lg font-medium text-foreground">Tasks</h3>
+              <h3 className="text-lg font-medium text-foreground">{t('tasks.listTitle')}</h3>
               <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
                 <select
                   value={taskFilter}
                   onChange={(e) => setTaskFilter(e.target.value)}
                   className="rounded border border-border px-3 py-2 text-sm"
                 >
-                  <option value="all">All</option>
-                  <option value="pending">Pending</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="overdue">Overdue</option>
-                  <option value="due_today">Due Today</option>
-                  <option value="high_urgent">High/Urgent</option>
+                  <option value="all">{t('tasks.filterAll')}</option>
+                  <option value="pending">{t('tasks.filterPending')}</option>
+                  <option value="in_progress">{t('tasks.filterInProgress')}</option>
+                  <option value="completed">{t('tasks.filterCompleted')}</option>
+                  <option value="cancelled">{t('tasks.filterCancelled')}</option>
+                  <option value="overdue">{t('tasks.filterOverdue')}</option>
+                  <option value="due_today">{t('tasks.filterDueToday')}</option>
+                  <option value="high_urgent">{t('tasks.filterHighUrgent')}</option>
                 </select>
                 <input
                   type="search"
                   value={taskSearch}
                   onChange={(e) => setTaskSearch(e.target.value)}
-                  placeholder="Search title, notes, customer, supplier, product"
+                  placeholder={t('tasks.searchPlaceholder')}
                   className="rounded border border-border px-3 py-2 text-sm"
                 />
               </div>
             </div>
 
             {filteredTasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No tasks match the current filters.</p>
+              <p className="text-sm text-muted-foreground">{t('tasks.noMatch')}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
-                      <th className="px-3 py-2">Task</th>
-                      <th className="px-3 py-2">Type</th>
-                      <th className="px-3 py-2">Priority</th>
-                      <th className="px-3 py-2">Status</th>
-                      <th className="px-3 py-2">Due</th>
-                      <th className="px-3 py-2">Related</th>
-                      <th className="px-3 py-2">Actions</th>
+                      <th className="px-3 py-2">{t('tasks.colTask')}</th>
+                      <th className="px-3 py-2">{t('tasks.colType')}</th>
+                      <th className="px-3 py-2">{t('tasks.colPriority')}</th>
+                      <th className="px-3 py-2">{t('sell.statusLabel')}</th>
+                      <th className="px-3 py-2">{t('tasks.colDue')}</th>
+                      <th className="px-3 py-2">{t('tasks.colRelated')}</th>
+                      <th className="px-3 py-2">{t('tasks.colActions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -25521,16 +25516,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                                     ? "bg-destructive/10 text-destructive"
                                     : "bg-primary/10 text-primary"
                             }`}>
-                              {isOverdue ? "Overdue" : taskStatusLabels[task.status] ?? task.status}
+                              {isOverdue ? t('sell.statusOverdue') : taskStatusLabels[task.status] ?? task.status}
                             </span>
                           </td>
-                          <td className="px-3 py-3">{dueDate ?? "No due date"}</td>
+                          <td className="px-3 py-3">{dueDate ?? t('tasks.noDueDate')}</td>
                           <td className="px-3 py-3 text-xs text-muted-foreground">
-                            {customer && <div>Customer: {customer.customer_name}</div>}
-                            {supplier && <div>Supplier: {supplier.supplier_name}</div>}
-                            {product && <div>Product: {product.name}</div>}
-                            {purchase && <div>Purchase: {purchase.invoice_number}</div>}
-                            {sale && <div>Sale: {sale.invoice_number}</div>}
+                            {customer && <div>{t('sell.customer')}: {customer.customer_name}</div>}
+                            {supplier && <div>{t('buy.supplier')}: {supplier.supplier_name}</div>}
+                            {product && <div>{t('sell.product')}: {product.name}</div>}
+                            {purchase && <div>{t('tasks.relatedPurchase')}: {purchase.invoice_number}</div>}
+                            {sale && <div>{t('tasks.relatedSale')}: {sale.invoice_number}</div>}
                             {!customer && !supplier && !product && !purchase && !sale && <div>-</div>}
                           </td>
                           <td className="px-3 py-3">
@@ -25541,7 +25536,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                                   onClick={() => updateTaskStatus(task.id, "in_progress")}
                                   className="rounded border border-primary px-2 py-1 text-xs text-primary hover:bg-primary/5"
                                 >
-                                  Mark In Progress
+                                  {t('tasks.markInProgress')}
                                 </button>
                               )}
                               {task.status !== "completed" && task.status !== "cancelled" && (
@@ -25550,7 +25545,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                                   onClick={() => updateTaskStatus(task.id, "completed")}
                                   className="rounded border border-success px-2 py-1 text-xs text-success hover:bg-success/5"
                                 >
-                                  Mark Completed
+                                  {t('tasks.markCompleted')}
                                 </button>
                               )}
                               {task.status !== "cancelled" && task.status !== "completed" && (
@@ -25559,7 +25554,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                                   onClick={() => updateTaskStatus(task.id, "cancelled")}
                                   className="rounded border border-muted-foreground px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30"
                                 >
-                                  Cancel Task
+                                  {t('tasks.cancelTask')}
                                 </button>
                               )}
                             </div>
@@ -25577,12 +25572,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
 
         {activeSectionAllowed && activeSection === "business-settings" && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Business Settings</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('settings.title')}</h2>
           <RegionalSettingsPanel key={searchScopeKey} request={authorizedFetch} canEdit={currentProfile?.role === 'owner' && currentProfile?.is_active === true} />
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Business Name</span>
+                <span>{t('settings.businessName')}</span>
                 <input
                   type="text"
                   value={businessSettingsName}
@@ -25592,7 +25587,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Phone</span>
+                <span>{t('customers.phone')}</span>
                 <input
                   type="text"
                   value={businessSettingsPhone}
@@ -25604,7 +25599,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Address</span>
+                <span>{t('customers.address')}</span>
                 <input
                   type="text"
                   value={businessSettingsAddress}
@@ -25614,7 +25609,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>City</span>
+                <span>{t('customers.city')}</span>
                 <input
                   type="text"
                   value={businessSettingsCity}
@@ -25625,7 +25620,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             </div>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Invoice Footer Note</span>
+              <span>{t('settings.invoiceFooterNote')}</span>
               <textarea
                 value={businessSettingsInvoiceFooterNote}
                 onChange={(e) => setBusinessSettingsInvoiceFooterNote(e.target.value)}
@@ -25635,7 +25630,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             </label>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Default Payment Terms</span>
+              <span>{t('settings.defaultPaymentTerms')}</span>
               <textarea
                 value={businessSettingsDefaultPaymentTerms}
                 onChange={(e) => setBusinessSettingsDefaultPaymentTerms(e.target.value)}
@@ -25645,29 +25640,29 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             </label>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Overselling Policy</span>
+              <span>{t('categories.oversellingPolicy')}</span>
               <select
                 value={businessSettingsOversellingPolicy}
                 onChange={(e) => setBusinessSettingsOversellingPolicy(e.target.value)}
                 className="rounded border border-border px-3 py-2"
               >
-                <option value="allow">Allow overselling (stock can go below zero)</option>
-                <option value="block">Block overselling (refuse sales above available stock)</option>
+                <option value="allow">{t('settings.allowOversellingOption')}</option>
+                <option value="block">{t('settings.blockOversellingOption')}</option>
               </select>
               <span className="text-xs text-muted-foreground/80">
-                Organization-wide default. Categories and products can override this.
+                {t('settings.oversellingHint')}
               </span>
             </label>
 
             {isOwnerOrAdmin() && (
               <div className="rounded-lg border border-border bg-background p-4">
-                <h3 className="text-base font-semibold text-foreground">Employee Duty Schedule</h3>
+                <h3 className="text-base font-semibold text-foreground">{t('settings.dutySchedule')}</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Controls attendance hours and the automatic location-tracking cutoff. Changes apply to duty sessions started after you save; an active employee keeps the cutoff assigned when their duty began.
+                  {t('settings.dutyScheduleHint')}
                 </p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                    <span>Start Duty Time</span>
+                    <span>{t('settings.startDutyTime')}</span>
                     <input
                       type="time"
                       value={businessSettingsDutyStart}
@@ -25676,7 +25671,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                     />
                   </label>
                   <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                    <span>End Duty Time</span>
+                    <span>{t('settings.endDutyTime')}</span>
                     <input
                       type="time"
                       value={businessSettingsDutyEnd}
@@ -25691,7 +25686,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   disabled={dutyScheduleLoading}
                   className="mt-4 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
                 >
-                  {dutyScheduleLoading ? "Saving Schedule..." : "Save Duty Schedule"}
+                  {dutyScheduleLoading ? t('settings.savingSchedule') : t('settings.saveDutySchedule')}
                 </button>
                 {dutyScheduleMessage && <p className="mt-3 text-sm text-success">{dutyScheduleMessage}</p>}
                 {dutyScheduleError && <p className="mt-3 text-sm text-destructive">{dutyScheduleError}</p>}
@@ -25704,7 +25699,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               disabled={businessSettingsLoading}
               className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
-              {businessSettingsLoading ? "Saving..." : "Save Business Settings"}
+              {businessSettingsLoading ? t('common.saving') : t('settings.save')}
             </button>
           </div>
 
