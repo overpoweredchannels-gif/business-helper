@@ -10,13 +10,20 @@ export function BarcodeInput({ value, onChange, onScan, disabled, autoFocus = fa
   // Track input timing for scanner auto-detection (scanners type fast, humans type slow)
   const lastInputTime = useRef<number>(0);
   const inputTimer = useRef<NodeJS.Timeout | null>(null);
+  // The last code actually submitted. The field now KEEPS the scanned code
+  // visible, so without this guard a slow pause (auto-detect fires) followed
+  // by the scanner's Enter would submit the same code twice. Any edit to
+  // the field clears the marker, so deliberately re-entering the same code
+  // (a second unit of the same product) still submits.
+  const lastSubmitted = useRef<string | null>(null);
   
   useEffect(() => { if (focusSignal > 0 && !disabled) input.current?.focus(); }, [focusSignal, disabled]);
   // Cleanup timer on unmount
   useEffect(() => { return () => { if (inputTimer.current) clearTimeout(inputTimer.current); }; }, []);
   
-  const change = (value: string) => { 
-    setLocalValue(value); 
+  const change = (value: string) => {
+    if (value !== lastSubmitted.current) lastSubmitted.current = null;
+    setLocalValue(value);
     onChange?.(value);
     
     // Auto-detect scanner: if input is rapid (>3 chars in <100ms) and then pauses,
@@ -46,6 +53,14 @@ export function BarcodeInput({ value, onChange, onScan, disabled, autoFocus = fa
     // the scanned code with its last character missing.
     const scanned = (input.current?.value ?? text).trim();
     if (!scanned || disabled) return;
+    if (scanned === lastSubmitted.current) {
+      // Same code already submitted and untouched since — a duplicate
+      // trigger (auto-detect + Enter), not a new scan.
+      input.current?.focus();
+      if (value === undefined) input.current?.select();
+      return;
+    }
+    lastSubmitted.current = scanned;
     onScan(scanned);
     input.current?.focus();
     // Uncontrolled mode: keep the scanned code visible as cashier
