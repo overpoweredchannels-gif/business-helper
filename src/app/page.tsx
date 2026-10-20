@@ -25732,14 +25732,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   }}
                   className="mt-2 rounded bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90"
                 >
-                  Review & Approve
+                  {t('draft.reviewApprove')}
                 </button>
               </div>
               <button
                 type="button"
                 onClick={() => setSaleAlert(null)}
                 className="text-muted-foreground hover:text-foreground"
-                title="Dismiss"
+                title={t('draft.dismiss')}
               >
                 <X className="size-4" />
               </button>
@@ -25760,18 +25760,18 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               <div className="w-full max-w-lg rounded-xl border border-border bg-card p-5 shadow-xl">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-semibold text-foreground">Draft Order Review</h3>
+                    <h3 className="text-lg font-semibold text-foreground">{t('draft.title')}</h3>
                     <p className="mt-0.5 text-sm text-muted-foreground">
-                      {order.so_number} · by {order.created_by_profile_id ? (
-                        <span className="font-medium text-foreground">{staffProfiles.find((p) => p.id === order.created_by_profile_id)?.display_name ?? "Employee"}</span>
-                      ) : "Employee"}
+                      {order.so_number} · {t('draft.by')} {order.created_by_profile_id ? (
+                        <span className="font-medium text-foreground">{staffProfiles.find((p) => p.id === order.created_by_profile_id)?.display_name ?? t('draft.employee')}</span>
+                      ) : t('draft.employee')}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setDraftReviewOrder(null)}
                     className="text-muted-foreground hover:text-foreground"
-                    title="Close"
+                    title={t('common.close')}
                   >
                     <X className="size-5" />
                   </button>
@@ -25779,28 +25779,28 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
 
                 <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded border border-border bg-muted/30 p-3">
-                    <div className="text-xs text-muted-foreground">Customer</div>
-                    <div className="mt-0.5 font-medium text-foreground">{customer?.customer_name ?? "Unknown"}</div>
+                    <div className="text-xs text-muted-foreground">{t('sell.customer')}</div>
+                    <div className="mt-0.5 font-medium text-foreground">{customer?.customer_name ?? t('sell.unknown')}</div>
                   </div>
                   <div className="rounded border border-border bg-muted/30 p-3">
-                    <div className="text-xs text-muted-foreground">Payment</div>
+                    <div className="text-xs text-muted-foreground">{t('activity.payment')}</div>
                     <div className={`mt-0.5 font-medium capitalize ${order.payment_type === "cash" ? "text-success" : "text-warning"}`}>
-                      {order.payment_type === "cash" ? "Cash" : `Credit${order.credit_days ? ` (${order.credit_days}d)` : ""}`}
+                      {order.payment_type === "cash" ? t('sell.paymentCash') : `${t('sell.paymentCredit')}${order.credit_days ? ` (${order.credit_days}d)` : ""}`}
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-3 rounded border border-border">
                   <div className="border-b border-border bg-muted/30 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Items
+                    {t('draft.items')}
                   </div>
                   <ul className="divide-y divide-border">
-                    {orderItems.length === 0 && <li className="px-3 py-2 text-sm text-muted-foreground">No items on this draft.</li>}
+                    {orderItems.length === 0 && <li className="px-3 py-2 text-sm text-muted-foreground">{t('draft.noItems')}</li>}
                     {orderItems.map((item) => {
                       const product = products.find((p) => String(p.id) === String(item.product_id));
                       return (
                         <li key={item.sales_order_id + String(item.product_id)} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                          <span className="min-w-0 truncate text-foreground/90">{product?.name ?? "Unknown Product"}</span>
+                          <span className="min-w-0 truncate text-foreground/90">{product?.name ?? t('draft.unknownProduct')}</span>
                           <span className="shrink-0 text-muted-foreground">
                             {item.quantity_ordered} × {pkrFormatter.format(Number(item.unit_price ?? 0))}
                             {Number(item.discount ?? 0) > 0 && <span className="ml-1 text-destructive">-{pkrFormatter.format(Number(item.discount))}</span>}
@@ -25810,21 +25810,21 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                     })}
                   </ul>
                   <div className="flex items-center justify-between border-t border-border px-3 py-2 text-sm font-semibold text-foreground">
-                    <span>Total</span>
+                    <span>{t('common.total')}</span>
                     <span>{pkrFormatter.format(total)}</span>
                   </div>
                 </div>
 
-                {order.notes && <div className="mt-3 text-xs text-muted-foreground/80">Notes: {order.notes}</div>}
+                {order.notes && <div className="mt-3 text-xs text-muted-foreground/80">{t('sell.notesLabel')}: {order.notes}</div>}
 
                 {draftReviewAction === "reject" && (
                   <div className="mt-3">
-                    <label className="mb-1 block text-xs font-medium text-foreground/80">Rejection reason (required)</label>
+                    <label className="mb-1 block text-xs font-medium text-foreground/80">{t('draft.rejectionReason')}</label>
                     <textarea
                       value={draftReviewReason}
                       onChange={(e) => setDraftReviewReason(e.target.value)}
                       rows={2}
-                      placeholder="Why is this draft being rejected?"
+                      placeholder={t('draft.rejectionPlaceholder')}
                       className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                     />
                   </div>
@@ -25836,7 +25836,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                     onClick={() => setDraftReviewOrder(null)}
                     className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="button"
@@ -25848,10 +25848,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                     )}
                   >
                     {draftReviewLoading
-                      ? "Working..."
+                      ? t('draft.working')
                       : draftReviewAction === "reject"
-                        ? "Reject Draft"
-                        : "Approve & Convert to Invoice"}
+                        ? t('draft.rejectDraft')
+                        : t('draft.approveConvert')}
                   </button>
                 </div>
               </div>

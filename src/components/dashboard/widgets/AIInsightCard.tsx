@@ -2,6 +2,7 @@
 
 import { Sparkles, ArrowRight, Lightbulb } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface AIInsightCardProps {
   insight: string;
@@ -12,6 +13,7 @@ interface AIInsightCardProps {
 }
 
 export function AIInsightCard({ insight, confidence, action, onLearnMore, reason }: AIInsightCardProps) {
+  const { t } = useRegional();
   const confidenceColor =
     confidence >= 80 ? "text-success" : confidence >= 60 ? "text-warning" : "text-destructive";
   return (
@@ -23,13 +25,13 @@ export function AIInsightCard({ insight, confidence, action, onLearnMore, reason
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <Sparkles className="size-3.5 text-primary" />
-            <span className="text-xs font-semibold text-primary uppercase tracking-wider">AI Recommendation</span>
+            <span className="text-xs font-semibold text-primary uppercase tracking-wider">{t('dashboard.aiRecommendation')}</span>
           </div>
           <p className="text-sm text-foreground font-medium leading-relaxed">{insight}</p>
           {reason && <p className="text-xs text-light-text mt-1.5 leading-relaxed">{reason}</p>}
           <div className="flex items-center gap-4 mt-3">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-light-text">Confidence</span>
+              <span className="text-xs text-light-text">{t('dashboard.aiConfidence')}</span>
               <span className={cn("text-xs font-semibold", confidenceColor)}>{confidence}%</span>
             </div>
             {action && (

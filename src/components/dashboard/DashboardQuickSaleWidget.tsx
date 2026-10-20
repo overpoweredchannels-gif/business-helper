@@ -1,6 +1,7 @@
 "use client";
 
 import { DashboardWidget } from "@/components/dashboard/DashboardWidget";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import type { DashboardWidgetId } from "@/lib/preferences/dashboard-widgets";
 
 interface DashboardQuickSaleWidgetProps {
@@ -24,6 +25,7 @@ export function DashboardQuickSaleWidget({
   onFocusBarcode,
   onOpenSales,
 }: DashboardQuickSaleWidgetProps) {
+  const { t } = useRegional();
   if (!canUseInvoice) return null;
 
   return (
@@ -35,8 +37,8 @@ export function DashboardQuickSaleWidget({
       className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8"
     >
       <section data-help-topic="quick sale" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
-        <h2 className="text-lg font-semibold">Quick sale</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
+        <h2 className="text-lg font-semibold">{t('dashboard.quickSaleTitle')}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.quickSaleHint')}</p>
         <div className="mt-3">
           <button
             type="button"
@@ -48,7 +50,7 @@ export function DashboardQuickSaleWidget({
               onOpenSales();
             }}
           >
-            Retail POS / Create a sale
+            {t('dashboard.quickSaleAction')}
           </button>
         </div>
       </section>
