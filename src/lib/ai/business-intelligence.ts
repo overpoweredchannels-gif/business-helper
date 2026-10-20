@@ -20,9 +20,10 @@ export interface BusinessIntelligenceResult {
   queryType: BusinessIntelligenceQueryKind | null;
 }
 
-// Helper to format rupees
+// Helper to format money in the app-wide active currency (see tradeos/formatters)
+import { formatPKR } from "../tradeos/formatters";
 export function formatRs(amount: number): string {
-  return `Rs ${Math.round(amount).toLocaleString("en-PK")}`;
+  return formatPKR(amount);
 }
 
 // Helper to detect language from query string

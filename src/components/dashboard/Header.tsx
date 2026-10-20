@@ -8,6 +8,7 @@ import { SuggestionPopover, type SuggestionStatus, type SuggestionStatusNote } f
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { LanguageSwitcher } from "@/components/regional/LanguageSwitcher";
+import { CurrencySwitcher } from "@/components/regional/CurrencySwitcher";
 
 export interface SearchSuggestion {
   id: string;
@@ -378,6 +379,9 @@ export function Header({
 
           {/* Language Switcher */}
           <LanguageSwitcher />
+
+          {/* Currency Switcher */}
+          <CurrencySwitcher />
 
           {/* Notifications */}
           <div

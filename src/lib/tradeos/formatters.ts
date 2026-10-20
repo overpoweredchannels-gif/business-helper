@@ -1,4 +1,23 @@
 import { safeNumber } from "./validators";
+import type { Currency } from "@/lib/regional/settings";
+
+/** App-wide display currency. Amounts in TradeOS are plain numbers denominated
+ * in the organisation's operating currency; this setting controls which
+ * currency every formatted amount is labelled with, everywhere formatPKR /
+ * formatCurrency is used. Default PKR preserves existing behaviour exactly.
+ * The RegionalProvider owns this value (cookie-persisted) and pushes changes
+ * here; components re-render via the provider when it changes. */
+let activeCurrency: Currency = "PKR";
+let activeNumberLocale = "en-PK";
+
+export function setActiveCurrency(currency: Currency, numberLocale?: string) {
+  activeCurrency = currency;
+  if (numberLocale) activeNumberLocale = numberLocale;
+}
+
+export function getActiveCurrency(): Currency {
+  return activeCurrency;
+}
 
 export const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
@@ -56,9 +75,9 @@ export const getUsableTimestamp = (...dateValues: Array<unknown>) => {
 };
 
 export const formatPKR = (value: unknown) =>
-  new Intl.NumberFormat("en-PK", {
+  new Intl.NumberFormat(activeNumberLocale, {
     style: "currency",
-    currency: "PKR",
+    currency: activeCurrency,
     maximumFractionDigits: 2,
   }).format(safeNumber(value));
 

@@ -1,16 +1,22 @@
 'use client';
 import {createContext,useContext,useEffect,useSyncExternalStore,type ReactNode} from 'react';
-import {languages,direction,parseLanguageCookie,type Language} from '@/lib/regional/settings';
+import {languages,direction,parseLanguageCookie,parseCurrencyCookie,localeFor,type Language,type Currency} from '@/lib/regional/settings';
 import {messages,type MessageKey} from '@/lib/regional/messages';
 import {regionalUi,type RegionalUiKey} from '@/lib/regional/ui-messages';
 import {regionalQaEnabled} from '@/lib/regional/qa';
+import {setActiveCurrency} from '@/lib/tradeos/formatters';
 
-type RegionalContext={language:Language;enabled:boolean;setLanguage:(language:Language)=>void;t:(key:MessageKey)=>string;ui:(key:RegionalUiKey)=>string};
-const Context=createContext<RegionalContext>({language:'en',enabled:false,setLanguage:()=>{},t:key=>messages.en[key],ui:key=>regionalUi.en[key]});
+type RegionalContext={language:Language;enabled:boolean;setLanguage:(language:Language)=>void;currency:Currency;setCurrency:(currency:Currency)=>void;t:(key:MessageKey)=>string;ui:(key:RegionalUiKey)=>string};
+const Context=createContext<RegionalContext>({language:'en',enabled:false,setLanguage:()=>{},currency:'PKR',setCurrency:()=>{},t:key=>messages.en[key],ui:key=>regionalUi.en[key]});
 function subscribeLanguage(onChange:()=>void){
   window.addEventListener('tradeos-language-change',onChange);
   window.addEventListener('focus',onChange);
   return ()=>{window.removeEventListener('tradeos-language-change',onChange);window.removeEventListener('focus',onChange);};
+}
+function subscribeCurrency(onChange:()=>void){
+  window.addEventListener('tradeos-currency-change',onChange);
+  window.addEventListener('focus',onChange);
+  return ()=>{window.removeEventListener('tradeos-currency-change',onChange);window.removeEventListener('focus',onChange);};
 }
 export function RegionalProvider({children,initialLanguage='en'}:{children:ReactNode;initialLanguage?:Language}) {
   const enabled=regionalQaEnabled();
@@ -18,17 +24,30 @@ export function RegionalProvider({children,initialLanguage='en'}:{children:React
     if(!enabled)return initialLanguage;
     return parseLanguageCookie(document.cookie)??initialLanguage;
   },()=>initialLanguage);
+  const currency=useSyncExternalStore(subscribeCurrency,()=>{
+    if(!enabled)return 'PKR' as Currency;
+    return parseCurrencyCookie(document.cookie)??('PKR' as Currency);
+  },()=>'PKR' as Currency);
   useEffect(()=>{
     if(!enabled)return;
     document.documentElement.lang=language;
     document.documentElement.dir=direction(language);
   },[language,enabled]);
+  useEffect(()=>{
+    if(!enabled)return;
+    setActiveCurrency(currency,localeFor(language));
+  },[currency,language,enabled]);
   const setLanguage=(next:Language)=>{
     if(!enabled || !languages.includes(next))return;
     document.cookie=`tradeos-ui-language=${next}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol==='https:'?'; Secure':''}`;
     window.dispatchEvent(new Event('tradeos-language-change'));
   };
-  return <Context.Provider value={{language,enabled,setLanguage,t:key=>messages[language][key],ui:key=>regionalUi[language][key]}}>{children}</Context.Provider>;
+  const setCurrency=(next:Currency)=>{
+    if(!enabled)return;
+    document.cookie=`tradeos-ui-currency=${next}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol==='https:'?'; Secure':''}`;
+    window.dispatchEvent(new Event('tradeos-currency-change'));
+  };
+  return <Context.Provider value={{language,enabled,setLanguage,currency,setCurrency,t:key=>messages[language][key],ui:key=>regionalUi[language][key]}}>{children}</Context.Provider>;
 }
 export const useRegional=()=>useContext(Context);
 export function LanguageSwitcher(){

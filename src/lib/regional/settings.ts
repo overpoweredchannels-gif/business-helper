@@ -55,6 +55,19 @@ export function parseLanguageCookie(cookie: string): Language | null {
   return null;
 }
 
+/** Canonical display-currency cookie parsing, mirroring parseLanguageCookie.
+ * Accepts exactly the supported currency codes; anything else falls back to null (PKR). */
+export function parseCurrencyCookie(cookie: string): Currency | null {
+  for (const part of cookie.split(';')) {
+    const trimmed = part.replace(/^\s+/, '');
+    if (trimmed.startsWith('tradeos-ui-currency=')) {
+      const value = trimmed.slice('tradeos-ui-currency='.length);
+      return isCurrency(value) ? value : null;
+    }
+  }
+  return null;
+}
+
 /** Pre-paint bootstrap: applies the saved browser language's lang/dir before first
  * paint so Urdu users never see an LTR flash. Mirrors DISPLAY_ZOOM_BOOTSTRAP_SCRIPT.
  * Parsing mirrors parseLanguageCookie exactly (no decoding); the cookie is only
