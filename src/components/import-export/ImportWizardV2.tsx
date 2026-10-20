@@ -22,16 +22,18 @@ import {
   normalizeImportHeader,
   reconcileColumnMapping,
 } from "@/lib/import-export/mapping";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import type { MessageKey } from "@/lib/regional/messages";
 
 const MAX_PREVIEW_ROWS = 100;
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
-const STATUS_LABEL: Record<string, string> = {
-  new: "New",
-  update: "Update",
-  skipped: "Skipped",
-  error: "Error",
-  warning: "New (review notes)",
+const STATUS_LABEL_KEY: Record<string, MessageKey> = {
+  new: "wiz.statusNew",
+  update: "wiz.statusUpdate",
+  skipped: "wiz.statusSkipped",
+  error: "wiz.statusError",
+  warning: "wiz.statusWarning",
 };
 
 interface ImportWizardV2Props {
@@ -49,11 +51,12 @@ interface ImportWizardV2Props {
 type Step = "file" | "mapping" | "preview" | "done";
 
 export default function ImportWizardV2(props: ImportWizardV2Props) {
+  const { t } = useRegional();
   const config = getEntityConfig(props.entityKey);
   if (!config) {
     return (
       <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
-        <p className="text-destructive">Unknown entity: {props.entityKey}</p>
+        <p className="text-destructive">{t('wiz.unknownEntity')}: {props.entityKey}</p>
       </div>
     );
   }
@@ -68,6 +71,7 @@ function ImportWizardContent({
   onImportingChange,
   config,
 }: ImportWizardV2Props & { config: EntityImportConfig }) {
+  const { t } = useRegional();
   const [step, setStep] = useState<Step>("file");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNotice, setAiNotice] = useState("");
@@ -80,9 +84,9 @@ function ImportWizardContent({
       const response = await authorizedFetch("/api/import-export/guidance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity_key: entityKey, headers }) });
       const result = await response.json();
       if (version !== aiRequest.current) return;
-      if (!response.ok || !result.ok) throw new Error(result.error || "AI guidance unavailable");
-      setSuggestions(result.suggestions); setAiNotice(result.suggestions.length ? "Review these suggestions. Your current mapping has not changed." : "No confident matches. Use the mapping fields below.");
-    } catch (error) { if (version === aiRequest.current) setAiNotice(error instanceof Error ? error.message : "AI guidance unavailable. Continue manually."); }
+      if (!response.ok || !result.ok) throw new Error(result.error || t('wiz.aiUnavailable'));
+      setSuggestions(result.suggestions); setAiNotice(result.suggestions.length ? t('wiz.aiSuggestionsReview') : t('wiz.aiNoMatches'));
+    } catch (error) { if (version === aiRequest.current) setAiNotice(error instanceof Error ? error.message : t('wiz.aiUnavailableContinue')); }
     finally { if (version === aiRequest.current) setAiBusy(false); }
   };
   const [fileName, setFileName] = useState("");
@@ -121,14 +125,14 @@ function ImportWizardContent({
     try {
       const res = await authorizedFetch(`/api/import-export/templates?entity_key=${encodeURIComponent(entityKey)}`);
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Could not load saved templates");
+      if (!res.ok || !data.ok) throw new Error(data.error || t('wiz.loadTemplatesFailed'));
       if (data.ok) {
         setTemplates(data.templates ?? []);
         const def = (data.templates ?? []).find((t: any) => t.is_default);
         setDefaultTemplateIdState(def ? def.id : "default");
       }
     } catch (error) {
-      setTemplatesError(error instanceof Error ? error.message : "Could not load saved templates");
+      setTemplatesError(error instanceof Error ? error.message : t('wiz.loadTemplatesFailed'));
     } finally { setTemplatesLoading(false); }
   }, [entityKey, organizationId]);
 
@@ -191,11 +195,11 @@ function ImportWizardContent({
     fileRef.current = file;
     const lower = file.name.toLowerCase();
     if (!/\.(csv|xlsx|xls|ods|xml)$/.test(lower)) {
-      setFileError("Unsupported file type. Use .csv, .xlsx, .xls, .ods, or Excel XML files.");
+      setFileError(t('wiz.unsupportedFileType'));
       return;
     }
     if (file.size > MAX_IMPORT_BYTES) {
-      setFileError("Import files must be 10 MB or smaller.");
+      setFileError(t('wiz.fileTooLarge'));
       return;
     }
 
@@ -210,7 +214,7 @@ function ImportWizardContent({
         const workbook = XLSX.read(buffer, { type: "array" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         if (!sheet) {
-          setFileError("The file has no sheets.");
+          setFileError(t('wiz.noSheets'));
           return;
         }
         const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
@@ -223,24 +227,24 @@ function ImportWizardContent({
 
       const nonEmptyRows = matrix.filter((row) => row.some((cell) => cell.trim() !== ""));
       if (nonEmptyRows.length < 2) {
-        setFileError("The file needs a header row plus at least one data row.");
+        setFileError(t('wiz.needHeaderPlusRow'));
         return;
       }
 
       const headerRow = nonEmptyRows[0].map((cell) => cell.trim());
       const body = nonEmptyRows.slice(1);
       if (headerRow.some((header) => !normalizeImportHeader(header))) {
-        setFileError("Every source column needs a non-empty header.");
+        setFileError(t('wiz.emptyHeader'));
         return;
       }
       const normalizedHeaders = headerRow.map(normalizeImportHeader);
       if (new Set(normalizedHeaders).size !== normalizedHeaders.length) {
-        setFileError("The file contains duplicate column headers. Rename duplicate columns and try again.");
+        setFileError(t('wiz.duplicateHeaders'));
         return;
       }
       const maxRows = config.maxRows ?? DEFAULT_MAX_IMPORT_ROWS;
       if (body.length > maxRows) {
-        setFileError(`The file has ${body.length} data rows; the ${config.entityName} import limit is ${maxRows}. This is a row limit, not a column limit.`);
+        setFileError(t('wiz.rowLimit').replace('{rows}', String(body.length)).replace('{entity}', config.entityName).replace('{max}', String(maxRows)));
         return;
       }
 
@@ -252,13 +256,13 @@ function ImportWizardContent({
       const defaultTemplate = templates.find((t) => t.id === defaultTemplateId);
       if (defaultTemplate) {
         setMapping(reconcileColumnMapping(headerRow, defaultTemplate.mapping, config.fields));
-        setTemplateMessage(`Default template "${defaultTemplate.name}" applied.`);
+        setTemplateMessage(t('wiz.defaultTemplateApplied').replace('{name}', defaultTemplate.name));
       } else {
         setMapping(reconcileColumnMapping(headerRow, null, config.fields));
-        setTemplateMessage("Default (guessed) template applied.");
+        setTemplateMessage(t('wiz.guessedTemplateApplied'));
       }
     } catch (err) {
-      if (fileRef.current === file) setFileError(err instanceof Error ? `Failed to read file: ${err.message}` : "Failed to read file.");
+      if (fileRef.current === file) setFileError(err instanceof Error ? t('wiz.failedReadFileMsg').replace('{message}', err.message) : t('wiz.failedReadFile'));
     }
   }, [config, templates, defaultTemplateId, setDataRows, setFileError, setFileName, setHeaders, setImportResult, setMapping, setPreview, setTemplateMessage]);
 
@@ -275,9 +279,9 @@ function ImportWizardContent({
 
   const handleRunPreview = useCallback(async () => {
     if (previewLock.current) return;
-    if (historical && (!cutoverDate || !historyConfirmed)) { setFileError("Choose your stock/balance start date and confirm history-only importing."); return; }
+    if (historical && (!cutoverDate || !historyConfirmed)) { setFileError(t('wiz.chooseCutover')); return; }
     if (!fileRef.current) {
-      setFileError("Please select a file first.");
+      setFileError(t('wiz.selectFileFirst'));
       return;
     }
     previewLock.current = true;
@@ -302,7 +306,7 @@ function ImportWizardContent({
 
       const data = await res.json();
       if (!data.ok) {
-        setFileError(data.error || "Preview failed");
+        setFileError(data.error || t('wiz.previewFailed'));
         return;
       }
 
@@ -310,7 +314,7 @@ function ImportWizardContent({
       setPreview(data.preview);
       setStep("preview");
     } catch (err) {
-      setFileError(err instanceof Error ? `Preview failed: ${err.message}` : "Preview failed");
+      setFileError(err instanceof Error ? t('wiz.previewFailedMsg').replace('{message}', err.message) : t('wiz.previewFailed'));
     } finally {
       previewLock.current = false;
       setPreviewBusy(false);
@@ -342,7 +346,7 @@ function ImportWizardContent({
 
       const data = await res.json();
       if (!data.ok) {
-        setFileError(data.error || "Import failed");
+        setFileError(data.error || t('wiz.importFailed'));
         if (data.preview) { setPreview(data.preview); setPreviewPage(0); setStep("preview"); }
         return;
       }
@@ -352,7 +356,7 @@ function ImportWizardContent({
       onImported();
       window.dispatchEvent(new CustomEvent("tradeos:import-complete"));
     } catch (err) {
-      setFileError(err instanceof Error ? `Import failed: ${err.message}` : "Import failed");
+      setFileError(err instanceof Error ? t('wiz.importFailedMsg').replace('{message}', err.message) : t('wiz.importFailed'));
     } finally {
       setImporting(false);
       runLock.current = false;
@@ -375,14 +379,14 @@ function ImportWizardContent({
       });
       const data = await res.json();
       if (!data.ok) {
-        setTemplateMessage(data.error || "Failed to save template");
+        setTemplateMessage(data.error || t('wiz.saveTemplateFailed'));
         return;
       }
       setTemplateName("");
-      setTemplateMessage(`Template "${name}" saved.`);
+      setTemplateMessage(t('wiz.templateSaved').replace('{name}', name));
       loadTemplates();
     } catch (err) {
-      setTemplateMessage(err instanceof Error ? `Failed to save template: ${err.message}` : "Failed to save template");
+      setTemplateMessage(err instanceof Error ? t('wiz.saveTemplateFailedMsg').replace('{message}', err.message) : t('wiz.saveTemplateFailed'));
     }
   }, [entityKey, templateName, mapping, mappedFieldCount, loadTemplates, setTemplateMessage, setTemplateName]);
 
@@ -396,13 +400,13 @@ function ImportWizardContent({
           body: JSON.stringify({ id: template.id, name }),
         });
         const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error(result.error || "Rename failed");
+        if (!response.ok || !result.ok) throw new Error(result.error || t('wiz.renameFailed'));
       }
       setEditingTemplateId(null);
       setEditingTemplateName("");
       loadTemplates();
     } catch (err) {
-      setTemplateMessage(err instanceof Error ? `Failed to rename template: ${err.message}` : "Failed to rename template");
+      setTemplateMessage(err instanceof Error ? t('wiz.renameTemplateFailedMsg').replace('{message}', err.message) : t('wiz.renameTemplateFailed'));
     }
   }, [entityKey, editingTemplateId, editingTemplateName, loadTemplates]);
 
@@ -414,27 +418,27 @@ function ImportWizardContent({
       });
       const data = await res.json();
       if (!data.ok) {
-        setTemplateMessage(data.error || "Failed to delete template");
+        setTemplateMessage(data.error || t('wiz.deleteTemplateFailed'));
         return;
       }
-      setTemplateMessage(`Template "${template.name}" deleted.`);
+      setTemplateMessage(t('wiz.templateDeleted').replace('{name}', template.name));
       loadTemplates();
     } catch (err) {
-      setTemplateMessage(err instanceof Error ? `Failed to delete template: ${err.message}` : "Failed to delete template");
+      setTemplateMessage(err instanceof Error ? t('wiz.deleteTemplateFailedMsg').replace('{message}', err.message) : t('wiz.deleteTemplateFailed'));
     }
   }, [loadTemplates, setTemplateMessage]);
 
   return (
     <div className="import-workflow space-y-6">
       <fieldset disabled={previewBusy || importing} className="min-w-0 rounded border border-border bg-card p-4">
-        <h3 className="mb-1 text-lg font-medium text-foreground">Import {config.entityName}</h3>
+        <h3 className="mb-1 text-lg font-medium text-foreground">{t('importexport.import')} {config.entityName}</h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          Upload CSV, Excel (.xlsx / .xls), OpenDocument (.ods), or Excel XML. Map columns, preview, then confirm the import.
+          {t('wiz.uploadIntro')}
         </p>
 
-        {["sales_invoices", "purchases", "customer_payments", "supplier_payments"].includes(entityKey) && <p className="rounded-lg border border-amber-300 bg-amber-50/10 p-3 text-sm"><strong>Live records import.</strong> These records can affect current inventory or financial ledgers. For old records already included in your opening stock/balances, use the Historical options in Setup &amp; Data Import.</p>}
-        <div onDragOver={event => { event.preventDefault(); if (!previewBusy && !importing) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (previewBusy || importing || templatesLoading || (templatesError && !useManualMapping)) return; if (event.dataTransfer.files.length !== 1) { setFileError("Drop one file for this record type at a time. Every file needs its own review."); return; } void handleFileChange(event.dataTransfer.files[0]); }} className={`flex flex-col gap-3 rounded-xl border-2 border-dashed p-5 ${dragging ? "border-primary bg-primary/10" : "border-border"}`}>
-          <p className="font-medium">Drag a file here, or choose it below</p>
+        {["sales_invoices", "purchases", "customer_payments", "supplier_payments"].includes(entityKey) && <p className="rounded-lg border border-amber-300 bg-amber-50/10 p-3 text-sm"><strong>{t('wiz.liveRecordsTitle')}</strong> {t('wiz.liveRecordsBody')}</p>}
+        <div onDragOver={event => { event.preventDefault(); if (!previewBusy && !importing) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (previewBusy || importing || templatesLoading || (templatesError && !useManualMapping)) return; if (event.dataTransfer.files.length !== 1) { setFileError(t('wiz.dropOneFile')); return; } void handleFileChange(event.dataTransfer.files[0]); }} className={`flex flex-col gap-3 rounded-xl border-2 border-dashed p-5 ${dragging ? "border-primary bg-primary/10" : "border-border"}`}>
+          <p className="font-medium">{t('wiz.dragOrChoose')}</p>
           <input
             ref={fileInputRef}
             type="file"
@@ -443,30 +447,30 @@ function ImportWizardContent({
             onChange={(e) => handleFileChange(e.target.files?.[0])}
             className="block w-full text-sm text-foreground file:mr-3 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:text-white hover:file:bg-primary/90 sm:w-auto"
           />
-          {fileName && <span className="text-sm text-muted-foreground">Selected: {fileName}</span>}
+          {fileName && <span className="text-sm text-muted-foreground">{t('wiz.selectedFile').replace('{name}', fileName)}</span>}
         </div>
-        {templatesLoading && <p role="status">Loading saved templates…</p>}
-        {templatesError && <div role="alert" className="rounded-lg border border-warning/40 p-3 text-sm"><p>Saved templates could not be loaded. Retry, or choose manual mapping for this file. Your saved templates are not deleted.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="min-h-11 rounded-lg border px-3 py-2" onClick={loadTemplates}>Retry loading templates</button><button type="button" className="min-h-11 rounded-lg border px-3 py-2" onClick={() => setUseManualMapping(true)}>Continue with manual mapping</button></div></div>}
-        {!templatesLoading && !templatesError && <p className="text-sm">{templates.filter(t => !t.is_builtin).length} saved templates for {config.entityName}. {templates.find(t => t.id === defaultTemplateId)?.name ?? "Suggested column mapping"} will be applied to the next file.</p>}
+        {templatesLoading && <p role="status">{t('wiz.loadingTemplates')}</p>}
+        {templatesError && <div role="alert" className="rounded-lg border border-warning/40 p-3 text-sm"><p>{t('wiz.templatesLoadError')}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="min-h-11 rounded-lg border px-3 py-2" onClick={loadTemplates}>{t('wiz.retryTemplates')}</button><button type="button" className="min-h-11 rounded-lg border px-3 py-2" onClick={() => setUseManualMapping(true)}>{t('wiz.continueManual')}</button></div></div>}
+        {!templatesLoading && !templatesError && <p className="text-sm">{t('wiz.savedTemplatesCount').replace('{count}', String(templates.filter(t => !t.is_builtin).length)).replace('{entity}', config.entityName).replace('{name}', templates.find(t => t.id === defaultTemplateId)?.name ?? t('wiz.suggestedMapping'))}</p>}
         {fileError && <p role="alert" className="mt-3 text-sm text-destructive">{fileError}</p>}
       </fieldset>
 
       {step === "mapping" && (
         <fieldset disabled={previewBusy} aria-busy={previewBusy} className="min-w-0 rounded border border-border bg-card p-4">
-          <h3 className="mb-3 text-lg font-medium text-foreground">Map Columns</h3>
+          <h3 className="mb-3 text-lg font-medium text-foreground">{t('wiz.mapColumns')}</h3>
           <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
-            <h4 className="font-semibold">AI mapping guide</h4><p className="my-2 text-sm">Get suggestions using your column headings only. Record rows stay out of the AI request. Review every suggestion, especially stock and payment fields.</p>
-            <button type="button" disabled={aiBusy} onClick={() => void requestGuidance()} className="min-h-11 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary disabled:opacity-50">{aiBusy ? "Analyzing headings…" : "Suggest column mappings"}</button>
+            <h4 className="font-semibold">{t('wiz.aiGuideTitle')}</h4><p className="my-2 text-sm">{t('wiz.aiGuideBody')}</p>
+            <button type="button" disabled={aiBusy} onClick={() => void requestGuidance()} className="min-h-11 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary disabled:opacity-50">{aiBusy ? t('wiz.analyzing') : t('wiz.suggestMappings')}</button>
             {aiNotice && <p role="status" className="mt-3 text-sm">{aiNotice}</p>}
-            {suggestions.length > 0 && <><ul className="my-3 space-y-1 text-sm">{suggestions.map(item => <li key={item.header}>{item.header} → {config.fields.find(field => field.key === item.field)?.label ?? item.field}</li>)}</ul><button type="button" className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" onClick={() => { setMapping(current => { const next = { ...current }; for (const item of suggestions) { if (next[item.header] && next[item.header] !== "skip") continue; if (Object.values(next).includes(item.field)) continue; next[item.header] = item.field; } return next; }); setSuggestions([]); setAiNotice("Suggestions applied to unmapped columns only. Existing mappings were preserved. Review the mapping and preview before importing."); }}>Apply to unmapped columns</button></>}
+            {suggestions.length > 0 && <><ul className="my-3 space-y-1 text-sm">{suggestions.map(item => <li key={item.header}>{item.header} → {config.fields.find(field => field.key === item.field)?.label ?? item.field}</li>)}</ul><button type="button" className="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" onClick={() => { setMapping(current => { const next = { ...current }; for (const item of suggestions) { if (next[item.header] && next[item.header] !== "skip") continue; if (Object.values(next).includes(item.field)) continue; next[item.header] = item.field; } return next; }); setSuggestions([]); setAiNotice(t('wiz.suggestionsApplied')); }}>{t('wiz.applyUnmapped')}</button></>}
           </div>
           <p className="mb-4 text-sm text-muted-foreground">
-            {headers.length} columns, {dataRows.length} data rows. Tell TradeOS what each column means.
+            {t('wiz.columnsSummary').replace('{columns}', String(headers.length)).replace('{rows}', String(dataRows.length))}
           </p>
 
           <div className="mb-4 flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span>Load template</span>
+              <span>{t('wiz.loadTemplate')}</span>
               <select
                 value={defaultTemplateId}
                 onChange={(e) => {
@@ -484,23 +488,23 @@ function ImportWizardContent({
                 }}
                 className="rounded border border-border px-3 py-2"
               >
-                <option value="">Select a template...</option>
+                <option value="">{t('wiz.selectTemplate')}</option>
                 {templates.map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.name}
-                    {template.is_builtin ? " (default)" : ""}
+                    {template.is_builtin ? t('wiz.defaultSuffix') : ""}
                   </option>
                 ))}
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span>Save current mapping as</span>
+              <span>{t('wiz.saveMappingAs')}</span>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="Template name"
+                  placeholder={t('wiz.templateNamePlaceholder')}
                   className="rounded border border-border px-3 py-2"
                 />
                 <button
@@ -509,13 +513,13 @@ function ImportWizardContent({
                   disabled={!templateName.trim()}
                   className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:opacity-40"
                 >
-                  Save
+                  {t('common.save')}
                 </button>
               </div>
             </label>
             {templates.length > 0 && (
               <div className="w-full">
-                <span className="text-xs text-muted-foreground">Saved templates</span>
+                <span className="text-xs text-muted-foreground">{t('wiz.savedTemplates')}</span>
                 <ul className="mt-1 space-y-1">
                   {templates.map((template) => (
                     <li key={template.id} className="flex flex-wrap items-center gap-2 rounded border border-border/60 bg-muted/20 px-2 py-1.5 text-sm">
@@ -525,33 +529,33 @@ function ImportWizardContent({
                             type="text"
                             value={editingTemplateName}
                             onChange={(e) => setEditingTemplateName(e.target.value)}
-                            placeholder="New template name"
+                            placeholder={t('wiz.newTemplateNamePlaceholder')}
                             className="flex-1 rounded border border-border px-2 py-1 text-sm"
                           />
-                          <button type="button" onClick={() => handleRenameTemplate(template)} disabled={!editingTemplateName.trim()} className="rounded border border-primary px-2 py-1 text-xs text-primary hover:bg-primary/5 disabled:opacity-40">Save</button>
-                          <button type="button" onClick={() => { setEditingTemplateId(null); setEditingTemplateName(""); }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Cancel</button>
+                          <button type="button" onClick={() => handleRenameTemplate(template)} disabled={!editingTemplateName.trim()} className="rounded border border-primary px-2 py-1 text-xs text-primary hover:bg-primary/5 disabled:opacity-40">{t('common.save')}</button>
+                          <button type="button" onClick={() => { setEditingTemplateId(null); setEditingTemplateName(""); }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">{t('common.cancel')}</button>
                         </>
                       ) : (
                         <>
-                          <span className="flex-1 font-medium text-foreground/90">{template.name}{template.is_default ? " (preferred)" : ""}</span>
+                          <span className="flex-1 font-medium text-foreground/90">{template.name}{template.is_default ? t('wiz.preferredSuffix') : ""}</span>
                           <button type="button" onClick={() => {
                             if (template.id === "default") {
                               setMapping(reconcileColumnMapping(headers, null, config.fields));
                             } else {
                               setMapping(reconcileColumnMapping(headers, template.mapping, config.fields));
                             }
-                          }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Load</button>
+                          }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">{t('wiz.load')}</button>
                           {!template.is_builtin && (
                             <>
                               <button type="button" onClick={async () => {
                                 try {
                                   const res = await authorizedFetch("/api/import-export/templates", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: template.id, set_default: true }) });
-                                  const result = await res.json(); if (!res.ok || !result.ok) throw new Error(result.error || "Could not set preferred template");
-                                  await loadTemplates(); setTemplateMessage("Preferred template saved for future imports.");
-                                } catch (error) { setTemplateMessage(error instanceof Error ? error.message : "Failed to save preference"); }
-                              }} className="rounded border px-2 py-1 text-xs">Use for future imports</button>
-                              <button type="button" onClick={() => { setEditingTemplateId(template.id); setEditingTemplateName(template.name); }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">Rename</button>
-                              <button type="button" onClick={() => handleDeleteTemplate(template)} className="rounded border border-destructive px-2 py-1 text-xs text-destructive hover:bg-destructive/5">Delete</button>
+                                  const result = await res.json(); if (!res.ok || !result.ok) throw new Error(result.error || t('wiz.setPreferredFailed'));
+                                  await loadTemplates(); setTemplateMessage(t('wiz.preferredSaved'));
+                                } catch (error) { setTemplateMessage(error instanceof Error ? error.message : t('wiz.savePreferenceFailed')); }
+                              }} className="rounded border px-2 py-1 text-xs">{t('wiz.useFuture')}</button>
+                              <button type="button" onClick={() => { setEditingTemplateId(template.id); setEditingTemplateName(template.name); }} className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30">{t('wiz.rename')}</button>
+                              <button type="button" onClick={() => handleDeleteTemplate(template)} className="rounded border border-destructive px-2 py-1 text-xs text-destructive hover:bg-destructive/5">{t('common.delete')}</button>
                             </>
                           )}
                         </>
@@ -565,19 +569,19 @@ function ImportWizardContent({
           </div>
 
           <div className="mb-3 rounded border border-amber-300 p-3 text-sm">
-            <strong>Settings not supplied by this file</strong>
-            <p>{config.fields.filter(field => !Object.values(mapping).includes(field.key)).map(field => field.label + (field.defaultValue !== undefined ? " (new records: " + String(field.defaultValue) + ")" : "")).join(", ") || "All fields are mapped."}</p>
-            <p>For product/customer/employee updates, omitted fields keep their existing values. Review new product/customer settings using Review and bulk edit after importing.</p>
-            {entityKey === "employees" && <p>Importing employees does not create login accounts. Invite/link their accounts and grant permissions separately. Missing assignments are not guessed.</p>}
-            {entityKey === "customers" && <p>Customers without an assigned salesman remain unassigned. Permitted salesmen can sell to any active customer in this organization.</p>}
-            {["customer_payments", "supplier_payments"].includes(entityKey) && <p>Import parties first and use unique names. Add reference numbers to detect repeat imports. Without a reference, separate payments may look identical; re-importing can duplicate history. These live payment records do not automatically allocate to invoices or reconstruct opening balances. Use Historical payments in Setup for archive-only records.</p>}
+            <strong>{t('wiz.unsetTitle')}</strong>
+            <p>{config.fields.filter(field => !Object.values(mapping).includes(field.key)).map(field => field.label + (field.defaultValue !== undefined ? t('wiz.newRecordsDefault').replace('{value}', String(field.defaultValue)) : "")).join(", ") || t('wiz.allFieldsMapped')}</p>
+            <p>{t('wiz.unsetBody')}</p>
+            {entityKey === "employees" && <p>{t('wiz.employeesNote')}</p>}
+            {entityKey === "customers" && <p>{t('wiz.customersNote')}</p>}
+            {["customer_payments", "supplier_payments"].includes(entityKey) && <p>{t('wiz.paymentsNote')}</p>}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-muted-foreground">
-                  <th className="py-2 pr-4 font-medium">File Column</th>
-                  <th className="py-2 font-medium">Import As</th>
+                  <th className="py-2 pr-4 font-medium">{t('wiz.fileColumn')}</th>
+                  <th className="py-2 font-medium">{t('wiz.importAs')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -586,7 +590,7 @@ function ImportWizardContent({
                     <td className="py-2 pr-4 font-medium text-foreground">{header}</td>
                     <td className="py-2">
                       <select
-                        aria-label={`Mapping for ${header}`}
+                        aria-label={t('wiz.mappingFor').replace('{column}', header)}
                         value={mapping[header] ?? "skip"}
                         onChange={(e) => setFieldForColumn(header, e.target.value)}
                         className="rounded border border-border px-2 py-1.5"
@@ -597,9 +601,9 @@ function ImportWizardContent({
                           </option>
                         ))}
                         {unmappedTargetField && (
-                          <option value={PRESERVE_IN_NOTES}>Keep in {fieldLabel(unmappedTargetField)}</option>
+                          <option value={PRESERVE_IN_NOTES}>{t('wiz.keepIn').replace('{field}', fieldLabel(unmappedTargetField))}</option>
                         )}
-                        <option value="skip">— Skip —</option>
+                        <option value="skip">{t('wiz.skipOption')}</option>
                       </select>
                     </td>
                   </tr>
@@ -609,30 +613,30 @@ function ImportWizardContent({
           </div>
 
           {historical && <div className="space-y-3 rounded-xl border border-primary/40 bg-primary/5 p-4">
-            <h4 className="font-semibold">Import as history only</h4><p className="text-sm">Products contain your current stock. These older invoices and payments will not change stock, cash or current balances. Repeat an invoice number for all its product lines; use a unique payment reference for each payment. Import customers/suppliers and products first, then invoices, then payments.</p>
-            <label className="grid gap-1 text-sm">Stock / balance start date<input type="date" className="min-h-11 rounded-lg border border-border bg-background px-3 py-2" value={cutoverDate} onChange={event=>{setCutoverDate(event.target.value);setHistoryConfirmed(false);}} /></label>
-            <p className="text-sm">Only records earlier than this date are accepted. Use the same date for all historical files. Invoice totals, tax, discount and paid amounts are invoice-level values; leave paid amount blank if unknown.</p>
-            <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1 h-4 w-4" checked={historyConfirmed} onChange={event=>setHistoryConfirmed(event.target.checked)}/>I reviewed the start date. Save these records as history without changing current stock or balances.</label>
+            <h4 className="font-semibold">{t('wiz.historyTitle')}</h4><p className="text-sm">{t('wiz.historyBody')}</p>
+            <label className="grid gap-1 text-sm">{t('wiz.cutoverLabel')}<input type="date" className="min-h-11 rounded-lg border border-border bg-background px-3 py-2" value={cutoverDate} onChange={event=>{setCutoverDate(event.target.value);setHistoryConfirmed(false);}} /></label>
+            <p className="text-sm">{t('wiz.historyDateNote')}</p>
+            <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1 h-4 w-4" checked={historyConfirmed} onChange={event=>setHistoryConfirmed(event.target.checked)}/>{t('wiz.historyConfirm')}</label>
           </div>}
           <PreparedFileReview headers={headers} rows={dataRows} mapping={mapping} fields={config.fields} entity={entityKey} />
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span className="font-medium">Duplicate handling</span>
+              <span className="font-medium">{t('wiz.duplicateHandling')}</span>
               <label className="flex items-center gap-2 text-sm">
                 <input type="radio" checked={mode === "skip"} onChange={() => setMode("skip")} className="h-4 w-4" />
-                Skip rows that already exist
+                {t('wiz.dupSkip')}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="radio" disabled={historical} checked={mode === "update"} onChange={() => setMode("update")} className="h-4 w-4" />
-                Update matching records — only supplied fields
+                {t('wiz.dupUpdate')}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="radio" checked={mode === "error"} onChange={() => setMode("error")} className="h-4 w-4" />
-                Review duplicates before saving (recommended)
+                {t('wiz.dupReview')}
               </label>
               <label className="mt-1 flex items-center gap-2 text-sm">
                 <input type="checkbox" disabled={historical} checked={!historical && createMissingRefs} onChange={(e) => setCreateMissingRefs(e.target.checked)} className="h-4 w-4 accent-primary" />
-                Auto-create missing reference records (brands, categories, etc.)
+                {t('wiz.autoCreateRefs')}
               </label>
             </div>
             <button
@@ -641,7 +645,7 @@ function ImportWizardContent({
               disabled={previewBusy || mappedFieldCount === 0}
               className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
-              {previewBusy ? "Checking your file…" : "Preview Import"}
+              {previewBusy ? t('wiz.checkingFile') : t('wiz.previewImport')}
             </button>
           </div>
         </fieldset>
@@ -651,28 +655,28 @@ function ImportWizardContent({
         <div className="space-y-4">
           <div className="rounded border border-border bg-card p-4">
             <div className="flex flex-wrap items-center gap-4">
-              <h3 className="text-lg font-medium text-foreground">Preview</h3>
-              <span className="rounded bg-success/10 px-2 py-1 text-xs text-success">New: {preview.stats.newCount}</span>
-              <span className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">Update: {preview.stats.updateCount}</span>
-              <span className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">Skipped: {preview.stats.skipCount}</span>
-              <span className="rounded bg-warning/10 px-2 py-1 text-xs text-warning">Warnings: {preview.stats.warningCount}</span>
-              <span className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">Errors: {preview.stats.errorCount}</span>
+              <h3 className="text-lg font-medium text-foreground">{t('wiz.previewTitle')}</h3>
+              <span className="rounded bg-success/10 px-2 py-1 text-xs text-success">{t('wiz.statNew').replace('{count}', String(preview.stats.newCount))}</span>
+              <span className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">{t('wiz.statUpdate').replace('{count}', String(preview.stats.updateCount))}</span>
+              <span className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">{t('wiz.statSkipped').replace('{count}', String(preview.stats.skipCount))}</span>
+              <span className="rounded bg-warning/10 px-2 py-1 text-xs text-warning">{t('wiz.statWarnings').replace('{count}', String(preview.stats.warningCount))}</span>
+              <span className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">{t('wiz.statErrors').replace('{count}', String(preview.stats.errorCount))}</span>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
               {preview.stats.errorCount > 0
-                ? "Nothing will be saved until these review issues are resolved. All source rows remain visible."
-                : `Ready to import ${preview.stats.newCount + preview.stats.updateCount} rows.`}
+                ? t('wiz.resolveIssues')
+                : t('wiz.readyToImport').replace('{count}', String(preview.stats.newCount + preview.stats.updateCount))}
             </p>
           </div>
 
           {preview.stats.errorCount > 0 && (
             <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
-              <h4 className="mb-2 text-sm font-medium text-destructive">Rows that cannot be imported ({preview.stats.errorCount})</h4>
+              <h4 className="mb-2 text-sm font-medium text-destructive">{t('wiz.rowsCannotImport').replace('{count}', String(preview.stats.errorCount))}</h4>
               <ul className="max-h-48 space-y-1 overflow-y-auto text-sm text-destructive/90">
                 {preview.errorRows.slice(0, 200).map((row, index) => (
-                  <li key={index}>Row {row.rowIndex}: {row.message}</li>
+                  <li key={index}>{t('wiz.rowPrefix').replace('{row}', String(row.rowIndex))}: {row.message}</li>
                 ))}
-                {preview.errorRows.length > 200 && <li className="text-muted-foreground">...and {preview.errorRows.length - 200} more.</li>}
+                {preview.errorRows.length > 200 && <li className="text-muted-foreground">{t('wiz.andMore').replace('{count}', String(preview.errorRows.length - 200))}</li>}
               </ul>
             </div>
           )}
@@ -681,12 +685,12 @@ function ImportWizardContent({
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Row</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">{t('wiz.colRow')}</th>
+                  <th className="px-3 py-2 font-medium">{t('wiz.colStatus')}</th>
                   {previewFields.map((field) => (
                     <th key={field} className="px-3 py-2 font-medium">{fieldLabel(field)}</th>
                   ))}
-                  <th className="px-3 py-2 font-medium">Notes</th>
+                  <th className="px-3 py-2 font-medium">{t('wiz.colNotes')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -702,7 +706,7 @@ function ImportWizardContent({
                           status === "update" ? "bg-primary/10 text-primary" :
                           status === "warning" ? "bg-warning/10 text-warning" :
                           "bg-success/10 text-success"
-                        }`}>{STATUS_LABEL[status]}</span>
+                        }`}>{t(STATUS_LABEL_KEY[status])}</span>
                       </td>
                       {previewFields.map((field) => (
                         <td key={field} className="px-3 py-2">{formatCellValue(row.values[field])}</td>
@@ -718,28 +722,28 @@ function ImportWizardContent({
             </table>
           </div>
 
-          <div className="flex items-center gap-3 text-sm"><button type="button" className="rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" disabled={previewPage === 0 || importing} onClick={() => setPreviewPage(page => page - 1)}>Previous rows</button><span>Page {previewPage + 1} of {Math.max(1, Math.ceil(preview.rows.length / MAX_PREVIEW_ROWS))} · {preview.rows.length} source rows</span><button type="button" className="rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" disabled={(previewPage + 1) * MAX_PREVIEW_ROWS >= preview.rows.length || importing} onClick={() => setPreviewPage(page => page + 1)}>Next rows</button></div>
-          {preview.stats.skipCount > 0 && <div role="status" className="rounded-lg border border-warning p-4 text-sm"><strong>Why are rows skipped?</strong><p>These rows matched records already in your business and Skip existing was selected. Generating an Excel file does not create records. Review the matches below and return to mapping to choose the appropriate action.</p></div>}
-          <p className="text-sm">{historical && `History only, before ${cutoverDate}. Counts below are source rows; invoice lines are grouped into documents. `}You can import this reviewed source file directly. Downloading and uploading the prepared Excel again is optional.</p>
-          {historySummary && <p className="rounded-lg border border-primary/40 bg-primary/5 p-4 text-sm"><strong>{historySummary.documents} new historical documents · total {historySummary.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>. Repeated invoice header totals are counted once. Confirm this matches your source before saving.</p>}
+          <div className="flex items-center gap-3 text-sm"><button type="button" className="rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" disabled={previewPage === 0 || importing} onClick={() => setPreviewPage(page => page - 1)}>{t('wiz.previousRows')}</button><span>{t('wiz.pageOf').replace('{page}', String(previewPage + 1)).replace('{total}', String(Math.max(1, Math.ceil(preview.rows.length / MAX_PREVIEW_ROWS)))).replace('{count}', String(preview.rows.length))}</span><button type="button" className="rounded-lg border border-border px-3 py-2 font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" disabled={(previewPage + 1) * MAX_PREVIEW_ROWS >= preview.rows.length || importing} onClick={() => setPreviewPage(page => page + 1)}>{t('wiz.nextRows')}</button></div>
+          {preview.stats.skipCount > 0 && <div role="status" className="rounded-lg border border-warning p-4 text-sm"><strong>{t('wiz.whySkippedTitle')}</strong><p>{t('wiz.whySkippedBody')}</p></div>}
+          <p className="text-sm">{historical && t('wiz.historyPrefix').replace('{date}', cutoverDate)}{t('wiz.importDirectNote')}</p>
+          {historySummary && <p className="rounded-lg border border-primary/40 bg-primary/5 p-4 text-sm"><strong>{t('wiz.historySummaryMain').replace('{documents}', String(historySummary.documents)).replace('{total}', historySummary.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</strong>. {t('wiz.historySummaryNote')}</p>}
           <div className="flex flex-wrap gap-3">
             <button type="button" onClick={handleRunImport} disabled={importing || preview.stats.errorCount > 0 || preview.stats.newCount + preview.stats.updateCount === 0} className="rounded bg-success px-4 py-2 text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30">
-              {importing ? "Importing..." : `Import ${preview.stats.newCount + preview.stats.updateCount} rows`}
+              {importing ? t('wiz.importing') : t('wiz.importRows').replace('{count}', String(preview.stats.newCount + preview.stats.updateCount))}
             </button>
-            <button type="button" onClick={() => setStep("mapping")} disabled={importing} className="rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30">Back to Mapping</button>
-            <button type="button" onClick={resetFile} disabled={importing} className="rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30">Cancel</button>
+            <button type="button" onClick={() => setStep("mapping")} disabled={importing} className="rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30">{t('wiz.backToMapping')}</button>
+            <button type="button" onClick={resetFile} disabled={importing} className="rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30">{t('common.cancel')}</button>
           </div>
         </div>
       )}
 
       {step === "done" && importResult && (
         <div className="rounded border border-border bg-card p-4">
-          <h3 className="mb-3 text-lg font-medium text-foreground">Import Complete</h3>
+          <h3 className="mb-3 text-lg font-medium text-foreground">{t('wiz.importComplete')}</h3>
           <div className="flex flex-wrap items-center gap-4 text-sm">
-            <span className="rounded bg-success/10 px-2 py-1 text-success">{historical ? "Saved source rows" : "Created"}: {importResult.created}</span>
-            <span className="rounded bg-primary/10 px-2 py-1 text-primary">Updated: {importResult.updated}</span>
-            <span className="rounded bg-muted px-2 py-1 text-muted-foreground">Skipped: {importResult.skipped}</span>
-            <span className="rounded bg-destructive/10 px-2 py-1 text-destructive">Failed: {importResult.failed}</span>
+            <span className="rounded bg-success/10 px-2 py-1 text-success">{historical ? t('wiz.savedSourceRowsLabel') : t('wiz.createdLabel')}: {importResult.created}</span>
+            <span className="rounded bg-primary/10 px-2 py-1 text-primary">{t('wiz.updatedLabel')}: {importResult.updated}</span>
+            <span className="rounded bg-muted px-2 py-1 text-muted-foreground">{t('wiz.skippedLabel')}: {importResult.skipped}</span>
+            <span className="rounded bg-destructive/10 px-2 py-1 text-destructive">{t('wiz.failedLabel')}: {importResult.failed}</span>
           </div>
           {importResult.failures.length > 0 && (
             <ul className="mt-4 max-h-48 space-y-1 overflow-y-auto text-sm text-destructive">
@@ -748,15 +752,20 @@ function ImportWizardContent({
               ))}
             </ul>
           )}
-          <button type="button" onClick={resetFile} className="mt-4 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90">Import Another File</button>
+          <button type="button" onClick={resetFile} className="mt-4 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90">{t('wiz.importAnother')}</button>
         </div>
       )}
     </div>
   );
 }
 
+function ObjectCellValue() {
+  const { t } = useRegional();
+  return <span className="text-muted-foreground">{t('wiz.objectValue')}</span>;
+}
+
 function formatCellValue(value: unknown): React.ReactNode {
   if (value === null || value === undefined) return <span className="text-muted-foreground">-</span>;
-  if (typeof value === "object") return <span className="text-muted-foreground">[Object]</span>;
+  if (typeof value === "object") return <ObjectCellValue />;
   return String(value);
 }

@@ -7742,12 +7742,12 @@ setCustomerOrganizationName("");
     const lineItems = purchaseOrderItems.filter((item) => item.purchase_order_id === poId);
     const lineRows =
       lineItems.length === 0
-        ? [["No line items found", "-", "-", "-"]]
+        ? [[t('print.noLineItems'), "-", "-", "-"]]
         : lineItems.map((item) => {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
-              product?.name ?? "Unknown Product",
+              product?.name ?? t('sell.unknownProduct'),
               `${item.quantity_ordered} ${unit}`,
               formatPKR(safeNumber(item.unit_price)),
               formatPKR(safeNumber(item.quantity_ordered) * safeNumber(item.unit_price)),
@@ -7755,21 +7755,21 @@ setCustomerOrganizationName("");
           });
 
     openPrintPreview(
-      `Purchase Order ${po.po_number}`,
+      `${t('print.purchaseOrder')} ${po.po_number}`,
       `${businessBrandingHtml()}
-      <h2>Purchase Order</h2>
+      <h2>${t('print.purchaseOrder')}</h2>
       <div class="grid">
-        <div><strong>PO Number:</strong> ${escapeHtml(po.po_number)}</div>
-        <div><strong>Order Date:</strong> ${escapeHtml(formatDate(po.order_date ?? po.created_at))}</div>
-        <div><strong>Expected Date:</strong> ${po.expected_date ? escapeHtml(formatDate(po.expected_date)) : "-"}</div>
-        <div><strong>Supplier:</strong> ${escapeHtml(supplier?.supplier_name ?? "Unknown Supplier")}</div>
-        <div><strong>Status:</strong> ${escapeHtml(po.status)}</div>
+        <div><strong>${t('print.poNumber')}:</strong> ${escapeHtml(po.po_number)}</div>
+        <div><strong>${t('sell.orderDate')}:</strong> ${escapeHtml(formatDate(po.order_date ?? po.created_at))}</div>
+        <div><strong>${t('print.expectedDate')}:</strong> ${po.expected_date ? escapeHtml(formatDate(po.expected_date)) : "-"}</div>
+        <div><strong>${t('buy.supplierPrefix')}</strong> ${escapeHtml(supplier?.supplier_name ?? t('print.unknownSupplier'))}</div>
+        <div><strong>${t('sell.statusLabel')}:</strong> ${escapeHtml(po.status)}</div>
       </div>
       <table>
-        <thead>${renderHeaderRows(["Product", "Quantity", "Unit Price", "Line Total"])}</thead>
+        <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('buy.unitPrice'), t('buy.lineTotal')])}</thead>
         <tbody>${renderRows(lineRows)}</tbody>
       </table>
-      ${po.notes ? `<div class="summary"><p><strong>Notes:</strong> ${escapeHtml(po.notes)}</p></div>` : ""}
+      ${po.notes ? `<div class="summary"><p><strong>${t('buy.notesPrefix')}</strong> ${escapeHtml(po.notes)}</p></div>` : ""}
       ${businessPrintFooterHtml()}`
     );
   };
@@ -8051,12 +8051,12 @@ setCustomerOrganizationName("");
     const lineItems = purchaseReturnItems.filter((item) => item.purchase_return_id === returnId);
     const lineRows =
       lineItems.length === 0
-        ? [["No line items found", "-", "-", "-"]]
+        ? [[t('print.noLineItems'), "-", "-", "-"]]
         : lineItems.map((item) => {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
-              product?.name ?? "Unknown Product",
+              product?.name ?? t('sell.unknownProduct'),
               `${item.quantity} ${unit}`,
               formatPKR(safeNumber(item.unit_price)),
               formatPKR(safeNumber(item.quantity) * safeNumber(item.unit_price)),
@@ -8064,19 +8064,19 @@ setCustomerOrganizationName("");
           });
 
     openPrintPreview(
-      `Purchase Return ${purchaseReturn.return_number}`,
+      `${t('print.purchaseReturn')} ${purchaseReturn.return_number}`,
       `${businessBrandingHtml()}
-      <h2>Purchase Return</h2>
+      <h2>${t('print.purchaseReturn')}</h2>
       <div class="grid">
-        <div><strong>Return Number:</strong> ${escapeHtml(purchaseReturn.return_number)}</div>
-        <div><strong>Return Date:</strong> ${escapeHtml(formatDate(purchaseReturn.return_date ?? purchaseReturn.created_at))}</div>
-        <div><strong>Supplier:</strong> ${escapeHtml(supplier?.supplier_name ?? "Unknown Supplier")}</div>
+        <div><strong>${t('print.returnNumber')}:</strong> ${escapeHtml(purchaseReturn.return_number)}</div>
+        <div><strong>${t('sell.returnDate')}:</strong> ${escapeHtml(formatDate(purchaseReturn.return_date ?? purchaseReturn.created_at))}</div>
+        <div><strong>${t('buy.supplierPrefix')}</strong> ${escapeHtml(supplier?.supplier_name ?? t('print.unknownSupplier'))}</div>
       </div>
       <table>
-        <thead>${renderHeaderRows(["Product", "Quantity", "Unit Price", "Line Total"])}</thead>
+        <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('buy.unitPrice'), t('buy.lineTotal')])}</thead>
         <tbody>${renderRows(lineRows)}</tbody>
       </table>
-      ${purchaseReturn.reason ? `<div class="summary"><p><strong>Reason:</strong> ${escapeHtml(purchaseReturn.reason)}</p></div>` : ""}
+      ${purchaseReturn.reason ? `<div class="summary"><p><strong>${t('sell.reasonLabel')}:</strong> ${escapeHtml(purchaseReturn.reason)}</p></div>` : ""}
       ${businessPrintFooterHtml()}`
     );
   };
@@ -8480,14 +8480,14 @@ setCustomerOrganizationName("");
     const lineItems = salesOrderItems.filter((item) => item.sales_order_id === soId);
     const lineRows =
       lineItems.length === 0
-        ? [["No line items found", "-", "-", "-"]]
+        ? [[t('print.noLineItems'), "-", "-", "-"]]
         : lineItems.map((item) => {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const unitPrice = safeNumber(item.unit_price);
             const discount = safeNumber(item.discount);
             const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
-              product?.name ?? "Unknown Product",
+              product?.name ?? t('sell.unknownProduct'),
               `${item.quantity_ordered} ${unit}`,
               formatPKR(unitPrice),
               formatPKR(unitPrice * Number(item.quantity_ordered) - discount),
@@ -8495,20 +8495,20 @@ setCustomerOrganizationName("");
           });
 
     openPrintPreview(
-      `Sales Order ${order.so_number}`,
+      `${t('print.salesOrder')} ${order.so_number}`,
       `${businessBrandingHtml()}
-      <h2>Sales Order</h2>
+      <h2>${t('print.salesOrder')}</h2>
       <div class="grid">
-        <div><strong>Order Number:</strong> ${escapeHtml(order.so_number)}</div>
-        <div><strong>Order Date:</strong> ${escapeHtml(formatDate(order.order_date ?? order.created_at))}</div>
-        <div><strong>Customer:</strong> ${escapeHtml(customer?.customer_name ?? "Unknown Customer")}</div>
-        <div><strong>Status:</strong> ${escapeHtml(order.status)}</div>
+        <div><strong>${t('print.orderNumber')}:</strong> ${escapeHtml(order.so_number)}</div>
+        <div><strong>${t('sell.orderDate')}:</strong> ${escapeHtml(formatDate(order.order_date ?? order.created_at))}</div>
+        <div><strong>${t('sell.customer')}:</strong> ${escapeHtml(customer?.customer_name ?? t('sell.unknownCustomer'))}</div>
+        <div><strong>${t('sell.statusLabel')}:</strong> ${escapeHtml(order.status)}</div>
       </div>
       <table>
-        <thead>${renderHeaderRows(["Product", "Quantity", "Unit Price", "Line Total"])}</thead>
+        <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('buy.unitPrice'), t('buy.lineTotal')])}</thead>
         <tbody>${renderRows(lineRows)}</tbody>
       </table>
-      ${order.notes ? `<div class="summary"><p><strong>Notes:</strong> ${escapeHtml(order.notes)}</p></div>` : ""}
+      ${order.notes ? `<div class="summary"><p><strong>${t('buy.notesPrefix')}</strong> ${escapeHtml(order.notes)}</p></div>` : ""}
       ${businessPrintFooterHtml()}`
     );
   };
@@ -8694,14 +8694,14 @@ setCustomerOrganizationName("");
     const lineItems = salesReturnItems.filter((item) => item.sales_return_id === returnId);
     const lineRows =
       lineItems.length === 0
-        ? [["No line items found", "-", "-", "-"]]
+        ? [[t('print.noLineItems'), "-", "-", "-"]]
         : lineItems.map((item) => {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const unitPrice = safeNumber(item.unit_price);
             const discount = safeNumber(item.discount);
             const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
-              product?.name ?? "Unknown Product",
+              product?.name ?? t('sell.unknownProduct'),
               `${item.quantity} ${unit}`,
               formatPKR(unitPrice),
               formatPKR(unitPrice * safeNumber(item.quantity) - discount),
@@ -8709,19 +8709,19 @@ setCustomerOrganizationName("");
           });
 
     openPrintPreview(
-      `Sales Return ${salesReturn.return_number}`,
+      `${t('sell.salesReturn')} ${salesReturn.return_number}`,
       `${businessBrandingHtml()}
-      <h2>Sales Return</h2>
+      <h2>${t('sell.salesReturn')}</h2>
       <div class="grid">
-        <div><strong>Return Number:</strong> ${escapeHtml(salesReturn.return_number)}</div>
-        <div><strong>Return Date:</strong> ${escapeHtml(formatDate(salesReturn.return_date ?? salesReturn.created_at))}</div>
-        <div><strong>Customer:</strong> ${escapeHtml(customer?.customer_name ?? "Unknown Customer")}</div>
+        <div><strong>${t('print.returnNumber')}:</strong> ${escapeHtml(salesReturn.return_number)}</div>
+        <div><strong>${t('sell.returnDate')}:</strong> ${escapeHtml(formatDate(salesReturn.return_date ?? salesReturn.created_at))}</div>
+        <div><strong>${t('sell.customer')}:</strong> ${escapeHtml(customer?.customer_name ?? t('sell.unknownCustomer'))}</div>
       </div>
       <table>
-        <thead>${renderHeaderRows(["Product", "Quantity", "Unit Price", "Line Total"])}</thead>
+        <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('buy.unitPrice'), t('buy.lineTotal')])}</thead>
         <tbody>${renderRows(lineRows)}</tbody>
       </table>
-      ${salesReturn.reason ? `<div class="summary"><p><strong>Reason:</strong> ${escapeHtml(salesReturn.reason)}</p></div>` : ""}
+      ${salesReturn.reason ? `<div class="summary"><p><strong>${t('sell.reasonLabel')}:</strong> ${escapeHtml(salesReturn.reason)}</p></div>` : ""}
       ${businessPrintFooterHtml()}`
     );
   };
@@ -11817,12 +11817,12 @@ setCustomerOrganizationName("");
   const businessAddressLine = [businessAddress, businessCity].filter(Boolean).join(", ");
   const businessBrandingHtml = () =>
     `<h1>${escapeHtml(organizationDisplayName)}</h1>
-      ${businessPhone ? `<p class="muted">Phone: ${escapeHtml(businessPhone)}</p>` : ""}
+      ${businessPhone ? `<p class="muted">${t('customers.phonePrefix')} ${escapeHtml(businessPhone)}</p>` : ""}
       ${businessAddressLine ? `<p class="muted">${escapeHtml(businessAddressLine)}</p>` : ""}`;
   const businessPrintFooterHtml = () =>
-    `${businessDefaultPaymentTerms ? `<p><strong>Payment Terms:</strong> ${escapeHtml(businessDefaultPaymentTerms)}</p>` : ""}
+    `${businessDefaultPaymentTerms ? `<p><strong>${t('print.paymentTerms')}:</strong> ${escapeHtml(businessDefaultPaymentTerms)}</p>` : ""}
       ${businessFooterNote ? `<p>${escapeHtml(businessFooterNote)}</p>` : ""}
-      <p class="footer">Generated by TradeOS</p>`;
+      <p class="footer">${t('print.generatedBy')}</p>`;
 
   const renderRows = (rows: string[][]) =>
     rows
@@ -11859,7 +11859,7 @@ setCustomerOrganizationName("");
           );
     const lineRows =
       lineItems.length === 0
-        ? [["No line items found", "-", formatPKR(0), formatPKR(0)]]
+        ? [[t('print.noLineItems'), "-", formatPKR(0), formatPKR(0)]]
         : lineItems.map((item) => {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const quantity = safeNumber(item.quantity);
@@ -11868,47 +11868,47 @@ setCustomerOrganizationName("");
             const lineTotal = quantity * sellingPrice - lineDiscount;
             const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
-              product?.name ?? "Unknown Product",
+              product?.name ?? t('sell.unknownProduct'),
               `${quantity} ${unit}`,
               formatPKR(sellingPrice),
-              lineDiscount > 0 ? `${formatPKR(lineTotal)} (disc: ${formatPKR(lineDiscount)})` : formatPKR(lineTotal),
+              lineDiscount > 0 ? `${formatPKR(lineTotal)} (${t('print.disc')}: ${formatPKR(lineDiscount)})` : formatPKR(lineTotal),
             ];
           });
 
     openPrintPreview(
-      `Sales Invoice ${transaction.invoice_number}`,
+      `${t('sell.salesInvoice')} ${transaction.invoice_number}`,
       `${businessBrandingHtml()}
-      <h2>Sales Invoice</h2>
+      <h2>${t('sell.salesInvoice')}</h2>
       <div class="grid">
-        <div><strong>Invoice:</strong> ${escapeHtml(transaction.invoice_number)}</div>
-        <div><strong>Sale Date:</strong> ${escapeHtml(formatDate(transaction.sale_date ?? transaction.created_at))}</div>
-        <div><strong>Customer:</strong> ${escapeHtml(customer?.customer_name ?? "Unknown Customer")}</div>
-        <div><strong>Payment Type:</strong> ${escapeHtml(transaction.payment_type === "credit" ? "Credit" : "Cash")}</div>
+        <div><strong>${t('buy.invoicePrefix')}</strong> ${escapeHtml(transaction.invoice_number)}</div>
+        <div><strong>${t('sell.saleDate')}:</strong> ${escapeHtml(formatDate(transaction.sale_date ?? transaction.created_at))}</div>
+        <div><strong>${t('sell.customer')}:</strong> ${escapeHtml(customer?.customer_name ?? t('sell.unknownCustomer'))}</div>
+        <div><strong>${t('sell.paymentType')}:</strong> ${escapeHtml(transaction.payment_type === "credit" ? t('sell.paymentCredit') : t('sell.paymentCash'))}</div>
         ${
           transaction.credit_due_date
-            ? `<div><strong>Credit Due Date:</strong> ${escapeHtml(formatDate(transaction.credit_due_date))}</div>`
+            ? `<div><strong>${t('sell.creditDueDate')}:</strong> ${escapeHtml(formatDate(transaction.credit_due_date))}</div>`
             : ""
         }
       </div>
       <table>
-        <thead>${renderHeaderRows(["Product", "Quantity", "Selling Price", "Line Total"])}</thead>
+        <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('products.sellingPrice'), t('buy.lineTotal')])}</thead>
         <tbody>${renderRows(lineRows)}</tbody>
       </table>
       <div class="summary">
-        <p><strong>Grand Total:</strong> ${escapeHtml(formatPKR(invoiceTotal))}</p>
+        <p><strong>${t('print.grandTotal')}:</strong> ${escapeHtml(formatPKR(invoiceTotal))}</p>
         ${
           Number(transaction.discount_amount) > 0
-            ? `<p><strong>Discount:</strong> ${escapeHtml(formatPKR(Number(transaction.discount_amount)))}</p>`
+            ? `<p><strong>${t('common.discount')}:</strong> ${escapeHtml(formatPKR(Number(transaction.discount_amount)))}</p>`
             : ""
         }
         ${
           Number(transaction.tax_amount) > 0
-            ? `<p><strong>Tax (${escapeHtml(String(transaction.tax_rate ?? 0))}%):</strong> ${escapeHtml(formatPKR(Number(transaction.tax_amount)))}</p>`
+            ? `<p><strong>${t('common.tax')} (${escapeHtml(String(transaction.tax_rate ?? 0))}%):</strong> ${escapeHtml(formatPKR(Number(transaction.tax_amount)))}</p>`
             : ""
         }
         ${
           transaction.payment_type === "credit"
-            ? `<p><strong>Remaining Balance:</strong> ${escapeHtml(formatPKR(creditAllocation?.remainingUnpaidAmount ?? 0))}</p>`
+            ? `<p><strong>${t('sell.remainingBalance')}:</strong> ${escapeHtml(formatPKR(creditAllocation?.remainingUnpaidAmount ?? 0))}</p>`
             : ""
         }
       </div>
@@ -11938,17 +11938,17 @@ setCustomerOrganizationName("");
     );
     const paidAmount = paymentSummary?.paidAmount ?? 0;
     const paymentStatus =
-      remainingPayable <= 0 ? "Paid" : paidAmount > 0 ? "Partially Paid" : "Unpaid";
+      remainingPayable <= 0 ? t('money.paid') : paidAmount > 0 ? t('buy.statusPartiallyPaid') : t('buy.statusUnpaid');
     const lineRows =
       lineItems.length === 0
-        ? [["No line items found", "-", formatPKR(0), formatPKR(0), "-", "-"]]
+        ? [[t('print.noLineItems'), "-", formatPKR(0), formatPKR(0), "-", "-"]]
         : lineItems.map((item) => {
             const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
             const quantity = safeNumber(item.quantity);
             const purchasePrice = safeNumber(item.purchase_price);
             const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
             return [
-              product?.name ?? "Unknown Product",
+              product?.name ?? t('sell.unknownProduct'),
               `${quantity} ${unit}`,
               formatPKR(purchasePrice),
               formatPKR(quantity * purchasePrice),
@@ -11958,24 +11958,24 @@ setCustomerOrganizationName("");
           });
 
     openPrintPreview(
-      `Purchase Invoice ${transaction.invoice_number}`,
+      `${t('expenses.purchaseInvoice')} ${transaction.invoice_number}`,
       `${businessBrandingHtml()}
-      <h2>Purchase Invoice</h2>
+      <h2>${t('expenses.purchaseInvoice')}</h2>
       <div class="grid">
-        <div><strong>Invoice:</strong> ${escapeHtml(transaction.invoice_number)}</div>
-        <div><strong>Purchase Date:</strong> ${escapeHtml(formatDate(transaction.purchase_date ?? transaction.created_at))}</div>
-        <div><strong>Supplier:</strong> ${escapeHtml(supplier?.supplier_name ?? "Unknown Supplier")}</div>
-        <div><strong>Payment Status:</strong> ${escapeHtml(paymentStatus)}</div>
+        <div><strong>${t('buy.invoicePrefix')}</strong> ${escapeHtml(transaction.invoice_number)}</div>
+        <div><strong>${t('buy.purchaseDate')}:</strong> ${escapeHtml(formatDate(transaction.purchase_date ?? transaction.created_at))}</div>
+        <div><strong>${t('buy.supplierPrefix')}</strong> ${escapeHtml(supplier?.supplier_name ?? t('print.unknownSupplier'))}</div>
+        <div><strong>${t('buy.paymentStatus')}:</strong> ${escapeHtml(paymentStatus)}</div>
       </div>
       <table>
-        <thead>${renderHeaderRows(["Product", "Quantity", "Purchase Price", "Line Total", "Batch", "Expiry"])}</thead>
+        <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('products.purchasePrice'), t('buy.lineTotal'), t('print.batch'), t('print.expiry')])}</thead>
         <tbody>${renderRows(lineRows)}</tbody>
       </table>
       <div class="summary">
-        <p><strong>Purchase Total:</strong> ${escapeHtml(formatPKR(purchaseValue))}</p>
-        <p><strong>Linked Purchase Expenses:</strong> ${escapeHtml(formatPKR(linkedExpenseTotal))}</p>
-        <p><strong>Landed Invoice Cost:</strong> ${escapeHtml(formatPKR(landedInvoiceCost))}</p>
-        <p><strong>Remaining Payable:</strong> ${escapeHtml(formatPKR(remainingPayable))}</p>
+        <p><strong>${t('buy.purchaseTotal')}:</strong> ${escapeHtml(formatPKR(purchaseValue))}</p>
+        <p><strong>${t('print.linkedExpenses')}:</strong> ${escapeHtml(formatPKR(linkedExpenseTotal))}</p>
+        <p><strong>${t('buy.landedInvoiceCost')}:</strong> ${escapeHtml(formatPKR(landedInvoiceCost))}</p>
+        <p><strong>${t('buy.remainingPayable')}:</strong> ${escapeHtml(formatPKR(remainingPayable))}</p>
       </div>
       ${businessPrintFooterHtml()}`
     );
@@ -14136,17 +14136,17 @@ setCustomerOrganizationName("");
     const summary = getCustomerCreditSummary(customer);
     const invoiceRows =
       customerCreditTransactions.length === 0
-        ? [["No credit invoices found", "-", formatPKR(0), formatPKR(0), formatPKR(0), "-"]]
+        ? [[t('print.noCreditInvoices'), "-", formatPKR(0), formatPKR(0), formatPKR(0), "-"]]
         : customerCreditTransactions.map((transaction) => {
             const allocation = creditAllocationByTransaction[transaction.id];
             const remainingBalance = Math.max(0, allocation?.remainingUnpaidAmount ?? 0);
             const dueDate = getDateOnly(transaction.credit_due_date);
             const status =
               remainingBalance <= 0
-                ? "Paid"
+                ? t('sell.statusPaid')
                 : dueDate && dueDate < todayDateValue
-                  ? "Overdue"
-                  : "Payment Pending";
+                  ? t('sell.statusOverdue')
+                  : t('sell.statusPaymentPending');
             return [
               transaction.invoice_number,
               formatDate(transaction.sale_date ?? transaction.created_at),
@@ -14158,18 +14158,18 @@ setCustomerOrganizationName("");
           });
 
     openPrintPreview(
-      `Customer Statement ${customer.customer_name}`,
+      `${t('print.customerStatement')} ${customer.customer_name}`,
       `${businessBrandingHtml()}
-      <h2>Customer Statement</h2>
+      <h2>${t('print.customerStatement')}</h2>
       <div class="grid">
-        <div><strong>Customer:</strong> ${escapeHtml(customer.customer_name)}</div>
-        <div><strong>Credit Policy:</strong> ${escapeHtml(creditPolicyLabels[customer.credit_policy ?? "cash_only"] ?? "Cash Only")}</div>
-        <div><strong>Total Credit Sales:</strong> ${escapeHtml(formatPKR(totalCreditSales))}</div>
-        <div><strong>Total Payments:</strong> ${escapeHtml(formatPKR(totalPayments))}</div>
-        <div><strong>Outstanding Balance:</strong> ${escapeHtml(formatPKR(summary.outstandingBalance))}</div>
+        <div><strong>${t('sell.customer')}:</strong> ${escapeHtml(customer.customer_name)}</div>
+        <div><strong>${t('customers.creditPolicyPrefix')}</strong> ${escapeHtml((({ cash_only: t('customers.policyCashOnly'), limit_only: t('customers.policyLimitOnly'), days_only: t('customers.policyDaysOnly'), limit_and_days: t('customers.policyLimitAndDays'), unrestricted: t('customers.policyUnrestricted') } as Record<string, string>)[customer.credit_policy ?? "cash_only"] ?? t('customers.policyCashOnly')))}</div>
+        <div><strong>${t('print.totalCreditSales')}:</strong> ${escapeHtml(formatPKR(totalCreditSales))}</div>
+        <div><strong>${t('buy.totalPayments')}:</strong> ${escapeHtml(formatPKR(totalPayments))}</div>
+        <div><strong>${t('print.outstandingBalance')}:</strong> ${escapeHtml(formatPKR(summary.outstandingBalance))}</div>
       </div>
       <table>
-        <thead>${renderHeaderRows(["Invoice", "Sale Date", "Invoice Total", "Paid", "Remaining", "Status"])}</thead>
+        <thead>${renderHeaderRows([t('sell.invoiceLabel'), t('sell.saleDate'), t('sell.invoiceTotal'), t('money.paid'), t('payments.remaining'), t('sell.statusLabel')])}</thead>
         <tbody>${renderRows(invoiceRows)}</tbody>
       </table>
       ${businessPrintFooterHtml()}`
@@ -14182,7 +14182,7 @@ setCustomerOrganizationName("");
     if (!supplier) return;
     const ledgerRows =
       supplierLedgerEntries.length === 0
-        ? [["No supplier ledger entries in this date range", "-", "-", formatPKR(0), formatPKR(0), formatPKR(0)]]
+        ? [[t('buy.noLedgerEntries'), "-", "-", formatPKR(0), formatPKR(0), formatPKR(0)]]
         : supplierLedgerEntries.map((entry) => [
             entry.date ?? "-",
             entry.reference,
@@ -14193,20 +14193,20 @@ setCustomerOrganizationName("");
           ]);
 
     openPrintPreview(
-      `Supplier Ledger ${supplier.supplier_name}`,
+      `${t('buy.supplierLedger')} ${supplier.supplier_name}`,
       `${businessBrandingHtml()}
-      <h2>Supplier Ledger</h2>
+      <h2>${t('buy.supplierLedger')}</h2>
       <div class="grid">
-        <div><strong>Supplier:</strong> ${escapeHtml(supplier.supplier_name)}</div>
-        <div><strong>Date Range:</strong> ${escapeHtml(supplierLedgerStartDate || "All Time")} to ${escapeHtml(supplierLedgerEndDate || "All Time")}</div>
-        <div><strong>Total Purchases:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalPurchases))}</div>
-        <div><strong>Total Payments:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalPayments))}</div>
-        <div><strong>Current Payable:</strong> ${escapeHtml(formatPKR(supplierLedgerCurrentBalance))}</div>
-        <div><strong>Unallocated Payments:</strong> ${escapeHtml(formatPKR(supplierLedgerUnallocatedPayments))}</div>
+        <div><strong>${t('buy.supplierPrefix')}</strong> ${escapeHtml(supplier.supplier_name)}</div>
+        <div><strong>${t('print.dateRange')}:</strong> ${escapeHtml(supplierLedgerStartDate || t('buy.allTime'))} ${escapeHtml(t('buy.dateSeparator'))} ${escapeHtml(supplierLedgerEndDate || t('buy.allTime'))}</div>
+        <div><strong>${t('buy.totalPurchases')}:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalPurchases))}</div>
+        <div><strong>${t('buy.totalPayments')}:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalPayments))}</div>
+        <div><strong>${t('print.currentPayable')}:</strong> ${escapeHtml(formatPKR(supplierLedgerCurrentBalance))}</div>
+        <div><strong>${t('buy.unallocatedPayments')}:</strong> ${escapeHtml(formatPKR(supplierLedgerUnallocatedPayments))}</div>
       </div>
       <table>
-        <thead>${renderHeaderRows(["Date", "Reference", "Notes", "Debit", "Credit", "Running Balance"])}</thead>
-        <tbody>${renderRows([["-", "Opening balance", "MVP opening balance", formatPKR(0), formatPKR(0), formatPKR(0)], ...ledgerRows])}</tbody>
+        <thead>${renderHeaderRows([t('money.date'), t('buy.reference'), t('sell.notesLabel'), t('buy.debit'), t('buy.credit'), t('buy.runningBalance')])}</thead>
+        <tbody>${renderRows([["-", t('print.openingBalance'), t('buy.openingBalanceNote'), formatPKR(0), formatPKR(0), formatPKR(0)], ...ledgerRows])}</tbody>
       </table>
       ${businessPrintFooterHtml()}`
     );

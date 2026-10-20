@@ -30,8 +30,34 @@ export type Receipt = {
   lines: ReceiptLine[];
 };
 
-export type ReceiptSummaryRow = { label: string; amount: number };
+export type ReceiptSummaryRow = { key: string; label: string; amount: number };
 export type ReceiptLineRow = ReceiptLine & { amount: number };
+
+/** Display labels for the receipt summary rows. Callers pass strings resolved
+ * in the active UI language; the defaults keep the historical English output
+ * for any caller that does not supply labels. `tax` is a template containing
+ * `{rate}`, e.g. "Tax ({rate}%)". */
+export type ReceiptSummaryLabels = {
+  itemsSubtotal: string;
+  lineDiscounts: string;
+  subtotal: string;
+  invoiceDiscount: string;
+  tax: string;
+  total: string;
+  tendered: string;
+  changeDue: string;
+};
+
+export const defaultReceiptSummaryLabels: ReceiptSummaryLabels = {
+  itemsSubtotal: "Items subtotal",
+  lineDiscounts: "Line discounts",
+  subtotal: "Subtotal",
+  invoiceDiscount: "Invoice discount",
+  tax: "Tax ({rate}%)",
+  total: "Total",
+  tendered: "Tendered",
+  changeDue: "Change due",
+};
 
 type AtomicSaleReceiptResult = {
   transaction: Record<string, unknown>;
@@ -61,19 +87,19 @@ export function getReceiptLineRows(receipt: Receipt): ReceiptLineRow[] {
   }));
 }
 
-export function getReceiptSummaryRows(receipt: Receipt): ReceiptSummaryRow[] {
+export function getReceiptSummaryRows(receipt: Receipt, labels: ReceiptSummaryLabels = defaultReceiptSummaryLabels): ReceiptSummaryRow[] {
   const rows: ReceiptSummaryRow[] = [
-    { label: "Items subtotal", amount: receipt.lineSubtotal },
-    { label: "Line discounts", amount: receipt.lineDiscount },
-    { label: "Subtotal", amount: receipt.subtotal },
-    { label: "Invoice discount", amount: receipt.invoiceDiscount },
-    { label: `Tax (${receipt.taxRate}%)`, amount: receipt.tax },
-    { label: "Total", amount: receipt.total },
+    { key: "itemsSubtotal", label: labels.itemsSubtotal, amount: receipt.lineSubtotal },
+    { key: "lineDiscounts", label: labels.lineDiscounts, amount: receipt.lineDiscount },
+    { key: "subtotal", label: labels.subtotal, amount: receipt.subtotal },
+    { key: "invoiceDiscount", label: labels.invoiceDiscount, amount: receipt.invoiceDiscount },
+    { key: "tax", label: labels.tax.replace("{rate}", String(receipt.taxRate)), amount: receipt.tax },
+    { key: "total", label: labels.total, amount: receipt.total },
   ];
   if (receipt.payment === "cash") {
     rows.push(
-      { label: "Tendered", amount: receipt.received ?? receipt.total },
-      { label: "Change due", amount: receipt.change ?? 0 },
+      { key: "tendered", label: labels.tendered, amount: receipt.received ?? receipt.total },
+      { key: "changeDue", label: labels.changeDue, amount: receipt.change ?? 0 },
     );
   }
   return rows;
@@ -123,10 +149,10 @@ export function buildAtomicSaleReceipt(
   };
 }
 
-export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTemplate): string {
+export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTemplate, labels: ReceiptSummaryLabels = defaultReceiptSummaryLabels): string {
   const width = getReceiptWidthMm(template);
   const lineRows = getReceiptLineRows(receipt);
-  const summaryRows = getReceiptSummaryRows(receipt);
+  const summaryRows = getReceiptSummaryRows(receipt, labels);
   const columns = template.columns.labels.map(column =>
     `<th style="width:${column.widthPct}%;font-size:${template.columns.headerSizePx}px">${escapeHtml(column.label)}</th>`,
   ).join("");
@@ -149,7 +175,7 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
     template.header.showCustomer ? receipt.customer : "",
   ].filter(Boolean).map(escapeHtml).join(" · ");
   const summary = summaryRows.map(row =>
-    `<div class="summary-row${row.label === "Total" ? " grand-total" : ""}"><span>${escapeHtml(row.label)}</span><strong>${money(roundMoney(row.amount))}</strong></div>`,
+    `<div class="summary-row${row.key === "total" ? " grand-total" : ""}"><span>${escapeHtml(row.label)}</span><strong>${money(roundMoney(row.amount))}</strong></div>`,
   ).join("");
   const orgName = template.header.showOrgName
     ? `<h1>${escapeHtml(receipt.business)}</h1>`

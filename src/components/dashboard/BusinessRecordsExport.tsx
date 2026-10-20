@@ -15,7 +15,7 @@ export function BusinessRecordsExport() {
       const popup = window.open("", "_blank"); if (!popup) { setError(t('records.allowPopups')); return; }
       popup.opener = null; popup.document.body.textContent = t('records.preparingReport');
       setBusy(true); setError("");
-      try { const res = await authorizedFetch(`/api/reports/business-records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`); const data = await res.json(); if (!res.ok || !data.ok) throw new Error(data.error); popup.document.open(); popup.document.write(businessReportHtml(from, to, data.sections)); popup.document.close(); }
+      try { const res = await authorizedFetch(`/api/reports/business-records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`); const data = await res.json(); if (!res.ok || !data.ok) throw new Error(data.error); popup.document.open(); popup.document.write(businessReportHtml(from, to, data.sections, { printButton: t('report.printButton'), choosePdf: t('report.choosePdf'), businessRecords: t('report.businessRecords'), heading: t('report.heading'), rangeSeparator: t('buy.dateSeparator'), rangeSummary: t('report.rangeSummary'), disclaimer: t('report.disclaimer'), noRecords: t('report.noRecords') })); popup.document.close(); }
       catch (err) { popup.close(); setError(err instanceof Error ? err.message : t('records.reportFailed')); } finally { setBusy(false); }
     }}>{busy ? t('records.preparing') : t('records.exportPdf')}</button></div>{error && <p role="alert" className="text-destructive">{error}</p>}
   </>;

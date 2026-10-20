@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { getEntityConfig } from "@/lib/import-export/registry";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 const inputCls = "w-full rounded border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
@@ -13,6 +14,7 @@ interface ExportWizardProps {
 }
 
 export default function ExportWizard({ entityKey, onClose, onExported }: ExportWizardProps) {
+  const { t } = useRegional();
   const config = getEntityConfig(entityKey);
   const exportConfig = config?.export;
   
@@ -25,7 +27,7 @@ export default function ExportWizard({ entityKey, onClose, onExported }: ExportW
   if (!config || !exportConfig) {
     return (
       <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
-        <p className="text-destructive">Export not supported for this entity.</p>
+        <p className="text-destructive">{t('wiz.exportNotSupported')}</p>
       </div>
     );
   }
@@ -44,7 +46,7 @@ export default function ExportWizard({ entityKey, onClose, onExported }: ExportW
       
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Export failed (${res.status})`);
+        throw new Error(data.error || t('wiz.exportFailedStatus').replace('{status}', String(res.status)));
       }
       
       const blob = await res.blob();
@@ -60,7 +62,7 @@ export default function ExportWizard({ entityKey, onClose, onExported }: ExportW
       onExported?.();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed");
+      setError(err instanceof Error ? err.message : t('wiz.exportFailed'));
     } finally {
       setLoading(false);
     }
@@ -69,8 +71,8 @@ export default function ExportWizard({ entityKey, onClose, onExported }: ExportW
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h2 className="text-lg font-semibold text-foreground">Export {config.entityName}</h2>
-        <button onClick={onClose} className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30">Close</button>
+        <h2 className="text-lg font-semibold text-foreground">{t('importexport.export')} {config.entityName}</h2>
+        <button onClick={onClose} className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30">{t('common.close')}</button>
       </div>
 
       {error && <p className="px-4 py-2 text-sm text-destructive">{error}</p>}
@@ -78,7 +80,7 @@ export default function ExportWizard({ entityKey, onClose, onExported }: ExportW
       <div className="p-4 space-y-4">
         <div>
           <label className="flex flex-col gap-1 text-sm text-foreground/80">
-            <span className="font-medium">Format</span>
+            <span className="font-medium">{t('wiz.format')}</span>
             <div className="flex gap-2">
               <label className="flex items-center gap-2">
                 <input type="radio" value="csv" checked={format === "csv"} onChange={() => setFormat("csv")} className="h-4 w-4 accent-primary" />
@@ -86,7 +88,7 @@ export default function ExportWizard({ entityKey, onClose, onExported }: ExportW
               </label>
               <label className="flex items-center gap-2">
                 <input type="radio" value="xlsx" checked={format === "xlsx"} onChange={() => setFormat("xlsx")} className="h-4 w-4 accent-primary" />
-                <span>Excel (.xlsx)</span>
+                <span>{t('wiz.excelXlsx')}</span>
               </label>
             </div>
           </label>
@@ -94,23 +96,23 @@ export default function ExportWizard({ entityKey, onClose, onExported }: ExportW
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm text-foreground/80">
-            <span>From Date</span>
+            <span>{t('wiz.fromDate')}</span>
             <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={inputCls} />
           </label>
           <label className="flex flex-col gap-1 text-sm text-foreground/80">
-            <span>To Date</span>
+            <span>{t('wiz.toDate')}</span>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={inputCls} />
           </label>
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Exports {config.entityName} with the default column set. Use filters to limit the date range.
+          {t('wiz.exportNote').replace('{entity}', config.entityName)}
         </p>
 
         <div className="flex justify-end gap-2 pt-4 border-t border-border">
-          <button onClick={onClose} className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30">Cancel</button>
+          <button onClick={onClose} className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30">{t('common.cancel')}</button>
           <button onClick={handleExport} disabled={loading} className="rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50">
-            {loading ? "Exporting..." : `Export ${format.toUpperCase()}`}
+            {loading ? t('wiz.exporting') : t('wiz.exportFormat').replace('{format}', format.toUpperCase())}
           </button>
         </div>
       </div>

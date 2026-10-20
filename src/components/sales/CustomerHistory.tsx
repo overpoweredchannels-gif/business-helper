@@ -20,10 +20,11 @@ type Data = { customers: CustomerRow[]; transactions: TransactionRow[]; salesIte
 type AssignmentOptions = { employees: Array<{ id: string; full_name: string; designation: string }>; territories: Array<{ id: string; name: string }>; routes: Array<{ id: string; name: string; territory_id: string | null; assigned_salesman_id?: string | null }>; routeStops: Array<{ route_id: string; customer_id: string }> };
 const empty: Data = { customers: [], transactions: [], salesItems: [], payments: [], allocations: [], orders: [], orderItems: [], products: [], profiles: [] };
 const num = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
-const showDate = (value?: string | null) => value ? new Date(value).toLocaleDateString("en-PK") : "—";
+const DATE_LOCALES = { en: "en-PK", es: "es-ES", it: "it-IT", ur: "ur-PK" } as const;
 
 export default function CustomerHistory({ organizationId, customerId }: Props) {
-  const { t } = useRegional();
+  const { t, language } = useRegional();
+  const showDate = (value?: string | null) => value ? new Date(value).toLocaleDateString(DATE_LOCALES[language]) : "—";
   const [data, setData] = useState<Data>(empty);
   const [selectedId, setSelectedId] = useState(customerId ?? "");
   const [search, setSearch] = useState("");

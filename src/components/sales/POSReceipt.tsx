@@ -5,8 +5,9 @@ import { createPortal } from "react-dom";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
 import type { PrintTemplate } from "@/lib/print/print-template-types";
-import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptSummaryRows, getReceiptWidthMm, type Receipt } from "@/lib/print/retail-receipt";
+import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptSummaryRows, getReceiptWidthMm, type Receipt, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 export type { Receipt } from "@/lib/print/retail-receipt";
 
@@ -17,9 +18,25 @@ const money = (value: number) => new Intl.NumberFormat("en-PK", {
   maximumFractionDigits: 2,
 }).format(Number.isFinite(value) ? value : 0);
 
+/** Receipt summary labels resolved in the active UI language. */
+function useReceiptSummaryLabels(): ReceiptSummaryLabels {
+  const { t } = useRegional();
+  return {
+    itemsSubtotal: t("receipt.itemsSubtotal"),
+    lineDiscounts: t("sell.lineDiscounts"),
+    subtotal: t("common.subtotal"),
+    invoiceDiscount: t("sell.invoiceDiscountRow"),
+    tax: `${t("common.tax")} ({rate}%)`,
+    total: t("common.total"),
+    tendered: t("receipt.tendered"),
+    changeDue: t("receipt.changeDue"),
+  };
+}
+
 export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; template: PrintTemplate }) {
+  const labels = useReceiptSummaryLabels();
   const lineRows = getReceiptLineRows(receipt);
-  const summaryRows = getReceiptSummaryRows(receipt);
+  const summaryRows = getReceiptSummaryRows(receipt, labels);
   const meta = [
     template.header.showInvoiceNo ? receipt.number : "",
     template.header.showDate ? `${template.header.dateLabel}: ${receipt.date}` : "",
@@ -63,7 +80,7 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
       })}
     </tr>)}</tbody></table>
     <div className="mt-2 border-t pt-1" style={{ borderColor: template.page.rule, fontSize: template.footer.labelSizePx }}>
-      {summaryRows.map(row => <div key={row.label} className={`flex justify-between gap-1 py-0.5 ${row.label === "Total" ? "border-t pt-1 font-bold" : ""}`} style={row.label === "Total" ? { borderColor: template.page.rule, fontSize: template.footer.valueSizePx } : undefined}>
+      {summaryRows.map(row => <div key={row.key} className={`flex justify-between gap-1 py-0.5 ${row.key === "total" ? "border-t pt-1 font-bold" : ""}`} style={row.key === "total" ? { borderColor: template.page.rule, fontSize: template.footer.valueSizePx } : undefined}>
         <span className="overflow-wrap-anywhere">{row.label}</span>
         <strong className="text-right tabular-nums" style={{ overflowWrap: "anywhere" }}>{money(row.amount)}</strong>
       </div>)}
@@ -74,6 +91,7 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
 }
 
 export function POSReceipt({ receipt }: { receipt: Receipt }) {
+  const labels = useReceiptSummaryLabels();
   const [open, setOpen] = useState(false);
   const [customizing, setCustomizing] = useState(false);
   const [error, setError] = useState("");
@@ -206,7 +224,7 @@ export function POSReceipt({ receipt }: { receipt: Receipt }) {
 
     try {
       frame.addEventListener("load", onLoad, { once: true });
-      frame.srcdoc = buildPrintableReceiptHtml(receipt, template);
+      frame.srcdoc = buildPrintableReceiptHtml(receipt, template, labels);
       document.body.appendChild(frame);
       fallbackTimer = window.setTimeout(() => {
         if (!settled) {
@@ -218,7 +236,7 @@ export function POSReceipt({ receipt }: { receipt: Receipt }) {
       cleanup();
       setError("The receipt could not be prepared for printing. The preview is still available.");
     }
-  }, [receipt, template, templateReady]);
+  }, [receipt, template, templateReady, labels]);
 
   const preview = useMemo(() => <POSReceiptPreview receipt={receipt} template={activeTemplate} />, [receipt, activeTemplate]);
   return <>
