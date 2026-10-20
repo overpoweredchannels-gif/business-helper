@@ -17967,19 +17967,19 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "sales" && (
         <>
         <div className="mb-5 flex flex-wrap gap-2">
-          {salesTools.filter(tool => canUseSalesTool(tool.id)).map(tool => <button key={tool.id} type="button" onClick={() => setSalesTab(tool.id)} className={`rounded px-4 py-2 text-sm font-medium ${salesTab === tool.id ? "bg-primary text-white" : "border border-border bg-card"}`}>{tool.label}</button>)}
+          {salesTools.filter(tool => canUseSalesTool(tool.id)).map(tool => <button key={tool.id} type="button" onClick={() => setSalesTab(tool.id)} className={`rounded px-4 py-2 text-sm font-medium ${salesTab === tool.id ? "bg-primary text-white" : "border border-border bg-card"}`}>{({ invoice: t('sell.tabCreateInvoice'), history: t('sell.tabLedger'), orders: t('sell.tabOrders'), returns: t('sell.tabReturns'), report: t('sell.tabReport'), loadform: t('sell.tabLoadForm'), invoices: t('sell.tabInvoiceGenerator') } as Record<string, string>)[tool.id] ?? tool.label}</button>)}
         </div>
-        {!canUseSalesTool(salesTab) && <p className="text-sm text-muted-foreground">Select one of your permitted sales options above.</p>}
+        {!canUseSalesTool(salesTab) && <p className="text-sm text-muted-foreground">{t('sell.selectPermittedOption')}</p>}
         {salesTab === "history" && canUseSalesTool("history") && !isOwnerOrAdmin() && <MySalesPerformance />}
         {((salesTab === "invoice" && canUseSalesTool("invoice")) || (salesTab === "history" && isOwnerOrAdmin())) && (
         <>
         {salesTab === "invoice" && (<section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{quickSaleMode ? "Retail POS" : "Sales Invoice"}</h2>
+            <h2 className="text-xl font-medium text-foreground">{quickSaleMode ? t('sell.retailPos') : t('sell.salesInvoice')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="sales_invoices"
-                entityLabel="Sales Invoices"
+                entityLabel={t('sell.salesInvoices')}
                 supabase={supabase}
                 organizationId={currentOrganizationId}
                 actorProfileId={currentProfile?.id ?? null}
@@ -17995,14 +17995,14 @@ setCustomerOrganizationName("");
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
               products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
-              onScan={code => { try { const product = findBarcodeProduct(products, code); clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); return String(product.id); } catch (error) { setSalesError(error instanceof Error ? error.message : "Barcode not found."); return null; } }}
+              onScan={code => { try { const product = findBarcodeProduct(products, code); clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); return String(product.id); } catch (error) { setSalesError(error instanceof Error ? error.message : t('sell.barcodeNotFound')); return null; } }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSaleScanFocus(value => value + 1); } }}
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
-            <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">Open Retail POS</button>
+            <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
-              <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? "Quick sale — barcode counter" : "Scan a product"}</h3>
-              <label className="mb-3 block text-sm">Each scan adds one <select aria-label="Main unit or sub-unit per scan" value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">Sub-unit (piece, if configured)</option><option value="main">Main unit (box, carton, etc.)</option></select></label>
+              <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? t('sell.quickSaleBarcode') : t('sell.scanProduct')}</h3>
+              <label className="mb-3 block text-sm">{t('sell.eachScanAddsOne')} <select aria-label={t('sell.scanUnitAria')} value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">{t('sell.scanSubUnit')}</option><option value="main">{t('sell.scanMainUnit')}</option></select></label>
               <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} onScan={code => {
                 try {
                   const product = findBarcodeProduct(products, code);
@@ -18010,12 +18010,12 @@ setCustomerOrganizationName("");
                   clearCreditOverrideState();
                   setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, recent));
                   setSalesError(null);
-                  setSalesMessage(`Added ${product.name}. Check the unit, quantity and price before saving.`);
-                } catch (error) { setSalesError(error instanceof Error ? error.message : "Barcode could not be matched."); }
+                  setSalesMessage(t('sell.scanAdded').replace('{name}', product.name));
+                } catch (error) { setSalesError(error instanceof Error ? error.message : t('sell.barcodeNoMatch')); }
               }} />
-              <p className="mt-2 text-sm">Repeated scans increase quantity on the matching product/unit line. Products without a configured sub-unit use their main unit.</p>
-              <label className="mt-3 block text-sm"><input type="checkbox" checked={quickSaleMode} onChange={event => setQuickSaleMode(event.target.checked)} /> Keep quick-sale mode open for the next sale</label>
-              {quickSaleMode && <label className="mt-2 block text-sm"><input type="checkbox" checked={keepSaleCustomer} onChange={event => setKeepSaleCustomer(event.target.checked)} /> Keep the selected customer for the next cash sale (for example, your walk-in customer)</label>}
+              <p className="mt-2 text-sm">{t('sell.scanRepeatedHint')}</p>
+              <label className="mt-3 block text-sm"><input type="checkbox" checked={quickSaleMode} onChange={event => setQuickSaleMode(event.target.checked)} /> {t('sell.keepQuickSale')}</label>
+              {quickSaleMode && <label className="mt-2 block text-sm"><input type="checkbox" checked={keepSaleCustomer} onChange={event => setKeepSaleCustomer(event.target.checked)} /> {t('sell.keepCustomer')}</label>}
             </section>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
@@ -18102,8 +18102,8 @@ setCustomerOrganizationName("");
                 {currentSaleDraft.issues.find(issue => issue.field === "invoice_discount") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "invoice_discount")?.message}</span>}
                 <span className="text-xs text-muted-foreground/80">
                   {salesDiscountType === "percent"
-                    ? "Percentage deducted from the line subtotal before tax."
-                    : "Flat amount deducted from the line subtotal before tax."}
+                    ? t('sell.discountPercentHint')
+                    : t('sell.discountFlatHint')}
                 </span>
               </label>
 
@@ -18120,26 +18120,26 @@ setCustomerOrganizationName("");
                 />
                 {currentSaleDraft.issues.find(issue => issue.field === "tax") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "tax")?.message}</span>}
                 <span className="text-xs text-muted-foreground/80">
-                  Tax is computed on the subtotal after discount (future-ready GST/VAT).
+                  {t('sell.taxHint')}
                 </span>
               </label>
             </fieldset>
 
-            {!isOwnerOrAdmin() && <p className="text-sm text-muted-foreground">Employee submissions support discounts on each product line. Invoice-level discount and tax are not available in the approval flow.</p>}
+            {!isOwnerOrAdmin() && <p className="text-sm text-muted-foreground">{t('sell.employeeDiscountNote')}</p>}
             {salesPaymentType === "credit" && selectedSalesCustomer && (
               <div className="rounded border border-primary/10 bg-primary/5 p-4 text-sm text-primary/90">
-                <h3 className="mb-2 text-base font-medium text-primary/90">Credit Summary</h3>
+                <h3 className="mb-2 text-base font-medium text-primary/90">{t('sell.creditSummary')}</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div>Customer credit policy: {creditPolicyLabels[selectedCustomerCreditPolicy] ?? "Cash Only"}</div>
-                  <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
-                  <div>Current invoice total: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
-                  <div>Projected balance: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(projectedCustomerBalance)}</div>
+                  <div>{t('sell.creditPolicy')}: {creditPolicyLabels[selectedCustomerCreditPolicy] ?? "Cash Only"}</div>
+                  <div>{t('sell.outstandingBalance')}: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
+                  <div>{t('sell.currentInvoiceTotal')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
+                  <div>{t('sell.projectedBalance')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(projectedCustomerBalance)}</div>
                   {policyUsesCreditLimit(selectedCustomerCreditPolicy) && (
-                    <div>Credit limit: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
+                    <div>{t('sell.creditLimit')}: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
                   )}
                   {(policyUsesCreditDays(selectedCustomerCreditPolicy) ||
                     selectedCustomerHasUsableUnrestrictedCreditDays) && (
-                    <div>Credit days: {selectedCustomerCreditDays}</div>
+                    <div>{t('sell.creditDays')}: {selectedCustomerCreditDays}</div>
                   )}
                 </div>
               </div>
@@ -18153,24 +18153,24 @@ setCustomerOrganizationName("");
 
             {creditOverrideConfirmation && salesPaymentType === "credit" && (
               <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/80">
-                <h3 className="mb-2 text-base font-medium">Owner Override Required</h3>
+                <h3 className="mb-2 text-base font-medium">{t('sell.overrideRequired')}</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
-                  <div>Current invoice total: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
-                  <div>Projected balance: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(projectedCustomerBalance)}</div>
+                  <div>{t('sell.outstandingBalance')}: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
+                  <div>{t('sell.currentInvoiceTotal')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
+                  <div>{t('sell.projectedBalance')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(projectedCustomerBalance)}</div>
                   {creditOverrideConfirmation.overLimit && (
                     <>
-                      <div>Credit limit: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
+                      <div>{t('sell.creditLimit')}: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
                       <div>
-                        Over-limit amount: {pkrFormatter.format(Math.max(0, projectedCustomerBalance - selectedCustomerCreditLimit))}
+                        {t('sell.overLimitAmount')}: {pkrFormatter.format(Math.max(0, projectedCustomerBalance - selectedCustomerCreditLimit))}
                       </div>
                     </>
                   )}
                   {creditOverrideConfirmation.overdue && (
                     <>
-                      <div>Overdue invoices: {selectedCustomerOverdueInvoiceCount}</div>
-                      <div>Total overdue amount: {pkrFormatter.format(selectedCustomerTotalOverdueAmount)}</div>
-                      <div>Oldest overdue date: {selectedCustomerOldestOverdueDueDate ?? "Unknown"}</div>
+                      <div>{t('sell.overdueInvoices')}: {selectedCustomerOverdueInvoiceCount}</div>
+                      <div>{t('sell.totalOverdueAmount')}: {pkrFormatter.format(selectedCustomerTotalOverdueAmount)}</div>
+                      <div>{t('sell.oldestOverdueDate')}: {selectedCustomerOldestOverdueDueDate ?? t('sell.unknown')}</div>
                     </>
                   )}
                 </div>
@@ -18181,7 +18181,7 @@ setCustomerOrganizationName("");
                     disabled={salesInvoiceLoading}
                     className="rounded bg-warning px-3 py-2 text-sm text-white hover:bg-warning/90 disabled:bg-warning/30"
                   >
-                    Confirm and Save Credit Sale
+                    {t('sell.confirmSaveCredit')}
                   </button>
                   <button
                     type="button"
@@ -18189,18 +18189,18 @@ setCustomerOrganizationName("");
                     disabled={salesInvoiceLoading}
                     className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30 disabled:text-muted-foreground"
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                 </div>
               </div>
             )}
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
-              <p className="mb-3 text-sm text-muted-foreground">Press Enter for the next field. At the end of a line, Enter opens the next product. Shift+Enter goes back. Use Save when the invoice is ready.</p>
+              <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productLines')}</h3>
+              <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {salesLines.length === 0 ? (
-                <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
+                <p className="mb-4 text-sm text-muted-foreground/80">{t('sell.noProductLines')}</p>
               ) : (
                 <InvoiceLineNavigation onAddLine={handleAddSalesLine}>
                   {salesLines.map((line, index) => {
@@ -18349,7 +18349,7 @@ setCustomerOrganizationName("");
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.salesHistory')}</h2>
           <p className="mb-3 text-xs text-muted-foreground/80">
-            Older unallocated customer payments are applied to the oldest credit invoices first.
+            {t('sell.unallocatedNote')}
           </p>
           <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <input
@@ -18363,7 +18363,7 @@ setCustomerOrganizationName("");
               type="text"
               value={salesHistoryProductSearch}
               onChange={(e) => setSalesHistoryProductSearch(e.target.value)}
-              placeholder="Search by product..."
+              placeholder={t('sell.searchByProduct')}
               className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             />
             <input
@@ -18371,22 +18371,22 @@ setCustomerOrganizationName("");
               value={salesHistoryDateFrom}
               onChange={(e) => setSalesHistoryDateFrom(e.target.value)}
               className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-              aria-label="Date from"
+              aria-label={t('sell.dateFrom')}
             />
             <input
               type="date"
               value={salesHistoryDateTo}
               onChange={(e) => setSalesHistoryDateTo(e.target.value)}
               className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-              aria-label="Date to"
+              aria-label={t('sell.dateTo')}
             />
           </div>
           {salesLoading ? (
-            <p className="text-sm text-muted-foreground">Loading sales history...</p>
+            <p className="text-sm text-muted-foreground">{t('sell.loadingHistory')}</p>
           ) : salesTransactions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No sales invoices found.</p>
+            <p className="text-sm text-muted-foreground">{t('sell.noInvoicesFound')}</p>
           ) : filteredSalesTransactions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No sales invoices match your filters.</p>
+            <p className="text-sm text-muted-foreground">{t('sell.noInvoicesMatch')}</p>
           ) : (
             <ul className="space-y-2">
               {filteredSalesTransactions.map((tx) => {
@@ -18398,48 +18398,48 @@ setCustomerOrganizationName("");
                 const creditDueDate = getDateOnly(tx.credit_due_date);
                 const creditStatus =
                   paymentType === "cash"
-                    ? "Cash"
+                    ? t('sell.paymentCash')
                     : remainingUnpaidAmount <= 0
-                      ? "Paid"
+                      ? t('sell.statusPaid')
                       : creditDueDate && creditDueDate < todayDateValue
-                        ? "Overdue"
-                        : "Payment Pending";
+                        ? t('sell.statusOverdue')
+                        : t('sell.statusPaymentPending');
                 return (
                   <li key={tx.id} className="flex flex-col gap-1 rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="font-medium text-foreground">Invoice: {tx.invoice_number}</div>
+                      <div className="font-medium text-foreground">{t('sell.invoiceLabel')}: {tx.invoice_number}</div>
                       <button
                         type="button"
                         onClick={() => handlePrintSalesInvoice(tx)}
                         className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
                       >
-                        Print Invoice
+                        {t('sell.printInvoice')}
                       </button>
                     </div>
-                    <div>Customer: {customer?.customer_name ?? "Unknown"}</div>
-                    <div className="text-xs text-muted-foreground/80">Date: {date}</div>
-                    <div>Payment Type: {paymentType === "credit" ? "Credit" : "Cash"}</div>
-                    <div>Status: {creditStatus}</div>
-                    {tx.total_amount != null && <div>Total Amount: {pkrFormatter.format(Number(tx.total_amount || 0))}</div>}
+                    <div>{t('sell.customer')}: {customer?.customer_name ?? t('sell.unknown')}</div>
+                    <div className="text-xs text-muted-foreground/80">{t('sell.dateLabel')}: {date}</div>
+                    <div>{t('sell.paymentType')}: {paymentType === "credit" ? t('sell.paymentCredit') : t('sell.paymentCash')}</div>
+                    <div>{t('sell.statusLabel')}: {creditStatus}</div>
+                    {tx.total_amount != null && <div>{t('sell.totalAmount')}: {pkrFormatter.format(Number(tx.total_amount || 0))}</div>}
                     {(tx.discount_amount != null && Number(tx.discount_amount) > 0) && (
-                      <div>Invoice Discount: {pkrFormatter.format(Number(tx.discount_amount || 0))}</div>
+                      <div>{t('sell.invoiceDiscountRow')}: {pkrFormatter.format(Number(tx.discount_amount || 0))}</div>
                     )}
                     {(tx.tax_amount != null && Number(tx.tax_amount) > 0) && (
-                      <div>Tax ({Number(tx.tax_rate || 0)}%): {pkrFormatter.format(Number(tx.tax_amount || 0))}</div>
+                      <div>{t('sell.tax')} ({Number(tx.tax_rate || 0)}%): {pkrFormatter.format(Number(tx.tax_amount || 0))}</div>
                     )}
                     {paymentType === "credit" && (
                       <>
-                        <div>Invoice Total: {pkrFormatter.format(creditAllocation?.invoiceTotal ?? 0)}</div>
-                        <div>Allocated Payment: {pkrFormatter.format(creditAllocation?.allocatedAmount ?? 0)}</div>
-                        <div>Remaining Balance: {pkrFormatter.format(remainingUnpaidAmount)}</div>
+                        <div>{t('sell.invoiceTotal')}: {pkrFormatter.format(creditAllocation?.invoiceTotal ?? 0)}</div>
+                        <div>{t('sell.allocatedPayment')}: {pkrFormatter.format(creditAllocation?.allocatedAmount ?? 0)}</div>
+                        <div>{t('sell.remainingBalance')}: {pkrFormatter.format(remainingUnpaidAmount)}</div>
                       </>
                     )}
-                    {creditDueDate && <div>Credit Due Date: {creditDueDate}</div>}
+                    {creditDueDate && <div>{t('sell.creditDueDate')}: {creditDueDate}</div>}
                     {tx.credit_limit_snapshot != null && (
-                      <div>Credit Limit Snapshot: {pkrFormatter.format(Number(tx.credit_limit_snapshot || 0))}</div>
+                      <div>{t('sell.creditLimitSnapshot')}: {pkrFormatter.format(Number(tx.credit_limit_snapshot || 0))}</div>
                     )}
                     {tx.credit_days_snapshot != null && (
-                      <div>Credit Days Snapshot: {tx.credit_days_snapshot}</div>
+                      <div>{t('sell.creditDaysSnapshot')}: {tx.credit_days_snapshot}</div>
                     )}
                   </li>
                 );
@@ -18455,18 +18455,18 @@ setCustomerOrganizationName("");
         <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <h2 className="mb-4 text-xl font-medium text-foreground">
-            {soEditingId ? "Edit Sales Order" : "New Sales Order"}
+            {soEditingId ? t('sell.editSalesOrder') : t('sell.newSalesOrder')}
           </h2>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Customer</span>
+                <span>{t('sell.customer')}</span>
                 <select
                   value={soCustomerId}
                   onChange={(e) => void handleSalesOrderCustomerChange(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
-                  <option value="">Select Customer</option>
+                  <option value="">{t('sell.selectCustomer')}</option>
                   {activeCustomers.map((customer) => (
                     <option key={customer.id} value={customer.id}>{customer.customer_name}</option>
                   ))}
@@ -18474,7 +18474,7 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Order Date</span>
+                <span>{t('sell.orderDate')}</span>
                 <input
                   type="date"
                   value={soOrderDate}
@@ -18486,7 +18486,7 @@ setCustomerOrganizationName("");
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Expected Date (Optional)</span>
+                <span>{t('sell.expectedDateOptional')}</span>
                 <input
                   type="date"
                   value={soExpectedDate}
@@ -18496,7 +18496,7 @@ setCustomerOrganizationName("");
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Notes (Optional)</span>
+                <span>{t('sell.notesOptional')}</span>
                 <input
                   type="text"
                   value={soNotes}
@@ -18507,11 +18507,11 @@ setCustomerOrganizationName("");
             </div>
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Product Lines</h3>
-              <p className="mb-3 text-sm text-muted-foreground">Press Enter for the next field. At the end of a line, Enter opens the next product. Shift+Enter goes back. Use Save when the invoice is ready.</p>
+              <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productLines')}</h3>
+              <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {soLines.length === 0 ? (
-                <p className="mb-4 text-sm text-muted-foreground/80">No product lines added yet.</p>
+                <p className="mb-4 text-sm text-muted-foreground/80">{t('sell.noProductLines')}</p>
               ) : (
                 <div className="mb-4 space-y-3">
                   {soLines.map((line, index) => {
@@ -18521,18 +18521,18 @@ setCustomerOrganizationName("");
                     return (
                     <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
+                        <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => setSoLines(soLines.filter((_, i) => i !== index))}
                           className="text-xs text-destructive hover:text-destructive/90"
                         >
-                          Remove
+                          {t('sell.remove')}
                         </button>
                       </div>
                       <div className="grid gap-2 sm:grid-cols-5">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Product</span>
+                          <span>{t('sell.product')}</span>
                           <select
                             value={line.product_id ?? ""}
                             onChange={(e) => {
@@ -18566,7 +18566,7 @@ setCustomerOrganizationName("");
                             }}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
-                            <option value="">Select Product</option>
+                            <option value="">{t('sell.selectProduct')}</option>
                             {activeProducts.map((product) => (
                               <option key={product.id} value={String(product.id)}>{product.name}</option>
                             ))}
@@ -18574,7 +18574,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Buy as</span>
+                          <span>{t('sell.orderBuyAs')}</span>
                           <select
                             value={line.unit_mode ?? "main"}
                             onChange={(e) => {
@@ -18612,7 +18612,7 @@ setCustomerOrganizationName("");
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="main">
-                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : t('sell.mainUnit')}
                             </option>
                             {lineProduct && hasSubunit(lineProduct) && (
                               <option value="subunit">
@@ -18623,7 +18623,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
+                          <span>{t('sell.quantity')} ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.units')})</span>
                           <input
                             type="number"
                             value={line.quantity}
@@ -18637,7 +18637,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
+                          <span>{t('sell.pricePer')} {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.unit')}</span>
                           <input
                             type="number"
                             value={line.selling_price}
@@ -18651,7 +18651,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Discount</span>
+                          <span>{t('common.discount')}</span>
                           <input
                             type="number"
                             value={line.discount}
@@ -18679,7 +18679,7 @@ setCustomerOrganizationName("");
                 }
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
-                + Add Product Line
+                {t('sell.addProductLine')}
               </button>
             </div>
 
@@ -18689,7 +18689,7 @@ setCustomerOrganizationName("");
               disabled={soLoading}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
-              {soLoading ? "Saving..." : soEditingId ? "Update Sales Order" : "Save Sales Order"}
+              {soLoading ? t('sell.saving') : soEditingId ? t('sell.updateSalesOrder') : t('sell.saveSalesOrder')}
             </button>
 
             {soEditingId && (
@@ -18699,7 +18699,7 @@ setCustomerOrganizationName("");
                 disabled={soLoading}
                 className="w-full rounded border border-border bg-card px-4 py-2 text-foreground/80 transition hover:bg-muted/30"
               >
-                Cancel Edit
+                {t('sell.cancelEdit')}
               </button>
             )}
 
@@ -18710,7 +18710,7 @@ setCustomerOrganizationName("");
 
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">Sales Order History</h2>
+            <h2 className="text-xl font-medium text-foreground">{t('sell.salesOrderHistory')}</h2>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -18722,7 +18722,7 @@ setCustomerOrganizationName("");
                     : "border-border text-muted-foreground hover:bg-muted"
                 )}
               >
-                All
+                {t('sell.all')}
               </button>
               <button
                 type="button"
@@ -18734,7 +18734,7 @@ setCustomerOrganizationName("");
                     : "border-border text-muted-foreground hover:bg-muted"
                 )}
               >
-                Pending Approval
+                {t('sell.pendingApproval')}
                 {salesOrders.filter((o) => o.status === "pending_approval").length > 0 && (
                   <span className="absolute -top-2 -right-2 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-semibold text-white">
                     {salesOrders.filter((o) => o.status === "pending_approval").length}
@@ -18744,11 +18744,11 @@ setCustomerOrganizationName("");
             </div>
           </div>
           {salesOrdersLoading ? (
-            <p className="text-sm text-muted-foreground">Loading sales orders...</p>
+            <p className="text-sm text-muted-foreground">{t('sell.loadingOrders')}</p>
           ) : salesOrdersError ? (
             <p className="text-sm text-destructive">{salesOrdersError}</p>
           ) : salesOrders.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No sales orders found.</p>
+            <p className="text-sm text-muted-foreground">{t('sell.noOrdersFound')}</p>
           ) : (
             <ul className="space-y-2">
               {(() => {
@@ -18756,7 +18756,7 @@ setCustomerOrganizationName("");
                   ? salesOrders
                   : salesOrders.filter((o) => o.status === salesOrderStatusFilter);
                 if (visible.length === 0) {
-                  return <li className="text-sm text-muted-foreground">No pending approval orders.</li>;
+                  return <li className="text-sm text-muted-foreground">{t('sell.noPendingOrders')}</li>;
                 }
                 return visible.map((order) => {
                   const customer = customers.find((c) => c.id === order.customer_id);
@@ -18773,7 +18773,7 @@ setCustomerOrganizationName("");
                   <li key={order.id} className="rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="font-medium text-foreground">
-                        Order: {order.so_number}
+                        {t('sell.orderLabel')}: {order.so_number}
                         <span className={`ml-2 rounded px-2 py-0.5 text-xs capitalize ${statusColor} border border-current/20 bg-muted/30`}>
                           {order.status}
                         </span>
@@ -18789,7 +18789,7 @@ setCustomerOrganizationName("");
                           onClick={() => handlePrintSalesOrder(order.id)}
                           className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
                         >
-                          Print
+                          {t('sell.print')}
                         </button>
                         {order.status === "draft" && (
                           <>
@@ -18798,21 +18798,21 @@ setCustomerOrganizationName("");
                               onClick={() => handleStartSalesOrderEdit(order.id)}
                               className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
                             >
-                              Edit
+                              {t('common.edit')}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleUpdateSalesOrderStatus(order.id, "confirmed")}
                               className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
                             >
-                              Confirm
+                              {t('common.confirm')}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteSalesOrder(order.id)}
                               className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
                             >
-                              Delete
+                              {t('common.delete')}
                             </button>
                           </>
                         )}
@@ -18829,14 +18829,14 @@ setCustomerOrganizationName("");
                               }}
                               className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
                             >
-                              Review
+                              {t('sell.review')}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDraftApproval(order.id, "reject")}
                               className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
                             >
-                              Reject
+                              {t('sell.reject')}
                             </button>
                           </>
                         )}
@@ -18847,14 +18847,14 @@ setCustomerOrganizationName("");
                               onClick={() => handleUpdateSalesOrderStatus(order.id, "delivered")}
                               className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
                             >
-                              Mark Delivered
+                              {t('sell.markDelivered')}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleUpdateSalesOrderStatus(order.id, "cancelled")}
                               className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
                             >
-                              Cancel
+                              {t('common.cancel')}
                             </button>
                           </>
                         )}
@@ -18864,15 +18864,15 @@ setCustomerOrganizationName("");
                             onClick={() => handleUpdateSalesOrderStatus(order.id, "cancelled")}
                             className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
                           >
-                            Cancel
+                            {t('common.cancel')}
                           </button>
                         )}
                       </div>
                     </div>
-                    <div>Customer: {customer?.customer_name ?? "Unknown"}</div>
+                    <div>{t('sell.customer')}: {customer?.customer_name ?? t('sell.unknown')}</div>
                     <div className="text-xs text-muted-foreground/80">
-                      Order Date: {getDateOnly(order.order_date) ?? formatDate(order.created_at)}
-                      {order.expected_date ? ` — Expected: ${getDateOnly(order.expected_date)}` : ""}
+                      {t('sell.orderDate')}: {getDateOnly(order.order_date) ?? formatDate(order.created_at)}
+                      {order.expected_date ? ` — ${t('sell.expectedLabel')}: ${getDateOnly(order.expected_date)}` : ""}
                     </div>
                     {items.length > 0 && (
                       <div className="mt-1 text-xs text-muted-foreground/80">
@@ -18880,13 +18880,13 @@ setCustomerOrganizationName("");
                           const product = products.find((p) => String(p.id) === String(item.product_id));
                           return (
                             <div key={item.id}>
-                              {product?.name ?? "Unknown Product"} × {item.quantity_ordered}
+                              {product?.name ?? t('sell.unknownProduct')} × {item.quantity_ordered}
                             </div>
                           );
                         })}
                       </div>
                     )}
-                    {order.notes && <div className="mt-1 text-xs text-muted-foreground/80">Notes: {order.notes}</div>}
+                    {order.notes && <div className="mt-1 text-xs text-muted-foreground/80">{t('sell.notesLabel')}: {order.notes}</div>}
                   </li>
                 );
                 });
@@ -18900,33 +18900,33 @@ setCustomerOrganizationName("");
         {salesTab === "returns" && canUseSalesTool("returns") && (
         <>
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Sales Return</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.salesReturn')}</h2>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Source Sales Invoice</span>
+                <span>{t('sell.sourceInvoice')}</span>
                 <select
                   value={srSalesTransactionId}
                   onChange={(e) => handleSalesInvoiceSelectionChange(e.target.value)}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
-                  <option value="">Select Invoice</option>
+                  <option value="">{t('sell.selectInvoice')}</option>
                   {salesTransactions.map((tx) => {
                     const customer = customers.find((c) => c.id === tx.customer_id);
                     return (
                       <option key={tx.id} value={tx.id}>
-                        {tx.invoice_number} — {customer?.customer_name ?? "Unknown"}
+                        {tx.invoice_number} — {customer?.customer_name ?? t('sell.unknown')}
                       </option>
                     );
                   })}
                 </select>
                 <span className="text-xs text-muted-foreground/80">
-                  Selecting an invoice pre-fills the return lines and caps quantities at what is still returnable.
+                  {t('sell.sourceInvoiceHint')}
                 </span>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>Return Date</span>
+                <span>{t('sell.returnDate')}</span>
                 <input
                   type="date"
                   value={srReturnDate}
@@ -18937,7 +18937,7 @@ setCustomerOrganizationName("");
             </div>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
-              <span>Reason (Optional)</span>
+              <span>{t('sell.reasonOptional')}</span>
               <input
                 type="text"
                 value={srReturnReason}
@@ -18947,11 +18947,11 @@ setCustomerOrganizationName("");
             </label>
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">Return Lines</h3>
+              <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.returnLines')}</h3>
 
               {srLines.length === 0 ? (
                 <p className="mb-4 text-sm text-muted-foreground/80">
-                  No return lines yet. Select a sales invoice to pre-fill, or add lines manually.
+                  {t('sell.noReturnLines')}
                 </p>
               ) : (
                 <div className="mb-4 space-y-3">
@@ -18962,18 +18962,18 @@ setCustomerOrganizationName("");
                     return (
                     <div key={index} className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
+                        <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => setSrLines(srLines.filter((_, i) => i !== index))}
                           className="text-xs text-destructive hover:text-destructive/90"
                         >
-                          Remove
+                          {t('sell.remove')}
                         </button>
                       </div>
                       <div className="grid gap-2 sm:grid-cols-4">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Product</span>
+                          <span>{t('sell.product')}</span>
                           <select
                             value={line.product_id ?? ""}
                             onChange={(e) => {
@@ -18996,7 +18996,7 @@ setCustomerOrganizationName("");
                             }}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           >
-                            <option value="">Select Product</option>
+                            <option value="">{t('sell.selectProduct')}</option>
                             {activeProducts.map((product) => (
                               <option key={product.id} value={String(product.id)}>{product.name}</option>
                             ))}
@@ -19004,7 +19004,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Return as</span>
+                          <span>{t('sell.returnAs')}</span>
                           <select
                             value={line.unit_mode ?? "main"}
                             onChange={(e) => {
@@ -19028,7 +19028,7 @@ setCustomerOrganizationName("");
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="main">
-                              {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
+                              {lineProduct ? unitLabelFor(lineProduct, "main") : t('sell.mainUnit')}
                             </option>
                             {lineProduct && hasSubunit(lineProduct) && (
                               <option value="subunit">
@@ -19039,7 +19039,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Quantity ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "units"})</span>
+                          <span>{t('sell.quantity')} ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.units')})</span>
                           <input
                             type="number"
                             value={line.quantity}
@@ -19053,7 +19053,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Price per {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : "unit"}</span>
+                          <span>{t('sell.pricePer')} {lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.unit')}</span>
                           <input
                             type="number"
                             value={line.selling_price}
@@ -19068,7 +19068,7 @@ setCustomerOrganizationName("");
                       </div>
                       <div className="mt-2 grid gap-2 sm:grid-cols-3">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Line Discount</span>
+                          <span>{t('sell.lineDiscount')}</span>
                           <input
                             type="number"
                             value={line.discount}
@@ -19084,7 +19084,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Batch Number (Optional)</span>
+                          <span>{t('sell.batchNumberOptional')}</span>
                           <input
                             type="text"
                             value={line.batch_number ?? ""}
@@ -19098,7 +19098,7 @@ setCustomerOrganizationName("");
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
-                          <span>Expiry Date (Optional)</span>
+                          <span>{t('sell.expiryDateOptional')}</span>
                           <input
                             type="date"
                             value={line.expiry_date ?? ""}
@@ -19127,7 +19127,7 @@ setCustomerOrganizationName("");
                 }
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
-                + Add Return Line
+                {t('sell.addReturnLine')}
               </button>
             </div>
 
@@ -19137,7 +19137,7 @@ setCustomerOrganizationName("");
               disabled={srLoading}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
-              {srLoading ? "Saving..." : "Save Sales Return"}
+              {srLoading ? t('sell.saving') : t('sell.saveSalesReturn')}
             </button>
 
             {srMessage && <p className="mt-4 text-sm text-success">{srMessage}</p>}
@@ -19146,11 +19146,11 @@ setCustomerOrganizationName("");
         </section>
 
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Sales Return History</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.salesReturnHistory')}</h2>
           {salesReturnsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading sales returns...</p>
+            <p className="text-sm text-muted-foreground">{t('sell.loadingReturns')}</p>
           ) : salesReturns.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No sales returns found.</p>
+            <p className="text-sm text-muted-foreground">{t('sell.noReturnsFound')}</p>
           ) : (
             <ul className="space-y-2">
               {salesReturns.map((salesReturn) => {
@@ -19160,31 +19160,31 @@ setCustomerOrganizationName("");
                 return (
                   <li key={salesReturn.id} className="rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="font-medium text-foreground">Return: {salesReturn.return_number}</div>
+                      <div className="font-medium text-foreground">{t('sell.returnLabel')}: {salesReturn.return_number}</div>
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => handlePrintSalesReturn(salesReturn.id)}
                           className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
                         >
-                          Print
+                          {t('sell.print')}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteSalesReturn(salesReturn.id)}
                           className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
                         >
-                          Delete
+                          {t('common.delete')}
                         </button>
                       </div>
                     </div>
-                    <div>Customer: {customer?.customer_name ?? "Unknown"}</div>
+                    <div>{t('sell.customer')}: {customer?.customer_name ?? t('sell.unknown')}</div>
                     <div className="text-xs text-muted-foreground/80">
-                      Return Date: {getDateOnly(salesReturn.return_date) ?? formatDate(salesReturn.created_at)}
+                      {t('sell.returnDate')}: {getDateOnly(salesReturn.return_date) ?? formatDate(salesReturn.created_at)}
                     </div>
                     {transaction && (
                       <div className="text-xs text-muted-foreground/80">
-                        Source Invoice: {transaction.invoice_number}
+                        {t('sell.sourceInvoiceLabel')}: {transaction.invoice_number}
                       </div>
                     )}
                     {items.length > 0 && (
@@ -19193,15 +19193,15 @@ setCustomerOrganizationName("");
                           const product = products.find((p) => String(p.id) === String(item.product_id));
                           return (
                             <div key={item.id}>
-                              {product?.name ?? "Unknown Product"} × {item.quantity}
-                              {item.batch_number ? ` (batch ${item.batch_number})` : ""}
+                              {product?.name ?? t('sell.unknownProduct')} × {item.quantity}
+                              {item.batch_number ? ` (${t('sell.batch')} ${item.batch_number})` : ""}
                             </div>
                           );
                         })}
                       </div>
                     )}
                     {salesReturn.reason && (
-                      <div className="mt-1 text-xs text-muted-foreground/80">Reason: {salesReturn.reason}</div>
+                      <div className="mt-1 text-xs text-muted-foreground/80">{t('sell.reasonLabel')}: {salesReturn.reason}</div>
                     )}
                   </li>
                 );
@@ -19273,7 +19273,7 @@ setCustomerOrganizationName("");
             .reduce((sum, tx) => sum + Math.max(0, creditAllocationByTransaction[tx.id]?.remainingUnpaidAmount ?? 0), 0);
 
           const dailyTotals = rangeTransactions.reduce<Record<string, number>>((buckets, tx) => {
-            const day = getDateOnly(tx.sale_date) ?? getDateOnly(tx.created_at) ?? "Unknown";
+            const day = getDateOnly(tx.sale_date) ?? getDateOnly(tx.created_at) ?? t('sell.unknown');
             const items = rangeItems.filter((item) => item.sales_transaction_id === tx.id);
             const total =
               tx.total_amount != null
@@ -19328,58 +19328,58 @@ setCustomerOrganizationName("");
             <>
             <section className="mt-8 rounded border border-border bg-muted/30 p-5">
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-xl font-medium text-foreground">Sales Report</h2>
+                <h2 className="text-xl font-medium text-foreground">{t('sell.tabReport')}</h2>
                 <select
                   value={salesReportRange}
                   onChange={(e) => setSalesReportRange(e.target.value)}
                   className="rounded border border-border bg-card px-3 py-2 text-sm focus:border-ring focus:outline-none"
                 >
-                  <option value="today">Today</option>
-                  <option value="last_7_days">Last 7 Days</option>
-                  <option value="last_30_days">Last 30 Days</option>
-                  <option value="this_month">This Month</option>
+                  <option value="today">{t('sell.rangeToday')}</option>
+                  <option value="last_7_days">{t('sell.rangeLast7')}</option>
+                  <option value="last_30_days">{t('sell.rangeLast30')}</option>
+                  <option value="this_month">{t('sell.rangeThisMonth')}</option>
                 </select>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded border border-border bg-card p-4">
-                  <div className="text-xs text-muted-foreground/80">Gross Sales (excl. tax)</div>
+                  <div className="text-xs text-muted-foreground/80">{t('sell.grossSales')}</div>
                   <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(netSales)}</div>
-                  <div className="text-xs text-muted-foreground/80">{rangeTransactions.length} invoices</div>
+                  <div className="text-xs text-muted-foreground/80">{t('sell.invoicesCount').replace('{count}', String(rangeTransactions.length))}</div>
                 </div>
                 <div className="rounded border border-border bg-card p-4">
-                  <div className="text-xs text-muted-foreground/80">Discounts Given</div>
+                  <div className="text-xs text-muted-foreground/80">{t('sell.discountsGiven')}</div>
                   <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(totalDiscounts)}</div>
                 </div>
                 <div className="rounded border border-border bg-card p-4">
-                  <div className="text-xs text-muted-foreground/80">Tax Collected</div>
+                  <div className="text-xs text-muted-foreground/80">{t('sell.taxCollected')}</div>
                   <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(totalTax)}</div>
                 </div>
                 <div className="rounded border border-border bg-card p-4">
-                  <div className="text-xs text-muted-foreground/80">Cost of Goods Sold</div>
+                  <div className="text-xs text-muted-foreground/80">{t('sell.cogs')}</div>
                   <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(cogs)}</div>
                 </div>
                 <div className="rounded border border-success/30 bg-success/5 p-4">
-                  <div className="text-xs text-success/80">Gross Profit</div>
+                  <div className="text-xs text-success/80">{t('sell.grossProfit')}</div>
                   <div className="mt-1 text-lg font-medium text-success">{pkrFormatter.format(grossProfit)}</div>
                 </div>
                 <div className="rounded border border-warning/30 bg-warning/5 p-4">
-                  <div className="text-xs text-warning/80">Outstanding Receivables</div>
+                  <div className="text-xs text-warning/80">{t('sell.outstandingReceivables')}</div>
                   <div className="mt-1 text-lg font-medium text-warning">{pkrFormatter.format(outstandingReceivables)}</div>
                 </div>
               </div>
 
               <div className="mt-6">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Daily Sales</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.dailySales')}</h3>
                 {dailyRows.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No sales in this period.</p>
+                  <p className="text-sm text-muted-foreground">{t('sell.noSalesInPeriod')}</p>
                 ) : (
                   <div className="overflow-x-auto rounded border border-border bg-card">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground/80">
-                          <th className="px-3 py-2">Date</th>
-                          <th className="px-3 py-2">Sales</th>
+                          <th className="px-3 py-2">{t('sell.dateLabel')}</th>
+                          <th className="px-3 py-2">{t('sell.salesColumn')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -19396,19 +19396,19 @@ setCustomerOrganizationName("");
               </div>
 
               <div className="mt-6">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Product-wise Sales</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productWiseSales')}</h3>
                 {productRows.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No product sales in this period.</p>
+                  <p className="text-sm text-muted-foreground">{t('sell.noProductSalesInPeriod')}</p>
                 ) : (
                   <div className="overflow-x-auto rounded border border-border bg-card">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground/80">
-                          <th className="px-3 py-2">Product</th>
-                          <th className="px-3 py-2">Quantity</th>
-                          <th className="px-3 py-2">Revenue</th>
-                          <th className="px-3 py-2">Cost</th>
-                          <th className="px-3 py-2">Profit</th>
+                          <th className="px-3 py-2">{t('sell.product')}</th>
+                          <th className="px-3 py-2">{t('sell.quantity')}</th>
+                          <th className="px-3 py-2">{t('sell.revenue')}</th>
+                          <th className="px-3 py-2">{t('sell.cost')}</th>
+                          <th className="px-3 py-2">{t('sell.profit')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -19416,7 +19416,7 @@ setCustomerOrganizationName("");
                           const product = products.find((p) => String(p.id) === productId);
                           return (
                             <tr key={productId} className="border-b border-border/50 last:border-0">
-                              <td className="px-3 py-2">{product?.name ?? "Unknown Product"}</td>
+                              <td className="px-3 py-2">{product?.name ?? t('sell.unknownProduct')}</td>
                               <td className="px-3 py-2">{totals.quantity}</td>
                               <td className="px-3 py-2">{pkrFormatter.format(totals.revenue)}</td>
                               <td className="px-3 py-2">{pkrFormatter.format(totals.cost)}</td>
@@ -19431,17 +19431,17 @@ setCustomerOrganizationName("");
               </div>
 
               <div className="mt-6">
-                <h3 className="mb-3 text-lg font-medium text-foreground">Customer-wise Sales</h3>
+                <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.customerWiseSales')}</h3>
                 {customerRows.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No customer sales in this period.</p>
+                  <p className="text-sm text-muted-foreground">{t('sell.noCustomerSalesInPeriod')}</p>
                 ) : (
                   <div className="overflow-x-auto rounded border border-border bg-card">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground/80">
-                          <th className="px-3 py-2">Customer</th>
-                          <th className="px-3 py-2">Invoices</th>
-                          <th className="px-3 py-2">Sales</th>
+                          <th className="px-3 py-2">{t('sell.customer')}</th>
+                          <th className="px-3 py-2">{t('sell.invoicesColumn')}</th>
+                          <th className="px-3 py-2">{t('sell.salesColumn')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -19449,7 +19449,7 @@ setCustomerOrganizationName("");
                           const customer = customers.find((c) => c.id === customerId);
                           return (
                             <tr key={customerId} className="border-b border-border/50 last:border-0">
-                              <td className="px-3 py-2">{customer?.customer_name ?? "Unknown Customer"}</td>
+                              <td className="px-3 py-2">{customer?.customer_name ?? t('sell.unknownCustomer')}</td>
                               <td className="px-3 py-2">{totals.invoices}</td>
                               <td className="px-3 py-2">{pkrFormatter.format(totals.revenue)}</td>
                             </tr>
@@ -19466,21 +19466,18 @@ setCustomerOrganizationName("");
         })()}
         {salesTab === "loadform" && canUseSalesTool("loadform") && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Load Form Summary</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.loadFormSummary')}</h2>
           <p className="mb-4 text-sm text-muted-foreground">
-            Select customers, salesmen, and a date range to summarize their sales. Print the summary
-            and hand it to the storekeeper or delivery man as the load form.
+            {t('sell.loadFormHint')}
           </p>
           <LoadFormGenerator />
         </section>
         )}
         {salesTab === "invoices" && canUseSalesTool("invoices") && (
         <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">Sales Invoice Generator</h2>
+          <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.invoiceGeneratorTitle')}</h2>
           <p className="mb-4 text-sm text-muted-foreground">
-            Filter confirmed sales by customer, salesman, date range, area, route, or city — then print one
-            invoice, one salesman&apos;s invoices, or all at once. Customize the invoice template to match your
-            existing paper layout.
+            {t('sell.invoiceGeneratorHint')}
           </p>
           <SalesInvoiceGenerator />
         </section>
