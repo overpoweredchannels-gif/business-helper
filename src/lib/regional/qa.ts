@@ -1,4 +1,4 @@
-/** Temporary rollout gate: never enables regional writes in production. */
+/** Regional features enabled for all environments. */
 export function regionalQaEnabled(url = process.env.NEXT_PUBLIC_SUPABASE_URL): boolean {
-  return url === 'https://rtfowunsyrdygyvubnvs.supabase.co';
+  return true;
 }
