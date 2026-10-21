@@ -14515,6 +14515,16 @@ setCustomerOrganizationName("");
       stopAiVoiceOperatorReply();
       cancelAiVoiceAutoSend("Auto-send cancelled.");
     }
+    // Territories / Routes managers load their data in a one-shot mount
+    // effect. If that mount happens before the session has settled (e.g. a
+    // deep link or hash restore straight into the section), the load can
+    // miss and the page then sits on its empty state until Refresh.
+    // Remounting on section entry — the same reload the managers' Refresh
+    // button performs — guarantees a fresh load once the user actually
+    // opens the section.
+    if (sectionId === "territories" || sectionId === "routes") {
+      setFsmReloadKey((k) => k + 1);
+    }
     setActiveSection(sectionId);
     setMobileMenuOpen(false);
     if (typeof window !== "undefined") {

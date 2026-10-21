@@ -37,6 +37,7 @@ const overlayInputCss: React.CSSProperties = {
 
 export default function TerritoriesManager() {
   const [territories, setTerritories] = useState<Territory[]>([]);
+  const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
@@ -50,12 +51,17 @@ export default function TerritoriesManager() {
   const [savingCustomers, setSavingCustomers] = useState(false);
 
   const load = async () => {
+    setLoading(true);
     try {
       const [res, customerRes] = await Promise.all([
         authorizedFetch("/api/territories"),
         authorizedFetch("/api/customers"),
       ]);
-      const [data, customerData] = await Promise.all([res.json(), customerRes.json()]);
+      // Parse and apply each response independently: a failure in the
+      // customers request must not discard a successful territories load
+      // (previously both were parsed together, so one bad response left the
+      // page on its "No territories yet." state until a manual Refresh).
+      const data = await res.json().catch(() => ({}));
       if (res.status === 403) {
         setIsOwner(false);
         setMessage({ type: "error", text: data.error || "Access denied" });
@@ -64,9 +70,12 @@ export default function TerritoriesManager() {
       } else {
         setMessage({ type: "error", text: data.error || "Failed to load territories" });
       }
+      const customerData = await customerRes.json().catch(() => ({}));
       if (Array.isArray(customerData.customers)) setCustomers(customerData.customers);
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -220,7 +229,9 @@ export default function TerritoriesManager() {
         </div>
       )}
 
-      {territories.length === 0 ? (
+      {loading && territories.length === 0 ? (
+        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Loading territories…</p>
+      ) : territories.length === 0 ? (
         <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>No territories yet.</p>
       ) : (
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>

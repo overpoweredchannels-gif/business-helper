@@ -49,6 +49,7 @@ const emptyStopDraft: StopDraft = {
 
 export default function RoutesManager() {
   const [routes, setRoutes] = useState<SalesRoute[]>([]);
+  const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [territoryId, setTerritoryId] = useState("");
   const [territories, setTerritories] = useState<Territory[]>([]);
@@ -70,6 +71,7 @@ export default function RoutesManager() {
   const [assignmentScopeByRoute, setAssignmentScopeByRoute] = useState<Record<string, "route_only" | "route_all" | "selected">>({});
 
   const load = async () => {
+    setLoading(true);
     try {
       const [routeRes, territoryRes, employeeRes, customerRes] = await Promise.all([
         authorizedFetch("/api/routes"),
@@ -77,10 +79,14 @@ export default function RoutesManager() {
         authorizedFetch("/api/identity/employees"),
         authorizedFetch("/api/customers"),
       ]);
-      const routeData = await routeRes.json();
-      const territoryData = await territoryRes.json();
-      const employeeData = await employeeRes.json();
-      const customerData = await customerRes.json();
+      // Parse and apply each response independently: previously all four
+      // bodies were parsed before any state was set, so one failing request
+      // (e.g. employees) silently discarded the routes and territories too
+      // and the page sat on "No routes yet." until a manual Refresh.
+      const routeData = await routeRes.json().catch(() => ({}));
+      const territoryData = await territoryRes.json().catch(() => ({}));
+      const employeeData = await employeeRes.json().catch(() => ({}));
+      const customerData = await customerRes.json().catch(() => ({}));
       if (routeRes.status === 403) {
         setIsOwner(false);
         setMessage({ type: "error", text: routeData.error || "Access denied" });
@@ -107,6 +113,8 @@ export default function RoutesManager() {
       }
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -615,7 +623,9 @@ export default function RoutesManager() {
         </div>
       )}
 
-      {routes.length === 0 ? (
+      {loading && routes.length === 0 ? (
+        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Loading routes…</p>
+      ) : routes.length === 0 ? (
         <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>No routes yet.</p>
       ) : (
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
