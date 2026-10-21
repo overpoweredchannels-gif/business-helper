@@ -8973,6 +8973,32 @@ setCustomerOrganizationName("");
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
   })();
+  // Confirmed sales returns linked to an invoice offset what the customer
+  // still owes on it (the goods came back, so that part of the invoice is no
+  // longer a receivable). Return lines carry the invoice line's price and
+  // discount, so a line's returned value mirrors the sales-line value
+  // formula (quantity × unit price − discount). Cancelled returns and
+  // returns not linked to an invoice offset nothing.
+  const returnedValueBySalesTransaction = salesReturns
+    .filter(
+      (salesReturn) =>
+        salesReturn.status !== "cancelled" && salesReturn.sales_transaction_id
+    )
+    .reduce<Record<string, number>>((totals, salesReturn) => {
+      const transactionId = String(salesReturn.sales_transaction_id);
+      const returnValue = salesReturnItems
+        .filter((item) => item.sales_return_id === salesReturn.id)
+        .reduce(
+          (sum, item) =>
+            sum +
+            safeNumber(item.quantity) * safeNumber(item.unit_price) -
+            safeNumber(item.discount),
+          0
+        );
+      totals[transactionId] =
+        (totals[transactionId] ?? 0) + Math.max(0, returnValue);
+      return totals;
+    }, {});
   const creditAllocationByTransaction = salesTransactions
     .filter((transaction) => transaction.payment_type === "credit")
     .sort((a, b) => {
@@ -8986,6 +9012,7 @@ setCustomerOrganizationName("");
         string,
         {
           invoiceTotal: number;
+          returnedAmount: number;
           explicitAllocatedAmount: number;
           fallbackAllocatedAmount: number;
           allocatedAmount: number;
@@ -8994,11 +9021,18 @@ setCustomerOrganizationName("");
       >
     >((allocations, transaction) => {
       const invoiceTotal = salesInvoiceTotalsByTransaction[transaction.id] ?? 0;
+      const returnedAmount = Math.max(
+        0,
+        returnedValueBySalesTransaction[transaction.id] ?? 0
+      );
       const explicitAllocatedAmount = Math.max(
         0,
         explicitAllocatedAmountsBySalesTransaction[transaction.id] ?? 0
       );
-      const remainingAfterExplicitAllocation = Math.max(0, invoiceTotal - explicitAllocatedAmount);
+      const remainingAfterExplicitAllocation = Math.max(
+        0,
+        invoiceTotal - returnedAmount - explicitAllocatedAmount
+      );
       const availableLegacyPool = legacyUnallocatedPaymentPoolByCustomer[transaction.customer_id] ?? 0;
       const fallbackAllocatedAmount = Math.min(
         availableLegacyPool,
@@ -9011,6 +9045,7 @@ setCustomerOrganizationName("");
       );
       allocations[transaction.id] = {
         invoiceTotal,
+        returnedAmount,
         explicitAllocatedAmount,
         fallbackAllocatedAmount,
         allocatedAmount: explicitAllocatedAmount + fallbackAllocatedAmount,

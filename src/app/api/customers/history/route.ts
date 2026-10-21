@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
   const organizationId = permission.actor.organizationId;
   const supabase = createSupabaseService();
-  const [customersResult, transactionsResult, paymentsResult, allocationsResult, ordersResult, productsResult, profilesResult] =
+  const [customersResult, transactionsResult, paymentsResult, allocationsResult, ordersResult, productsResult, profilesResult, salesReturnsResult] =
     await Promise.all([
       supabase
         .from("customers")
@@ -46,6 +46,10 @@ export async function GET(request: NextRequest) {
         .from("profiles")
         .select("id, display_name, email")
         .eq("organization_id", organizationId),
+      supabase
+        .from("sales_returns")
+        .select("id, customer_id, sales_transaction_id, status")
+        .eq("organization_id", organizationId),
     ]);
 
   const firstError = [
@@ -56,6 +60,7 @@ export async function GET(request: NextRequest) {
     ordersResult.error,
     productsResult.error,
     profilesResult.error,
+    salesReturnsResult.error,
   ].find(Boolean);
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
@@ -63,7 +68,8 @@ export async function GET(request: NextRequest) {
 
   const transactionIds = (transactionsResult.data ?? []).map((row) => row.id);
   const orderIds = (ordersResult.data ?? []).map((row) => row.id);
-  const [itemsResult, orderItemsResult] = await Promise.all([
+  const returnIds = (salesReturnsResult.data ?? []).map((row) => row.id);
+  const [itemsResult, orderItemsResult, returnItemsResult] = await Promise.all([
     transactionIds.length
       ? supabase
           .from("sales_items")
@@ -76,11 +82,17 @@ export async function GET(request: NextRequest) {
           .select("id, sales_order_id, product_id, quantity_ordered, quantity_delivered, unit_price, discount, unit_mode, created_at")
           .in("sales_order_id", orderIds)
       : Promise.resolve({ data: [], error: null }),
+    returnIds.length
+      ? supabase
+          .from("sales_return_items")
+          .select("id, sales_return_id, quantity, unit_price, discount")
+          .in("sales_return_id", returnIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (itemsResult.error || orderItemsResult.error) {
+  if (itemsResult.error || orderItemsResult.error || returnItemsResult.error) {
     return NextResponse.json(
-      { ok: false, error: itemsResult.error?.message ?? orderItemsResult.error?.message },
+      { ok: false, error: itemsResult.error?.message ?? orderItemsResult.error?.message ?? returnItemsResult.error?.message },
       { status: 500 },
     );
   }
@@ -96,5 +108,7 @@ export async function GET(request: NextRequest) {
     orderItems: orderItemsResult.data ?? [],
     products: productsResult.data ?? [],
     profiles: profilesResult.data ?? [],
+    salesReturns: salesReturnsResult.data ?? [],
+    salesReturnItems: returnItemsResult.data ?? [],
   });
 }

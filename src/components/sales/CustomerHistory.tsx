@@ -16,9 +16,11 @@ type OrderItemRow = { sales_order_id: string; product_id: string };
 type ProductRow = { id: string; name: string };
 type ProfileRow = { id: string; display_name?: string | null; email?: string | null };
 type AllocationRow = { sales_transaction_id: string; amount: number };
-type Data = { customers: CustomerRow[]; transactions: TransactionRow[]; salesItems: SalesItemRow[]; payments: PaymentRow[]; allocations: AllocationRow[]; orders: OrderRow[]; orderItems: OrderItemRow[]; products: ProductRow[]; profiles: ProfileRow[] };
+type SalesReturnRow = { id: string; customer_id: string | null; sales_transaction_id: string | null; status?: string | null };
+type SalesReturnItemRow = { sales_return_id: string; quantity: number; unit_price?: number | null; discount?: number | null };
+type Data = { customers: CustomerRow[]; transactions: TransactionRow[]; salesItems: SalesItemRow[]; payments: PaymentRow[]; allocations: AllocationRow[]; orders: OrderRow[]; orderItems: OrderItemRow[]; products: ProductRow[]; profiles: ProfileRow[]; salesReturns: SalesReturnRow[]; salesReturnItems: SalesReturnItemRow[] };
 type AssignmentOptions = { employees: Array<{ id: string; full_name: string; designation: string }>; territories: Array<{ id: string; name: string }>; routes: Array<{ id: string; name: string; territory_id: string | null; assigned_salesman_id?: string | null }>; routeStops: Array<{ route_id: string; customer_id: string }> };
-const empty: Data = { customers: [], transactions: [], salesItems: [], payments: [], allocations: [], orders: [], orderItems: [], products: [], profiles: [] };
+const empty: Data = { customers: [], transactions: [], salesItems: [], payments: [], allocations: [], orders: [], orderItems: [], products: [], profiles: [], salesReturns: [], salesReturnItems: [] };
 const num = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const DATE_LOCALES = { en: "en-PK", es: "es-ES", it: "it-IT", ur: "ur-PK" } as const;
 
@@ -71,6 +73,22 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
     for (const allocation of data.allocations) map.set(String(allocation.sales_transaction_id), (map.get(String(allocation.sales_transaction_id)) ?? 0) + num(allocation.amount));
     return map;
   }, [data.allocations]);
+  // Confirmed sales returns linked to an invoice offset that invoice's
+  // outstanding balance (mirrors the receivables engine in page.tsx): a
+  // return line's value is quantity × unit price − discount, floored at 0
+  // per return. Cancelled returns and unlinked returns offset nothing.
+  const returnedByTransaction = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const salesReturn of data.salesReturns) {
+      if (String(salesReturn.status ?? "") === "cancelled" || !salesReturn.sales_transaction_id) continue;
+      const value = data.salesReturnItems
+        .filter((item) => String(item.sales_return_id) === String(salesReturn.id))
+        .reduce((sum, item) => sum + num(item.quantity) * num(item.unit_price) - num(item.discount), 0);
+      const key = String(salesReturn.sales_transaction_id);
+      map.set(key, (map.get(key) ?? 0) + Math.max(0, value));
+    }
+    return map;
+  }, [data.salesReturns, data.salesReturnItems]);
   const matchingCustomers = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return data.customers;
@@ -113,7 +131,8 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
   const summary = useMemo(() => {
     const totalSales = history.transactions.reduce((sum, row) => sum + num(row.total_amount), 0);
     const totalPaid = history.transactions.reduce((sum, row) => sum + Math.min(num(row.total_amount), allocationsByTransaction.get(String(row.id)) ?? 0), 0);
-    const unpaidInvoices = history.transactions.filter((row) => num(row.total_amount) - (allocationsByTransaction.get(String(row.id)) ?? 0) > 0.005).length;
+    const totalReturned = history.transactions.reduce((sum, row) => sum + (returnedByTransaction.get(String(row.id)) ?? 0), 0);
+    const unpaidInvoices = history.transactions.filter((row) => num(row.total_amount) - (returnedByTransaction.get(String(row.id)) ?? 0) - (allocationsByTransaction.get(String(row.id)) ?? 0) > 0.005).length;
     const pendingOrders = history.orders.filter((row) => ["draft", "pending_approval", "confirmed"].includes(String(row.status)));
     const productStats = new Map<string, { qty: number; revenue: number; price: number; date: string }>();
     const sortedItems = [...history.salesItems].sort((a, b) => String(transactionsById.get(String(b.sales_transaction_id))?.sale_date ?? b.created_at).localeCompare(String(transactionsById.get(String(a.sales_transaction_id))?.sale_date ?? a.created_at)));
@@ -125,17 +144,17 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
     }
     const monthly = new Map<string, number>();
     for (const tx of history.transactions) { const month = String(tx.sale_date ?? tx.created_at).slice(0, 7); monthly.set(month, (monthly.get(month) ?? 0) + num(tx.total_amount)); }
-    return { totalSales, totalPaid, outstanding: Math.max(0, totalSales - totalPaid), unpaidInvoices, pendingOrders,
+    return { totalSales, totalPaid, outstanding: Math.max(0, totalSales - totalPaid - totalReturned), unpaidInvoices, pendingOrders,
       topProducts: [...productStats.entries()].sort((a, b) => b[1].revenue - a[1].revenue), monthly: [...monthly.entries()].sort((a, b) => b[0].localeCompare(a[0])) };
-  }, [allocationsByTransaction, history, transactionsById]);
+  }, [allocationsByTransaction, returnedByTransaction, history, transactionsById]);
 
   const customerOverview = useMemo(() => matchingCustomers.map((row) => {
     const invoices = data.transactions.filter((transaction) => String(transaction.customer_id) === String(row.id) && !["cancelled", "void"].includes(String(transaction.status)));
     const totalSales = invoices.reduce((sum, invoice) => sum + num(invoice.total_amount), 0);
-    const outstanding = invoices.reduce((sum, invoice) => sum + Math.max(0, num(invoice.total_amount) - (allocationsByTransaction.get(String(invoice.id)) ?? 0)), 0);
-    const unpaid = invoices.filter((invoice) => num(invoice.total_amount) - (allocationsByTransaction.get(String(invoice.id)) ?? 0) > 0.005).length;
+    const outstanding = invoices.reduce((sum, invoice) => sum + Math.max(0, num(invoice.total_amount) - (returnedByTransaction.get(String(invoice.id)) ?? 0) - (allocationsByTransaction.get(String(invoice.id)) ?? 0)), 0);
+    const unpaid = invoices.filter((invoice) => num(invoice.total_amount) - (returnedByTransaction.get(String(invoice.id)) ?? 0) - (allocationsByTransaction.get(String(invoice.id)) ?? 0) > 0.005).length;
     return { row, invoiceCount: invoices.length, totalSales, outstanding, unpaid };
-  }), [allocationsByTransaction, data.transactions, matchingCustomers]);
+  }), [allocationsByTransaction, returnedByTransaction, data.transactions, matchingCustomers]);
 
   const saveIndividualAssignment = async () => {
     if (!customer) return;
