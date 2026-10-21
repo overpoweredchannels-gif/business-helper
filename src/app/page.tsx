@@ -105,6 +105,7 @@ import {
   escapeHtml,
   formatDate,
   formatDateTime,
+  formatNumber,
   formatPKR,
   getDateOnly,
   getMonthRange,
@@ -16775,7 +16776,7 @@ setCustomerOrganizationName("");
                         <div key={product.productId}>
                           <div className="mb-1 flex items-center justify-between gap-3 text-sm">
                             <span className="truncate text-foreground">{product.productName}</span>
-                            <span className="font-medium text-foreground">{product.quantitySold}</span>
+                            <span className="font-medium text-foreground">{formatNumber(product.quantitySold)}</span>
                           </div>
                           <div className="h-2 rounded bg-muted">
                             <div className="h-2 rounded bg-primary" style={{ width: getBiBarWidth(product.quantitySold, maxValue) }} />
@@ -17007,10 +17008,10 @@ setCustomerOrganizationName("");
                       .map((product) => (
                         <tr key={product.productId}>
                           <td className="py-2 pr-3">{product.productName}</td>
-                          <td className="py-2 pr-3">{product.quantitySold}</td>
-                          <td className="py-2 pr-3">{product.currentStock}</td>
+                          <td className="py-2 pr-3">{formatNumber(product.quantitySold)}</td>
+                          <td className="py-2 pr-3">{formatNumber(product.currentStock)}</td>
                           <td className="py-2 pr-3">{product.estimatedDaysLeft === null ? t('bi.noRecentSales') : product.estimatedDaysLeft.toFixed(1)}</td>
-                          <td className="py-2 pr-3">{product.reorderLevel > 0 ? product.suggestedReorderQuantity : t('bi.setReorderLevelFirst')}</td>
+                          <td className="py-2 pr-3">{product.reorderLevel > 0 ? formatNumber(product.suggestedReorderQuantity) : t('bi.setReorderLevelFirst')}</td>
                           <td className="py-2 pr-3">{product.stockStatus}</td>
                         </tr>
                       ))}
