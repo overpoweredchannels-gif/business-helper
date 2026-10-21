@@ -5521,6 +5521,17 @@ setCustomerOrganizationName("");
   const [salesOrdersError, setSalesOrdersError] = useState<string | null>(null);
   const [salesOrderItems, setSalesOrderItems] = useState<SalesOrderItem[]>([]);
   const [draftReviewOrder, setDraftReviewOrder] = useState<SalesOrder | null>(null);
+  // In-app confirmation for destructive actions. The handlers that used
+  // window.confirm() here silently no-opped wherever the native dialog did
+  // not resolve (embedded/automated browsers, suppressed dialogs): the click
+  // produced no prompt, no error, and no change. This dialog always renders,
+  // and the wrapped action runs only from its confirm button.
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    body: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [draftReviewAction, setDraftReviewAction] = useState<"approve" | "reject" | null>(null);
   const [draftReviewReason, setDraftReviewReason] = useState("");
   const [draftReviewLoading, setDraftReviewLoading] = useState(false);
@@ -8323,8 +8334,23 @@ setCustomerOrganizationName("");
     if (order.status === "cancelled" || order.status === "delivered") return;
 
     if (nextStatus === "cancelled") {
-      if (!window.confirm(`Cancel sales order ${order.so_number}? This cannot be undone.`)) return;
+      setConfirmDialog({
+        title: "Cancel sales order",
+        body: `Cancel sales order ${order.so_number}? This cannot be undone.`,
+        confirmLabel: "Cancel order",
+        onConfirm: () => {
+          void applySalesOrderStatus(soId, nextStatus);
+        },
+      });
+      return;
     }
+
+    await applySalesOrderStatus(soId, nextStatus);
+  };
+
+  const applySalesOrderStatus = async (soId: string, nextStatus: SalesOrder["status"]) => {
+    const order = salesOrders.find((item) => item.id === soId);
+    if (!order) return;
 
     const { error } = await supabase
       .from("sales_orders")
@@ -8443,7 +8469,19 @@ setCustomerOrganizationName("");
       return;
     }
 
-    if (!window.confirm(`Delete draft sales order ${order.so_number}? This cannot be undone.`)) return;
+    setConfirmDialog({
+      title: "Delete sales order",
+      body: `Delete draft sales order ${order.so_number}? This cannot be undone.`,
+      confirmLabel: "Delete order",
+      onConfirm: () => {
+        void applyDeleteSalesOrder(soId);
+      },
+    });
+  };
+
+  const applyDeleteSalesOrder = async (soId: string) => {
+    const order = salesOrders.find((item) => item.id === soId);
+    if (!order) return;
 
     const { error: itemError } = await supabase
       .from("sales_order_items")
@@ -15242,7 +15280,17 @@ setCustomerOrganizationName("");
   };
 
   const deleteMarketIntelligenceItem = async (item: MarketIntelligenceItem) => {
-    if (!window.confirm(`Delete market intelligence item "${item.title}"?`)) return;
+    setConfirmDialog({
+      title: "Delete market intelligence item",
+      body: `Delete market intelligence item "${item.title}"?`,
+      confirmLabel: "Delete item",
+      onConfirm: () => {
+        void applyDeleteMarketIntelligenceItem(item);
+      },
+    });
+  };
+
+  const applyDeleteMarketIntelligenceItem = async (item: MarketIntelligenceItem) => {
     setMarketIntelligenceMessage(null);
     setMarketIntelligenceError(null);
 
@@ -25804,6 +25852,40 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               >
                 <X className="size-4" />
               </button>
+            </div>
+          </div>
+        )}
+
+        {confirmDialog && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-foreground/30 p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={confirmDialog.title}
+              className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-xl"
+            >
+              <h3 className="text-lg font-semibold text-foreground">{confirmDialog.title}</h3>
+              <p className="mt-2 text-sm text-muted-foreground">{confirmDialog.body}</p>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
+                >
+                  Keep
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const action = confirmDialog.onConfirm;
+                    setConfirmDialog(null);
+                    action();
+                  }}
+                  className="rounded bg-destructive px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                >
+                  {confirmDialog.confirmLabel}
+                </button>
+              </div>
             </div>
           </div>
         )}

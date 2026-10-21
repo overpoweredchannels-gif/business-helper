@@ -100,6 +100,10 @@ export default function EmployeeManagement() {
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
   const [summaries, setSummaries] = useState<EmployeeSummary[]>([]);
   const [expandedProfileId, setExpandedProfileId] = useState<string | null>(null);
+  // In-app two-step delete confirmation: window.confirm() silently no-ops
+  // wherever the native dialog does not resolve, which made Delete appear
+  // completely dead (no prompt, no error, no change).
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const loadOrganization = async () => {
     try {
@@ -220,13 +224,13 @@ export default function EmployeeManagement() {
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm("Delete this employee record?")) return;
     try {
       const res = await authorizedFetch(`/api/identity/employees/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
         setMessage({ type: "ok", text: "Employee deleted." });
         if (editingId === id) resetForm();
+        setPendingDeleteId(null);
         load();
       } else {
         setMessage({ type: "error", text: data.error || "Delete failed" });
@@ -556,9 +560,26 @@ export default function EmployeeManagement() {
                   >
                     Edit
                   </button>
-                  <button style={dangerButtonStyle} onClick={() => remove(emp.id)}>
-                    Delete
-                  </button>
+                  {pendingDeleteId === emp.id ? (
+                    <>
+                      <span style={{ fontSize: "0.75rem", color: "#991b1b", alignSelf: "center" }}>
+                        Delete this employee record?
+                      </span>
+                      <button style={dangerButtonStyle} onClick={() => remove(emp.id)}>
+                        Confirm Delete
+                      </button>
+                      <button
+                        style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }}
+                        onClick={() => setPendingDeleteId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button style={dangerButtonStyle} onClick={() => setPendingDeleteId(emp.id)}>
+                      Delete
+                    </button>
+                  )}
                 </div>
               )}
             </div>
