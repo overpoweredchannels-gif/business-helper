@@ -21640,12 +21640,13 @@ setCustomerOrganizationName("");
                                 .filter((tx) => String(tx.customer_id) === String(customer.id))
                                 .map((tx) => String(tx.id))
                             );
-                            const byProduct = new Map<number, { qty: number; last: string | null; dateNum: number }>();
+                            const byProduct = new Map<string, { qty: number; last: string | null; dateNum: number }>();
                             for (const item of salesItems) {
                               if (!customerTxIds.has(String(item.sales_transaction_id))) continue;
                               const tx = salesTransactions.find((t) => String(t.id) === String(item.sales_transaction_id));
                               if (tx?.status === "cancelled") continue;
-                              const px = Number(item.product_id);
+                              const px = String(item.product_id ?? "");
+                              if (!px) continue;
                               const entry = byProduct.get(px) ?? { qty: 0, last: null, dateNum: 0 };
                               entry.qty += Number(item.quantity || 0);
                               const itemDate = tx?.sale_date ?? tx?.created_at ?? "";
