@@ -47,6 +47,7 @@ import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSu
 import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
+import { bootstrapOrganizationData } from "@/lib/brain/supabase-loader";
 import type { ChatResponse } from "@/lib/conversation";
 import type { ChatContext } from "@/hooks/useAIChat";
 import { AIAssistant } from "@/components/ai/AIAssistant";
@@ -482,6 +483,13 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [currentProfile, setCurrentProfile] = useState<any | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
+  // Business Brain bootstrap: the brain singleton is only created by
+  // bootstrapOrganizationData, which nothing called — so every AI surface
+  // permanently rendered "Business Brain Not Ready". Track readiness in state
+  // (the gateway status read during render never re-renders on its own) and
+  // bootstrap once per organization.
+  const [brainReady, setBrainReady] = useState(false);
+  const brainBootstrapOrgRef = useRef<string | null>(null);
 
   // Scope key for the suggestion panels: remounts them on account or
   // organization change so old-scope queries, selections, and open popovers
@@ -497,6 +505,43 @@ export default function Home() {
     setSelectedProductId(null);
     setSelectedCustomerId(null);
   }, [searchScopeKey]);
+
+  // Bootstrap the Business Brain once the signed-in organization is known.
+  // Guarded per organization so re-renders and token refreshes do not
+  // re-load the whole business dataset; a failed attempt clears the guard so
+  // a later state change can retry.
+  useEffect(() => {
+    if (!currentOrganizationId) {
+      // Signed out / no organization: reset only if a bootstrap had run.
+      if (brainBootstrapOrgRef.current) {
+        brainBootstrapOrgRef.current = null;
+        setBrainReady(false);
+      }
+      return;
+    }
+    const organizationNameForBrain = currentOrganization?.name ?? businessSettingsName;
+    if (!organizationNameForBrain) return;
+    if (brainBootstrapOrgRef.current === currentOrganizationId) return;
+    brainBootstrapOrgRef.current = currentOrganizationId;
+    let cancelled = false;
+    void (async () => {
+      const result = await bootstrapOrganizationData(
+        supabase,
+        currentOrganizationId,
+        organizationNameForBrain,
+        currentProfile?.full_name ?? currentProfile?.display_name ?? currentProfile?.email ?? currentUser?.email ?? "",
+      );
+      if (cancelled) return;
+      setBrainReady(result.success || getGateway().getStatus().ready);
+      if (!result.success && brainBootstrapOrgRef.current === currentOrganizationId) {
+        brainBootstrapOrgRef.current = null;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentOrganizationId, currentOrganization?.name, businessSettingsName]);
 
   // Headings that "View all" focuses to reveal the full ranked list.
   const productsListHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -24354,7 +24399,7 @@ setCustomerOrganizationName("");
 
 {activeSectionAllowed && (activeSection === "ai-voice-operator" || activeSection === "ai-analytics" || activeSection === "ai-business-query" || activeSection === "ai-assistant") && (
         <section className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <AIAssistant onChat={onBrainChat} brainAvailable={getGateway().getStatus().ready} />
+          <AIAssistant onChat={onBrainChat} brainAvailable={brainReady} />
         </section>
         )}
 

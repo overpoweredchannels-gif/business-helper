@@ -36,16 +36,31 @@ export async function loadRawBusinessData(
     supabase.from("ai_alerts").select("id, alert_type, title, summary, severity, status, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
   ]);
 
-  const hasError = [
-    productsRes, customersRes, suppliersRes, staffRes,
-    salesTxRes, salesItemsRes, purchaseTxRes, purchaseItemsRes,
-    expensesRes, customerPaymentsRes, supplierPaymentsRes,
-    tasksRes, alertsRes,
-  ].some((r) => r.error);
+  // Per-query tolerance: one failing OPTIONAL collection must not discard the
+  // whole load (it is substituted with []). Only CORE collections
+  // (products/customers/sales/purchase) still fail the load outright.
+  const queryResults: Array<{ name: string; core: boolean; error: unknown }> = [
+    { name: "products", core: true, error: productsRes.error },
+    { name: "customers", core: true, error: customersRes.error },
+    { name: "suppliers", core: false, error: suppliersRes.error },
+    { name: "staff", core: false, error: staffRes.error },
+    { name: "sales_transactions", core: true, error: salesTxRes.error },
+    { name: "sales_items", core: false, error: salesItemsRes.error },
+    { name: "purchase_transactions", core: true, error: purchaseTxRes.error },
+    { name: "purchase_items", core: false, error: purchaseItemsRes.error },
+    { name: "expenses", core: false, error: expensesRes.error },
+    { name: "customer_payments", core: false, error: customerPaymentsRes.error },
+    { name: "supplier_payments", core: false, error: supplierPaymentsRes.error },
+    { name: "tasks", core: false, error: tasksRes.error },
+    { name: "ai_alerts", core: false, error: alertsRes.error },
+  ];
 
-  if (hasError) {
-    console.error("Supabase queries failed during raw data load");
-    return null;
+  for (const { name, core, error } of queryResults) {
+    if (!error) continue;
+    console.error(`Supabase query failed during raw data load: ${name}`, error);
+    if (core) {
+      return null;
+    }
   }
 
   const data: MemoryWriterRawData = {
