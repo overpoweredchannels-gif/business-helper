@@ -21160,6 +21160,7 @@ setCustomerOrganizationName("");
                   margin,
                   marginPct,
                   sellPrice,
+                  purchasePrice,
                 };
               })
               .sort((a, b) => {
@@ -21170,10 +21171,12 @@ setCustomerOrganizationName("");
             const reorderNeededCount = rows.filter((r) => r.status === "Reorder Needed").length;
             const lowCount = rows.filter((r) => r.status === "Low (≈7 days left)").length;
             const topAlerts = rows.filter((r) => r.status !== "Healthy").slice(0, 50);
+            // A margin is only meaningful when a purchase price is known;
+            // with no recorded cost the margin would read a misleading 100%.
             const highMargin = [...rows]
+              .filter((r) => r.sellPrice > 0 && r.purchasePrice > 0)
               .sort((a, b) => b.marginPct - a.marginPct)
-              .slice(0, 5)
-              .filter((r) => r.sellPrice > 0);
+              .slice(0, 5);
             return (
               <>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
