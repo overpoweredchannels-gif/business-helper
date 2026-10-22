@@ -24,6 +24,7 @@ import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
 import { createPurchase } from "@/lib/purchases/client";
+import { computePurchaseReturnValueByReturnId, computeReturnedValueByPurchaseTransaction, netPurchaseInvoiceAllocation } from "@/lib/purchases/returns-offset";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -9246,6 +9247,17 @@ setCustomerOrganizationName("");
     },
     {}
   );
+  // Confirmed purchase returns linked to an invoice offset what is still
+  // owed to the supplier on it (the goods went back, so that part of the
+  // invoice is no longer a payable). Purchase return lines carry no
+  // discount, so a line's returned value is quantity × unit price — the
+  // same formula as the purchase totals. Cancelled returns and returns
+  // not linked to an invoice offset nothing. The computation lives in
+  // src/lib/purchases/returns-offset.ts so it is unit-testable.
+  const returnedValueByPurchaseTransaction = computeReturnedValueByPurchaseTransaction(
+    purchaseReturns,
+    purchaseReturnItems
+  );
   const supplierPaymentAllocationByPurchaseTransaction = purchaseTransactions
     .slice()
     .sort((a, b) => {
@@ -9256,30 +9268,24 @@ setCustomerOrganizationName("");
     })
     .reduce<Record<string, SupplierPurchasePaymentAllocation>>((allocations, transaction) => {
       const purchaseTotal = purchaseInvoiceTotalsByTransaction[transaction.id] ?? 0;
-      const explicitAllocatedAmount = Math.max(
-        0,
-        supplierAllocatedAmountsByPurchaseTransaction[transaction.id] ?? 0
-      );
-      const remainingAfterExplicitAllocation = Math.max(0, purchaseTotal - explicitAllocatedAmount);
       const availableLegacyPool = legacySupplierPaymentPoolBySupplier[transaction.supplier_id] ?? 0;
-      const fallbackAllocatedAmount = Math.min(
-        availableLegacyPool,
-        remainingAfterExplicitAllocation
-      );
+      const net = netPurchaseInvoiceAllocation({
+        purchaseTotal,
+        returnedAmount: returnedValueByPurchaseTransaction[transaction.id] ?? 0,
+        explicitAllocatedAmount:
+          supplierAllocatedAmountsByPurchaseTransaction[transaction.id] ?? 0,
+        legacyPoolAvailable: availableLegacyPool,
+      });
 
-      legacySupplierPaymentPoolBySupplier[transaction.supplier_id] = Math.max(
-        0,
-        availableLegacyPool - fallbackAllocatedAmount
-      );
+      legacySupplierPaymentPoolBySupplier[transaction.supplier_id] =
+        net.legacyPoolRemaining;
       allocations[transaction.id] = {
         purchaseTotal,
-        explicitAllocatedAmount,
-        fallbackAllocatedAmount,
-        paidAmount: explicitAllocatedAmount + fallbackAllocatedAmount,
-        remainingPayableAmount: Math.max(
-          0,
-          remainingAfterExplicitAllocation - fallbackAllocatedAmount
-        ),
+        returnedAmount: net.returnedAmount,
+        explicitAllocatedAmount: net.explicitAllocatedAmount,
+        fallbackAllocatedAmount: net.fallbackAllocatedAmount,
+        paidAmount: net.paidAmount,
+        remainingPayableAmount: net.remainingPayableAmount,
       };
       return allocations;
     }, {});
@@ -10071,6 +10077,16 @@ setCustomerOrganizationName("");
   const selectedSupplierLedgerPayments = supplierPayments.filter(
     (payment) => payment.supplier_id === selectedSupplierLedgerId
   );
+  const selectedSupplierLedgerPurchaseReturns = purchaseReturns.filter(
+    (purchaseReturn) => purchaseReturn.supplier_id === selectedSupplierLedgerId
+  );
+  // Per-return values from the shared offset module: only confirmed
+  // (non-cancelled), invoice-linked returns appear, as credit entries —
+  // an unlinked return offsets nothing, mirroring the payables engine.
+  const supplierLedgerReturnValueByReturnId = computePurchaseReturnValueByReturnId(
+    purchaseReturns,
+    purchaseReturnItems
+  );
   const supplierLedgerRawEntries: SupplierLedgerEntry[] = [
     ...selectedSupplierLedgerPurchaseTransactions.map((transaction) => {
       const timestamp = getUsableTimestamp(transaction.purchase_date, transaction.created_at);
@@ -10086,6 +10102,30 @@ setCustomerOrganizationName("");
         credit: 0,
       };
     }),
+    ...selectedSupplierLedgerPurchaseReturns
+      .filter(
+        (purchaseReturn) =>
+          supplierLedgerReturnValueByReturnId[purchaseReturn.id] !== undefined
+      )
+      .map((purchaseReturn) => {
+        const timestamp = getUsableTimestamp(purchaseReturn.return_date, purchaseReturn.created_at);
+        const linkedTransaction = purchaseReturn.purchase_transaction_id
+          ? purchaseTransactionsById[purchaseReturn.purchase_transaction_id]
+          : undefined;
+        return {
+          id: `return-${purchaseReturn.id}`,
+          date: getDateOnly(timestamp.value),
+          eventTimestamp: timestamp.value,
+          eventTime: timestamp.time,
+          eventType: "return" as const,
+          reference: `Purchase return ${purchaseReturn.return_number}`,
+          notes: linkedTransaction
+            ? `Returned against purchase invoice ${linkedTransaction.invoice_number}`
+            : "Purchase return",
+          debit: 0,
+          credit: supplierLedgerReturnValueByReturnId[purchaseReturn.id] ?? 0,
+        };
+      }),
     ...selectedSupplierLedgerPayments.map((payment) => {
       const timestamp = getUsableTimestamp(payment.payment_date, payment.created_at);
       const paymentId = String(payment.id ?? "");
@@ -10121,11 +10161,14 @@ setCustomerOrganizationName("");
     (sum, entry) => sum + entry.debit,
     0
   );
-  const supplierLedgerTotalPayments = supplierLedgerEntriesInDateRange.reduce(
-    (sum, entry) => sum + entry.credit,
-    0
-  );
-  const supplierLedgerCurrentBalance = supplierLedgerTotalPurchases - supplierLedgerTotalPayments;
+  const supplierLedgerTotalPayments = supplierLedgerEntriesInDateRange
+    .filter((entry) => entry.eventType === "payment")
+    .reduce((sum, entry) => sum + entry.credit, 0);
+  const supplierLedgerTotalReturns = supplierLedgerEntriesInDateRange
+    .filter((entry) => entry.eventType === "return")
+    .reduce((sum, entry) => sum + entry.credit, 0);
+  const supplierLedgerCurrentBalance =
+    supplierLedgerTotalPurchases - supplierLedgerTotalPayments - supplierLedgerTotalReturns;
   const supplierLedgerUnallocatedPayments = selectedSupplierLedgerPayments
     .filter((payment) =>
       isDateInRange(
@@ -14296,6 +14339,7 @@ setCustomerOrganizationName("");
         <div><strong>${t('print.dateRange')}:</strong> ${escapeHtml(supplierLedgerStartDate || t('buy.allTime'))} ${escapeHtml(t('buy.dateSeparator'))} ${escapeHtml(supplierLedgerEndDate || t('buy.allTime'))}</div>
         <div><strong>${t('buy.totalPurchases')}:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalPurchases))}</div>
         <div><strong>${t('buy.totalPayments')}:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalPayments))}</div>
+        <div><strong>${t('buy.totalReturns')}:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalReturns))}</div>
         <div><strong>${t('print.currentPayable')}:</strong> ${escapeHtml(formatPKR(supplierLedgerCurrentBalance))}</div>
         <div><strong>${t('buy.unallocatedPayments')}:</strong> ${escapeHtml(formatPKR(supplierLedgerUnallocatedPayments))}</div>
       </div>
@@ -20287,7 +20331,7 @@ setCustomerOrganizationName("");
             <p className="mt-4 text-sm text-muted-foreground">{t('buy.selectSupplierToView')}</p>
           ) : (
             <div className="mt-4 space-y-4">
-              <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
                 <div className="rounded border border-border bg-card p-3">
                   <div className="text-muted-foreground/80">{t('buy.totalPurchases')}</div>
                   <div className="font-medium text-foreground">
@@ -20298,6 +20342,12 @@ setCustomerOrganizationName("");
                   <div className="text-muted-foreground/80">{t('buy.totalPayments')}</div>
                   <div className="font-medium text-foreground">
                     {pkrFormatter.format(supplierLedgerTotalPayments)}
+                  </div>
+                </div>
+                <div className="rounded border border-border bg-card p-3">
+                  <div className="text-muted-foreground/80">{t('buy.totalReturns')}</div>
+                  <div className="font-medium text-foreground">
+                    {pkrFormatter.format(supplierLedgerTotalReturns)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-card p-3">

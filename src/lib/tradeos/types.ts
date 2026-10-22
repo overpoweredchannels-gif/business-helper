@@ -501,6 +501,7 @@ export interface NewPurchaseExpenseReminder {
 
 export interface SupplierPurchasePaymentAllocation {
   purchaseTotal: number;
+  returnedAmount: number;
   explicitAllocatedAmount: number;
   fallbackAllocatedAmount: number;
   paidAmount: number;
@@ -512,7 +513,7 @@ export interface SupplierLedgerEntry {
   date: string | null;
   eventTimestamp: string | null;
   eventTime: number;
-  eventType: "purchase" | "payment";
+  eventType: "purchase" | "payment" | "return";
   reference: string;
   notes: string;
   debit: number;
