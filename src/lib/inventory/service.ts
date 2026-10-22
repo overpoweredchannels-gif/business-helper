@@ -93,6 +93,51 @@ export const suggestedReorderFor = (
   return level > 0 ? Math.max(level * 2 - currentStock, 0) : 0;
 };
 
+// ─── Shared status labels (M1 decision 2, UMAIR-approved 2026-10-22) ──────
+//
+// stockStatusFor is the ONE stock-health classifier. Every surface that
+// shows a "healthy" count or status derives its label from it through the
+// mappings below — the reorder table and Products Insights previously ran
+// their own inline rules (velocity could demote a product to "low", and a
+// product with no reorder level counted as "healthy"), which produced
+// contradictory counts for the same catalogue (production: 8 vs 55
+// "healthy"). Sales velocity survives only as the separate days-left /
+// coverage figures, never as a health status.
+
+export type ReorderTableStatus =
+  | "Out of Stock"
+  | "Urgent Reorder"
+  | "Missing Reorder Level"
+  | "Healthy";
+
+export const reorderTableStatusFor = (
+  currentStock: number,
+  reorderLevel: number | null | undefined
+): ReorderTableStatus => {
+  const { status } = stockStatusFor(currentStock, reorderLevel);
+  if (status === "out_of_stock") return "Out of Stock";
+  if (status === "urgent_reorder") return "Urgent Reorder";
+  if (status === "missing_reorder_level") return "Missing Reorder Level";
+  return "Healthy";
+};
+
+export type ProductInsightsStatus =
+  | "Out of Stock"
+  | "Reorder Needed"
+  | "No Reorder Level"
+  | "Healthy";
+
+export const productInsightsStatusFor = (
+  currentStock: number,
+  reorderLevel: number | null | undefined
+): ProductInsightsStatus => {
+  const { status } = stockStatusFor(currentStock, reorderLevel);
+  if (status === "out_of_stock") return "Out of Stock";
+  if (status === "urgent_reorder") return "Reorder Needed";
+  if (status === "missing_reorder_level") return "No Reorder Level";
+  return "Healthy";
+};
+
 export const buildInventorySnapshots = (
   products: SnapshotProduct[],
   transactions: InventoryTransaction[]

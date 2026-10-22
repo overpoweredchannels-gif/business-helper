@@ -974,6 +974,8 @@ const en = {
   'common.archived': 'Archived',
   'common.restore': 'Restore',
   'stock.healthy': 'Healthy',
+  'stock.unknownCost': 'Stock without known cost',
+  'stock.unknownCostDetail': '{count} products · {units} units · selling-price estimate {amount}',
   // Products section
   'products.editProduct': 'Edit Product',
   'products.cancelEdit': 'Cancel Edit',
@@ -2858,6 +2860,8 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'common.archived': 'Archivado',
     'common.restore': 'Restaurar',
     'stock.healthy': 'En buen estado',
+    'stock.unknownCost': 'Stock sin costo conocido',
+    'stock.unknownCostDetail': '{count} productos · {units} unidades · estimación a precio de venta {amount}',
     // Products section
     'products.editProduct': 'Editar producto',
     'products.cancelEdit': 'Cancelar edición',
@@ -4725,6 +4729,8 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'common.archived': 'Archiviato',
     'common.restore': 'Ripristina',
     'stock.healthy': 'In buono stato',
+    'stock.unknownCost': 'Scorte senza costo noto',
+    'stock.unknownCostDetail': '{count} prodotti · {units} unità · stima al prezzo di vendita {amount}',
     // Products section
     'products.editProduct': 'Modifica prodotto',
     'products.cancelEdit': 'Annulla modifica',
@@ -6592,6 +6598,8 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'common.archived': 'آرکائیو شدہ',
     'common.restore': 'بحال کریں',
     'stock.healthy': 'مناسب',
+    'stock.unknownCost': 'نامعلوم لاگت والا اسٹاک',
+    'stock.unknownCostDetail': '{count} مصنوعات · {units} یونٹ · فروخت قیمت کا تخمینہ {amount}',
     // Products section
     'products.editProduct': 'پروڈکٹ میں ترمیم کریں',
     'products.cancelEdit': 'ترمیم منسوخ کریں',

@@ -37,6 +37,7 @@
     "test:sales-atomicity": "tsx scripts/test-sales-atomicity.ts",
     "test:sale-amounts": "tsx scripts/test-sale-amounts.ts",
     "test:sales-return-offset": "tsx scripts/test-sales-return-offset.ts",
+    "test:definition-unification": "tsx scripts/test-definition-unification.ts",
     "test:purchase-return-offset": "tsx scripts/test-purchase-return-offset.ts",
     "test:sale-draft": "tsx scripts/test-sale-draft.ts",
     "test:pos-discount-render": "tsx scripts/test-pos-discount-render.tsx",

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import HistoricalRecords from "@/components/import-export/HistoricalRecords";
 import { formatPKR } from "@/lib/tradeos/formatters";
-import { computeReturnedValueBySalesTransaction } from "@/lib/sales/returns-offset";
+import { computeCustomerRemainingByTransaction, computeReturnedValueBySalesTransaction } from "@/lib/sales/returns-offset";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Props { organizationId: string | null; customerId?: string | null }
@@ -69,11 +69,6 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
   const profiles = useMemo(() => new Map(data.profiles.map((row) => [String(row.id), row])), [data.profiles]);
   const products = useMemo(() => new Map(data.products.map((row) => [String(row.id), row])), [data.products]);
   const transactionsById = useMemo(() => new Map(data.transactions.map((row) => [String(row.id), row])), [data.transactions]);
-  const allocationsByTransaction = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const allocation of data.allocations) map.set(String(allocation.sales_transaction_id), (map.get(String(allocation.sales_transaction_id)) ?? 0) + num(allocation.amount));
-    return map;
-  }, [data.allocations]);
   // Confirmed sales returns linked to an invoice offset that invoice's
   // outstanding balance — shared with the receivables engine in page.tsx
   // via src/lib/sales/returns-offset.ts (single source of truth): a return
@@ -87,6 +82,39 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
         )
       ),
     [data.salesReturns, data.salesReturnItems]
+  );
+  // Per-invoice remaining with RECEIVABLES-ENGINE semantics (M1 decision
+  // 3): returns offset first, then explicit allocations, then the
+  // customer's unallocated payments applied FIFO across open credit
+  // invoices — the shared computation in src/lib/sales/returns-offset.ts,
+  // the same one page.tsx's receivables engine runs. History previously
+  // counted only explicit allocations and overstated what customers owed
+  // (production: REHAN PSO History Rs 265,850 vs Receivables Rs 0).
+  // Computed over ALL of a customer's documents (not the date-filtered
+  // view) so a date window can never corrupt the FIFO order.
+  const remainingByTransaction = useMemo(
+    () =>
+      computeCustomerRemainingByTransaction({
+        transactions: data.transactions.map((row) => ({
+          id: String(row.id),
+          customerId: row.customer_id ? String(row.customer_id) : null,
+          invoiceTotal: num(row.total_amount),
+          paymentType: row.payment_type,
+          status: row.status,
+          sortDate: String(row.sale_date ?? row.created_at ?? "").slice(0, 10),
+          createdAt: String(row.created_at ?? ""),
+        })),
+        payments: data.payments.map((row) => ({
+          customerId: row.customer_id ? String(row.customer_id) : null,
+          amount: num(row.amount),
+        })),
+        allocations: data.allocations.map((row) => ({
+          salesTransactionId: String(row.sales_transaction_id),
+          amount: num(row.amount),
+        })),
+        returnedValueByTransaction: Object.fromEntries(returnedByTransaction),
+      }),
+    [data.transactions, data.payments, data.allocations, returnedByTransaction]
   );
   const matchingCustomers = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -129,9 +157,8 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
 
   const summary = useMemo(() => {
     const totalSales = history.transactions.reduce((sum, row) => sum + num(row.total_amount), 0);
-    const totalPaid = history.transactions.reduce((sum, row) => sum + Math.min(num(row.total_amount), allocationsByTransaction.get(String(row.id)) ?? 0), 0);
-    const totalReturned = history.transactions.reduce((sum, row) => sum + (returnedByTransaction.get(String(row.id)) ?? 0), 0);
-    const unpaidInvoices = history.transactions.filter((row) => num(row.total_amount) - (returnedByTransaction.get(String(row.id)) ?? 0) - (allocationsByTransaction.get(String(row.id)) ?? 0) > 0.005).length;
+    const totalPaid = history.transactions.reduce((sum, row) => sum + (remainingByTransaction[String(row.id)]?.allocatedAmount ?? 0), 0);
+    const unpaidInvoices = history.transactions.filter((row) => (remainingByTransaction[String(row.id)]?.remaining ?? 0) > 0.005).length;
     const pendingOrders = history.orders.filter((row) => ["draft", "pending_approval", "confirmed"].includes(String(row.status)));
     const productStats = new Map<string, { qty: number; revenue: number; price: number; date: string }>();
     const sortedItems = [...history.salesItems].sort((a, b) => String(transactionsById.get(String(b.sales_transaction_id))?.sale_date ?? b.created_at).localeCompare(String(transactionsById.get(String(a.sales_transaction_id))?.sale_date ?? a.created_at)));
@@ -143,17 +170,17 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
     }
     const monthly = new Map<string, number>();
     for (const tx of history.transactions) { const month = String(tx.sale_date ?? tx.created_at).slice(0, 7); monthly.set(month, (monthly.get(month) ?? 0) + num(tx.total_amount)); }
-    return { totalSales, totalPaid, outstanding: Math.max(0, totalSales - totalPaid - totalReturned), unpaidInvoices, pendingOrders,
+    return { totalSales, totalPaid, outstanding: history.transactions.reduce((sum, row) => sum + (remainingByTransaction[String(row.id)]?.remaining ?? 0), 0), unpaidInvoices, pendingOrders,
       topProducts: [...productStats.entries()].sort((a, b) => b[1].revenue - a[1].revenue), monthly: [...monthly.entries()].sort((a, b) => b[0].localeCompare(a[0])) };
-  }, [allocationsByTransaction, returnedByTransaction, history, transactionsById]);
+  }, [remainingByTransaction, history, transactionsById]);
 
   const customerOverview = useMemo(() => matchingCustomers.map((row) => {
     const invoices = data.transactions.filter((transaction) => String(transaction.customer_id) === String(row.id) && !["cancelled", "void"].includes(String(transaction.status)));
     const totalSales = invoices.reduce((sum, invoice) => sum + num(invoice.total_amount), 0);
-    const outstanding = invoices.reduce((sum, invoice) => sum + Math.max(0, num(invoice.total_amount) - (returnedByTransaction.get(String(invoice.id)) ?? 0) - (allocationsByTransaction.get(String(invoice.id)) ?? 0)), 0);
-    const unpaid = invoices.filter((invoice) => num(invoice.total_amount) - (returnedByTransaction.get(String(invoice.id)) ?? 0) - (allocationsByTransaction.get(String(invoice.id)) ?? 0) > 0.005).length;
+    const outstanding = invoices.reduce((sum, invoice) => sum + (remainingByTransaction[String(invoice.id)]?.remaining ?? 0), 0);
+    const unpaid = invoices.filter((invoice) => (remainingByTransaction[String(invoice.id)]?.remaining ?? 0) > 0.005).length;
     return { row, invoiceCount: invoices.length, totalSales, outstanding, unpaid };
-  }), [allocationsByTransaction, returnedByTransaction, data.transactions, matchingCustomers]);
+  }), [remainingByTransaction, data.transactions, matchingCustomers]);
 
   const saveIndividualAssignment = async () => {
     if (!customer) return;

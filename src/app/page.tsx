@@ -19,7 +19,8 @@ import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
 import { hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
-import { computeReturnedValueBySalesTransaction, netCreditInvoiceAllocation } from "@/lib/sales/returns-offset";
+import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction } from "@/lib/sales/returns-offset";
+import { computeInventoryValuation } from "@/lib/inventory/valuation";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
@@ -182,7 +183,9 @@ import {
   getBatchBreakdown,
   isAdjustmentType,
   movementLabel,
+  productInsightsStatusFor,
   queryLedger,
+  reorderTableStatusFor,
 } from "@/lib/inventory/service";
 import {
   validatePurchaseOrderInput,
@@ -8986,49 +8989,27 @@ setCustomerOrganizationName("");
     salesReturns,
     salesReturnItems
   );
-  const creditAllocationByTransaction = salesTransactions
-    .filter((transaction) => transaction.payment_type === "credit")
-    .sort((a, b) => {
-      const aDate = getDateOnly(a.sale_date) ?? getDateOnly(a.created_at) ?? "";
-      const bDate = getDateOnly(b.sale_date) ?? getDateOnly(b.created_at) ?? "";
-      if (aDate !== bDate) return aDate.localeCompare(bDate);
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    })
-    .reduce<
-      Record<
-        string,
-        {
-          invoiceTotal: number;
-          returnedAmount: number;
-          explicitAllocatedAmount: number;
-          fallbackAllocatedAmount: number;
-          allocatedAmount: number;
-          remainingUnpaidAmount: number;
-        }
-      >
-    >((allocations, transaction) => {
-      const invoiceTotal = salesInvoiceTotalsByTransaction[transaction.id] ?? 0;
-      const availableLegacyPool = legacyUnallocatedPaymentPoolByCustomer[transaction.customer_id] ?? 0;
-      const net = netCreditInvoiceAllocation({
-        invoiceTotal,
+  // FIFO allocation of each customer's unallocated-payment pool across
+  // their credit invoices (oldest first) — the shared engine in
+  // src/lib/sales/returns-offset.ts, also used by Customer History so the
+  // two surfaces can never disagree about what a customer owes (M1
+  // decision 3).
+  const creditAllocationByTransaction = computeCreditAllocationsByTransaction(
+    salesTransactions
+      .filter((transaction) => transaction.payment_type === "credit")
+      .map((transaction) => ({
+        id: transaction.id,
+        customerId: transaction.customer_id,
+        invoiceTotal: salesInvoiceTotalsByTransaction[transaction.id] ?? 0,
         returnedAmount: returnedValueBySalesTransaction[transaction.id] ?? 0,
         explicitAllocatedAmount:
           explicitAllocatedAmountsBySalesTransaction[transaction.id] ?? 0,
-        legacyPoolAvailable: availableLegacyPool,
-      });
-
-      legacyUnallocatedPaymentPoolByCustomer[transaction.customer_id] =
-        net.legacyPoolRemaining;
-      allocations[transaction.id] = {
-        invoiceTotal,
-        returnedAmount: net.returnedAmount,
-        explicitAllocatedAmount: net.explicitAllocatedAmount,
-        fallbackAllocatedAmount: net.fallbackAllocatedAmount,
-        allocatedAmount: net.allocatedAmount,
-        remainingUnpaidAmount: net.remainingUnpaidAmount,
-      };
-      return allocations;
-    }, {});
+        sortDate:
+          getDateOnly(transaction.sale_date) ?? getDateOnly(transaction.created_at) ?? "",
+        createdAt: transaction.created_at,
+      })),
+    legacyUnallocatedPaymentPoolByCustomer
+  );
   const selectedCustomerOutstandingBalance = selectedCustomerCreditTransactionIds.reduce(
     (sum, transactionId) =>
       sum + Math.max(0, creditAllocationByTransaction[transactionId]?.remainingUnpaidAmount ?? 0),
@@ -9831,7 +9812,7 @@ setCustomerOrganizationName("");
   const reorderStatusRank: Record<string, number> = {
     "Out of Stock": 0,
     "Urgent Reorder": 1,
-    "Low Stock Soon": 2,
+    "Missing Reorder Level": 2,
     Healthy: 3,
   };
   const reorderRecommendations = products
@@ -9872,14 +9853,11 @@ setCustomerOrganizationName("");
         dailyAverageSales > 0 ? currentStock / dailyAverageSales : null;
       const suggestedReorderQuantity =
         reorderLevel > 0 ? Math.max(reorderLevel * 2 - currentStock, 0) : 0;
-      const status =
-        currentStock <= 0
-          ? "Out of Stock"
-          : currentStock <= reorderLevel
-            ? "Urgent Reorder"
-            : dailyAverageSales > 0 && estimatedDaysLeft !== null && estimatedDaysLeft <= 7
-              ? "Low Stock Soon"
-              : "Healthy";
+      // Health status comes from the ONE shared classifier (stockStatusFor
+      // via reorderTableStatusFor, M1 decision 2). Sales velocity remains
+      // only as the estimatedDaysLeft coverage figure — it no longer
+      // demotes a product's status.
+      const status = reorderTableStatusFor(currentStock, reorderLevel);
 
       return {
         productId,
@@ -9908,14 +9886,14 @@ setCustomerOrganizationName("");
     (summary, recommendation) => {
       if (recommendation.status === "Out of Stock") summary.outOfStockCount += 1;
       if (recommendation.status === "Urgent Reorder") summary.urgentReorderCount += 1;
-      if (recommendation.status === "Low Stock Soon") summary.lowStockSoonCount += 1;
+      if (recommendation.status === "Healthy") summary.healthyCount += 1;
       if (recommendation.missingReorderLevel) summary.missingReorderLevelCount += 1;
       return summary;
     },
     {
       outOfStockCount: 0,
       urgentReorderCount: 0,
-      lowStockSoonCount: 0,
+      healthyCount: 0,
       missingReorderLevelCount: 0,
     }
   );
@@ -10210,17 +10188,14 @@ setCustomerOrganizationName("");
   const totalSuppliers = suppliers.length;
   const totalReceivables = receivablesStats.reduce((sum, customer) => sum + customer.outstanding, 0);
   const totalPayables = payablesStats.reduce((sum, supplier) => sum + supplier.remainingPayable, 0);
-  // Inventory value is normally a cost-based figure; fall back to selling
-  // price only when no cost is known for a product.
-  const inventoryValue = inventoryStats.reduce(
-    (sum, item) =>
-      sum +
-      item.currentStock *
-        (Number(item.lastPurchasePrice ?? 0) > 0
-          ? Number(item.lastPurchasePrice)
-          : Number(item.defaultSellingPrice ?? 0) || 0),
-    0
-  );
+  // Inventory value uses the ONE shared cost basis (src/lib/inventory/
+  // valuation.ts, M1 decision 1): stock × last purchase price, unknown cost
+  // contributes 0 (never a silent selling-price fallback), negative stock
+  // clamps at 0. Business Intelligence consumes the same computation, so
+  // the two figures are identical by construction. Unknown-cost stock is
+  // surfaced separately below as a flagged estimate.
+  const inventoryValuation = computeInventoryValuation(inventoryStats);
+  const inventoryValue = inventoryValuation.totalValue;
   const lowStockProducts = inventoryStats.filter(
     (item) => typeof item.reorderLevel === "number" && item.currentStock <= item.reorderLevel
   );
@@ -10723,11 +10698,20 @@ setCustomerOrganizationName("");
       .filter((product) => product.quantitySold > 0)
       .sort((a, b) => b.quantitySold - a.quantitySold)
       .slice(0, 10);
-    const inventoryStockValue = productAnalytics.reduce((sum, product) => {
-      const sourceProduct = productById[product.productId];
-      const lastPurchasePrice = safeNumber(sourceProduct?.last_purchase_price);
-      return sum + Math.max(0, product.currentStock) * (lastPurchasePrice > 0 ? lastPurchasePrice : 0);
-    }, 0);
+    // Same shared cost-basis valuation as the Dashboard (src/lib/inventory/
+    // valuation.ts, M1 decision 1), computed over the full product list —
+    // not the BI-filtered productAnalytics subset — so this figure always
+    // equals the Dashboard's Inventory Value.
+    const inventoryValuation = computeInventoryValuation(
+      products.map((product) => ({
+        productId: product.id,
+        productName: product.name,
+        currentStock: safeNumber(product.current_stock ?? 0),
+        lastPurchasePrice: product.last_purchase_price,
+        defaultSellingPrice: product.default_selling_price,
+      }))
+    );
+    const inventoryStockValue = inventoryValuation.totalValue;
     const topCustomersBySales = customerAnalytics.slice().sort((a, b) => b.totalSales - a.totalSales).slice(0, 10);
     const topCustomersByPayments = customerAnalytics.slice().sort((a, b) => b.paymentsReceived - a.paymentsReceived).slice(0, 10);
     const customersWithHighOutstanding = customerAnalytics
@@ -10804,6 +10788,11 @@ setCustomerOrganizationName("");
       strongestProductMonth,
       enoughSeasonalData,
       inventoryStockValue,
+      inventoryUnknownCost: {
+        productCount: inventoryValuation.unknownCostProductCount,
+        units: inventoryValuation.unknownCostUnits,
+        sellingEstimate: inventoryValuation.unknownCostSellingEstimate,
+      },
       insights: {
         bestProduct,
         bestProfitProduct,
@@ -12679,7 +12668,7 @@ setCustomerOrganizationName("");
       },
       inventory: {
         low_stock_products: reorderRecommendations
-          .filter((item) => item.status === "Urgent Reorder" || item.status === "Low Stock Soon")
+          .filter((item) => item.status === "Urgent Reorder")
           .slice(0, 25),
         out_of_stock_products: reorderRecommendations
           .filter((item) => item.status === "Out of Stock")
@@ -12797,7 +12786,7 @@ setCustomerOrganizationName("");
       `Customer collections: ${safeNumber(customerPayments.count)} payments totaling ${formatPKR(safeNumber(customerPayments.total_amount))}.`,
       `Supplier payments: ${safeNumber(supplierPayments.count)} payments totaling ${formatPKR(safeNumber(supplierPayments.total_amount))}.`,
       `Expenses: ${safeNumber(expensesSummary.count)} entries totaling ${formatPKR(safeNumber(expensesSummary.total_amount))}.`,
-      `Inventory: ${safeNumber(inventory.stock_summary?.outOfStockCount)} out of stock, ${safeNumber(inventory.stock_summary?.urgentReorderCount)} urgent reorder, ${safeNumber(inventory.stock_summary?.lowStockSoonCount)} low stock soon.`,
+      `Inventory: ${safeNumber(inventory.stock_summary?.outOfStockCount)} out of stock, ${safeNumber(inventory.stock_summary?.urgentReorderCount)} urgent reorder, ${safeNumber(inventory.stock_summary?.healthyCount)} healthy, ${safeNumber(inventory.stock_summary?.missingReorderLevelCount)} missing a reorder level.`,
       `Alerts: ${safeNumber(alerts.active_count)} active, including ${safeNumber(alerts.critical_count)} critical and ${safeNumber(alerts.high_count)} high severity.`,
       `Market signals: ${getArrayValue(market.critical_items).length} critical, ${getArrayValue(market.high_impact_items).length} high impact, ${getArrayValue(market.price_up_signals).length} price-up, ${getArrayValue(market.supply_shortage_signals).length} supply-shortage.`,
     ];
@@ -16127,6 +16116,7 @@ setCustomerOrganizationName("");
           onOpen: () => handleSectionChange("inventory"),
           metrics: [
             { label: t('summary.stockValue'), value: money(inventoryValue), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
+            ...(inventoryValuation.unknownCostProductCount > 0 ? [{ label: t('stock.unknownCost'), value: t('stock.unknownCostDetail').replace('{count}', String(inventoryValuation.unknownCostProductCount)).replace('{units}', String(inventoryValuation.unknownCostUnits)).replace('{amount}', money(inventoryValuation.unknownCostSellingEstimate)), tone: "warning" as const, readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") }] : []),
             { label: t('summary.lowStock'), value: String(lowStockProducts.length), tone: lowStockProducts.length > 0 ? "warning" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
             { label: t('summary.outOfStock'), value: String(reorderRecommendationSummary.outOfStockCount), tone: reorderRecommendationSummary.outOfStockCount > 0 ? "danger" : "success", readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products") },
           ],
@@ -17037,7 +17027,12 @@ setCustomerOrganizationName("");
             <div className="mt-6 rounded border border-border bg-card p-4">
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <h3 className="text-lg font-medium text-foreground">{t('bi.inventoryMovement')}</h3>
-                <span className="text-sm text-muted-foreground">{t('bi.estimatedStockValue')}: {formatPKR(businessIntelligenceAnalytics.inventoryStockValue)}</span>
+                <div className="flex flex-col gap-0.5 sm:items-end">
+                  <span className="text-sm text-muted-foreground">{t('bi.estimatedStockValue')}: {formatPKR(businessIntelligenceAnalytics.inventoryStockValue)}</span>
+                  {businessIntelligenceAnalytics.inventoryUnknownCost.productCount > 0 && (
+                    <span className="text-xs text-warning">{t('stock.unknownCost')}: {t('stock.unknownCostDetail').replace('{count}', String(businessIntelligenceAnalytics.inventoryUnknownCost.productCount)).replace('{units}', String(businessIntelligenceAnalytics.inventoryUnknownCost.units)).replace('{amount}', formatPKR(businessIntelligenceAnalytics.inventoryUnknownCost.sellingEstimate))}</span>
+                  )}
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
@@ -17623,7 +17618,7 @@ setCustomerOrganizationName("");
                     <option value="all">{t('inventory.filterAll')}</option>
                     <option value="Out of Stock">{t('stock.outOfStock')}</option>
                     <option value="Urgent Reorder">{t('inventory.urgentReorder')}</option>
-                    <option value="Low Stock Soon">{t('inventory.lowStockSoon')}</option>
+                    <option value="Missing Reorder Level">{t('inventory.missingReorderLevel')}</option>
                     <option value="Healthy">{t('stock.healthy')}</option>
                     <option value="missing-reorder-level">{t('inventory.missingReorderLevel')}</option>
                   </select>
@@ -17696,12 +17691,12 @@ setCustomerOrganizationName("");
                                   ? "bg-destructive/10 text-destructive"
                                   : recommendation.status === "Urgent Reorder"
                                     ? "bg-orange-100 text-orange-700"
-                                    : recommendation.status === "Low Stock Soon"
-                                      ? "bg-warning/10 text-warning"
+                                    : recommendation.status === "Missing Reorder Level"
+                                      ? "bg-muted/50 text-muted-foreground"
                                       : "bg-success/10 text-success"
                               }`}
                             >
-                              {recommendation.status === "Out of Stock" ? t('stock.outOfStock') : recommendation.status === "Urgent Reorder" ? t('inventory.urgentReorder') : recommendation.status === "Low Stock Soon" ? t('inventory.lowStockSoon') : t('stock.healthy')}
+                              {recommendation.status === "Out of Stock" ? t('stock.outOfStock') : recommendation.status === "Urgent Reorder" ? t('inventory.urgentReorder') : recommendation.status === "Missing Reorder Level" ? t('inventory.missingReorderLevel') : t('stock.healthy')}
                             </span>
                           </td>
                         </tr>
@@ -21194,15 +21189,11 @@ setCustomerOrganizationName("");
                 const reorderLevel = safeNumber(product.reorder_level ?? product.minimum_stock_level ?? 0);
                 const sold30 = soldQty30dById.get(product.id) ?? 0;
                 const daily = sold30 / 30;
+                // Velocity survives ONLY as this days-left coverage figure
+                // (shown in its own column); the health status comes from
+                // the ONE shared classifier (M1 decision 2).
                 const daysLeft = daily > 0 ? stock / daily : (stock > 0 ? Infinity : 0);
-                const status =
-                  stock <= 0
-                    ? "Out of Stock"
-                    : reorderLevel > 0 && stock <= reorderLevel
-                      ? "Reorder Needed"
-                      : daysLeft <= 7
-                        ? "Low (≈7 days left)"
-                        : "Healthy";
+                const status = productInsightsStatusFor(stock, reorderLevel);
                 const purchasePrice = safeNumber(product.last_purchase_price ?? product.default_purchase_price ?? 0);
                 const sellPrice = safeNumber(product.default_selling_price ?? 0);
                 const margin = sellPrice > 0 ? sellPrice - purchasePrice : 0;
@@ -21221,12 +21212,12 @@ setCustomerOrganizationName("");
                 };
               })
               .sort((a, b) => {
-                const order = ["Out of Stock", "Reorder Needed", "Low (≈7 days left)", "Healthy"];
+                const order = ["Out of Stock", "Reorder Needed", "No Reorder Level", "Healthy"];
                 return order.indexOf(a.status) - order.indexOf(b.status);
               });
             const outOfStockCount = rows.filter((r) => r.status === "Out of Stock").length;
             const reorderNeededCount = rows.filter((r) => r.status === "Reorder Needed").length;
-            const lowCount = rows.filter((r) => r.status === "Low (≈7 days left)").length;
+            const missingLevelCount = rows.filter((r) => r.status === "No Reorder Level").length;
             const topAlerts = rows.filter((r) => r.status !== "Healthy").slice(0, 50);
             // A margin is only meaningful when a purchase price is known;
             // with no recorded cost the margin would read a misleading 100%.
@@ -21246,7 +21237,7 @@ setCustomerOrganizationName("");
                       {t('products.chipReorderNeeded')}: <b className={reorderNeededCount > 0 ? "text-warning" : ""}>{reorderNeededCount}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      {t('products.chipLow')}: <b className={lowCount > 0 ? "text-warning" : ""}>{lowCount}</b>
+                      {t('inventory.missingReorderLevel')}: <b className={missingLevelCount > 0 ? "text-warning" : ""}>{missingLevelCount}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">{t('stock.healthy')}: {rows.filter((r) => r.status === "Healthy").length}</span>
                   </div>
@@ -21278,7 +21269,7 @@ setCustomerOrganizationName("");
                                       : "text-warning"
                                   }
                                 >
-                                  {r.status === "Out of Stock" ? t('stock.outOfStock') : r.status === "Reorder Needed" ? t('products.statusReorderNeeded') : r.status === "Low (≈7 days left)" ? t('products.chipLow') : t('stock.healthy')}
+                                  {r.status === "Out of Stock" ? t('stock.outOfStock') : r.status === "Reorder Needed" ? t('products.statusReorderNeeded') : r.status === "No Reorder Level" ? t('inventory.missingReorderLevel') : t('stock.healthy')}
                                 </span>
                               </td>
                               <td className="py-2 pr-3 text-foreground/80">{r.stock}</td>
