@@ -19,6 +19,7 @@ import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
 import { hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
+import { computeReturnedValueBySalesTransaction, netCreditInvoiceAllocation } from "@/lib/sales/returns-offset";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
@@ -8978,27 +8979,12 @@ setCustomerOrganizationName("");
   // longer a receivable). Return lines carry the invoice line's price and
   // discount, so a line's returned value mirrors the sales-line value
   // formula (quantity × unit price − discount). Cancelled returns and
-  // returns not linked to an invoice offset nothing.
-  const returnedValueBySalesTransaction = salesReturns
-    .filter(
-      (salesReturn) =>
-        salesReturn.status !== "cancelled" && salesReturn.sales_transaction_id
-    )
-    .reduce<Record<string, number>>((totals, salesReturn) => {
-      const transactionId = String(salesReturn.sales_transaction_id);
-      const returnValue = salesReturnItems
-        .filter((item) => item.sales_return_id === salesReturn.id)
-        .reduce(
-          (sum, item) =>
-            sum +
-            safeNumber(item.quantity) * safeNumber(item.unit_price) -
-            safeNumber(item.discount),
-          0
-        );
-      totals[transactionId] =
-        (totals[transactionId] ?? 0) + Math.max(0, returnValue);
-      return totals;
-    }, {});
+  // returns not linked to an invoice offset nothing. The computation lives
+  // in src/lib/sales/returns-offset.ts so it is unit-testable.
+  const returnedValueBySalesTransaction = computeReturnedValueBySalesTransaction(
+    salesReturns,
+    salesReturnItems
+  );
   const creditAllocationByTransaction = salesTransactions
     .filter((transaction) => transaction.payment_type === "credit")
     .sort((a, b) => {
@@ -9021,38 +9007,24 @@ setCustomerOrganizationName("");
       >
     >((allocations, transaction) => {
       const invoiceTotal = salesInvoiceTotalsByTransaction[transaction.id] ?? 0;
-      const returnedAmount = Math.max(
-        0,
-        returnedValueBySalesTransaction[transaction.id] ?? 0
-      );
-      const explicitAllocatedAmount = Math.max(
-        0,
-        explicitAllocatedAmountsBySalesTransaction[transaction.id] ?? 0
-      );
-      const remainingAfterExplicitAllocation = Math.max(
-        0,
-        invoiceTotal - returnedAmount - explicitAllocatedAmount
-      );
       const availableLegacyPool = legacyUnallocatedPaymentPoolByCustomer[transaction.customer_id] ?? 0;
-      const fallbackAllocatedAmount = Math.min(
-        availableLegacyPool,
-        remainingAfterExplicitAllocation
-      );
+      const net = netCreditInvoiceAllocation({
+        invoiceTotal,
+        returnedAmount: returnedValueBySalesTransaction[transaction.id] ?? 0,
+        explicitAllocatedAmount:
+          explicitAllocatedAmountsBySalesTransaction[transaction.id] ?? 0,
+        legacyPoolAvailable: availableLegacyPool,
+      });
 
-      legacyUnallocatedPaymentPoolByCustomer[transaction.customer_id] = Math.max(
-        0,
-        availableLegacyPool - fallbackAllocatedAmount
-      );
+      legacyUnallocatedPaymentPoolByCustomer[transaction.customer_id] =
+        net.legacyPoolRemaining;
       allocations[transaction.id] = {
         invoiceTotal,
-        returnedAmount,
-        explicitAllocatedAmount,
-        fallbackAllocatedAmount,
-        allocatedAmount: explicitAllocatedAmount + fallbackAllocatedAmount,
-        remainingUnpaidAmount: Math.max(
-          0,
-          remainingAfterExplicitAllocation - fallbackAllocatedAmount
-        ),
+        returnedAmount: net.returnedAmount,
+        explicitAllocatedAmount: net.explicitAllocatedAmount,
+        fallbackAllocatedAmount: net.fallbackAllocatedAmount,
+        allocatedAmount: net.allocatedAmount,
+        remainingUnpaidAmount: net.remainingUnpaidAmount,
       };
       return allocations;
     }, {});

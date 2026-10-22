@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import HistoricalRecords from "@/components/import-export/HistoricalRecords";
 import { formatPKR } from "@/lib/tradeos/formatters";
+import { computeReturnedValueBySalesTransaction } from "@/lib/sales/returns-offset";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Props { organizationId: string | null; customerId?: string | null }
@@ -74,21 +75,19 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
     return map;
   }, [data.allocations]);
   // Confirmed sales returns linked to an invoice offset that invoice's
-  // outstanding balance (mirrors the receivables engine in page.tsx): a
-  // return line's value is quantity × unit price − discount, floored at 0
-  // per return. Cancelled returns and unlinked returns offset nothing.
-  const returnedByTransaction = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const salesReturn of data.salesReturns) {
-      if (String(salesReturn.status ?? "") === "cancelled" || !salesReturn.sales_transaction_id) continue;
-      const value = data.salesReturnItems
-        .filter((item) => String(item.sales_return_id) === String(salesReturn.id))
-        .reduce((sum, item) => sum + num(item.quantity) * num(item.unit_price) - num(item.discount), 0);
-      const key = String(salesReturn.sales_transaction_id);
-      map.set(key, (map.get(key) ?? 0) + Math.max(0, value));
-    }
-    return map;
-  }, [data.salesReturns, data.salesReturnItems]);
+  // outstanding balance — shared with the receivables engine in page.tsx
+  // via src/lib/sales/returns-offset.ts (single source of truth): a return
+  // line's value is quantity × unit price − discount, floored at 0 per
+  // return. Cancelled returns and unlinked returns offset nothing.
+  const returnedByTransaction = useMemo(
+    () =>
+      new Map(
+        Object.entries(
+          computeReturnedValueBySalesTransaction(data.salesReturns, data.salesReturnItems)
+        )
+      ),
+    [data.salesReturns, data.salesReturnItems]
+  );
   const matchingCustomers = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return data.customers;
