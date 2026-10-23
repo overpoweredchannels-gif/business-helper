@@ -4,6 +4,7 @@ import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { focusNextEntryField } from "./entry-navigation";
 import { activeSuggestionIndex } from "./search-selection";
 import { highlightSearchMatches, rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
+import { isBarcodeShaped } from "@/lib/invoices/scan-submit";
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 
 export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankedFields, maxSuggestions = 12, onBarcodeEnter }: {
@@ -12,12 +13,15 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
   products: Array<{ id: string; label: string }>;
   label?: string;
   searchPlaceholder?: string;
-  /** Optional exact-barcode Enter hook (used by the Retail POS find-product
-   * box): on Enter, the caller is offered the current text first; when it
-   * returns true the text was an exact saved barcode and the caller has
-   * added the product through its scan path, so suggestion selection is
-   * skipped. Returning false (or omitting the prop) keeps the existing
-   * dropdown behavior completely unchanged. */
+  /** Optional exact-barcode Enter hook (used by the sales surfaces'
+   * find-product boxes): on Enter, the caller is offered the current text
+   * first; when it returns true the text was an exact saved barcode and the
+   * caller has added the product through its scan path, so suggestion
+   * selection is skipped. Returning false keeps the dropdown behavior for
+   * ordinary search text — but barcode-shaped text (see isBarcodeShaped)
+   * never falls through to suggestion selection, because the ranker's
+   * prefix/substring code matches would silently pick a stranger product.
+   * Omitting the prop keeps the legacy behavior completely unchanged. */
   onBarcodeEnter?: (text: string) => boolean;
   /** Prebuilt id → structured rank fields, built by the caller in one pass and
    * memoized. When provided, suggestions are relevance-ranked with the shared
@@ -104,6 +108,17 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
             if (text && onBarcodeEnter(text)) {
               event.preventDefault(); event.stopPropagation();
               setQuery(null); setOpen(false); setActive(null);
+              return;
+            }
+            if (text && isBarcodeShaped(text)) {
+              // Barcode-shaped text that did not resolve to an exact saved
+              // barcode must never fall through to suggestion selection:
+              // the ranker awards prefix/substring code matches, so Enter
+              // would silently add a different product (BUG 1). The caller
+              // has already surfaced the not-found error through its scan
+              // path; swallow the Enter and let the cashier correct the
+              // code or pick from the dropdown deliberately.
+              event.preventDefault(); event.stopPropagation();
               return;
             }
           }

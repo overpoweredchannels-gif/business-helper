@@ -2,7 +2,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
-export function BarcodeInput({ value, onChange, onScan, disabled, autoFocus = false, label, focusSignal = 0, compact = false }: { value?: string; onChange?: (value: string) => void; onScan: (value: string) => void; disabled?: boolean; autoFocus?: boolean; label?: string; focusSignal?: number; compact?: boolean }) {
+export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled, autoFocus = false, label, focusSignal = 0, compact = false }: { value?: string; onChange?: (value: string) => void; onScan: (value: string) => unknown; /** Optional exact-match gate for the scanner auto-detect timer: when
+   * provided, a paused burst is submitted only if it returns true for the
+   * current text. A mid-burst pause can leave a partial code in the field;
+   * submitting that prefix used to add (or error on) the wrong thing, so
+   * auto-detect now validates before submitting and otherwise waits for
+   * Enter / more input. Manual Enter and the button are never gated. */
+  canAutoSubmit?: (value: string) => boolean; disabled?: boolean; autoFocus?: boolean; label?: string; focusSignal?: number; compact?: boolean }) {
   const { t } = useRegional();
   const displayLabel = label ?? t('barcode.scanBarcode');
   const [localValue, setLocalValue] = useState(""); const input = useRef<HTMLInputElement>(null);
@@ -40,6 +46,11 @@ export function BarcodeInput({ value, onChange, onScan, disabled, autoFocus = fa
         // Double-check the value hasn't changed (user didn't keep typing)
         const currentText = input.current?.value ?? "";
         if (currentText.trim() === value.trim() && currentText.trim().length >= 4) {
+          // A burst that paused mid-code leaves a partial prefix here. When
+          // the caller provides an exact-match gate, only a complete code
+          // may auto-submit; a partial one waits for the rest of the burst
+          // or for Enter instead of being submitted as-is.
+          if (canAutoSubmit && !canAutoSubmit(currentText.trim())) return;
           scan();
         }
       }, 150);
@@ -60,8 +71,17 @@ export function BarcodeInput({ value, onChange, onScan, disabled, autoFocus = fa
       if (value === undefined) input.current?.select();
       return;
     }
+    const outcome = onScan(scanned);
+    if (outcome === false || outcome === null) {
+      // The parent rejected the code (no product was added). The marker is
+      // set only on a confirmed add: arming it here used to poison the
+      // field, swallowing an immediate rescan of the same code — e.g. the
+      // cashier fixing the problem and scanning the item again — as if it
+      // were a duplicate trigger.
+      input.current?.focus();
+      return;
+    }
     lastSubmitted.current = scanned;
-    onScan(scanned);
     input.current?.focus();
     // Uncontrolled mode: keep the scanned code visible as cashier
     // confirmation, selected so the next scan or keystroke replaces it

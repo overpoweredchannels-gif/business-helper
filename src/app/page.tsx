@@ -22,7 +22,8 @@ import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } f
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction } from "@/lib/sales/returns-offset";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
-import { findBarcodeProduct, addBarcodeLine } from "@/lib/invoices/barcode";
+import { addBarcodeLine, addScannedLine } from "@/lib/invoices/barcode";
+import { createScanSubmitter, hasExactBarcodeMatch, isBarcodeShaped, type ScanSubmitter } from "@/lib/invoices/scan-submit";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
 import { createPurchase } from "@/lib/purchases/client";
 import { computePurchaseReturnValueByReturnId, computeReturnedValueByPurchaseTransaction, netPurchaseInvoiceAllocation } from "@/lib/purchases/returns-offset";
@@ -5451,6 +5452,29 @@ setCustomerOrganizationName("");
   const [keepSaleCustomer, setKeepSaleCustomer] = useState(false);
   const [saleScanUnit, setSaleScanUnit] = useState<UnitMode>("subunit");
   const [saleScanFocus, setSaleScanFocus] = useState(0);
+  // BUG 1: one scan choke point for BOTH sales surfaces. Every channel —
+  // the POS barcode box, the POS wedge capture, Enter in either
+  // find-product box, the invoice form's barcode box and its line selects —
+  // submits through this submitter: exact-match-or-error, dedupe across
+  // channels inside a short window, and a rejected code leaves no marker
+  // behind (see src/lib/invoices/scan-submit.ts). Accepted scans merge on
+  // the product alone via addScannedLine.
+  const scanSubmitter = useRef<ScanSubmitter | null>(null);
+  const runSalesScan = (code: string, options?: { reportNotFound?: boolean }) => {
+    const submitter = (scanSubmitter.current ??= createScanSubmitter());
+    const result = submitter.submit(code, products);
+    if (result.status === "not-found") {
+      if (options?.reportNotFound ?? true) setSalesError(result.message);
+      return result;
+    }
+    if (result.status === "added") {
+      clearCreditOverrideState();
+      const recent = selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${result.product.id}`] : undefined;
+      setSalesLines(current => addScannedLine(current, result.product, saleScanUnit, recent));
+      setSalesError(null);
+    }
+    return result;
+  };
   const restoreCounterSale = (sale: CounterSale) => {
     salesPricingRequest.current += 1;
     setSalesLines(sale.lines); setSelectedCustomerIdForSale(sale.customerId);
@@ -18166,7 +18190,7 @@ setCustomerOrganizationName("");
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
               products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
-              onScan={code => { try { const product = findBarcodeProduct(products, code); clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); return String(product.id); } catch (error) { setSalesError(error instanceof Error ? error.message : t('sell.barcodeNotFound')); return null; } }}
+              onScan={(code, options) => { const result = runSalesScan(code, options); return result.status === "not-found" ? null : String(result.product.id); }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
@@ -18174,15 +18198,10 @@ setCustomerOrganizationName("");
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
               <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? t('sell.quickSaleBarcode') : t('sell.scanProduct')}</h3>
               <label className="mb-3 block text-sm">{t('sell.eachScanAddsOne')} <select aria-label={t('sell.scanUnitAria')} value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">{t('sell.scanSubUnit')}</option><option value="main">{t('sell.scanMainUnit')}</option></select></label>
-              <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} onScan={code => {
-                try {
-                  const product = findBarcodeProduct(products, code);
-                  const recent = selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined;
-                  clearCreditOverrideState();
-                  setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, recent));
-                  setSalesError(null);
-                  setSalesMessage(t('sell.scanAdded').replace('{name}', product.name));
-                } catch (error) { setSalesError(error instanceof Error ? error.message : t('sell.barcodeNoMatch')); }
+              <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} onScan={code => {
+                const result = runSalesScan(code);
+                if (result.status === "added") setSalesMessage(t('sell.scanAdded').replace('{name}', result.product.name));
+                return result.status !== "not-found";
               }} />
               <p className="mt-2 text-sm">{t('sell.scanRepeatedHint')}</p>
               <label className="mt-3 block text-sm"><input type="checkbox" checked={quickSaleMode} onChange={event => setQuickSaleMode(event.target.checked)} /> {t('sell.keepQuickSale')}</label>
@@ -18394,7 +18413,7 @@ setCustomerOrganizationName("");
                       <div className="grid gap-2 sm:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.product')}</span>
-                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={invoiceProductOptions} rankedFields={invoiceProductRankFields} />
+                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={invoiceProductOptions} rankedFields={invoiceProductRankFields} onBarcodeEnter={text => runSalesScan(text, { reportNotFound: isBarcodeShaped(text) }).status !== "not-found"} />
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">

@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { buildCustomerSuggestionData } from "@/components/search/suggestion-items";
-import { findBarcodeProduct, type BarcodeLine } from "@/lib/invoices/barcode";
+import { type BarcodeLine } from "@/lib/invoices/barcode";
+import { hasExactBarcodeMatch, isBarcodeShaped } from "@/lib/invoices/scan-submit";
 import type { Product, Customer } from "@/lib/tradeos/types";
 import type { SearchRankFields } from "@/lib/products/search-rank";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
@@ -19,7 +20,7 @@ type BasketTemplate = { id: string; name: string; sale: CounterSale; savedAt: st
 
 export function RetailPOS({ scope, sale, products, customers, busy, owner, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; busy: boolean; owner: boolean;
-  scanUnit: "main" | "subunit"; cashReceived: string; focusSignal: number; onScan: (code: string) => string | null; onAdd: (id: string) => void;
+  scanUnit: "main" | "subunit"; cashReceived: string; focusSignal: number; onScan: (code: string, options?: { reportNotFound?: boolean }) => string | null; onAdd: (id: string) => void;
   onUnit: (unit: "main" | "subunit") => void; onCustomer: (id: string) => void;
   onLine: (index: number, field: keyof BarcodeLine, value: string) => void; onRemove: (index: number) => void;
   onSave: () => void; onCashReceived: (amount: string) => void;
@@ -114,12 +115,15 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
     return () => window.removeEventListener("beforeunload", warn);
   }, [sale.lines.length]);
   // One scan path for every way a barcode can arrive (barcode box, global
-  // scanner capture, find-product Enter): the parent adds the line, then
-  // focus moves to that line's quantity field.
-  const handleScannedCode = (code: string): boolean => {
-    const productId = onScan(code);
+  // scanner capture, find-product Enter): the parent adds the line through
+  // the shared scan choke point, then focus moves to that line's quantity
+  // field. Scan adds merge on the product alone, so the line lookup is by
+  // product only — the line a scan landed on may carry a different unit
+  // mode than the ambient scanUnit.
+  const handleScannedCode = (code: string, options?: { reportNotFound?: boolean }): boolean => {
+    const productId = onScan(code, options);
     if (!productId) return false;
-    const lineIndex = sale.lines.findIndex(line => String(line.product_id) === productId && (line.unit_mode ?? "main") === scanUnit);
+    const lineIndex = sale.lines.findIndex(line => String(line.product_id) === productId);
     setFocusQuantityFor(lineIndex >= 0 ? lineIndex : sale.lines.length);
     return true;
   };
@@ -129,11 +133,15 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
   // checkbox, or a quantity field), a rapid burst ending in Enter is a
   // scan: route it through the scan handler instead of letting the digits
   // land in the focused field or the Enter activate the focused button.
-  // The listener runs in the capture phase so a detected scan Enter is
-  // consumed before the section's entry-navigation handler can treat it as
-  // "advance / run the primary action". Human-speed typing never builds a
-  // burst (any gap >= 50ms resets it) and is left completely untouched, as
-  // are text inputs, textareas and selects other than the quantity fields.
+  // Once a burst is under way its characters are consumed here (never typed
+  // into a quantity field); its first character may still land, so a
+  // quantity field's value is snapshotted and restored when the scan
+  // completes. The listener runs in the capture phase so a detected scan
+  // Enter is consumed before the section's entry-navigation handler can
+  // treat it as "advance / run the primary action". Human-speed typing
+  // never builds a burst (any gap >= 50ms resets it) and is left completely
+  // untouched, as are text inputs, textareas and selects other than the
+  // quantity fields.
   const scanBurst = useRef("");
   const scanLastKeyAt = useRef(0);
   const scanQuantitySnapshot = useRef<{ index: number; value: string } | null>(null);
@@ -157,10 +165,16 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
       const now = Date.now();
       if (event.key === "Enter") {
         const code = scanBurst.current;
-        const rapid = code.length > 0 && now - scanLastKeyAt.current < GAP_MS;
         const snapshot = scanQuantitySnapshot.current;
         resetBurst();
-        if (code.length >= 4 && rapid) {
+        // Any Enter terminating a >= 4-char burst belongs to the scan path,
+        // however long the scanner paused before sending it: some wedges
+        // delay the terminating Enter past the inter-key gap, and letting
+        // it through used to hand it to entry navigation, which can run
+        // the primary action (Pay & Save) mid-scan. A surviving burst is
+        // rapid by construction — a slow keystroke resets it below — so
+        // the final gap no longer decides.
+        if (code.length >= 4) {
           event.preventDefault();
           event.stopPropagation();
           // Restore the quantity value the burst typed over, then add the
@@ -175,6 +189,17 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
       if (scanBurst.current && now - scanLastKeyAt.current >= GAP_MS) resetBurst();
       if (!scanBurst.current && quantityIndex !== undefined && target instanceof HTMLInputElement) {
         scanQuantitySnapshot.current = { index: Number(quantityIndex), value: target.value };
+      }
+      if (scanBurst.current) {
+        // A burst is already in progress (this character arrived within
+        // the gap of the previous one): it is a captured scan character,
+        // so consume it here instead of letting it type into the focused
+        // quantity field and corrupt the quantity keystroke by keystroke.
+        // Only the burst's first character can still land — at that point
+        // it is indistinguishable from human typing — and the snapshot
+        // above restores the field when the scan completes.
+        event.preventDefault();
+        event.stopPropagation();
       }
       scanBurst.current += event.key;
       scanLastKeyAt.current = now;
@@ -265,14 +290,16 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
       <button type="button" disabled={busy} onClick={onAdvanced} className="min-h-11 rounded-lg border px-4 text-sm font-medium">Full invoice / Advanced options</button>
     </div>
     <fieldset disabled={busy} className="grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
-      <div><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={handleScannedCode} /></div>
+      <div><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={handleScannedCode} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} /></div>
       <div className="space-y-3"><label className="block text-sm font-medium">Find product</label><ProductSearchSelect key={searchKey} value="" products={productOptions} rankedFields={productRankFields} onBarcodeEnter={text => {
-        // An exact saved barcode typed here adds through the scan path
-        // instead of needing a dropdown pick. Anything else returns false
-        // and keeps the normal suggestion behavior — no error is raised
-        // for plain search text.
-        try { findBarcodeProduct(products, text); } catch { return false; }
-        return handleScannedCode(text);
+        // Every Enter text is offered to the shared scan choke point
+        // first: an exact saved barcode adds through the scan path instead
+        // of needing a dropdown pick. Plain search text reports no error
+        // and returns false, keeping the normal suggestion behavior;
+        // barcode-shaped text that matches nothing reports the not-found
+        // error there, and ProductSearchSelect blocks its fuzzy fallback
+        // so a near-match stranger is never added instead.
+        return handleScannedCode(text, { reportNotFound: isBarcodeShaped(text) });
       }} onChange={id => { if (id) { setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} />
         <label className="flex items-center gap-3 text-sm">Add one<select value={scanUnit} onChange={event => onUnit(event.target.value as "main" | "subunit")} className="min-h-11 rounded border border-input bg-background px-3"><option value="subunit">Piece / sub-unit</option><option value="main">Box / main unit</option></select></label>
         <label className="block text-sm font-medium">Customer</label><ProductSearchSelect label="Customer" value={sale.customerId ?? ""} rankedFields={customerRankFields} products={customerOptions} onChange={onCustomer} />

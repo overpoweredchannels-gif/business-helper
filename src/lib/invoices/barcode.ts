@@ -45,3 +45,17 @@ export function addBarcodeLine<T extends BarcodeLine>(lines: T[], product: Barco
   const empty = lines.findIndex(line => !line.product_id && !line.quantity && !line.selling_price && !line.discount && !line.bonus);
   return empty < 0 ? [...lines, next] : lines.map((line, index) => index === empty ? next : line);
 }
+/**
+ * Add one unit from a SCAN (BUG 1). Scan adds merge on the product alone:
+ * the ambient "add one" unit mode is a cashier preference for the NEXT new
+ * line, not part of a scanned product's identity — merging on
+ * (product, mode) used to split one scanned product onto two lines whenever
+ * the mode differed between scans. An existing line keeps its own mode and
+ * just gains a unit; only a genuinely new product delegates to
+ * addBarcodeLine (which applies the requested mode and pricing).
+ */
+export function addScannedLine<T extends BarcodeLine>(lines: T[], product: BarcodeProduct, requestedMode: "main" | "subunit", recent?: { last_selling_price: number; unit_mode: "main" | "subunit" }): (T | BarcodeLine)[] {
+  const existing = lines.findIndex(line => line.product_id === String(product.id));
+  if (existing >= 0) return lines.map((line, index) => index === existing ? { ...line, quantity: String((Number(line.quantity) || 0) + 1) } : line);
+  return addBarcodeLine(lines, product, requestedMode, recent);
+}
