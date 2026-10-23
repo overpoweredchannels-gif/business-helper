@@ -124,7 +124,6 @@ import {
   formatDate,
   formatDateTime,
   formatNumber,
-  formatPKR,
   getDateOnly,
   getMonthRange,
   getUsableTimestamp,
@@ -401,7 +400,7 @@ export default function Home() {
   // the already-authorized product list. Tenant/role/permission filtering stays
   // with the products fetch; this only reorders for display.
   const productSuggestionData = useMemo(
-    () => buildProductSuggestionData(products, brandNameById, categoryNameById, formatPKR),
+    () => buildProductSuggestionData(products, brandNameById, categoryNameById, formatBooksMoney),
     [products, brandNameById, categoryNameById],
   );
 
@@ -2727,7 +2726,7 @@ setCustomerOrganizationName("");
         note: "This will create a sales invoice and sales item.",
       };
     } else if (actionType === "create_expense_draft") {
-      confirmationSummary = `Prepare expense draft for ${expenseType || "unknown expense type"} amount ${formatPKR(amount)}.`;
+      confirmationSummary = `Prepare expense draft for ${expenseType || "unknown expense type"} amount ${formatBooksMoney(amount)}.`;
       executionPreview = {
         expense_type: expenseType || null,
         amount,
@@ -8118,8 +8117,8 @@ setCustomerOrganizationName("");
           productName: product?.name ?? t('sell.unknownProduct'),
           quantity: safeNumber(item.quantity_ordered),
           unit,
-          priceText: formatPKR(safeNumber(item.unit_price)),
-          totalText: formatPKR(safeNumber(item.quantity_ordered) * safeNumber(item.unit_price)),
+          priceText: formatBooksMoney(safeNumber(item.unit_price)),
+          totalText: formatBooksMoney(safeNumber(item.quantity_ordered) * safeNumber(item.unit_price)),
         };
       }),
       [t('print.noLineItems'), "-", "-", "-"],
@@ -8431,8 +8430,8 @@ setCustomerOrganizationName("");
           productName: product?.name ?? t('sell.unknownProduct'),
           quantity: safeNumber(item.quantity),
           unit,
-          priceText: formatPKR(safeNumber(item.unit_price)),
-          totalText: formatPKR(safeNumber(item.quantity) * safeNumber(item.unit_price)),
+          priceText: formatBooksMoney(safeNumber(item.unit_price)),
+          totalText: formatBooksMoney(safeNumber(item.quantity) * safeNumber(item.unit_price)),
         };
       }),
       [t('print.noLineItems'), "-", "-", "-"],
@@ -8895,8 +8894,8 @@ setCustomerOrganizationName("");
           productName: product?.name ?? t('sell.unknownProduct'),
           quantity: safeNumber(item.quantity_ordered),
           unit,
-          priceText: formatPKR(unitPrice),
-          totalText: formatPKR(unitPrice * Number(item.quantity_ordered) - discount),
+          priceText: formatBooksMoney(unitPrice),
+          totalText: formatBooksMoney(unitPrice * Number(item.quantity_ordered) - discount),
         };
       }),
       [t('print.noLineItems'), "-", "-", "-"],
@@ -9134,8 +9133,8 @@ setCustomerOrganizationName("");
           productName: product?.name ?? t('sell.unknownProduct'),
           quantity: safeNumber(item.quantity),
           unit,
-          priceText: formatPKR(unitPrice),
-          totalText: formatPKR(unitPrice * safeNumber(item.quantity) - discount),
+          priceText: formatBooksMoney(unitPrice),
+          totalText: formatBooksMoney(unitPrice * safeNumber(item.quantity) - discount),
         };
       }),
       [t('print.noLineItems'), "-", "-", "-"],
@@ -11431,13 +11430,13 @@ setCustomerOrganizationName("");
   const getAnalyticsTopPriorities = () => {
     const priorities: string[] = [];
     const topOutstanding = businessIntelligenceAnalytics.customersWithHighOutstanding[0];
-    if (topOutstanding) priorities.push(`Collect overdue or outstanding payments from ${topOutstanding.customerName} (${formatPKR(topOutstanding.outstandingBalance)}).`);
+    if (topOutstanding) priorities.push(`Collect overdue or outstanding payments from ${topOutstanding.customerName} (${formatBooksMoney(topOutstanding.outstandingBalance)}).`);
     const topOutOfStock = businessIntelligenceAnalytics.outOfStockProducts[0];
     if (topOutOfStock) priorities.push(`Reorder ${topOutOfStock.productName}; current stock is ${topOutOfStock.currentStock}.`);
     const topLowStock = businessIntelligenceAnalytics.lowStockProducts[0];
     if (!topOutOfStock && topLowStock) priorities.push(`Prepare reorder for ${topLowStock.productName}; stock is near reorder level.`);
     const topExpense = businessIntelligenceAnalytics.expensesByType[0];
-    if (topExpense) priorities.push(`Review ${topExpense.expenseType} expenses (${formatPKR(topExpense.totalAmount)}).`);
+    if (topExpense) priorities.push(`Review ${topExpense.expenseType} expenses (${formatBooksMoney(topExpense.totalAmount)}).`);
     const lowMargin = businessIntelligenceAnalytics.lowMarginProducts[0];
     if (lowMargin) priorities.push(`Review pricing or cost for low-margin product ${lowMargin.productName}.`);
     const slowMoving = businessIntelligenceAnalytics.slowMovingProducts[0];
@@ -11962,7 +11961,7 @@ setCustomerOrganizationName("");
         return {
           key: `overdue-${transaction.id}`,
           title,
-          reason: `Invoice ${transaction.invoice_number} is overdue with ${formatPKR(remainingUnpaidAmount)} remaining.`,
+          reason: `Invoice ${transaction.invoice_number} is overdue with ${formatBooksMoney(remainingUnpaidAmount)} remaining.`,
           task_type: "payment_collection",
           priority: "urgent",
           customer_id: transaction.customer_id,
@@ -12344,11 +12343,11 @@ setCustomerOrganizationName("");
           productName: product?.name ?? t('sell.unknownProduct'),
           quantity,
           unit,
-          priceText: formatPKR(sellingPrice),
-          totalText: lineDiscount > 0 ? `${formatPKR(lineTotal)} (${t('print.disc')}: ${formatPKR(lineDiscount)})` : formatPKR(lineTotal),
+          priceText: formatBooksMoney(sellingPrice),
+          totalText: lineDiscount > 0 ? `${formatBooksMoney(lineTotal)} (${t('print.disc')}: ${formatBooksMoney(lineDiscount)})` : formatBooksMoney(lineTotal),
         };
       }),
-      [t('print.noLineItems'), "-", formatPKR(0), formatPKR(0)],
+      [t('print.noLineItems'), "-", formatBooksMoney(0), formatBooksMoney(0)],
     );
 
     openPrintPreview(
@@ -12371,20 +12370,20 @@ setCustomerOrganizationName("");
         <tbody>${lineRowsHtml}</tbody>
       </table>
       <div class="summary">
-        <p><strong>${t('print.grandTotal')}:</strong> ${escapeHtml(formatPKR(invoiceTotal))}</p>
+        <p><strong>${t('print.grandTotal')}:</strong> ${escapeHtml(formatBooksMoney(invoiceTotal))}</p>
         ${
           Number(transaction.discount_amount) > 0
-            ? `<p><strong>${t('common.discount')}:</strong> ${escapeHtml(formatPKR(Number(transaction.discount_amount)))}</p>`
+            ? `<p><strong>${t('common.discount')}:</strong> ${escapeHtml(formatBooksMoney(Number(transaction.discount_amount)))}</p>`
             : ""
         }
         ${
           Number(transaction.tax_amount) > 0
-            ? `<p><strong>${t('common.tax')} (${escapeHtml(String(transaction.tax_rate ?? 0))}%):</strong> ${escapeHtml(formatPKR(Number(transaction.tax_amount)))}</p>`
+            ? `<p><strong>${t('common.tax')} (${escapeHtml(String(transaction.tax_rate ?? 0))}%):</strong> ${escapeHtml(formatBooksMoney(Number(transaction.tax_amount)))}</p>`
             : ""
         }
         ${
           transaction.payment_type === "credit"
-            ? `<p><strong>${t('sell.remainingBalance')}:</strong> ${escapeHtml(formatPKR(creditAllocation?.remainingUnpaidAmount ?? 0))}</p>`
+            ? `<p><strong>${t('sell.remainingBalance')}:</strong> ${escapeHtml(formatBooksMoney(creditAllocation?.remainingUnpaidAmount ?? 0))}</p>`
             : ""
         }
       </div>
@@ -12428,13 +12427,13 @@ setCustomerOrganizationName("");
           productName: product?.name ?? t('sell.unknownProduct'),
           quantity,
           unit,
-          priceText: formatPKR(purchasePrice),
-          totalText: formatPKR(quantity * purchasePrice),
+          priceText: formatBooksMoney(purchasePrice),
+          totalText: formatBooksMoney(quantity * purchasePrice),
           batchText: item.batch_number ?? "-",
           expiryText: item.expiry_date ? formatDate(item.expiry_date) : "-",
         };
       }),
-      [t('print.noLineItems'), "-", formatPKR(0), formatPKR(0), "-", "-"],
+      [t('print.noLineItems'), "-", formatBooksMoney(0), formatBooksMoney(0), "-", "-"],
     );
 
     openPrintPreview(
@@ -12452,10 +12451,10 @@ setCustomerOrganizationName("");
         <tbody>${lineRowsHtml}</tbody>
       </table>
       <div class="summary">
-        <p><strong>${t('buy.purchaseTotal')}:</strong> ${escapeHtml(formatPKR(purchaseValue))}</p>
-        <p><strong>${t('print.linkedExpenses')}:</strong> ${escapeHtml(formatPKR(linkedExpenseTotal))}</p>
-        <p><strong>${t('buy.landedInvoiceCost')}:</strong> ${escapeHtml(formatPKR(landedInvoiceCost))}</p>
-        <p><strong>${t('buy.remainingPayable')}:</strong> ${escapeHtml(formatPKR(remainingPayable))}</p>
+        <p><strong>${t('buy.purchaseTotal')}:</strong> ${escapeHtml(formatBooksMoney(purchaseValue))}</p>
+        <p><strong>${t('print.linkedExpenses')}:</strong> ${escapeHtml(formatBooksMoney(linkedExpenseTotal))}</p>
+        <p><strong>${t('buy.landedInvoiceCost')}:</strong> ${escapeHtml(formatBooksMoney(landedInvoiceCost))}</p>
+        <p><strong>${t('buy.remainingPayable')}:</strong> ${escapeHtml(formatBooksMoney(remainingPayable))}</p>
       </div>
       ${businessPrintFooterHtml()}`
     );
@@ -13134,11 +13133,11 @@ setCustomerOrganizationName("");
     const alerts = summaryData.alerts ?? {};
     const lines = [
       `${summaryData.date_range?.label ?? "Today"} briefing:`,
-      `Sales: ${safeNumber(sales.count)} invoices totaling ${formatPKR(safeNumber(sales.total_amount))}.`,
-      `Purchases: ${safeNumber(purchases.count)} invoices totaling ${formatPKR(safeNumber(purchases.total_amount))}.`,
-      `Customer collections: ${safeNumber(customerPayments.count)} payments totaling ${formatPKR(safeNumber(customerPayments.total_amount))}.`,
-      `Supplier payments: ${safeNumber(supplierPayments.count)} payments totaling ${formatPKR(safeNumber(supplierPayments.total_amount))}.`,
-      `Expenses: ${safeNumber(expensesSummary.count)} entries totaling ${formatPKR(safeNumber(expensesSummary.total_amount))}.`,
+      `Sales: ${safeNumber(sales.count)} invoices totaling ${formatBooksMoney(safeNumber(sales.total_amount))}.`,
+      `Purchases: ${safeNumber(purchases.count)} invoices totaling ${formatBooksMoney(safeNumber(purchases.total_amount))}.`,
+      `Customer collections: ${safeNumber(customerPayments.count)} payments totaling ${formatBooksMoney(safeNumber(customerPayments.total_amount))}.`,
+      `Supplier payments: ${safeNumber(supplierPayments.count)} payments totaling ${formatBooksMoney(safeNumber(supplierPayments.total_amount))}.`,
+      `Expenses: ${safeNumber(expensesSummary.count)} entries totaling ${formatBooksMoney(safeNumber(expensesSummary.total_amount))}.`,
       `Inventory: ${safeNumber(inventory.stock_summary?.outOfStockCount)} out of stock, ${safeNumber(inventory.stock_summary?.urgentReorderCount)} urgent reorder, ${safeNumber(inventory.stock_summary?.healthyCount)} healthy, ${safeNumber(inventory.stock_summary?.missingReorderLevelCount)} missing a reorder level.`,
       `Alerts: ${safeNumber(alerts.active_count)} active, including ${safeNumber(alerts.critical_count)} critical and ${safeNumber(alerts.high_count)} high severity.`,
       `Market signals: ${getArrayValue(market.critical_items).length} critical, ${getArrayValue(market.high_impact_items).length} high impact, ${getArrayValue(market.price_up_signals).length} price-up, ${getArrayValue(market.supply_shortage_signals).length} supply-shortage.`,
@@ -13242,7 +13241,7 @@ setCustomerOrganizationName("");
         candidates.push({
           alert_type: "payment",
           title: `Overdue receivable: ${customer.customer_name}`,
-          summary: `${formatPKR(summary.overdueAmount)} overdue across ${summary.overdueInvoiceCount} invoice(s).`,
+          summary: `${formatBooksMoney(summary.overdueAmount)} overdue across ${summary.overdueInvoiceCount} invoice(s).`,
           severity: summary.overdueAmount >= 50000 ? "high" : "medium",
           source_type: "customer_credit",
           source_entity_type: "customer",
@@ -13270,7 +13269,7 @@ setCustomerOrganizationName("");
         candidates.push({
           alert_type: "payment",
           title: `Supplier payable pressure: ${supplier.supplier_name}`,
-          summary: `Current payable is ${formatPKR(payable)}.`,
+          summary: `Current payable is ${formatBooksMoney(payable)}.`,
           severity: payable >= 250000 ? "high" : "medium",
           source_type: "supplier_ledger",
           source_entity_type: "supplier",
@@ -13285,7 +13284,7 @@ setCustomerOrganizationName("");
       candidates.push({
         alert_type: "expense",
         title: "High expenses recorded today",
-        summary: `${todayExpenses.length} expense entries total ${formatPKR(todayExpenseTotal)} today.`,
+        summary: `${todayExpenses.length} expense entries total ${formatBooksMoney(todayExpenseTotal)} today.`,
         severity: todayExpenseTotal >= 75000 ? "high" : "medium",
         source_type: "expenses",
         source_entity_type: "expense_day",
@@ -14616,7 +14615,7 @@ setCustomerOrganizationName("");
     const summary = getCustomerCreditSummary(customer);
     const invoiceRows =
       customerCreditTransactions.length === 0
-        ? [[t('print.noCreditInvoices'), "-", formatPKR(0), formatPKR(0), formatPKR(0), "-"]]
+        ? [[t('print.noCreditInvoices'), "-", formatBooksMoney(0), formatBooksMoney(0), formatBooksMoney(0), "-"]]
         : customerCreditTransactions.map((transaction) => {
             const allocation = creditAllocationByTransaction[transaction.id];
             const remainingBalance = Math.max(0, allocation?.remainingUnpaidAmount ?? 0);
@@ -14630,9 +14629,9 @@ setCustomerOrganizationName("");
             return [
               transaction.invoice_number,
               formatDate(transaction.sale_date ?? transaction.created_at),
-              formatPKR(allocation?.invoiceTotal ?? 0),
-              formatPKR(allocation?.allocatedAmount ?? 0),
-              formatPKR(remainingBalance),
+              formatBooksMoney(allocation?.invoiceTotal ?? 0),
+              formatBooksMoney(allocation?.allocatedAmount ?? 0),
+              formatBooksMoney(remainingBalance),
               status,
             ];
           });
@@ -14644,9 +14643,9 @@ setCustomerOrganizationName("");
       <div class="grid">
         <div><strong>${t('sell.customer')}:</strong> ${escapeHtml(customer.customer_name)}</div>
         <div><strong>${t('customers.creditPolicyPrefix')}</strong> ${escapeHtml((({ cash_only: t('customers.policyCashOnly'), limit_only: t('customers.policyLimitOnly'), days_only: t('customers.policyDaysOnly'), limit_and_days: t('customers.policyLimitAndDays'), unrestricted: t('customers.policyUnrestricted') } as Record<string, string>)[customer.credit_policy ?? "cash_only"] ?? t('customers.policyCashOnly')))}</div>
-        <div><strong>${t('print.totalCreditSales')}:</strong> ${escapeHtml(formatPKR(totalCreditSales))}</div>
-        <div><strong>${t('buy.totalPayments')}:</strong> ${escapeHtml(formatPKR(totalPayments))}</div>
-        <div><strong>${t('print.outstandingBalance')}:</strong> ${escapeHtml(formatPKR(summary.outstandingBalance))}</div>
+        <div><strong>${t('print.totalCreditSales')}:</strong> ${escapeHtml(formatBooksMoney(totalCreditSales))}</div>
+        <div><strong>${t('buy.totalPayments')}:</strong> ${escapeHtml(formatBooksMoney(totalPayments))}</div>
+        <div><strong>${t('print.outstandingBalance')}:</strong> ${escapeHtml(formatBooksMoney(summary.outstandingBalance))}</div>
       </div>
       <table>
         <thead>${renderHeaderRows([t('sell.invoiceLabel'), t('sell.saleDate'), t('sell.invoiceTotal'), t('money.paid'), t('payments.remaining'), t('sell.statusLabel')])}</thead>
@@ -14662,14 +14661,14 @@ setCustomerOrganizationName("");
     if (!supplier) return;
     const ledgerRows =
       supplierLedgerEntries.length === 0
-        ? [[t('buy.noLedgerEntries'), "-", "-", formatPKR(0), formatPKR(0), formatPKR(0)]]
+        ? [[t('buy.noLedgerEntries'), "-", "-", formatBooksMoney(0), formatBooksMoney(0), formatBooksMoney(0)]]
         : supplierLedgerEntries.map((entry) => [
             entry.date ?? "-",
             entry.reference,
             entry.notes || "-",
-            formatPKR(entry.debit),
-            formatPKR(entry.credit),
-            formatPKR(entry.runningBalance),
+            formatBooksMoney(entry.debit),
+            formatBooksMoney(entry.credit),
+            formatBooksMoney(entry.runningBalance),
           ]);
 
     openPrintPreview(
@@ -14679,15 +14678,15 @@ setCustomerOrganizationName("");
       <div class="grid">
         <div><strong>${t('buy.supplierPrefix')}</strong> ${escapeHtml(supplier.supplier_name)}</div>
         <div><strong>${t('print.dateRange')}:</strong> ${escapeHtml(supplierLedgerStartDate || t('buy.allTime'))} ${escapeHtml(t('buy.dateSeparator'))} ${escapeHtml(supplierLedgerEndDate || t('buy.allTime'))}</div>
-        <div><strong>${t('buy.totalPurchases')}:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalPurchases))}</div>
-        <div><strong>${t('buy.totalPayments')}:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalPayments))}</div>
-        <div><strong>${t('buy.totalReturns')}:</strong> ${escapeHtml(formatPKR(supplierLedgerTotalReturns))}</div>
-        <div><strong>${t('print.currentPayable')}:</strong> ${escapeHtml(formatPKR(supplierLedgerCurrentBalance))}</div>
-        <div><strong>${t('buy.unallocatedPayments')}:</strong> ${escapeHtml(formatPKR(supplierLedgerUnallocatedPayments))}</div>
+        <div><strong>${t('buy.totalPurchases')}:</strong> ${escapeHtml(formatBooksMoney(supplierLedgerTotalPurchases))}</div>
+        <div><strong>${t('buy.totalPayments')}:</strong> ${escapeHtml(formatBooksMoney(supplierLedgerTotalPayments))}</div>
+        <div><strong>${t('buy.totalReturns')}:</strong> ${escapeHtml(formatBooksMoney(supplierLedgerTotalReturns))}</div>
+        <div><strong>${t('print.currentPayable')}:</strong> ${escapeHtml(formatBooksMoney(supplierLedgerCurrentBalance))}</div>
+        <div><strong>${t('buy.unallocatedPayments')}:</strong> ${escapeHtml(formatBooksMoney(supplierLedgerUnallocatedPayments))}</div>
       </div>
       <table>
         <thead>${renderHeaderRows([t('money.date'), t('buy.reference'), t('sell.notesLabel'), t('buy.debit'), t('buy.credit'), t('buy.runningBalance')])}</thead>
-        <tbody>${renderRows([["-", t('print.openingBalance'), t('buy.openingBalanceNote'), formatPKR(0), formatPKR(0), formatPKR(0)], ...ledgerRows])}</tbody>
+        <tbody>${renderRows([["-", t('print.openingBalance'), t('buy.openingBalanceNote'), formatBooksMoney(0), formatBooksMoney(0), formatBooksMoney(0)], ...ledgerRows])}</tbody>
       </table>
       ${businessPrintFooterHtml()}`
     );
@@ -16347,7 +16346,7 @@ setCustomerOrganizationName("");
             label: product.name,
             detail: [
               product.sku,
-              product.default_selling_price != null ? formatPKR(product.default_selling_price) : null,
+              product.default_selling_price != null ? formatBooksMoney(product.default_selling_price) : null,
             ]
               .filter(Boolean)
               .join(" · "),
@@ -16404,7 +16403,7 @@ setCustomerOrganizationName("");
 
   // ── Home dashboard: cards the user dropped in from the sidebar ────────────
   const buildSectionSummary = (section: SectionId): SectionSummary => {
-    const money = (value: unknown) => formatPKR(safeNumber(value));
+    const money = (value: unknown) => formatBooksMoney(safeNumber(value));
     switch (section) {
       case "sales":
         return {
@@ -17034,7 +17033,7 @@ setCustomerOrganizationName("");
             })()}
             revenueData={businessIntelligenceAnalytics.monthlySales.slice(-6)}
             profitData={businessIntelligenceAnalytics.dailyTrends.slice(-14).map((d) => ({ label: d.date.slice(5), value: d.profit }))}
-            topCustomers={businessIntelligenceAnalytics.topCustomersBySales.slice(0, 5).map((c) => ({ name: c.customerName, value: formatPKR(c.totalSales) }))}
+            topCustomers={businessIntelligenceAnalytics.topCustomersBySales.slice(0, 5).map((c) => ({ name: c.customerName, value: formatBooksMoney(c.totalSales) }))}
             onViewAllActivity={() => handleSectionChange("activity-logs")}
             topProducts={topSellingProducts.slice(0, 5).map((p) => ({ name: p.productName, value: String(p.quantitySold) }))}
             onQuickAction={(label) => {
@@ -17216,22 +17215,22 @@ setCustomerOrganizationName("");
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              [t('bi.totalSales'), formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount)],
+              [t('bi.totalSales'), formatBooksMoney(businessIntelligenceAnalytics.overview.totalSalesAmount)],
               [t('bi.salesInvoices'), businessIntelligenceAnalytics.overview.salesInvoiceCount],
-              [t('bi.totalPurchases'), formatPKR(businessIntelligenceAnalytics.overview.totalPurchasesAmount)],
+              [t('bi.totalPurchases'), formatBooksMoney(businessIntelligenceAnalytics.overview.totalPurchasesAmount)],
               [t('bi.purchaseInvoices'), businessIntelligenceAnalytics.overview.purchaseInvoiceCount],
-              [t('bi.collections'), formatPKR(businessIntelligenceAnalytics.overview.customerCollectionsTotal)],
-              [t('bi.supplierPayments'), formatPKR(businessIntelligenceAnalytics.overview.supplierPaymentsTotal)],
-              [t('bi.expenses'), formatPKR(businessIntelligenceAnalytics.overview.expensesTotal)],
-              [t('bi.estimatedNetProfit'), formatPKR(businessIntelligenceAnalytics.overview.estimatedNetProfit)],
-              [t('bi.estimatedGrossProfit'), formatPKR(businessIntelligenceAnalytics.overview.estimatedGrossProfit)],
-              [t('bi.averageSaleValue'), formatPKR(businessIntelligenceAnalytics.overview.averageSaleValue)],
+              [t('bi.collections'), formatBooksMoney(businessIntelligenceAnalytics.overview.customerCollectionsTotal)],
+              [t('bi.supplierPayments'), formatBooksMoney(businessIntelligenceAnalytics.overview.supplierPaymentsTotal)],
+              [t('bi.expenses'), formatBooksMoney(businessIntelligenceAnalytics.overview.expensesTotal)],
+              [t('bi.estimatedNetProfit'), formatBooksMoney(businessIntelligenceAnalytics.overview.estimatedNetProfit)],
+              [t('bi.estimatedGrossProfit'), formatBooksMoney(businessIntelligenceAnalytics.overview.estimatedGrossProfit)],
+              [t('bi.averageSaleValue'), formatBooksMoney(businessIntelligenceAnalytics.overview.averageSaleValue)],
               [t('bi.activeCustomers'), businessIntelligenceAnalytics.overview.activeCustomerCount],
               [t('bi.productsSold'), businessIntelligenceAnalytics.overview.productsSoldCount],
               [t('bi.lowStock'), businessIntelligenceAnalytics.overview.lowStockCount],
               [t('bi.outOfStock'), businessIntelligenceAnalytics.overview.outOfStockCount],
               [t('bi.unknownCostLines'), businessIntelligenceAnalytics.overview.unknownCostLines],
-              [t('bi.unknownCostRevenue'), formatPKR(businessIntelligenceAnalytics.overview.unknownCostRevenue)],
+              [t('bi.unknownCostRevenue'), formatBooksMoney(businessIntelligenceAnalytics.overview.unknownCostRevenue)],
             ].map(([label, value]) => (
               <div key={String(label)} className="rounded border border-border bg-card p-4 shadow-sm">
                 <div className="text-sm text-muted-foreground/80">{label}</div>
@@ -17290,7 +17289,7 @@ setCustomerOrganizationName("");
                         {businessIntelligenceAnalytics.mostProfitable.map((product) => (
                           <tr key={product.productId}>
                             <td className="py-2 pr-3">{product.productName}</td>
-                            <td className="py-2 pr-3">{formatPKR(product.grossProfit)}</td>
+                            <td className="py-2 pr-3">{formatBooksMoney(product.grossProfit)}</td>
                             <td className="py-2 pr-3">{product.profitMargin.toFixed(1)}%</td>
                           </tr>
                         ))}
@@ -17337,7 +17336,7 @@ setCustomerOrganizationName("");
                         <div key={customer.customerId}>
                           <div className="mb-1 flex items-center justify-between gap-3 text-sm">
                             <span className="truncate text-foreground">{customer.customerName}</span>
-                            <span className="font-medium text-foreground">{formatPKR(customer.totalSales)}</span>
+                            <span className="font-medium text-foreground">{formatBooksMoney(customer.totalSales)}</span>
                           </div>
                           <div className="h-2 rounded bg-muted">
                             <div className="h-2 rounded bg-success" style={{ width: getBiBarWidth(customer.totalSales, maxValue) }} />
@@ -17364,9 +17363,9 @@ setCustomerOrganizationName("");
                       {businessIntelligenceAnalytics.customersWithHighOutstanding.slice(0, 10).map((customer) => (
                         <tr key={customer.customerId}>
                           <td className="py-2 pr-3">{customer.customerName}</td>
-                          <td className="py-2 pr-3">{formatPKR(customer.paymentsReceived)}</td>
-                          <td className="py-2 pr-3">{formatPKR(customer.outstandingBalance)}</td>
-                          <td className="py-2 pr-3">{formatPKR(customer.overdueAmount)}</td>
+                          <td className="py-2 pr-3">{formatBooksMoney(customer.paymentsReceived)}</td>
+                          <td className="py-2 pr-3">{formatBooksMoney(customer.outstandingBalance)}</td>
+                          <td className="py-2 pr-3">{formatBooksMoney(customer.overdueAmount)}</td>
                         </tr>
                       ))}
                       {businessIntelligenceAnalytics.customersWithHighOutstanding.length === 0 && (
@@ -17403,8 +17402,8 @@ setCustomerOrganizationName("");
                     {businessIntelligenceAnalytics.staffAnalytics.map((staff) => (
                       <tr key={staff.profileId}>
                         <td className="py-2 pr-3">{staff.staffName}</td>
-                        <td className="py-2 pr-3">{formatPKR(staff.salesAmount)}</td>
-                        <td className="py-2 pr-3">{formatPKR(staff.paymentsCollected)}</td>
+                        <td className="py-2 pr-3">{formatBooksMoney(staff.salesAmount)}</td>
+                        <td className="py-2 pr-3">{formatBooksMoney(staff.paymentsCollected)}</td>
                         <td className="py-2 pr-3">{staff.tasksCompleted}/{staff.tasksCreated}</td>
                         <td className="py-2 pr-3">{staff.dutyHours.toFixed(1)}</td>
                         <td className="py-2 pr-3">{formatDateTime(staff.lastLocationAt)}</td>
@@ -17435,7 +17434,7 @@ setCustomerOrganizationName("");
                         <div key={expense.expenseType}>
                           <div className="mb-1 flex items-center justify-between gap-3 text-sm">
                             <span className="truncate text-foreground">{expense.expenseType} ({expense.entryCount})</span>
-                            <span className="font-medium text-foreground">{formatPKR(expense.totalAmount)}</span>
+                            <span className="font-medium text-foreground">{formatBooksMoney(expense.totalAmount)}</span>
                           </div>
                           <div className="h-2 rounded bg-muted">
                             <div className="h-2 rounded bg-destructive" style={{ width: getBiBarWidth(expense.totalAmount, maxValue) }} />
@@ -17451,15 +17450,15 @@ setCustomerOrganizationName("");
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded border border-border bg-muted/30 p-3">
                     <div className="text-xs text-muted-foreground/80">{t('bi.purchaseLinked')}</div>
-                    <div className="mt-1 font-semibold text-foreground">{formatPKR(businessIntelligenceAnalytics.purchaseLinkedExpenseTotal)}</div>
+                    <div className="mt-1 font-semibold text-foreground">{formatBooksMoney(businessIntelligenceAnalytics.purchaseLinkedExpenseTotal)}</div>
                   </div>
                   <div className="rounded border border-border bg-muted/30 p-3">
                     <div className="text-xs text-muted-foreground/80">{t('bi.salesLinked')}</div>
-                    <div className="mt-1 font-semibold text-foreground">{formatPKR(businessIntelligenceAnalytics.salesLinkedExpenseTotal)}</div>
+                    <div className="mt-1 font-semibold text-foreground">{formatBooksMoney(businessIntelligenceAnalytics.salesLinkedExpenseTotal)}</div>
                   </div>
                   <div className="rounded border border-border bg-muted/30 p-3">
                     <div className="text-xs text-muted-foreground/80">{t('bi.operating')}</div>
-                    <div className="mt-1 font-semibold text-foreground">{formatPKR(businessIntelligenceAnalytics.operatingExpenseTotal)}</div>
+                    <div className="mt-1 font-semibold text-foreground">{formatBooksMoney(businessIntelligenceAnalytics.operatingExpenseTotal)}</div>
                   </div>
                 </div>
               </div>
@@ -17471,9 +17470,9 @@ setCustomerOrganizationName("");
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <h3 className="text-lg font-medium text-foreground">{t('bi.inventoryMovement')}</h3>
                 <div className="flex flex-col gap-0.5 sm:items-end">
-                  <span className="text-sm text-muted-foreground">{t('bi.estimatedStockValue')}: {formatPKR(businessIntelligenceAnalytics.inventoryStockValue)}</span>
+                  <span className="text-sm text-muted-foreground">{t('bi.estimatedStockValue')}: {formatBooksMoney(businessIntelligenceAnalytics.inventoryStockValue)}</span>
                   {businessIntelligenceAnalytics.inventoryUnknownCost.productCount > 0 && (
-                    <span className="text-xs text-warning">{t('stock.unknownCost')}: {t('stock.unknownCostDetail').replace('{count}', String(businessIntelligenceAnalytics.inventoryUnknownCost.productCount)).replace('{units}', String(businessIntelligenceAnalytics.inventoryUnknownCost.units)).replace('{amount}', formatPKR(businessIntelligenceAnalytics.inventoryUnknownCost.sellingEstimate))}</span>
+                    <span className="text-xs text-warning">{t('stock.unknownCost')}: {t('stock.unknownCostDetail').replace('{count}', String(businessIntelligenceAnalytics.inventoryUnknownCost.productCount)).replace('{units}', String(businessIntelligenceAnalytics.inventoryUnknownCost.units)).replace('{amount}', formatBooksMoney(businessIntelligenceAnalytics.inventoryUnknownCost.sellingEstimate))}</span>
                   )}
                 </div>
               </div>
@@ -17524,7 +17523,7 @@ setCustomerOrganizationName("");
                         <div key={day.date}>
                           <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                             <span>{formatDate(day.date)}</span>
-                            <span>{formatPKR(day.sales)}</span>
+                            <span>{formatBooksMoney(day.sales)}</span>
                           </div>
                           <div className="h-2 rounded bg-muted">
                             <div className="h-2 rounded bg-primary" style={{ width: getBiBarWidth(day.sales, maxValue) }} />
@@ -17544,7 +17543,7 @@ setCustomerOrganizationName("");
                       <div key={day.date}>
                         <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                           <span>{formatDate(day.date)}</span>
-                          <span>{t('bi.profitWord')} {formatPKR(day.profit)} · {t('bi.expenseWord')} {formatPKR(day.expenses)}</span>
+                          <span>{t('bi.profitWord')} {formatBooksMoney(day.profit)} · {t('bi.expenseWord')} {formatBooksMoney(day.expenses)}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-1">
                           <div className="h-2 rounded bg-muted">
@@ -17573,8 +17572,8 @@ setCustomerOrganizationName("");
                   </p>
                 )}
                 <div className="space-y-2 text-sm text-foreground/80">
-                  <div>{t('bi.bestMonth')}: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.bestMonth?.label ?? t('bi.notEnoughData')}</span> {businessIntelligenceAnalytics.bestMonth ? formatPKR(businessIntelligenceAnalytics.bestMonth.value) : ""}</div>
-                  <div>{t('bi.bestDayOfWeek')}: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.bestWeekday?.label ?? t('bi.notEnoughData')}</span> {businessIntelligenceAnalytics.bestWeekday ? formatPKR(businessIntelligenceAnalytics.bestWeekday.value) : ""}</div>
+                  <div>{t('bi.bestMonth')}: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.bestMonth?.label ?? t('bi.notEnoughData')}</span> {businessIntelligenceAnalytics.bestMonth ? formatBooksMoney(businessIntelligenceAnalytics.bestMonth.value) : ""}</div>
+                  <div>{t('bi.bestDayOfWeek')}: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.bestWeekday?.label ?? t('bi.notEnoughData')}</span> {businessIntelligenceAnalytics.bestWeekday ? formatBooksMoney(businessIntelligenceAnalytics.bestWeekday.value) : ""}</div>
                   <div>{t('bi.strongestProductMonth')}: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.strongestProductMonth ? `${businessIntelligenceAnalytics.strongestProductMonth.productName} ${t('bi.inMonth')} ${businessIntelligenceAnalytics.strongestProductMonth.month}` : t('bi.notEnoughData')}</span></div>
                 </div>
               </div>
@@ -17587,7 +17586,7 @@ setCustomerOrganizationName("");
                       <div key={month.label}>
                         <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                           <span>{month.label}</span>
-                          <span>{formatPKR(month.value)}</span>
+                          <span>{formatBooksMoney(month.value)}</span>
                         </div>
                         <div className="h-2 rounded bg-muted">
                           <div className="h-2 rounded bg-primary/80" style={{ width: getBiBarWidth(month.value, maxValue) }} />
@@ -17603,10 +17602,10 @@ setCustomerOrganizationName("");
 
           <div className="mt-6 grid gap-4 lg:grid-cols-3">
             {[
-              [t('bi.insightBestProduct'), businessIntelligenceAnalytics.insights.bestProduct ? `${businessIntelligenceAnalytics.insights.bestProduct.productName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestProduct.salesValue)}` : t('bi.noSalesSignal')],
-              [t('bi.insightMostProfitable'), businessIntelligenceAnalytics.insights.bestProfitProduct ? `${businessIntelligenceAnalytics.insights.bestProfitProduct.productName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestProfitProduct.grossProfit)}` : t('bi.noProfitSignal')],
-              [t('bi.insightHighestExpenseCategory'), businessIntelligenceAnalytics.insights.highestExpenseCategory ? `${businessIntelligenceAnalytics.insights.highestExpenseCategory.expenseType} · ${formatPKR(businessIntelligenceAnalytics.insights.highestExpenseCategory.totalAmount)}` : t('bi.noExpenseSignal')],
-              [t('bi.insightBestCustomer'), businessIntelligenceAnalytics.insights.bestCustomer ? `${businessIntelligenceAnalytics.insights.bestCustomer.customerName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestCustomer.totalSales)}` : t('bi.noCustomerSignal')],
+              [t('bi.insightBestProduct'), businessIntelligenceAnalytics.insights.bestProduct ? `${businessIntelligenceAnalytics.insights.bestProduct.productName} · ${formatBooksMoney(businessIntelligenceAnalytics.insights.bestProduct.salesValue)}` : t('bi.noSalesSignal')],
+              [t('bi.insightMostProfitable'), businessIntelligenceAnalytics.insights.bestProfitProduct ? `${businessIntelligenceAnalytics.insights.bestProfitProduct.productName} · ${formatBooksMoney(businessIntelligenceAnalytics.insights.bestProfitProduct.grossProfit)}` : t('bi.noProfitSignal')],
+              [t('bi.insightHighestExpenseCategory'), businessIntelligenceAnalytics.insights.highestExpenseCategory ? `${businessIntelligenceAnalytics.insights.highestExpenseCategory.expenseType} · ${formatBooksMoney(businessIntelligenceAnalytics.insights.highestExpenseCategory.totalAmount)}` : t('bi.noExpenseSignal')],
+              [t('bi.insightBestCustomer'), businessIntelligenceAnalytics.insights.bestCustomer ? `${businessIntelligenceAnalytics.insights.bestCustomer.customerName} · ${formatBooksMoney(businessIntelligenceAnalytics.insights.bestCustomer.totalSales)}` : t('bi.noCustomerSignal')],
               [t('bi.insightLowStockWarning'), businessIntelligenceAnalytics.insights.lowStockWarning],
               [t('bi.insightStaffActivity'), businessIntelligenceAnalytics.insights.staffActivityNote],
               [t('bi.insightMarketSignal'), businessIntelligenceAnalytics.insights.marketSignalNote],
@@ -21538,15 +21537,15 @@ setCustomerOrganizationName("");
               </div>
               <div>
                 <div className="text-xs text-muted-foreground/80">{t('products.purchasePrice')}</div>
-                <div className="text-sm font-medium text-foreground">{productToView.last_purchase_price != null ? formatPKR(Number(productToView.last_purchase_price)) : t('common.none')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.last_purchase_price != null ? formatBooksMoney(Number(productToView.last_purchase_price)) : t('common.none')}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground/80">{t('products.defaultPurchasePrice')}</div>
-                <div className="text-sm font-medium text-foreground">{productToView.default_purchase_price != null ? formatPKR(Number(productToView.default_purchase_price)) : t('common.none')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.default_purchase_price != null ? formatBooksMoney(Number(productToView.default_purchase_price)) : t('common.none')}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground/80">{t('products.sellingPrice')}</div>
-                <div className="text-sm font-medium text-foreground">{productToView.default_selling_price != null ? formatPKR(Number(productToView.default_selling_price)) : t('common.none')}</div>
+                <div className="text-sm font-medium text-foreground">{productToView.default_selling_price != null ? formatBooksMoney(Number(productToView.default_selling_price)) : t('common.none')}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground/80">{t('products.availableStock')}</div>
@@ -21747,8 +21746,8 @@ setCustomerOrganizationName("");
                           {highMargin.map((r) => (
                             <tr key={r.product.id} className="border-b border-border/60">
                               <td className="py-2 pr-3 text-foreground">{r.product.name}</td>
-                              <td className="py-2 pr-3 text-foreground/80">{formatPKR(r.sellPrice)}</td>
-                              <td className="py-2 pr-3 text-foreground/80">{formatPKR(r.margin)}</td>
+                              <td className="py-2 pr-3 text-foreground/80">{formatBooksMoney(r.sellPrice)}</td>
+                              <td className="py-2 pr-3 text-foreground/80">{formatBooksMoney(r.margin)}</td>
                               <td className="py-2 text-success">{r.marginPct.toFixed(1)}%</td>
                             </tr>
                           ))}
@@ -26488,7 +26487,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                               {[
                                 row.reason_code ? drawerReasonLabels[row.reason_code] ?? row.reason_code : "",
                                 row.reason_note ?? "",
-                                row.amount != null ? formatPKR(row.amount) : "",
+                                row.amount != null ? formatBooksMoney(row.amount) : "",
                                 row.error ?? "",
                               ].filter(Boolean).join(" · ")}
                             </td>
