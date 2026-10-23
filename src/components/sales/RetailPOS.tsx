@@ -15,11 +15,11 @@ import { formatPKR } from "@/lib/tradeos/formatters";
 
 export type CounterSale = {
   lines: BarcodeLine[]; customerId: string | null; date: string;
-  paymentType: "cash" | "credit"; discount: string; discountType: "flat" | "percent"; tax: string;
+  paymentType: "cash" | "card" | "credit"; discount: string; discountType: "flat" | "percent"; tax: string;
 };
 type BasketTemplate = { id: string; name: string; sale: CounterSale; savedAt: string };
 
-export function RetailPOS({ scope, sale, products, customers, busy, owner, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear }: {
+export function RetailPOS({ scope, sale, products, customers, busy, owner, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear, onPaymentType }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; busy: boolean; owner: boolean;
   /** Staff sale under the owner's "direct" setting: saves like an owner
    * sale instead of going to the approval pipeline, so the primary action
@@ -36,6 +36,10 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
   onSave: () => void; onCashReceived: (amount: string) => void;
   onDiscount: (amount: string) => void; onDiscountType: (type: "flat" | "percent") => void;
   onAdvanced: () => void; onRestore: (sale: CounterSale) => void; onClear: () => void;
+  /** Tender switch for the payment bar: Cash / Card. Credit stays
+   * selectable in the full invoice form and is shown as the active
+   * tender here when it is already chosen. */
+  onPaymentType: (type: "cash" | "card" | "credit") => void;
 }) {
   const [held, setHeld] = useState<HeldSale[]>([]);
   const [templates, setTemplates] = useState<BasketTemplate[]>([]);
@@ -366,8 +370,12 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
     </div>}
     {draftResult.issues.filter(issue => issue.field === "invoice_discount").map(issue => <p key={issue.message} className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{issue.message}</p>)}
     <div data-pos-payment-bar className="sticky bottom-4 z-20 flex flex-col gap-4 rounded-xl border border-primary/30 bg-card p-4 shadow-lg">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center" role="group" aria-label={t("sell.paymentType")}>
+        {(["cash", "card"] as const).map(type => <button key={type} type="button" disabled={busy} aria-pressed={sale.paymentType === type} onClick={() => onPaymentType(type)} className={`min-h-12 flex-1 rounded-lg px-5 font-semibold disabled:opacity-40 ${sale.paymentType === type ? "bg-primary text-primary-foreground" : "border border-input bg-background"}`}>{type === "cash" ? t("sell.paymentCash") : t("sell.paymentCard")}</button>)}
+        {sale.paymentType === "credit" && <span className="text-sm font-medium text-muted-foreground">{t("sell.paymentCredit")}</span>}
+      </div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">Unavailable</span> : formatPKR(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">Complete or correct the highlighted sale fields to calculate the total.</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>Includes tax from advanced options.</small>}</div>
+      <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType === "card" ? t("sell.paymentCard") : sale.paymentType === "credit" ? t("sell.paymentCredit") : t("sell.paymentCash")}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">Unavailable</span> : formatPKR(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">Complete or correct the highlighted sale fields to calculate the total.</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>Includes tax from advanced options.</small>}</div>
       {owner && sale.paymentType === "cash" && <div className="sm:min-w-52"><label className="block text-sm">Cash received<input aria-label="Cash received" type="text" inputMode="decimal" value={cashReceived} placeholder={total === null ? "Sale total unavailable" : String(total)} onChange={event => onCashReceived(event.target.value)} disabled={busy} className="mt-1 block min-h-11 w-full rounded border border-input bg-background px-3 tabular-nums sm:w-40" /></label><div className="mt-2 flex flex-wrap gap-2">{quickCashPresets.map(preset => <button key={preset.label} type="button" disabled={busy} className="min-h-11 rounded border px-2 text-xs disabled:opacity-40" onClick={() => onCashReceived(String(preset.value))}>{preset.label}</button>)}</div>{draftResult.issues.filter(issue => issue.field === "cash_received").map(issue => <p key={issue.message} className="mt-2 text-sm text-destructive" role="alert">{draftResult.cashSummary?.status === "cash-short" ? <>Cash short by <span className="tabular-nums">{formatPKR(draftResult.cashSummary.shortfall)}</span>.</> : issue.message}</p>)}{!draftResult.issues.some(issue => issue.field === "cash_received") && (cashReceived.trim() === "" ? <p className="mt-2 text-sm text-muted-foreground">Leave blank to use the exact sale total.</p> : draftResult.cashSummary ? <p className="mt-2 text-sm">Change due: <span className="tabular-nums">{formatPKR(draftResult.cashSummary.change)}</span></p> : <p className="mt-2 text-sm text-muted-foreground">Cash summary unavailable until the sale total is valid.</p>)}</div>}
       <div className="flex flex-col gap-2 sm:flex-row"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">Hold sale</button><button data-entry-add type="button" disabled={busy || !sale.lines.length || !sale.customerId || !draftResult.valid} onClick={onSave} className="min-h-12 w-full rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40 sm:w-auto">{busy ? "Saving…" : owner || staffDirectSale ? sale.paymentType === "credit" ? "Save credit sale" : "Pay & Save" : "Send for approval"}</button></div>
       </div>

@@ -20,7 +20,7 @@ const render = (draft: CounterSale, owner: boolean) => renderToStaticMarkup(
     onUnit={() => undefined} onCustomer={() => undefined} onLine={() => undefined}
     onRemove={() => undefined} onSave={() => undefined} onCashReceived={() => undefined}
     onDiscount={() => undefined} onDiscountType={() => undefined} onAdvanced={() => undefined}
-    onRestore={() => undefined} onClear={() => undefined} />,
+    onRestore={() => undefined} onClear={() => undefined} onPaymentType={() => undefined} />,
 );
 
 const percent = render(sale, true);

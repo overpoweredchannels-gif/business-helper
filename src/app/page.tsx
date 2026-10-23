@@ -2160,7 +2160,7 @@ setCustomerOrganizationName("");
     }));
   };
 
-  const handleSalesPaymentTypeChange = (paymentType: "cash" | "credit") => {
+  const handleSalesPaymentTypeChange = (paymentType: "cash" | "card" | "credit") => {
     setSalesPaymentType(paymentType);
     clearCreditOverrideState();
   };
@@ -4324,7 +4324,12 @@ setCustomerOrganizationName("");
         fetchSalesOrderItems();
         fetchSalesOrders();
       } catch (err) {
-        setSalesError(err instanceof Error ? err.message : "Failed to save sales invoice");
+        // Until the card database update runs, the sales_orders check
+        // constraint rejects a card draft: surface a clear explanation
+        // instead of the raw constraint error. The draft is never
+        // silently re-tendered to cash or credit.
+        const message = err instanceof Error ? err.message : "Failed to save sales invoice";
+        setSalesError(salesPaymentType === "card" && /payment_type/i.test(message) ? t('sell.cardNotEnabled') : message);
         console.error("Error creating sales invoice:", err);
       } finally {
         setSalesInvoiceLoading(false);
@@ -4410,7 +4415,11 @@ setCustomerOrganizationName("");
       fetchSupplierPayments();
       fetchSupplierPaymentAllocations();
     } catch (err) {
-      setSalesError(err instanceof Error ? err.message : "Failed to save sales invoice");
+      // Until the card database update runs, the atomic-sale RPC rejects
+      // payment_type 'card' with "Invalid payment type": surface a clear
+      // explanation instead. The sale is never silently re-tendered.
+      const message = err instanceof Error ? err.message : "Failed to save sales invoice";
+      setSalesError(salesPaymentType === "card" && /invalid payment type/i.test(message) ? t('sell.cardNotEnabled') : message);
       console.error("Error creating sales invoice:", err);
     } finally {
       setSalesInvoiceLoading(false);
@@ -4554,7 +4563,11 @@ setCustomerOrganizationName("");
       await fetchCustomerPaymentAllocations(currentOrganizationId);
       await fetchSalesTransactions(currentOrganizationId);
     } catch (err) {
-      setCustomerPaymentError(err instanceof Error ? err.message : "Failed to save payment");
+      // Until the card database update runs, the customer_payments check
+      // constraint rejects method 'card': explain it instead of leaking
+      // the raw constraint error. The payment is never re-tendered.
+      const paymentMessage = err instanceof Error ? err.message : "Failed to save payment";
+      setCustomerPaymentError(customerPaymentMethod === "card" && /payment_method/i.test(paymentMessage) ? t('payments.cardNotEnabled') : paymentMessage);
       console.error("Error saving customer payment:", err);
     } finally {
       setCustomerPaymentLoading(false);
@@ -5419,7 +5432,7 @@ setCustomerOrganizationName("");
   const [customerPaymentAmount, setCustomerPaymentAmount] = useState("");
   const [customerPaymentNotes, setCustomerPaymentNotes] = useState("");
   const [customerPaymentDate, setCustomerPaymentDate] = useState(toDateInputValue(new Date()));
-  const [customerPaymentMethod, setCustomerPaymentMethod] = useState<"cash" | "bank">("cash");
+  const [customerPaymentMethod, setCustomerPaymentMethod] = useState<"cash" | "bank" | "card">("cash");
   const [customerPaymentLoading, setCustomerPaymentLoading] = useState(false);
   const [customerPaymentMessage, setCustomerPaymentMessage] = useState<string | null>(null);
   const [customerPaymentError, setCustomerPaymentError] = useState<string | null>(null);
@@ -5445,7 +5458,7 @@ setCustomerOrganizationName("");
   const [selectedCustomerIdForSale, setSelectedCustomerIdForSale] = useState<string | null>(null);
   const [salesInvoiceNumber, setSalesInvoiceNumber] = useState("");
   const [salesInvoiceDate, setSalesInvoiceDate] = useState(toDateInputValue(new Date()));
-  const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "credit">("cash");
+  const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "card" | "credit">("cash");
   const [posCashReceived, setPosCashReceived] = useState("");
   const [salesDiscountAmount, setSalesDiscountAmount] = useState("");
   const [salesDiscountType, setSalesDiscountType] = useState<"flat" | "percent">("flat");
@@ -9258,7 +9271,7 @@ setCustomerOrganizationName("");
         const creditAllocation = creditAllocationByTransaction[tx.id];
         const remainingUnpaidAmount = creditAllocation?.remainingUnpaidAmount ?? 0;
         const status =
-          paymentType === "cash"
+          paymentType === "cash" || paymentType === "card"
             ? "Paid"
             : remainingUnpaidAmount <= 0
               ? "Paid"
@@ -12125,7 +12138,7 @@ setCustomerOrganizationName("");
         <div><strong>${t('buy.invoicePrefix')}</strong> ${escapeHtml(transaction.invoice_number)}</div>
         <div><strong>${t('sell.saleDate')}:</strong> ${escapeHtml(formatDate(transaction.sale_date ?? transaction.created_at))}</div>
         <div><strong>${t('sell.customer')}:</strong> ${escapeHtml(customer?.customer_name ?? t('sell.unknownCustomer'))}</div>
-        <div><strong>${t('sell.paymentType')}:</strong> ${escapeHtml(transaction.payment_type === "credit" ? t('sell.paymentCredit') : t('sell.paymentCash'))}</div>
+        <div><strong>${t('sell.paymentType')}:</strong> ${escapeHtml(transaction.payment_type === "credit" ? t('sell.paymentCredit') : transaction.payment_type === "card" ? t('sell.paymentCard') : t('sell.paymentCash'))}</div>
         ${
           transaction.credit_due_date
             ? `<div><strong>${t('sell.creditDueDate')}:</strong> ${escapeHtml(formatDate(transaction.credit_due_date))}</div>`
@@ -18294,7 +18307,7 @@ setCustomerOrganizationName("");
               products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
               onScan={(code, options) => { const result = runSalesScan(code, options); return result.status === "not-found" ? null : String(result.product.id); }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
-              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
+              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
@@ -18346,10 +18359,11 @@ setCustomerOrganizationName("");
                 <span>{t('sell.paymentType')}</span>
                 <select
                   value={salesPaymentType}
-                  onChange={(e) => handleSalesPaymentTypeChange(e.target.value as "cash" | "credit")}
+                  onChange={(e) => handleSalesPaymentTypeChange(e.target.value as "cash" | "card" | "credit")}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 >
                   <option value="cash">{t('sell.paymentCash')}</option>
+                  <option value="card">{t('sell.paymentCard')}</option>
                   <option value="credit">{t('sell.paymentCredit')}</option>
                 </select>
               </label>
@@ -18691,6 +18705,8 @@ setCustomerOrganizationName("");
                 const creditStatus =
                   paymentType === "cash"
                     ? t('sell.paymentCash')
+                    : paymentType === "card"
+                      ? t('sell.paymentCard')
                     : remainingUnpaidAmount <= 0
                       ? t('sell.statusPaid')
                       : creditDueDate && creditDueDate < todayDateValue
@@ -19070,8 +19086,8 @@ setCustomerOrganizationName("");
                           {order.status}
                         </span>
                         {order.payment_type && (
-                          <span className={`ml-1 rounded px-2 py-0.5 text-xs capitalize border ${order.payment_type === "cash" ? "border-success/30 text-success bg-success/5" : "border-warning/30 text-warning bg-warning/5"}`}>
-                            {order.payment_type}
+                          <span className={`ml-1 rounded px-2 py-0.5 text-xs capitalize border ${order.payment_type === "cash" ? "border-success/30 text-success bg-success/5" : order.payment_type === "card" ? "border-primary/30 text-primary bg-primary/5" : "border-warning/30 text-warning bg-warning/5"}`}>
+                            {order.payment_type === "cash" ? t('sell.paymentCash') : order.payment_type === "card" ? t('sell.paymentCard') : t('sell.paymentCredit')}
                           </span>
                         )}
                       </div>
@@ -19839,11 +19855,12 @@ setCustomerOrganizationName("");
 
              <select
                value={customerPaymentMethod}
-               onChange={(e) => setCustomerPaymentMethod(e.target.value as "cash" | "bank")}
+               onChange={(e) => setCustomerPaymentMethod(e.target.value as "cash" | "bank" | "card")}
                className="rounded border border-border px-2 py-2"
              >
                <option value="cash">{t('money.cash')}</option>
                <option value="bank">{t('money.bank')}</option>
+               <option value="card">{t('money.card')}</option>
              </select>
            </div>
 
@@ -26120,8 +26137,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   </div>
                   <div className="rounded border border-border bg-muted/30 p-3">
                     <div className="text-xs text-muted-foreground">{t('activity.payment')}</div>
-                    <div className={`mt-0.5 font-medium capitalize ${order.payment_type === "cash" ? "text-success" : "text-warning"}`}>
-                      {order.payment_type === "cash" ? t('sell.paymentCash') : `${t('sell.paymentCredit')}${order.credit_days ? ` (${order.credit_days}d)` : ""}`}
+                    <div className={`mt-0.5 font-medium capitalize ${order.payment_type === "cash" ? "text-success" : order.payment_type === "card" ? "text-primary" : "text-warning"}`}>
+                      {order.payment_type === "cash" ? t('sell.paymentCash') : order.payment_type === "card" ? t('sell.paymentCard') : `${t('sell.paymentCredit')}${order.credit_days ? ` (${order.credit_days}d)` : ""}`}
                     </div>
                   </div>
                 </div>
