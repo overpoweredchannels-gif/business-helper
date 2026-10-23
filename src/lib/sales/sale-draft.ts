@@ -35,7 +35,7 @@ type SaleDraftInput = {
   invoiceDiscount: string;
   invoiceDiscountType: "flat" | "percent";
   taxRate: string;
-  paymentType?: "cash" | "credit";
+  paymentType?: "cash" | "card" | "credit";
   cashReceived?: string;
   validateCash?: boolean;
   allowInvoiceAdjustments?: boolean;

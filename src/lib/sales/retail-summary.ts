@@ -10,7 +10,7 @@ export type RetailDrawerSummary = {
   closingMessage: string;
 };
 
-export function buildRetailDrawerSummary({ total, received, paymentType = "cash" }: { total: number; received: number | string; paymentType?: "cash" | "credit" }): RetailDrawerSummary {
+export function buildRetailDrawerSummary({ total, received, paymentType = "cash" }: { total: number; received: number | string; paymentType?: "cash" | "card" | "credit" }): RetailDrawerSummary {
   if (paymentType !== "cash") {
     return {
       expected: total,

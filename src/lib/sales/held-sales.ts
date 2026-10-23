@@ -14,7 +14,7 @@ export type HeldCounterSale = {
   lines: BarcodeLine[];
   customerId: string | null;
   date: string;
-  paymentType: "cash" | "credit";
+  paymentType: "cash" | "card" | "credit";
   discount: string;
   discountType: "flat" | "percent";
   tax: string;
@@ -37,7 +37,7 @@ export function parseHeldSales(raw: string | null): HeldSale[] {
   if (!Array.isArray(stored) || stored.length > HELD_SALES_LIMIT || stored.some(row => {
     const draft = row?.sale;
     return typeof row?.id !== "string" || typeof row?.savedAt !== "string" || !draft
-      || !Array.isArray(draft.lines) || !["cash", "credit"].includes(draft.paymentType)
+      || !Array.isArray(draft.lines) || !["cash", "card", "credit"].includes(draft.paymentType)
       || !["flat", "percent"].includes(draft.discountType)
       || ![draft.date, draft.discount, draft.tax].every(value => typeof value === "string")
       || (draft.customerId !== null && typeof draft.customerId !== "string")

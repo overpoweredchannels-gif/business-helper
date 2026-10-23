@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type AtomicSaleInput = {
   customer_id: string;
   sale_date: string;
-  payment_type: "cash" | "credit";
+  payment_type: "cash" | "card" | "credit";
   invoice_discount: number;
   invoice_discount_type: "flat" | "percent";
   tax_rate: number;

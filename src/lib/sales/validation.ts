@@ -144,8 +144,8 @@ export function validateSalesInvoiceInput(input: SalesInvoiceInputLike): Validat
   }
 
   const paymentType = normalizeOptionalText(input.payment_type);
-  if (paymentType && !["cash", "credit"].includes(paymentType.toLowerCase())) {
-    errors.push("Payment type must be 'cash' or 'credit'.");
+  if (paymentType && !["cash", "card", "credit"].includes(paymentType.toLowerCase())) {
+    errors.push("Payment type must be 'cash', 'card' or 'credit'.");
   }
 
   const saleDate = normalizeOptionalDate(input.sale_date);

@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     notes?: string;
     expectedDate?: string;
     saleDate?: string;
-    paymentType?: "cash" | "credit";
+    paymentType?: "cash" | "card" | "credit";
     creditDays?: number;
   };
 

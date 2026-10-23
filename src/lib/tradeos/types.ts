@@ -129,7 +129,7 @@ export interface SalesOrder {
   expected_date: string | null;
   notes: string | null;
   status: "draft" | "confirmed" | "delivered" | "cancelled" | "pending_approval" | "rejected" | "converted";
-  payment_type: "cash" | "credit" | null;
+  payment_type: "cash" | "card" | "credit" | null;
   credit_days: number | null;
   created_by_profile_id: string | null;
   created_at: string;

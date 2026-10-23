@@ -16,10 +16,11 @@ function parseDate(raw: string): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0];
 }
 
-function parsePaymentMethod(raw: string): "cash" | "bank" | "other" | null {
+function parsePaymentMethod(raw: string): "cash" | "bank" | "card" | "other" | null {
   const normalized = raw.trim().toLowerCase();
   if (normalized === "cash") return "cash";
   if (normalized === "bank") return "bank";
+  if (normalized === "card") return "card";
   if (normalized === "other") return "other";
   return null;
 }
@@ -34,7 +35,7 @@ export const customerPaymentsImportConfig: EntityImportConfig = {
     { key: "customer", label: "Customer", type: "select", required: true, preview: true, width: 180, options: async () => [], help: "Customer name (required)." },
     { key: "amount", label: "Amount", type: "decimal", required: true, preview: true, width: 120, parse: parseNumber, validate: value => Number.isFinite(Number(value)) && Number(value) > 0 ? null : "Amount must be greater than zero", help: "Payment amount." },
     { key: "payment_date", label: "Payment Date", type: "date", required: true, preview: true, width: 110, parse: (s) => { if (!s) return null; const d = new Date(s); return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0]; }, help: "YYYY-MM-DD." },
-    { key: "payment_method", label: "Method", type: "select", required: true, preview: true, width: 100, parse: parsePaymentMethod, options: ["cash", "bank", "other"], defaultValue: "cash" },
+    { key: "payment_method", label: "Method", type: "select", required: true, preview: true, width: 100, parse: parsePaymentMethod, options: ["cash", "bank", "card", "other"], defaultValue: "cash" },
     { key: "reference_number", label: "Reference #", type: "text", required: false, preview: true, width: 140, help: "Bank ref, cheque no, etc." },
     { key: "notes", label: "Notes", type: "text", required: false, preview: false },
     { key: "created_by", label: "Recorded By", type: "select", required: false, preview: true, width: 140, options: async () => [], help: "Staff who recorded payment." },
@@ -57,7 +58,7 @@ export const customerPaymentsImportConfig: EntityImportConfig = {
       customer_id: customerId,
       amount: v.amount as number,
       payment_date: v.payment_date as string,
-      payment_method: v.payment_method as "cash" | "bank" | "other",
+      payment_method: v.payment_method as "cash" | "bank" | "card" | "other",
       reference_number: v.reference_number ? String(v.reference_number).trim() : null,
       notes: v.notes ? String(v.notes).trim() : null,
       created_by_profile_id: createdById ?? ctx.actorProfileId ?? null,

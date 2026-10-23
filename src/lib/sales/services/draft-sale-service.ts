@@ -21,7 +21,7 @@ export interface CreateDraftSaleInput {
   notes?: string;
   expectedDate?: string;
   saleDate?: string;
-  paymentType?: "cash" | "credit";
+  paymentType?: "cash" | "card" | "credit";
   creditDays?: number;
 }
 
@@ -350,7 +350,11 @@ export class DraftSaleService {
 
     const now = new Date().toISOString();
 
-    const paymentType = draft.payment_type === "cash" ? "cash" : "credit";
+    // Preserve the tender the draft was created with: cash and card are
+    // both paid tenders; anything else stored on the order is credit.
+    // (Mapping every non-cash value to credit would silently turn a card
+    // sale into a receivable.)
+    const paymentType = draft.payment_type === "card" ? "card" : draft.payment_type === "cash" ? "cash" : "credit";
     const creditDueDate =
       paymentType === "credit" && Number(draft.credit_days ?? 0) > 0
         ? addDaysToIsoDate(draft.order_date ?? now.split("T")[0], Number(draft.credit_days))
@@ -387,7 +391,7 @@ export class DraftSaleService {
         sale_date: draft.order_date ?? now.split("T")[0],
         payment_type: paymentType,
         credit_due_date: creditDueDate,
-        status: paymentType === "cash" ? "paid" : "confirmed",
+        status: paymentType === "credit" ? "confirmed" : "paid",
         notes: `Converted from draft ${draft.so_number}. ${draft.notes ?? ""}`.trim(),
         total_amount: totalAmount,
         invoice_type: "sales",
@@ -424,13 +428,13 @@ export class DraftSaleService {
       return { ok: false, error: `Failed to create invoice items: ${itemsError.message}` };
     }
 
-    if (paymentType === "cash") {
+    if (paymentType === "cash" || paymentType === "card") {
       const { data: payment, error: paymentError } = await supabase.from("customer_payments").insert({
         organization_id: actor.organizationId,
         customer_id: draft.customer_id,
         amount: totalAmount,
         payment_date: draft.order_date ?? now.split("T")[0],
-        payment_method: "cash",
+        payment_method: paymentType,
         notes: `Payment received against invoice ${invoiceNumber}`,
       }).select("id").single();
       paymentId = payment?.id ?? null;
@@ -447,7 +451,7 @@ export class DraftSaleService {
         await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
         await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
         await restorePending();
-        return { ok: false, error: `Failed to record cash payment: ${paymentError?.message ?? allocationError?.message}` };
+        return { ok: false, error: `Failed to record payment: ${paymentError?.message ?? allocationError?.message}` };
       }
     } else {
       const { data: customer, error: customerError } = await supabase
