@@ -5,8 +5,9 @@ import { createPortal } from "react-dom";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
 import type { PrintTemplate } from "@/lib/print/print-template-types";
-import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptPrintableWidthMm, getReceiptSummaryRows, getReceiptWidthMm, normalizeReceiptWidthMm, resolveReceiptChrome, resolveReceiptCustomerName, type Receipt, type ReceiptChromeLabels, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
+import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptPrintableWidthMm, getReceiptSummaryRows, getReceiptWidthMm, resolveReceiptChrome, resolveReceiptCustomerName, type Receipt, type ReceiptChromeLabels, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
 import { loadReceiptTemplate } from "@/lib/print/receipt-template-loader";
+import { saveReceiptTemplate } from "@/lib/print/receipt-template-save";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatPKR } from "@/lib/tradeos/formatters";
@@ -326,7 +327,10 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
   // Paper width is the single most-missed receipt setting (a 58mm printer
   // fed an 80mm layout clips the totals column), so it is switchable right
   // here and persisted through the same template save path the customizer
-  // uses — no separate storage.
+  // uses — no separate storage. The save goes through saveReceiptTemplate,
+  // which always settles within 8s: the old chain awaited authorizedFetch
+  // with no timeout, so a stalled POST left savingWidth set — and this
+  // select disabled — forever.
   const changePaperWidth = useCallback(async (nextWidth: 58 | 80) => {
     if (!templateReady || savingWidth || getReceiptWidthMm(template) === nextWidth) return;
     const previous = template;
@@ -335,15 +339,22 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
     setSavingWidth(true);
     setError("");
     try {
-      const response = await authorizedFetch("/api/print-templates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doc_type: "retail_receipt", name: template.name, description: template.description ?? null, config: next }),
+      const result = await saveReceiptTemplate({
+        post: async (signal) => {
+          const response = await authorizedFetch("/api/print-templates", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ doc_type: "retail_receipt", name: template.name, description: template.description ?? null, config: next }),
+            signal,
+          });
+          const data = await response.json();
+          if (!data?.ok) throw new Error(data?.error || "Failed to save template");
+          return (data.template?.config as PrintTemplate | undefined) ?? null;
+        },
       });
-      const data = await response.json();
-      if (!data?.ok) throw new Error(data?.error || "Failed to save template");
-      if (data.template?.config) {
-        setTemplate({ ...next, ...data.template.config, receiptWidthMm: normalizeReceiptWidthMm(data.template.config.receiptWidthMm) });
+      if (result.status === "failed") throw new Error(`Template save ${result.reason}`);
+      if (result.config) {
+        setTemplate({ ...next, ...result.config });
       }
     } catch {
       setTemplate(previous);
