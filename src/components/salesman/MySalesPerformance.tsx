@@ -2,11 +2,12 @@
 import { useEffect, useState } from "react";
 import { MyPendingSales } from "./MyPendingSales";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { filterPerformance, performanceAmount, type PerformanceSale } from "@/lib/sales/performance";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
 
-const money = (amount: number) => new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR" }).format(amount);
+const money = (amount: number) => formatBooksMoney(amount);
 
 export function MySalesPerformance() {
   const { t } = useRegional();

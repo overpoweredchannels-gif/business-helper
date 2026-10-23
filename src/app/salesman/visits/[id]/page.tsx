@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCatalogScopeGuard } from "@/lib/catalog/use-catalog-scope-guard";
 import { VisitProductLookup, VISIT_PRODUCT_SEARCH_PAGE_SIZE, type VisitProduct, type VisitProductPage } from "@/components/salesman/VisitProductLookup";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import type { MessageKey } from "@/lib/regional/messages";
@@ -510,5 +511,5 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function fmt(n: number) {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(n || 0);
+  return formatBooksMoney(n || 0);
 }

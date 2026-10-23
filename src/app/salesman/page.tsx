@@ -4,6 +4,7 @@ import { hasSalesTool, type SalesAccess } from "@/lib/sales/access";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { EmployeeLiveTracking } from "@/components/dashboard";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { localeFor, type RegionalLocale } from "@/lib/regional/settings";
@@ -190,7 +191,7 @@ function MiniAction({ href, icon: Icon, title, detail }: { href: string; icon: R
   return <Link href={href} className="rounded-2xl border border-border bg-card p-4 flex items-center gap-3 hover:border-primary/40"><div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center"><Icon className="size-5 text-primary" /></div><div className="flex-1"><div className="text-sm font-medium text-foreground">{title}</div><div className="text-xs text-body">{detail}</div></div><ChevronRight className="size-4 text-light-text rtl:rotate-180" /></Link>;
 }
 function Empty({ text }: { text: string }) { return <p className="py-5 text-center text-sm text-body">{text}</p>; }
-function money(value: number) { return new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(Number(value || 0)); }
+function money(value: number) { return formatBooksMoney(Number(value || 0)); }
 function formatDate(value: string, locale: string) {
   // Date-only values are stored calendar dates: render the exact day via
   // the shared pinned calendar formatter instead of `new Date`, which

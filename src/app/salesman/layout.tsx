@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SalesmanLayout from "@/components/salesman/SalesmanLayout";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { resolveBooksCurrency } from "@/lib/books/currency";
+import { setActiveBooksCurrency } from "@/lib/tradeos/formatters";
 import { Loader2 } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
@@ -12,7 +14,7 @@ interface MeResponse {
   me?: {
     profile: any;
     employee: any;
-    organization: { name?: string | null; working_hours?: any };
+    organization: { name?: string | null; working_hours?: any; regional_preferences?: unknown; books_currency?: unknown };
     permissions?: { granted_sections?: string[] | null; can_create_sales?: boolean | null } | null;
   };
   error?: string;
@@ -31,6 +33,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         const res = await authorizedFetch("/api/identity/staff/me");
         const data: MeResponse = await res.json();
         if (data.ok && data.me) {
+          // Resolve the org's books currency before children render
+          // (they mount only after this gate lifts), so salesman pages
+          // format books amounts with formatBooksMoney in the right
+          // currency instead of any hardcoded one. The identity route
+          // already returns books_currency + regional_preferences.
+          setActiveBooksCurrency(
+            resolveBooksCurrency(data.me.organization?.books_currency, data.me.organization?.regional_preferences),
+          );
           setMe(data.me);
         } else {
           setNotStaff(true);

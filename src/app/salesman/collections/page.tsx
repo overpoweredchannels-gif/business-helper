@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import {
   Banknote, Loader2, ChevronDown, AlertCircle, CheckCircle2, Plus, X,
 } from "lucide-react";
@@ -268,5 +269,5 @@ function CollectionStatus({ status }: { status: string }) {
 }
 
 function fmt(n: number) {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(n || 0);
+  return formatBooksMoney(n || 0);
 }
