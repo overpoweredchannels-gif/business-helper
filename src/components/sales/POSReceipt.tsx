@@ -8,7 +8,7 @@ import type { PrintTemplate } from "@/lib/print/print-template-types";
 import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptPrintableWidthMm, getReceiptSummaryRows, getReceiptWidthMm, resolveReceiptChrome, resolveReceiptCustomerName, type Receipt, type ReceiptChromeLabels, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
 import { loadReceiptTemplate } from "@/lib/print/receipt-template-loader";
 import { saveReceiptTemplate } from "@/lib/print/receipt-template-save";
-import { awaitPrintStage, PRINT_STAGE_ABORTED, PrintRunController, type PrintRunToken } from "@/lib/print/print-run";
+import { awaitPrintStage, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, type PrintRunToken } from "@/lib/print/print-run";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatPKR } from "@/lib/tradeos/formatters";
@@ -139,7 +139,9 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
   const activeTemplate = templateReady ? template : defaultTemplate;
   const printFrame = useRef<HTMLIFrameElement | null>(null);
   const printCleanup = useRef<(() => void) | null>(null);
-  const printLock = useRef(false);
+  // The "Preparing receipt…" UI state, owned per print run and held
+  // only until the run dispatches its native print dialog (PrintRunUiLock).
+  const [printUiLock] = useState(() => new PrintRunUiLock());
   // Cancellation authority for the in-flight print pipeline. Dismissing
   // the dialog aborts the active run's token FIRST, so every staged
   // continuation of print() becomes a no-op even if the stored cleanup
@@ -185,11 +187,11 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
       // modal would otherwise be stuck on "Preparing receipt…" forever.
       // In a finally block so Close ALWAYS dismisses, even if the stored
       // cleanup itself throws.
-      printLock.current = false;
+      printUiLock.releaseAll();
       setPrinting(false);
       setOpen(false);
     }
-  }, [printRuns]);
+  }, [printRuns, printUiLock]);
 
   useEffect(() => {
     if (!open) return;
@@ -205,13 +207,13 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
   useEffect(() => () => printCleanup.current?.(), []);
 
   const print = useCallback(async () => {
-    if (!templateReady || printLock.current) return;
-    printLock.current = true;
+    if (!templateReady || printUiLock.isHeld()) return;
     setPrinting(true);
     setError("");
     // One token per print run. Beginning this run aborts any previous
     // run's parked continuations; dismissing the dialog aborts this one.
     const runToken: PrintRunToken = printRuns.begin();
+    printUiLock.acquire(runToken);
     const frame = document.createElement("iframe");
     frame.title = `Print receipt ${receipt.number}`;
     frame.setAttribute("aria-hidden", "true");
@@ -234,6 +236,15 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
       cleanup();
       setOpen(false);
     };
+    // Release this run's "Preparing receipt…" state. Normally this
+    // already happened at dispatch (below); cleanup calls it again for
+    // runs that never dispatched, and the lock ignores the call when a
+    // newer run owns the state — a stale cleanup tail can never clear
+    // a live run's state.
+    const releaseUiState = () => {
+      printUiLock.release(runToken);
+      if (!printUiLock.isHeld()) setPrinting(false);
+    };
     const cleanup = () => {
       if (settled) return;
       settled = true;
@@ -246,8 +257,7 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
       frame.remove();
       if (printFrame.current === frame) printFrame.current = null;
       if (printCleanup.current === cleanup) printCleanup.current = null;
-      printLock.current = false;
-      setPrinting(false);
+      releaseUiState();
     };
     printCleanup.current = cleanup;
     const onLoad = async () => {
@@ -291,6 +301,14 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
         if (typeof targetWindow.print !== "function") throw new Error("Browser printing is unavailable");
         if (runToken.isAborted() || settled) return;
         targetWindow.print();
+        // The native dialog has been dispatched: from here the user's
+        // interaction is with the OS dialog, so the "Preparing receipt…"
+        // state clears NOW instead of waiting for the cleanup tail
+        // (afterprint / fallback below) — a throttled browser can
+        // stretch that tail for minutes and make the dialog look frozen.
+        // The tail keeps running in the background and still owns the
+        // frame and timers; cleanup remains responsible for them.
+        releaseUiState();
         // print() returns when its native dialog closes. Some browsers omit
         // afterprint, so use its return as the completion signal in that case.
         if (!settled && !runToken.isAborted()) fallbackTimer = window.setTimeout(cleanup, 1500);
@@ -323,7 +341,7 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
         setError("The receipt could not be prepared for printing. The preview is still available.");
       }
     }
-  }, [receipt, template, templateReady, labels, chromeLabels, printRuns]);
+  }, [receipt, template, templateReady, labels, chromeLabels, printRuns, printUiLock]);
 
   // Auto-print (POS quick sale): open the preview for each new receipt and
   // print it as soon as its template is ready. The receipt key is recorded

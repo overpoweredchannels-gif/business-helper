@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { awaitPrintStage, PRINT_STAGE_ABORTED, PrintRunController } from "../src/lib/print/print-run";
+import { awaitPrintStage, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock } from "../src/lib/print/print-run";
 
 // Regression (2026-10-23): the receipt dialog's Close could not rescue a
 // print run parked in a staged wait — the pipeline only unwound when a
@@ -62,6 +62,46 @@ async function main() {
     /stage boom/,
     "live stage rejection propagates",
   );
+
+  // 5. The UI state is released at DISPATCH, not at cleanup: a run
+  //    whose post-dispatch tail never resolves (its cleanup simply
+  //    never runs) still frees the UI the moment its native print is
+  //    dispatched — and a second run can begin while that tail is
+  //    still pending. Regression (2026-10-23): live QA showed the
+  //    dialog sitting on "Preparing receipt…" for minutes when the
+  //    environment stretched the afterprint/fallback tail, even
+  //    though every stage was bounded.
+  const controller5 = new PrintRunController();
+  const uiLock = new PrintRunUiLock();
+  const runA = controller5.begin();
+  uiLock.acquire(runA);
+  assert.equal(uiLock.isHeld(), true, "a preparing run holds the UI state");
+  // The staged pipeline dispatches targetWindow.print() here; from this
+  // instant the component releases the UI state, while the cleanup tail
+  // (afterprint / 1500ms fallback / watchdog) is parked and — in this
+  // scenario — never fires.
+  uiLock.release(runA);
+  assert.equal(uiLock.isHeld(), false, "dispatch releases the UI state even though the tail never resolves");
+  const runB = controller5.begin(); // supersedes runA while its tail is pending
+  uiLock.acquire(runB);
+  assert.equal(uiLock.isHeld(), true, "a second run begins while the first run's tail is pending");
+
+  // 6. The stale run's late cleanup must not release the live run's
+  //    state: when runA's tail finally fires, its release call names a
+  //    token that no longer owns the lock.
+  uiLock.release(runA);
+  assert.equal(uiLock.isHeld(), true, "a superseded run's late cleanup leaves the live run's UI state held");
+  uiLock.release(runB);
+  assert.equal(uiLock.isHeld(), false, "the owning run's release clears the UI state");
+
+  // 7. Dismissal force-releases regardless of owner (the dialog's
+  //    Close path: abortCurrent + releaseAll), so an aborted run can
+  //    never strand the UI state.
+  const runC = controller5.begin();
+  uiLock.acquire(runC);
+  controller5.abortCurrent();
+  uiLock.releaseAll();
+  assert.equal(uiLock.isHeld(), false, "dismissal force-releases the UI state");
 
   console.log("test-pos-receipt-print-run: all assertions passed");
 }

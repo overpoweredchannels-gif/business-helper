@@ -59,6 +59,57 @@ export class PrintRunController {
 }
 
 /**
+ * The dialog's "Preparing receipt…" UI state, owned by one print run.
+ *
+ * The state (Print button disabled + label, plus the guard that keeps a
+ * second run from starting) belongs to the PRE-print pipeline only:
+ * frame load → fonts → layout → dispatch. The moment a run dispatches
+ * its native print dialog, the user's interaction is with the OS
+ * dialog, while the post-dispatch tail — afterprint listener, fallback
+ * timer, watchdog — may be stretched arbitrarily by a throttled
+ * browser. Holding the UI state until that tail finishes makes the
+ * dialog look frozen even though every stage is bounded, so the owner
+ * releases the state AT DISPATCH and the tail finishes in the
+ * background, still owning the frame and timers.
+ *
+ * Ownership is what makes the early release safe: a superseded or
+ * dismissed run's late cleanup calls release(itsToken), finds it no
+ * longer owns the state, and cannot clear the state of the run that
+ * replaced it. Dismissal force-releases via releaseAll() after
+ * aborting the active run.
+ */
+export class PrintRunUiLock {
+  private owner: PrintRunToken | null = null;
+  private held = false;
+
+  /** True while a run holds the UI state (preparing, or never dispatched). */
+  isHeld(): boolean {
+    return this.held;
+  }
+
+  /** Claim the UI state for a freshly begun run. Callers gate on isHeld() first. */
+  acquire(token: PrintRunToken): void {
+    this.owner = token;
+    this.held = true;
+  }
+
+  /**
+   * Release the UI state if `token` still owns it. A no-op for a
+   * superseded or dismissed run, whose late cleanup must not clear
+   * the state of the run that replaced it.
+   */
+  release(token: PrintRunToken): void {
+    if (this.owner !== token) return;
+    this.held = false;
+  }
+
+  /** Force-release regardless of owner (dialog dismissal). */
+  releaseAll(): void {
+    this.held = false;
+  }
+}
+
+/**
  * Await one stage of a print run. Resolves with the stage's value, or
  * PRINT_STAGE_ABORTED as soon as the token is aborted — even if the stage
  * promise never settles. A stage rejection while the run is still live
