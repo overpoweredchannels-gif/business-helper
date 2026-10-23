@@ -18,6 +18,15 @@
  *  - held-sale currency-stamp fixtures: matching stamp resumes,
  *    mismatched stamp is stale, unstamped legacy rows backfill with
  *    the current books currency and turn stale after a later switch.
+ * Mop-up round additions:
+ *  - a registry scan for the OTHER hardcoded-PKR pattern — a local
+ *    Intl.NumberFormat formatter pinned to "PKR" — proving the two
+ *    migrated manager pages no longer match it and that every file
+ *    still matching it is a named known bypass (or the one legitimate
+ *    EUR-invoice base formatter), so a new adopter fails the suite;
+ *  - basket-template stamp fixtures: the held-sale lifecycle applied
+ *    to POS basket templates (save stamps, legacy backfills and turns
+ *    stale after a later switch, stale apply is blocked by status).
  * Run: npx tsx scripts/test-books-currency.ts
  */
 import assert from "node:assert/strict";
@@ -53,6 +62,12 @@ import {
   stampLegacyHeldSales,
   type HeldSale,
 } from "../src/lib/sales/held-sales";
+import {
+  basketTemplateCurrencyStatus,
+  parseBasketTemplates,
+  stampLegacyBasketTemplates,
+  type BasketTemplate,
+} from "../src/lib/sales/basket-templates";
 
 // ---------------------------------------------------------------------------
 // Formatter: books amounts render unconverted, in the books currency.
@@ -400,6 +415,125 @@ async function main() {
     assert.equal(parseHeldSales(JSON.stringify([stamped]))[0].currency, "EUR");
     assert.equal(parseHeldSales(JSON.stringify([unstamped]))[0].currency, undefined);
     assert.throws(() => parseHeldSales(JSON.stringify([{ ...stamped, currency: "BTC" }])));
+  }
+
+  // -------------------------------------------------------------------------
+  // Mop-up round: the OTHER hardcoded-PKR pattern. formatPKR is not the
+  // only way to mislabel a books amount — satellite pages grew local
+  // Intl.NumberFormat formatters pinned to currency: "PKR". The two
+  // manager pages flagged for this round (performance, team/[id]) are
+  // migrated to formatBooksMoney and must no longer match the pattern.
+  // Every file that still matches is named below — either a known
+  // bypass (a real mislabel for a non-PKR books org, queued for its
+  // own migration) or the one legitimate case — so a NEW file adopting
+  // the pattern fails this suite, and a listed file that gets migrated
+  // fails the staleness check until its entry is removed.
+  //
+  // The pattern anchors on the Intl.NumberFormat constructor and a
+  // currency: "PKR" option within a short window (the option object,
+  // one line or the next few), with a non-word character before
+  // "currency" so data literals like base_currency: 'PKR' never match.
+  // -------------------------------------------------------------------------
+  {
+    const pkrIntlPattern = /Intl\.NumberFormat\([\s\S]{0,160}?(?<![\w])currency:\s*["']PKR["']/;
+    const knownBypasses = new Map<string, string>([
+      ["src/app/page.tsx", "pkrFormatter (POS save warnings, profit & loss) and the expense-list formatter — raw Intl sites left by the formatPKR migration"],
+      ["src/app/manager/page.tsx", "manager overview: local money formatter, not yet migrated"],
+      ["src/app/manager/collections/page.tsx", "manager collections: local money formatter, not yet migrated"],
+      ["src/app/manager/drafts/page.tsx", "manager drafts: local money formatter, not yet migrated"],
+      ["src/app/manager/targets/page.tsx", "manager targets: local money formatter, not yet migrated"],
+      ["src/app/salesman/page.tsx", "salesman home: local money() formatter, not yet migrated"],
+      ["src/app/salesman/collections/page.tsx", "salesman collections: local money formatter, not yet migrated"],
+      ["src/app/salesman/drafts/page.tsx", "salesman drafts: local money formatter, not yet migrated"],
+      ["src/app/salesman/visits/[id]/page.tsx", "salesman visit detail: local money formatter, not yet migrated"],
+      ["src/components/fsm/EmployeeManagement.tsx", "employee management: local formatMoney, not yet migrated"],
+      ["src/components/salesman/MySalesPerformance.tsx", "salesman performance card: local money(), not yet migrated"],
+      ["src/lib/import-export/historical-ai-summary.ts", "AI lane (parked): server-side summary strings via a local formatMoney"],
+      ["src/lib/sales/retail-summary.ts", "POS cash-summary message strings (change due / cash short) via inline Intl formatters"],
+    ]);
+    const legitimate = new Map<string, string>([
+      ["src/components/eur/EurInvoiceForm.tsx", "formats the PKR BASE equivalents of EUR documents — the EUR subsystem's base currency is PKR by design; EUR amounts use its EUR formatter"],
+    ]);
+    const migratedPages = [
+      "src/app/manager/performance/page.tsx",
+      "src/app/manager/team/[id]/page.tsx",
+    ];
+    const matching: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!/\.tsx?$/.test(entry.name)) continue;
+        if (!pkrIntlPattern.test(readFileSync(full, "utf8"))) continue;
+        matching.push(path.relative(process.cwd(), full).split(path.sep).join("/"));
+      }
+    };
+    walk(path.join(process.cwd(), "src"));
+    const named = new Set([...knownBypasses.keys(), ...legitimate.keys()]);
+    assert.deepEqual(
+      matching.filter(rel => !named.has(rel)),
+      [],
+      "a hardcoded-PKR Intl formatter appeared outside the named registry — migrate it to formatBooksMoney or record it in the registry with a reason",
+    );
+    for (const rel of migratedPages) {
+      assert.ok(!matching.includes(rel), `${rel} was migrated to the books formatter and must not pin an Intl formatter to PKR`);
+    }
+    for (const rel of named) {
+      assert.ok(
+        matching.includes(rel),
+        `registry entry ${rel} no longer pins an Intl formatter to PKR — remove it from the registry (it was migrated)`,
+      );
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Basket-template currency guard: templates carry the same stamp as
+  // held sales (same shared rule). A template saved under the current
+  // books currency applies; a mismatched stamp is stale (blocked by
+  // RetailPOS, kept as stored); an unstamped legacy template backfills
+  // at load and turns stale after a later switch.
+  // -------------------------------------------------------------------------
+  {
+    const sale = {
+      lines: [],
+      customerId: null,
+      date: "2026-10-23",
+      paymentType: "cash" as const,
+      discount: "",
+      discountType: "flat" as const,
+      tax: "",
+    };
+    const stamped: BasketTemplate = { id: "b-1", name: "Morning basket", sale, savedAt: "2026-10-23T00:00:00.000Z", currency: "EUR" };
+    const unstamped: BasketTemplate = { id: "b-2", name: "Legacy basket", sale, savedAt: "2026-10-23T00:00:00.000Z" };
+
+    assert.equal(basketTemplateCurrencyStatus(stamped, "EUR"), "current", "matching stamp applies");
+    assert.equal(basketTemplateCurrencyStatus(stamped, "PKR"), "stale", "mismatched stamp blocks the apply");
+    assert.equal(basketTemplateCurrencyStatus(unstamped, "PKR"), "legacy", "unstamped templates are legacy");
+
+    const filled = stampLegacyBasketTemplates([stamped, unstamped], "PKR");
+    assert.equal(filled.stamped, true);
+    assert.equal(filled.rows[0], stamped, "stamped templates pass through by identity");
+    assert.equal(filled.rows[1].currency, "PKR", "legacy templates are backfilled with the current books currency");
+    assert.equal(
+      basketTemplateCurrencyStatus(filled.rows[1], "EUR"),
+      "stale",
+      "a backfilled template turns stale when the books switch later",
+    );
+    const onlyStamped = [stamped];
+    const noop = stampLegacyBasketTemplates(onlyStamped, "EUR");
+    assert.equal(noop.stamped, false);
+    assert.equal(noop.rows, onlyStamped, "no-op backfill returns the original array untouched");
+
+    // Storage round-trip: the stamp survives the parser, legacy rows
+    // parse unstamped, structurally invalid rows are filtered, and a
+    // row with an invalid stamp is dropped (its amounts' denomination
+    // is unknowable). A non-array value throws, as the old reader did.
+    assert.equal(parseBasketTemplates(JSON.stringify([stamped]))[0].currency, "EUR");
+    assert.equal(parseBasketTemplates(JSON.stringify([unstamped]))[0].currency, undefined);
+    assert.equal(parseBasketTemplates(JSON.stringify([{ ...stamped, currency: "BTC" }])).length, 0);
+    assert.equal(parseBasketTemplates(JSON.stringify([{ id: 7 }, null, stamped])).length, 1);
+    assert.equal(parseBasketTemplates(null).length, 0);
+    assert.throws(() => parseBasketTemplates("{}"));
   }
 
   console.log("test-books-currency: all assertions passed");
