@@ -83,4 +83,10 @@ assert.equal(afterRemovingItem.length, 1, "The basket mutation is applied while 
 const restoredHeldLine = draftLine({ quantity: "", selling_price: "80.601" });
 assert.doesNotThrow(() => calculate([restoredHeldLine]), "Invalid held drafts can be searched and rendered safely");
 
-console.log("Sale draft interaction logic passed: quantity, precision correction, price, cash, discounts, and line removal.");
+// Books currency threads through validation into the cash summary's
+// closing message: a EUR-books draft reports its change in euros.
+result = calculate([draftLine({ selling_price: "100.00" })], { cashReceived: "125.00", currency: "EUR" });
+assert.equal(result.valid, true);
+assert.equal(result.cashSummary?.closingMessage, "Cash drawer is ready. Change due is €25.00.");
+
+console.log("Sale draft interaction logic passed: quantity, precision correction, price, cash, discounts, line removal, and books-currency threading.");

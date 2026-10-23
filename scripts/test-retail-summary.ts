@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { buildRetailDrawerSummary } from "../src/lib/sales/retail-summary";
 
+// Intl currency output separates the currency designator with a
+// non-breaking space; normalize it for literal comparisons.
+const norm = (s: string) => s.replace(/\u00A0/g, " ");
+
 const blank = buildRetailDrawerSummary({ total: 100, received: "" });
 assert.equal(blank.received, 100);
 assert.equal(blank.status, "cash-ready");
@@ -35,4 +39,16 @@ assert.equal(excess.shortfall, 0);
 assert.equal(excess.returnAmount, 25);
 assert.equal(excess.change, 25);
 
-console.log("Retail cash summary tests passed: blank, zero, insufficient, exact, and excess.");
+// Books currency: the closing message formats the books amounts in the
+// organization's books currency (threaded in by the caller) via the
+// books formatter — unconverted, unrelabelled. A EUR-books org sees
+// euro amounts, not PKR-labelled ones.
+const excessEur = buildRetailDrawerSummary({ total: 100, received: "125", currency: "EUR" });
+assert.equal(norm(excessEur.closingMessage), "Cash drawer is ready. Change due is €25.00.");
+const shortEur = buildRetailDrawerSummary({ total: 100, received: 65, currency: "EUR" });
+assert.equal(norm(shortEur.closingMessage), "Cash is short by €35.00.");
+// No currency threaded: the PKR default renders exactly as the old
+// hardcoded en-PK/PKR formatter did.
+assert.equal(norm(excess.closingMessage), "Cash drawer is ready. Change due is Rs 25.00.");
+
+console.log("Retail cash summary tests passed: blank, zero, insufficient, exact, excess, and books-currency messages.");

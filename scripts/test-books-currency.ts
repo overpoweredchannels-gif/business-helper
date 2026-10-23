@@ -22,11 +22,19 @@
  *  - a registry scan for the OTHER hardcoded-PKR pattern — a local
  *    Intl.NumberFormat formatter pinned to "PKR" — proving the two
  *    migrated manager pages no longer match it and that every file
- *    still matching it is a named known bypass (or the one legitimate
- *    EUR-invoice base formatter), so a new adopter fails the suite;
+ *    still matching it is named in a registry with a reason, so a
+ *    new adopter fails the suite;
  *  - basket-template stamp fixtures: the held-sale lifecycle applied
  *    to POS basket templates (save stamps, legacy backfills and turns
  *    stale after a later switch, stale apply is blocked by status).
+ * Final bypass round additions:
+ *  - every remaining registry bypass that renders org books amounts
+ *    (main page, manager + salesman satellites, EmployeeManagement,
+ *    MySalesPerformance, retail-summary) is migrated; the registry
+ *    now holds exactly two justified entries (the EUR-invoice PKR
+ *    base formatter and the parked AI lane), and every migrated file
+ *    is asserted clean of the pattern and wired to the books
+ *    formatter, so a regression in any of them fails the suite.
  * Run: npx tsx scripts/test-books-currency.ts
  */
 import assert from "node:assert/strict";
@@ -418,16 +426,14 @@ async function main() {
   }
 
   // -------------------------------------------------------------------------
-  // Mop-up round: the OTHER hardcoded-PKR pattern. formatPKR is not the
-  // only way to mislabel a books amount — satellite pages grew local
-  // Intl.NumberFormat formatters pinned to currency: "PKR". The two
-  // manager pages flagged for this round (performance, team/[id]) are
-  // migrated to formatBooksMoney and must no longer match the pattern.
-  // Every file that still matches is named below — either a known
-  // bypass (a real mislabel for a non-PKR books org, queued for its
-  // own migration) or the one legitimate case — so a NEW file adopting
-  // the pattern fails this suite, and a listed file that gets migrated
-  // fails the staleness check until its entry is removed.
+  // The OTHER hardcoded-PKR pattern. formatPKR is not the only way to
+  // mislabel a books amount — pages and components grew local
+  // Intl.NumberFormat formatters pinned to currency: "PKR". Every such
+  // file that renders ORG BOOKS amounts has now been migrated to the
+  // books formatter (the migratedFiles list below — each is asserted
+  // clean of the pattern AND wired to the books formatter, so a
+  // regression in any of them fails this suite). The registry of files
+  // still ALLOWED to match is exactly two, each justified:
   //
   // The pattern anchors on the Intl.NumberFormat constructor and a
   // currency: "PKR" option within a short window (the option object,
@@ -436,28 +442,32 @@ async function main() {
   // -------------------------------------------------------------------------
   {
     const pkrIntlPattern = /Intl\.NumberFormat\([\s\S]{0,160}?(?<![\w])currency:\s*["']PKR["']/;
-    const knownBypasses = new Map<string, string>([
-      ["src/app/page.tsx", "pkrFormatter (POS save warnings, profit & loss) and the expense-list formatter — raw Intl sites left by the formatPKR migration"],
-      ["src/app/manager/page.tsx", "manager overview: local money formatter, not yet migrated"],
-      ["src/app/manager/collections/page.tsx", "manager collections: local money formatter, not yet migrated"],
-      ["src/app/manager/drafts/page.tsx", "manager drafts: local money formatter, not yet migrated"],
-      ["src/app/manager/targets/page.tsx", "manager targets: local money formatter, not yet migrated"],
-      ["src/app/salesman/page.tsx", "salesman home: local money() formatter, not yet migrated"],
-      ["src/app/salesman/collections/page.tsx", "salesman collections: local money formatter, not yet migrated"],
-      ["src/app/salesman/drafts/page.tsx", "salesman drafts: local money formatter, not yet migrated"],
-      ["src/app/salesman/visits/[id]/page.tsx", "salesman visit detail: local money formatter, not yet migrated"],
-      ["src/components/fsm/EmployeeManagement.tsx", "employee management: local formatMoney, not yet migrated"],
-      ["src/components/salesman/MySalesPerformance.tsx", "salesman performance card: local money(), not yet migrated"],
-      ["src/lib/import-export/historical-ai-summary.ts", "AI lane (parked): server-side summary strings via a local formatMoney"],
-      ["src/lib/sales/retail-summary.ts", "POS cash-summary message strings (change due / cash short) via inline Intl formatters"],
+    const registry = new Map<string, string>([
+      ["src/components/eur/EurInvoiceForm.tsx", "formats the PKR BASE equivalents of EUR documents — the EUR subsystem's base currency is PKR by design; the EUR amounts themselves use its EUR formatter"],
+      ["src/lib/import-export/historical-ai-summary.ts", "AI lane (parked, UMAIR 2026-10-22): server-side AI summary strings via a local formatMoney. The books currency is resolved client-side only, so a correct migration belongs with the AI unpark work, not a blind swap"],
     ]);
-    const legitimate = new Map<string, string>([
-      ["src/components/eur/EurInvoiceForm.tsx", "formats the PKR BASE equivalents of EUR documents — the EUR subsystem's base currency is PKR by design; EUR amounts use its EUR formatter"],
+    // Every file migrated off the pattern, with the books-formatter
+    // token its formatter path must reference. The satellite pages'
+    // local fmt()/money() helpers are module-private (no importable
+    // seam), so their fixture is this source-level assertion plus the
+    // runtime fixtures for the importable seams (books formatter,
+    // retail summary).
+    const migratedFiles = new Map<string, string>([
+      ["src/app/page.tsx", "formatBooksMoney"],
+      ["src/app/manager/page.tsx", "formatBooksMoney"],
+      ["src/app/manager/collections/page.tsx", "formatBooksMoney"],
+      ["src/app/manager/drafts/page.tsx", "formatBooksMoney"],
+      ["src/app/manager/targets/page.tsx", "formatBooksMoney"],
+      ["src/app/manager/performance/page.tsx", "formatBooksMoney"],
+      ["src/app/manager/team/[id]/page.tsx", "formatBooksMoney"],
+      ["src/app/salesman/page.tsx", "formatBooksMoney"],
+      ["src/app/salesman/collections/page.tsx", "formatBooksMoney"],
+      ["src/app/salesman/drafts/page.tsx", "formatBooksMoney"],
+      ["src/app/salesman/visits/[id]/page.tsx", "formatBooksMoney"],
+      ["src/components/fsm/EmployeeManagement.tsx", "formatBooksMoney"],
+      ["src/components/salesman/MySalesPerformance.tsx", "formatBooksMoney"],
+      ["src/lib/sales/retail-summary.ts", "formatBooksAmount"],
     ]);
-    const migratedPages = [
-      "src/app/manager/performance/page.tsx",
-      "src/app/manager/team/[id]/page.tsx",
-    ];
     const matching: string[] = [];
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -469,19 +479,22 @@ async function main() {
       }
     };
     walk(path.join(process.cwd(), "src"));
-    const named = new Set([...knownBypasses.keys(), ...legitimate.keys()]);
     assert.deepEqual(
-      matching.filter(rel => !named.has(rel)),
+      matching.filter(rel => !registry.has(rel)),
       [],
-      "a hardcoded-PKR Intl formatter appeared outside the named registry — migrate it to formatBooksMoney or record it in the registry with a reason",
+      "a hardcoded-PKR Intl formatter appeared outside the two-entry registry — migrate it to the books formatter or record it in the registry with a justification",
     );
-    for (const rel of migratedPages) {
-      assert.ok(!matching.includes(rel), `${rel} was migrated to the books formatter and must not pin an Intl formatter to PKR`);
-    }
-    for (const rel of named) {
+    for (const rel of registry.keys()) {
       assert.ok(
         matching.includes(rel),
         `registry entry ${rel} no longer pins an Intl formatter to PKR — remove it from the registry (it was migrated)`,
+      );
+    }
+    for (const [rel, token] of migratedFiles) {
+      assert.ok(!matching.includes(rel), `${rel} was migrated to the books formatter and must not pin an Intl formatter to PKR`);
+      assert.ok(
+        readFileSync(path.join(process.cwd(), rel), "utf8").includes(token),
+        `${rel} was migrated to the books formatter and must reference ${token}`,
       );
     }
   }
