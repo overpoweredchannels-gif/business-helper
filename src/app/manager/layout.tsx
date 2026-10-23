@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import OwnerFsmLayout from "@/components/salesman/OwnerFsmLayout";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { resolveBooksCurrency } from "@/lib/books/currency";
+import { setActiveBooksCurrency } from "@/lib/tradeos/formatters";
 import { Loader2 } from "lucide-react";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -20,6 +22,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         const role = data?.me?.profile?.role;
         if (role === "owner" || role === "admin") {
+          // Resolve the org's books currency before children render
+          // (they mount only after this gate lifts), so manager pages
+          // format books amounts with formatBooksMoney in the right
+          // currency instead of any hardcoded one.
+          setActiveBooksCurrency(
+            resolveBooksCurrency(data.me.organization?.books_currency, data.me.organization?.regional_preferences),
+          );
           setOrgName(data.me.organization?.name ?? null);
           setUserName(data.me.profile?.display_name || data.me.profile?.full_name || null);
         } else {

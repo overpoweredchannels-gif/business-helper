@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { Loader2, AlertCircle, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, Award } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -126,7 +127,10 @@ export default function ManagerPerformancePage() {
     load();
   }, [load]);
 
-  const formatCurrency = (n: number) => new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(n);
+  // Books amounts, formatted in the org's books currency (resolved by
+  // the manager layout from the identity payload) — never a hardcoded
+  // currency, which would mislabel every figure for a non-PKR org.
+  const formatCurrency = (n: number) => formatBooksMoney(n);
 
   if (loading) {
     return (

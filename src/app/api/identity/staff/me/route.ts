@@ -28,11 +28,30 @@ export async function GET(request: Request) {
     .eq("organization_id", context.actor.organizationId)
     .maybeSingle();
 
-  const { data: organization, error: organizationError } = await supabase
+  // books_currency arrives with an additive migration that may not
+  // have run yet; until the column exists the widened select fails
+  // with 42703, so fall back to the select without it — the books
+  // currency then resolves from regional_preferences, exactly like the
+  // main page's organization read (same pattern, same behaviour).
+  let organizationResult = await supabase
     .from("organizations")
-    .select("name, working_hours")
+    .select("name, working_hours, regional_preferences, books_currency")
     .eq("id", context.actor.organizationId)
     .maybeSingle();
+
+  if (
+    organizationResult.error &&
+    (organizationResult.error.code === "42703" ||
+      organizationResult.error.message?.includes("books_currency"))
+  ) {
+    organizationResult = await supabase
+      .from("organizations")
+      .select("name, working_hours, regional_preferences")
+      .eq("id", context.actor.organizationId)
+      .maybeSingle();
+  }
+
+  const { data: organization, error: organizationError } = organizationResult;
 
   const { data: permissions, error: permissionsError } = await supabase
     .from("staff_permissions")
@@ -56,6 +75,8 @@ export async function GET(request: Request) {
       organization: {
         name: organization?.name ?? null,
         working_hours: organization?.working_hours ?? null,
+        regional_preferences: organization?.regional_preferences ?? null,
+        books_currency: (organization as { books_currency?: unknown } | null)?.books_currency ?? null,
       },
       permissions,
     },

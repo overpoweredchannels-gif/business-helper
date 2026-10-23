@@ -3,7 +3,7 @@
 import { Children, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
-import { formatDate as formatSharedDate } from "@/lib/tradeos/formatters";
+import { formatBooksMoney, formatDate as formatSharedDate } from "@/lib/tradeos/formatters";
 import { Loader2, AlertCircle, ArrowLeft, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, MessageSquareText, Users, Award, KeyRound, Route as RouteIcon, Store, Package, Radar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -90,8 +90,10 @@ export default function EmployeeLedgerPage() {
     load();
   }, [load]);
 
-  const formatCurrency = (n: number) =>
-    new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(n);
+  // Books amounts, formatted in the org's books currency (resolved by
+  // the manager layout from the identity payload) — never a hardcoded
+  // currency, which would mislabel every figure for a non-PKR org.
+  const formatCurrency = (n: number) => formatBooksMoney(n);
 
   if (loading) {
     return (
