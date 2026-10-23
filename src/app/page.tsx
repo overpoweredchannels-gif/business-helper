@@ -36,6 +36,10 @@ import { parseStaffSalesMode, staffSaleOutcome } from "@/lib/sales/staff-sale-ga
 import { readSellMode, writeSellMode } from "@/lib/sales/sell-mode";
 import { buildSalesInvoicePreviewRowsHtml } from "@/lib/sales/sales-invoice-preview";
 import { buildPurchaseInvoicePreviewRowsHtml } from "@/lib/purchases/purchase-invoice-preview";
+import { buildSalesOrderPreviewRowsHtml } from "@/lib/sales/sales-order-preview";
+import { buildSalesReturnPreviewRowsHtml } from "@/lib/sales/sales-return-preview";
+import { buildPurchaseOrderPreviewRowsHtml } from "@/lib/purchases/purchase-order-preview";
+import { buildPurchaseReturnPreviewRowsHtml } from "@/lib/purchases/purchase-return-preview";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { SearchSuggestField } from "@/components/search/SearchSuggestField";
 import { buildCustomerSuggestionData, buildProductSuggestionData, orderCrossTypeSuggestions, pinSelectedFirst } from "@/components/search/suggestion-items";
@@ -7890,19 +7894,23 @@ setCustomerOrganizationName("");
     if (!po) return;
     const supplier = suppliers.find((item) => item.id === po.supplier_id);
     const lineItems = purchaseOrderItems.filter((item) => item.purchase_order_id === poId);
-    const lineRows =
-      lineItems.length === 0
-        ? [[t('print.noLineItems'), "-", "-", "-"]]
-        : lineItems.map((item) => {
-            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
-            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
-            return [
-              product?.name ?? t('sell.unknownProduct'),
-              `${item.quantity_ordered} ${unit}`,
-              formatPKR(safeNumber(item.unit_price)),
-              formatPKR(safeNumber(item.quantity_ordered) * safeNumber(item.unit_price)),
-            ];
-          });
+    // Quantity and unit are passed separately on purpose: the preview
+    // row builder renders the bare numeral in the Quantity column and
+    // the unit as a small line under the product name (never glued).
+    const lineRowsHtml = buildPurchaseOrderPreviewRowsHtml(
+      lineItems.map((item) => {
+        const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+        const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
+        return {
+          productName: product?.name ?? t('sell.unknownProduct'),
+          quantity: safeNumber(item.quantity_ordered),
+          unit,
+          priceText: formatPKR(safeNumber(item.unit_price)),
+          totalText: formatPKR(safeNumber(item.quantity_ordered) * safeNumber(item.unit_price)),
+        };
+      }),
+      [t('print.noLineItems'), "-", "-", "-"],
+    );
 
     openPrintPreview(
       `${t('print.purchaseOrder')} ${po.po_number}`,
@@ -7917,7 +7925,7 @@ setCustomerOrganizationName("");
       </div>
       <table>
         <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('buy.unitPrice'), t('buy.lineTotal')])}</thead>
-        <tbody>${renderRows(lineRows)}</tbody>
+        <tbody>${lineRowsHtml}</tbody>
       </table>
       ${po.notes ? `<div class="summary"><p><strong>${t('buy.notesPrefix')}</strong> ${escapeHtml(po.notes)}</p></div>` : ""}
       ${businessPrintFooterHtml()}`
@@ -8199,19 +8207,23 @@ setCustomerOrganizationName("");
     if (!purchaseReturn) return;
     const supplier = suppliers.find((item) => item.id === purchaseReturn.supplier_id);
     const lineItems = purchaseReturnItems.filter((item) => item.purchase_return_id === returnId);
-    const lineRows =
-      lineItems.length === 0
-        ? [[t('print.noLineItems'), "-", "-", "-"]]
-        : lineItems.map((item) => {
-            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
-            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
-            return [
-              product?.name ?? t('sell.unknownProduct'),
-              `${item.quantity} ${unit}`,
-              formatPKR(safeNumber(item.unit_price)),
-              formatPKR(safeNumber(item.quantity) * safeNumber(item.unit_price)),
-            ];
-          });
+    // Quantity and unit are passed separately on purpose: the preview
+    // row builder renders the bare numeral in the Quantity column and
+    // the unit as a small line under the product name (never glued).
+    const lineRowsHtml = buildPurchaseReturnPreviewRowsHtml(
+      lineItems.map((item) => {
+        const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+        const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
+        return {
+          productName: product?.name ?? t('sell.unknownProduct'),
+          quantity: safeNumber(item.quantity),
+          unit,
+          priceText: formatPKR(safeNumber(item.unit_price)),
+          totalText: formatPKR(safeNumber(item.quantity) * safeNumber(item.unit_price)),
+        };
+      }),
+      [t('print.noLineItems'), "-", "-", "-"],
+    );
 
     openPrintPreview(
       `${t('print.purchaseReturn')} ${purchaseReturn.return_number}`,
@@ -8224,7 +8236,7 @@ setCustomerOrganizationName("");
       </div>
       <table>
         <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('buy.unitPrice'), t('buy.lineTotal')])}</thead>
-        <tbody>${renderRows(lineRows)}</tbody>
+        <tbody>${lineRowsHtml}</tbody>
       </table>
       ${purchaseReturn.reason ? `<div class="summary"><p><strong>${t('sell.reasonLabel')}:</strong> ${escapeHtml(purchaseReturn.reason)}</p></div>` : ""}
       ${businessPrintFooterHtml()}`
@@ -8657,21 +8669,25 @@ setCustomerOrganizationName("");
     if (!order) return;
     const customer = customers.find((item) => item.id === order.customer_id);
     const lineItems = salesOrderItems.filter((item) => item.sales_order_id === soId);
-    const lineRows =
-      lineItems.length === 0
-        ? [[t('print.noLineItems'), "-", "-", "-"]]
-        : lineItems.map((item) => {
-            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
-            const unitPrice = safeNumber(item.unit_price);
-            const discount = safeNumber(item.discount);
-            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
-            return [
-              product?.name ?? t('sell.unknownProduct'),
-              `${item.quantity_ordered} ${unit}`,
-              formatPKR(unitPrice),
-              formatPKR(unitPrice * Number(item.quantity_ordered) - discount),
-            ];
-          });
+    // Quantity and unit are passed separately on purpose: the preview
+    // row builder renders the bare numeral in the Quantity column and
+    // the unit as a small line under the product name (never glued).
+    const lineRowsHtml = buildSalesOrderPreviewRowsHtml(
+      lineItems.map((item) => {
+        const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+        const unitPrice = safeNumber(item.unit_price);
+        const discount = safeNumber(item.discount);
+        const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
+        return {
+          productName: product?.name ?? t('sell.unknownProduct'),
+          quantity: safeNumber(item.quantity_ordered),
+          unit,
+          priceText: formatPKR(unitPrice),
+          totalText: formatPKR(unitPrice * Number(item.quantity_ordered) - discount),
+        };
+      }),
+      [t('print.noLineItems'), "-", "-", "-"],
+    );
 
     openPrintPreview(
       `${t('print.salesOrder')} ${order.so_number}`,
@@ -8685,7 +8701,7 @@ setCustomerOrganizationName("");
       </div>
       <table>
         <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('buy.unitPrice'), t('buy.lineTotal')])}</thead>
-        <tbody>${renderRows(lineRows)}</tbody>
+        <tbody>${lineRowsHtml}</tbody>
       </table>
       ${order.notes ? `<div class="summary"><p><strong>${t('buy.notesPrefix')}</strong> ${escapeHtml(order.notes)}</p></div>` : ""}
       ${businessPrintFooterHtml()}`
@@ -8871,21 +8887,25 @@ setCustomerOrganizationName("");
     if (!salesReturn) return;
     const customer = customers.find((item) => item.id === salesReturn.customer_id);
     const lineItems = salesReturnItems.filter((item) => item.sales_return_id === returnId);
-    const lineRows =
-      lineItems.length === 0
-        ? [[t('print.noLineItems'), "-", "-", "-"]]
-        : lineItems.map((item) => {
-            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
-            const unitPrice = safeNumber(item.unit_price);
-            const discount = safeNumber(item.discount);
-            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
-            return [
-              product?.name ?? t('sell.unknownProduct'),
-              `${item.quantity} ${unit}`,
-              formatPKR(unitPrice),
-              formatPKR(unitPrice * safeNumber(item.quantity) - discount),
-            ];
-          });
+    // Quantity and unit are passed separately on purpose: the preview
+    // row builder renders the bare numeral in the Quantity column and
+    // the unit as a small line under the product name (never glued).
+    const lineRowsHtml = buildSalesReturnPreviewRowsHtml(
+      lineItems.map((item) => {
+        const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+        const unitPrice = safeNumber(item.unit_price);
+        const discount = safeNumber(item.discount);
+        const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
+        return {
+          productName: product?.name ?? t('sell.unknownProduct'),
+          quantity: safeNumber(item.quantity),
+          unit,
+          priceText: formatPKR(unitPrice),
+          totalText: formatPKR(unitPrice * safeNumber(item.quantity) - discount),
+        };
+      }),
+      [t('print.noLineItems'), "-", "-", "-"],
+    );
 
     openPrintPreview(
       `${t('sell.salesReturn')} ${salesReturn.return_number}`,
@@ -8898,7 +8918,7 @@ setCustomerOrganizationName("");
       </div>
       <table>
         <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('buy.unitPrice'), t('buy.lineTotal')])}</thead>
-        <tbody>${renderRows(lineRows)}</tbody>
+        <tbody>${lineRowsHtml}</tbody>
       </table>
       ${salesReturn.reason ? `<div class="summary"><p><strong>${t('sell.reasonLabel')}:</strong> ${escapeHtml(salesReturn.reason)}</p></div>` : ""}
       ${businessPrintFooterHtml()}`
