@@ -11,7 +11,7 @@ import { saveReceiptTemplate } from "@/lib/print/receipt-template-save";
 import { awaitPrintStage, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, type PrintRunToken } from "@/lib/print/print-run";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 import { useRegional } from "@/components/regional/RegionalProvider";
-import { formatPKR } from "@/lib/tradeos/formatters";
+import { formatBooksMoney } from "@/lib/tradeos/formatters";
 
 export type { Receipt } from "@/lib/print/retail-receipt";
 
@@ -100,10 +100,10 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
       {chrome.columns.map(column => {
         const values: Record<string, string> = {
           quantity: line.quantity,
-          price: formatPKR(Number(line.price)),
-          discount: formatPKR(Number(line.discount || 0)),
+          price: formatBooksMoney(Number(line.price)),
+          discount: formatBooksMoney(Number(line.discount || 0)),
           bonus: line.bonus ? `${line.bonus} ${line.unit}` : "",
-          total: formatPKR(line.amount),
+          total: formatBooksMoney(line.amount),
         };
         const numeric = column.key === "quantity" || column.key === "price" || column.key === "discount" || column.key === "total";
         return <td key={column.key} className="border-b py-1 pr-1 align-top" style={{ borderColor: template.page.rule, fontSize: template.columns.rowSizePx, fontWeight: template.boldBody ? 700 : 400, overflowWrap: numeric ? "normal" : "anywhere", whiteSpace: numeric ? "nowrap" : undefined }}>
@@ -116,7 +116,7 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
     <div className="mt-2 border-t pt-1" style={{ borderColor: template.page.rule, fontSize: template.footer.labelSizePx }}>
       {summaryRows.map(row => <div key={row.key} className={`flex flex-wrap justify-between gap-1 py-0.5 ${row.key === "total" ? "border-t pt-1 font-bold" : ""}`} style={row.key === "total" ? { borderColor: template.page.rule, fontSize: template.footer.valueSizePx } : undefined}>
         <span className="overflow-wrap-anywhere">{row.label}</span>
-        <strong className="text-right tabular-nums" style={{ overflowWrap: "normal", whiteSpace: "nowrap" }}>{formatPKR(row.amount)}</strong>
+        <strong className="text-right tabular-nums" style={{ overflowWrap: "normal", whiteSpace: "nowrap" }}>{formatBooksMoney(row.amount)}</strong>
       </div>)}
     </div>
     {template.header.showOrgName && template.header.orgNamePosition === "bottom" && orgName}

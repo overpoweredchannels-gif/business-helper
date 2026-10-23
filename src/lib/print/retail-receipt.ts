@@ -1,5 +1,5 @@
 import { calculateSaleAmounts, calculateSaleLineTotal, roundMoney } from "@/lib/sales/sale-amounts";
-import { formatDate, formatPKR } from "@/lib/tradeos/formatters";
+import { formatDate, formatBooksMoney } from "@/lib/tradeos/formatters";
 import { calendarDateOf } from "@/lib/regional/dates";
 import { DEFAULT_PRINT_TEMPLATES } from "./default-templates";
 import type { PrintColumn, PrintTemplate } from "./print-template-types";
@@ -250,10 +250,10 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
   const rows = lineRows.map(line => {
     const values: Record<string, string> = {
       quantity: line.quantity,
-      price: formatPKR(Number(line.price)),
-      discount: formatPKR(Number(line.discount || 0)),
+      price: formatBooksMoney(Number(line.price)),
+      discount: formatBooksMoney(Number(line.discount || 0)),
       bonus: line.bonus ? `${line.bonus} ${line.unit}` : "",
-      total: formatPKR(line.amount),
+      total: formatBooksMoney(line.amount),
     };
     return `<tr data-receipt-line="">${resolved.columns.map(column => {
       // The Qty cell carries the numeral only; the unit rides as a small
@@ -271,7 +271,7 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
     template.header.showCustomer ? resolveReceiptCustomerName(receipt.customer, chrome) : "",
   ].filter(Boolean).map(escapeHtml).join(" · ");
   const summary = summaryRows.map(row =>
-    `<div class="summary-row${row.key === "total" ? " grand-total" : ""}"><span>${escapeHtml(row.label)}</span><strong>${formatPKR(roundMoney(row.amount))}</strong></div>`,
+    `<div class="summary-row${row.key === "total" ? " grand-total" : ""}"><span>${escapeHtml(row.label)}</span><strong>${formatBooksMoney(roundMoney(row.amount))}</strong></div>`,
   ).join("");
   const orgName = template.header.showOrgName
     ? `<h1>${escapeHtml(receipt.business)}</h1>`
