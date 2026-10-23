@@ -3,6 +3,7 @@
 import { Children, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatDate as formatSharedDate } from "@/lib/tradeos/formatters";
 import { Loader2, AlertCircle, ArrowLeft, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, MessageSquareText, Users, Award, KeyRound, Route as RouteIcon, Store, Package, Radar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -284,6 +285,10 @@ function RecentPanel({ title, icon, empty, children }: { title: string; icon: Re
 }
 
 function formatDate(d: string) {
+  // Date-only values (joining_date, target ranges, sale_date) are stored
+  // calendar dates: the shared formatter renders the exact day in every
+  // timezone. Timestamps keep this page's weekday rendering.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return formatSharedDate(d);
   return new Date(d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 

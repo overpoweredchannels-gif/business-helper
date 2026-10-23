@@ -1,5 +1,6 @@
 import { safeNumber } from "./validators";
-import type { Currency } from "@/lib/regional/settings";
+import { formatCalendarDate } from "@/lib/regional/dates";
+import type { Currency, RegionalLocale } from "@/lib/regional/settings";
 
 /** App-wide display currency. Amounts in TradeOS are plain numbers denominated
  * in the organisation's operating currency; this setting controls which
@@ -109,8 +110,23 @@ export const formatPKR = (value: unknown) =>
 
 export const formatCurrency = formatPKR;
 
+const DATE_ONLY_VALUE = /^\d{4}-\d{2}-\d{2}$/;
+
 export const formatDate = (value: unknown) => {
   if (typeof value !== "string" || !value.trim()) return "-";
+  const trimmed = value.trim();
+  if (DATE_ONLY_VALUE.test(trimmed)) {
+    // A date-only value names a calendar day (sale_date, purchase_date, a
+    // due date), not an instant. `new Date("2026-10-22")` parses it as UTC
+    // midnight, so an unpinned render shows the previous day in every
+    // timezone west of UTC. Route it through the shared calendar
+    // formatter, which pins the render so the stored day is shown as-is.
+    try {
+      return formatCalendarDate(trimmed, activeNumberLocale as RegionalLocale);
+    } catch {
+      return "-";
+    }
+  }
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "-";
   return date.toLocaleDateString(activeNumberLocale, {

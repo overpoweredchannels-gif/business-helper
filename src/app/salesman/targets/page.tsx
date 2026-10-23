@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatDate } from "@/lib/tradeos/formatters";
 import { Target, Loader2, AlertCircle } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
-import { localeFor } from "@/lib/regional/settings";
 import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
 
 interface Target {
@@ -26,8 +26,7 @@ const METRIC_KEYS: Record<string, 'salesman.targets.metric.revenue' | 'salesman.
 };
 
 export default function MyTargetsPage() {
-  const { t, language } = useRegional();
-  const locale = localeFor(language);
+  const { t } = useRegional();
   const [targets, setTargets] = useState<Target[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | DeferredMessage | null>(null);
@@ -100,7 +99,7 @@ export default function MyTargetsPage() {
                   </div>
                 </div>
                 <div className="text-xs text-light-text mt-2">
-                  <bdi>{new Date(tg.start_date).toLocaleDateString(locale)} → {new Date(tg.end_date).toLocaleDateString(locale)}</bdi>
+                  <bdi>{formatDate(tg.start_date)} → {formatDate(tg.end_date)}</bdi>
                 </div>
               </div>
             );

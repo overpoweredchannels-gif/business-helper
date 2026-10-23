@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatDate } from "@/lib/tradeos/formatters";
 import { Loader2, AlertCircle, CalendarClock, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -142,7 +143,7 @@ export default function ManagerLeavesPage() {
                     <div className="mt-3 text-sm">
                       <span className="font-medium text-foreground">{TYPE_LABEL[r.leave_type] ?? r.leave_type} leave</span>
                       <span className="text-body ml-2">
-                        {new Date(r.start_date).toLocaleDateString()} → {new Date(r.end_date).toLocaleDateString()}
+                        {formatDate(r.start_date)} → {formatDate(r.end_date)}
                         <span className="text-light-text ml-1">({days} day{days > 1 ? "s" : ""})</span>
                       </span>
                     </div>

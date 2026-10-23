@@ -120,6 +120,7 @@ import {
   isDateInRange,
   toDateInputValue,
 } from "@/lib/tradeos/formatters";
+import { calendarDayOfRecord } from "@/lib/regional/dates";
 import type {
   AiActionDraft,
   AiActionMessage,
@@ -9424,7 +9425,9 @@ setCustomerOrganizationName("");
         if (!haystack.includes(searchTerm)) return false;
       }
       if (f.supplierId !== "all" && transaction.supplier_id !== f.supplierId) return false;
-      const dateStr = getDateOnly(transaction.created_at) ?? "";
+      // Filter by the purchase's stored calendar date (what the list
+      // displays), falling back to the creation day only when it has none.
+      const dateStr = getDateOnly(transaction.purchase_date) ?? getDateOnly(transaction.created_at) ?? "";
       if (f.dateFrom && dateStr && dateStr < f.dateFrom) return false;
       if (f.dateTo && dateStr && dateStr > f.dateTo) return false;
       if (f.status !== "all" && (transaction.expense_review_status ?? "pending") !== f.status) {
@@ -9780,7 +9783,7 @@ setCustomerOrganizationName("");
         fallbackAllocatedAmount,
         allocatedAmount,
         remainingPayableAmount,
-        purchaseDate: getDateOnly(transaction.created_at),
+        purchaseDate: getDateOnly(transaction.purchase_date) ?? getDateOnly(transaction.created_at),
       };
     })
     .filter((invoice) => invoice.remainingPayableAmount > 0)
@@ -10285,8 +10288,12 @@ setCustomerOrganizationName("");
   const pendingTasks = tasks.filter((t) => t.status === "pending");
   // True "today" KPIs for the dashboard hero cards (independent of the BI
   // range selector which defaults to 30 days).
+  // A sale counts under its stored calendar date (sale_date); the creation
+  // instant is only a fallback for records that have no sale_date. The old
+  // OR matched either day, so a near-midnight sale could be counted today
+  // while every list and print surface displayed it under sale_date.
   const todayTransactions = salesTransactions.filter(
-    (tx) => getDateOnly(tx.sale_date) === todayDateValue || getDateOnly(tx.created_at) === todayDateValue
+    (tx) => calendarDayOfRecord([tx.sale_date, tx.created_at]) === todayDateValue
   );
   const todayTransactionIds = new Set(todayTransactions.map((tx) => tx.id));
   const todaySalesItems = salesItems.filter((item) => todayTransactionIds.has(item.sales_transaction_id));

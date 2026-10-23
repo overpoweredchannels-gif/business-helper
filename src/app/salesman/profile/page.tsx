@@ -3,15 +3,14 @@
 import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatDate } from "@/lib/tradeos/formatters";
 import { EmployeeLiveTracking } from "@/components/dashboard";
 import { User, Briefcase, Phone, Calendar, Hash, Building2, Loader2, AlertCircle } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
-import { localeFor } from "@/lib/regional/settings";
 import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
 
 export default function ProfilePage() {
-  const { t, language } = useRegional();
-  const locale = localeFor(language);
+  const { t } = useRegional();
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | DeferredMessage | null>(null);
@@ -79,7 +78,7 @@ export default function ProfilePage() {
         {row(t('salesman.profile.designation'), employee.designation, Briefcase)}
         {row(t('salesman.profile.mobile'), employee.phone || profile.phone, Phone)}
         {row(t('salesman.profile.organization'), me?.organization?.name, Building2)}
-        {row(t('salesman.profile.joiningDate'), employee.joining_date ? new Date(employee.joining_date).toLocaleDateString(locale) : null, Calendar)}
+        {row(t('salesman.profile.joiningDate'), employee.joining_date ? formatDate(employee.joining_date) : null, Calendar)}
         {row(t('salesman.profile.employeeCode'), employee.employee_id, Hash)}
       </div>
 

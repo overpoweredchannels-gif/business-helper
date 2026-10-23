@@ -6,7 +6,8 @@ import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { EmployeeLiveTracking } from "@/components/dashboard";
 import { useRegional } from "@/components/regional/RegionalProvider";
-import { localeFor } from "@/lib/regional/settings";
+import { localeFor, type RegionalLocale } from "@/lib/regional/settings";
+import { formatCalendarDate } from "@/lib/regional/dates";
 import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
 import {
   AlertCircle, ArrowUpRight, BarChart3, Bell, Briefcase, CalendarDays, ChevronRight,
@@ -190,5 +191,17 @@ function MiniAction({ href, icon: Icon, title, detail }: { href: string; icon: R
 }
 function Empty({ text }: { text: string }) { return <p className="py-5 text-center text-sm text-body">{text}</p>; }
 function money(value: number) { return new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(Number(value || 0)); }
-function formatDate(value: string, locale: string) { return new Date(value).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" }); }
+function formatDate(value: string, locale: string) {
+  // Date-only values are stored calendar dates: render the exact day via
+  // the shared pinned calendar formatter instead of `new Date`, which
+  // parses them as UTC midnight and shifts the day west of UTC.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    try {
+      return formatCalendarDate(value, locale as RegionalLocale);
+    } catch {
+      return value;
+    }
+  }
+  return new Date(value).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" });
+}
 function shortDate(value: string, locale: string) { return new Date(`${value}T00:00:00`).toLocaleDateString(locale, { month: "short", day: "numeric" }); }

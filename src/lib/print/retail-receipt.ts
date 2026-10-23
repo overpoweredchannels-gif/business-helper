@@ -1,5 +1,6 @@
 import { calculateSaleAmounts, calculateSaleLineTotal, roundMoney } from "@/lib/sales/sale-amounts";
 import { formatDate, formatPKR } from "@/lib/tradeos/formatters";
+import { calendarDateOf } from "@/lib/regional/dates";
 import { DEFAULT_PRINT_TEMPLATES } from "./default-templates";
 import type { PrintColumn, PrintTemplate } from "./print-template-types";
 
@@ -197,9 +198,16 @@ export function buildAtomicSaleReceipt(
   return {
     ...details,
     number: String(transaction.invoice_number ?? ""),
-    // A sale date is a calendar day, not a UTC instant. Local midnight avoids
-    // shifting date-only values to yesterday in browsers west of UTC.
-    date: formatDate(String(transaction.sale_date ?? details.fallbackDate).replace(/^(\d{4}-\d{2}-\d{2})$/, "$1T00:00:00")),
+    // A sale date is a calendar day, not an instant. Reduce the stored
+    // value to its calendar day first (calendarDateOf): date-only values
+    // pass through untouched, and a timestamp-shaped value is reduced to
+    // its literal leading date — the day as recorded in the value (for a
+    // `Z` timestamp, the UTC day) — instead of being rendered as an
+    // instant in the browser's timezone, which could print a neighbouring
+    // day. formatDate then renders that day pinned via the shared
+    // calendar formatter. Values with no extractable date keep the old
+    // raw-format behaviour.
+    date: formatDate(calendarDateOf(transaction.sale_date ?? details.fallbackDate) ?? String(transaction.sale_date ?? details.fallbackDate)),
     customer: result.customer_name || "Customer",
     lineSubtotal: calculated.lineSubtotal,
     lineDiscount: calculated.lineDiscount,

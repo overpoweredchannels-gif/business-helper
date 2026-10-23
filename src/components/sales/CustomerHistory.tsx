@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import HistoricalRecords from "@/components/import-export/HistoricalRecords";
 import { formatPKR } from "@/lib/tradeos/formatters";
+import { formatCalendarDate } from "@/lib/regional/dates";
 import { computeCustomerRemainingByTransaction, computeReturnedValueBySalesTransaction } from "@/lib/sales/returns-offset";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
@@ -27,7 +28,21 @@ const DATE_LOCALES = { en: "en-PK", es: "es-ES", it: "it-IT", ur: "ur-PK" } as c
 
 export default function CustomerHistory({ organizationId, customerId }: Props) {
   const { t, language } = useRegional();
-  const showDate = (value?: string | null) => value ? new Date(value).toLocaleDateString(DATE_LOCALES[language]) : "—";
+  const showDate = (value?: string | null) => {
+    if (!value) return "—";
+    // Stored calendar dates (sale_date, order_date, expected_date) render
+    // through the shared pinned calendar formatter — `new Date(value)`
+    // parses them as UTC midnight and shifts the day west of UTC.
+    // Timestamp values (the created_at fallback) keep instant rendering.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      try {
+        return formatCalendarDate(value, DATE_LOCALES[language]);
+      } catch {
+        return "—";
+      }
+    }
+    return new Date(value).toLocaleDateString(DATE_LOCALES[language]);
+  };
   const [data, setData] = useState<Data>(empty);
   const [selectedId, setSelectedId] = useState(customerId ?? "");
   const [search, setSearch] = useState("");
