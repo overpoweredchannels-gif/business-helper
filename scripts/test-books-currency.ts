@@ -11,9 +11,18 @@
  *  - abort paths through the service seam: migration missing,
  *    same-currency, bad rate — none of them reach the execute step, and
  *    a double-submit converts exactly once.
+ * Surface-migration round additions:
+ *  - a source scan proving formatPKR survives only in the named
+ *    allowlist (definition, two doc comments, the parked AI lane) and
+ *    in none of the migrated files;
+ *  - held-sale currency-stamp fixtures: matching stamp resumes,
+ *    mismatched stamp is stale, unstamped legacy rows backfill with
+ *    the current books currency and turn stale after a later switch.
  * Run: npx tsx scripts/test-books-currency.ts
  */
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import {
   amountToHundredths,
   computeControlTotals,
@@ -38,6 +47,12 @@ import {
   setActiveCurrency,
   setActiveFxRate,
 } from "../src/lib/tradeos/formatters";
+import {
+  heldSaleCurrencyStatus,
+  parseHeldSales,
+  stampLegacyHeldSales,
+  type HeldSale,
+} from "../src/lib/sales/held-sales";
 
 // ---------------------------------------------------------------------------
 // Formatter: books amounts render unconverted, in the books currency.
@@ -288,6 +303,103 @@ async function main() {
         return true;
       },
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Surface migration (this round): formatPKR — the display-rate
+  // formatter — may survive ONLY in the named places below. Every org
+  // surface renders books amounts through formatBooksMoney; if a
+  // future change reintroduces formatPKR anywhere else (above all in
+  // a migrated file), this scan fails.
+  // -------------------------------------------------------------------------
+  {
+    // Files allowed to keep mentioning formatPKR, with the reason.
+    // Keep this list honest: an entry whose file no longer mentions
+    // formatPKR fails the last assertion below.
+    const allowlist = new Map<string, string>([
+      ["src/lib/tradeos/formatters.ts", "the definition itself (formatPKR + formatCurrency alias) and the books-wrapper docs"],
+      ["src/lib/books/format.ts", "doc comment contrasting the books formatter with formatPKR — no call"],
+      ["src/components/regional/FxRatesPanel.tsx", "doc comment only — the panel edits FX rates for the EUR-invoicing/display legacy"],
+      ["src/lib/ai/business-intelligence.ts", "AI lane (parked): formatRs wraps formatPKR for /api/ai routes only; server-side formatter state is not org-resolved"],
+    ]);
+    const migratedFiles = [
+      "src/app/page.tsx",
+      "src/components/sales/CustomerHistory.tsx",
+      "src/components/import-export/HistoricalRecords.tsx",
+      "src/components/regional/CurrencySwitcher.tsx",
+    ];
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!/\.tsx?$/.test(entry.name)) continue;
+        if (!readFileSync(full, "utf8").includes("formatPKR")) continue;
+        const rel = path.relative(process.cwd(), full).split(path.sep).join("/");
+        if (!allowlist.has(rel)) offenders.push(rel);
+      }
+    };
+    walk(path.join(process.cwd(), "src"));
+    assert.deepEqual(offenders, [], `formatPKR crept back outside the allowlist: ${offenders.join(", ")}`);
+    for (const rel of migratedFiles) {
+      assert.ok(
+        !readFileSync(path.join(process.cwd(), rel), "utf8").includes("formatPKR"),
+        `${rel} was migrated to the books formatter and must not reference formatPKR`,
+      );
+    }
+    for (const rel of allowlist.keys()) {
+      assert.ok(
+        readFileSync(path.join(process.cwd(), rel), "utf8").includes("formatPKR"),
+        `allowlist entry ${rel} no longer mentions formatPKR — remove it from the allowlist`,
+      );
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Held-sale currency guard: a held sale is denominated in the books
+  // currency stamped on it at hold time. Matching stamp resumes,
+  // a mismatched stamp is stale (blocked by RetailPOS), and an
+  // unstamped legacy row is treated as denominated in the books
+  // currency in force when it was held — the POS backfills the stamp
+  // at load, so a later switch turns the row stale.
+  // -------------------------------------------------------------------------
+  {
+    const sale = {
+      lines: [],
+      customerId: null,
+      date: "2026-10-23",
+      paymentType: "cash" as const,
+      discount: "",
+      discountType: "flat" as const,
+      tax: "",
+    };
+    const stamped: HeldSale = { id: "h-1", savedAt: "2026-10-23T00:00:00.000Z", currency: "EUR", sale };
+    const unstamped: HeldSale = { id: "h-2", savedAt: "2026-10-23T00:00:00.000Z", sale };
+
+    assert.equal(heldSaleCurrencyStatus(stamped, "EUR"), "current", "matching stamp resumes");
+    assert.equal(heldSaleCurrencyStatus(stamped, "PKR"), "stale", "mismatched stamp blocks");
+    assert.equal(heldSaleCurrencyStatus(unstamped, "PKR"), "legacy", "unstamped rows are legacy");
+
+    const filled = stampLegacyHeldSales([stamped, unstamped], "PKR");
+    assert.equal(filled.stamped, true);
+    assert.equal(filled.rows[0], stamped, "stamped rows pass through by identity");
+    assert.equal(filled.rows[1].currency, "PKR", "legacy rows are backfilled with the current books currency");
+    assert.equal(
+      heldSaleCurrencyStatus(filled.rows[1], "EUR"),
+      "stale",
+      "a backfilled row turns stale when the books switch later",
+    );
+    const onlyStamped = [stamped];
+    const noop = stampLegacyHeldSales(onlyStamped, "EUR");
+    assert.equal(noop.stamped, false);
+    assert.equal(noop.rows, onlyStamped, "no-op backfill returns the original array untouched");
+
+    // Storage round-trip: the stamp survives the strict parser, an
+    // invalid stamp is rejected outright, and legacy rows parse with
+    // no stamp.
+    assert.equal(parseHeldSales(JSON.stringify([stamped]))[0].currency, "EUR");
+    assert.equal(parseHeldSales(JSON.stringify([unstamped]))[0].currency, undefined);
+    assert.throws(() => parseHeldSales(JSON.stringify([{ ...stamped, currency: "BTC" }])));
   }
 
   console.log("test-books-currency: all assertions passed");

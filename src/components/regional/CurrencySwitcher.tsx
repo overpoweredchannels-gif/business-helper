@@ -10,8 +10,9 @@ import { useEffect, useState } from "react";
  * Header books-currency indicator.
  *
  * This used to be the display-currency switcher: it wrote a browser
- * cookie that formatPKR then used to divide stored amounts by a
- * display rate — or silently relabel them 1:1 — on every surface.
+ * cookie that the old display formatter then used to divide stored
+ * amounts by a display rate — or silently relabel them 1:1 — on
+ * every surface.
  * Under the books model an organization's amounts live in ONE real
  * currency (organizations.books_currency) and are never display-
  * converted, so there is nothing to switch here anymore. The control
