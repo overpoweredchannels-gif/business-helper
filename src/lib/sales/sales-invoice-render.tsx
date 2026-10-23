@@ -6,7 +6,7 @@
 
 import React from "react";
 import type { PrintTemplate } from "@/lib/print/print-template-types";
-import type { SalesInvoiceDoc, SalesInvoiceLine } from "./sales-invoice-service";
+import { formatSalesInvoiceQuantity, type SalesInvoiceDoc, type SalesInvoiceLine } from "./sales-invoice-service";
 
 export interface SalesInvoiceDocumentProps {
   doc: SalesInvoiceDoc;
@@ -27,7 +27,10 @@ function columnValue(key: string, line: SalesInvoiceLine): string {
     case "product":
       return line.product_name;
     case "quantity":
-      return line.quantity_text;
+      // Numeral only — the unit renders as its own line under the product
+      // name (same separation as the POS receipt), never glued onto the
+      // quantity ("1Piece").
+      return formatSalesInvoiceQuantity(line.quantity);
     case "price":
       return trim(line.selling_price);
     case "discount":
@@ -188,7 +191,16 @@ export function SalesInvoiceDocument({ doc, template, rangeLabel = "" }: SalesIn
                   whiteSpace: "pre-wrap",
                 }}
               >
-                {columnValue(c.key, line)}
+                {c.key === "product" ? (
+                  <>
+                    <span style={{ display: "block" }}>{line.product_name}</span>
+                    <span style={{ display: "block", fontSize: Math.max(8, cols.rowSizePx - 1), opacity: 0.75 }}>
+                      {line.unit_mode === "subunit" ? line.subunit_unit_label : line.main_unit_label}
+                    </span>
+                  </>
+                ) : (
+                  columnValue(c.key, line)
+                )}
               </span>
             ))}
           </div>
