@@ -143,6 +143,33 @@ export class PrintRunUiLock {
 }
 
 /**
+ * The layout settle for a print run: resolves after two macrotasks on
+ * the PARENT window (0ms, then ~50ms).
+ *
+ * This stage used to await a double requestAnimationFrame on the print
+ * frame's own window. That wait only ever proved the hidden 1×1 frame
+ * could paint — which a print frame is not required to do: the frame is
+ * display-suppressed by design, and in environments where its rendering
+ * is frozen it never produces a frame at all, so the pipeline parked at
+ * the layout stage indefinitely (instrumented QA, 2026-10-24:
+ * layout-wait at ~10s, unchanged at 60s and 120s, unmoved by Close).
+ * Nothing is lost by settling on the parent window instead:
+ * window.print() performs its own layout of the frame document before
+ * printing, and the fonts stage ahead of this one already covers font
+ * settling. Two parent macrotasks still give the just-written frame
+ * document a beat to be parsed before dispatch, without depending on
+ * the frame ever painting. Callers keep the stage wrapped in the same
+ * bounded timeout and abort race as every other stage.
+ */
+export function waitForLayoutSettle(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(() => {
+      setTimeout(resolve, 50);
+    }, 0);
+  });
+}
+
+/**
  * Await one stage of a print run. Resolves with the stage's value, or
  * PRINT_STAGE_ABORTED as soon as the token is aborted — even if the stage
  * promise never settles. A stage rejection while the run is still live

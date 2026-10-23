@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, RECEIPT_DEBUG_STAGES } from "../src/lib/print/print-run";
+import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, RECEIPT_DEBUG_STAGES, waitForLayoutSettle } from "../src/lib/print/print-run";
 
 // Regression (2026-10-23): the receipt dialog's Close could not rescue a
 // print run parked in a staged wait — the pipeline only unwound when a
@@ -284,6 +284,49 @@ async function main() {
     assert.ok(componentSource.includes("printing={String(printing)}"), "the readout carries the printing boolean");
     assert.ok(componentSource.includes("ready={String(templateReady)}"), "the readout carries the templateReady boolean");
     assert.ok(componentSource.includes("saving={String(savingWidth)}"), "the readout carries the savingWidth boolean");
+  }
+
+  // 14. Layout settle (instrumented QA, 2026-10-24): the pipeline
+  //     parked at layout-wait forever because the stage awaited a
+  //     double requestAnimationFrame on the HIDDEN print frame's
+  //     window, and that frame never produced a frame (layout-wait at
+  //     ~10s, unchanged at 60s/120s, unmoved by Close). The settle now
+  //     runs on parent-window timers. This fixture stands up a frame
+  //     whose rAF accepts callbacks and NEVER fires them: the old wait
+  //     is reconstructed inline to prove it genuinely parks against
+  //     this frame, and the new stage must still let the pipeline
+  //     reach dispatch.
+  {
+    const controller14 = new PrintRunController();
+    const token14 = controller14.begin();
+    let printCalls = 0;
+    const frozenFrameWindow = {
+      // Accepts the callback, returns a handle, never invokes it —
+      // a frame whose rendering is frozen.
+      requestAnimationFrame: (callback: () => void) => {
+        void callback;
+        return 1;
+      },
+      print: () => { printCalls += 1; },
+    };
+    let oldWaitSettled = false;
+    void new Promise<void>((resolve) => {
+      frozenFrameWindow.requestAnimationFrame(() => frozenFrameWindow.requestAnimationFrame(() => resolve()));
+    }).then(() => { oldWaitSettled = true; });
+
+    const layoutStartedAt = Date.now();
+    const layoutStage = await awaitPrintStage(token14, waitForLayoutSettle());
+    assert.notEqual(layoutStage, PRINT_STAGE_ABORTED, "the layout settle resolves on parent timers, independent of the frame");
+    assert.ok(Date.now() - layoutStartedAt < 5000, "the layout settle resolves well inside the stage's 5000ms bound");
+
+    let released = false;
+    const dispatched = await dispatchNativePrint(frozenFrameWindow, () => { released = true; }, token14);
+    assert.equal(dispatched, true, "the pipeline reaches dispatch against a frame whose rAF never fires");
+    assert.equal(printCalls, 1, "the frozen frame's print is entered exactly once");
+    assert.equal(released, true, "the UI release ran at dispatch");
+
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    assert.equal(oldWaitSettled, false, "the frame-rAF wait never resolves against a frozen frame — the park this fix removes");
   }
 
   console.log("test-pos-receipt-print-run: all assertions passed");

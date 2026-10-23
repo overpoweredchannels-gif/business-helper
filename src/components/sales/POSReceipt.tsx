@@ -8,7 +8,7 @@ import type { PrintTemplate } from "@/lib/print/print-template-types";
 import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptPrintableWidthMm, getReceiptSummaryRows, getReceiptWidthMm, resolveReceiptChrome, resolveReceiptCustomerName, type Receipt, type ReceiptChromeLabels, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
 import { loadReceiptTemplate } from "@/lib/print/receipt-template-loader";
 import { saveReceiptTemplate } from "@/lib/print/receipt-template-save";
-import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, type PrintRunToken } from "@/lib/print/print-run";
+import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, waitForLayoutSettle, type PrintRunToken } from "@/lib/print/print-run";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
@@ -318,7 +318,14 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
         // left `printing` and the print lock set forever).
         if (!frame.isConnected) { cleanup("abort"); return; }
         markStage("layout-wait");
-        const layoutStage = await awaitPrintStage(runToken, waitWithTimeout(new Promise<void>(resolve => targetWindow.requestAnimationFrame(() => targetWindow.requestAnimationFrame(() => resolve()))), "Receipt layout did not finish preparing", 5000));
+        // The settle runs on the PARENT window's timers, never on the
+        // frame's requestAnimationFrame: the print frame is a hidden
+        // 1×1 iframe whose rendering may be frozen, and a double-rAF
+        // wait on it parked this pipeline at this stage indefinitely
+        // (instrumented QA, 2026-10-24). window.print() lays the frame
+        // document out itself before printing, and the fonts stage
+        // above already covers font settling — see waitForLayoutSettle.
+        const layoutStage = await awaitPrintStage(runToken, waitWithTimeout(waitForLayoutSettle(), "Receipt layout did not finish preparing", 5000));
         if (layoutStage === PRINT_STAGE_ABORTED || settled) return;
         markStage("layout-done");
         if (!frame.isConnected) { cleanup("abort"); return; }
