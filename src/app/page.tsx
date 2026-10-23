@@ -32,7 +32,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@/lib/sales/access";
-import { staffSaleOutcome } from "@/lib/sales/staff-sale-gate";
+import { parseStaffSalesMode, staffSaleOutcome } from "@/lib/sales/staff-sale-gate";
 import { readSellMode, writeSellMode } from "@/lib/sales/sell-mode";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { SearchSuggestField } from "@/components/search/SearchSuggestField";
@@ -482,6 +482,7 @@ export default function Home() {
   const [businessSettingsInvoiceFooterNote, setBusinessSettingsInvoiceFooterNote] = useState("");
   const [businessSettingsDefaultPaymentTerms, setBusinessSettingsDefaultPaymentTerms] = useState("");
   const [businessSettingsOversellingPolicy, setBusinessSettingsOversellingPolicy] = useState("allow");
+  const [businessSettingsStaffSalesMode, setBusinessSettingsStaffSalesMode] = useState("approval");
   const [businessSettingsDutyStart, setBusinessSettingsDutyStart] = useState("08:00");
   const [businessSettingsDutyEnd, setBusinessSettingsDutyEnd] = useState("16:00");
   const [dutyScheduleLoading, setDutyScheduleLoading] = useState(false);
@@ -1559,6 +1560,7 @@ export default function Home() {
     setBusinessSettingsInvoiceFooterNote(organization?.invoice_footer_note ?? "");
     setBusinessSettingsDefaultPaymentTerms(organization?.default_payment_terms ?? "");
     setBusinessSettingsOversellingPolicy(organization?.overselling_policy ?? "allow");
+    setBusinessSettingsStaffSalesMode(parseStaffSalesMode(organization?.staff_sales_mode));
     setBusinessSettingsDutyStart(organization?.working_hours?.duty_start ?? "08:00");
     setBusinessSettingsDutyEnd(organization?.working_hours?.duty_end ?? "16:00");
   };
@@ -1570,11 +1572,30 @@ export default function Home() {
       return;
     }
 
-    const { data, error } = await supabase
+    // staff_sales_mode arrives with an additive migration that may not have
+    // run yet. Until the column exists the widened select fails with 42703,
+    // so fall back to the pre-migration column list: the setting then reads
+    // as absent and parseStaffSalesMode keeps it at "approval" — exactly
+    // today's behaviour (same pattern as the EUR schema guards).
+    let organizationResult = await supabase
       .from("organizations")
-      .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy")
+      .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, staff_sales_mode")
       .eq("id", orgId)
       .maybeSingle();
+
+    if (
+      organizationResult.error &&
+      (organizationResult.error.code === "42703" ||
+        organizationResult.error.message?.includes("staff_sales_mode"))
+    ) {
+      organizationResult = await supabase
+        .from("organizations")
+        .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy")
+        .eq("id", orgId)
+        .maybeSingle();
+    }
+
+    const { data, error } = organizationResult;
 
     if (error) {
       console.error("Supabase fetch organization error:", JSON.stringify(error, null, 2));
@@ -15491,6 +15512,7 @@ setCustomerOrganizationName("");
             invoice_footer_note: currentOrganization.invoice_footer_note ?? null,
             default_payment_terms: currentOrganization.default_payment_terms ?? null,
             overselling_policy: currentOrganization.overselling_policy ?? "allow",
+            staff_sales_mode: parseStaffSalesMode(currentOrganization.staff_sales_mode),
           }
         : null;
       const newBusinessSettings = {
@@ -15501,6 +15523,7 @@ setCustomerOrganizationName("");
         invoice_footer_note: optionalValue(businessSettingsInvoiceFooterNote),
         default_payment_terms: optionalValue(businessSettingsDefaultPaymentTerms),
         overselling_policy: businessSettingsOversellingPolicy === "block" ? "block" : "allow",
+        staff_sales_mode: parseStaffSalesMode(businessSettingsStaffSalesMode),
       };
       const { error } = await supabase
         .from("organizations")
@@ -25873,6 +25896,23 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 {t('settings.oversellingHint')}
               </span>
             </label>
+
+            {isOwnerOrAdmin() && (
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>{t('settings.staffSales')}</span>
+                <select
+                  value={businessSettingsStaffSalesMode}
+                  onChange={(e) => setBusinessSettingsStaffSalesMode(e.target.value)}
+                  className="rounded border border-border px-3 py-2"
+                >
+                  <option value="direct">{t('settings.staffSalesDirectOption')}</option>
+                  <option value="approval">{t('settings.staffSalesApprovalOption')}</option>
+                </select>
+                <span className="text-xs text-muted-foreground/80">
+                  {t('settings.staffSalesHint')}
+                </span>
+              </label>
+            )}
 
             {isOwnerOrAdmin() && (
               <div className="rounded-lg border border-border bg-background p-4">

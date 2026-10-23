@@ -89,6 +89,38 @@ for (const role of ["staff", "employee", "salesman", null, undefined]) {
 }
 
 // ---------------------------------------------------------------------------
+// Settings round-trip: Business Settings loads the organization row the way
+// fetchCurrentOrganization selects it and persists staff_sales_mode through
+// the same save payload as overselling_policy. Rows mirror the select: the
+// post-migration row carries the column; the pre-migration fallback row
+// (selected after a 42703) does not have the key at all, and must read as
+// "approval" so behaviour is unchanged until the owner runs the migration.
+// ---------------------------------------------------------------------------
+
+{
+  const postMigrationRow = { id: ORG_A, overselling_policy: "allow", staff_sales_mode: "direct" };
+  const preMigrationRow: { id: string; overselling_policy: string; staff_sales_mode?: string } = {
+    id: ORG_A,
+    overselling_policy: "allow",
+  };
+  assert.equal("staff_sales_mode" in preMigrationRow, false, "the pre-migration fallback row has no staff_sales_mode key");
+  assert.equal(parseStaffSalesMode(postMigrationRow.staff_sales_mode), "direct", "a stored 'direct' loads into the settings select as direct");
+  assert.equal(parseStaffSalesMode(preMigrationRow.staff_sales_mode), "approval", "a row without the column loads as approval");
+  assert.equal(
+    staffSaleOutcome({ role: "staff", mode: preMigrationRow.staff_sales_mode }),
+    "approval",
+    "pre-migration organizations keep the approval pipeline for staff",
+  );
+  // The save payload normalizes through the same parse: only an exact
+  // "direct" selection persists as direct; anything else persists approval.
+  for (const selected of ["direct", "approval", "junk", ""]) {
+    const persisted = parseStaffSalesMode(selected);
+    assert.equal(persisted, selected === "direct" ? "direct" : "approval", `settings selection ${JSON.stringify(selected)} persists as ${persisted}`);
+    assert.equal(parseStaffSalesMode(persisted), persisted, "the persisted value parses back to itself (round-trip stable)");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Held sales: strict parse (writer-shaped fixtures), recovering load with
 // quarantine. Fixtures mirror exactly what RetailPOS hold() persists:
 // a CounterSale whose line fields are strings, keyed by scope.
@@ -172,4 +204,4 @@ assert.throws(
   assert.equal(loaded.quarantined, true);
 }
 
-console.log("POS staff-gate checks passed: sell-mode persistence keying/restore, staff-sale gate matrix, held-sales parse + quarantine recovery.");
+console.log("POS staff-gate checks passed: sell-mode persistence keying/restore, staff-sale gate matrix, staff-sales settings round-trip (pre/post-migration rows), held-sales parse + quarantine recovery.");
