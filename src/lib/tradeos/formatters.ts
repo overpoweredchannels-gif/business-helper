@@ -1,6 +1,7 @@
 import { safeNumber } from "./validators";
 import { formatCalendarDate } from "@/lib/regional/dates";
-import type { Currency, RegionalLocale } from "@/lib/regional/settings";
+import { isCurrency, type Currency, type RegionalLocale } from "@/lib/regional/settings";
+import { formatBooksAmount } from "@/lib/books/format";
 
 /** App-wide display currency. Amounts in TradeOS are plain numbers denominated
  * in the organisation's operating currency; this setting controls which
@@ -109,6 +110,27 @@ export const formatPKR = (value: unknown) =>
   }).format(toDisplayValue(value));
 
 export const formatCurrency = formatPKR;
+
+/** The active organization's books currency (organizations.books_currency,
+ * resolved by the page when the organization loads — see
+ * src/lib/books/currency.ts). Amounts on the migrated surfaces (dashboard,
+ * POS, receipts) are denominated in this currency, so they are formatted
+ * with it directly: formatBooksMoney NEVER divides by the display FX
+ * rate and NEVER relabels — the exact opposite contract from formatPKR.
+ * Defaults to PKR, which renders identically to formatPKR with no rate,
+ * so un-migrated contexts are unchanged. */
+let activeBooksCurrency: Currency = "PKR";
+
+export function setActiveBooksCurrency(currency: Currency) {
+  if (isCurrency(currency)) activeBooksCurrency = currency;
+}
+
+export function getActiveBooksCurrency(): Currency {
+  return activeBooksCurrency;
+}
+
+export const formatBooksMoney = (value: unknown, currency: Currency = activeBooksCurrency) =>
+  formatBooksAmount(safeNumber(value), currency, activeNumberLocale);
 
 const DATE_ONLY_VALUE = /^\d{4}-\d{2}-\d{2}$/;
 
