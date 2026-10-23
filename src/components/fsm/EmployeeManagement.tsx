@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Customer, Employee, EmployeeDesignation, SalesRoute, SalesRouteStop, Territory } from "@/lib/tradeos/types";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { buildWhatsAppUrl, buildWhatsAppInviteMessage, designationLabel } from "@/lib/identity/staff-invitation";
 import { DEFAULT_STAFF_DESIGNATION } from "@/lib/identity/staff-roles";
 
@@ -315,7 +316,7 @@ export default function EmployeeManagement() {
       ? selectedRouteCustomerIdSet.has(customer.id)
       : Boolean(form.assigned_territory_id) && customer.assigned_territory_id === form.assigned_territory_id
   ));
-  const formatMoney = (value: number) => new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(value);
+  const formatMoney = (value: number) => formatBooksMoney(value);
 
   return (
     <div style={{ padding: "1.5rem" }}>

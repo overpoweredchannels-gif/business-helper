@@ -337,6 +337,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
     invoiceDiscountType: sale.discountType,
     taxRate: sale.tax,
     paymentType: sale.paymentType,
+    currency: getActiveBooksCurrency(),
     cashReceived,
     validateCash: owner,
     allowInvoiceAdjustments: owner,

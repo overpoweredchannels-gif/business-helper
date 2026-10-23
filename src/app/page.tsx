@@ -124,6 +124,7 @@ import {
   formatDate,
   formatDateTime,
   formatNumber,
+  getActiveBooksCurrency,
   getDateOnly,
   getMonthRange,
   getUsableTimestamp,
@@ -4184,9 +4185,9 @@ setCustomerOrganizationName("");
         setSalesMessage(null);
         return;
       }
-      const cashSummary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal ?? 0, received: posCashReceived });
+      const cashSummary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal ?? 0, received: posCashReceived, currency: getActiveBooksCurrency() });
       if (cashSummary.status === "cash-short") {
-        setSalesError(`Cash is short by ${pkrFormatter.format(cashSummary.shortfall)}.`);
+        setSalesError(`Cash is short by ${formatBooksMoney(cashSummary.shortfall)}.`);
         setSalesMessage(null);
         return;
       }
@@ -4295,13 +4296,13 @@ setCustomerOrganizationName("");
       const hasOverdueCredit = policyHasCreditDays && selectedCustomerOverdueInvoiceCount > 0;
 
       if (isOverCreditLimit && !selectedCustomerAllowsOverLimit) {
-        const warning = `Credit limit exceeded. Current balance: ${pkrFormatter.format(
+        const warning = `Credit limit exceeded. Current balance: ${formatBooksMoney(
         selectedCustomerOutstandingBalance
-        )}. Invoice total: ${pkrFormatter.format(
+        )}. Invoice total: ${formatBooksMoney(
           currentSalesInvoiceTotal ?? 0
-        )}. Projected balance: ${pkrFormatter.format(
+        )}. Projected balance: ${formatBooksMoney(
           projectedCustomerBalance
-        )}. Credit limit: ${pkrFormatter.format(selectedCustomerCreditLimit)}.`;
+        )}. Credit limit: ${formatBooksMoney(selectedCustomerCreditLimit)}.`;
         setCreditWarning(warning);
         setSalesError(warning);
         setSalesMessage(null);
@@ -4309,7 +4310,7 @@ setCustomerOrganizationName("");
       }
 
       if (hasOverdueCredit && !selectedCustomerAllowsOverdueSales) {
-        const warning = `Customer has overdue credit. Overdue invoices: ${selectedCustomerOverdueInvoiceCount}. Overdue amount: ${pkrFormatter.format(
+        const warning = `Customer has overdue credit. Overdue invoices: ${selectedCustomerOverdueInvoiceCount}. Overdue amount: ${formatBooksMoney(
           selectedCustomerTotalOverdueAmount
         )}. Oldest overdue due date: ${selectedCustomerOldestOverdueDueDate ?? "Unknown"}.`;
         setCreditWarning(warning);
@@ -5768,11 +5769,6 @@ setCustomerOrganizationName("");
   const [aiAnalyticsMessage, setAiAnalyticsMessage] = useState<string | null>(null);
   const [aiAnalyticsError, setAiAnalyticsError] = useState<string | null>(null);
   const [aiAnalyticsResult, setAiAnalyticsResult] = useState<AiBusinessQueryResult | null>(null);
-  const pkrFormatter = new Intl.NumberFormat("en-PK", {
-    style: "currency",
-    currency: "PKR",
-    maximumFractionDigits: 2,
-  });
   const isOwnerOrAdmin = () => {
     const role = currentProfile?.role;
     return role === "owner" || role === "admin";
@@ -9274,6 +9270,7 @@ setCustomerOrganizationName("");
     invoiceDiscountType: salesDiscountType,
     taxRate: salesTaxRate,
     paymentType: salesPaymentType,
+    currency: getActiveBooksCurrency(),
     cashReceived: posCashReceived,
     validateCash: quickSaleMode && isOwnerOrAdmin(),
     allowInvoiceAdjustments: isOwnerOrAdmin(),
@@ -17698,43 +17695,43 @@ setCustomerOrganizationName("");
             <div className="rounded border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.totalRevenue')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
-                {pkrFormatter.format(profitLossTotals.totalRevenue)}
+                {formatBooksMoney(profitLossTotals.totalRevenue)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.knownCogs')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
-                {pkrFormatter.format(profitLossTotals.knownCostOfGoodsSold)}
+                {formatBooksMoney(profitLossTotals.knownCostOfGoodsSold)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.grossProfitCosted')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
-                {pkrFormatter.format(grossProfitOnCostedSales)}
+                {formatBooksMoney(grossProfitOnCostedSales)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.purchaseLinkedExpenses')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
-                {pkrFormatter.format(purchaseLinkedExpenses)}
+                {formatBooksMoney(purchaseLinkedExpenses)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.operatingExpenses')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
-                {pkrFormatter.format(operatingExpenses)}
+                {formatBooksMoney(operatingExpenses)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.totalRecordedExpenses')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
-                {pkrFormatter.format(totalRecordedExpenses)}
+                {formatBooksMoney(totalRecordedExpenses)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{netProfitLabel}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
-                {pkrFormatter.format(mvpNetProfit)}
+                {formatBooksMoney(mvpNetProfit)}
               </div>
             </div>
             <div className="rounded border border-border bg-card p-4 shadow-sm">
@@ -17768,7 +17765,7 @@ setCustomerOrganizationName("");
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <div>{t('profit.salesLinesMissingCost')}: {profitLossTotals.missingCostSalesLineCount}</div>
                 <div>
-                  {t('profit.revenueAffected')}: {pkrFormatter.format(profitLossTotals.missingCostSalesValue)}
+                  {t('profit.revenueAffected')}: {formatBooksMoney(profitLossTotals.missingCostSalesValue)}
                 </div>
               </div>
             </div>
@@ -17795,7 +17792,7 @@ setCustomerOrganizationName("");
                           <td className="py-2 pr-3 font-medium text-foreground">{category.expenseType}</td>
                           <td className="py-2 pr-3 text-foreground/80">{category.entryCount}</td>
                           <td className="py-2 text-right font-medium text-foreground">
-                            {pkrFormatter.format(category.totalAmount)}
+                            {formatBooksMoney(category.totalAmount)}
                           </td>
                         </tr>
                       ))}
@@ -17832,10 +17829,10 @@ setCustomerOrganizationName("");
                             )}
                           </td>
                           <td className="py-2 pr-3 text-foreground/80">{product.quantitySold}</td>
-                          <td className="py-2 pr-3 text-foreground/80">{pkrFormatter.format(product.revenue)}</td>
-                          <td className="py-2 pr-3 text-foreground/80">{pkrFormatter.format(product.cost)}</td>
+                          <td className="py-2 pr-3 text-foreground/80">{formatBooksMoney(product.revenue)}</td>
+                          <td className="py-2 pr-3 text-foreground/80">{formatBooksMoney(product.cost)}</td>
                           <td className="py-2 pr-3 font-medium text-foreground">
-                            {pkrFormatter.format(product.grossProfit)}
+                            {formatBooksMoney(product.grossProfit)}
                           </td>
                           <td className="py-2 text-right font-medium text-foreground">
                             {product.marginPercentage.toFixed(2)}%
@@ -18741,11 +18738,11 @@ setCustomerOrganizationName("");
                 <h3 className="mb-2 text-base font-medium text-primary/90">{t('sell.creditSummary')}</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>{t('sell.creditPolicy')}: {creditPolicyLabels[selectedCustomerCreditPolicy] ?? "Cash Only"}</div>
-                  <div>{t('sell.outstandingBalance')}: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
-                  <div>{t('sell.currentInvoiceTotal')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
-                  <div>{t('sell.projectedBalance')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(projectedCustomerBalance)}</div>
+                  <div>{t('sell.outstandingBalance')}: {formatBooksMoney(selectedCustomerOutstandingBalance)}</div>
+                  <div>{t('sell.currentInvoiceTotal')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : formatBooksMoney(currentSalesInvoiceTotal)}</div>
+                  <div>{t('sell.projectedBalance')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : formatBooksMoney(projectedCustomerBalance)}</div>
                   {policyUsesCreditLimit(selectedCustomerCreditPolicy) && (
-                    <div>{t('sell.creditLimit')}: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
+                    <div>{t('sell.creditLimit')}: {formatBooksMoney(selectedCustomerCreditLimit)}</div>
                   )}
                   {(policyUsesCreditDays(selectedCustomerCreditPolicy) ||
                     selectedCustomerHasUsableUnrestrictedCreditDays) && (
@@ -18765,21 +18762,21 @@ setCustomerOrganizationName("");
               <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/80">
                 <h3 className="mb-2 text-base font-medium">{t('sell.overrideRequired')}</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div>{t('sell.outstandingBalance')}: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
-                  <div>{t('sell.currentInvoiceTotal')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(currentSalesInvoiceTotal)}</div>
-                  <div>{t('sell.projectedBalance')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(projectedCustomerBalance)}</div>
+                  <div>{t('sell.outstandingBalance')}: {formatBooksMoney(selectedCustomerOutstandingBalance)}</div>
+                  <div>{t('sell.currentInvoiceTotal')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : formatBooksMoney(currentSalesInvoiceTotal)}</div>
+                  <div>{t('sell.projectedBalance')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : formatBooksMoney(projectedCustomerBalance)}</div>
                   {creditOverrideConfirmation.overLimit && (
                     <>
-                      <div>{t('sell.creditLimit')}: {pkrFormatter.format(selectedCustomerCreditLimit)}</div>
+                      <div>{t('sell.creditLimit')}: {formatBooksMoney(selectedCustomerCreditLimit)}</div>
                       <div>
-                        {t('sell.overLimitAmount')}: {pkrFormatter.format(Math.max(0, projectedCustomerBalance - selectedCustomerCreditLimit))}
+                        {t('sell.overLimitAmount')}: {formatBooksMoney(Math.max(0, projectedCustomerBalance - selectedCustomerCreditLimit))}
                       </div>
                     </>
                   )}
                   {creditOverrideConfirmation.overdue && (
                     <>
                       <div>{t('sell.overdueInvoices')}: {selectedCustomerOverdueInvoiceCount}</div>
-                      <div>{t('sell.totalOverdueAmount')}: {pkrFormatter.format(selectedCustomerTotalOverdueAmount)}</div>
+                      <div>{t('sell.totalOverdueAmount')}: {formatBooksMoney(selectedCustomerTotalOverdueAmount)}</div>
                       <div>{t('sell.oldestOverdueDate')}: {selectedCustomerOldestOverdueDueDate ?? t('sell.unknown')}</div>
                     </>
                   )}
@@ -18920,19 +18917,19 @@ setCustomerOrganizationName("");
               <div className="rounded border border-border bg-card p-4 text-sm text-foreground/80">
                 {currentSaleDraft.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received").map(issue => <p key={issue.field + issue.message} className="mb-2 text-destructive" role="alert">{issue.message}</p>)}
                 {!currentSaleAmounts && <p className="mb-2 text-destructive" role="status">{t('sell.totalsUnavailable')}</p>}
-                <div className="flex justify-between"><span>{t('sell.lineSubtotal')}</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.lineSubtotal) : t('sell.unavailable')}</span></div>
+                <div className="flex justify-between"><span>{t('sell.lineSubtotal')}</span><span>{currentSaleAmounts ? formatBooksMoney(currentSaleAmounts.lineSubtotal) : t('sell.unavailable')}</span></div>
                 {(salesLines.some((line) => Number(line.discount) > 0) || salesDiscountAmount.trim() !== "") && (
-                  <div className="flex justify-between"><span>{t('sell.lineDiscounts')}</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.lineDiscount) : t('sell.unavailable')}</span></div>
+                  <div className="flex justify-between"><span>{t('sell.lineDiscounts')}</span><span>{currentSaleAmounts ? formatBooksMoney(currentSaleAmounts.lineDiscount) : t('sell.unavailable')}</span></div>
                 )}
                 {salesDiscountAmount.trim() !== "" && (
-                  <div className="flex justify-between"><span>{t('sell.invoiceDiscountRow')}{salesDiscountType === "percent" ? ` (${salesDiscountAmount}%)` : ""}</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.invoiceDiscount) : t('sell.unavailable')}</span></div>
+                  <div className="flex justify-between"><span>{t('sell.invoiceDiscountRow')}{salesDiscountType === "percent" ? ` (${salesDiscountAmount}%)` : ""}</span><span>{currentSaleAmounts ? formatBooksMoney(currentSaleAmounts.invoiceDiscount) : t('sell.unavailable')}</span></div>
                 )}
                 {salesTaxRate.trim() !== "" && (
-                  <div className="flex justify-between"><span>{t('sell.tax')} ({salesTaxRate}%)</span><span>{currentSaleAmounts ? pkrFormatter.format(currentSaleAmounts.tax) : t('sell.unavailable')}</span></div>
+                  <div className="flex justify-between"><span>{t('sell.tax')} ({salesTaxRate}%)</span><span>{currentSaleAmounts ? formatBooksMoney(currentSaleAmounts.tax) : t('sell.unavailable')}</span></div>
                 )}
                 <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium text-foreground">
                   <span>{t('sell.invoiceTotal')}</span>
-                  <span>{currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : pkrFormatter.format(currentSalesInvoiceTotal)}</span>
+                  <span>{currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : formatBooksMoney(currentSalesInvoiceTotal)}</span>
                 </div>
               </div>
             )}
@@ -19033,23 +19030,23 @@ setCustomerOrganizationName("");
                     <div className="text-xs text-muted-foreground/80">{t('sell.dateLabel')}: {date}</div>
                     <div>{t('sell.paymentType')}: {paymentType === "credit" ? t('sell.paymentCredit') : t('sell.paymentCash')}</div>
                     <div>{t('sell.statusLabel')}: {creditStatus}</div>
-                    {tx.total_amount != null && <div>{t('sell.totalAmount')}: {pkrFormatter.format(Number(tx.total_amount || 0))}</div>}
+                    {tx.total_amount != null && <div>{t('sell.totalAmount')}: {formatBooksMoney(Number(tx.total_amount || 0))}</div>}
                     {(tx.discount_amount != null && Number(tx.discount_amount) > 0) && (
-                      <div>{t('sell.invoiceDiscountRow')}: {pkrFormatter.format(Number(tx.discount_amount || 0))}</div>
+                      <div>{t('sell.invoiceDiscountRow')}: {formatBooksMoney(Number(tx.discount_amount || 0))}</div>
                     )}
                     {(tx.tax_amount != null && Number(tx.tax_amount) > 0) && (
-                      <div>{t('sell.tax')} ({Number(tx.tax_rate || 0)}%): {pkrFormatter.format(Number(tx.tax_amount || 0))}</div>
+                      <div>{t('sell.tax')} ({Number(tx.tax_rate || 0)}%): {formatBooksMoney(Number(tx.tax_amount || 0))}</div>
                     )}
                     {paymentType === "credit" && (
                       <>
-                        <div>{t('sell.invoiceTotal')}: {pkrFormatter.format(creditAllocation?.invoiceTotal ?? 0)}</div>
-                        <div>{t('sell.allocatedPayment')}: {pkrFormatter.format(creditAllocation?.allocatedAmount ?? 0)}</div>
-                        <div>{t('sell.remainingBalance')}: {pkrFormatter.format(remainingUnpaidAmount)}</div>
+                        <div>{t('sell.invoiceTotal')}: {formatBooksMoney(creditAllocation?.invoiceTotal ?? 0)}</div>
+                        <div>{t('sell.allocatedPayment')}: {formatBooksMoney(creditAllocation?.allocatedAmount ?? 0)}</div>
+                        <div>{t('sell.remainingBalance')}: {formatBooksMoney(remainingUnpaidAmount)}</div>
                       </>
                     )}
                     {creditDueDate && <div>{t('sell.creditDueDate')}: {creditDueDate}</div>}
                     {tx.credit_limit_snapshot != null && (
-                      <div>{t('sell.creditLimitSnapshot')}: {pkrFormatter.format(Number(tx.credit_limit_snapshot || 0))}</div>
+                      <div>{t('sell.creditLimitSnapshot')}: {formatBooksMoney(Number(tx.credit_limit_snapshot || 0))}</div>
                     )}
                     {tx.credit_days_snapshot != null && (
                       <div>{t('sell.creditDaysSnapshot')}: {tx.credit_days_snapshot}</div>
@@ -19957,28 +19954,28 @@ setCustomerOrganizationName("");
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded border border-border bg-card p-4">
                   <div className="text-xs text-muted-foreground/80">{t('sell.grossSales')}</div>
-                  <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(netSales)}</div>
+                  <div className="mt-1 text-lg font-medium text-foreground">{formatBooksMoney(netSales)}</div>
                   <div className="text-xs text-muted-foreground/80">{t('sell.invoicesCount').replace('{count}', String(rangeTransactions.length))}</div>
                 </div>
                 <div className="rounded border border-border bg-card p-4">
                   <div className="text-xs text-muted-foreground/80">{t('sell.discountsGiven')}</div>
-                  <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(totalDiscounts)}</div>
+                  <div className="mt-1 text-lg font-medium text-foreground">{formatBooksMoney(totalDiscounts)}</div>
                 </div>
                 <div className="rounded border border-border bg-card p-4">
                   <div className="text-xs text-muted-foreground/80">{t('sell.taxCollected')}</div>
-                  <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(totalTax)}</div>
+                  <div className="mt-1 text-lg font-medium text-foreground">{formatBooksMoney(totalTax)}</div>
                 </div>
                 <div className="rounded border border-border bg-card p-4">
                   <div className="text-xs text-muted-foreground/80">{t('sell.cogs')}</div>
-                  <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(cogs)}</div>
+                  <div className="mt-1 text-lg font-medium text-foreground">{formatBooksMoney(cogs)}</div>
                 </div>
                 <div className="rounded border border-success/30 bg-success/5 p-4">
                   <div className="text-xs text-success/80">{t('sell.grossProfit')}</div>
-                  <div className="mt-1 text-lg font-medium text-success">{pkrFormatter.format(grossProfit)}</div>
+                  <div className="mt-1 text-lg font-medium text-success">{formatBooksMoney(grossProfit)}</div>
                 </div>
                 <div className="rounded border border-warning/30 bg-warning/5 p-4">
                   <div className="text-xs text-warning/80">{t('sell.outstandingReceivables')}</div>
-                  <div className="mt-1 text-lg font-medium text-warning">{pkrFormatter.format(outstandingReceivables)}</div>
+                  <div className="mt-1 text-lg font-medium text-warning">{formatBooksMoney(outstandingReceivables)}</div>
                 </div>
               </div>
 
@@ -19999,7 +19996,7 @@ setCustomerOrganizationName("");
                         {dailyRows.map(([day, total]) => (
                           <tr key={day} className="border-b border-border/50 last:border-0">
                             <td className="px-3 py-2">{day}</td>
-                            <td className="px-3 py-2">{pkrFormatter.format(total)}</td>
+                            <td className="px-3 py-2">{formatBooksMoney(total)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -20031,9 +20028,9 @@ setCustomerOrganizationName("");
                             <tr key={productId} className="border-b border-border/50 last:border-0">
                               <td className="px-3 py-2">{product?.name ?? t('sell.unknownProduct')}</td>
                               <td className="px-3 py-2">{totals.quantity}</td>
-                              <td className="px-3 py-2">{pkrFormatter.format(totals.revenue)}</td>
-                              <td className="px-3 py-2">{pkrFormatter.format(totals.cost)}</td>
-                              <td className="px-3 py-2">{pkrFormatter.format(totals.revenue - totals.cost)}</td>
+                              <td className="px-3 py-2">{formatBooksMoney(totals.revenue)}</td>
+                              <td className="px-3 py-2">{formatBooksMoney(totals.cost)}</td>
+                              <td className="px-3 py-2">{formatBooksMoney(totals.revenue - totals.cost)}</td>
                             </tr>
                           );
                         })}
@@ -20064,7 +20061,7 @@ setCustomerOrganizationName("");
                             <tr key={customerId} className="border-b border-border/50 last:border-0">
                               <td className="px-3 py-2">{customer?.customer_name ?? t('sell.unknownCustomer')}</td>
                               <td className="px-3 py-2">{totals.invoices}</td>
-                              <td className="px-3 py-2">{pkrFormatter.format(totals.revenue)}</td>
+                              <td className="px-3 py-2">{formatBooksMoney(totals.revenue)}</td>
                             </tr>
                           );
                         })}
@@ -20197,19 +20194,19 @@ setCustomerOrganizationName("");
                 <div className="rounded border border-border bg-muted/30 p-3">
                   <div className="text-muted-foreground/80">{t('payments.paymentAmount')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(Number.isFinite(customerPaymentAmountValue) ? customerPaymentAmountValue : 0)}
+                    {formatBooksMoney(Number.isFinite(customerPaymentAmountValue) ? customerPaymentAmountValue : 0)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-muted/30 p-3">
                   <div className="text-muted-foreground/80">{t('payments.totalAllocated')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(customerPaymentAllocationTotal)}
+                    {formatBooksMoney(customerPaymentAllocationTotal)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-muted/30 p-3">
                   <div className="text-muted-foreground/80">{t('payments.unallocatedAmount')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(customerPaymentUnallocatedAmount)}
+                    {formatBooksMoney(customerPaymentUnallocatedAmount)}
                   </div>
                 </div>
               </div>
@@ -20231,20 +20228,20 @@ setCustomerOrganizationName("");
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.invoiceTotal')}</div>
-                          <div>{pkrFormatter.format(invoice.invoiceTotal)}</div>
+                          <div>{formatBooksMoney(invoice.invoiceTotal)}</div>
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.allocated')}</div>
-                          <div>{pkrFormatter.format(invoice.allocatedAmount)}</div>
+                          <div>{formatBooksMoney(invoice.allocatedAmount)}</div>
                           {invoice.fallbackAllocatedAmount > 0 && (
                             <div className="text-xs text-muted-foreground/80">
-                              {t('payments.includesOlder').replace('{amount}', pkrFormatter.format(invoice.fallbackAllocatedAmount))}
+                              {t('payments.includesOlder').replace('{amount}', formatBooksMoney(invoice.fallbackAllocatedAmount))}
                             </div>
                           )}
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.remaining')}</div>
-                          <div>{pkrFormatter.format(invoice.remainingUnpaidAmount)}</div>
+                          <div>{formatBooksMoney(invoice.remainingUnpaidAmount)}</div>
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.dueDate')}</div>
@@ -20325,7 +20322,7 @@ setCustomerOrganizationName("");
                           {invoiceItem.status}
                         </span>
                         {invoiceItem.remainingUnpaidAmount > 0 && (
-                          <span>{t('payments.remaining')}: {pkrFormatter.format(invoiceItem.remainingUnpaidAmount)}</span>
+                          <span>{t('payments.remaining')}: {formatBooksMoney(invoiceItem.remainingUnpaidAmount)}</span>
                         )}
                       </span>
                     </li>
@@ -20364,7 +20361,7 @@ setCustomerOrganizationName("");
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.totalPayment')}</div>
-                        <div>{pkrFormatter.format(historyItem.paymentAmount)}</div>
+                        <div>{formatBooksMoney(historyItem.paymentAmount)}</div>
                         {(historyItem.payment.notes ?? "").toLowerCase().includes("against invoice") && (
                           <div className="mt-1 inline-block rounded bg-success/10 px-2 py-0.5 text-xs text-success">
                             {t('payments.paymentReceived')}
@@ -20373,11 +20370,11 @@ setCustomerOrganizationName("");
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.explicitlyAllocated')}</div>
-                        <div>{pkrFormatter.format(historyItem.explicitlyAllocatedAmount)}</div>
+                        <div>{formatBooksMoney(historyItem.explicitlyAllocatedAmount)}</div>
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.unallocated')}</div>
-                        <div>{pkrFormatter.format(historyItem.unallocatedAmount)}</div>
+                        <div>{formatBooksMoney(historyItem.unallocatedAmount)}</div>
                       </div>
                     </div>
 
@@ -20410,7 +20407,7 @@ setCustomerOrganizationName("");
                               <span>
                                 {t('payments.salesInvoice')}: {allocationItem.transaction?.invoice_number ?? t('sell.unknown')}
                               </span>
-                              <span>{pkrFormatter.format(allocationItem.amount)}</span>
+                              <span>{formatBooksMoney(allocationItem.amount)}</span>
                             </li>
                           ))}
                         </ul>
@@ -20514,19 +20511,19 @@ setCustomerOrganizationName("");
                 <div className="rounded border border-border bg-muted/30 p-3">
                   <div className="text-muted-foreground/80">{t('buy.paymentAmount')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(Number.isFinite(supplierPaymentAmountValue) ? supplierPaymentAmountValue : 0)}
+                    {formatBooksMoney(Number.isFinite(supplierPaymentAmountValue) ? supplierPaymentAmountValue : 0)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-muted/30 p-3">
                   <div className="text-muted-foreground/80">{t('buy.totalAllocated')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(supplierPaymentAllocationTotal)}
+                    {formatBooksMoney(supplierPaymentAllocationTotal)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-muted/30 p-3">
                   <div className="text-muted-foreground/80">{t('buy.unallocatedAmount')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(supplierPaymentUnallocatedAmount)}
+                    {formatBooksMoney(supplierPaymentUnallocatedAmount)}
                   </div>
                 </div>
               </div>
@@ -20552,20 +20549,20 @@ setCustomerOrganizationName("");
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.purchaseTotal')}</div>
-                          <div>{pkrFormatter.format(invoice.purchaseTotal)}</div>
+                          <div>{formatBooksMoney(invoice.purchaseTotal)}</div>
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.alreadyAllocated')}</div>
-                          <div>{pkrFormatter.format(invoice.explicitAllocatedAmount)}</div>
+                          <div>{formatBooksMoney(invoice.explicitAllocatedAmount)}</div>
                           {invoice.fallbackAllocatedAmount > 0 && (
                             <div className="text-xs text-muted-foreground/80">
-                              {t('buy.remainingReflectsNote').replace('{amount}', pkrFormatter.format(invoice.fallbackAllocatedAmount))}
+                              {t('buy.remainingReflectsNote').replace('{amount}', formatBooksMoney(invoice.fallbackAllocatedAmount))}
                             </div>
                           )}
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.remainingPayable')}</div>
-                          <div>{pkrFormatter.format(invoice.remainingPayableAmount)}</div>
+                          <div>{formatBooksMoney(invoice.remainingPayableAmount)}</div>
                         </div>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('buy.allocationAmount')}</span>
@@ -20625,15 +20622,15 @@ setCustomerOrganizationName("");
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.totalPayment')}</div>
-                        <div>{pkrFormatter.format(historyItem.paymentAmount)}</div>
+                        <div>{formatBooksMoney(historyItem.paymentAmount)}</div>
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.explicitlyAllocated')}</div>
-                        <div>{pkrFormatter.format(historyItem.explicitlyAllocatedAmount)}</div>
+                        <div>{formatBooksMoney(historyItem.explicitlyAllocatedAmount)}</div>
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.unallocated')}</div>
-                        <div>{pkrFormatter.format(historyItem.unallocatedAmount)}</div>
+                        <div>{formatBooksMoney(historyItem.unallocatedAmount)}</div>
                       </div>
                     </div>
 
@@ -20661,7 +20658,7 @@ setCustomerOrganizationName("");
                               <span>
                                 {t('buy.purchaseInvoicePrefix')} {allocationItem.transaction?.invoice_number ?? t('sell.unknown')}
                               </span>
-                              <span>{pkrFormatter.format(allocationItem.amount)}</span>
+                              <span>{formatBooksMoney(allocationItem.amount)}</span>
                             </li>
                           ))}
                         </ul>
@@ -20773,31 +20770,31 @@ setCustomerOrganizationName("");
                 <div className="rounded border border-border bg-card p-3">
                   <div className="text-muted-foreground/80">{t('buy.totalPurchases')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(supplierLedgerTotalPurchases)}
+                    {formatBooksMoney(supplierLedgerTotalPurchases)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-card p-3">
                   <div className="text-muted-foreground/80">{t('buy.totalPayments')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(supplierLedgerTotalPayments)}
+                    {formatBooksMoney(supplierLedgerTotalPayments)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-card p-3">
                   <div className="text-muted-foreground/80">{t('buy.totalReturns')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(supplierLedgerTotalReturns)}
+                    {formatBooksMoney(supplierLedgerTotalReturns)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-card p-3">
                   <div className="text-muted-foreground/80">{t('buy.currentLedgerBalance')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(supplierLedgerCurrentBalance)}
+                    {formatBooksMoney(supplierLedgerCurrentBalance)}
                   </div>
                 </div>
                 <div className="rounded border border-border bg-card p-3">
                   <div className="text-muted-foreground/80">{t('buy.unallocatedPayments')}</div>
                   <div className="font-medium text-foreground">
-                    {pkrFormatter.format(supplierLedgerUnallocatedPayments)}
+                    {formatBooksMoney(supplierLedgerUnallocatedPayments)}
                   </div>
                 </div>
               </div>
@@ -20819,9 +20816,9 @@ setCustomerOrganizationName("");
                       <td className="px-3 py-2">-</td>
                       <td className="px-3 py-2 font-medium text-foreground">{t('inventory.openingBalance')}</td>
                       <td className="px-3 py-2">{t('buy.openingBalanceNote')}</td>
-                      <td className="px-3 py-2">{pkrFormatter.format(0)}</td>
-                      <td className="px-3 py-2">{pkrFormatter.format(0)}</td>
-                      <td className="px-3 py-2 font-medium text-foreground">{pkrFormatter.format(0)}</td>
+                      <td className="px-3 py-2">{formatBooksMoney(0)}</td>
+                      <td className="px-3 py-2">{formatBooksMoney(0)}</td>
+                      <td className="px-3 py-2 font-medium text-foreground">{formatBooksMoney(0)}</td>
                     </tr>
                     {supplierLedgerEntries.length === 0 ? (
                       <tr>
@@ -20835,10 +20832,10 @@ setCustomerOrganizationName("");
                           <td className="px-3 py-2">{entry.date ?? "-"}</td>
                           <td className="px-3 py-2 font-medium text-foreground">{entry.reference}</td>
                           <td className="px-3 py-2">{entry.notes || "-"}</td>
-                          <td className="px-3 py-2">{pkrFormatter.format(entry.debit)}</td>
-                          <td className="px-3 py-2">{pkrFormatter.format(entry.credit)}</td>
+                          <td className="px-3 py-2">{formatBooksMoney(entry.debit)}</td>
+                          <td className="px-3 py-2">{formatBooksMoney(entry.credit)}</td>
                           <td className="px-3 py-2 font-medium text-foreground">
-                            {pkrFormatter.format(entry.runningBalance)}
+                            {formatBooksMoney(entry.runningBalance)}
                           </td>
                         </tr>
                       ))
@@ -20996,10 +20993,7 @@ setCustomerOrganizationName("");
                   const expenseDate = expense.created_at
                     ? new Date(expense.created_at).toLocaleDateString()
                     : t('expenses.noDate');
-                  const formattedAmount = new Intl.NumberFormat("en-PK", {
-                    style: "currency",
-                    currency: "PKR",
-                  }).format(Number(expense.amount || 0));
+                  const formattedAmount = formatBooksMoney(Number(expense.amount || 0));
 
                   return (
                     <li key={expense.id} className="rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
@@ -22101,7 +22095,7 @@ setCustomerOrganizationName("");
                   {filteredCustomers.map((customer) => {
                     const policy = customer.credit_policy ?? "cash_only";
                     const policyLabel = ({ cash_only: t('customers.policyCashOnly'), limit_only: t('customers.policyLimitOnly'), days_only: t('customers.policyDaysOnly'), limit_and_days: t('customers.policyLimitAndDays'), unrestricted: t('customers.policyUnrestricted') } as Record<string, string>)[policy] ?? t('customers.policyCashOnly');
-                    const creditLimitSummary = pkrFormatter.format(Number(customer.credit_limit || 0));
+                    const creditLimitSummary = formatBooksMoney(Number(customer.credit_limit || 0));
                     const creditDaysSummary = Number(customer.credit_days || 0);
                     const creditSummary =
                       policy === "limit_only"
@@ -22842,15 +22836,15 @@ setCustomerOrganizationName("");
                       <div className="grid gap-2 text-xs text-success/90 sm:grid-cols-2 lg:grid-cols-4">
                         <div>
                           <div className="uppercase tracking-wide text-success">{t('buy.purchaseTotal')}</div>
-                          <div className="font-medium">{pkrFormatter.format(purchasePaymentTotal)}</div>
+                          <div className="font-medium">{formatBooksMoney(purchasePaymentTotal)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-success">{t('buy.paidAmount')}</div>
-                          <div className="font-medium">{pkrFormatter.format(purchasePaidAmount)}</div>
+                          <div className="font-medium">{formatBooksMoney(purchasePaidAmount)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-success">{t('buy.remainingPayable')}</div>
-                          <div className="font-medium">{pkrFormatter.format(Math.max(0, purchaseRemainingPayable))}</div>
+                          <div className="font-medium">{formatBooksMoney(Math.max(0, purchaseRemainingPayable))}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-success">{t('buy.paymentStatus')}</div>
@@ -22910,15 +22904,15 @@ setCustomerOrganizationName("");
                       <div className="grid gap-2 text-xs text-primary/90 sm:grid-cols-2 lg:grid-cols-5">
                         <div>
                           <div className="uppercase tracking-wide text-primary">{t('buy.purchaseValue')}</div>
-                          <div className="font-medium">{pkrFormatter.format(purchaseValue)}</div>
+                          <div className="font-medium">{formatBooksMoney(purchaseValue)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-primary">{t('buy.linkedExpenses')}</div>
-                          <div className="font-medium">{pkrFormatter.format(linkedExpenseTotal)}</div>
+                          <div className="font-medium">{formatBooksMoney(linkedExpenseTotal)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-primary">{t('buy.landedInvoiceCost')}</div>
-                          <div className="font-medium">{pkrFormatter.format(landedInvoiceCost)}</div>
+                          <div className="font-medium">{formatBooksMoney(landedInvoiceCost)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-primary">{t('buy.totalPurchasedQuantity')}</div>
@@ -22929,7 +22923,7 @@ setCustomerOrganizationName("");
                         <div>
                           <div className="uppercase tracking-wide text-primary">{averageLandedCostLabel}</div>
                           <div className="font-medium">
-                            {averageLandedCost === null ? "-" : pkrFormatter.format(averageLandedCost)}
+                            {averageLandedCost === null ? "-" : formatBooksMoney(averageLandedCost)}
                           </div>
                         </div>
                       </div>
@@ -22956,7 +22950,7 @@ setCustomerOrganizationName("");
                                     <div className="text-muted-foreground/80">{t('buy.datePrefix')} {expenseDate}</div>
                                   </div>
                                   <div className="font-medium text-foreground">
-                                    {pkrFormatter.format(Number(expense.amount || 0))}
+                                    {formatBooksMoney(Number(expense.amount || 0))}
                                   </div>
                                 </div>
                                 {expense.notes && <div className="mt-1">{t('buy.notesPrefix')} {expense.notes}</div>}
@@ -23753,7 +23747,7 @@ setCustomerOrganizationName("");
                           {formatDate(purchaseReturn.return_date ?? purchaseReturn.created_at)}
                         </div>
                         <div className="text-xs text-muted-foreground/80">
-                          {lineItems.length} {t('sell.line').toLowerCase()}(s) · {totalQuantity} {t('sell.units')} · {pkrFormatter.format(totalValue)}
+                          {lineItems.length} {t('sell.line').toLowerCase()}(s) · {totalQuantity} {t('sell.units')} · {formatBooksMoney(totalValue)}
                         </div>
                         {purchaseReturn.reason && (
                           <div className="text-xs text-muted-foreground/80">{t('sell.reasonLabel')}: {purchaseReturn.reason}</div>
@@ -26708,8 +26702,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                         <li key={item.sales_order_id + String(item.product_id)} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                           <span className="min-w-0 truncate text-foreground/90">{product?.name ?? t('draft.unknownProduct')}</span>
                           <span className="shrink-0 text-muted-foreground">
-                            {item.quantity_ordered} × {pkrFormatter.format(Number(item.unit_price ?? 0))}
-                            {Number(item.discount ?? 0) > 0 && <span className="ml-1 text-destructive">-{pkrFormatter.format(Number(item.discount))}</span>}
+                            {item.quantity_ordered} × {formatBooksMoney(Number(item.unit_price ?? 0))}
+                            {Number(item.discount ?? 0) > 0 && <span className="ml-1 text-destructive">-{formatBooksMoney(Number(item.discount))}</span>}
                           </span>
                         </li>
                       );
@@ -26717,7 +26711,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   </ul>
                   <div className="flex items-center justify-between border-t border-border px-3 py-2 text-sm font-semibold text-foreground">
                     <span>{t('common.total')}</span>
-                    <span>{pkrFormatter.format(total)}</span>
+                    <span>{formatBooksMoney(total)}</span>
                   </div>
                 </div>
 
