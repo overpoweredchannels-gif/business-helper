@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock } from "../src/lib/print/print-run";
+import { readFileSync } from "node:fs";
+import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, RECEIPT_DEBUG_STAGES } from "../src/lib/print/print-run";
 
 // Regression (2026-10-23): the receipt dialog's Close could not rescue a
 // print run parked in a staged wait — the pipeline only unwound when a
@@ -210,6 +211,79 @@ async function main() {
     assert.equal(released, true, "the release still ran before the yield");
     assert.equal(dispatched, false, "a run aborted during the yield reports no dispatch");
     assert.equal(printCalls, 0, "target.print() is never called for a run aborted during the yield");
+  }
+
+  // 12. Receipt-debug instrumentation (2026-10-24): the canonical stage
+  //     list exists in the declared pipeline order, and dispatch reports
+  //     its checkpoints in order — a run aborted during the yield reports
+  //     enter/released/yielded but never print-called/print-returned.
+  {
+    assert.deepEqual([...RECEIPT_DEBUG_STAGES], [
+      "dialog-open",
+      "template-loading",
+      "template-ready",
+      "print-entered",
+      "iframe-created",
+      "iframe-load-fired",
+      "fonts-wait",
+      "fonts-done",
+      "layout-wait",
+      "layout-done",
+      "fallback-cleared",
+      "dispatch-enter",
+      "dispatch-released",
+      "dispatch-yielded",
+      "print-called",
+      "print-returned",
+      "cleanup",
+      "fallback30-armed",
+      "fallback30-fired",
+      "watchdog45-armed",
+      "watchdog45-fired",
+    ], "the debug stage constants exist in the declared order");
+    const stages: string[] = [];
+    const token12 = new PrintRunController().begin();
+    const dispatched = await dispatchNativePrint(
+      { print: () => {} },
+      () => {},
+      token12,
+      (stage) => { stages.push(stage); },
+    );
+    assert.equal(dispatched, true);
+    assert.deepEqual(stages, ["dispatch-enter", "dispatch-released", "dispatch-yielded", "print-called", "print-returned"], "dispatch reports its stages in order");
+    const stagesAborted: string[] = [];
+    const controller12 = new PrintRunController();
+    const tokenAborted = controller12.begin();
+    const pending = dispatchNativePrint(
+      { print: () => { stagesAborted.push("UNEXPECTED-PRINT"); } },
+      () => {},
+      tokenAborted,
+      (stage) => { stagesAborted.push(stage); },
+    );
+    controller12.abortCurrent();
+    assert.equal(await pending, false);
+    assert.deepEqual(stagesAborted, ["dispatch-enter", "dispatch-released", "dispatch-yielded"], "an aborted dispatch stops before print-called");
+  }
+
+  // 13. Light source-level assertion (its limit, stated: it proves the
+  //     checkpoint strings and the gated readout exist in the component
+  //     source — it does NOT prove the stages fire at runtime in a real
+  //     browser; that is what the instrument itself is for). Every stage
+  //     name must appear in the component or the print-run seam, the
+  //     readout must be gated on the receiptdebug=1 flag, and the
+  //     rendered line must carry the stage plus the three state booleans.
+  {
+    const componentSource = readFileSync(new URL("../src/components/sales/POSReceipt.tsx", import.meta.url), "utf8");
+    const seamSource = readFileSync(new URL("../src/lib/print/print-run.ts", import.meta.url), "utf8");
+    const combined = componentSource + seamSource;
+    for (const stage of RECEIPT_DEBUG_STAGES) {
+      assert.ok(combined.includes(stage), `stage "${stage}" is instrumented in the component or the print-run seam`);
+    }
+    assert.ok(componentSource.includes('"receiptdebug"'), "the readout flag is read from the receiptdebug query param");
+    assert.ok(componentSource.includes("data-receipt-debug"), "the debug readout line is rendered (gated on the flag)");
+    assert.ok(componentSource.includes("printing={String(printing)}"), "the readout carries the printing boolean");
+    assert.ok(componentSource.includes("ready={String(templateReady)}"), "the readout carries the templateReady boolean");
+    assert.ok(componentSource.includes("saving={String(savingWidth)}"), "the readout carries the savingWidth boolean");
   }
 
   console.log("test-pos-receipt-print-run: all assertions passed");

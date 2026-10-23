@@ -139,7 +139,7 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
   const templateReady = loadedScope === receipt.scope;
   const activeTemplate = templateReady ? template : defaultTemplate;
   const printFrame = useRef<HTMLIFrameElement | null>(null);
-  const printCleanup = useRef<(() => void) | null>(null);
+  const printCleanup = useRef<((trigger?: string) => void) | null>(null);
   // The "Preparing receipt…" UI state, owned per print run and held
   // only until the run dispatches its native print dialog (PrintRunUiLock).
   const [printUiLock] = useState(() => new PrintRunUiLock());
@@ -152,10 +152,26 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
   // before printing. A ref (not state) so StrictMode's double effect
   // invocation cannot print the same receipt twice.
   const autoPrintPending = useRef(false);
+  // Temporary diagnostic instrumentation (2026-10-24): with
+  // ?receiptdebug=1 in the page URL, the dialog renders the print
+  // pipeline's current stage so a screenshot shows where a run parks.
+  // Read once at mount; without the flag nothing renders and the stage
+  // state never updates — zero UI or behaviour change.
+  const [receiptDebug] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("receiptdebug") === "1");
+  const [debugStage, setDebugStage] = useState("init");
+  const markStage = useCallback((stage: string) => {
+    if (!receiptDebug) return;
+    setDebugStage(stage);
+  }, [receiptDebug]);
+
+  useEffect(() => {
+    if (open) markStage("dialog-open");
+  }, [open, markStage]);
 
   useEffect(() => {
     let live = true;
     const scope = receipt.scope;
+    markStage("template-loading");
     // The loader ALWAYS resolves in bounded time (saved template, or the
     // built-in default on empty / error / timeout), so templateReady can
     // never wait on a stalled fetch again — the previous chain awaited
@@ -169,9 +185,10 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
       if (!live) return;
       setTemplate(result.template);
       setLoadedScope(scope);
+      markStage(`template-ready scope-match=${scope === receipt.scope}`);
     });
     return () => { live = false; };
-  }, [defaultTemplate, receipt.scope]);
+  }, [defaultTemplate, receipt.scope, markStage]);
 
   const dismissReceipt = useCallback(() => {
     // A dismissed preview must not print later when its template arrives.
@@ -181,7 +198,7 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
     // are parked in. Cleanup below then releases the state synchronously.
     printRuns.abortCurrent();
     try {
-      printCleanup.current?.();
+      printCleanup.current?.("dismiss");
     } finally {
       // Force-release the print state: if the browser's print dialog was
       // cancelled without firing afterprint, cleanup may never run and the
@@ -207,8 +224,9 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
 
   useEffect(() => () => printCleanup.current?.(), []);
 
-  const print = useCallback(async () => {
+  const print = useCallback(async (kind: "auto" | "manual" = "manual") => {
     if (!templateReady || printUiLock.isHeld()) return;
+    markStage(`print-entered ${kind}`);
     setPrinting(true);
     setError("");
     // One token per print run. Beginning this run aborts any previous
@@ -222,6 +240,7 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
     frame.style.cssText = "position:fixed;left:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
     printFrame.current?.remove();
     printFrame.current = frame;
+    markStage("iframe-created");
 
     let settled = false;
     let fallbackTimer = 0;
@@ -234,7 +253,7 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      cleanup();
+      cleanup("dismiss");
       setOpen(false);
     };
     // Release this run's "Preparing receipt…" state. Normally this
@@ -246,22 +265,27 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
       printUiLock.release(runToken);
       if (!printUiLock.isHeld()) setPrinting(false);
     };
-    const cleanup = () => {
+    const cleanup = (trigger: string = "abort") => {
       if (settled) return;
       settled = true;
+      markStage(`cleanup trigger=${trigger}`);
       window.clearTimeout(fallbackTimer);
       window.clearTimeout(watchdogTimer);
       frame.removeEventListener("load", onLoad);
-      printWindow?.removeEventListener("afterprint", cleanup);
+      printWindow?.removeEventListener("afterprint", onAfterprint);
       printWindow?.removeEventListener("keydown", onEscape);
-      window.removeEventListener("afterprint", cleanup);
+      window.removeEventListener("afterprint", onAfterprint);
       frame.remove();
       if (printFrame.current === frame) printFrame.current = null;
       if (printCleanup.current === cleanup) printCleanup.current = null;
       releaseUiState();
     };
+    function onAfterprint() {
+      cleanup("afterprint");
+    }
     printCleanup.current = cleanup;
     const onLoad = async () => {
+      markStage("iframe-load-fired");
       try {
         const targetWindow = frame.contentWindow;
         const targetDocument = frame.contentDocument;
@@ -285,19 +309,24 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
         // pipeline unwinds HERE as a no-op — dismiss already released
         // the print state synchronously, so nothing is cleaned up twice
         // and no error is raised for a print the user cancelled.
+        markStage("fonts-wait");
         const fontsStage = await awaitPrintStage(runToken, waitWithTimeout(targetDocument.fonts?.ready ?? Promise.resolve(), "Receipt fonts did not finish loading", 20000));
         if (fontsStage === PRINT_STAGE_ABORTED || settled) return;
+        markStage("fonts-done");
         // A disconnected frame means the print can never proceed; route
         // through cleanup instead of returning bare (the old bare return
         // left `printing` and the print lock set forever).
-        if (!frame.isConnected) { cleanup(); return; }
+        if (!frame.isConnected) { cleanup("abort"); return; }
+        markStage("layout-wait");
         const layoutStage = await awaitPrintStage(runToken, waitWithTimeout(new Promise<void>(resolve => targetWindow.requestAnimationFrame(() => targetWindow.requestAnimationFrame(() => resolve()))), "Receipt layout did not finish preparing", 5000));
         if (layoutStage === PRINT_STAGE_ABORTED || settled) return;
-        if (!frame.isConnected) { cleanup(); return; }
+        markStage("layout-done");
+        if (!frame.isConnected) { cleanup("abort"); return; }
         window.clearTimeout(fallbackTimer);
+        markStage("fallback-cleared");
         targetWindow.addEventListener("keydown", onEscape);
-        targetWindow.addEventListener("afterprint", cleanup, { once: true });
-        window.addEventListener("afterprint", cleanup, { once: true });
+        targetWindow.addEventListener("afterprint", onAfterprint, { once: true });
+        window.addEventListener("afterprint", onAfterprint, { once: true });
         targetWindow.focus();
         if (typeof targetWindow.print !== "function") throw new Error("Browser printing is unavailable");
         if (runToken.isAborted() || settled) return;
@@ -315,13 +344,13 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
         // window never opens the native dialog. From the dispatch the
         // user's interaction is with the OS dialog; the cleanup tail
         // below keeps running and still owns the frame and timers.
-        await dispatchNativePrint(targetWindow, releaseUiState, runToken);
+        await dispatchNativePrint(targetWindow, releaseUiState, runToken, markStage);
         // print() returns when its native dialog closes. Some browsers omit
         // afterprint, so use its return as the completion signal in that case.
-        if (!settled && !runToken.isAborted()) fallbackTimer = window.setTimeout(cleanup, 1500);
+        if (!settled && !runToken.isAborted()) fallbackTimer = window.setTimeout(() => cleanup("fallback"), 1500);
       } catch {
         if (settled || runToken.isAborted()) return;
-        cleanup();
+        cleanup("abort");
         setError("The receipt could not be prepared for printing. The preview is still available.");
       }
     };
@@ -332,23 +361,27 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
       document.body.appendChild(frame);
       watchdogTimer = window.setTimeout(() => {
         if (!settled && !runToken.isAborted()) {
-          cleanup();
+          markStage("watchdog45-fired");
+          cleanup("watchdog");
           setError("The receipt did not finish loading for printing. The preview is still available.");
         }
       }, 45000);
+      markStage("watchdog45-armed");
       fallbackTimer = window.setTimeout(() => {
         if (!settled && !runToken.isAborted()) {
-          cleanup();
+          markStage("fallback30-fired");
+          cleanup("fallback");
           setError("The receipt did not finish loading for printing. The preview is still available.");
         }
       }, 30000);
+      markStage("fallback30-armed");
     } catch {
       if (!runToken.isAborted()) {
-        cleanup();
+        cleanup("abort");
         setError("The receipt could not be prepared for printing. The preview is still available.");
       }
     }
-  }, [receipt, template, templateReady, labels, chromeLabels, printRuns, printUiLock]);
+  }, [receipt, template, templateReady, labels, chromeLabels, printRuns, printUiLock, markStage]);
 
   // Auto-print (POS quick sale): open the preview for each new receipt and
   // print it as soon as its template is ready. The receipt key is recorded
@@ -367,7 +400,7 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
   useEffect(() => {
     if (!open || !templateReady || !autoPrintPending.current) return;
     autoPrintPending.current = false;
-    void print();
+    void print("auto");
   }, [open, templateReady, print]);
 
   // Paper width is the single most-missed receipt setting (a 58mm printer
@@ -437,6 +470,7 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
           </div>
           {!templateReady && <p role="status" className="mb-2 text-sm">Loading receipt template…</p>}
           {error && <p role="alert" className="mb-2 text-sm text-destructive">{error}</p>}
+          {receiptDebug && <p data-receipt-debug="1" role="status" className="mb-2 text-sm tabular-nums">stage: {debugStage} printing={String(printing)} ready={String(templateReady)} saving={String(savingWidth)}</p>}
           {preview}
         </div>
       </div>,

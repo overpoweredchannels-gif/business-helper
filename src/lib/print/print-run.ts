@@ -15,6 +15,39 @@
 export const PRINT_STAGE_ABORTED: unique symbol = Symbol("PRINT_STAGE_ABORTED");
 export type PrintStageResult<T> = T | typeof PRINT_STAGE_ABORTED;
 
+/**
+ * Temporary diagnostic instrumentation (2026-10-24): the ordered stage
+ * names the receipt dialog reports when the page URL carries
+ * ?receiptdebug=1. The auto-print pipeline has parked somewhere in a
+ * real browser across several black-box rounds; these checkpoints make
+ * the pipeline say where. Purely observational — a stage callback is a
+ * cheap synchronous state write and never alters ordering or timing.
+ */
+export const RECEIPT_DEBUG_STAGES = [
+  "dialog-open",
+  "template-loading",
+  "template-ready",
+  "print-entered",
+  "iframe-created",
+  "iframe-load-fired",
+  "fonts-wait",
+  "fonts-done",
+  "layout-wait",
+  "layout-done",
+  "fallback-cleared",
+  "dispatch-enter",
+  "dispatch-released",
+  "dispatch-yielded",
+  "print-called",
+  "print-returned",
+  "cleanup",
+  "fallback30-armed",
+  "fallback30-fired",
+  "watchdog45-armed",
+  "watchdog45-fired",
+] as const;
+export type ReceiptDebugStage = (typeof RECEIPT_DEBUG_STAGES)[number];
+
 export class PrintRunToken {
   readonly id: number;
   /** Resolves the moment this run is aborted. Never rejects. */
@@ -150,11 +183,17 @@ export async function dispatchNativePrint(
   target: { print: () => void },
   releaseUiState: () => void,
   token: PrintRunToken,
+  onStage?: (stage: ReceiptDebugStage) => void,
 ): Promise<boolean> {
+  onStage?.("dispatch-enter");
   releaseUiState();
+  onStage?.("dispatch-released");
   await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+  onStage?.("dispatch-yielded");
   if (token.isAborted()) return false;
+  onStage?.("print-called");
   target.print();
+  onStage?.("print-returned");
   return true;
 }
 
