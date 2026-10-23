@@ -6,6 +6,7 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
 import type { PrintTemplate } from "@/lib/print/print-template-types";
 import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptPrintableWidthMm, getReceiptSummaryRows, getReceiptWidthMm, normalizeReceiptWidthMm, resolveReceiptChrome, resolveReceiptCustomerName, type Receipt, type ReceiptChromeLabels, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
+import { loadReceiptTemplate } from "@/lib/print/receipt-template-loader";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatPKR } from "@/lib/tradeos/formatters";
@@ -145,35 +146,38 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
   useEffect(() => {
     let live = true;
     const scope = receipt.scope;
-    authorizedFetch("/api/print-templates?doc_type=retail_receipt")
-      .then(response => response.json())
-      .then(data => {
-        const selected = data?.templates?.find((item: { is_default?: boolean; config?: PrintTemplate }) => item.is_default);
-        if (!live) return;
-        if (selected?.config) {
-          setTemplate({ ...defaultTemplate, ...selected.config, receiptWidthMm: normalizeReceiptWidthMm(selected.config.receiptWidthMm) });
-        } else setTemplate(defaultTemplate);
-        setLoadedScope(scope);
-      })
-      .catch(() => {
-        if (live) {
-          setTemplate(defaultTemplate);
-          setLoadedScope(scope);
-        }
-      });
+    // The loader ALWAYS resolves in bounded time (saved template, or the
+    // built-in default on empty / error / timeout), so templateReady can
+    // never wait on a stalled fetch again — the previous chain awaited
+    // getSession() + fetch with no timeout and could hang the dialog on
+    // "Loading receipt template…" indefinitely.
+    void loadReceiptTemplate({
+      defaultTemplate,
+      fetchJson: (signal) =>
+        authorizedFetch("/api/print-templates?doc_type=retail_receipt", { signal }).then(response => response.json()),
+    }).then(result => {
+      if (!live) return;
+      setTemplate(result.template);
+      setLoadedScope(scope);
+    });
     return () => { live = false; };
   }, [defaultTemplate, receipt.scope]);
 
   const dismissReceipt = useCallback(() => {
     // A dismissed preview must not print later when its template arrives.
     autoPrintPending.current = false;
-    printCleanup.current?.();
-    // Force-release the print state: if the browser's print dialog was
-    // cancelled without firing afterprint, cleanup may never run and the
-    // modal would otherwise be stuck on "Preparing receipt…" forever.
-    printLock.current = false;
-    setPrinting(false);
-    setOpen(false);
+    try {
+      printCleanup.current?.();
+    } finally {
+      // Force-release the print state: if the browser's print dialog was
+      // cancelled without firing afterprint, cleanup may never run and the
+      // modal would otherwise be stuck on "Preparing receipt…" forever.
+      // In a finally block so Close ALWAYS dismisses, even if the stored
+      // cleanup itself throws.
+      printLock.current = false;
+      setPrinting(false);
+      setOpen(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -204,6 +208,11 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
 
     let settled = false;
     let fallbackTimer = 0;
+    // One watchdog bounds the WHOLE print operation and is cleared only
+    // inside cleanup — the staged fallback timer below is cleared and
+    // re-armed mid-flight, so it cannot be the only guarantee that the
+    // "Preparing receipt…" state settles.
+    let watchdogTimer = 0;
     let printWindow: Window | null = null;
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -215,6 +224,7 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
       if (settled) return;
       settled = true;
       window.clearTimeout(fallbackTimer);
+      window.clearTimeout(watchdogTimer);
       frame.removeEventListener("load", onLoad);
       printWindow?.removeEventListener("afterprint", cleanup);
       printWindow?.removeEventListener("keydown", onEscape);
@@ -246,9 +256,14 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
           }
         };
         await waitWithTimeout(targetDocument.fonts?.ready ?? Promise.resolve(), "Receipt fonts did not finish loading", 20000);
-        if (settled || !frame.isConnected) return;
+        if (settled) return;
+        // A disconnected frame means the print can never proceed; route
+        // through cleanup instead of returning bare (the old bare return
+        // left `printing` and the print lock set forever).
+        if (!frame.isConnected) { cleanup(); return; }
         await waitWithTimeout(new Promise<void>(resolve => targetWindow.requestAnimationFrame(() => targetWindow.requestAnimationFrame(() => resolve()))), "Receipt layout did not finish preparing", 5000);
-        if (settled || !frame.isConnected) return;
+        if (settled) return;
+        if (!frame.isConnected) { cleanup(); return; }
         window.clearTimeout(fallbackTimer);
         targetWindow.addEventListener("keydown", onEscape);
         targetWindow.addEventListener("afterprint", cleanup, { once: true });
@@ -270,6 +285,12 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
       frame.addEventListener("load", onLoad, { once: true });
       frame.srcdoc = buildPrintableReceiptHtml(receipt, template, labels, chromeLabels);
       document.body.appendChild(frame);
+      watchdogTimer = window.setTimeout(() => {
+        if (!settled) {
+          cleanup();
+          setError("The receipt did not finish loading for printing. The preview is still available.");
+        }
+      }, 45000);
       fallbackTimer = window.setTimeout(() => {
         if (!settled) {
           cleanup();
