@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { buildCustomerSuggestionData } from "@/components/search/suggestion-items";
@@ -10,6 +11,10 @@ import type { Product, Customer } from "@/lib/tradeos/types";
 import type { SearchRankFields } from "@/lib/products/search-rank";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { loadHeldSales, parseHeldSales, type HeldSale } from "@/lib/sales/held-sales";
+import { DEFAULT_DRAWER_SETTINGS, readDrawerSettings, writeDrawerSettings, type DrawerSettings } from "@/lib/print/drawer-settings";
+import { hasDrawerSerial, hasDrawerUsb } from "@/lib/print/drawer-transport";
+import { isNoSaleReasonValid, NO_SALE_REASON_CODES, type NoSaleReasonCode } from "@/lib/sales/drawer-gate";
+import type { MessageKey } from "@/lib/regional/messages";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatPKR } from "@/lib/tradeos/formatters";
 
@@ -19,7 +24,15 @@ export type CounterSale = {
 };
 type BasketTemplate = { id: string; name: string; sale: CounterSale; savedAt: string };
 
-export function RetailPOS({ scope, sale, products, customers, busy, owner, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear, onPaymentType }: {
+const NO_SALE_REASON_KEYS: Record<NoSaleReasonCode, MessageKey> = {
+  "making-change": "drawer.reasonMakingChange",
+  "counting-drawer": "drawer.reasonCounting",
+  "pay-in": "drawer.reasonPayIn",
+  "pay-out": "drawer.reasonPayOut",
+  "other": "drawer.reasonOther",
+};
+
+export function RetailPOS({ scope, sale, products, customers, busy, owner, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; busy: boolean; owner: boolean;
   /** Staff sale under the owner's "direct" setting: saves like an owner
    * sale instead of going to the approval pipeline, so the primary action
@@ -40,6 +53,18 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
    * selectable in the full invoice form and is shown as the active
    * tender here when it is already chosen. */
   onPaymentType: (type: "cash" | "card" | "credit") => void;
+  /** Cash drawer: whether this user may open the drawer outside a sale
+   * (owner/admin always; staff only with the owner's setting — the
+   * parent computes the gate). The Open drawer button renders only
+   * when onDrawerNoSale is provided. */
+  drawerNoSaleAllowed?: boolean;
+  onDrawerNoSale?: (reason: { reasonCode: NoSaleReasonCode; reasonNote: string | null }) => void;
+  /** Test Open from the till's drawer settings (setup diagnostics;
+   * recorded as a test event, never counted as a No Sale). */
+  onDrawerTestOpen?: () => void;
+  /** Pair the direct-route printer (user gesture). Resolves false when
+   * pairing was cancelled or is unavailable on this browser. */
+  onDrawerConnect?: (route: "serial" | "usb") => Promise<boolean>;
 }) {
   const [held, setHeld] = useState<HeldSale[]>([]);
   const [templates, setTemplates] = useState<BasketTemplate[]>([]);
@@ -47,6 +72,15 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
   const [storedSearch, setStoredSearch] = useState("");
   const [storageReady, setStorageReady] = useState(false);
   const [notice, setNotice] = useState("");
+  // Cash drawer, per till: settings persist in browser storage keyed by
+  // scope (drawer-settings seam); the parent reads the same store when
+  // a cash event completes, so this state only drives the settings UI.
+  const [drawerSettings, setDrawerSettings] = useState<DrawerSettings>(DEFAULT_DRAWER_SETTINGS);
+  const [noSaleOpen, setNoSaleOpen] = useState(false);
+  const [noSaleReason, setNoSaleReason] = useState<NoSaleReasonCode>("making-change");
+  const [noSaleNote, setNoSaleNote] = useState("");
+  const [drawerDirectAvailable, setDrawerDirectAvailable] = useState(false);
+  const [drawerConnectState, setDrawerConnectState] = useState<"idle" | "connected" | "failed">("idle");
   const [searchKey, setSearchKey] = useState(0);
   const [focusQuantityFor, setFocusQuantityFor] = useState<number | null>(null);
   // Product selector options + rank fields, built in one pass and memoized so
@@ -74,6 +108,35 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
     [customers],
   );
   const { t } = useRegional();
+  useEffect(() => {
+    try { setDrawerSettings(readDrawerSettings(localStorage, scope)); } catch { setDrawerSettings(DEFAULT_DRAWER_SETTINGS); }
+    // Loaded once per scope, like the held-sales store above.
+  }, [scope]);
+  useEffect(() => {
+    setDrawerDirectAvailable(drawerSettings.route === "serial" ? hasDrawerSerial() : hasDrawerUsb());
+    setDrawerConnectState("idle");
+  }, [drawerSettings.route]);
+  const updateDrawerSettings = (next: DrawerSettings) => {
+    setDrawerSettings(next);
+    try { writeDrawerSettings(localStorage, scope, next); } catch { /* in-session settings still apply */ }
+  };
+  const openNoSaleDialog = () => {
+    if (!drawerNoSaleAllowed) { setNotice(t("drawer.notAllowed")); return; }
+    setNoSaleReason("making-change");
+    setNoSaleNote("");
+    setNoSaleOpen(true);
+  };
+  const confirmNoSale = () => {
+    if (!isNoSaleReasonValid({ reasonCode: noSaleReason, reasonNote: noSaleNote })) return;
+    onDrawerNoSale?.({ reasonCode: noSaleReason, reasonNote: noSaleNote.trim() || null });
+    setNoSaleOpen(false);
+  };
+  const connectDrawer = async () => {
+    if (!onDrawerConnect || drawerSettings.route === "print") return;
+    setDrawerConnectState("idle");
+    const ok = await onDrawerConnect(drawerSettings.route);
+    setDrawerConnectState(ok ? "connected" : "failed");
+  };
   const holdLock = useRef(false);
   const storageKey = `tradeos-pos-held-v1:${scope}`;
   const templateStorageKey = `tradeos-pos-baskets-v1:${scope}`;
@@ -315,6 +378,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted-foreground">Scan or search • Check quantity • {owner || staffDirectSale ? "Pay and save" : "Send for approval"}</p>
       <button type="button" disabled={busy} onClick={onAdvanced} className="min-h-11 rounded-lg border px-4 text-sm font-medium">Full invoice / Advanced options</button>
+      {onDrawerNoSale && <button type="button" disabled={busy} onClick={openNoSaleDialog} className="min-h-11 rounded-lg border px-4 text-sm font-medium disabled:opacity-40">{t("drawer.openDrawer")}</button>}
     </div>
     <fieldset disabled={busy} className="grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
       <div><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={handleScannedCode} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} /></div>
@@ -395,5 +459,30 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
       <label className="mb-3 block text-sm">Search held sales<input type="search" value={storedSearch} onChange={event => setStoredSearch(event.target.value)} placeholder="Customer, product, amount, date" className="mt-1 min-h-11 w-full rounded border border-input bg-background px-3" /></label>
       {visibleHeld.length === 0 ? <p className="text-sm text-muted-foreground">No held sales match this filter.</p> : visibleHeld.map(row => { const heldTotal = getSaleTotal(row.sale); return <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 border-t py-3"><span>{customers.find(c => c.id === row.sale.customerId)?.customer_name ?? "Customer"} · {row.sale.lines.length} lines · {new Date(row.savedAt).toLocaleString()} · {heldTotal === null ? "Total unavailable" : formatPKR(heldTotal)}</span><button type="button" disabled={busy || sale.lines.length > 0} onClick={() => resume(row)} className="min-h-11 rounded border border-primary px-4 text-primary disabled:opacity-40">Resume</button></div>; })}
     </details>
+    <details className="rounded-xl border bg-card p-4"><summary className="cursor-pointer font-semibold">{t("drawer.settingsTitle")}</summary>
+      <div className="mt-3 space-y-3">
+        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={drawerSettings.enabled} onChange={event => updateDrawerSettings({ ...drawerSettings, enabled: event.target.checked })} className="h-5 w-5 shrink-0" />{t("drawer.enabled")}</label>
+        <label className="block text-sm font-medium">{t("drawer.routeLabel")}<select value={drawerSettings.route} onChange={event => updateDrawerSettings({ ...drawerSettings, route: event.target.value as DrawerSettings["route"] })} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-3 text-base"><option value="print">{t("drawer.routePrint")}</option><option value="serial">{t("drawer.routeSerial")}</option><option value="usb">{t("drawer.routeUsb")}</option></select></label>
+        <label className="block text-sm font-medium">{t("drawer.pinLabel")}<select value={drawerSettings.pin} onChange={event => updateDrawerSettings({ ...drawerSettings, pin: event.target.value === "5" ? 5 : 2 })} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-3 text-base"><option value="2">{t("drawer.pinOption").replace("{pin}", "2")}</option><option value="5">{t("drawer.pinOption").replace("{pin}", "5")}</option></select></label>
+        {drawerSettings.route !== "print" && (drawerDirectAvailable
+          ? <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={() => void connectDrawer()} className="min-h-11 rounded border px-4 text-sm font-medium">{t("drawer.connectPrinter")}</button>{drawerConnectState === "connected" && <span role="status" className="text-sm">{t("drawer.connected")}</span>}{drawerConnectState === "failed" && <span role="alert" className="text-sm text-destructive">{t("drawer.connectFailed")}</span>}</div>
+          : <p className="text-sm text-muted-foreground">{t("drawer.directUnavailable")}</p>)}
+        {onDrawerTestOpen && <button type="button" disabled={!drawerSettings.enabled} onClick={onDrawerTestOpen} className="min-h-11 rounded border border-primary px-4 text-sm font-medium text-primary disabled:opacity-40">{t("drawer.testOpen")}</button>}
+      </div>
+    </details>
+    {noSaleOpen && createPortal(
+      <div data-context-help-skip role="dialog" aria-modal="true" aria-label={t("drawer.noSaleTitle")} className="fixed inset-0 z-[100] overflow-auto bg-black/30 p-4">
+        <div className="mx-auto max-w-md space-y-4 rounded-xl bg-card p-4 shadow-xl">
+          <h3 className="font-semibold">{t("drawer.noSaleTitle")}</h3>
+          <label className="block text-sm font-medium">{t("drawer.reasonLabel")}<select value={noSaleReason} onChange={event => setNoSaleReason(event.target.value as NoSaleReasonCode)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-3 text-base">{NO_SALE_REASON_CODES.map(code => <option key={code} value={code}>{t(NO_SALE_REASON_KEYS[code])}</option>)}</select></label>
+          <label className="block text-sm font-medium">{t("drawer.reasonNoteLabel")}<input type="text" value={noSaleNote} onChange={event => setNoSaleNote(event.target.value)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-3 text-base" /></label>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setNoSaleOpen(false)} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("common.cancel")}</button>
+            <button type="button" disabled={!isNoSaleReasonValid({ reasonCode: noSaleReason, reasonNote: noSaleNote })} onClick={confirmNoSale} className="min-h-11 min-w-11 rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">{t("drawer.confirmOpen")}</button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )}
   </div>;
 }
