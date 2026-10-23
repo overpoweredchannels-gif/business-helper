@@ -32,6 +32,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@/lib/sales/access";
+import { staffSaleOutcome } from "@/lib/sales/staff-sale-gate";
+import { readSellMode, writeSellMode } from "@/lib/sales/sell-mode";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { SearchSuggestField } from "@/components/search/SearchSuggestField";
 import { buildCustomerSuggestionData, buildProductSuggestionData, orderCrossTypeSuggestions, pinSelectedFirst } from "@/components/search/suggestion-items";
@@ -4138,7 +4140,7 @@ setCustomerOrganizationName("");
     }
 
     const parsedTaxRate = salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate);
-    if (!isOwnerOrAdmin() && (rawInvoiceDiscount !== 0 || parsedTaxRate !== 0)) {
+    if (staffSaleGateOutcome === "approval" && (rawInvoiceDiscount !== 0 || parsedTaxRate !== 0)) {
       setSalesError("Employee approval currently supports line discounts only. Clear invoice discount and tax before submitting.");
       return;
     }
@@ -4247,10 +4249,12 @@ setCustomerOrganizationName("");
     setSalesError(null);
     setSalesMessage(null);
 
-    // Non-owner staff creating a sale invoice must go through the draft
-    // approval pipeline (pending_approval + owner notification) so the owner
-    // can approve/reject before it becomes a confirmed invoice.
-    if (!isOwnerOrAdmin()) {
+    // Staff creating a sale invoice go through the draft approval
+    // pipeline (pending_approval + owner notification) so the owner can
+    // approve/reject before it becomes a confirmed invoice — unless the
+    // owner has set staff sales to "direct", in which case staff fall
+    // through to the normal save path below, exactly like an owner.
+    if (staffSaleGateOutcome === "approval") {
       setSalesInvoiceLoading(true);
       try {
         const res = await authorizedFetch("/api/sales/drafts", {
@@ -5449,6 +5453,8 @@ setCustomerOrganizationName("");
   const saleSubmitLock = useRef(false);
   const walkInCustomerId = useRef<string | null>(null);
   const [walkInBusy, setWalkInBusy] = useState(false);
+  const [walkInFailed, setWalkInFailed] = useState(false);
+  const [walkInAttempt, setWalkInAttempt] = useState(0);
   const [keepSaleCustomer, setKeepSaleCustomer] = useState(false);
   const [saleScanUnit, setSaleScanUnit] = useState<UnitMode>("subunit");
   const [saleScanFocus, setSaleScanFocus] = useState(0);
@@ -5491,13 +5497,32 @@ setCustomerOrganizationName("");
     walkInCustomerId.current = null;
     let cancelled = false;
     setWalkInBusy(true);
+    setWalkInFailed(false);
     authorizedFetch("/api/sales/walk-in", { method: "POST" }).then(async response => {
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || "Could not prepare Walk-in customer.");
       if (!cancelled) { walkInCustomerId.current = result.customer.id; setCustomers(current => current.some(customer => customer.id === result.customer.id) ? current : [...current, result.customer]); setSelectedCustomerIdForSale(current => current ?? result.customer.id); }
-    }).catch(error => { if (!cancelled) setSalesError(error.message); }).finally(() => { if (!cancelled) setWalkInBusy(false); });
+    }).catch(error => { if (!cancelled) { setWalkInFailed(true); setSalesError(error.message); } }).finally(() => { if (!cancelled) setWalkInBusy(false); });
     return () => { cancelled = true; };
-  }, [quickSaleMode, currentOrganizationId, currentProfile?.id]);
+  }, [quickSaleMode, currentOrganizationId, currentProfile?.id, walkInAttempt]);
+  // Sell mode persistence: reopening the Sell tab restores the surface the
+  // user last worked on (Retail POS or the detailed invoice form) for this
+  // organization + profile, instead of resetting to the detailed form on
+  // every page load. Restore runs once per scope; every later change is
+  // written back. Storage failures degrade to the historical default.
+  const sellModeScope = currentOrganizationId && currentProfile?.id ? `${currentOrganizationId}:${currentProfile.id}` : null;
+  const sellModeRestoredScope = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sellModeScope || !currentOrganizationId || !currentProfile?.id) return;
+    if (sellModeRestoredScope.current === sellModeScope) return;
+    sellModeRestoredScope.current = sellModeScope;
+    setQuickSaleMode(readSellMode(window.localStorage, currentOrganizationId, currentProfile.id) === "pos");
+  }, [sellModeScope, currentOrganizationId, currentProfile?.id]);
+  useEffect(() => {
+    if (!sellModeScope || !currentOrganizationId || !currentProfile?.id) return;
+    if (sellModeRestoredScope.current !== sellModeScope) return;
+    writeSellMode(window.localStorage, currentOrganizationId, currentProfile.id, quickSaleMode ? "pos" : "invoice");
+  }, [quickSaleMode, sellModeScope, currentOrganizationId, currentProfile?.id]);
   const salesPricingRequest = useRef(0);
   const [recentCustomerPrices, setRecentCustomerPrices] = useState<Record<string, RecentCustomerPrice>>({});
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
@@ -5617,6 +5642,16 @@ setCustomerOrganizationName("");
     const role = currentProfile?.role;
     return role === "owner" || role === "admin";
   };
+  // Owner-controlled staff-sale gate (src/lib/sales/staff-sale-gate.ts):
+  // "approval" routes staff sales through the draft pipeline; "direct"
+  // lets staff save like an owner; owner/admin are "unaffected". The mode
+  // is read from the organization's staff_sales_mode value — that column
+  // still needs its additive migration, so until it exists every read is
+  // undefined and the gate resolves to "approval" (today's behaviour).
+  const staffSaleGateOutcome = staffSaleOutcome({
+    role: currentProfile?.role,
+    mode: currentOrganization?.staff_sales_mode,
+  });
   const currentStaffPermission = staffPermissions.find(
     (permission) => permission.profile_id === currentProfile?.id
   ) ?? selfStaffPermission;
@@ -8210,8 +8245,10 @@ setCustomerOrganizationName("");
 
     // Non-owner staff creating a new sales order must go through the draft
     // approval pipeline (pending_approval + owner notification) so the owner
-    // is alerted and can approve/reject. Owners/admins keep the direct flow.
-    if (!isOwnerOrAdmin() && !soEditingId) {
+    // is alerted and can approve/reject — unless the owner has set staff
+    // sales to "direct" (the same staff-sale gate as invoice creation).
+    // Owners/admins keep the direct flow.
+    if (staffSaleGateOutcome === "approval" && !soEditingId) {
       setSoLoading(true);
       try {
         const res = await authorizedFetch("/api/sales/drafts", {
@@ -18189,7 +18226,7 @@ setCustomerOrganizationName("");
             )}
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
-              products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
+              products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
               onScan={(code, options) => { const result = runSalesScan(code, options); return result.status === "not-found" ? null : String(result.product.id); }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
@@ -18523,7 +18560,7 @@ setCustomerOrganizationName("");
               disabled={salesInvoiceLoading || !salesLines.length || !selectedCustomerIdForSale || !currentSaleDraft.valid}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
-              {salesInvoiceLoading ? t('sell.saving') : isOwnerOrAdmin() ? t('sell.saveInvoice') : t('sell.sendForApproval')}
+              {salesInvoiceLoading ? t('sell.saving') : staffSaleGateOutcome === "approval" ? t('sell.sendForApproval') : t('sell.saveInvoice')}
             </button>
 
             </div>
