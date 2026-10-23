@@ -62,7 +62,9 @@ for (const value of ["Items subtotal", "Line discounts", "Invoice discount", "Ta
   assert.ok(smallHtml.includes(value), `Printed receipt includes ${value}`);
 }
 assert.match(smallHtml, /Cooking Oil 1L/);
-assert.match(fractionalSmallHtml, /0\.125 Case/, "58mm receipt output preserves the three-decimal quantity");
+assert.match(fractionalSmallHtml, />0\.125</, "58mm receipt quantity cell preserves the three-decimal quantity numeral");
+assert.ok(fractionalSmallHtml.includes("Case"), "58mm receipt shows the unit under the product name");
+assert.doesNotMatch(fractionalSmallHtml, /0\.125 Case/, "58mm receipt quantity cell no longer glues the unit to the numeral");
 assert.doesNotMatch(smallHtml, /window\.onload|window\.print/);
 
 const longReceipt: Receipt = {
@@ -94,7 +96,9 @@ assert.match(longHtml, /@page\{size:80mm auto;margin:0\}/);
 assert.match(longHtml, /data-receipt-paper-width="80mm"/);
 assert.equal((longHtml.match(/<tr data-receipt-line=/g) ?? []).length, 40, "Long receipts keep every product line");
 assert.match(longHtml, /overflow-wrap:anywhere/);
-assert.match(fractionalWideHtml, /0\.125 Case/, "80mm receipt output preserves the three-decimal quantity");
+assert.match(fractionalWideHtml, />0\.125</, "80mm receipt quantity cell preserves the three-decimal quantity numeral");
+assert.ok(fractionalWideHtml.includes("Case"), "80mm receipt shows the unit under the product name");
+assert.doesNotMatch(fractionalWideHtml, /0\.125 Case/, "80mm receipt quantity cell no longer glues the unit to the numeral");
 assert.match(longHtml, /Rs 9,877,404,197\.54|Rs 9,877,404,197\.54/);
 
 const creditRows = getReceiptSummaryRows({ ...shortReceipt, payment: "credit" });
