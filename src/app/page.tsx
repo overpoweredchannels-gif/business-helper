@@ -33,6 +33,11 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@/lib/sales/access";
 import { parseStaffSalesMode, staffSaleOutcome } from "@/lib/sales/staff-sale-gate";
+import { noSaleOutcome, parseDrawerNoSaleStaffAllowed, type NoSaleReasonCode } from "@/lib/sales/drawer-gate";
+import { drawerEventTypeForReturn, drawerEventTypeForSale, kickDrawer, type DrawerEventType } from "@/lib/print/drawer";
+import { readDrawerSettings } from "@/lib/print/drawer-settings";
+import { countNoSaleEvents, createDrawerEventRecorder, DRAWER_EVENTS_TABLE, filterDrawerEvents, readDrawerOutbox, type DrawerEventRow } from "@/lib/print/drawer-events";
+import { connectDrawerSerial, connectDrawerUsb, createBrowserDrawerTransports } from "@/lib/print/drawer-transport";
 import { readSellMode, writeSellMode } from "@/lib/sales/sell-mode";
 import { buildSalesInvoicePreviewRowsHtml } from "@/lib/sales/sales-invoice-preview";
 import { buildPurchaseInvoicePreviewRowsHtml } from "@/lib/purchases/purchase-invoice-preview";
@@ -490,6 +495,12 @@ export default function Home() {
   const [businessSettingsDefaultPaymentTerms, setBusinessSettingsDefaultPaymentTerms] = useState("");
   const [businessSettingsOversellingPolicy, setBusinessSettingsOversellingPolicy] = useState("allow");
   const [businessSettingsStaffSalesMode, setBusinessSettingsStaffSalesMode] = useState("approval");
+  const [businessSettingsDrawerNoSaleStaffAllowed, setBusinessSettingsDrawerNoSaleStaffAllowed] = useState(false);
+  const [drawerEvents, setDrawerEvents] = useState<DrawerEventRow[]>([]);
+  const [drawerEventsLoading, setDrawerEventsLoading] = useState(false);
+  const [drawerEventTypeFilter, setDrawerEventTypeFilter] = useState("");
+  const [drawerEventResultFilter, setDrawerEventResultFilter] = useState("");
+  const [drawerNotice, setDrawerNotice] = useState("");
   const [businessSettingsDutyStart, setBusinessSettingsDutyStart] = useState("08:00");
   const [businessSettingsDutyEnd, setBusinessSettingsDutyEnd] = useState("16:00");
   const [dutyScheduleLoading, setDutyScheduleLoading] = useState(false);
@@ -1568,6 +1579,7 @@ export default function Home() {
     setBusinessSettingsDefaultPaymentTerms(organization?.default_payment_terms ?? "");
     setBusinessSettingsOversellingPolicy(organization?.overselling_policy ?? "allow");
     setBusinessSettingsStaffSalesMode(parseStaffSalesMode(organization?.staff_sales_mode));
+    setBusinessSettingsDrawerNoSaleStaffAllowed(parseDrawerNoSaleStaffAllowed(organization?.drawer_no_sale_staff_allowed));
     setBusinessSettingsDutyStart(organization?.working_hours?.duty_start ?? "08:00");
     setBusinessSettingsDutyEnd(organization?.working_hours?.duty_end ?? "16:00");
   };
@@ -1579,16 +1591,30 @@ export default function Home() {
       return;
     }
 
-    // staff_sales_mode arrives with an additive migration that may not have
-    // run yet. Until the column exists the widened select fails with 42703,
-    // so fall back to the pre-migration column list: the setting then reads
-    // as absent and parseStaffSalesMode keeps it at "approval" — exactly
-    // today's behaviour (same pattern as the EUR schema guards).
+    // staff_sales_mode and drawer_no_sale_staff_allowed arrive with
+    // additive migrations that may not have run yet. Until a column
+    // exists the widened select fails with 42703, so fall back one
+    // column at a time: the missing setting then reads as absent and
+    // its gate keeps the pre-setting behaviour (staff sales stay
+    // "approval"; staff No Sale stays blocked) — exactly today's
+    // behaviour (same pattern as the EUR schema guards).
     let organizationResult = await supabase
       .from("organizations")
-      .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, staff_sales_mode")
+      .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, staff_sales_mode, drawer_no_sale_staff_allowed")
       .eq("id", orgId)
       .maybeSingle();
+
+    if (
+      organizationResult.error &&
+      (organizationResult.error.code === "42703" ||
+        organizationResult.error.message?.includes("drawer_no_sale_staff_allowed"))
+    ) {
+      organizationResult = await supabase
+        .from("organizations")
+        .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, staff_sales_mode")
+        .eq("id", orgId)
+        .maybeSingle();
+    }
 
     if (
       organizationResult.error &&
@@ -4393,6 +4419,20 @@ setCustomerOrganizationName("");
         return;
       }
 
+      // Cash drawer: a completed cash sale is the primary auto-open
+      // event (spec rule A.1). A replayed save is the same sale already
+      // confirmed — never a second kick; card/credit never kick.
+      if (!result.replayed) {
+        const saleDrawerEvent = drawerEventTypeForSale({ paymentType: salesPaymentType });
+        if (saleDrawerEvent) {
+          void fireDrawerKick({
+            eventType: saleDrawerEvent,
+            linkedSaleId: transaction.id != null ? String(transaction.id) : null,
+            amount: roundMoney(currentSalesInvoiceTotal ?? 0),
+          });
+        }
+      }
+
       setSalesMessage(`Sales invoice ${invoiceNumber} saved successfully${result.replayed ? " (confirmed retry)" : ""}.`);
       if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
       setSaleScanFocus(value => value + 1);
@@ -5694,6 +5734,112 @@ setCustomerOrganizationName("");
     role: currentProfile?.role,
     mode: currentOrganization?.staff_sales_mode,
   });
+  // Cash drawer No Sale gate (src/lib/sales/drawer-gate.ts): owner/admin
+  // always; staff only with the owner's drawer_no_sale_staff_allowed
+  // setting — a column that still needs its additive migration, so until
+  // it exists every read is undefined and staff stay blocked.
+  const drawerNoSaleOutcome = noSaleOutcome({
+    role: currentProfile?.role,
+    staffAllowed: currentOrganization?.drawer_no_sale_staff_allowed,
+  });
+
+  // Fire one cash-drawer kick. Fire-and-forget by design (the kick can
+  // never block or fail a sale): till settings are read fresh from this
+  // browser's store, the attempt is audit-recorded in drawer_events —
+  // or in the local outbox until that migration runs — and a failure
+  // surfaces as a dismissible notice telling the cashier to use the key.
+  const fireDrawerKick = async (event: {
+    eventType: DrawerEventType;
+    linkedSaleId?: string | null;
+    linkedMovementId?: string | null;
+    amount?: number | null;
+    reasonCode?: string | null;
+    reasonNote?: string | null;
+  }) => {
+    if (!currentOrganizationId || !currentProfile?.id) return;
+    const scope = `${currentOrganizationId}:${currentProfile.id}`;
+    try {
+      const settings = readDrawerSettings(localStorage, scope);
+      const outcome = await kickDrawer(
+        {
+          settings,
+          event: {
+            organizationId: currentOrganizationId,
+            tillScope: scope,
+            actorProfileId: currentProfile.id,
+            actorName: currentProfile?.full_name ?? currentProfile?.display_name ?? currentProfile?.email ?? currentUser?.email ?? null,
+            ...event,
+          },
+        },
+        {
+          transports: createBrowserDrawerTransports(
+            `${currentOrganization?.name || "TradeOS"} — ${t("drawer.noSaleTitle")} — ${new Date().toLocaleString()}`,
+          ),
+          record: createDrawerEventRecorder({
+            insert: {
+              insert: async (record) => {
+                const { error } = await supabase.from(DRAWER_EVENTS_TABLE).insert(record);
+                return { error };
+              },
+            },
+            storage: localStorage,
+          }),
+        },
+      );
+      if (outcome.attempted && outcome.result === "failed") {
+        setDrawerNotice(t("drawer.didNotOpen"));
+      }
+    } catch {
+      // kickDrawer never throws by contract; this guard keeps even a
+      // broken till store from surfacing inside a sale flow.
+    }
+  };
+
+  const handleDrawerNoSale = (reason: { reasonCode: NoSaleReasonCode; reasonNote: string | null }) => {
+    if (drawerNoSaleOutcome !== "allowed") return;
+    void fireDrawerKick({ eventType: "no-sale", reasonCode: reason.reasonCode, reasonNote: reason.reasonNote });
+  };
+
+  const handleDrawerTestOpen = () => {
+    void fireDrawerKick({ eventType: "test" });
+  };
+
+  const handleDrawerConnect = (route: "serial" | "usb") =>
+    route === "serial" ? connectDrawerSerial() : connectDrawerUsb();
+
+  // Owner Drawer Activity report: latest events from drawer_events,
+  // with any still-queued local outbox rows shown first as pending.
+  const fetchDrawerEvents = async () => {
+    if (!currentOrganizationId) return;
+    setDrawerEventsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from(DRAWER_EVENTS_TABLE)
+        .select("id, organization_id, till_scope, actor_profile_id, actor_name, authorised_by_profile_id, event_type, linked_sale_id, linked_movement_id, amount, reason_code, reason_note, route, kick_pin, result, error, created_at")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      const dbRows: DrawerEventRow[] = error ? [] : ((data ?? []) as unknown as DrawerEventRow[]);
+      const pendingRows: DrawerEventRow[] = readDrawerOutbox(localStorage, currentOrganizationId)
+        .map((row) => ({ ...row, pending: true }))
+        .reverse();
+      setDrawerEvents([...pendingRows, ...dbRows]);
+    } catch {
+      const pendingRows: DrawerEventRow[] = readDrawerOutbox(localStorage, currentOrganizationId)
+        .map((row) => ({ ...row, pending: true }))
+        .reverse();
+      setDrawerEvents(pendingRows);
+    } finally {
+      setDrawerEventsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === "business-settings" && isOwnerOrAdmin()) {
+      void fetchDrawerEvents();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, currentOrganizationId]);
   const currentStaffPermission = staffPermissions.find(
     (permission) => permission.profile_id === currentProfile?.id
   ) ?? selfStaffPermission;
@@ -8842,6 +8988,27 @@ setCustomerOrganizationName("");
           line_count: srLines.filter((line) => line.product_id).length,
         },
       });
+
+      // Cash drawer: a return settled in cash opens the drawer (spec
+      // rule A.2). A return linked to a credit invoice only offsets
+      // the receivable, and a card refund goes back to the card —
+      // neither moves cash, so neither kicks.
+      const linkedReturnSale = srSalesTransactionId
+        ? salesTransactions.find((item) => String(item.id) === String(srSalesTransactionId))
+        : undefined;
+      const returnDrawerEvent = drawerEventTypeForReturn({ linkedPaymentType: linkedReturnSale?.payment_type ?? null });
+      if (returnDrawerEvent) {
+        const refundAmount = srLines.reduce(
+          (sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - safeNumber(line.discount),
+          0,
+        );
+        void fireDrawerKick({
+          eventType: returnDrawerEvent,
+          linkedSaleId: srSalesTransactionId || null,
+          linkedMovementId: result.returnId ?? null,
+          amount: Math.max(0, roundMoney(refundAmount)),
+        });
+      }
 
       setSrMessage(`Sales return ${result.returnNumber} saved successfully`);
       setSrCustomerId("");
@@ -15563,6 +15730,7 @@ setCustomerOrganizationName("");
             default_payment_terms: currentOrganization.default_payment_terms ?? null,
             overselling_policy: currentOrganization.overselling_policy ?? "allow",
             staff_sales_mode: parseStaffSalesMode(currentOrganization.staff_sales_mode),
+            drawer_no_sale_staff_allowed: parseDrawerNoSaleStaffAllowed(currentOrganization.drawer_no_sale_staff_allowed),
           }
         : null;
       const newBusinessSettings = {
@@ -15574,16 +15742,35 @@ setCustomerOrganizationName("");
         default_payment_terms: optionalValue(businessSettingsDefaultPaymentTerms),
         overselling_policy: businessSettingsOversellingPolicy === "block" ? "block" : "allow",
         staff_sales_mode: parseStaffSalesMode(businessSettingsStaffSalesMode),
+        drawer_no_sale_staff_allowed: businessSettingsDrawerNoSaleStaffAllowed,
       };
+      // drawer_no_sale_staff_allowed arrives with the drawer-events
+      // migration, separately from staff_sales_mode. It is updated on
+      // its own and a 42703 (column not there yet) is tolerated, so a
+      // pre-migration database can never fail the whole settings save
+      // over this one owner toggle.
+      const { drawer_no_sale_staff_allowed: drawerNoSaleStaffAllowedValue, ...organizationUpdate } = newBusinessSettings;
       const { error } = await supabase
         .from("organizations")
-        .update(newBusinessSettings)
+        .update(organizationUpdate)
         .eq("id", currentOrganizationId);
 
       if (error) {
         console.error("Supabase business settings update error:", JSON.stringify(error, null, 2));
         setBusinessSettingsError(`Failed to save business settings: ${JSON.stringify(error, null, 2)}`);
         return;
+      }
+
+      const { error: drawerSettingError } = await supabase
+        .from("organizations")
+        .update({ drawer_no_sale_staff_allowed: drawerNoSaleStaffAllowedValue })
+        .eq("id", currentOrganizationId);
+      if (
+        drawerSettingError &&
+        drawerSettingError.code !== "42703" &&
+        !drawerSettingError.message?.includes("drawer_no_sale_staff_allowed")
+      ) {
+        console.error("Supabase drawer setting update error:", JSON.stringify(drawerSettingError, null, 2));
       }
 
       await createAuditLog({
@@ -18307,7 +18494,7 @@ setCustomerOrganizationName("");
               products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
               onScan={(code, options) => { const result = runSalesScan(code, options); return result.status === "not-found" ? null : String(result.product.id); }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
-              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} />}
+              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
@@ -18643,6 +18830,7 @@ setCustomerOrganizationName("");
             </button>
 
             </div>
+            {drawerNotice && <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"><span>{drawerNotice}</span><button type="button" onClick={() => setDrawerNotice("")} className="min-h-11 rounded border border-input bg-background px-3 font-medium">{t('common.close')}</button></div>}
             {quickSaleMode && lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} autoPrint />}
             {salesMessage && <p className="mt-4 text-sm text-success">{salesMessage}</p>}
             {salesError && <p className="mt-4 text-sm text-destructive">{salesError}</p>}
@@ -25974,6 +26162,23 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             )}
 
             {isOwnerOrAdmin() && (
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span className="flex min-h-11 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={businessSettingsDrawerNoSaleStaffAllowed}
+                    onChange={(e) => setBusinessSettingsDrawerNoSaleStaffAllowed(e.target.checked)}
+                    className="h-5 w-5 shrink-0"
+                  />
+                  {t('settings.drawerNoSaleStaff')}
+                </span>
+                <span className="text-xs text-muted-foreground/80">
+                  {t('settings.drawerNoSaleStaffHint')}
+                </span>
+              </label>
+            )}
+
+            {isOwnerOrAdmin() && (
               <div className="rounded-lg border border-border bg-background p-4">
                 <h3 className="text-base font-semibold text-foreground">{t('settings.dutySchedule')}</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -26027,6 +26232,115 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
           )}
           {businessSettingsError && (
             <p className="mt-4 whitespace-pre-wrap text-sm text-destructive">{businessSettingsError}</p>
+          )}
+
+          {isOwnerOrAdmin() && (
+            <div className="mt-6 rounded-lg border border-border bg-background p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-base font-semibold text-foreground">{t('drawer.activityTitle')}</h3>
+                <button
+                  type="button"
+                  onClick={() => void fetchDrawerEvents()}
+                  disabled={drawerEventsLoading}
+                  className="min-h-11 rounded border border-input px-3 text-sm font-medium disabled:opacity-50"
+                >
+                  {t('drawer.refresh')}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{t('drawer.activityHint')}</p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
+                  <span>{t('drawer.filterType')}</span>
+                  <select
+                    value={drawerEventTypeFilter}
+                    onChange={(e) => setDrawerEventTypeFilter(e.target.value)}
+                    className="min-h-11 rounded border border-border bg-background px-3 py-2"
+                  >
+                    <option value="">{t('drawer.filterAll')}</option>
+                    <option value="cash-sale">{t('drawer.eventCashSale')}</option>
+                    <option value="cash-refund">{t('drawer.eventCashRefund')}</option>
+                    <option value="no-sale">{t('drawer.eventNoSale')}</option>
+                    <option value="pay-in">{t('drawer.eventPayIn')}</option>
+                    <option value="drop">{t('drawer.eventDrop')}</option>
+                    <option value="test">{t('drawer.eventTest')}</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-foreground/80">
+                  <span>{t('drawer.filterResult')}</span>
+                  <select
+                    value={drawerEventResultFilter}
+                    onChange={(e) => setDrawerEventResultFilter(e.target.value)}
+                    className="min-h-11 rounded border border-border bg-background px-3 py-2"
+                  >
+                    <option value="">{t('drawer.filterAll')}</option>
+                    <option value="sent">{t('drawer.resultSent')}</option>
+                    <option value="failed">{t('drawer.resultFailed')}</option>
+                  </select>
+                </label>
+              </div>
+              <p className="mt-3 text-sm font-medium text-foreground">
+                {t('drawer.noSaleCount').replace('{count}', String(countNoSaleEvents(drawerEvents)))}
+              </p>
+              {(() => {
+                const visibleDrawerEvents = filterDrawerEvents(drawerEvents, {
+                  eventType: drawerEventTypeFilter || null,
+                  result: drawerEventResultFilter || null,
+                });
+                const drawerEventLabels: Record<string, string> = {
+                  "cash-sale": t('drawer.eventCashSale'),
+                  "cash-refund": t('drawer.eventCashRefund'),
+                  "no-sale": t('drawer.eventNoSale'),
+                  "pay-in": t('drawer.eventPayIn'),
+                  "drop": t('drawer.eventDrop'),
+                  "test": t('drawer.eventTest'),
+                };
+                const drawerReasonLabels: Record<string, string> = {
+                  "making-change": t('drawer.reasonMakingChange'),
+                  "counting-drawer": t('drawer.reasonCounting'),
+                  "pay-in": t('drawer.reasonPayIn'),
+                  "pay-out": t('drawer.reasonPayOut'),
+                  "other": t('drawer.reasonOther'),
+                };
+                if (!visibleDrawerEvents.length) {
+                  return <p className="mt-3 text-sm text-muted-foreground">{t('drawer.noEvents')}</p>;
+                }
+                return (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full min-w-[560px] text-sm">
+                      <thead>
+                        <tr className="text-left text-muted-foreground">
+                          <th className="py-2 pr-3 font-medium">{t('drawer.colTime')}</th>
+                          <th className="py-2 pr-3 font-medium">{t('drawer.colType')}</th>
+                          <th className="py-2 pr-3 font-medium">{t('drawer.colActor')}</th>
+                          <th className="py-2 pr-3 font-medium">{t('drawer.colDetail')}</th>
+                          <th className="py-2 font-medium">{t('drawer.colResult')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleDrawerEvents.map((row, index) => (
+                          <tr key={row.id ?? `pending-${index}`} className="border-t border-border align-top">
+                            <td className="py-2 pr-3 whitespace-nowrap">{row.pending ? t('drawer.pendingSync') : row.created_at ? new Date(row.created_at).toLocaleString() : ""}</td>
+                            <td className="py-2 pr-3">{drawerEventLabels[row.event_type] ?? row.event_type}</td>
+                            <td className="py-2 pr-3">{row.actor_name ?? ""}</td>
+                            <td className="py-2 pr-3">
+                              {[
+                                row.reason_code ? drawerReasonLabels[row.reason_code] ?? row.reason_code : "",
+                                row.reason_note ?? "",
+                                row.amount != null ? formatPKR(row.amount) : "",
+                                row.error ?? "",
+                              ].filter(Boolean).join(" · ")}
+                            </td>
+                            <td className={`py-2 font-medium ${row.result === "failed" ? "text-destructive" : "text-success"}`}>
+                              {row.result === "failed" ? t('drawer.resultFailed') : t('drawer.resultSent')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
           )}
         </section>
         )}
