@@ -1,4 +1,5 @@
 import { buildRetailDrawerSummary, type RetailDrawerSummary } from "./retail-summary";
+import type { Currency } from "../regional/settings";
 import {
   calculateSaleAmounts,
   calculateSaleLineTotal,
@@ -36,6 +37,9 @@ type SaleDraftInput = {
   invoiceDiscountType: "flat" | "percent";
   taxRate: string;
   paymentType?: "cash" | "card" | "credit";
+  /** The organization's books currency, threaded into the cash summary's
+   * closing message. Defaults to PKR inside the summary builder. */
+  currency?: Currency;
   cashReceived?: string;
   validateCash?: boolean;
   allowInvoiceAdjustments?: boolean;
@@ -175,7 +179,7 @@ export function validateSaleDraft(input: SaleDraftInput): SaleDraftResult {
     if (cash && !isSupportedNonNegative(cash, SALE_MONEY_DECIMAL_PLACES)) {
       issues.push({ field: "cash_received", message: "Cash received must be non-negative and use up to two decimal places." });
     } else if (amounts) {
-      cashSummary = buildRetailDrawerSummary({ total: amounts.total, received: cash });
+      cashSummary = buildRetailDrawerSummary({ total: amounts.total, received: cash, currency: input.currency });
       if (cashSummary.status === "cash-short") {
         issues.push({ field: "cash_received", message: "Cash received is less than the sale total." });
       }

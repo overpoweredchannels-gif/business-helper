@@ -1,4 +1,6 @@
 import { centsToMoney, moneyToCents } from "./sale-amounts";
+import { formatBooksAmount } from "../books/format";
+import type { Currency } from "../regional/settings";
 
 export type RetailDrawerSummary = {
   expected: number;
@@ -10,7 +12,12 @@ export type RetailDrawerSummary = {
   closingMessage: string;
 };
 
-export function buildRetailDrawerSummary({ total, received, paymentType = "cash" }: { total: number; received: number | string; paymentType?: "cash" | "card" | "credit" }): RetailDrawerSummary {
+export function buildRetailDrawerSummary({ total, received, paymentType = "cash", currency = "PKR", locale = "en-PK" }: { total: number; received: number | string; paymentType?: "cash" | "card" | "credit"; currency?: Currency; locale?: string }): RetailDrawerSummary {
+  // The totals are books amounts, so the closing message formats them
+  // in the organization's books currency (threaded in by the caller —
+  // the POS resolves it at org load) via the books formatter: never
+  // converted, never relabelled. The PKR default preserves the prior
+  // behaviour for callers that do not thread a currency yet.
   if (paymentType !== "cash") {
     return {
       expected: total,
@@ -42,7 +49,7 @@ export function buildRetailDrawerSummary({ total, received, paymentType = "cash"
     status: receivedCents >= expectedCents ? "cash-ready" : "cash-short",
     closingMessage:
       receivedCents >= expectedCents
-        ? `Cash drawer is ready. Change due is ${new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR" }).format(returnAmount)}.`
-        : `Cash is short by ${new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR" }).format(shortfall)}.`,
+        ? `Cash drawer is ready. Change due is ${formatBooksAmount(returnAmount, currency, locale)}.`
+        : `Cash is short by ${formatBooksAmount(shortfall, currency, locale)}.`,
   };
 }
