@@ -48,6 +48,7 @@ export type ReceiptSummaryLabels = {
   total: string;
   tendered: string;
   changeDue: string;
+  paidByCard: string;
 };
 
 export const defaultReceiptSummaryLabels: ReceiptSummaryLabels = {
@@ -59,6 +60,7 @@ export const defaultReceiptSummaryLabels: ReceiptSummaryLabels = {
   total: "Total",
   tendered: "Tendered",
   changeDue: "Change due",
+  paidByCard: "Paid by card",
 };
 
 type AtomicSaleReceiptResult = {
@@ -96,6 +98,11 @@ export function getReceiptSummaryRows(receipt: Receipt, labels: ReceiptSummaryLa
       { key: "tendered", label: labels.tendered, amount: receipt.received ?? receipt.total },
       { key: "changeDue", label: labels.changeDue, amount: receipt.change ?? 0 },
     );
+  }
+  if (receipt.payment === "card") {
+    // A card sale is settled in full by the card payment: show the tender
+    // line with the exact total, never the cash tendered/change rows.
+    rows.push({ key: "paidByCard", label: labels.paidByCard, amount: receipt.total });
   }
   return rows;
 }

@@ -33,6 +33,7 @@ function useReceiptSummaryLabels(): ReceiptSummaryLabels {
     total: t("common.total"),
     tendered: t("receipt.tendered"),
     changeDue: t("receipt.changeDue"),
+    paidByCard: t("receipt.paidByCard"),
   };
 }
 
