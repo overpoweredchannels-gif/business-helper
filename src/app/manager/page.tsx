@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import {
   ClipboardList, Banknote, MapPin, MessageSquareText, Loader2, AlertCircle, ChevronRight,
 } from "lucide-react";
@@ -188,7 +189,7 @@ function Empty({ text }: { text: string }) {
 }
 
 function fmt(n: number) {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(n || 0);
+  return formatBooksMoney(n || 0);
 }
 
 function visitStyle(status: string) {

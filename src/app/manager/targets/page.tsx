@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { Target as TargetIcon, Loader2, AlertCircle, CheckCircle2, ChevronDown, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -222,5 +223,5 @@ export default function TargetsPage() {
 }
 
 function fmt(n: number) {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(n || 0);
+  return formatBooksMoney(n || 0);
 }
