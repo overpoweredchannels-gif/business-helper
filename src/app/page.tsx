@@ -19,7 +19,7 @@ import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
 import { hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
-import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction } from "@/lib/sales/returns-offset";
+import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { addBarcodeLine, addScannedLine } from "@/lib/invoices/barcode";
@@ -10040,43 +10040,43 @@ setCustomerOrganizationName("");
     [inventoryTransactions, ledgerProductFilter]
   );
 
-  // Receivables per customer
+  // Receivables per customer. Every figure comes from the SAME credit
+  // allocation engine results (summarizeCustomerCredit), so the row
+  // reconciles on its face: credit sales − payments applied − returns
+  // credited = outstanding. The previous version mixed three scopes —
+  // credit-only sales, ALL payments (including the auto-payments the
+  // atomic sale RPC writes for cash sales), and an outstanding that also
+  // netted returns invisibly — so rows could not foot (500 − 350 ≠ 50)
+  // and a cash-only customer showed "Total Sales 0" beside real payments.
   const receivablesStats = customers.map((customer) => {
-    const customerTxIds = salesTransactions
-      .filter((tx) => tx.customer_id === customer.id)
-      .map((t) => t.id);
-    // Only credit invoices create receivables. total_amount already includes
-    // invoice-level discount and tax, so don't re-sum raw line values.
-    const totalSales = salesTransactions
+    const allocations = salesTransactions
       .filter((tx) => tx.customer_id === customer.id && tx.payment_type === "credit")
-      .reduce((sum, tx) => sum + Number(tx.total_amount ?? 0), 0);
-
-    const paymentsReceived = customerPayments
-      .filter((p) => p.customer_id === customer.id)
-      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-
-    // Remaining unpaid balance per credit invoice is tracked by the credit
-    // allocation engine (handles discounts, tax and cash auto-payments).
-    const outstanding = customerTxIds.reduce(
-      (sum, txId) =>
-        sum +
-        Math.max(
-          0,
-          creditAllocationByTransaction[txId]?.remainingUnpaidAmount ??
-            (salesTransactions.find((tx) => tx.id === txId)?.payment_type === "credit"
-              ? Number(salesTransactions.find((tx) => tx.id === txId)?.total_amount ?? 0)
-              : 0)
-        ),
-      0
-    );
+      .map((tx) => {
+        const allocation = creditAllocationByTransaction[tx.id];
+        if (allocation) return allocation;
+        // Defensive fallback, mirroring the previous outstanding fallback:
+        // an unallocated credit invoice counts at its full stored total.
+        const total = Number(tx.total_amount ?? 0);
+        return {
+          invoiceTotal: total,
+          returnedAmount: 0,
+          explicitAllocatedAmount: 0,
+          fallbackAllocatedAmount: 0,
+          allocatedAmount: 0,
+          remainingUnpaidAmount: total,
+          legacyPoolRemaining: 0,
+        };
+      });
+    const summary = summarizeCustomerCredit(allocations);
 
     return {
       customerId: customer.id,
       customerName: customer.customer_name,
       shopName: customer.shop_name,
-      totalSales,
-      paymentsReceived,
-      outstanding,
+      totalSales: summary.creditSales,
+      paymentsReceived: summary.paymentsApplied,
+      returnsCredited: summary.returnsCredited,
+      outstanding: summary.outstanding,
     };
   });
 
@@ -20670,8 +20670,9 @@ setCustomerOrganizationName("");
                     <div className="text-xs text-muted-foreground">{r.shopName ?? ""}</div>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-foreground/80">
-                    <div>{t('credit.totalSales')}: {r.totalSales}</div>
-                    <div>{t('buy.paymentsWord')}: {r.paymentsReceived}</div>
+                    <div>{t('credit.creditSales')}: {r.totalSales}</div>
+                    <div>{t('credit.paymentsApplied')}: {r.paymentsReceived}</div>
+                    <div>{t('credit.returns')}: {r.returnsCredited}</div>
                     <div>{t('credit.outstanding')}: {r.outstanding}</div>
                   </div>
                 </li>

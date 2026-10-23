@@ -157,6 +157,54 @@ export function computeCreditAllocationsByTransaction(
   return allocations;
 }
 
+// ─── Customer Credit summary (QA fix round, 2026-10-23) ───────────────────
+//
+// The Receivables Dashboard used to place three independently-computed
+// figures side by side: credit-only Total Sales, ALL customer payments
+// (including the auto-payments the atomic sale RPC writes for CASH sales),
+// and the engine's remaining — which also nets returns. The row could not
+// reconcile on its face (500 − 350 ≠ 50 with the offsetting return
+// invisible; a cash-only customer showed Total Sales 0 / Payments 270.45).
+// This summary derives every figure from the SAME allocation results the
+// outstanding already came from, so for every customer:
+//
+//   creditSales − paymentsApplied − returnsCredited = outstanding
+//
+// holds exactly. returnsCredited is the EFFECTIVE return offset: when an
+// invoice was over-returned, the engine caps the receivable at 0 (no
+// customer-credit ledger exists), so the capped excess is not shown as
+// credit — the effective amount is what actually offset the invoice.
+
+export interface CustomerCreditSummary {
+  creditSales: number;
+  paymentsApplied: number;
+  returnsCredited: number;
+  outstanding: number;
+}
+
+export function summarizeCustomerCredit(
+  allocations: readonly CreditAllocationResult[]
+): CustomerCreditSummary {
+  let creditSales = 0;
+  let paymentsApplied = 0;
+  let returnsCredited = 0;
+  let outstanding = 0;
+  for (const allocation of allocations) {
+    const invoiceTotal = Math.max(0, allocation.invoiceTotal);
+    const allocated = Math.max(0, allocation.allocatedAmount);
+    const remaining = Math.max(0, allocation.remainingUnpaidAmount);
+    const effectiveReturned = Math.min(
+      Math.max(0, allocation.returnedAmount),
+      Math.max(0, invoiceTotal - allocated - remaining)
+    );
+    creditSales += invoiceTotal;
+    paymentsApplied += allocated;
+    returnsCredited += effectiveReturned;
+    outstanding += remaining;
+  }
+  return { creditSales, paymentsApplied, returnsCredited, outstanding };
+}
+
 // Per-transaction remaining for Customer History, mirroring the receivables
 // engine's inputs exactly: the pool per customer is total payments minus
 // explicit allocations across ALL of that customer's transactions (the

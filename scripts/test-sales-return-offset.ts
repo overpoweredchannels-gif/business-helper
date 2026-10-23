@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import {
+  computeCreditAllocationsByTransaction,
   computeReturnedValueBySalesTransaction,
   netCreditInvoiceAllocation,
+  summarizeCustomerCredit,
 } from "../src/lib/sales/returns-offset";
 
 // Fixtures are shaped EXACTLY like the sales-return write path stores them
@@ -175,6 +177,96 @@ assert.equal(poolNet.fallbackAllocatedAmount, 55, "Legacy pool covers only what 
 assert.equal(poolNet.remainingUnpaidAmount, 0);
 assert.equal(poolNet.legacyPoolRemaining, 45, "Unspent legacy pool carries forward");
 
+// ─── Customer Credit summary (QA fix round item 4) ────────────────────────
+// The Receivables Dashboard row must reconcile on its face:
+// creditSales − paymentsApplied − returnsCredited = outstanding, with
+// every figure derived from the engine's allocation results.
+
+const creditRow = (
+  id: string,
+  invoiceTotal: number,
+  returnedAmount: number,
+  explicitAllocatedAmount: number,
+  sortDate = "2026-10-01"
+) => ({
+  id,
+  customerId: "cust-1",
+  invoiceTotal,
+  returnedAmount,
+  explicitAllocatedAmount,
+  sortDate,
+  createdAt: `${sortDate}T00:00:00.000Z`,
+});
+
+// QA-M1 Customer: sales 500, payments 350, outstanding 50 — the missing
+// 100 was a return the old screen never showed.
+{
+  const allocations = computeCreditAllocationsByTransaction(
+    [creditRow("tx-1", 500, 100, 350)],
+    {}
+  );
+  const summary = summarizeCustomerCredit(Object.values(allocations));
+  assert.deepEqual(summary, {
+    creditSales: 500,
+    paymentsApplied: 350,
+    returnsCredited: 100,
+    outstanding: 50,
+  });
+  assert.equal(
+    summary.creditSales - summary.paymentsApplied - summary.returnsCredited,
+    summary.outstanding,
+    "row must foot exactly"
+  );
+}
+
+// FIFO pool across two invoices with a return on the younger one.
+{
+  const allocations = computeCreditAllocationsByTransaction(
+    [
+      creditRow("tx-1", 300, 0, 0, "2026-10-01"),
+      creditRow("tx-2", 200, 50, 0, "2026-10-02"),
+    ],
+    { "cust-1": 350 }
+  );
+  const summary = summarizeCustomerCredit(Object.values(allocations));
+  assert.deepEqual(summary, {
+    creditSales: 500,
+    paymentsApplied: 350,
+    returnsCredited: 50,
+    outstanding: 100,
+  });
+}
+
+// Over-return: the engine caps the receivable at 0, so the credited
+// return shown is the EFFECTIVE offset (310), not the raw return (400) —
+// the identity still holds instead of displaying a negative remainder.
+{
+  const allocations = computeCreditAllocationsByTransaction(
+    [creditRow("tx-1", 310, 400, 0)],
+    {}
+  );
+  const summary = summarizeCustomerCredit(Object.values(allocations));
+  assert.equal(summary.outstanding, 0);
+  assert.equal(summary.returnsCredited, 310);
+  assert.equal(
+    summary.creditSales - summary.paymentsApplied - summary.returnsCredited,
+    summary.outstanding
+  );
+}
+
+// No credit invoices (cash-only / walk-in customer) → an honest all-zero
+// credit row; cash activity belongs to Sales History, not this screen.
+{
+  const summary = summarizeCustomerCredit([]);
+  assert.deepEqual(summary, {
+    creditSales: 0,
+    paymentsApplied: 0,
+    returnsCredited: 0,
+    outstanding: 0,
+  });
+}
+
 console.log(
   "Sales return offset tests passed: writer-shaped fixtures reproduce the S-100004 scenario (remaining 0), cancelled/unlinked returns offset nothing, per-return floor, accumulation, and legacy-pool netting order."
 );
+console.log("Customer credit summary tests passed: QA-M1 row foots (500 − 350 − 100 = 50), FIFO pool + return, over-return cap, cash-only all-zero.");
