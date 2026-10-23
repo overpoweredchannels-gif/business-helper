@@ -220,8 +220,8 @@ async function main() {
   // state, sees the new currency, and aborts as same-currency — the
   // dataset is converted exactly once.
   {
-    const store = {
-      currency: "PKR" as string,
+    const store: { currency: string; groups: Record<string, string[]>; executions: number } = {
+      currency: "PKR",
       groups: { salesTotal: ["100000.00", "250.50"] },
       executions: 0,
     };

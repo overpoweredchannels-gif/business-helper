@@ -120,6 +120,7 @@ import {
   calculateDistanceMeters,
   downloadCsv,
   escapeHtml,
+  formatBooksMoney,
   formatDate,
   formatDateTime,
   formatNumber,
@@ -128,9 +129,12 @@ import {
   getMonthRange,
   getUsableTimestamp,
   isDateInRange,
+  setActiveBooksCurrency,
   toDateInputValue,
 } from "@/lib/tradeos/formatters";
 import { calendarDayOfRecord } from "@/lib/regional/dates";
+import { resolveBooksCurrency } from "@/lib/books/currency";
+import { currencies as booksCurrencyOptions, type Currency } from "@/lib/regional/settings";
 import type {
   AiActionDraft,
   AiActionMessage,
@@ -501,6 +505,17 @@ export default function Home() {
   const [drawerEventTypeFilter, setDrawerEventTypeFilter] = useState("");
   const [drawerEventResultFilter, setDrawerEventResultFilter] = useState("");
   const [drawerNotice, setDrawerNotice] = useState("");
+  // Books currency (Currency rework): the org's real working currency.
+  // Resolved from the organization row in populateBusinessSettings; the
+  // switch flow is owner-only and runs through POST /api/books/convert —
+  // it is deliberately NOT part of the business-settings save payload.
+  const [booksCurrency, setBooksCurrency] = useState<Currency>("PKR");
+  const [booksTargetCurrency, setBooksTargetCurrency] = useState<Currency>("PKR");
+  const [booksSwitchStep, setBooksSwitchStep] = useState<"warn" | "rate" | null>(null);
+  const [booksRateInput, setBooksRateInput] = useState("");
+  const [booksSwitchLoading, setBooksSwitchLoading] = useState(false);
+  const [booksSwitchMessage, setBooksSwitchMessage] = useState<string | null>(null);
+  const [booksSwitchError, setBooksSwitchError] = useState<string | null>(null);
   const [businessSettingsDutyStart, setBusinessSettingsDutyStart] = useState("08:00");
   const [businessSettingsDutyEnd, setBusinessSettingsDutyEnd] = useState("16:00");
   const [dutyScheduleLoading, setDutyScheduleLoading] = useState(false);
@@ -1580,6 +1595,32 @@ export default function Home() {
     setBusinessSettingsOversellingPolicy(organization?.overselling_policy ?? "allow");
     setBusinessSettingsStaffSalesMode(parseStaffSalesMode(organization?.staff_sales_mode));
     setBusinessSettingsDrawerNoSaleStaffAllowed(parseDrawerNoSaleStaffAllowed(organization?.drawer_no_sale_staff_allowed));
+    // Books currency: the column when the migration has run, else the
+    // legacy regional_preferences.accountingCurrency, else PKR — the
+    // same resolution the migration backfill writes, so the value (and
+    // every amount's meaning) is identical before and after it runs.
+    const resolvedBooksCurrency = resolveBooksCurrency(
+      organization?.books_currency,
+      organization?.regional_preferences,
+    );
+    setBooksCurrency(resolvedBooksCurrency);
+    setBooksTargetCurrency(resolvedBooksCurrency);
+    setActiveBooksCurrency(resolvedBooksCurrency);
+    // A completed currency switch reloads the page (every cached amount
+    // on screen was denominated in the old currency); the flag left in
+    // sessionStorage turns into the confirmation message here.
+    try {
+      const switchedTo = window.sessionStorage.getItem("tradeos-books-switched");
+      if (switchedTo && switchedTo === resolvedBooksCurrency) {
+        window.sessionStorage.removeItem("tradeos-books-switched");
+        setBooksSwitchMessage(
+          t('settings.booksSwitchDone').replace('{currency}', resolvedBooksCurrency),
+        );
+      }
+    } catch {
+      // sessionStorage unavailable (private mode): the card still shows
+      // the new books currency, which is the confirmation that matters.
+    }
     setBusinessSettingsDutyStart(organization?.working_hours?.duty_start ?? "08:00");
     setBusinessSettingsDutyEnd(organization?.working_hours?.duty_end ?? "16:00");
   };
@@ -1591,18 +1632,31 @@ export default function Home() {
       return;
     }
 
-    // staff_sales_mode and drawer_no_sale_staff_allowed arrive with
-    // additive migrations that may not have run yet. Until a column
-    // exists the widened select fails with 42703, so fall back one
-    // column at a time: the missing setting then reads as absent and
+    // staff_sales_mode, drawer_no_sale_staff_allowed and books_currency
+    // arrive with additive migrations that may not have run yet. Until
+    // a column exists the widened select fails with 42703, so fall back
+    // one column at a time: the missing setting then reads as absent and
     // its gate keeps the pre-setting behaviour (staff sales stay
-    // "approval"; staff No Sale stays blocked) — exactly today's
-    // behaviour (same pattern as the EUR schema guards).
+    // "approval"; staff No Sale stays blocked; books currency resolves
+    // from regional_preferences, which every fallback level selects) —
+    // exactly today's behaviour (same pattern as the EUR schema guards).
     let organizationResult = await supabase
       .from("organizations")
-      .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, staff_sales_mode, drawer_no_sale_staff_allowed")
+      .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, staff_sales_mode, drawer_no_sale_staff_allowed, books_currency, regional_preferences")
       .eq("id", orgId)
       .maybeSingle();
+
+    if (
+      organizationResult.error &&
+      (organizationResult.error.code === "42703" ||
+        organizationResult.error.message?.includes("books_currency"))
+    ) {
+      organizationResult = await supabase
+        .from("organizations")
+        .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, staff_sales_mode, drawer_no_sale_staff_allowed, regional_preferences")
+        .eq("id", orgId)
+        .maybeSingle();
+    }
 
     if (
       organizationResult.error &&
@@ -1611,7 +1665,7 @@ export default function Home() {
     ) {
       organizationResult = await supabase
         .from("organizations")
-        .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, staff_sales_mode")
+        .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, staff_sales_mode, regional_preferences")
         .eq("id", orgId)
         .maybeSingle();
     }
@@ -1623,7 +1677,7 @@ export default function Home() {
     ) {
       organizationResult = await supabase
         .from("organizations")
-        .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy")
+        .select("id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, regional_preferences")
         .eq("id", orgId)
         .maybeSingle();
     }
@@ -15794,6 +15848,69 @@ setCustomerOrganizationName("");
     }
   };
 
+  // Books-currency switch (owner-only): warning step -> rate step ->
+  // POST /api/books/convert. The server runs ONE atomic conversion and
+  // flips the books currency only on success. On success this page
+  // reloads: every list and total already in memory is denominated in
+  // the OLD currency, and a reload is the only way to guarantee none of
+  // it is ever shown labelled with the new one. The sessionStorage flag
+  // becomes the confirmation message after the reload (see
+  // populateBusinessSettings).
+  const handleBooksCurrencyConvert = async () => {
+    setBooksSwitchError(null);
+    setBooksSwitchMessage(null);
+    if (booksTargetCurrency === booksCurrency) {
+      setBooksSwitchError(t('settings.booksErrorSame'));
+      return;
+    }
+    if (!requireOrganization("switch books currency")) {
+      setBooksSwitchError(t('settings.booksErrorGeneric'));
+      return;
+    }
+    setBooksSwitchLoading(true);
+    try {
+      const response = await authorizedFetch("/api/books/convert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toCurrency: booksTargetCurrency,
+          rate: booksRateInput.trim(),
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { ok?: boolean; code?: string }
+        | null;
+      if (!response.ok || !payload?.ok) {
+        const code = payload?.code ?? "";
+        setBooksSwitchError(
+          code === 'books.sameCurrency'
+            ? t('settings.booksErrorSame')
+            : code === 'books.invalidRate'
+              ? t('settings.booksErrorRate')
+              : code === 'books.migrationMissing'
+                ? t('settings.booksErrorMigration')
+                : code === 'books.reconciliationFailed' || code === 'books.reconciliationMismatch'
+                  ? t('settings.booksErrorReconciliation')
+                  : code.startsWith('books.unmappedColumn')
+                    ? t('settings.booksErrorUnmapped')
+                    : t('settings.booksErrorGeneric'),
+        );
+        return;
+      }
+      try {
+        window.sessionStorage.setItem("tradeos-books-switched", booksTargetCurrency);
+      } catch {
+        // The reload still applies; only the confirmation line is lost.
+      }
+      window.location.reload();
+    } catch (err) {
+      console.error("Books currency switch error:", err);
+      setBooksSwitchError(t('settings.booksErrorGeneric'));
+    } finally {
+      setBooksSwitchLoading(false);
+    }
+  };
+
   const handleSaveDutySchedule = async () => {
     setDutyScheduleMessage(null);
     setDutyScheduleError(null);
@@ -16103,7 +16220,7 @@ setCustomerOrganizationName("");
   const myTopProducts = [...productTotals.entries()]
     .map(([productId, { qty, value }]) => ({
       name: productById.get(productId)?.name ?? `Product #${productId}`,
-      value: formatPKR(value),
+      value: formatBooksMoney(value),
       detail: `${qty} sold`,
     }))
     .sort((a, b) => b.value.localeCompare(a.value, undefined, { numeric: true }))
@@ -16116,7 +16233,7 @@ setCustomerOrganizationName("");
   const myTopCustomers = [...customerTotals.entries()]
     .map(([customerId, total]) => ({
       name: myCustomerById.get(customerId)?.customer_name ?? "Unknown customer",
-      value: formatPKR(total),
+      value: formatBooksMoney(total),
     }))
     .sort((a, b) => b.value.localeCompare(a.value, undefined, { numeric: true }))
     .slice(0, 6);
@@ -16125,7 +16242,7 @@ setCustomerOrganizationName("");
     id: sale.id,
     invoiceNumber: sale.invoice_number,
     customerName: myCustomerById.get(sale.customer_id)?.customer_name ?? "Unknown customer",
-    total: formatPKR(Number(sale.total_amount) || 0),
+    total: formatBooksMoney(Number(sale.total_amount) || 0),
     date: formatDateTime(sale.created_at),
   }));
 
@@ -16169,9 +16286,9 @@ setCustomerOrganizationName("");
   const staffDashboardData = {
     isStaff,
     mySalesCount: mySales.length,
-    mySalesTotal: formatPKR(mySales.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0)),
+    mySalesTotal: formatBooksMoney(mySales.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0)),
     todaySalesCount: mySalesToday.length,
-    todaySalesTotal: formatPKR(todaySalesTotal),
+    todaySalesTotal: formatBooksMoney(todaySalesTotal),
     myCustomersCount: myCustomers.length,
     pendingTasksCount: myPendingTasks.length,
     myProductsCount: productTotals.size,
@@ -16182,7 +16299,7 @@ setCustomerOrganizationName("");
       name: c.customer_name,
       phone: c.phone,
       city: c.city,
-      creditLimit: c.credit_limit != null ? formatPKR(Number(c.credit_limit)) : null,
+      creditLimit: c.credit_limit != null ? formatBooksMoney(Number(c.credit_limit)) : null,
     })),
     myRecentSales,
     myPendingTasks: myPendingTasks.slice(0, 8).map((t) => ({
@@ -16799,15 +16916,15 @@ setCustomerOrganizationName("");
             onToggleCustomize={() => homeWidgets.setCustomizing((value) => !value)}
             droppedCards={droppedSectionCards}
             userName={currentProfile?.full_name ?? currentUser.email}
-            todaySales={{ value: formatPKR(todaySalesAmount) }}
-            todayProfit={{ value: formatPKR(todayProfitAmount) }}
-            inventoryValue={{ value: formatPKR(inventoryValue) }}
-            outstandingReceivables={{ value: formatPKR(totalReceivables) }}
-            outstandingPayables={{ value: formatPKR(totalPayables) }}
+            todaySales={{ value: formatBooksMoney(todaySalesAmount) }}
+            todayProfit={{ value: formatBooksMoney(todayProfitAmount) }}
+            inventoryValue={{ value: formatBooksMoney(inventoryValue) }}
+            outstandingReceivables={{ value: formatBooksMoney(totalReceivables) }}
+            outstandingPayables={{ value: formatBooksMoney(totalPayables) }}
             lowStockAlerts={{ value: String(reorderRecommendationSummary.urgentReorderCount), count: reorderRecommendationSummary.urgentReorderCount }}
             healthScore={businessHealthScore.score}
             healthMetrics={[
-              { label: t('dashboard.cashFlow'), value: formatPKR(totalReceivables - totalPayables), status: totalReceivables > totalPayables ? "good" as const : "warning" as const },
+              { label: t('dashboard.cashFlow'), value: formatBooksMoney(totalReceivables - totalPayables), status: totalReceivables > totalPayables ? "good" as const : "warning" as const },
               { label: t('dashboard.inventoryHealth'), value: t('dashboard.lowStockCount').replace('{count}', String(lowStockProducts.length)), status: lowStockProducts.length > 5 ? "critical" as const : lowStockProducts.length > 2 ? "warning" as const : "good" as const },
               { label: t('dashboard.profitMargin'), value: businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? `${((businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100).toFixed(1)}%` : "0%", status: "good" as const },
               { label: t('dashboard.stockHealth'), value: t('dashboard.outOfStockCount').replace('{count}', String(reorderRecommendationSummary.outOfStockCount)), status: reorderRecommendationSummary.outOfStockCount > 3 ? "critical" as const : "good" as const },
@@ -26217,6 +26334,51 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </div>
             )}
 
+            {currentProfile?.role === "owner" && (
+              <div className="rounded-lg border border-border bg-background p-4">
+                <h3 className="text-base font-semibold text-foreground">{t('settings.booksCurrency')}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('settings.booksCurrencyHint')}
+                </p>
+                <div className="mt-4 flex flex-wrap items-end gap-3">
+                  <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                    <span>{t('settings.booksCurrency')}</span>
+                    <select
+                      aria-label={t('settings.booksCurrency')}
+                      value={booksTargetCurrency}
+                      onChange={(e) => {
+                        setBooksTargetCurrency(e.target.value as Currency);
+                        setBooksSwitchError(null);
+                      }}
+                      className="min-h-11 rounded border border-input bg-background px-3 py-2"
+                    >
+                      {Object.entries(booksCurrencyOptions).map(([code, info]) => (
+                        <option key={code} value={code}>
+                          {code} — {info.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={booksTargetCurrency === booksCurrency || booksSwitchLoading}
+                    onClick={() => {
+                      setBooksSwitchError(null);
+                      setBooksRateInput("");
+                      setBooksSwitchStep("warn");
+                    }}
+                    className="min-h-11 rounded bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                  >
+                    {t('settings.booksSwitchButton')}
+                  </button>
+                </div>
+                {booksSwitchMessage && <p className="mt-3 text-sm text-success">{booksSwitchMessage}</p>}
+                {booksSwitchError && booksSwitchStep === null && (
+                  <p className="mt-3 text-sm text-destructive">{booksSwitchError}</p>
+                )}
+              </div>
+            )}
+
             <button
               type="button"
               onClick={handleSaveBusinessSettings}
@@ -26376,6 +26538,83 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               >
                 <X className="size-4" />
               </button>
+            </div>
+          </div>
+        )}
+
+        {booksSwitchStep !== null && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-foreground/30 p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={booksSwitchStep === "warn" ? t('settings.booksWarnTitle') : t('settings.booksRateTitle')}
+              className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-xl"
+            >
+              {booksSwitchStep === "warn" ? (
+                <>
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.booksWarnTitle')}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">{t('settings.booksWarnBody')}</p>
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBooksSwitchStep(null)}
+                      className="min-h-11 rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBooksSwitchStep("rate")}
+                      className="min-h-11 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                    >
+                      {t('settings.booksWarnContinue')}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.booksRateTitle')}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {t('settings.booksRatePrompt')
+                      .replace('{from}', booksCurrency)
+                      .replace('{to}', booksTargetCurrency)}
+                  </p>
+                  <label className="mt-4 flex flex-col gap-2 text-sm text-foreground/80">
+                    <span>{t('settings.booksRateLabel')}</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      autoFocus
+                      value={booksRateInput}
+                      onChange={(e) => setBooksRateInput(e.target.value)}
+                      className="min-h-11 rounded border border-input bg-background px-3 py-2 tabular-nums"
+                    />
+                  </label>
+                  <p className="mt-2 text-xs text-muted-foreground">{t('settings.booksRateHint')}</p>
+                  {booksSwitchError && <p className="mt-3 text-sm text-destructive">{booksSwitchError}</p>}
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      disabled={booksSwitchLoading}
+                      onClick={() => {
+                        setBooksSwitchStep(null);
+                        setBooksSwitchError(null);
+                      }}
+                      className="min-h-11 rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30 disabled:opacity-40"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={booksSwitchLoading}
+                      onClick={() => void handleBooksCurrencyConvert()}
+                      className="min-h-11 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                    >
+                      {booksSwitchLoading ? t('settings.booksConverting') : t('settings.booksConvertButton')}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
