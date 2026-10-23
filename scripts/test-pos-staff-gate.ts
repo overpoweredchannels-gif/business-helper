@@ -150,7 +150,7 @@ assert.deepEqual(parseHeldSales(null), [], "no stored value parses as an empty l
 assert.deepEqual(parseHeldSales(JSON.stringify([heldRow()])), [heldRow()], "a writer-shaped row parses");
 assert.throws(() => parseHeldSales("{not json"), /Invalid held sales/, "corrupt JSON is rejected");
 assert.throws(
-  () => parseHeldSales(JSON.stringify([heldRow({ sale: { ...heldRow().sale, paymentType: "card" as never } })])),
+  () => parseHeldSales(JSON.stringify([heldRow({ sale: { ...heldRow().sale, paymentType: "cheque" as never } })])),
   /Invalid held sales/,
   "an unknown payment type is rejected",
 );
