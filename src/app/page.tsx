@@ -16677,6 +16677,7 @@ setCustomerOrganizationName("");
         onToggleNavHidden={handleNavToggleHidden}
       onResetNavOrder={handleNavReset}
       dragSectionsToDashboard={activeSection === "dashboard" && homeWidgets.customizing}
+        canChangeBooksCurrency={currentProfile?.role === "owner"}
         onSearchSubmit={handleGlobalSearchSubmit}
         onSearchChange={handleGlobalSearchChange}
         searchScopeKey={searchScopeKey}
