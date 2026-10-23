@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveActor } from "@/lib/identity/api-context";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { selectWithColumnFallback } from "@/lib/supabase/select-with-column-fallback";
 
 export const runtime = "nodejs";
 
@@ -28,28 +29,25 @@ export async function GET(request: Request) {
     .eq("organization_id", context.actor.organizationId)
     .maybeSingle();
 
-  // books_currency arrives with an additive migration that may not
-  // have run yet; until the column exists the widened select fails
-  // with 42703, so fall back to the select without it — the books
-  // currency then resolves from regional_preferences, exactly like the
-  // main page's organization read (same pattern, same behaviour).
-  let organizationResult = await supabase
-    .from("organizations")
-    .select("name, working_hours, regional_preferences, books_currency")
-    .eq("id", context.actor.organizationId)
-    .maybeSingle();
-
-  if (
-    organizationResult.error &&
-    (organizationResult.error.code === "42703" ||
-      organizationResult.error.message?.includes("books_currency"))
-  ) {
-    organizationResult = await supabase
-      .from("organizations")
-      .select("name, working_hours, regional_preferences")
-      .eq("id", context.actor.organizationId)
-      .maybeSingle();
-  }
+  // books_currency and regional_preferences arrive with additive
+  // migrations that may not have run yet; until a column exists the
+  // widened select fails with 42703, so the shared tolerant read drops
+  // each missing column down to the floor list — the books currency
+  // then resolves from regional_preferences when present, exactly like
+  // the main page's organization read (same helper, same behaviour).
+  // The previous fallback kept regional_preferences at every level, so
+  // a database without that column failed the whole profile load.
+  const organizationId = context.actor.organizationId;
+  const organizationResult = await selectWithColumnFallback<any>({
+    columns: ["name", "working_hours", "regional_preferences", "books_currency"],
+    floor: ["name", "working_hours"],
+    run: (columns) =>
+      supabase
+        .from("organizations")
+        .select(columns.join(", "))
+        .eq("id", organizationId)
+        .maybeSingle(),
+  });
 
   const { data: organization, error: organizationError } = organizationResult;
 

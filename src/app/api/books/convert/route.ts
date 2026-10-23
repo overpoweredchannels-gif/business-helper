@@ -19,6 +19,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requirePermission } from '@/lib/identity/authorization';
 import { createSupabaseService } from '@/lib/supabase/server';
+import {
+  isUndefinedColumnError,
+  selectWithColumnFallback,
+} from '@/lib/supabase/select-with-column-fallback';
 import { resolveBooksCurrency } from '@/lib/books/currency';
 import {
   BooksConversionError,
@@ -118,13 +122,23 @@ export async function POST(request: NextRequest) {
 
   const deps: BooksConversionDeps = {
     async loadState(organizationId) {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('books_currency, regional_preferences')
-        .eq('id', organizationId)
-        .maybeSingle();
+      // Tolerant read: regional_preferences predates books_currency but
+      // is itself missing on older databases, so drop whichever column
+      // is absent. "Missing" (→ books.migrationMissing) means the
+      // books_currency column itself is not there — the floor attempt
+      // failed on it — not that some other column was.
+      const { data, error } = await selectWithColumnFallback<any>({
+        columns: ['books_currency', 'regional_preferences'],
+        floor: ['books_currency'],
+        run: (columns) =>
+          supabase
+            .from('organizations')
+            .select(columns.join(', '))
+            .eq('id', organizationId)
+            .maybeSingle(),
+      });
       if (error) {
-        if (error.code === '42703' || error.message?.includes('books_currency')) {
+        if (isUndefinedColumnError(error)) {
           return { kind: 'missing' };
         }
         console.error('[books] failed to read organization:', error);
