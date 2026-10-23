@@ -93,6 +93,24 @@ export const suggestedReorderFor = (
   return level > 0 ? Math.max(level * 2 - currentStock, 0) : 0;
 };
 
+// ─── Shared days-left coverage (QA fix round, 2026-10-23) ─────────────────
+//
+// estimatedDaysLeftFor is the ONE days-of-cover computation. BI Inventory
+// Movement rendered the raw stock ÷ daily-rate figure (negative for
+// products sold below zero stock: "−30.0 days") while the reorder table
+// clamped its own copy at 0 and Products Insights ran a third formula
+// (Infinity for stocked-but-unsold) — three answers for one quantity.
+// Semantics: with a sales velocity, days left = stock ÷ daily rate,
+// floored at 0 (a product at or below zero stock has 0 days of cover by
+// definition; negative cover is meaningless). With no velocity there is
+// no basis for an estimate, so the result is null and surfaces show
+// their "no recent sales" label.
+export const estimatedDaysLeftFor = (
+  currentStock: number,
+  dailyAverageSales: number
+): number | null =>
+  dailyAverageSales > 0 ? Math.max(0, currentStock / dailyAverageSales) : null;
+
 // ─── Shared status labels (M1 decision 2, UMAIR-approved 2026-10-22) ──────
 //
 // stockStatusFor is the ONE stock-health classifier. Every surface that

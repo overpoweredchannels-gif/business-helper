@@ -182,6 +182,7 @@ import {
 import { validateAdjustmentInput } from "@/lib/inventory/validation";
 import {
   buildInventorySnapshots,
+  estimatedDaysLeftFor,
   formatMovementChange,
   getBatchBreakdown,
   isAdjustmentType,
@@ -9910,8 +9911,7 @@ setCustomerOrganizationName("");
           0
         );
       const dailyAverageSales = recentSalesQuantity / 30;
-      const estimatedDaysLeft =
-        dailyAverageSales > 0 ? currentStock / dailyAverageSales : null;
+      const estimatedDaysLeft = estimatedDaysLeftFor(currentStock, dailyAverageSales);
       const suggestedReorderQuantity =
         reorderLevel > 0 ? Math.max(reorderLevel * 2 - currentStock, 0) : 0;
       // Health status comes from the ONE shared classifier (stockStatusFor
@@ -21247,8 +21247,9 @@ setCustomerOrganizationName("");
                 const daily = sold30 / 30;
                 // Velocity survives ONLY as this days-left coverage figure
                 // (shown in its own column); the health status comes from
-                // the ONE shared classifier (M1 decision 2).
-                const daysLeft = daily > 0 ? stock / daily : (stock > 0 ? Infinity : 0);
+                // the ONE shared classifier (M1 decision 2), and the
+                // coverage figure from the ONE shared estimatedDaysLeftFor.
+                const daysLeft = estimatedDaysLeftFor(stock, daily);
                 const status = productInsightsStatusFor(stock, reorderLevel);
                 const purchasePrice = safeNumber(product.last_purchase_price ?? product.default_purchase_price ?? 0);
                 const sellPrice = safeNumber(product.default_selling_price ?? 0);
@@ -21331,7 +21332,7 @@ setCustomerOrganizationName("");
                               <td className="py-2 pr-3 text-foreground/80">{r.stock}</td>
                               <td className="py-2 pr-3 text-foreground/80">{r.sold30}</td>
                               <td className="py-2 text-foreground/80">
-                                {Number.isFinite(r.daysLeft) ? Math.max(0, Math.round(r.daysLeft)) : "—"}
+                                {r.daysLeft === null ? "—" : Math.max(0, Math.round(r.daysLeft))}
                               </td>
                             </tr>
                           ))}
