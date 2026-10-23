@@ -35,6 +35,7 @@ import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@
 import { parseStaffSalesMode, staffSaleOutcome } from "@/lib/sales/staff-sale-gate";
 import { readSellMode, writeSellMode } from "@/lib/sales/sell-mode";
 import { buildSalesInvoicePreviewRowsHtml } from "@/lib/sales/sales-invoice-preview";
+import { buildPurchaseInvoicePreviewRowsHtml } from "@/lib/purchases/purchase-invoice-preview";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { SearchSuggestField } from "@/components/search/SearchSuggestField";
 import { buildCustomerSuggestionData, buildProductSuggestionData, orderCrossTypeSuggestions, pinSelectedFirst } from "@/components/search/suggestion-items";
@@ -12160,23 +12161,27 @@ setCustomerOrganizationName("");
     const paidAmount = paymentSummary?.paidAmount ?? 0;
     const paymentStatus =
       remainingPayable <= 0 ? t('money.paid') : paidAmount > 0 ? t('buy.statusPartiallyPaid') : t('buy.statusUnpaid');
-    const lineRows =
-      lineItems.length === 0
-        ? [[t('print.noLineItems'), "-", formatPKR(0), formatPKR(0), "-", "-"]]
-        : lineItems.map((item) => {
-            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
-            const quantity = safeNumber(item.quantity);
-            const purchasePrice = safeNumber(item.purchase_price);
-            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
-            return [
-              product?.name ?? t('sell.unknownProduct'),
-              `${quantity} ${unit}`,
-              formatPKR(purchasePrice),
-              formatPKR(quantity * purchasePrice),
-              item.batch_number ?? "-",
-              item.expiry_date ? formatDate(item.expiry_date) : "-",
-            ];
-          });
+    // Quantity and unit are passed separately on purpose: the preview
+    // row builder renders the bare numeral in the Quantity column and
+    // the unit as a small line under the product name (never glued).
+    const lineRowsHtml = buildPurchaseInvoicePreviewRowsHtml(
+      lineItems.map((item) => {
+        const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+        const quantity = safeNumber(item.quantity);
+        const purchasePrice = safeNumber(item.purchase_price);
+        const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
+        return {
+          productName: product?.name ?? t('sell.unknownProduct'),
+          quantity,
+          unit,
+          priceText: formatPKR(purchasePrice),
+          totalText: formatPKR(quantity * purchasePrice),
+          batchText: item.batch_number ?? "-",
+          expiryText: item.expiry_date ? formatDate(item.expiry_date) : "-",
+        };
+      }),
+      [t('print.noLineItems'), "-", formatPKR(0), formatPKR(0), "-", "-"],
+    );
 
     openPrintPreview(
       `${t('expenses.purchaseInvoice')} ${transaction.invoice_number}`,
@@ -12190,7 +12195,7 @@ setCustomerOrganizationName("");
       </div>
       <table>
         <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('products.purchasePrice'), t('buy.lineTotal'), t('print.batch'), t('print.expiry')])}</thead>
-        <tbody>${renderRows(lineRows)}</tbody>
+        <tbody>${lineRowsHtml}</tbody>
       </table>
       <div class="summary">
         <p><strong>${t('buy.purchaseTotal')}:</strong> ${escapeHtml(formatPKR(purchaseValue))}</p>
