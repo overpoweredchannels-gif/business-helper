@@ -1,4 +1,5 @@
 import type { BarcodeLine } from "@/lib/invoices/barcode";
+import { isCurrency, type Currency } from "@/lib/regional/settings";
 
 /**
  * Held-sales browser storage for Retail POS.
@@ -19,7 +20,21 @@ export type HeldCounterSale = {
   discountType: "flat" | "percent";
   tax: string;
 };
-export type HeldSale = { id: string; savedAt: string; sale: HeldCounterSale };
+export type HeldSale = {
+  id: string;
+  savedAt: string;
+  /**
+   * The org's books currency at the moment the sale was held. Line
+   * prices and totals in a held sale are denominated in it, and a books
+   * conversion never touches browser storage — so after a currency
+   * switch a held sale's amounts belong to the OLD currency and must
+   * not be resumed (and silently relabelled) under the new one.
+   * Optional because rows written before stamping existed carry no
+   * stamp; see heldSaleCurrencyStatus for how those are treated.
+   */
+  currency?: Currency;
+  sale: HeldCounterSale;
+};
 
 export const HELD_SALES_LIMIT = 50;
 
@@ -37,6 +52,7 @@ export function parseHeldSales(raw: string | null): HeldSale[] {
   if (!Array.isArray(stored) || stored.length > HELD_SALES_LIMIT || stored.some(row => {
     const draft = row?.sale;
     return typeof row?.id !== "string" || typeof row?.savedAt !== "string" || !draft
+      || (row.currency !== undefined && !isCurrency(row.currency))
       || !Array.isArray(draft.lines) || !["cash", "card", "credit"].includes(draft.paymentType)
       || !["flat", "percent"].includes(draft.discountType)
       || ![draft.date, draft.discount, draft.tax].every(value => typeof value === "string")
@@ -73,4 +89,45 @@ export function loadHeldSales(storage: HeldSalesStorage, storageKey: string): He
     }
     return { sales: [], quarantined: true };
   }
+}
+
+/**
+ * Currency guard for held sales.
+ *
+ * - "current": the row is stamped with the org's current books
+ *   currency — resume normally.
+ * - "legacy": the row predates stamping, so it carries no stamp. Such
+ *   a row was necessarily held before the books-switch flow could ever
+ *   have run against this browser's org (the switch and the stamp
+ *   shipped in the same model), so its amounts are denominated in the
+ *   books currency in force when it was held — the current one. It may
+ *   resume; stampLegacyHeldSales stamps it at load so any FUTURE
+ *   switch turns it "stale" instead.
+ * - "stale": the row is stamped with a different currency than the
+ *   current books currency — a books conversion happened after it was
+ *   held, and browser-held amounts were not converted. Resume must be
+ *   blocked and the row kept exactly as stored: resuming would book
+ *   old-currency amounts under the new currency's label.
+ */
+export type HeldSaleCurrencyStatus = "current" | "legacy" | "stale";
+
+export function heldSaleCurrencyStatus(row: HeldSale, booksCurrency: Currency): HeldSaleCurrencyStatus {
+  if (row.currency === undefined) return "legacy";
+  return row.currency === booksCurrency ? "current" : "stale";
+}
+
+/**
+ * Backfill the currency stamp onto unstamped (legacy) rows with the
+ * books currency in force at load. Returns the original array identity
+ * when nothing needed stamping, so callers can skip the storage write.
+ */
+export function stampLegacyHeldSales(
+  rows: HeldSale[],
+  booksCurrency: Currency,
+): { rows: HeldSale[]; stamped: boolean } {
+  if (!rows.some(row => row.currency === undefined)) return { rows, stamped: false };
+  return {
+    rows: rows.map(row => (row.currency === undefined ? { ...row, currency: booksCurrency } : row)),
+    stamped: true,
+  };
 }

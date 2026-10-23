@@ -10,13 +10,13 @@ import { hasExactBarcodeMatch, isBarcodeShaped } from "@/lib/invoices/scan-submi
 import type { Product, Customer } from "@/lib/tradeos/types";
 import type { SearchRankFields } from "@/lib/products/search-rank";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
-import { loadHeldSales, parseHeldSales, type HeldSale } from "@/lib/sales/held-sales";
+import { heldSaleCurrencyStatus, loadHeldSales, parseHeldSales, stampLegacyHeldSales, type HeldSale } from "@/lib/sales/held-sales";
 import { DEFAULT_DRAWER_SETTINGS, readDrawerSettings, writeDrawerSettings, type DrawerSettings } from "@/lib/print/drawer-settings";
 import { hasDrawerSerial, hasDrawerUsb } from "@/lib/print/drawer-transport";
 import { isNoSaleReasonValid, NO_SALE_REASON_CODES, type NoSaleReasonCode } from "@/lib/sales/drawer-gate";
 import type { MessageKey } from "@/lib/regional/messages";
 import { useRegional } from "@/components/regional/RegionalProvider";
-import { formatBooksMoney } from "@/lib/tradeos/formatters";
+import { formatBooksMoney, getActiveBooksCurrency } from "@/lib/tradeos/formatters";
 
 export type CounterSale = {
   lines: BarcodeLine[]; customerId: string | null; date: string;
@@ -168,7 +168,16 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
     let heldFailed = false;
     try {
       const loaded = loadHeldSales(localStorage, storageKey);
-      setHeld(loaded.sales);
+      // Stamp pre-stamping (legacy) rows with the books currency in
+      // force now — the currency their amounts are denominated in —
+      // so a later books switch marks them stale instead of letting
+      // them resume under the new currency. Best-effort persist: the
+      // in-memory stamps still guard this session if storage refuses.
+      const backfill = stampLegacyHeldSales(loaded.sales, getActiveBooksCurrency());
+      if (backfill.stamped) {
+        try { localStorage.setItem(storageKey, JSON.stringify(backfill.rows)); } catch { /* in-memory stamps still apply */ }
+      }
+      setHeld(backfill.rows);
       heldFailed = loaded.quarantined;
     } catch { heldFailed = true; setHeld([]); }
     try { setTemplates(readTemplates()); } catch { setTemplates([]); }
@@ -295,7 +304,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
     try { latest = readHeld(); } catch { setNotice("Held sales could not be read. Your current sale is still open."); return; }
     if (latest.length >= 50) { setNotice("Resume a held sale first; this browser already has 50 held sales."); return; }
     holdLock.current = true;
-    if (persist([...latest, { id: crypto.randomUUID(), savedAt: new Date().toISOString(), sale }])) { onClear(); setNotice("Sale held on this browser. It has not changed stock or payments."); }
+    if (persist([...latest, { id: crypto.randomUUID(), savedAt: new Date().toISOString(), currency: getActiveBooksCurrency(), sale }])) { onClear(); setNotice("Sale held on this browser. It has not changed stock or payments."); }
     else holdLock.current = false;
   };
   const resume = (row: HeldSale) => {
@@ -304,6 +313,14 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
       const latest = readHeld();
       const saved = latest.find(item => item.id === row.id);
       if (!saved) { setHeld(latest); setNotice("This sale was already resumed in another window."); return; }
+      // Currency guard: a sale held before a books-currency switch is
+      // denominated in the old currency (browser storage is never
+      // converted). Block the resume and keep the row untouched —
+      // resuming would book old-currency amounts under the new label.
+      if (heldSaleCurrencyStatus(saved, getActiveBooksCurrency()) === "stale") {
+        setNotice(t("pos.heldCurrencyMismatch").replace("{held}", String(saved.currency)).replace("{books}", getActiveBooksCurrency()));
+        return;
+      }
       if (persist(latest.filter(item => item.id !== row.id))) { onRestore(saved.sale); setNotice("Sale resumed. Review its saved prices and quantities before saving."); }
     } catch { setNotice("Held sales could not be read. No sale has been changed."); }
   };
