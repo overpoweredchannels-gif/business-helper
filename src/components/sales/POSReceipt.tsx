@@ -8,7 +8,7 @@ import type { PrintTemplate } from "@/lib/print/print-template-types";
 import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptPrintableWidthMm, getReceiptSummaryRows, getReceiptWidthMm, resolveReceiptChrome, resolveReceiptCustomerName, type Receipt, type ReceiptChromeLabels, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
 import { loadReceiptTemplate } from "@/lib/print/receipt-template-loader";
 import { saveReceiptTemplate } from "@/lib/print/receipt-template-save";
-import { awaitPrintStage, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, type PrintRunToken } from "@/lib/print/print-run";
+import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, type PrintRunToken } from "@/lib/print/print-run";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
@@ -301,15 +301,17 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
         targetWindow.focus();
         if (typeof targetWindow.print !== "function") throw new Error("Browser printing is unavailable");
         if (runToken.isAborted() || settled) return;
-        targetWindow.print();
-        // The native dialog has been dispatched: from here the user's
-        // interaction is with the OS dialog, so the "Preparing receipt…"
-        // state clears NOW instead of waiting for the cleanup tail
-        // (afterprint / fallback below) — a throttled browser can
-        // stretch that tail for minutes and make the dialog look frozen.
-        // The tail keeps running in the background and still owns the
-        // frame and timers; cleanup remains responsible for them.
-        releaseUiState();
+        // Dispatch: the "Preparing receipt…" state clears BEFORE the
+        // native call is entered, not after it returns — window.print()
+        // blocks the main thread for as long as the browser's print UI
+        // is up, and the fallback/watchdog timers and Close/Escape
+        // handlers all live on that thread, so a release sequenced
+        // after the call can be outlived indefinitely (production,
+        // 2026-10-23: dialog frozen on "Preparing receipt…", Close and
+        // Escape dead, only a reload cleared it). From the dispatch the
+        // user's interaction is with the OS dialog; the cleanup tail
+        // below keeps running and still owns the frame and timers.
+        dispatchNativePrint(targetWindow, releaseUiState);
         // print() returns when its native dialog closes. Some browsers omit
         // afterprint, so use its return as the completion signal in that case.
         if (!settled && !runToken.isAborted()) fallbackTimer = window.setTimeout(cleanup, 1500);

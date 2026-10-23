@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { awaitPrintStage, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock } from "../src/lib/print/print-run";
+import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock } from "../src/lib/print/print-run";
 
 // Regression (2026-10-23): the receipt dialog's Close could not rescue a
 // print run parked in a staged wait — the pipeline only unwound when a
@@ -102,6 +102,44 @@ async function main() {
   controller5.abortCurrent();
   uiLock.releaseAll();
   assert.equal(uiLock.isHeld(), false, "dismissal force-releases the UI state");
+
+  // 8. Dispatch ordering (production, 2026-10-23): the UI release must
+  //    happen BEFORE the native print call is entered. window.print()
+  //    blocks the main thread for as long as the browser print UI is up;
+  //    sequenced after it, the release — and every timer and Close/
+  //    Escape handler on that thread — is outlived indefinitely and the
+  //    dialog freezes on "Preparing receipt…". The fake below models
+  //    the blocking call: by the time print() is entered, the release
+  //    must already have run, so even a print call that never returns
+  //    leaves the dialog's state settled.
+  {
+    const events: string[] = [];
+    let releasedBeforePrintEntered = false;
+    const blockingTarget = {
+      print: () => {
+        releasedBeforePrintEntered = events.includes("release");
+        events.push("print");
+        // Stands in for the synchronous block: control returns only
+        // after the (simulated) OS dialog closes.
+      },
+    };
+    dispatchNativePrint(blockingTarget, () => { events.push("release"); });
+    assert.deepEqual(events, ["release", "print"], "the UI release precedes the native print call");
+    assert.equal(releasedBeforePrintEntered, true, "the release has already run when print() is entered");
+  }
+
+  // 9. A native print call that throws still leaves the UI released
+  //    (the release ran first), and the error propagates to the caller
+  //    — the dialog's catch path depends on seeing it.
+  {
+    let released = false;
+    assert.throws(
+      () => dispatchNativePrint({ print: () => { throw new Error("print boom"); } }, () => { released = true; }),
+      /print boom/,
+      "a throwing native print propagates",
+    );
+    assert.equal(released, true, "the UI release ran before the throwing print call");
+  }
 
   console.log("test-pos-receipt-print-run: all assertions passed");
 }

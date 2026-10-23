@@ -117,6 +117,30 @@ export class PrintRunUiLock {
  * (handlers are attached up front, so it can never surface as an
  * unhandled rejection).
  */
+/**
+ * Dispatch the native print dialog for a run.
+ *
+ * window.print() is a SYNCHRONOUS, main-thread-blocking call for as long
+ * as the browser's print UI is up — and every settle guarantee the dialog
+ * has (fallback timer, watchdog, Close/Escape handlers) lives on that
+ * same main thread. The release of the run's "Preparing receipt…" UI
+ * state must therefore happen BEFORE the native call is entered, never
+ * after it returns: sequenced after, a print call whose return is
+ * delayed (an unattended print preview, a slow spooler) leaves the
+ * dialog frozen past every bound — Close and Escape cannot even run —
+ * and only a page reload clears it (production, 2026-10-23). Released
+ * here, the dialog is already in its final, usable state when the OS
+ * print dialog takes over; the run's cleanup tail (afterprint /
+ * fallback) still owns the frame and timers afterwards.
+ */
+export function dispatchNativePrint(
+  target: { print: () => void },
+  releaseUiState: () => void,
+): void {
+  releaseUiState();
+  target.print();
+}
+
 export async function awaitPrintStage<T>(token: PrintRunToken, stage: Promise<T>): Promise<PrintStageResult<T>> {
   if (token.isAborted()) return PRINT_STAGE_ABORTED;
   const guarded = stage.then(

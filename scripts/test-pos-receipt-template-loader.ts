@@ -93,6 +93,27 @@ async function main(): Promise<void> {
     assert.equal(fromGarbage.template.receiptWidthMm, 80);
   }
 
+  // 7. The fetch ANSWERS with a backend failure body (what response.json()
+  // yields when the templates/settings backend errors — production
+  // 2026-10-23 served a 42703 there) → the load still settles, with the
+  // built-in default: the dialog must never depend on a successful
+  // settings/templates load to become usable.
+  {
+    const result = await loadReceiptTemplate({
+      defaultTemplate,
+      fetchJson: () =>
+        Promise.resolve({
+          ok: false,
+          error: 'column organizations.regional_preferences does not exist',
+          code: '42703',
+        }),
+    });
+    assert.equal(result.status, "defaulted");
+    assert.equal(result.status === "defaulted" && result.reason, "empty");
+    assert.equal(result.template.docType, "retail_receipt", "the default template keeps the dialog usable");
+    assert.equal(result.template.receiptWidthMm, 80, "the default template carries the default width");
+  }
+
   console.log("test-pos-receipt-template-loader: all assertions passed");
 }
 
