@@ -1,5 +1,6 @@
 import type { BarcodeLine } from "@/lib/invoices/barcode";
 import { isCurrency, type Currency } from "@/lib/regional/settings";
+import { currencyStampStatus, stampLegacyRows, type CurrencyStampStatus } from "./currency-stamp";
 
 /**
  * Held-sales browser storage for Retail POS.
@@ -92,28 +93,15 @@ export function loadHeldSales(storage: HeldSalesStorage, storageKey: string): He
 }
 
 /**
- * Currency guard for held sales.
- *
- * - "current": the row is stamped with the org's current books
- *   currency — resume normally.
- * - "legacy": the row predates stamping, so it carries no stamp. Such
- *   a row was necessarily held before the books-switch flow could ever
- *   have run against this browser's org (the switch and the stamp
- *   shipped in the same model), so its amounts are denominated in the
- *   books currency in force when it was held — the current one. It may
- *   resume; stampLegacyHeldSales stamps it at load so any FUTURE
- *   switch turns it "stale" instead.
- * - "stale": the row is stamped with a different currency than the
- *   current books currency — a books conversion happened after it was
- *   held, and browser-held amounts were not converted. Resume must be
- *   blocked and the row kept exactly as stored: resuming would book
- *   old-currency amounts under the new currency's label.
+ * Currency guard for held sales — the shared stamp rule in
+ * src/lib/sales/currency-stamp.ts, under held-sale names. A "stale"
+ * row (stamped with a currency other than the current books currency)
+ * must not resume: its amounts were never converted.
  */
-export type HeldSaleCurrencyStatus = "current" | "legacy" | "stale";
+export type HeldSaleCurrencyStatus = CurrencyStampStatus;
 
 export function heldSaleCurrencyStatus(row: HeldSale, booksCurrency: Currency): HeldSaleCurrencyStatus {
-  if (row.currency === undefined) return "legacy";
-  return row.currency === booksCurrency ? "current" : "stale";
+  return currencyStampStatus(row, booksCurrency);
 }
 
 /**
@@ -125,9 +113,5 @@ export function stampLegacyHeldSales(
   rows: HeldSale[],
   booksCurrency: Currency,
 ): { rows: HeldSale[]; stamped: boolean } {
-  if (!rows.some(row => row.currency === undefined)) return { rows, stamped: false };
-  return {
-    rows: rows.map(row => (row.currency === undefined ? { ...row, currency: booksCurrency } : row)),
-    stamped: true,
-  };
+  return stampLegacyRows(rows, booksCurrency);
 }

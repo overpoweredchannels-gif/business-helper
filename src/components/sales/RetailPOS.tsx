@@ -11,6 +11,7 @@ import type { Product, Customer } from "@/lib/tradeos/types";
 import type { SearchRankFields } from "@/lib/products/search-rank";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { heldSaleCurrencyStatus, loadHeldSales, parseHeldSales, stampLegacyHeldSales, type HeldSale } from "@/lib/sales/held-sales";
+import { basketTemplateCurrencyStatus, parseBasketTemplates, stampLegacyBasketTemplates, type BasketTemplate } from "@/lib/sales/basket-templates";
 import { DEFAULT_DRAWER_SETTINGS, readDrawerSettings, writeDrawerSettings, type DrawerSettings } from "@/lib/print/drawer-settings";
 import { hasDrawerSerial, hasDrawerUsb } from "@/lib/print/drawer-transport";
 import { isNoSaleReasonValid, NO_SALE_REASON_CODES, type NoSaleReasonCode } from "@/lib/sales/drawer-gate";
@@ -22,7 +23,7 @@ export type CounterSale = {
   lines: BarcodeLine[]; customerId: string | null; date: string;
   paymentType: "cash" | "card" | "credit"; discount: string; discountType: "flat" | "percent"; tax: string;
 };
-type BasketTemplate = { id: string; name: string; sale: CounterSale; savedAt: string };
+
 
 const NO_SALE_REASON_KEYS: Record<NoSaleReasonCode, MessageKey> = {
   "making-change": "drawer.reasonMakingChange",
@@ -143,11 +144,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
   // Strict read for the hold/resume write paths: corruption there must
   // refuse, never guess. The mount load below uses the recovering loader.
   const readHeld = (): HeldSale[] => parseHeldSales(localStorage.getItem(storageKey));
-  const readTemplates = (): BasketTemplate[] => {
-    const stored: unknown = JSON.parse(localStorage.getItem(templateStorageKey) ?? "[]");
-    if (!Array.isArray(stored)) throw new Error("Invalid basket templates");
-    return stored.filter((row): row is BasketTemplate => Boolean(row) && typeof row === "object" && typeof (row as BasketTemplate).id === "string" && typeof (row as BasketTemplate).name === "string" && !!(row as BasketTemplate).sale);
-  };
+  const readTemplates = (): BasketTemplate[] => parseBasketTemplates(localStorage.getItem(templateStorageKey));
   const persistTemplates = (next: BasketTemplate[]) => {
     try {
       localStorage.setItem(templateStorageKey, JSON.stringify(next));
@@ -180,7 +177,17 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
       setHeld(backfill.rows);
       heldFailed = loaded.quarantined;
     } catch { heldFailed = true; setHeld([]); }
-    try { setTemplates(readTemplates()); } catch { setTemplates([]); }
+    try {
+      // Same stamp backfill as held sales above: a pre-stamping
+      // template's prices are denominated in the books currency in
+      // force now, so stamp it at load — a later books switch then
+      // marks it stale instead of letting it load under the new label.
+      const templateBackfill = stampLegacyBasketTemplates(readTemplates(), getActiveBooksCurrency());
+      if (templateBackfill.stamped) {
+        try { localStorage.setItem(templateStorageKey, JSON.stringify(templateBackfill.rows)); } catch { /* in-memory stamps still apply */ }
+      }
+      setTemplates(templateBackfill.rows);
+    } catch { setTemplates([]); }
     if (heldFailed) setNotice("Held sales could not be loaded. Browser storage must be available to hold a sale.");
     setStorageReady(true);
     // The component is keyed by account and business; storage is loaded once per scope.
@@ -368,7 +375,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
     if (!sale.lines.length) return;
     const name = templateName.trim() || `Basket ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     const existing = readTemplates();
-    const next = [{ id: crypto.randomUUID(), name, sale, savedAt: new Date().toISOString() }, ...existing.filter(item => item.name !== name)].slice(0, 10);
+    const next = [{ id: crypto.randomUUID(), name, sale, savedAt: new Date().toISOString(), currency: getActiveBooksCurrency() }, ...existing.filter(item => item.name !== name)].slice(0, 10);
     if (persistTemplates(next)) {
       setTemplateName("");
       setNotice(`Saved basket “${name}”. You can load it again from the basket library.`);
@@ -376,8 +383,18 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
   };
   const applyTemplate = (basket: BasketTemplate) => {
     if (sale.lines.length) return;
-    onRestore(basket.sale);
-    setNotice(`Loaded basket “${basket.name}”. Review lines before saving.`);
+    // Currency guard, same rule as held-sale resume: re-read so a
+    // template changed in another window is judged as stored, and
+    // block a stale one — its prices belong to the old books currency
+    // and were never converted. The template is kept exactly as stored.
+    let current = basket;
+    try { current = readTemplates().find(item => item.id === basket.id) ?? basket; } catch { /* judge the loaded row */ }
+    if (basketTemplateCurrencyStatus(current, getActiveBooksCurrency()) === "stale") {
+      setNotice(t("pos.basketCurrencyMismatch").replace("{held}", String(current.currency)).replace("{books}", getActiveBooksCurrency()));
+      return;
+    }
+    onRestore(current.sale);
+    setNotice(`Loaded basket “${current.name}”. Review lines before saving.`);
   };
   // Why Pay & Save is unavailable, when the reason is not already printed
   // by the draft issues above: a failed or in-flight walk-in preparation
