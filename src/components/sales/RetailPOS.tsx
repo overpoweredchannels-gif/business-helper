@@ -9,17 +9,27 @@ import { hasExactBarcodeMatch, isBarcodeShaped } from "@/lib/invoices/scan-submi
 import type { Product, Customer } from "@/lib/tradeos/types";
 import type { SearchRankFields } from "@/lib/products/search-rank";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
+import { loadHeldSales, parseHeldSales, type HeldSale } from "@/lib/sales/held-sales";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatPKR } from "@/lib/tradeos/formatters";
 
 export type CounterSale = {
   lines: BarcodeLine[]; customerId: string | null; date: string;
   paymentType: "cash" | "credit"; discount: string; discountType: "flat" | "percent"; tax: string;
 };
-type HeldSale = { id: string; savedAt: string; sale: CounterSale };
 type BasketTemplate = { id: string; name: string; sale: CounterSale; savedAt: string };
 
-export function RetailPOS({ scope, sale, products, customers, busy, owner, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear }: {
+export function RetailPOS({ scope, sale, products, customers, busy, owner, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; busy: boolean; owner: boolean;
+  /** Staff sale under the owner's "direct" setting: saves like an owner
+   * sale instead of going to the approval pipeline, so the primary action
+   * is labelled Pay & Save. Owner/admin sales never need this flag. */
+  staffDirectSale?: boolean;
+  /** Walk-in customer preparation state from the parent. When it failed,
+   * the payment bar explains the blocked save and offers a retry instead
+   * of leaving Pay & Save silently disabled. */
+  walkInState?: "idle" | "preparing" | "failed";
+  onRetryWalkIn?: () => void;
   scanUnit: "main" | "subunit"; cashReceived: string; focusSignal: number; onScan: (code: string, options?: { reportNotFound?: boolean }) => string | null; onAdd: (id: string) => void;
   onUnit: (unit: "main" | "subunit") => void; onCustomer: (id: string) => void;
   onLine: (index: number, field: keyof BarcodeLine, value: string) => void; onRemove: (index: number) => void;
@@ -59,22 +69,13 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
     () => customers.map((c) => ({ id: c.id, label: [c.customer_name, c.shop_name, c.phone].filter(Boolean).join(" — ") })),
     [customers],
   );
+  const { t } = useRegional();
   const holdLock = useRef(false);
   const storageKey = `tradeos-pos-held-v1:${scope}`;
   const templateStorageKey = `tradeos-pos-baskets-v1:${scope}`;
-  const readHeld = (): HeldSale[] => {
-    const stored: unknown = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
-    if (!Array.isArray(stored) || stored.length > 50 || stored.some(row => {
-      const draft = row?.sale;
-      return typeof row?.id !== "string" || typeof row?.savedAt !== "string" || !draft
-        || !Array.isArray(draft.lines) || !["cash", "credit"].includes(draft.paymentType)
-        || !["flat", "percent"].includes(draft.discountType)
-        || ![draft.date, draft.discount, draft.tax].every(value => typeof value === "string")
-        || (draft.customerId !== null && typeof draft.customerId !== "string")
-        || draft.lines.some((line: Record<string, unknown>) => !line || ![line.quantity, line.selling_price, line.discount].every(value => typeof value === "string") || (line.product_id !== null && typeof line.product_id !== "string") || (line.bonus !== undefined && typeof line.bonus !== "string") || (line.unit_mode !== undefined && !["main", "subunit"].includes(String(line.unit_mode))));
-    })) throw new Error("Invalid held sales");
-    return stored;
-  };
+  // Strict read for the hold/resume write paths: corruption there must
+  // refuse, never guess. The mount load below uses the recovering loader.
+  const readHeld = (): HeldSale[] => parseHeldSales(localStorage.getItem(storageKey));
   const readTemplates = (): BasketTemplate[] => {
     const stored: unknown = JSON.parse(localStorage.getItem(templateStorageKey) ?? "[]");
     if (!Array.isArray(stored)) throw new Error("Invalid basket templates");
@@ -91,11 +92,21 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
     }
   };
   useEffect(() => {
+    // A corrupt held-sales value must not brick Hold for this browser
+    // profile: the loader quarantines it under a backup key and starts
+    // from an empty list. Whatever happens — including storage being
+    // unavailable at all — storageReady is set, so the Hold button is
+    // never silently disabled forever; a genuine storage failure then
+    // surfaces through the hold action's own notice.
+    let heldFailed = false;
     try {
-      const stored = readHeld();
-      const savedTemplates = readTemplates();
-      setHeld(stored); setTemplates(savedTemplates); setStorageReady(true);
-    } catch { setNotice("Held sales could not be loaded. Browser storage must be available to hold a sale."); }
+      const loaded = loadHeldSales(localStorage, storageKey);
+      setHeld(loaded.sales);
+      heldFailed = loaded.quarantined;
+    } catch { heldFailed = true; setHeld([]); }
+    try { setTemplates(readTemplates()); } catch { setTemplates([]); }
+    if (heldFailed) setNotice("Held sales could not be loaded. Browser storage must be available to hold a sale.");
+    setStorageReady(true);
     // The component is keyed by account and business; storage is loaded once per scope.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
@@ -284,9 +295,21 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
     onRestore(basket.sale);
     setNotice(`Loaded basket “${basket.name}”. Review lines before saving.`);
   };
+  // Why Pay & Save is unavailable, when the reason is not already printed
+  // by the draft issues above: a failed or in-flight walk-in preparation
+  // used to leave the button silently disabled (its customerId never
+  // arrives), and an empty basket gave no hint at all. Draft-validation
+  // blocks keep their specific messages and get no generic hint.
+  const saveDisabled = busy || !sale.lines.length || !sale.customerId || !draftResult.valid;
+  const saveHint = !saveDisabled ? null
+    : walkInState === "failed" ? t("pos.saveBlockedWalkInFailed")
+    : walkInState === "preparing" ? t("pos.saveBlockedWalkInPreparing")
+    : !sale.lines.length ? t("pos.saveBlockedEmptyBasket")
+    : !sale.customerId ? t("pos.saveBlockedNoCustomer")
+    : null;
   return <div className="space-y-4" data-context-help-skip>
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-muted-foreground">Scan or search • Check quantity • {owner ? "Pay and save" : "Send for approval"}</p>
+      <p className="text-sm text-muted-foreground">Scan or search • Check quantity • {owner || staffDirectSale ? "Pay and save" : "Send for approval"}</p>
       <button type="button" disabled={busy} onClick={onAdvanced} className="min-h-11 rounded-lg border px-4 text-sm font-medium">Full invoice / Advanced options</button>
     </div>
     <fieldset disabled={busy} className="grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
@@ -342,10 +365,13 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, scanU
       {draftResult.amounts && Number(sale.discount) > 0 && <p className="mt-2 text-sm tabular-nums">Discount before tax: {formatPKR(draftResult.amounts.invoiceDiscount)}</p>}
     </div>}
     {draftResult.issues.filter(issue => issue.field === "invoice_discount").map(issue => <p key={issue.message} className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{issue.message}</p>)}
-    <div data-pos-payment-bar className="flex flex-col gap-4 rounded-xl border border-primary/30 bg-card p-4 shadow-lg sm:flex-row sm:items-end sm:justify-between">
+    <div data-pos-payment-bar className="sticky bottom-4 z-20 flex flex-col gap-4 rounded-xl border border-primary/30 bg-card p-4 shadow-lg">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">Unavailable</span> : formatPKR(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">Complete or correct the highlighted sale fields to calculate the total.</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>Includes tax from advanced options.</small>}</div>
       {owner && sale.paymentType === "cash" && <div className="sm:min-w-52"><label className="block text-sm">Cash received<input aria-label="Cash received" type="text" inputMode="decimal" value={cashReceived} placeholder={total === null ? "Sale total unavailable" : String(total)} onChange={event => onCashReceived(event.target.value)} disabled={busy} className="mt-1 block min-h-11 w-full rounded border border-input bg-background px-3 tabular-nums sm:w-40" /></label><div className="mt-2 flex flex-wrap gap-2">{quickCashPresets.map(preset => <button key={preset.label} type="button" disabled={busy} className="min-h-11 rounded border px-2 text-xs disabled:opacity-40" onClick={() => onCashReceived(String(preset.value))}>{preset.label}</button>)}</div>{draftResult.issues.filter(issue => issue.field === "cash_received").map(issue => <p key={issue.message} className="mt-2 text-sm text-destructive" role="alert">{draftResult.cashSummary?.status === "cash-short" ? <>Cash short by <span className="tabular-nums">{formatPKR(draftResult.cashSummary.shortfall)}</span>.</> : issue.message}</p>)}{!draftResult.issues.some(issue => issue.field === "cash_received") && (cashReceived.trim() === "" ? <p className="mt-2 text-sm text-muted-foreground">Leave blank to use the exact sale total.</p> : draftResult.cashSummary ? <p className="mt-2 text-sm">Change due: <span className="tabular-nums">{formatPKR(draftResult.cashSummary.change)}</span></p> : <p className="mt-2 text-sm text-muted-foreground">Cash summary unavailable until the sale total is valid.</p>)}</div>}
-      <div className="flex flex-col gap-2 sm:flex-row"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">Hold sale</button><button data-entry-add type="button" disabled={busy || !sale.lines.length || !sale.customerId || !draftResult.valid} onClick={onSave} className="min-h-12 w-full rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40 sm:w-auto">{busy ? "Saving…" : owner ? sale.paymentType === "credit" ? "Save credit sale" : "Pay & Save" : "Send for approval"}</button></div>
+      <div className="flex flex-col gap-2 sm:flex-row"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">Hold sale</button><button data-entry-add type="button" disabled={busy || !sale.lines.length || !sale.customerId || !draftResult.valid} onClick={onSave} className="min-h-12 w-full rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40 sm:w-auto">{busy ? "Saving…" : owner || staffDirectSale ? sale.paymentType === "credit" ? "Save credit sale" : "Pay & Save" : "Send for approval"}</button></div>
+      </div>
+      {saveHint && <p data-pos-save-hint role="status" className="text-sm text-muted-foreground">{saveHint}{walkInState === "failed" && onRetryWalkIn && <button type="button" onClick={onRetryWalkIn} className="ml-3 min-h-11 rounded border border-input px-3 font-medium text-foreground">{t("pos.retry")}</button>}</p>}
     </div>
     {notice && <p role="status" className="rounded-lg border p-3 text-sm">{notice}</p>}
     <details className="rounded-xl border bg-card p-4"><summary className="cursor-pointer font-semibold">Saved retail baskets ({templates.length})</summary>
