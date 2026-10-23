@@ -34,6 +34,7 @@ import { supabase } from "@/lib/supabase/client";
 import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@/lib/sales/access";
 import { parseStaffSalesMode, staffSaleOutcome } from "@/lib/sales/staff-sale-gate";
 import { readSellMode, writeSellMode } from "@/lib/sales/sell-mode";
+import { buildSalesInvoicePreviewRowsHtml } from "@/lib/sales/sales-invoice-preview";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { SearchSuggestField } from "@/components/search/SearchSuggestField";
 import { buildCustomerSuggestionData, buildProductSuggestionData, orderCrossTypeSuggestions, pinSelectedFirst } from "@/components/search/suggestion-items";
@@ -12066,23 +12067,27 @@ setCustomerOrganizationName("");
               sum + safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount),
             0
           );
-    const lineRows =
-      lineItems.length === 0
-        ? [[t('print.noLineItems'), "-", formatPKR(0), formatPKR(0)]]
-        : lineItems.map((item) => {
-            const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
-            const quantity = safeNumber(item.quantity);
-            const sellingPrice = safeNumber(item.selling_price);
-            const lineDiscount = safeNumber(item.discount);
-            const lineTotal = quantity * sellingPrice - lineDiscount;
-            const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
-            return [
-              product?.name ?? t('sell.unknownProduct'),
-              `${quantity} ${unit}`,
-              formatPKR(sellingPrice),
-              lineDiscount > 0 ? `${formatPKR(lineTotal)} (${t('print.disc')}: ${formatPKR(lineDiscount)})` : formatPKR(lineTotal),
-            ];
-          });
+    // Quantity and unit are passed separately on purpose: the preview
+    // row builder renders the bare numeral in the Quantity column and
+    // the unit as a small line under the product name (never glued).
+    const lineRowsHtml = buildSalesInvoicePreviewRowsHtml(
+      lineItems.map((item) => {
+        const product = products.find((productItem) => String(productItem.id) === String(item.product_id));
+        const quantity = safeNumber(item.quantity);
+        const sellingPrice = safeNumber(item.selling_price);
+        const lineDiscount = safeNumber(item.discount);
+        const lineTotal = quantity * sellingPrice - lineDiscount;
+        const unit = item.unit_mode === "subunit" ? unitLabelFor(product, "subunit") : unitLabelFor(product, "main");
+        return {
+          productName: product?.name ?? t('sell.unknownProduct'),
+          quantity,
+          unit,
+          priceText: formatPKR(sellingPrice),
+          totalText: lineDiscount > 0 ? `${formatPKR(lineTotal)} (${t('print.disc')}: ${formatPKR(lineDiscount)})` : formatPKR(lineTotal),
+        };
+      }),
+      [t('print.noLineItems'), "-", formatPKR(0), formatPKR(0)],
+    );
 
     openPrintPreview(
       `${t('sell.salesInvoice')} ${transaction.invoice_number}`,
@@ -12101,7 +12106,7 @@ setCustomerOrganizationName("");
       </div>
       <table>
         <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('products.sellingPrice'), t('buy.lineTotal')])}</thead>
-        <tbody>${renderRows(lineRows)}</tbody>
+        <tbody>${lineRowsHtml}</tbody>
       </table>
       <div class="summary">
         <p><strong>${t('print.grandTotal')}:</strong> ${escapeHtml(formatPKR(invoiceTotal))}</p>
@@ -16416,6 +16421,11 @@ setCustomerOrganizationName("");
         }
         .tradeos-print-document th {
           background: var(--color-muted);
+        }
+        .tradeos-print-document .unit-line {
+          color: var(--color-muted-foreground);
+          display: block;
+          font-size: 11px;
         }
         .tradeos-print-document .summary {
           margin-top: 16px;

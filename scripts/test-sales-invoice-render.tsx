@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { cloneDefaultTemplate } from "../src/lib/print/default-templates";
 import { SalesInvoiceDocument } from "../src/lib/sales/sales-invoice-render";
+import { buildSalesInvoicePreviewRowsHtml } from "../src/lib/sales/sales-invoice-preview";
 import type { SalesInvoiceDoc } from "../src/lib/sales/sales-invoice-service";
 
 // The A4 sales invoice must separate quantity and unit the way the POS
@@ -76,5 +77,37 @@ assert.ok(html.includes(">Piece<"), "unit renders as its own element under the p
 assert.ok(html.includes(">Box<"), "subunit label renders as its own element");
 assert.ok(html.includes(">1<"), "quantity numeral renders on its own");
 assert.ok(html.includes(">2.5<"), "fractional quantity numeral renders on its own");
+
+// ---- Sales History → Print Invoice PREVIEW surface ----
+// The preview is a separate HTML-string renderer (page.tsx's
+// handlePrintSalesInvoice → print-preview dialog), NOT
+// SalesInvoiceDocument — the original fix never reached it and the
+// preview kept gluing "1Piece" (QA regression 2026-10-23, round 2).
+// Its rows come from buildSalesInvoicePreviewRowsHtml and must follow
+// the same separation: bare numeral cell, unit as a .unit-line span
+// under the product name.
+const previewHtml = buildSalesInvoicePreviewRowsHtml(
+  [
+    { productName: "QA Widget", quantity: 1, unit: "Piece", priceText: "Rs 100", totalText: "Rs 100" },
+    { productName: "QA Gadget", quantity: 2.5, unit: "Box", priceText: "Rs 80", totalText: "Rs 200" },
+  ],
+  ["No line items found", "-", "Rs 0", "Rs 0"],
+);
+assert.ok(!previewHtml.includes("1Piece"), "preview: quantity and unit must never render glued");
+assert.ok(!previewHtml.includes("1 Piece"), "preview: the combined quantity string must not appear");
+assert.ok(!previewHtml.includes("2.5 Box"), "preview: subunit quantity must not appear glued either");
+assert.ok(previewHtml.includes("<td>1</td>"), "preview: quantity numeral is its own cell");
+assert.ok(previewHtml.includes("<td>2.5</td>"), "preview: fractional quantity numeral is its own cell");
+assert.ok(
+  previewHtml.includes('QA Widget<span class="unit-line">Piece</span>'),
+  "preview: unit renders as a small second line under the product name",
+);
+assert.ok(
+  previewHtml.includes('QA Gadget<span class="unit-line">Box</span>'),
+  "preview: subunit label renders as a small second line under the product name",
+);
+
+const emptyPreviewHtml = buildSalesInvoicePreviewRowsHtml([], ["No line items found", "-", "Rs 0", "Rs 0"]);
+assert.ok(emptyPreviewHtml.includes("No line items found"), "preview: empty invoice keeps its fallback row");
 
 console.log("test-sales-invoice-render: all assertions passed");
