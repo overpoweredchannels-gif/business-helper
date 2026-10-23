@@ -113,6 +113,8 @@ async function main() {
   //    must already have run, so even a print call that never returns
   //    leaves the dialog's state settled.
   {
+    const controller8 = new PrintRunController();
+    const token8 = controller8.begin();
     const events: string[] = [];
     let releasedBeforePrintEntered = false;
     const blockingTarget = {
@@ -123,7 +125,8 @@ async function main() {
         // after the (simulated) OS dialog closes.
       },
     };
-    dispatchNativePrint(blockingTarget, () => { events.push("release"); });
+    const dispatched = await dispatchNativePrint(blockingTarget, () => { events.push("release"); }, token8);
+    assert.equal(dispatched, true, "a live run's dispatch reports the native print was entered");
     assert.deepEqual(events, ["release", "print"], "the UI release precedes the native print call");
     assert.equal(releasedBeforePrintEntered, true, "the release has already run when print() is entered");
   }
@@ -132,13 +135,81 @@ async function main() {
   //    (the release ran first), and the error propagates to the caller
   //    — the dialog's catch path depends on seeing it.
   {
+    const controller9 = new PrintRunController();
+    const token9 = controller9.begin();
     let released = false;
-    assert.throws(
-      () => dispatchNativePrint({ print: () => { throw new Error("print boom"); } }, () => { released = true; }),
+    await assert.rejects(
+      dispatchNativePrint({ print: () => { throw new Error("print boom"); } }, () => { released = true; }, token9),
       /print boom/,
       "a throwing native print propagates",
     );
     assert.equal(released, true, "the UI release ran before the throwing print call");
+  }
+
+  // 10. The release must be COMMITTED, not merely queued, before the
+  //     native call parks the thread (production, 2026-10-23, second
+  //     trace): releaseUiState is a React setState — invoked in the same
+  //     task as target.print(), it is only queued, React never flushes
+  //     before the thread parks, and the committed DOM stays on
+  //     "Preparing receipt…". This fixture models React's scheduler as a
+  //     commit observer on a 0ms timer scheduled BEFORE dispatch: the
+  //     observer copies the queued release into the committed state when
+  //     the task yields. With a synchronous dispatch the observer would
+  //     run only after print() returned — the recorded order would be
+  //     release → print → commit and the print would observe the
+  //     release uncommitted.
+  {
+    const controller10 = new PrintRunController();
+    const token10 = controller10.begin();
+    const events: string[] = [];
+    let releaseQueued = false;
+    let releaseCommitted = false;
+    let committedWhenPrintEntered = false;
+    const commitObserver = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        releaseCommitted = releaseQueued;
+        if (releaseQueued) events.push("commit");
+        resolve();
+      }, 0);
+    });
+    const target = {
+      print: () => {
+        committedWhenPrintEntered = releaseCommitted;
+        events.push("print");
+      },
+    };
+    const dispatched = await dispatchNativePrint(target, () => {
+      releaseQueued = true;
+      events.push("release");
+    }, token10);
+    await commitObserver;
+    assert.equal(dispatched, true, "a live run still dispatches after the commit yield");
+    assert.deepEqual(events, ["release", "commit", "print"], "the queued release commits at the yield, before print is entered");
+    assert.equal(committedWhenPrintEntered, true, "print() observes the release already committed");
+  }
+
+  // 11. Abort during the commit yield: dismissing the dialog while the
+  //     dispatch is parked in its yield (dismissReceipt → abortCurrent)
+  //     must stop the native dialog from EVER opening — the release has
+  //     run (harmless; dismissal force-releases anyway), but print()
+  //     must not be called for the dead run.
+  {
+    const controller11 = new PrintRunController();
+    const token11 = controller11.begin();
+    let printCalls = 0;
+    let released = false;
+    const pending = dispatchNativePrint(
+      { print: () => { printCalls += 1; } },
+      () => { released = true; },
+      token11,
+    );
+    // Lands synchronously after dispatch's release, while it is parked
+    // in the yield — the exact dismissal window.
+    controller11.abortCurrent();
+    const dispatched = await pending;
+    assert.equal(released, true, "the release still ran before the yield");
+    assert.equal(dispatched, false, "a run aborted during the yield reports no dispatch");
+    assert.equal(printCalls, 0, "target.print() is never called for a run aborted during the yield");
   }
 
   console.log("test-pos-receipt-print-run: all assertions passed");

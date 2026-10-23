@@ -124,21 +124,38 @@ export class PrintRunUiLock {
  * as the browser's print UI is up — and every settle guarantee the dialog
  * has (fallback timer, watchdog, Close/Escape handlers) lives on that
  * same main thread. The release of the run's "Preparing receipt…" UI
- * state must therefore happen BEFORE the native call is entered, never
- * after it returns: sequenced after, a print call whose return is
- * delayed (an unattended print preview, a slow spooler) leaves the
- * dialog frozen past every bound — Close and Escape cannot even run —
- * and only a page reload clears it (production, 2026-10-23). Released
- * here, the dialog is already in its final, usable state when the OS
- * print dialog takes over; the run's cleanup tail (afterprint /
- * fallback) still owns the frame and timers afterwards.
+ * state must therefore be COMMITTED before the native call is entered,
+ * never sequenced after it returns: sequenced after, a print call whose
+ * return is delayed (an unattended print preview, a slow spooler) leaves
+ * the dialog frozen past every bound — Close and Escape cannot even run —
+ * and only a page reload clears it (production, 2026-10-23).
+ *
+ * Merely CALLING the release first is not enough: the release is a React
+ * state update, and in the same task React only QUEUES it. Entering
+ * target.print() without yielding parks the thread before the queue can
+ * flush, so the last committed DOM is still "Preparing receipt…" for as
+ * long as the native call blocks. The dispatch therefore yields one
+ * macrotask after the release — React commits (and the browser can
+ * paint) the settled state — and only then enters the native call. The
+ * yield opens a window in which the run can die (dialog dismissed →
+ * token aborted), so liveness is re-checked after it: a dead run never
+ * opens the native dialog at all. Once entered, the run's cleanup tail
+ * (afterprint / fallback) still owns the frame and timers.
+ *
+ * Resolves true when the native print was entered, false when the run
+ * was aborted during the yield. A throwing print() rejects, propagating
+ * to the caller's catch path exactly as the synchronous throw did.
  */
-export function dispatchNativePrint(
+export async function dispatchNativePrint(
   target: { print: () => void },
   releaseUiState: () => void,
-): void {
+  token: PrintRunToken,
+): Promise<boolean> {
   releaseUiState();
+  await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+  if (token.isAborted()) return false;
   target.print();
+  return true;
 }
 
 export async function awaitPrintStage<T>(token: PrintRunToken, stage: Promise<T>): Promise<PrintStageResult<T>> {
