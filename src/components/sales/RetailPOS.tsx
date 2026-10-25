@@ -456,8 +456,11 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
     if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
     event.preventDefault();
     event.stopPropagation();
-    // Next line's Quantity, or the Total Bill Discount field on the last line.
-    if (!focusVisible(`[data-pos-quantity="${index + 1}"]`)) focusVisible("#pos-invoice-discount");
+    // Next line's Quantity, or the Total Bill Discount TYPE select on the
+    // last line: the cashier picks Amount/% there first (changing the
+    // select auto-advances to the value field), then Enter on the value
+    // moves to the Cash/Card selector.
+    if (!focusVisible(`[data-pos-quantity="${index + 1}"]`)) focusVisible("#pos-invoice-discount-type");
   };
   const handleTotalBillDiscountKeyDown = (event: ReactKeyboardEvent) => {
     if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
@@ -565,7 +568,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
       <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType === "card" ? t("sell.paymentCard") : sale.paymentType === "credit" ? t("sell.paymentCredit") : t("sell.paymentCash")}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">Unavailable</span> : formatBooksMoney(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">Complete or correct the highlighted sale fields to calculate the total.</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>Includes tax from advanced options.</small>}
       {owner && <div className="mt-3 flex flex-wrap items-center gap-3">
         <label htmlFor="pos-invoice-discount" className="text-sm font-medium">{t("sell.totalBillDiscount")}</label>
-        <select aria-label="Total Bill Discount type" value={sale.discountType} disabled={busy} onChange={event => onDiscountType(event.target.value as "flat" | "percent")} className="min-h-11 rounded border border-input bg-background px-3 text-base">
+        <select id="pos-invoice-discount-type" aria-label="Total Bill Discount type" value={sale.discountType} disabled={busy} onChange={event => onDiscountType(event.target.value as "flat" | "percent")} className="min-h-11 rounded border border-input bg-background px-3 text-base">
           <option value="flat">Amount</option><option value="percent">Percentage (%)</option>
         </select>
         <input id="pos-invoice-discount" aria-label={sale.discountType === "percent" ? "Total Bill Discount percentage" : "Total Bill Discount amount"} type="text" inputMode="decimal" value={sale.discount} disabled={busy} onChange={event => onDiscount(event.target.value)} onKeyDown={handleTotalBillDiscountKeyDown} placeholder={sale.discountType === "percent" ? "0–100" : "0.00"} className="min-h-11 w-32 rounded border border-input bg-background px-3 text-base tabular-nums" />
