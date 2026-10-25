@@ -2,6 +2,9 @@ export type SaleAmountLine = {
   quantity: number | string;
   sellingPrice: number | string;
   discount?: number | string;
+  /** Per-line discount kind: "flat" = amount for the whole line (legacy
+   * default); "percent" = that percent of the line gross (qty × price). */
+  discountType?: "flat" | "percent";
 };
 
 export type SaleAmountOptions = {
@@ -125,15 +128,20 @@ function saleLineCents(line: SaleAmountLine): { gross: bigint; discount: bigint 
   if (priceCents < BigInt(0) || discountCents < BigInt(0)) throw new RangeError("Selling price and line discount cannot be negative.");
 
   const productScale = quantityParts.scale + priceParts.scale;
-  const comparisonScale = Math.max(productScale, discountParts.scale);
-  const product = quantityParts.coefficient * priceParts.coefficient * powerOfTen(comparisonScale - productScale);
-  const discountValue = discountParts.coefficient * powerOfTen(comparisonScale - discountParts.scale);
-  if (discountValue > product) throw new RangeError("Line discount cannot exceed quantity multiplied by selling price.");
-
   const gross = checkedMoneyCents(roundedIntegerAtScale({
     coefficient: quantityParts.coefficient * priceParts.coefficient,
     scale: productScale,
   }, SALE_MONEY_DECIMAL_PLACES));
+  if (line.discountType === "percent") {
+    if (discountCents > BigInt(10_000)) throw new RangeError("Line discount percentage must be between 0 and 100.");
+    // Percent of the rounded line gross, half away from zero — the same
+    // rounding the invoice-level percent discount uses.
+    return { gross, discount: checkedMoneyCents(roundDivideHalfAwayFromZero(gross * discountCents, BigInt(10_000))) };
+  }
+  const comparisonScale = Math.max(productScale, discountParts.scale);
+  const product = quantityParts.coefficient * priceParts.coefficient * powerOfTen(comparisonScale - productScale);
+  const discountValue = discountParts.coefficient * powerOfTen(comparisonScale - discountParts.scale);
+  if (discountValue > product) throw new RangeError("Line discount cannot exceed quantity multiplied by selling price.");
   return { gross, discount: discountCents };
 }
 
@@ -166,6 +174,14 @@ export function roundMoney(value: number): number {
 export function calculateSaleLineTotal(line: SaleAmountLine): number {
   const amounts = saleLineCents(line);
   return centsToMoney(amounts.gross - amounts.discount);
+}
+
+/** The discount amount for one line (flat amount as entered, or the
+ * computed amount for a percent line). Used when saving: the database
+ * discount column stores an amount, never a percent. */
+export function calculateSaleLineDiscountAmount(line: SaleAmountLine): number {
+  const amounts = saleLineCents(line);
+  return centsToMoney(amounts.discount);
 }
 
 export function calculateSaleAmounts(
