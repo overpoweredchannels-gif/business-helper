@@ -89,6 +89,20 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
   const [drawerConnectState, setDrawerConnectState] = useState<"idle" | "connected" | "failed">("idle");
   const [searchKey, setSearchKey] = useState(0);
   const [focusQuantityFor, setFocusQuantityFor] = useState<number | null>(null);
+  // Barcode auto-focus must survive the walk-in preparation: the barcode
+  // box mounts disabled while the walk-in customer is being prepared, so
+  // the mount-time autoFocus can never land, and nothing refocused it
+  // afterwards — the cashier had to click Barcode before scanning. When
+  // preparation finishes (preparing → idle), focus the barcode box so
+  // Sales opens scan-ready, as the keyboard chain requires.
+  const prevWalkInState = useRef(walkInState);
+  useEffect(() => {
+    const prev = prevWalkInState.current;
+    prevWalkInState.current = walkInState;
+    if (prev !== "preparing" || walkInState !== "idle") return;
+    const box = document.querySelector("[data-pos-barcode-box] input");
+    if (box instanceof HTMLInputElement) { box.focus(); box.select(); }
+  }, [walkInState]);
   // Product selector options + rank fields, built in one pass and memoized so
   // the selector neither rebuilds nor re-ranks on parent renders.
   const productOptions = useMemo(
@@ -510,7 +524,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
       {onDrawerNoSale && <button type="button" disabled={busy} onClick={openNoSaleDialog} className="min-h-11 rounded-lg border px-4 text-sm font-medium disabled:opacity-40">{t("drawer.openDrawer")}</button>}
     </div>
     <fieldset disabled={busy} className="grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
-      <div><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={handleScannedCode} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} /></div>
+      <div data-pos-barcode-box><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={handleScannedCode} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} /></div>
       <div className="space-y-3"><label className="block text-sm font-medium">Find product</label><ProductSearchSelect key={searchKey} value="" products={productOptions} rankedFields={productRankFields} onBarcodeEnter={text => {
         // Every Enter text is offered to the shared scan choke point
         // first: an exact saved barcode adds through the scan path instead
