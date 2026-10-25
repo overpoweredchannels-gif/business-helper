@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
@@ -18,6 +18,7 @@ import { isNoSaleReasonValid, NO_SALE_REASON_CODES, type NoSaleReasonCode } from
 import type { MessageKey } from "@/lib/regional/messages";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatBooksMoney, getActiveBooksCurrency } from "@/lib/tradeos/formatters";
+import { subunitPriceFromMain } from "@/lib/tradeos/units";
 
 export type CounterSale = {
   lines: BarcodeLine[]; customerId: string | null; date: string;
@@ -33,8 +34,12 @@ const NO_SALE_REASON_KEYS: Record<NoSaleReasonCode, MessageKey> = {
   "other": "drawer.reasonOther",
 };
 
-export function RetailPOS({ scope, sale, products, customers, busy, owner, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect }: {
+export function RetailPOS({ scope, sale, products, customers, busy, owner, productNameFallback, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; busy: boolean; owner: boolean;
+  /** Names of products scanned/added while the products list was stale:
+   * a line whose product is missing from `products` shows its scanned
+   * name instead of "Product unavailable". */
+  productNameFallback?: Record<string, string>;
   /** Staff sale under the owner's "direct" setting: saves like an owner
    * sale instead of going to the approval pipeline, so the primary action
    * is labelled Pay & Save. Owner/admin sales never need this flag. */
@@ -353,10 +358,24 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
     paymentType: draft.paymentType,
     allowInvoiceAdjustments: true,
   }).amounts?.total ?? null;
+  // Price transparency (Bug 2): when a line's price is exactly the
+  // subunit price derived from its product's main price, say so under
+  // the Price field — 1500 ÷ 10 per pack explains a "150" that is not
+  // a truncation. An edited price no longer matches the derivation, so
+  // the caption disappears rather than mislead.
+  const subunitPriceCaption = (line: BarcodeLine, product: Product | undefined): string | null => {
+    if (line.unit_mode !== "subunit" || !product) return null;
+    const pack = Number(product.units_per_pack);
+    const main = Number(product.default_selling_price);
+    if (!(pack > 0) || !(main > 0)) return null;
+    if (String(subunitPriceFromMain(main, pack)) !== line.selling_price.trim()) return null;
+    return `${formatBooksMoney(main)} ÷ ${pack} per pack`;
+  };
   const saleRows = sale.lines.map((line, index) => {
     const product = products.find(item => String(item.id) === line.product_id);
     const lineTotal = draftResult.lineTotals[index];
-    return { line, index, product, lineTotal, productName: product?.name ?? "Product unavailable" };
+    const fallbackName = line.product_id ? productNameFallback?.[line.product_id] : undefined;
+    return { line, index, product, lineTotal, productName: product?.name ?? fallbackName ?? "Product unavailable", subunitCaption: subunitPriceCaption(line, product) };
   });
   const quickCashPresets = total === null ? [] : [
     { label: "Exact", value: total },
@@ -409,6 +428,78 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
     : !sale.lines.length ? t("pos.saveBlockedEmptyBasket")
     : !sale.customerId ? t("pos.saveBlockedNoCustomer")
     : null;
+  // Keyboard-only sale flow. Every handler here stops propagation so the
+  // section-level entry navigation (which advances through ALL visible
+  // inputs and only then clicks Pay & Save) cannot double-fire behind
+  // it — that is what used to walk Enter on Cash Received into the
+  // basket, held-sale and drawer fields instead of saving.
+  const focusVisible = (selector: string) => {
+    const field = Array.from(document.querySelectorAll<HTMLElement>(selector)).find(el => el.getClientRects().length > 0);
+    if (field) {
+      field.focus();
+      if (field instanceof HTMLInputElement) field.select();
+    }
+    return field;
+  };
+  const focusFirstIssueField = () => {
+    const issue = draftResult.issues[0];
+    if (issue?.lineIndex !== undefined) {
+      if (focusVisible(`[data-pos-quantity="${issue.lineIndex}"]`)) return;
+    }
+    focusVisible("#pos-invoice-discount");
+  };
+  const attemptSave = () => {
+    if (saveDisabled) { focusFirstIssueField(); return; }
+    onSave();
+  };
+  const handleLineDiscountKeyDown = (index: number, event: ReactKeyboardEvent) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    // Next line's Quantity, or the Total Bill Discount field on the last line.
+    if (!focusVisible(`[data-pos-quantity="${index + 1}"]`)) focusVisible("#pos-invoice-discount");
+  };
+  const handleTotalBillDiscountKeyDown = (event: ReactKeyboardEvent) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    focusVisible(`[data-pos-payment-method="${sale.paymentType === "credit" ? "cash" : sale.paymentType}"]`);
+  };
+  const handlePaymentKeyDown = (type: "cash" | "card", event: ReactKeyboardEvent) => {
+    if (event.nativeEvent.isComposing) return;
+    // Arrow keys move the selection; Enter confirms the CURRENT
+    // selection. Pressing Enter on a button that is not yet selected
+    // only selects it (a second Enter then confirms) — the save must
+    // never run against the previous payment type.
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const next = type === "cash" ? "card" : "cash";
+      onPaymentType(next);
+      // Focus follows the new selection on the next paint, once the
+      // parent has applied it; the button itself stays focusable.
+      requestAnimationFrame(() => focusVisible(`[data-pos-payment-method="${next}"]`));
+      return;
+    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (sale.paymentType !== type) {
+      onPaymentType(type);
+      // The Cash Received field only renders once the parent has
+      // applied the new payment type, so focus it on the next paint.
+      if (type === "cash") requestAnimationFrame(() => focusVisible("#pos-cash-received"));
+      return;
+    }
+    if (type === "cash") focusVisible("#pos-cash-received");
+    else attemptSave();
+  };
+  const handleCashReceivedKeyDown = (event: ReactKeyboardEvent) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    attemptSave();
+  };
   return <div className="space-y-4" data-context-help-skip>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted-foreground">Scan or search • Check quantity • {owner || staffDirectSale ? "Pay and save" : "Send for approval"}</p>
@@ -432,15 +523,22 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
       </div>
     </fieldset>
     <div data-pos-desktop-table className="hidden overflow-x-auto rounded-xl border bg-card sm:block"><table className="w-full min-w-[680px] text-sm"><thead className="bg-muted text-left"><tr>{["Product", "Unit", "Quantity", "Price", "Discount", "Total", ""].map((text, index) => <th key={index} className="p-3">{text}</th>)}</tr></thead>
-      <tbody>{saleRows.map(({ line, index, product, lineTotal, productName }) => <tr key={index} className="border-t">
+      <tbody>{saleRows.map(({ line, index, product, lineTotal, productName, subunitCaption }) => <tr key={index} className="border-t">
         <td className="p-3 font-medium">{productName}{Number(line.bonus) > 0 && <small className="block">+ {line.bonus} free</small>}{bonusIssue(index) && <small className="block text-destructive" role="alert">{bonusIssue(index)}</small>}</td>
         <td className="p-2"><select aria-label={`Unit for ${productName}`} value={line.unit_mode ?? "main"} disabled={busy} onChange={event => onLine(index, "unit_mode", event.target.value)} className="min-h-11 rounded border border-input bg-background px-2"><option value="main">{product?.unit_type || "Main"}</option>{Number(product?.units_per_pack) > 0 && <option value="subunit">{product?.subunit_type || "Piece"}</option>}</select></td>
-        {(["quantity", "selling_price", "discount"] as const).map(field => <td key={field} className="p-2"><input data-pos-quantity={field === "quantity" ? index : undefined} aria-label={`${field === "selling_price" ? "Price" : field} for ${productName}`} type="text" inputMode="decimal" value={line[field]} disabled={busy} onChange={event => onLine(index, field, event.target.value)} className="min-h-11 w-24 rounded border border-input bg-background px-2 tabular-nums" />{fieldIssue(field, index) && <span className="block max-w-32 text-xs text-destructive" role="alert">{fieldIssue(field, index)}</span>}</td>)}
+        {(["quantity", "selling_price", "discount"] as const).map(field => <td key={field} className="p-2">
+          <div className="flex items-center gap-2">
+            <input data-pos-quantity={field === "quantity" ? index : undefined} aria-label={`${field === "selling_price" ? "Price" : field} for ${productName}`} type="text" inputMode="decimal" value={line[field]} disabled={busy} onChange={event => onLine(index, field, event.target.value)} onKeyDown={field === "discount" ? event => handleLineDiscountKeyDown(index, event) : undefined} className="min-h-11 w-24 rounded border border-input bg-background px-2 tabular-nums" />
+            {field === "discount" && <select aria-label={`Discount type for ${productName}`} value={line.discount_type ?? "flat"} disabled={busy} onChange={event => onLine(index, "discount_type", event.target.value)} className="min-h-11 rounded border border-input bg-background px-2 text-sm"><option value="flat">Amount</option><option value="percent">%</option></select>}
+          </div>
+          {field === "selling_price" && subunitCaption && <span className="mt-1 block text-xs text-muted-foreground tabular-nums">{subunitCaption}</span>}
+          {fieldIssue(field, index) && <span className="block max-w-32 text-xs text-destructive" role="alert">{fieldIssue(field, index)}</span>}
+        </td>)}
         <td className="p-3 font-medium tabular-nums">{lineTotal === null ? <span className="text-muted-foreground">Unavailable</span> : formatBooksMoney(lineTotal)}</td>
         <td className="p-2"><button type="button" disabled={busy} aria-label={`Remove ${productName}`} onClick={() => onRemove(index)} className="min-h-11 rounded border border-destructive/40 px-3 text-destructive">Remove</button></td>
       </tr>)}{!sale.lines.length && <tr><td colSpan={7} className="p-10 text-center text-muted-foreground">Ready for the next customer. Scan a product to begin.</td></tr>}</tbody></table></div>
     <div data-pos-mobile-basket className="space-y-3 sm:hidden" aria-label="Basket">
-      {saleRows.map(({ line, index, product, lineTotal, productName }) => <article data-pos-mobile-row key={index} className="rounded-xl border border-border bg-card p-3">
+      {saleRows.map(({ line, index, product, lineTotal, productName, subunitCaption }) => <article data-pos-mobile-row key={index} className="rounded-xl border border-border bg-card p-3">
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium [overflow-wrap:anywhere]">{productName}</p>{Number(line.bonus) > 0 && <small className="block">+ {line.bonus} free</small>}{bonusIssue(index) && <small className="block text-destructive" role="alert">{bonusIssue(index)}</small>}</div><p className="shrink-0 font-semibold tabular-nums">{lineTotal === null ? <span className="text-muted-foreground">Unavailable</span> : formatBooksMoney(lineTotal)}</p></div>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <label className="min-w-0 text-xs font-medium">Quantity<input data-pos-quantity={index} aria-label={`Quantity for ${productName}`} type="text" inputMode="decimal" value={line.quantity} disabled={busy} onChange={event => onLine(index, "quantity", event.target.value)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" />{fieldIssue("quantity", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("quantity", index)}</span>}</label>
@@ -448,8 +546,8 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
           <details className="col-span-2">
             <summary className="flex min-h-11 cursor-pointer items-center rounded border border-border px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Price, discount & removal</summary>
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <label className="text-xs font-medium">Price<input aria-label={`Price for ${productName}`} type="text" inputMode="decimal" value={line.selling_price} disabled={busy} onChange={event => onLine(index, "selling_price", event.target.value)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" />{fieldIssue("selling_price", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("selling_price", index)}</span>}</label>
-              <label className="text-xs font-medium">Discount<input aria-label={`Discount for ${productName}`} type="text" inputMode="decimal" value={line.discount} disabled={busy} onChange={event => onLine(index, "discount", event.target.value)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" />{fieldIssue("discount", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("discount", index)}</span>}</label>
+              <label className="text-xs font-medium">Price<input aria-label={`Price for ${productName}`} type="text" inputMode="decimal" value={line.selling_price} disabled={busy} onChange={event => onLine(index, "selling_price", event.target.value)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" />{subunitCaption && <span className="mt-1 block text-xs text-muted-foreground tabular-nums">{subunitCaption}</span>}{fieldIssue("selling_price", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("selling_price", index)}</span>}</label>
+              <div className="text-xs font-medium"><span>Discount</span><div className="mt-1 flex gap-2"><input aria-label={`Discount for ${productName}`} type="text" inputMode="decimal" value={line.discount} disabled={busy} onChange={event => onLine(index, "discount", event.target.value)} onKeyDown={event => handleLineDiscountKeyDown(index, event)} className="min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" /><select aria-label={`Discount type for ${productName}`} value={line.discount_type ?? "flat"} disabled={busy} onChange={event => onLine(index, "discount_type", event.target.value)} className="min-h-11 rounded border border-input bg-background px-2 text-sm"><option value="flat">Amount</option><option value="percent">%</option></select></div>{fieldIssue("discount", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("discount", index)}</span>}</div>
               <button type="button" disabled={busy} aria-label={`Remove ${productName}`} onClick={() => onRemove(index)} className="col-span-2 min-h-11 rounded border border-destructive/40 px-3 text-destructive">Remove product</button>
             </div>
           </details>
@@ -457,25 +555,23 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, staff
       </article>)}
       {!sale.lines.length && <p className="rounded-xl border bg-card p-10 text-center text-muted-foreground">Ready for the next customer. Scan a product to begin.</p>}
     </div>
-    {owner && <div className="rounded-xl border bg-card p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <label htmlFor="pos-invoice-discount" className="text-sm font-medium">Sale discount</label>
-        <select aria-label="Sale discount type" value={sale.discountType} disabled={busy} onChange={event => onDiscountType(event.target.value as "flat" | "percent")} className="min-h-11 rounded border border-input bg-background px-3 text-base">
-          <option value="flat">Amount</option><option value="percent">Percentage (%)</option>
-        </select>
-        <input id="pos-invoice-discount" aria-label={sale.discountType === "percent" ? "Sale discount percentage" : "Sale discount amount"} type="text" inputMode="decimal" value={sale.discount} disabled={busy} onChange={event => onDiscount(event.target.value)} placeholder={sale.discountType === "percent" ? "0–100" : "0.00"} className="min-h-11 w-32 rounded border border-input bg-background px-3 text-base tabular-nums" />
-      </div>
-      {draftResult.amounts && Number(sale.discount) > 0 && <p className="mt-2 text-sm tabular-nums">Discount before tax: {formatBooksMoney(draftResult.amounts.invoiceDiscount)}</p>}
-    </div>}
     {draftResult.issues.filter(issue => issue.field === "invoice_discount").map(issue => <p key={issue.message} className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{issue.message}</p>)}
     <div data-pos-payment-bar className="sticky bottom-4 z-20 flex flex-col gap-4 rounded-xl border border-primary/30 bg-card p-4 shadow-lg">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center" role="group" aria-label={t("sell.paymentType")}>
-        {(["cash", "card"] as const).map(type => <button key={type} type="button" disabled={busy} aria-pressed={sale.paymentType === type} onClick={() => onPaymentType(type)} className={`min-h-12 flex-1 rounded-lg px-5 font-semibold disabled:opacity-40 ${sale.paymentType === type ? "bg-primary text-primary-foreground" : "border border-input bg-background"}`}>{type === "cash" ? t("sell.paymentCash") : t("sell.paymentCard")}</button>)}
+        {(["cash", "card"] as const).map(type => <button key={type} type="button" data-pos-payment-method={type} disabled={busy} aria-pressed={sale.paymentType === type} onClick={() => onPaymentType(type)} onKeyDown={event => handlePaymentKeyDown(type, event)} className={`min-h-12 flex-1 rounded-lg px-5 font-semibold disabled:opacity-40 ${sale.paymentType === type ? "bg-primary text-primary-foreground" : "border border-input bg-background"}`}>{type === "cash" ? t("sell.paymentCash") : t("sell.paymentCard")}</button>)}
         {sale.paymentType === "credit" && <span className="text-sm font-medium text-muted-foreground">{t("sell.paymentCredit")}</span>}
       </div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType === "card" ? t("sell.paymentCard") : sale.paymentType === "credit" ? t("sell.paymentCredit") : t("sell.paymentCash")}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">Unavailable</span> : formatBooksMoney(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">Complete or correct the highlighted sale fields to calculate the total.</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>Includes tax from advanced options.</small>}</div>
-      {owner && sale.paymentType === "cash" && <div className="sm:min-w-52"><label className="block text-sm">Cash received<input aria-label="Cash received" type="text" inputMode="decimal" value={cashReceived} placeholder={total === null ? "Sale total unavailable" : String(total)} onChange={event => onCashReceived(event.target.value)} disabled={busy} className="mt-1 block min-h-11 w-full rounded border border-input bg-background px-3 tabular-nums sm:w-40" /></label><div className="mt-2 flex flex-wrap gap-2">{quickCashPresets.map(preset => <button key={preset.label} type="button" disabled={busy} className="min-h-11 rounded border px-2 text-xs disabled:opacity-40" onClick={() => onCashReceived(String(preset.value))}>{preset.label}</button>)}</div>{draftResult.issues.filter(issue => issue.field === "cash_received").map(issue => <p key={issue.message} className="mt-2 text-sm text-destructive" role="alert">{draftResult.cashSummary?.status === "cash-short" ? <>Cash short by <span className="tabular-nums">{formatBooksMoney(draftResult.cashSummary.shortfall)}</span>.</> : issue.message}</p>)}{!draftResult.issues.some(issue => issue.field === "cash_received") && (cashReceived.trim() === "" ? <p className="mt-2 text-sm text-muted-foreground">Leave blank to use the exact sale total.</p> : draftResult.cashSummary ? <p className="mt-2 text-sm">Change due: <span className="tabular-nums">{formatBooksMoney(draftResult.cashSummary.change)}</span></p> : <p className="mt-2 text-sm text-muted-foreground">Cash summary unavailable until the sale total is valid.</p>)}</div>}
+      <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType === "card" ? t("sell.paymentCard") : sale.paymentType === "credit" ? t("sell.paymentCredit") : t("sell.paymentCash")}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">Unavailable</span> : formatBooksMoney(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">Complete or correct the highlighted sale fields to calculate the total.</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>Includes tax from advanced options.</small>}
+      {owner && <div className="mt-3 flex flex-wrap items-center gap-3">
+        <label htmlFor="pos-invoice-discount" className="text-sm font-medium">{t("sell.totalBillDiscount")}</label>
+        <select aria-label="Total Bill Discount type" value={sale.discountType} disabled={busy} onChange={event => onDiscountType(event.target.value as "flat" | "percent")} className="min-h-11 rounded border border-input bg-background px-3 text-base">
+          <option value="flat">Amount</option><option value="percent">Percentage (%)</option>
+        </select>
+        <input id="pos-invoice-discount" aria-label={sale.discountType === "percent" ? "Total Bill Discount percentage" : "Total Bill Discount amount"} type="text" inputMode="decimal" value={sale.discount} disabled={busy} onChange={event => onDiscount(event.target.value)} onKeyDown={handleTotalBillDiscountKeyDown} placeholder={sale.discountType === "percent" ? "0–100" : "0.00"} className="min-h-11 w-32 rounded border border-input bg-background px-3 text-base tabular-nums" />
+      </div>}
+      {owner && draftResult.amounts && Number(sale.discount) > 0 && <p className="mt-2 text-sm tabular-nums">Discount before tax: {formatBooksMoney(draftResult.amounts.invoiceDiscount)}</p>}</div>
+      {owner && sale.paymentType === "cash" && <div className="sm:min-w-52"><label className="block text-sm">Cash received<input id="pos-cash-received" aria-label="Cash received" type="text" inputMode="decimal" value={cashReceived} placeholder={total === null ? "Sale total unavailable" : String(total)} onChange={event => onCashReceived(event.target.value)} onKeyDown={handleCashReceivedKeyDown} disabled={busy} className="mt-1 block min-h-11 w-full rounded border border-input bg-background px-3 tabular-nums sm:w-40" /></label><div className="mt-2 flex flex-wrap gap-2">{quickCashPresets.map(preset => <button key={preset.label} type="button" disabled={busy} className="min-h-11 rounded border px-2 text-xs disabled:opacity-40" onClick={() => onCashReceived(String(preset.value))}>{preset.label}</button>)}</div>{draftResult.issues.filter(issue => issue.field === "cash_received").map(issue => <p key={issue.message} className="mt-2 text-sm text-destructive" role="alert">{draftResult.cashSummary?.status === "cash-short" ? <>Cash short by <span className="tabular-nums">{formatBooksMoney(draftResult.cashSummary.shortfall)}</span>.</> : issue.message}</p>)}{!draftResult.issues.some(issue => issue.field === "cash_received") && (cashReceived.trim() === "" ? <p className="mt-2 text-sm text-muted-foreground">Leave blank to use the exact sale total.</p> : draftResult.cashSummary ? <p className="mt-2 text-sm">Change due: <span className="tabular-nums">{formatBooksMoney(draftResult.cashSummary.change)}</span></p> : <p className="mt-2 text-sm text-muted-foreground">Cash summary unavailable until the sale total is valid.</p>)}</div>}
       <div className="flex flex-col gap-2 sm:flex-row"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">Hold sale</button><button data-entry-add type="button" disabled={busy || !sale.lines.length || !sale.customerId || !draftResult.valid} onClick={onSave} className="min-h-12 w-full rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40 sm:w-auto">{busy ? "Saving…" : owner || staffDirectSale ? sale.paymentType === "credit" ? "Save credit sale" : "Pay & Save" : "Send for approval"}</button></div>
       </div>
       {saveHint && <p data-pos-save-hint role="status" className="text-sm text-muted-foreground">{saveHint}{walkInState === "failed" && onRetryWalkIn && <button type="button" onClick={onRetryWalkIn} className="ml-3 min-h-11 rounded border border-input px-3 font-medium text-foreground">{t("pos.retry")}</button>}</p>}

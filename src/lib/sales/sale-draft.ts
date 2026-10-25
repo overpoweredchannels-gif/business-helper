@@ -14,8 +14,20 @@ export type SaleDraftLine = {
   quantity: string;
   selling_price: string;
   discount?: string;
+  /** Per-line discount kind. Absent = "flat" (legacy lines). A discount
+   * typed with a trailing "%" means percent regardless of this field. */
+  discount_type?: "flat" | "percent";
   bonus?: string;
 };
+
+/** Split a typed line discount into its value and kind. "5%" means
+ * percent even when the line's type select still says flat, so a
+ * percent typed by hand is never silently treated as a flat amount. */
+function normalizeLineDiscount(line: SaleDraftLine): { value: string; type: "flat" | "percent" } {
+  const raw = (line.discount ?? "").trim();
+  if (raw.endsWith("%")) return { value: raw.slice(0, -1).trim(), type: "percent" };
+  return { value: raw, type: line.discount_type ?? "flat" };
+}
 
 export type SaleDraftIssue = {
   field: "product_id" | "quantity" | "selling_price" | "discount" | "bonus" | "invoice_discount" | "tax" | "cash_received" | "sale";
@@ -100,9 +112,13 @@ export function validateSaleDraft(input: SaleDraftInput): SaleDraftResult {
       valid = false;
     }
 
-    const discount = (line.discount ?? "").trim();
+    const normalizedDiscount = normalizeLineDiscount(line);
+    const discount = normalizedDiscount.value;
     if (discount && !isSupportedNonNegative(discount, SALE_MONEY_DECIMAL_PLACES)) {
       issues.push({ field: "discount", lineIndex, message: "Line discount must be non-negative and use up to two decimal places." });
+      valid = false;
+    } else if (normalizedDiscount.type === "percent" && discount && Number(discount) > 100) {
+      issues.push({ field: "discount", lineIndex, message: "Line discount percentage cannot exceed 100." });
       valid = false;
     }
 
@@ -118,6 +134,7 @@ export function validateSaleDraft(input: SaleDraftInput): SaleDraftResult {
         quantity,
         sellingPrice: price,
         discount: discount || "0",
+        discountType: normalizedDiscount.type,
       });
       return true;
     } catch (error) {
@@ -159,11 +176,15 @@ export function validateSaleDraft(input: SaleDraftInput): SaleDraftResult {
   let amounts: SaleAmounts | undefined;
   if (lineFieldsValid.every(Boolean) && totalsFieldsValid) {
     try {
-      amounts = calculateSaleAmounts(input.lines.map(line => ({
-        quantity: line.quantity.trim(),
-        sellingPrice: line.selling_price.trim(),
-        discount: line.discount?.trim() || "0",
-      })), {
+      amounts = calculateSaleAmounts(input.lines.map(line => {
+        const normalized = normalizeLineDiscount(line);
+        return {
+          quantity: line.quantity.trim(),
+          sellingPrice: line.selling_price.trim(),
+          discount: normalized.value || "0",
+          discountType: normalized.type,
+        };
+      }), {
         invoiceDiscount: invoiceDiscount || "0",
         invoiceDiscountType: input.invoiceDiscountType,
         taxRate: taxRate || "0",

@@ -17,7 +17,7 @@ import { formatAvailableStock } from "@/lib/products/stock-display";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
-import { hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
+import { calculateSaleLineDiscountAmount, hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
@@ -2095,7 +2095,7 @@ setCustomerOrganizationName("");
     clearCreditOverrideState();
     setSalesLines([
       ...salesLines,
-      { product_id: null, quantity: "", selling_price: "", discount: "", bonus: "", unit_mode: "main" },
+      { product_id: null, quantity: "", selling_price: "", discount: "", discount_type: "flat", bonus: "", unit_mode: "main" },
     ]);
   };
 
@@ -2138,6 +2138,14 @@ setCustomerOrganizationName("");
   ) => {
     clearCreditOverrideState();
     const newLines = [...salesLines];
+    // A discount typed with a trailing "%" means percent regardless of
+    // the line's type select: strip it and set the type, so "5%" is
+    // never silently saved as a flat 5.
+    if (field === "discount" && typeof value === "string" && value.trim().endsWith("%")) {
+      newLines[index] = { ...newLines[index], discount: value.trim().slice(0, -1).trim(), discount_type: "percent" };
+      setSalesLines(newLines);
+      return;
+    }
     newLines[index] = { ...newLines[index], [field]: value } as SalesLine;
     // if product selected, populate default selling price (per main unit)
     if (field === "product_id" && value) {
@@ -2147,6 +2155,7 @@ setCustomerOrganizationName("");
       setSalesError(null);
       const prod = products.find((p) => String(p.id) === value);
       if (prod) {
+        setScannedProductNames(current => ({ ...current, [String(prod.id)]: prod.name }));
         const recent = selectedCustomerIdForSale
           ? recentCustomerPrices[`${selectedCustomerIdForSale}:${value}`]
           : undefined;
@@ -4242,11 +4251,30 @@ setCustomerOrganizationName("");
       return;
     }
 
+    // The saved line discount is always an amount: a percent line is
+    // converted to its computed amount here (and in the draft path
+    // below), because the database discount column stores amounts.
+    const savedLineDiscount = (line: SalesLine): number => {
+      const raw = line.discount.trim();
+      const isPercent = raw.endsWith("%") || line.discount_type === "percent";
+      const value = isPercent ? raw.replace(/%$/, "").trim() : raw;
+      if (value === "") return 0;
+      return isPercent
+        ? calculateSaleLineDiscountAmount({ quantity: line.quantity, sellingPrice: line.selling_price, discount: value, discountType: "percent" })
+        : safeNumber(value);
+    };
     for (const line of invoiceLines) {
       if (!line.product_id) continue;
-      const lineDiscount = line.discount.trim() === "" ? 0 : Number(line.discount);
-      if (line.discount.trim() !== "" && (!Number.isFinite(lineDiscount) || lineDiscount < 0 || !hasAllowedPrecision(line.discount, SALE_MONEY_DECIMAL_PLACES) || lineDiscount > Number(line.quantity) * Number(line.selling_price))) {
-        setSalesError("Line discount must use up to two decimal places and stay between zero and the line subtotal");
+      const rawDiscount = line.discount.trim();
+      const isPercentDiscount = rawDiscount.endsWith("%") || line.discount_type === "percent";
+      const discountValue = isPercentDiscount ? rawDiscount.replace(/%$/, "").trim() : rawDiscount;
+      const lineDiscount = discountValue === "" ? 0 : Number(discountValue);
+      const discountInvalid = rawDiscount !== "" && (!Number.isFinite(lineDiscount) || lineDiscount < 0 || !hasAllowedPrecision(discountValue, SALE_MONEY_DECIMAL_PLACES) ||
+        (isPercentDiscount ? lineDiscount > 100 : lineDiscount > Number(line.quantity) * Number(line.selling_price)));
+      if (discountInvalid) {
+        setSalesError(isPercentDiscount
+          ? "Line discount percentage cannot exceed 100"
+          : "Line discount must use up to two decimal places and stay between zero and the line subtotal");
         setSalesMessage(null);
         return;
       }
@@ -4362,7 +4390,7 @@ setCustomerOrganizationName("");
                 unitPrice: Number(line.selling_price),
                 unitMode: line.unit_mode ?? "main",
                 bonus: Number(line.bonus || 0),
-                discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
+                discount: savedLineDiscount(line),
               })),
             paymentType: salesPaymentType,
             creditDays: salesPaymentType === "credit" ? selectedCustomerCreditDays : undefined,
@@ -4428,7 +4456,7 @@ setCustomerOrganizationName("");
           product_id: String(line.product_id),
           quantity: safeNumber(line.quantity),
           selling_price: safeNumber(line.selling_price),
-          discount: line.discount.trim() === "" ? 0 : safeNumber(line.discount),
+          discount: savedLineDiscount(line),
           bonus: line.bonus?.trim() ? safeNumber(line.bonus) : 0,
           unit_mode: line.unit_mode ?? "main",
         })),
@@ -4469,7 +4497,17 @@ setCustomerOrganizationName("");
         }
       }
 
-      setSalesMessage(`Sales invoice ${invoiceNumber} saved successfully${result.replayed ? " (confirmed retry)" : ""}.`);
+      // Keyboard-flow closing line: after a completed cash sale the
+      // cashier must be told the change to hand over, in the same
+      // message as the save confirmation (drawer kick + receipt
+      // auto-open already fire above/below via the existing paths).
+      const cashChangeMessage = quickSaleMode && isOwnerOrAdmin() && salesPaymentType === "cash"
+        ? (() => {
+          const summary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal ?? 0, received: posCashReceived, currency: getActiveBooksCurrency() });
+          return summary.change > 0 ? ` Change due: ${formatBooksMoney(summary.change)} — please give to the customer.` : "";
+        })()
+        : "";
+      setSalesMessage(`Sales invoice ${invoiceNumber} saved successfully${result.replayed ? " (confirmed retry)" : ""}.${cashChangeMessage}`);
       if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
       setSaleScanFocus(value => value + 1);
       setSalesInvoiceNumber("");
@@ -5554,6 +5592,7 @@ setCustomerOrganizationName("");
     quantity: string;
     selling_price: string;
     discount: string;
+    discount_type?: "flat" | "percent";
     bonus?: string;
     unit_mode?: UnitMode;
     batch_number?: string;
@@ -5566,6 +5605,12 @@ setCustomerOrganizationName("");
     last_sold_at: string;
   }
   const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
+  // Names of products scanned or added in this session, keyed by id.
+  // RetailPOS resolves line names from the products prop alone, so a
+  // line whose product dropped out of a stale list used to render
+  // "Product unavailable" even though the product was just scanned.
+  // This map is the fallback for both the POS and the detailed form.
+  const [scannedProductNames, setScannedProductNames] = useState<Record<string, string>>({});
   const [quickSaleMode, setQuickSaleMode] = useState(false);
   const [lastPOSReceipt, setLastPOSReceipt] = useState<Receipt | null>(null);
   const saleSubmitLock = useRef(false);
@@ -5593,6 +5638,7 @@ setCustomerOrganizationName("");
     }
     if (result.status === "added") {
       clearCreditOverrideState();
+      setScannedProductNames(current => ({ ...current, [String(result.product.id)]: result.product.name }));
       const recent = selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${result.product.id}`] : undefined;
       setSalesLines(current => addScannedLine(current, result.product, saleScanUnit, recent));
       setSalesError(null);
@@ -5601,7 +5647,9 @@ setCustomerOrganizationName("");
   };
   const restoreCounterSale = (sale: CounterSale) => {
     salesPricingRequest.current += 1;
-    setSalesLines(sale.lines); setSelectedCustomerIdForSale(sale.customerId);
+    // Held sales and baskets saved before per-line discount types exist
+    // carry no discount_type; they default to flat (the old semantics).
+    setSalesLines(sale.lines.map(line => ({ ...line, discount_type: line.discount_type ?? "flat" }))); setSelectedCustomerIdForSale(sale.customerId);
     setSalesInvoiceDate(sale.date); setSalesPaymentType(sale.paymentType);
     setSalesDiscountAmount(sale.discount); setSalesDiscountType(sale.discountType); setSalesTaxRate(sale.tax);
     clearCreditOverrideState(); setSaleScanFocus(value => value + 1);
@@ -18604,9 +18652,9 @@ setCustomerOrganizationName("");
             )}
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
-              products={activeProducts} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
+              products={activeProducts} productNameFallback={scannedProductNames} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
               onScan={(code, options) => { const result = runSalesScan(code, options); return result.status === "not-found" ? null : String(result.product.id); }}
-              onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
+              onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setScannedProductNames(current => ({ ...current, [String(product.id)]: product.name })); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
@@ -18672,7 +18720,7 @@ setCustomerOrganizationName("");
             <fieldset disabled={!isOwnerOrAdmin()} className="grid gap-4 sm:grid-cols-2 disabled:opacity-60">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span className="flex items-center gap-2">
-                  {t('sell.invoiceDiscount')}
+                  {t('sell.totalBillDiscount')}
                   <span className="flex rounded border border-border overflow-hidden">
                     <button
                       type="button"
@@ -18830,6 +18878,7 @@ setCustomerOrganizationName("");
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.product')}</span>
                           <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={invoiceProductOptions} rankedFields={invoiceProductRankFields} onBarcodeEnter={text => runSalesScan(text, { reportNotFound: isBarcodeShaped(text) }).status !== "not-found"} />
+                          {line.product_id && !lineProduct && scannedProductNames[line.product_id] && <span className="text-xs text-muted-foreground">{scannedProductNames[line.product_id]} (not in current product list)</span>}
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -18877,12 +18926,23 @@ setCustomerOrganizationName("");
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.lineDiscount')}</span>
-                          <input
-                            type="text" inputMode="decimal"
-                            value={line.discount}
-                            onChange={(e) => handleSalesLineChange(index, "discount", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
-                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="text" inputMode="decimal"
+                              value={line.discount}
+                              onChange={(e) => handleSalesLineChange(index, "discount", e.target.value)}
+                              className="w-full rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            />
+                            <select
+                              aria-label={`Discount type for line ${index + 1}`}
+                              value={line.discount_type ?? "flat"}
+                              onChange={(e) => handleSalesLineChange(index, "discount_type", e.target.value)}
+                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            >
+                              <option value="flat">Amount</option>
+                              <option value="percent">%</option>
+                            </select>
+                          </div>
                           {currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "discount") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "discount")?.message}</span>}
                         </label>
 
@@ -21391,6 +21451,11 @@ setCustomerOrganizationName("");
                 onChange={(e) => setProductSellingPrice(e.target.value)}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               />
+              {Number(productSellingPrice) > 0 && Number(unitsPerPack) > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Piece price will be {formatBooksMoney(subunitPriceFromMain(Number(productSellingPrice), Number(unitsPerPack)))} ({productSellingPrice} ÷ {unitsPerPack} per pack)
+                </p>
+              )}
             </div>
           </div>
 
