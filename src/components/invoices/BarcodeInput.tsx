@@ -2,13 +2,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
-export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled, autoFocus = false, label, focusSignal = 0, compact = false }: { value?: string; onChange?: (value: string) => void; onScan: (value: string) => unknown; /** Optional exact-match gate for the scanner auto-detect timer: when
+export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled, autoFocus = false, label, focusSignal = 0, clearSignal = 0, afterScan, compact = false }: { value?: string; onChange?: (value: string) => void; onScan: (value: string) => unknown; /** Optional exact-match gate for the scanner auto-detect timer: when
    * provided, a paused burst is submitted only if it returns true for the
    * current text. A mid-burst pause can leave a partial code in the field;
    * submitting that prefix used to add (or error on) the wrong thing, so
    * auto-detect now validates before submitting and otherwise waits for
    * Enter / more input. Manual Enter and the button are never gated. */
-  canAutoSubmit?: (value: string) => boolean; disabled?: boolean; autoFocus?: boolean; label?: string; focusSignal?: number; compact?: boolean }) {
+  canAutoSubmit?: (value: string) => boolean; disabled?: boolean; autoFocus?: boolean; label?: string; focusSignal?: number; /** Bumping this erases the box (used for the next-sale reset after a receipt closes). Callers that don't pass it are unaffected. */
+  clearSignal?: number; /** Runs after every accepted or duplicate scan (not after a rejected code), so a keyboard-walk parent can advance focus past the barcode box — whose own Enter handler stops propagation and would otherwise swallow the walk. Callers that don't pass it are unaffected. */
+  afterScan?: () => void; compact?: boolean }) {
   const { t } = useRegional();
   const displayLabel = label ?? t('barcode.scanBarcode');
   const [localValue, setLocalValue] = useState(""); const input = useRef<HTMLInputElement>(null);
@@ -24,6 +26,13 @@ export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled,
   const lastSubmitted = useRef<string | null>(null);
   
   useEffect(() => { if (focusSignal > 0 && !disabled) input.current?.focus(); }, [focusSignal, disabled]);
+  useEffect(() => {
+    if (clearSignal > 0) {
+      setLocalValue("");
+      if (input.current) input.current.value = "";
+      lastSubmitted.current = null;
+    }
+  }, [clearSignal]);
   // Cleanup timer on unmount
   useEffect(() => { return () => { if (inputTimer.current) clearTimeout(inputTimer.current); }; }, []);
   
@@ -69,6 +78,7 @@ export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled,
       // trigger (auto-detect + Enter), not a new scan.
       input.current?.focus();
       if (value === undefined) input.current?.select();
+      afterScan?.();
       return;
     }
     const outcome = onScan(scanned);
@@ -88,6 +98,7 @@ export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled,
     // instead of appending to it. Controlled parents own the value and
     // keep their existing behavior untouched.
     if (value === undefined) input.current?.select();
+    afterScan?.();
   };
   return <div className="space-y-2" data-help-topic="barcode">
     <label className="block text-sm font-medium">{displayLabel}<input ref={input} value={text} autoFocus={autoFocus} disabled={disabled} type="text" autoComplete="off" spellCheck={false} maxLength={200} placeholder={t('barcode.placeholder')} onChange={event => change(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); scan(); } }} className="mt-1 w-full rounded border border-input bg-background px-3 py-2 focus:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
