@@ -10338,7 +10338,7 @@ setCustomerOrganizationName("");
     () =>
       queryLedger(inventoryTransactions, {
         movementType: ledgerMovementFilter === "all" ? null : ledgerMovementFilter,
-        productId: ledgerProductFilter === "all" ? null : Number(ledgerProductFilter),
+        productId: ledgerProductFilter === "all" ? null : ledgerProductFilter,
         searchText: ledgerSearch,
         productNames: productNameById,
       }),
@@ -10356,7 +10356,7 @@ setCustomerOrganizationName("");
     () =>
       ledgerProductFilter === "all"
         ? []
-        : getBatchBreakdown(inventoryTransactions, Number(ledgerProductFilter)),
+        : getBatchBreakdown(inventoryTransactions, ledgerProductFilter),
     [inventoryTransactions, ledgerProductFilter]
   );
 

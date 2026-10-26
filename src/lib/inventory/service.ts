@@ -206,7 +206,11 @@ export const buildInventorySnapshots = (
 
 export interface LedgerQuery {
   movementType: string | null;
-  productId: number | null;
+  // String, not number: product ids are uuid strings on real orgs, and
+  // Number(uuid) is NaN, which made the product filter match nothing
+  // (re-QA 2026-10-26: filtered view empty for products with known
+  // movements, while unfiltered view and name search showed them).
+  productId: string | null;
   searchText: string;
   productNames: Map<string, string>;
 }
