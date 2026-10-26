@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent as ReactChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
+import { useScannerCapture } from "@/components/invoices/scanner-capture";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
 import { buildCustomerSuggestionData } from "@/components/search/suggestion-items";
 import { type BarcodeLine } from "@/lib/invoices/barcode";
@@ -242,86 +243,35 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
     setFocusQuantityFor(lineIndex >= 0 ? lineIndex : sale.lines.length);
     return true;
   };
-  // Scanner-wedge capture. A wedge scanner "types" the code with inhumanly
-  // even, tiny gaps and finishes with Enter. When focus sits somewhere that
-  // does not consume characters as free text (bare page, a button, a
-  // checkbox, or a quantity field), a rapid burst ending in Enter is a
-  // scan: route it through the scan handler instead of letting the digits
-  // land in the focused field or the Enter activate the focused button.
-  // Once a burst is under way its characters are consumed here (never typed
-  // into a quantity field); its first character may still land, so a
-  // quantity field's value is snapshotted and restored when the scan
-  // completes. The listener runs in the capture phase so a detected scan
-  // Enter is consumed before the section's entry-navigation handler can
-  // treat it as "advance / run the primary action". Human-speed typing
-  // never builds a burst (any gap >= 50ms resets it) and is left completely
-  // untouched, as are text inputs, textareas and selects other than the
-  // quantity fields.
-  const scanBurst = useRef("");
-  const scanLastKeyAt = useRef(0);
-  const scanQuantitySnapshot = useRef<{ index: number; value: string } | null>(null);
-  const scanLatest = useRef({ busy, onLine, handleScannedCode });
-  useEffect(() => { scanLatest.current = { busy, onLine, handleScannedCode }; });
-  useEffect(() => {
-    const GAP_MS = 50;
-    const resetBurst = () => { scanBurst.current = ""; scanQuantitySnapshot.current = null; };
-    const onKeyDown = (event: KeyboardEvent) => {
-      const latest = scanLatest.current;
-      const dialogOpen = Array.from(document.querySelectorAll('[role="dialog"]')).some(el => el.getClientRects().length > 0);
-      if (latest.busy || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || dialogOpen) { resetBurst(); return; }
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      const quantityIndex = target instanceof HTMLInputElement ? target.dataset.posQuantity : undefined;
-      const capturable = target !== null && (
-        target === document.body ||
-        target instanceof HTMLButtonElement ||
-        (target instanceof HTMLInputElement && (target.type === "checkbox" || quantityIndex !== undefined))
-      );
-      if (!capturable) { resetBurst(); return; }
-      const now = Date.now();
-      if (event.key === "Enter") {
-        const code = scanBurst.current;
-        const snapshot = scanQuantitySnapshot.current;
-        resetBurst();
-        // Any Enter terminating a >= 4-char burst belongs to the scan path,
-        // however long the scanner paused before sending it: some wedges
-        // delay the terminating Enter past the inter-key gap, and letting
-        // it through used to hand it to entry navigation, which can run
-        // the primary action (Pay & Save) mid-scan. A surviving burst is
-        // rapid by construction — a slow keystroke resets it below — so
-        // the final gap no longer decides.
-        if (code.length >= 4) {
-          event.preventDefault();
-          event.stopPropagation();
-          // Restore the quantity value the burst typed over, then add the
-          // scanned line through the normal scan path.
-          if (snapshot) latest.onLine(snapshot.index, "quantity", snapshot.value);
-          latest.handleScannedCode(code);
-        }
-        return;
+  // Scanner-wedge capture, shared with the detailed invoice form (see
+  // scanner-capture.ts). A wedge scanner "types" the code with inhumanly
+  // even, tiny gaps and finishes with Enter. When focus sits on a sale
+  // line field (quantity, price, discount value, discount type), on bare
+  // page, a button, or a checkbox, a rapid burst ending in Enter is a
+  // scan: it is routed through the scan handler instead of landing in
+  // the focused field, and focus then moves to the new line's quantity
+  // — so a cashier can scan product after product without clicking.
+  // Previously only quantity fields were covered, so a scan arriving
+  // after Quantity Enter (focus in Price, discount type, or discount
+  // value) typed the barcode into that field and added nothing.
+  useScannerCapture({
+    disabled: busy,
+    identifyField: (target) => {
+      if (target instanceof HTMLInputElement) {
+        if (target.dataset.posQuantity !== undefined) return { kind: "quantity", index: Number(target.dataset.posQuantity) };
+        if (target.dataset.posPrice !== undefined) return { kind: "price", index: Number(target.dataset.posPrice) };
+        if (target.dataset.posDiscountValue !== undefined) return { kind: "discount", index: Number(target.dataset.posDiscountValue) };
       }
-      if (event.key === "Shift") return;
-      if (event.key.length !== 1) { resetBurst(); return; }
-      if (scanBurst.current && now - scanLastKeyAt.current >= GAP_MS) resetBurst();
-      if (!scanBurst.current && quantityIndex !== undefined && target instanceof HTMLInputElement) {
-        scanQuantitySnapshot.current = { index: Number(quantityIndex), value: target.value };
+      if (target instanceof HTMLSelectElement && target.dataset.posDiscountType !== undefined) {
+        return { kind: "discountType", index: Number(target.dataset.posDiscountType) };
       }
-      if (scanBurst.current) {
-        // A burst is already in progress (this character arrived within
-        // the gap of the previous one): it is a captured scan character,
-        // so consume it here instead of letting it type into the focused
-        // quantity field and corrupt the quantity keystroke by keystroke.
-        // Only the burst's first character can still land — at that point
-        // it is indistinguishable from human typing — and the snapshot
-        // above restores the field when the scan completes.
-        event.preventDefault();
-        event.stopPropagation();
-      }
-      scanBurst.current += event.key;
-      scanLastKeyAt.current = now;
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, []);
+      return null;
+    },
+    restoreField: (field, value) => {
+      onLine(field.index, field.kind === "price" ? "selling_price" : field.kind === "discountType" ? "discount_type" : field.kind, value);
+    },
+    handleScan: handleScannedCode,
+  });
   const persist = (rows: HeldSale[]) => {
     try { localStorage.setItem(storageKey, JSON.stringify(rows)); setHeld(rows); return true; }
     catch { setNotice("Browser storage is full or unavailable. Your current sale has been kept open."); return false; }
@@ -606,7 +556,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
         <td className="p-2"><select aria-label={`Unit for ${productName}`} value={line.unit_mode ?? "main"} disabled={busy} onChange={event => onLine(index, "unit_mode", event.target.value)} className="min-h-11 rounded border border-input bg-background px-2"><option value="main">{product?.unit_type || "Main"}</option>{Number(product?.units_per_pack) > 0 && <option value="subunit">{product?.subunit_type || "Piece"}</option>}</select></td>
         {(["quantity", "selling_price", "discount"] as const).map(field => <td key={field} className="p-2">
           <div className="flex items-center gap-2">
-            <input data-pos-quantity={field === "quantity" ? index : undefined} data-pos-discount-value={field === "discount" ? index : undefined} aria-label={`${field === "selling_price" ? "Price" : field} for ${productName}`} type="text" inputMode="decimal" value={line[field]} disabled={busy} onChange={event => onLine(index, field, event.target.value)} onKeyDown={field === "discount" ? event => handleLineDiscountKeyDown(index, event) : field === "selling_price" ? event => handleLinePriceKeyDown(index, event) : undefined} className="min-h-11 w-24 rounded border border-input bg-background px-2 tabular-nums" />
+            <input data-pos-quantity={field === "quantity" ? index : undefined} data-pos-price={field === "selling_price" ? index : undefined} data-pos-discount-value={field === "discount" ? index : undefined} aria-label={`${field === "selling_price" ? "Price" : field} for ${productName}`} type="text" inputMode="decimal" value={line[field]} disabled={busy} onChange={event => onLine(index, field, event.target.value)} onKeyDown={field === "discount" ? event => handleLineDiscountKeyDown(index, event) : field === "selling_price" ? event => handleLinePriceKeyDown(index, event) : undefined} className="min-h-11 w-24 rounded border border-input bg-background px-2 tabular-nums" />
             {field === "discount" && <select data-pos-discount-type={index} aria-label={`Discount type for ${productName}`} value={line.discount_type ?? "flat"} disabled={busy} onFocus={openSelectPicker} onBlur={clearPosPickerOpen} onKeyDown={event => handleDiscountTypeSelectKeyDown(`[data-pos-discount-value="${index}"]`, event)} onChange={event => handleLineDiscountTypeChange(index, event)} className="min-h-11 rounded border border-input bg-background px-2 text-sm"><option value="flat">Amount</option><option value="percent">%</option></select>}
           </div>
           {field === "selling_price" && subunitCaption && <span className="mt-1 block text-xs text-muted-foreground tabular-nums">{subunitCaption}</span>}
@@ -624,7 +574,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
           <details className="col-span-2">
             <summary className="flex min-h-11 cursor-pointer items-center rounded border border-border px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Price, discount & removal</summary>
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <label className="text-xs font-medium">Price<input aria-label={`Price for ${productName}`} type="text" inputMode="decimal" value={line.selling_price} disabled={busy} onChange={event => onLine(index, "selling_price", event.target.value)} onKeyDown={event => handleLinePriceKeyDown(index, event)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" />{subunitCaption && <span className="mt-1 block text-xs text-muted-foreground tabular-nums">{subunitCaption}</span>}{fieldIssue("selling_price", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("selling_price", index)}</span>}</label>
+              <label className="text-xs font-medium">Price<input data-pos-price={index} aria-label={`Price for ${productName}`} type="text" inputMode="decimal" value={line.selling_price} disabled={busy} onChange={event => onLine(index, "selling_price", event.target.value)} onKeyDown={event => handleLinePriceKeyDown(index, event)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" />{subunitCaption && <span className="mt-1 block text-xs text-muted-foreground tabular-nums">{subunitCaption}</span>}{fieldIssue("selling_price", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("selling_price", index)}</span>}</label>
               <div className="text-xs font-medium"><span>Discount</span><div className="mt-1 flex gap-2"><input data-pos-discount-value={index} aria-label={`Discount for ${productName}`} type="text" inputMode="decimal" value={line.discount} disabled={busy} onChange={event => onLine(index, "discount", event.target.value)} onKeyDown={event => handleLineDiscountKeyDown(index, event)} className="min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" /><select data-pos-discount-type={index} aria-label={`Discount type for ${productName}`} value={line.discount_type ?? "flat"} disabled={busy} onFocus={openSelectPicker} onBlur={clearPosPickerOpen} onKeyDown={event => handleDiscountTypeSelectKeyDown(`[data-pos-discount-value="${index}"]`, event)} onChange={event => handleLineDiscountTypeChange(index, event)} className="min-h-11 rounded border border-input bg-background px-2 text-sm"><option value="flat">Amount</option><option value="percent">%</option></select></div>{fieldIssue("discount", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("discount", index)}</span>}</div>
               <button type="button" disabled={busy} aria-label={`Remove ${productName}`} onClick={() => onRemove(index)} className="col-span-2 min-h-11 rounded border border-destructive/40 px-3 text-destructive">Remove product</button>
             </div>

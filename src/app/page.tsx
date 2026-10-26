@@ -23,6 +23,7 @@ import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } f
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
+import { useScannerCapture } from "@/components/invoices/scanner-capture";
 import { addBarcodeLine, addScannedLine } from "@/lib/invoices/barcode";
 import { createScanSubmitter, hasExactBarcodeMatch, isBarcodeShaped, type ScanSubmitter } from "@/lib/invoices/scan-submit";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
@@ -5643,6 +5644,19 @@ setCustomerOrganizationName("");
   // behind (see src/lib/invoices/scan-submit.ts). Accepted scans merge on
   // the product alone via addScannedLine.
   const scanSubmitter = useRef<ScanSubmitter | null>(null);
+  // Detailed-form scan loop (2026-10-26): after a scan adds (or merges) a
+  // line, focus lands on that line's quantity field, mirroring RetailPOS —
+  // so the next scan can arrive while the cashier is still editing a line.
+  const [detailFocusQuantityFor, setDetailFocusQuantityFor] = useState<number | null>(null);
+  // Line index a scanned product lands on, following addScannedLine's
+  // semantics exactly: an existing line merges, otherwise an empty line
+  // is filled, otherwise a new line is appended.
+  const detailScanFocusIndex = (productId: string): number => {
+    const existing = salesLines.findIndex(line => String(line.product_id) === productId);
+    if (existing >= 0) return existing;
+    const empty = salesLines.findIndex(line => !line.product_id && !line.quantity && !line.selling_price && !line.discount && !line.bonus);
+    return empty >= 0 ? empty : salesLines.length;
+  };
   const runSalesScan = (code: string, options?: { reportNotFound?: boolean }) => {
     const submitter = (scanSubmitter.current ??= createScanSubmitter());
     const result = submitter.submit(code, products);
@@ -5659,6 +5673,14 @@ setCustomerOrganizationName("");
     }
     return result;
   };
+  useEffect(() => {
+    if (detailFocusQuantityFor === null) return;
+    const frame = requestAnimationFrame(() => {
+      const field = Array.from(document.querySelectorAll<HTMLInputElement>(`[data-sale-quantity="${detailFocusQuantityFor}"]`)).find(input => input.getClientRects().length > 0);
+      if (field) { field.focus(); field.select(); setDetailFocusQuantityFor(null); }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [detailFocusQuantityFor, salesLines.length]);
   const restoreCounterSale = (sale: CounterSale) => {
     salesPricingRequest.current += 1;
     // Held sales and baskets saved before per-line discount types exist
@@ -5708,6 +5730,37 @@ setCustomerOrganizationName("");
   const [salesMessage, setSalesMessage] = useState<string | null>(null);
   const [salesError, setSalesError] = useState<string | null>(null);
   const [salesInvoiceLoading, setSalesInvoiceLoading] = useState(false);
+  // Scanner-wedge capture for the detailed form: the same shared hook as
+  // RetailPOS, so a scan arriving while focus sits on a line field adds
+  // the new line and moves focus to its quantity instead of typing the
+  // barcode into the field. Disabled while Retail POS is the visible
+  // surface (its own hook instance owns capture then) and outside the
+  // sales section.
+  useScannerCapture({
+    disabled: salesInvoiceLoading || productsLoading || activeSection !== "sales" || quickSaleMode,
+    identifyField: (target) => {
+      if (target instanceof HTMLInputElement) {
+        if (target.dataset.saleQuantity !== undefined) return { kind: "quantity", index: Number(target.dataset.saleQuantity) };
+        if (target.dataset.salePrice !== undefined) return { kind: "price", index: Number(target.dataset.salePrice) };
+        if (target.dataset.saleDiscount !== undefined) return { kind: "discount", index: Number(target.dataset.saleDiscount) };
+      }
+      if (target instanceof HTMLSelectElement && target.dataset.saleDiscountType !== undefined) {
+        return { kind: "discountType", index: Number(target.dataset.saleDiscountType) };
+      }
+      return null;
+    },
+    restoreField: (field, value) => {
+      handleSalesLineChange(field.index, field.kind === "price" ? "selling_price" : field.kind === "discountType" ? "discount_type" : field.kind, value);
+    },
+    handleScan: (code) => {
+      const result = runSalesScan(code, { reportNotFound: isBarcodeShaped(code) });
+      if (result.status === "added" || result.status === "duplicate") {
+        setDetailFocusQuantityFor(detailScanFocusIndex(String(result.product.id)));
+      }
+      return result.status !== "not-found";
+    },
+  });
+
   useEffect(() => {
     if (!currentOrganizationId || !currentProfile?.id) return;
     try {
@@ -18880,6 +18933,12 @@ setCustomerOrganizationName("");
               <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} onScan={code => {
                 const result = runSalesScan(code);
                 if (result.status === "added") setSalesMessage(t('sell.scanAdded').replace('{name}', result.product.name));
+                // Join the scan loop: a box scan lands on the new (or
+                // merged) line's quantity, like a captured scan, instead
+                // of leaving focus in the barcode box.
+                if (result.status === "added" || result.status === "duplicate") {
+                  setDetailFocusQuantityFor(detailScanFocusIndex(String(result.product.id)));
+                }
                 return result.status !== "not-found";
               }} />
               <p className="mt-2 text-sm">{t('sell.scanRepeatedHint')}</p>
@@ -19121,6 +19180,7 @@ setCustomerOrganizationName("");
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.quantity')} ({lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.units')})</span>
                           <input
+                            data-sale-quantity={index}
                             type="text" inputMode="decimal"
                             value={line.quantity}
                             onChange={(e) => handleSalesLineChange(index, "quantity", e.target.value)}
@@ -19132,6 +19192,7 @@ setCustomerOrganizationName("");
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.pricePer')}{' '}{lineProduct ? unitLabelFor(lineProduct, line.unit_mode ?? "main") : t('sell.unit')}</span>
                           <input
+                            data-sale-price={index}
                             type="text" inputMode="decimal"
                             value={line.selling_price}
                             onChange={(e) => handleSalesLineChange(index, "selling_price", e.target.value)}
@@ -19144,12 +19205,14 @@ setCustomerOrganizationName("");
                           <span>{t('sell.lineDiscount')}</span>
                           <div className="flex gap-2">
                             <input
+                              data-sale-discount={index}
                               type="text" inputMode="decimal"
                               value={line.discount}
                               onChange={(e) => handleSalesLineChange(index, "discount", e.target.value)}
                               className="w-full rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                             />
                             <select
+                              data-sale-discount-type={index}
                               aria-label={`Discount type for line ${index + 1}`}
                               value={line.discount_type ?? "flat"}
                               onChange={(e) => handleSalesLineChange(index, "discount_type", e.target.value)}
