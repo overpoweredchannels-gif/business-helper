@@ -1,6 +1,7 @@
 "use client";
 
 import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
+import { initKeyboardModality, wasLastInputKeyboard } from "@/lib/keyboard-modality";
 import { RegionalSettingsPanel } from "@/components/regional/RegionalSettingsPanel";
 import { FxRatesPanel } from "@/components/regional/FxRatesPanel";
 import { useRegional } from "@/components/regional/RegionalProvider";
@@ -14809,6 +14810,14 @@ setCustomerOrganizationName("");
   const productActiveRef = useRef<HTMLInputElement>(null);
   const productOversellingRef = useRef<HTMLSelectElement>(null);
   const productSaveRef = useRef<HTMLButtonElement>(null);
+  // True while the focused select's popup was opened by the walk's
+  // showPicker call. An open popup's Enter commits without reaching
+  // page handlers, so an Enter that DOES reach the form handler means
+  // the popup is closed — and if this flag is set, the pick just
+  // committed without a change event (same value again), so the walk
+  // advances instead of reopening and stalling.
+  const productPickerOpenRef = useRef(false);
+  useEffect(() => { initKeyboardModality(); }, []);
   const focusProductBarcode = (next: "name" | "unitType") => {
     productBarcodeNextRef.current = next;
     setProductBarcodeFocusSignal((value) => value + 1);
@@ -14859,13 +14868,29 @@ setCustomerOrganizationName("");
     }
   };
   const handleProductFormKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    // Escape closes a picked popup; the next Enter must reopen it
+    // natively, not advance, so drop the opened flag here.
+    if (event.key === "Escape" && event.target instanceof HTMLSelectElement) {
+      productPickerOpenRef.current = false;
+      return;
+    }
     if (event.key !== "Enter" || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
     const target = event.target;
     const index = productWalkFieldIndex(target);
     if (index < 0) return;
-    // Selects: native open/commit plus the change handler below own the
-    // advance, so never hijack Enter here (it would break committing).
-    if (target instanceof HTMLSelectElement) return;
+    // Selects: native open/commit plus the change handler own the
+    // advance — except the no-change commit (same value picked again),
+    // which fires no change event. Its Enter reaches this handler only
+    // after the popup closed, so advance instead of reopening.
+    if (target instanceof HTMLSelectElement) {
+      if (productPickerOpenRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        productPickerOpenRef.current = false;
+        advanceProductWalk(index);
+      }
+      return;
+    }
     // Submit button: native submit.
     if (target instanceof HTMLButtonElement) return;
     if (target instanceof HTMLInputElement && target.type === "checkbox") {
@@ -14894,14 +14919,20 @@ setCustomerOrganizationName("");
   };
   const openProductSelectPicker = (event: ReactFocusEvent<HTMLSelectElement>) => {
     // Auto-open on focus (2026-10-26): the walk lands here via Enter,
-    // so the list must already be open for arrow selection. Chromium
-    // only; elsewhere the cashier opens with Enter/Space as before.
+    // so the list must already be open for arrow selection. Keyboard
+    // focus only — a mouse/touch focus must keep native click-to-open
+    // behaviour (showPicker during a click would make the click close
+    // the popup it just opened). Chromium only; elsewhere the cashier
+    // opens with Enter/Space as before.
+    if (!wasLastInputKeyboard()) return;
     try {
       (event.currentTarget as HTMLSelectElement & { showPicker?: () => void }).showPicker?.();
+      productPickerOpenRef.current = true;
     } catch {
       // Popup already open, or no showPicker — ignore.
     }
   };
+  const clearProductPickerOpen = () => { productPickerOpenRef.current = false; };
   const handleProductBarcodeScanned = () => {
     // BarcodeInput refocuses its own box after a scan, so advance on
     // the next frame to win. Direction comes from how the box was
@@ -15143,6 +15174,10 @@ setCustomerOrganizationName("");
     setMessage(`Product saved successfully.${openingStockNote}`);
     resetProductForm();
     fetchProducts();
+    // The opening-stock adjustment writes a ledger row; refresh the
+    // ledger state now, or the Stock Ledger tab keeps showing the
+    // pre-save snapshot and the new movement looks missing (QA, 2026-10-26).
+    fetchInventoryTransactions();
   };
 
   const handleSectionChange = (sectionId: SectionId) => {
@@ -21511,7 +21546,7 @@ setCustomerOrganizationName("");
               <select
                 ref={productBrandRef}
                 value={selectedBrandId ?? ""}
-                onFocus={openProductSelectPicker}
+                onFocus={openProductSelectPicker} onBlur={clearProductPickerOpen}
                 onChange={(e) => { setSelectedBrandId(e.target.value === "" ? null : e.target.value); advanceProductWalkAfterSelect(e); }}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               >
@@ -21531,7 +21566,7 @@ setCustomerOrganizationName("");
               <select
                 ref={productCategoryRef}
                 value={selectedCategoryId ?? ""}
-                onFocus={openProductSelectPicker}
+                onFocus={openProductSelectPicker} onBlur={clearProductPickerOpen}
                 onChange={(e) => { setSelectedCategoryId(e.target.value === "" ? null : e.target.value); advanceProductWalkAfterSelect(e); }}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               >
@@ -21753,7 +21788,7 @@ setCustomerOrganizationName("");
             <select
               ref={productOversellingRef}
               value={productOversellingPolicy}
-              onFocus={openProductSelectPicker}
+              onFocus={openProductSelectPicker} onBlur={clearProductPickerOpen}
               onChange={(e) => { setProductOversellingPolicy(e.target.value); advanceProductWalkAfterSelect(e); }}
               className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             >
