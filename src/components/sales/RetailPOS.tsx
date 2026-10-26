@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent as ReactChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
@@ -34,7 +34,7 @@ const NO_SALE_REASON_KEYS: Record<NoSaleReasonCode, MessageKey> = {
   "other": "drawer.reasonOther",
 };
 
-export function RetailPOS({ scope, sale, products, customers, busy, owner, productNameFallback, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect }: {
+export function RetailPOS({ scope, sale, products, customers, busy, owner, productNameFallback, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, clearSignal = 0, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; busy: boolean; owner: boolean;
   /** Names of products scanned/added while the products list was stale:
    * a line whose product is missing from `products` shows its scanned
@@ -49,7 +49,8 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
    * of leaving Pay & Save silently disabled. */
   walkInState?: "idle" | "preparing" | "failed";
   onRetryWalkIn?: () => void;
-  scanUnit: "main" | "subunit"; cashReceived: string; focusSignal: number; onScan: (code: string, options?: { reportNotFound?: boolean }) => string | null; onAdd: (id: string) => void;
+  scanUnit: "main" | "subunit"; cashReceived: string; focusSignal: number; /** Bumped by the parent when a receipt closes, so the barcode box erases for the next sale. */
+  clearSignal?: number; onScan: (code: string, options?: { reportNotFound?: boolean }) => string | null; onAdd: (id: string) => void;
   onUnit: (unit: "main" | "subunit") => void; onCustomer: (id: string) => void;
   onLine: (index: number, field: keyof BarcodeLine, value: string) => void; onRemove: (index: number) => void;
   onSave: () => void; onCashReceived: (amount: string) => void;
@@ -476,6 +477,39 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
     // moves to the Cash/Card selector.
     if (!focusVisible(`[data-pos-quantity="${index + 1}"]`)) focusVisible("#pos-invoice-discount-type");
   };
+  // Keyboard-only sale flow, discount-type step (2026-10-26): Enter on a
+  // line's Price goes to that line's discount TYPE select first (it
+  // auto-opens, see openSelectPicker), not straight to the discount
+  // value. Picking the type then lands on the discount value input.
+  const handleLinePriceKeyDown = (index: number, event: ReactKeyboardEvent) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!focusVisible(`[data-pos-discount-type="${index}"]`)) focusVisible(`[data-pos-discount-value="${index}"]`);
+  };
+  const handleLineDiscountTypeChange = (index: number, event: ReactChangeEvent<HTMLSelectElement>) => {
+    // Stop here on purpose: the section-level entry navigation would
+    // otherwise advance past the discount value to the next line. The
+    // cashier types the discount amount next, so land there instead.
+    event.stopPropagation();
+    onLine(index, "discount_type", event.target.value);
+    const target = event.currentTarget;
+    requestAnimationFrame(() => {
+      if (document.activeElement === target) focusVisible(`[data-pos-discount-value="${index}"]`);
+    });
+  };
+  // Dropdown auto-open (2026-10-26): when a discount-type select gains
+  // focus through the keyboard walk, open its options at once so the
+  // cashier picks with arrows and confirms with Enter — no click.
+  // showPicker is Chromium-only; elsewhere the call is ignored and the
+  // cashier opens the list with Enter/Space as before.
+  const openSelectPicker = (event: { currentTarget: HTMLSelectElement }) => {
+    try {
+      (event.currentTarget as HTMLSelectElement & { showPicker?: () => void }).showPicker?.();
+    } catch {
+      // Popup already open, or the browser has no showPicker — ignore.
+    }
+  };
   const handleTotalBillDiscountKeyDown = (event: ReactKeyboardEvent) => {
     if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
     event.preventDefault();
@@ -520,11 +554,11 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
   return <div className="space-y-4" data-context-help-skip>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted-foreground">Scan or search • Check quantity • {owner || staffDirectSale ? "Pay and save" : "Send for approval"}</p>
-      <button type="button" disabled={busy} onClick={onAdvanced} className="min-h-11 rounded-lg border px-4 text-sm font-medium">Full invoice / Advanced options</button>
+      <button type="button" disabled={busy} onClick={onAdvanced} className="min-h-11 rounded-lg border px-4 text-sm font-medium">Wholesale / Distributor Invoicing</button>
       {onDrawerNoSale && <button type="button" disabled={busy} onClick={openNoSaleDialog} className="min-h-11 rounded-lg border px-4 text-sm font-medium disabled:opacity-40">{t("drawer.openDrawer")}</button>}
     </div>
     <fieldset disabled={busy} className="grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
-      <div data-pos-barcode-box><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} onScan={handleScannedCode} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} /></div>
+      <div data-pos-barcode-box><BarcodeInput compact label="Barcode" autoFocus disabled={busy} focusSignal={focusSignal} clearSignal={clearSignal} onScan={handleScannedCode} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} /></div>
       <div className="space-y-3"><label className="block text-sm font-medium">Find product</label><ProductSearchSelect key={searchKey} value="" products={productOptions} rankedFields={productRankFields} onBarcodeEnter={text => {
         // Every Enter text is offered to the shared scan choke point
         // first: an exact saved barcode adds through the scan path instead
@@ -545,8 +579,8 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
         <td className="p-2"><select aria-label={`Unit for ${productName}`} value={line.unit_mode ?? "main"} disabled={busy} onChange={event => onLine(index, "unit_mode", event.target.value)} className="min-h-11 rounded border border-input bg-background px-2"><option value="main">{product?.unit_type || "Main"}</option>{Number(product?.units_per_pack) > 0 && <option value="subunit">{product?.subunit_type || "Piece"}</option>}</select></td>
         {(["quantity", "selling_price", "discount"] as const).map(field => <td key={field} className="p-2">
           <div className="flex items-center gap-2">
-            <input data-pos-quantity={field === "quantity" ? index : undefined} aria-label={`${field === "selling_price" ? "Price" : field} for ${productName}`} type="text" inputMode="decimal" value={line[field]} disabled={busy} onChange={event => onLine(index, field, event.target.value)} onKeyDown={field === "discount" ? event => handleLineDiscountKeyDown(index, event) : undefined} className="min-h-11 w-24 rounded border border-input bg-background px-2 tabular-nums" />
-            {field === "discount" && <select aria-label={`Discount type for ${productName}`} value={line.discount_type ?? "flat"} disabled={busy} onChange={event => onLine(index, "discount_type", event.target.value)} className="min-h-11 rounded border border-input bg-background px-2 text-sm"><option value="flat">Amount</option><option value="percent">%</option></select>}
+            <input data-pos-quantity={field === "quantity" ? index : undefined} data-pos-discount-value={field === "discount" ? index : undefined} aria-label={`${field === "selling_price" ? "Price" : field} for ${productName}`} type="text" inputMode="decimal" value={line[field]} disabled={busy} onChange={event => onLine(index, field, event.target.value)} onKeyDown={field === "discount" ? event => handleLineDiscountKeyDown(index, event) : field === "selling_price" ? event => handleLinePriceKeyDown(index, event) : undefined} className="min-h-11 w-24 rounded border border-input bg-background px-2 tabular-nums" />
+            {field === "discount" && <select data-pos-discount-type={index} aria-label={`Discount type for ${productName}`} value={line.discount_type ?? "flat"} disabled={busy} onFocus={openSelectPicker} onChange={event => handleLineDiscountTypeChange(index, event)} className="min-h-11 rounded border border-input bg-background px-2 text-sm"><option value="flat">Amount</option><option value="percent">%</option></select>}
           </div>
           {field === "selling_price" && subunitCaption && <span className="mt-1 block text-xs text-muted-foreground tabular-nums">{subunitCaption}</span>}
           {fieldIssue(field, index) && <span className="block max-w-32 text-xs text-destructive" role="alert">{fieldIssue(field, index)}</span>}
@@ -563,8 +597,8 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
           <details className="col-span-2">
             <summary className="flex min-h-11 cursor-pointer items-center rounded border border-border px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Price, discount & removal</summary>
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <label className="text-xs font-medium">Price<input aria-label={`Price for ${productName}`} type="text" inputMode="decimal" value={line.selling_price} disabled={busy} onChange={event => onLine(index, "selling_price", event.target.value)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" />{subunitCaption && <span className="mt-1 block text-xs text-muted-foreground tabular-nums">{subunitCaption}</span>}{fieldIssue("selling_price", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("selling_price", index)}</span>}</label>
-              <div className="text-xs font-medium"><span>Discount</span><div className="mt-1 flex gap-2"><input aria-label={`Discount for ${productName}`} type="text" inputMode="decimal" value={line.discount} disabled={busy} onChange={event => onLine(index, "discount", event.target.value)} onKeyDown={event => handleLineDiscountKeyDown(index, event)} className="min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" /><select aria-label={`Discount type for ${productName}`} value={line.discount_type ?? "flat"} disabled={busy} onChange={event => onLine(index, "discount_type", event.target.value)} className="min-h-11 rounded border border-input bg-background px-2 text-sm"><option value="flat">Amount</option><option value="percent">%</option></select></div>{fieldIssue("discount", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("discount", index)}</span>}</div>
+              <label className="text-xs font-medium">Price<input aria-label={`Price for ${productName}`} type="text" inputMode="decimal" value={line.selling_price} disabled={busy} onChange={event => onLine(index, "selling_price", event.target.value)} onKeyDown={event => handleLinePriceKeyDown(index, event)} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" />{subunitCaption && <span className="mt-1 block text-xs text-muted-foreground tabular-nums">{subunitCaption}</span>}{fieldIssue("selling_price", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("selling_price", index)}</span>}</label>
+              <div className="text-xs font-medium"><span>Discount</span><div className="mt-1 flex gap-2"><input data-pos-discount-value={index} aria-label={`Discount for ${productName}`} type="text" inputMode="decimal" value={line.discount} disabled={busy} onChange={event => onLine(index, "discount", event.target.value)} onKeyDown={event => handleLineDiscountKeyDown(index, event)} className="min-h-11 w-full rounded border border-input bg-background px-2 text-sm tabular-nums" /><select data-pos-discount-type={index} aria-label={`Discount type for ${productName}`} value={line.discount_type ?? "flat"} disabled={busy} onFocus={openSelectPicker} onChange={event => handleLineDiscountTypeChange(index, event)} className="min-h-11 rounded border border-input bg-background px-2 text-sm"><option value="flat">Amount</option><option value="percent">%</option></select></div>{fieldIssue("discount", index) && <span className="mt-1 block text-xs text-destructive" role="alert">{fieldIssue("discount", index)}</span>}</div>
               <button type="button" disabled={busy} aria-label={`Remove ${productName}`} onClick={() => onRemove(index)} className="col-span-2 min-h-11 rounded border border-destructive/40 px-3 text-destructive">Remove product</button>
             </div>
           </details>
@@ -579,10 +613,10 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
         {sale.paymentType === "credit" && <span className="text-sm font-medium text-muted-foreground">{t("sell.paymentCredit")}</span>}
       </div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType === "card" ? t("sell.paymentCard") : sale.paymentType === "credit" ? t("sell.paymentCredit") : t("sell.paymentCash")}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">Unavailable</span> : formatBooksMoney(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">Complete or correct the highlighted sale fields to calculate the total.</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>Includes tax from advanced options.</small>}
+      <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType === "card" ? t("sell.paymentCard") : sale.paymentType === "credit" ? t("sell.paymentCredit") : t("sell.paymentCash")}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">Unavailable</span> : formatBooksMoney(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">Complete or correct the highlighted sale fields to calculate the total.</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>Includes tax from wholesale / distributor invoicing.</small>}
       {owner && <div className="mt-3 flex flex-wrap items-center gap-3">
         <label htmlFor="pos-invoice-discount" className="text-sm font-medium">{t("sell.totalBillDiscount")}</label>
-        <select id="pos-invoice-discount-type" aria-label="Total Bill Discount type" value={sale.discountType} disabled={busy} onChange={event => onDiscountType(event.target.value as "flat" | "percent")} className="min-h-11 rounded border border-input bg-background px-3 text-base">
+        <select id="pos-invoice-discount-type" aria-label="Total Bill Discount type" value={sale.discountType} disabled={busy} onFocus={openSelectPicker} onChange={event => onDiscountType(event.target.value as "flat" | "percent")} className="min-h-11 rounded border border-input bg-background px-3 text-base">
           <option value="flat">Amount</option><option value="percent">Percentage (%)</option>
         </select>
         <input id="pos-invoice-discount" aria-label={sale.discountType === "percent" ? "Total Bill Discount percentage" : "Total Bill Discount amount"} type="text" inputMode="decimal" value={sale.discount} disabled={busy} onChange={event => onDiscount(event.target.value)} onKeyDown={handleTotalBillDiscountKeyDown} placeholder={sale.discountType === "percent" ? "0–100" : "0.00"} className="min-h-11 w-32 rounded border border-input bg-background px-3 text-base tabular-nums" />

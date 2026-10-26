@@ -28,7 +28,7 @@ import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
 import { createPurchase } from "@/lib/purchases/client";
 import { computePurchaseReturnValueByReturnId, computeReturnedValueByPurchaseTransaction, netPurchaseInvoiceAllocation } from "@/lib/purchases/returns-offset";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent as ReactChangeEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { salesTools, hasSalesTool, configureSalesTools, type SalesTool } from "@/lib/sales/access";
@@ -379,6 +379,16 @@ export default function Home() {
   const [productSellingPrice, setProductSellingPrice] = useState("");
   const [productIsActive, setProductIsActive] = useState(true);
   const [productOversellingPolicy, setProductOversellingPolicy] = useState("inherit");
+  // Current Stock at creation (2026-10-26): optional opening stock typed
+  // in the Add Product form. Create-only — editing never rewrites stock.
+  const [productCurrentStock, setProductCurrentStock] = useState("");
+  // Focus signal for the Add Product barcode box (bumped after a save or
+  // cancel so the next product's scan starts there without a click).
+  const [productBarcodeFocusSignal, setProductBarcodeFocusSignal] = useState(0);
+  // Where a barcode scan/Enter advances to: the walk reaches the barcode
+  // box twice — first as the scan entry (then Name), later after SKU
+  // (then Unit Type). Reset on every form reset.
+  const productBarcodeNextRef = useRef<"name" | "unitType">("name");
 
   const brandNameById = useMemo(() => new Map(brands.map((brand) => [brand.id, brand.name])), [brands]);
   const categoryNameById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
@@ -5621,6 +5631,9 @@ setCustomerOrganizationName("");
   const [keepSaleCustomer, setKeepSaleCustomer] = useState(false);
   const [saleScanUnit, setSaleScanUnit] = useState<UnitMode>("subunit");
   const [saleScanFocus, setSaleScanFocus] = useState(0);
+  // Bumped when a receipt dialog closes, so the POS barcode box erases
+  // for the next sale (next-sale reset, 2026-10-26).
+  const [saleBarcodeClearSignal, setSaleBarcodeClearSignal] = useState(0);
   // BUG 1: one scan choke point for BOTH sales surfaces. Every channel —
   // the POS barcode box, the POS wedge capture, Enter in either
   // find-product box, the invoice form's barcode box and its line selects —
@@ -14735,9 +14748,13 @@ setCustomerOrganizationName("");
     setTrackExpiry(false);
     setProductIsActive(true);
     setProductOversellingPolicy("inherit");
+    setProductCurrentStock("");
     setSelectedBrandId(null);
     setSelectedCategoryId(null);
     setEditingProductId(null);
+    // Next product starts at the barcode box again (scan first).
+    productBarcodeNextRef.current = "name";
+    setProductBarcodeFocusSignal((value) => value + 1);
   };
 
   const startEditProduct = (product: Product) => {
@@ -14756,12 +14773,143 @@ setCustomerOrganizationName("");
     setTrackExpiry(Boolean(product.track_expiry));
     setProductIsActive(product.is_active !== false);
     setProductOversellingPolicy(product.overselling_policy ?? "inherit");
+    // Create-only field: editing never carries or rewrites stock.
+    setProductCurrentStock("");
     setSelectedBrandId(product.brand_id);
     setSelectedCategoryId(product.category_id);
     setEditingProductId(product.id);
     setProductToView(null);
     setMessage(null);
     setError(null);
+  };
+
+  // Keyboard-only Add Product walk (UMAIR, 2026-10-26). The form's
+  // generic section navigation walks DOM order and can never serve this
+  // form: the walk starts at the barcode box (scan first), and the
+  // barcode box's own Enter handler stops propagation, so the walk
+  // needs its own explicit order plus a scan hook (afterScan below).
+  // Checkboxes advance on Enter; Space still toggles them (native).
+  // Selects are left to native open/commit: focus auto-opens them
+  // (showPicker) and their change handler advances to the next field.
+  const productNameRef = useRef<HTMLInputElement>(null);
+  const productBrandRef = useRef<HTMLSelectElement>(null);
+  const productCategoryRef = useRef<HTMLSelectElement>(null);
+  const productSkuRef = useRef<HTMLInputElement>(null);
+  const productUnitTypeRef = useRef<HTMLInputElement>(null);
+  const productSubunitTypeRef = useRef<HTMLInputElement>(null);
+  const productUnitsPerPackRef = useRef<HTMLInputElement>(null);
+  const productLastPurchaseRef = useRef<HTMLInputElement>(null);
+  const productDefaultPurchaseRef = useRef<HTMLInputElement>(null);
+  const productSellingRef = useRef<HTMLInputElement>(null);
+  const productMinStockRef = useRef<HTMLInputElement>(null);
+  const productReorderRef = useRef<HTMLInputElement>(null);
+  const productCurrentStockRef = useRef<HTMLInputElement>(null);
+  const productTrackBatchRef = useRef<HTMLInputElement>(null);
+  const productTrackExpiryRef = useRef<HTMLInputElement>(null);
+  const productActiveRef = useRef<HTMLInputElement>(null);
+  const productOversellingRef = useRef<HTMLSelectElement>(null);
+  const productSaveRef = useRef<HTMLButtonElement>(null);
+  const focusProductBarcode = (next: "name" | "unitType") => {
+    productBarcodeNextRef.current = next;
+    setProductBarcodeFocusSignal((value) => value + 1);
+  };
+  const focusProductWalkInput = (ref: { current: HTMLInputElement | null }) => {
+    const field = ref.current;
+    if (!field) return false;
+    field.focus();
+    if (["text", "number"].includes(field.type)) field.select();
+    return true;
+  };
+  // Steps in walk order. Steps 0 and 5 are the same barcode box, reached
+  // from different directions; the box itself is focused via signal
+  // because BarcodeInput owns its inner input.
+  const focusProductWalkStep = (index: number): boolean => {
+    switch (index) {
+      case 0: focusProductBarcode("name"); return true;
+      case 1: return focusProductWalkInput(productNameRef);
+      case 2: productBrandRef.current?.focus(); return Boolean(productBrandRef.current);
+      case 3: productCategoryRef.current?.focus(); return Boolean(productCategoryRef.current);
+      case 4: return focusProductWalkInput(productSkuRef);
+      case 5: focusProductBarcode("unitType"); return true;
+      case 6: return focusProductWalkInput(productUnitTypeRef);
+      case 7: return focusProductWalkInput(productSubunitTypeRef);
+      case 8: return focusProductWalkInput(productUnitsPerPackRef);
+      case 9: return focusProductWalkInput(productLastPurchaseRef);
+      case 10: return focusProductWalkInput(productDefaultPurchaseRef);
+      case 11: return focusProductWalkInput(productSellingRef);
+      case 12: return focusProductWalkInput(productMinStockRef);
+      case 13: return focusProductWalkInput(productReorderRef);
+      case 14: return focusProductWalkInput(productCurrentStockRef);
+      case 15: productTrackBatchRef.current?.focus(); return Boolean(productTrackBatchRef.current);
+      case 16: productTrackExpiryRef.current?.focus(); return Boolean(productTrackExpiryRef.current);
+      case 17: productActiveRef.current?.focus(); return Boolean(productActiveRef.current);
+      case 18: productOversellingRef.current?.focus(); return Boolean(productOversellingRef.current);
+      case 19: productSaveRef.current?.focus(); return Boolean(productSaveRef.current);
+      default: return false;
+    }
+  };
+  const productWalkFieldIndex = (target: EventTarget | null): number => {
+    const elements = [null, productNameRef.current, productBrandRef.current, productCategoryRef.current, productSkuRef.current, null, productUnitTypeRef.current, productSubunitTypeRef.current, productUnitsPerPackRef.current, productLastPurchaseRef.current, productDefaultPurchaseRef.current, productSellingRef.current, productMinStockRef.current, productReorderRef.current, productCurrentStockRef.current, productTrackBatchRef.current, productTrackExpiryRef.current, productActiveRef.current, productOversellingRef.current, productSaveRef.current];
+    return elements.findIndex((element) => element === target);
+  };
+  const advanceProductWalk = (fromIndex: number, backwards = false) => {
+    const step = backwards ? -1 : 1;
+    for (let index = fromIndex + step; index >= 0 && index <= 19; index += step) {
+      if (focusProductWalkStep(index)) return;
+    }
+  };
+  const handleProductFormKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target;
+    const index = productWalkFieldIndex(target);
+    if (index < 0) return;
+    // Selects: native open/commit plus the change handler below own the
+    // advance, so never hijack Enter here (it would break committing).
+    if (target instanceof HTMLSelectElement) return;
+    // Submit button: native submit.
+    if (target instanceof HTMLButtonElement) return;
+    if (target instanceof HTMLInputElement && target.type === "checkbox") {
+      // Enter moves on without toggling; Space toggles (native).
+      event.preventDefault();
+      event.stopPropagation();
+      advanceProductWalk(index, event.shiftKey);
+      return;
+    }
+    if (target instanceof HTMLInputElement) {
+      if (event.repeat || (!event.shiftKey && !target.reportValidity())) return;
+      event.preventDefault();
+      event.stopPropagation();
+      advanceProductWalk(index, event.shiftKey);
+    }
+  };
+  const advanceProductWalkAfterSelect = (event: ReactChangeEvent<HTMLSelectElement>) => {
+    const target = event.currentTarget;
+    const index = productWalkFieldIndex(target);
+    if (index < 0) return;
+    // Let React apply dependent state first; never steal focus if the
+    // user already moved on.
+    requestAnimationFrame(() => {
+      if (target.isConnected && document.activeElement === target) advanceProductWalk(index);
+    });
+  };
+  const openProductSelectPicker = (event: ReactFocusEvent<HTMLSelectElement>) => {
+    // Auto-open on focus (2026-10-26): the walk lands here via Enter,
+    // so the list must already be open for arrow selection. Chromium
+    // only; elsewhere the cashier opens with Enter/Space as before.
+    try {
+      (event.currentTarget as HTMLSelectElement & { showPicker?: () => void }).showPicker?.();
+    } catch {
+      // Popup already open, or no showPicker — ignore.
+    }
+  };
+  const handleProductBarcodeScanned = () => {
+    // BarcodeInput refocuses its own box after a scan, so advance on
+    // the next frame to win. Direction comes from how the box was
+    // reached (scan entry → Name; after SKU → Unit Type).
+    requestAnimationFrame(() => {
+      if (productBarcodeNextRef.current === "unitType") focusProductWalkInput(productUnitTypeRef);
+      else focusProductWalkInput(productNameRef);
+    });
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -14790,6 +14938,15 @@ setCustomerOrganizationName("");
 
     if (!validation.ok) {
       setError(validation.errors.join(". "));
+      return;
+    }
+
+    // Opening stock (create-only): a typed value must be a number >= 0.
+    // It is applied after insert via the atomic adjustment endpoint, so
+    // the ledger and the product's stock figure always agree.
+    const openingStock = productCurrentStock.trim() === "" ? 0 : Number(productCurrentStock);
+    if (!editingProductId && productCurrentStock.trim() !== "" && (!Number.isFinite(openingStock) || openingStock < 0)) {
+      setError("Current stock must be zero or more.");
       return;
     }
 
@@ -14959,7 +15116,31 @@ setCustomerOrganizationName("");
         is_active: payload.is_active,
       },
     });
-    setMessage("Product saved successfully");
+    // Opening stock: the product inserts at zero stock, then the atomic
+    // adjustment writes the ledger row and the stock figure together.
+    // If it fails, the product still stands — the note tells the user
+    // to add the stock from Inventory instead of failing the save.
+    let openingStockNote = "";
+    if (openingStock > 0 && productData?.id) {
+      try {
+        const adjustResponse = await authorizedFetch("/api/inventory/adjust", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            productId: productData.id,
+            quantityDelta: openingStock,
+            reason: "Opening stock at product creation",
+          }),
+        });
+        if (!adjustResponse.ok) {
+          const adjustData = await adjustResponse.json().catch(() => null);
+          openingStockNote = ` Opening stock could not be applied (${adjustData?.error ?? "adjustment failed"}) — add it from Inventory.`;
+        }
+      } catch {
+        openingStockNote = " Opening stock could not be applied — add it from Inventory.";
+      }
+    }
+    setMessage(`Product saved successfully.${openingStockNote}`);
     resetProductForm();
     fetchProducts();
   };
@@ -18652,7 +18833,7 @@ setCustomerOrganizationName("");
             )}
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
-              products={activeProducts} productNameFallback={scannedProductNames} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus}
+              products={activeProducts} productNameFallback={scannedProductNames} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus} clearSignal={saleBarcodeClearSignal}
               onScan={(code, options) => { const result = runSalesScan(code, options); return result.status === "not-found" ? null : String(result.product.id); }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setScannedProductNames(current => ({ ...current, [String(product.id)]: product.name })); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} />}
@@ -19004,7 +19185,14 @@ setCustomerOrganizationName("");
 
             </div>
             {drawerNotice && <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"><span>{drawerNotice}</span><button type="button" onClick={() => setDrawerNotice("")} className="min-h-11 rounded border border-input bg-background px-3 font-medium">{t('common.close')}</button></div>}
-            {quickSaleMode && lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} autoPrint />}
+            {quickSaleMode && lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} autoPrint onDone={() => {
+              // Next-sale reset (2026-10-26): the printed receipt clears,
+              // the barcode box erases, and focus returns to it, so the
+              // next product can be scanned immediately.
+              setLastPOSReceipt(null);
+              setSaleBarcodeClearSignal((value) => value + 1);
+              setSaleScanFocus((value) => value + 1);
+            }} />}
             {salesMessage && <p className="mt-4 text-sm text-success">{salesMessage}</p>}
             {salesError && <p className="mt-4 text-sm text-destructive">{salesError}</p>}
             {!isOwnerOrAdmin() && <MyPendingSales key={salesMessage ?? "pending"} />}
@@ -21300,12 +21488,13 @@ setCustomerOrganizationName("");
         {message && <p className="mb-4 text-sm text-success">{message}</p>}
         {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
 
-        <form onSubmit={handleSubmit} className="space-y-4" {...entryNavigationHandlers}>
+        <form onSubmit={handleSubmit} className="space-y-4" onKeyDown={handleProductFormKeyDown}>
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground/80">
               {t('products.name')}
             </label>
             <input
+              ref={productNameRef}
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -21320,8 +21509,10 @@ setCustomerOrganizationName("");
                 {t('products.brand')}
               </label>
               <select
+                ref={productBrandRef}
                 value={selectedBrandId ?? ""}
-                onChange={(e) => setSelectedBrandId(e.target.value === "" ? null : e.target.value)}
+                onFocus={openProductSelectPicker}
+                onChange={(e) => { setSelectedBrandId(e.target.value === "" ? null : e.target.value); advanceProductWalkAfterSelect(e); }}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               >
                 <option value="">{t('common.none')}</option>
@@ -21338,8 +21529,10 @@ setCustomerOrganizationName("");
                 {t('stock.category')}
               </label>
               <select
+                ref={productCategoryRef}
                 value={selectedCategoryId ?? ""}
-                onChange={(e) => setSelectedCategoryId(e.target.value === "" ? null : e.target.value)}
+                onFocus={openProductSelectPicker}
+                onChange={(e) => { setSelectedCategoryId(e.target.value === "" ? null : e.target.value); advanceProductWalkAfterSelect(e); }}
                 className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               >
                 <option value="">{t('common.none')}</option>
@@ -21358,6 +21551,7 @@ setCustomerOrganizationName("");
                 {t('products.sku')}
               </label>
               <input
+                ref={productSkuRef}
                 type="text"
                 value={productSku}
                 onChange={(e) => setProductSku(e.target.value)}
@@ -21365,7 +21559,7 @@ setCustomerOrganizationName("");
               />
             </div>
 
-            <BarcodeInput label={t('products.barcode')} value={productBarcode} onChange={setProductBarcode} onScan={setProductBarcode} autoFocus />
+            <BarcodeInput label={t('products.barcode')} value={productBarcode} onChange={setProductBarcode} onScan={setProductBarcode} afterScan={handleProductBarcodeScanned} focusSignal={productBarcodeFocusSignal} autoFocus />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -21374,6 +21568,7 @@ setCustomerOrganizationName("");
                 {t('products.unitType')}
               </label>
               <input
+                ref={productUnitTypeRef}
                 type="text"
                 value={unitType}
                 onChange={(e) => setUnitType(e.target.value)}
@@ -21387,6 +21582,7 @@ setCustomerOrganizationName("");
                 {t('products.subunitType')}
               </label>
               <input
+                ref={productSubunitTypeRef}
                 type="text"
                 value={subunitType}
                 onChange={(e) => setSubunitType(e.target.value)}
@@ -21400,6 +21596,7 @@ setCustomerOrganizationName("");
                 {t('products.unitsPerPack')}
               </label>
               <input
+                ref={productUnitsPerPackRef}
                 type="number"
                 min={1}
                 step={1}
@@ -21416,6 +21613,7 @@ setCustomerOrganizationName("");
                 {t('products.purchasePrice')}
               </label>
               <input
+                ref={productLastPurchaseRef}
                 type="number"
                 min={0}
                 step="0.01"
@@ -21430,6 +21628,7 @@ setCustomerOrganizationName("");
                 {t('products.defaultPurchasePrice')}
               </label>
               <input
+                ref={productDefaultPurchaseRef}
                 type="number"
                 min={0}
                 step="0.01"
@@ -21444,6 +21643,7 @@ setCustomerOrganizationName("");
                 {t('products.sellingPrice')}
               </label>
               <input
+                ref={productSellingRef}
                 type="number"
                 min={0}
                 step="0.01"
@@ -21465,6 +21665,7 @@ setCustomerOrganizationName("");
                 {t('products.minimumStockLevel')}
               </label>
               <input
+                ref={productMinStockRef}
                 type="number"
                 min={0}
                 step="0.01"
@@ -21479,6 +21680,7 @@ setCustomerOrganizationName("");
                 {t('products.reorderLevel')}
               </label>
               <input
+                ref={productReorderRef}
                 type="number"
                 min={0}
                 step="0.01"
@@ -21489,9 +21691,30 @@ setCustomerOrganizationName("");
             </div>
           </div>
 
+          {!editingProductId && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground/80">
+                {t('products.currentStock')}
+              </label>
+              <input
+                ref={productCurrentStockRef}
+                type="number"
+                min={0}
+                step="0.01"
+                value={productCurrentStock}
+                onChange={(e) => setProductCurrentStock(e.target.value)}
+                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Optional — stock already on hand at creation, counted in main units. Saved as an opening stock entry so the ledger agrees.
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <label className="flex items-center gap-2 text-sm text-foreground/80">
               <input
+                ref={productTrackBatchRef}
                 type="checkbox"
                 checked={trackBatch}
                 onChange={(e) => setTrackBatch(e.target.checked)}
@@ -21502,6 +21725,7 @@ setCustomerOrganizationName("");
 
             <label className="flex items-center gap-2 text-sm text-foreground/80">
               <input
+                ref={productTrackExpiryRef}
                 type="checkbox"
                 checked={trackExpiry}
                 onChange={(e) => setTrackExpiry(e.target.checked)}
@@ -21512,6 +21736,7 @@ setCustomerOrganizationName("");
 
             <label className="flex items-center gap-2 text-sm text-foreground/80">
               <input
+                ref={productActiveRef}
                 type="checkbox"
                 checked={productIsActive}
                 onChange={(e) => setProductIsActive(e.target.checked)}
@@ -21526,8 +21751,10 @@ setCustomerOrganizationName("");
               {t('products.oversellingPolicy')}
             </label>
             <select
+              ref={productOversellingRef}
               value={productOversellingPolicy}
-              onChange={(e) => setProductOversellingPolicy(e.target.value)}
+              onFocus={openProductSelectPicker}
+              onChange={(e) => { setProductOversellingPolicy(e.target.value); advanceProductWalkAfterSelect(e); }}
               className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
             >
               <option value="inherit">{t('products.oversellingInherit')}</option>
@@ -21537,6 +21764,7 @@ setCustomerOrganizationName("");
           </div>
 
           <button
+            ref={productSaveRef}
             type="submit"
             disabled={loading}
             className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"

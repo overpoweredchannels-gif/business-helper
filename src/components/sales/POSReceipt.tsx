@@ -125,7 +125,8 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
   </div>;
 }
 
-export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; autoPrint?: boolean }) {
+export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Receipt; autoPrint?: boolean; /** Runs once when the dialog closes, by any path (printed, closed, or escaped), so the parent can clear the printed receipt and reset the sale screen for the next customer. */
+  onDone?: () => void }) {
   const labels = useReceiptSummaryLabels();
   const chromeLabels = useReceiptChromeLabels();
   const [open, setOpen] = useState(false);
@@ -167,6 +168,16 @@ export function POSReceipt({ receipt, autoPrint = false }: { receipt: Receipt; a
   useEffect(() => {
     if (open) markStage("dialog-open");
   }, [open, markStage]);
+
+  // Next-sale reset (2026-10-26): the parent clears the printed receipt
+  // only when this dialog actually closes, whichever path closed it.
+  // Tracking the transition (not each close call) means no path can
+  // fire it twice, and a close that never happened fires nothing.
+  const wasReceiptOpen = useRef(false);
+  useEffect(() => {
+    if (wasReceiptOpen.current && !open) onDone?.();
+    wasReceiptOpen.current = open;
+  }, [open, onDone]);
 
   useEffect(() => {
     let live = true;
