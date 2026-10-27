@@ -1,13 +1,13 @@
 "use client";
 
-import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { focusNextEntryField } from "./entry-navigation";
 import { activeSuggestionIndex } from "./search-selection";
 import { highlightSearchMatches, rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
 import { isBarcodeShaped } from "@/lib/invoices/scan-submit";
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 
-export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankedFields, maxSuggestions = 12, onBarcodeEnter }: {
+export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankedFields, maxSuggestions = 12, onBarcodeEnter, focusSignal = 0 }: {
   value: string;
   onChange: (value: string) => void;
   products: Array<{ id: string; label: string }>;
@@ -33,9 +33,12 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
   /** Maximum options rendered in the popover; the ranking itself still scores
    * every candidate, so the top matches are always the most relevant ones. */
   maxSuggestions?: number;
+  /** Bumping this focuses the search input (mirrors BarcodeInput's focusSignal). Callers that don't pass it are unaffected. */
+  focusSignal?: number;
 }) {
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (focusSignal > 0) input.current?.focus(); }, [focusSignal]);
   const popoverRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
