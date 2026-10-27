@@ -3,6 +3,7 @@
 import { Children, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatBooksMoney, formatDate as formatSharedDate } from "@/lib/tradeos/formatters";
 import { Loader2, AlertCircle, ArrowLeft, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, MessageSquareText, Users, Award, KeyRound, Route as RouteIcon, Store, Package, Radar } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -51,15 +52,18 @@ interface LedgerData {
   };
 }
 
-const METRIC_LABEL: Record<string, string> = {
-  revenue: "Revenue",
-  orders: "Orders",
-  customers: "New Customers",
-  products: "Products Sold",
-  collections: "Collections",
-};
-
 export default function EmployeeLedgerPage() {
+  const { t } = useRegional();
+  const metricLabel = (m: string) => {
+    const labels: Record<string, string> = {
+      revenue: t('team.metricRevenue'),
+      orders: t('team.metricOrders'),
+      customers: t('team.metricCustomers'),
+      products: t('team.metricProducts'),
+      collections: t('team.metricCollections'),
+    };
+    return labels[m] ?? m;
+  };
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const employeeId = params.id;
@@ -77,14 +81,14 @@ export default function EmployeeLedgerPage() {
       if (json.ok) {
         setData(json);
       } else {
-        setError(json.error || "Failed to load employee ledger");
+        setError(json.error || t('team.loadFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, [employeeId]);
+  }, [employeeId, t]);
 
   useEffect(() => {
     load();
@@ -99,7 +103,7 @@ export default function EmployeeLedgerPage() {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading employee ledger...</p>
+        <p className="text-sm text-body">{t('team.loading')}</p>
       </div>
     );
   }
@@ -111,7 +115,7 @@ export default function EmployeeLedgerPage() {
           <ArrowLeft className="size-4" /> Back to Team
         </button>
         <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">
-          <AlertCircle className="size-4 mt-0.5 shrink-0" /> {error ?? "Employee not found"}
+          <AlertCircle className="size-4 mt-0.5 shrink-0" /> {error ?? t('team.notFound')}
         </div>
       </div>
     );
@@ -156,36 +160,36 @@ export default function EmployeeLedgerPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={<TrendingUp className="size-5 text-primary" />} label="Total Sales" value={formatCurrency(aggregates.sales.total)} sublabel={`${aggregates.sales.count} orders`} />
-        <StatCard icon={<Target className="size-5 text-warning" />} label="This Month" value={formatCurrency(aggregates.sales.thisMonth)} />
-        <StatCard icon={<Banknote className="size-5 text-success" />} label="Collections" value={formatCurrency(aggregates.collections.amount)} sublabel={`${aggregates.collections.approved} approved`} />
-        <StatCard icon={<MapPin className="size-5 text-info" />} label="Visits" value={`${aggregates.visits.completed}/${aggregates.visits.total}`} sublabel={`${aggregates.visits.missed} missed`} />
+        <StatCard icon={<TrendingUp className="size-5 text-primary" />} label={t('team.totalSales')} value={formatCurrency(aggregates.sales.total)} sublabel={t('team.ordersCount').replace('{count}', String(aggregates.sales.count))} />
+        <StatCard icon={<Target className="size-5 text-warning" />} label={t('team.thisMonth')} value={formatCurrency(aggregates.sales.thisMonth)} />
+        <StatCard icon={<Banknote className="size-5 text-success" />} label={t('team.metricCollections')} value={formatCurrency(aggregates.collections.amount)} sublabel={t('team.approvedCount').replace('{count}', String(aggregates.collections.approved))} />
+        <StatCard icon={<MapPin className="size-5 text-info" />} label={t('team.visits')} value={`${aggregates.visits.completed}/${aggregates.visits.total}`} sublabel={t('team.visitsMissed').replace('{count}', String(aggregates.visits.missed))} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <AssignmentSummary icon={<MapPin className="size-5 text-primary" />} label="Territory assigned" value={assignment.territory?.name ?? "No territory"} detail={assignment.territory?.description ?? "No territory assigned to this employee."} />
-        <AssignmentSummary icon={<RouteIcon className="size-5 text-primary" />} label="Route assigned" value={assignment.route?.name ?? "No route"} detail={assignment.route ? `${assignment.stops.length} stop(s) · ${assignment.route.route_frequency ?? "daily"}` : "No route assigned to this employee."} />
-        <AssignmentSummary icon={<Users className="size-5 text-primary" />} label="Customers assigned" value={`${assignment.customers.length} customer(s)`} detail="Direct assignments and customers on the assigned route." />
+        <AssignmentSummary icon={<MapPin className="size-5 text-primary" />} label={t('team.territoryAssigned')} value={assignment.territory?.name ?? t('team.noTerritory')} detail={assignment.territory?.description ?? t('team.noTerritoryDetail')} />
+        <AssignmentSummary icon={<RouteIcon className="size-5 text-primary" />} label={t('team.routeAssigned')} value={assignment.route?.name ?? t('team.noRoute')} detail={assignment.route ? t('team.routeDetail').replace('{stops}', String(assignment.stops.length)).replace('{period}', assignment.route.route_frequency ?? "daily") : t('team.noRouteDetail')} />
+        <AssignmentSummary icon={<Users className="size-5 text-primary" />} label={t('team.customersAssigned')} value={t('team.customersCount').replace('{count}', String(assignment.customers.length))} detail={t('team.customersDetail')} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={<Calendar className="size-5 text-primary" />} label="Attendance Days" value={aggregates.attendance.days} sublabel={`${aggregates.attendance.present} present`} />
-        <StatCard icon={<Clock className="size-5 text-warning" />} label="Late / Absent" value={`${aggregates.attendance.late} / ${aggregates.attendance.absent}`} sublabel={`${aggregates.attendance.leave} leave`} />
-        <StatCard icon={<MessageSquareText className="size-5 text-success" />} label="Feedback" value={aggregates.feedback.total} sublabel={`${aggregates.feedback.open} open`} />
-        <StatCard icon={<Award className="size-5 text-info" />} label="Total Hours" value={`${aggregates.attendance.totalHours}h`} />
+        <StatCard icon={<Calendar className="size-5 text-primary" />} label={t('team.attendanceDays')} value={aggregates.attendance.days} sublabel={t('team.presentCount').replace('{count}', String(aggregates.attendance.present))} />
+        <StatCard icon={<Clock className="size-5 text-warning" />} label={t('team.lateAbsent')} value={t('team.lateAbsentValue').replace('{late}', String(aggregates.attendance.late)).replace('{absent}', String(aggregates.attendance.absent))} sublabel={t('team.leaveCount').replace('{count}', String(aggregates.attendance.leave))} />
+        <StatCard icon={<MessageSquareText className="size-5 text-success" />} label={t('team.feedback')} value={aggregates.feedback.total} sublabel={t('team.openCount').replace('{count}', String(aggregates.feedback.open))} />
+        <StatCard icon={<Award className="size-5 text-info" />} label={t('team.totalHours')} value={t('team.hoursValue').replace('{count}', String(aggregates.attendance.totalHours))} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-5">
-          <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2"><Target className="size-5 text-primary" /> Targets</h3>
+          <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2"><Target className="size-5 text-primary" /> {t('team.targets')}</h3>
           {aggregates.targets.length === 0 ? (
-            <p className="text-sm text-body">No targets set.</p>
+            <p className="text-sm text-body">{t('team.noTargets')}</p>
           ) : (
             <div className="grid gap-3">
               {aggregates.targets.map((t) => (
                 <div key={t.id} className="rounded-lg border border-border p-3">
                   <div className="flex justify-between text-sm">
-                    <span className="text-body capitalize">{METRIC_LABEL[t.metric] ?? t.metric} ({t.period})</span>
+                    <span className="text-body capitalize">{metricLabel(t.metric)} ({t.period})</span>
                     <span className="font-medium text-foreground">{t.target_value}</span>
                   </div>
                   <div className="text-xs text-light-text mt-0.5">
@@ -198,14 +202,14 @@ export default function EmployeeLedgerPage() {
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-5">
-          <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2"><Users className="size-5 text-primary" /> Profile</h3>
+          <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2"><Users className="size-5 text-primary" /> {t('team.profile')}</h3>
           <dl className="grid gap-2 text-sm">
-            <div className="flex justify-between"><dt className="text-body">Employee ID</dt><dd className="text-foreground font-medium">{employee.employee_id ?? "—"}</dd></div>
-            <div className="flex justify-between"><dt className="text-body">Designation</dt><dd className="text-foreground font-medium capitalize">{employee.designation ?? "—"}</dd></div>
-            <div className="flex justify-between"><dt className="text-body">Department</dt><dd className="text-foreground font-medium">{employee.department ?? "—"}</dd></div>
-            <div className="flex justify-between"><dt className="text-body">Status</dt><dd className="text-foreground font-medium capitalize">{employee.status ?? "active"}</dd></div>
-            <div className="flex justify-between"><dt className="text-body">Joined</dt><dd className="text-foreground font-medium">{employee.joining_date ? formatDate(employee.joining_date) : "—"}</dd></div>
-            <div className="flex justify-between"><dt className="text-body">Phone</dt><dd className="text-foreground font-medium">{employee.phone ?? "—"}</dd></div>
+            <div className="flex justify-between"><dt className="text-body">{t('team.employeeId')}</dt><dd className="text-foreground font-medium">{employee.employee_id ?? "—"}</dd></div>
+            <div className="flex justify-between"><dt className="text-body">{t('team.designation')}</dt><dd className="text-foreground font-medium capitalize">{employee.designation ?? "—"}</dd></div>
+            <div className="flex justify-between"><dt className="text-body">{t('team.department')}</dt><dd className="text-foreground font-medium">{employee.department ?? "—"}</dd></div>
+            <div className="flex justify-between"><dt className="text-body">{t('team.status')}</dt><dd className="text-foreground font-medium capitalize">{employee.status ?? "active"}</dd></div>
+            <div className="flex justify-between"><dt className="text-body">{t('team.joined')}</dt><dd className="text-foreground font-medium">{employee.joining_date ? formatDate(employee.joining_date) : "—"}</dd></div>
+            <div className="flex justify-between"><dt className="text-body">{t('team.phone')}</dt><dd className="text-foreground font-medium">{employee.phone ?? "—"}</dd></div>
           </dl>
         </div>
 
@@ -213,15 +217,15 @@ export default function EmployeeLedgerPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <RecentPanel title="Recent Sales" icon={<TrendingUp className="size-4 text-primary" />} empty="No sales yet">
+        <RecentPanel title={t('team.recentSales')} icon={<TrendingUp className="size-4 text-primary" />} empty={t('team.noSalesYet')}>
           {recent.sales.map((s) => (
             <div key={s.id} className="flex justify-between py-2 border-b border-border/40 last:border-0">
-              <span className="text-sm text-foreground"><span className="block font-medium">{s.invoice_number ?? formatCurrency(s.total_amount)}</span><span className="text-xs text-body">{s.customers?.shop_name ?? s.customers?.customer_name ?? "Customer"}</span></span>
+              <span className="text-sm text-foreground"><span className="block font-medium">{s.invoice_number ?? formatCurrency(s.total_amount)}</span><span className="text-xs text-body">{s.customers?.shop_name ?? s.customers?.customer_name ?? t('pos.customer')}</span></span>
               <span className="text-xs text-body text-right"><span className="block font-medium text-foreground">{formatCurrency(s.total_amount)}</span>{formatDate(s.sale_date ?? s.created_at)}</span>
             </div>
           ))}
         </RecentPanel>
-        <RecentPanel title="Recent Visits" icon={<MapPin className="size-4 text-warning" />} empty="No visits yet">
+        <RecentPanel title={t('team.recentVisits')} icon={<MapPin className="size-4 text-warning" />} empty={t('team.noVisitsYet')}>
           {recent.visits.map((v) => (
             <div key={v.id} className="flex justify-between py-2 border-b border-border/40 last:border-0">
               <span className="text-sm text-foreground capitalize">{v.visit_status.replaceAll("_", " ")}</span>
@@ -229,7 +233,7 @@ export default function EmployeeLedgerPage() {
             </div>
           ))}
         </RecentPanel>
-        <RecentPanel title="Recent Collections" icon={<Banknote className="size-4 text-success" />} empty="No collections yet">
+        <RecentPanel title={t('team.recentCollections')} icon={<Banknote className="size-4 text-success" />} empty={t('team.noCollectionsYet')}>
           {recent.collections.map((c) => (
             <div key={c.id} className="flex justify-between py-2 border-b border-border/40 last:border-0">
               <span className="text-sm text-foreground">{formatCurrency(c.amount)}</span>
@@ -240,14 +244,14 @@ export default function EmployeeLedgerPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <AnalyticsPanel title="Sales ranking by products" icon={<Package className="size-4 text-primary" />} rows={analytics.byProduct.slice(0, 10).map((row) => ({ id: row.product_id, name: row.name, detail: `${row.quantity} units`, value: formatCurrency(row.total) }))} />
-        <AnalyticsPanel title="Sales by customer" icon={<Store className="size-4 text-primary" />} rows={analytics.byCustomer.slice(0, 10).map((row) => ({ id: row.customer_id, name: row.name, detail: `${row.count} invoice(s)`, value: formatCurrency(row.total) }))} />
+        <AnalyticsPanel title={t('team.salesRanking')} icon={<Package className="size-4 text-primary" />} rows={analytics.byProduct.slice(0, 10).map((row) => ({ id: row.product_id, name: row.name, detail: t('team.unitsDetail').replace('{count}', String(row.quantity)), value: formatCurrency(row.total) }))} />
+        <AnalyticsPanel title={t('team.salesByCustomer')} icon={<Store className="size-4 text-primary" />} rows={analytics.byCustomer.slice(0, 10).map((row) => ({ id: row.customer_id, name: row.name, detail: t('team.invoicesDetail').replace('{count}', String(row.count)), value: formatCurrency(row.total) }))} />
       </div>
 
       <div className="rounded-2xl border border-border bg-card p-5">
-        <h3 className="font-semibold text-foreground mb-1 flex items-center gap-2"><Users className="size-5 text-primary" /> Assigned customers</h3>
-        <p className="text-xs text-body mb-4">These are the customers available to this employee for draft sales.</p>
-        {assignment.customers.length === 0 ? <p className="text-sm text-body py-4 text-center">No customers assigned.</p> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{assignment.customers.map((customer) => <div key={customer.id} className="rounded-xl border border-border p-4"><div className="text-sm font-medium text-foreground">{customer.shop_name ?? customer.customer_name}</div>{customer.shop_name && <div className="text-xs text-body">{customer.customer_name}</div>}<div className="text-xs text-light-text mt-2">{[customer.area, customer.city].filter(Boolean).join(", ") || "No area"}</div>{customer.phone && <div className="text-xs text-light-text mt-1">{customer.phone}</div>}</div>)}</div>}
+        <h3 className="font-semibold text-foreground mb-1 flex items-center gap-2"><Users className="size-5 text-primary" /> {t('team.assignedCustomers')}</h3>
+        <p className="text-xs text-body mb-4">{t('team.availableNote')}</p>
+        {assignment.customers.length === 0 ? <p className="text-sm text-body py-4 text-center">{t('team.noCustomersAssigned')}</p> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{assignment.customers.map((customer) => <div key={customer.id} className="rounded-xl border border-border p-4"><div className="text-sm font-medium text-foreground">{customer.shop_name ?? customer.customer_name}</div>{customer.shop_name && <div className="text-xs text-body">{customer.customer_name}</div>}<div className="text-xs text-light-text mt-2">{[customer.area, customer.city].filter(Boolean).join(", ") || t('team.noArea')}</div>{customer.phone && <div className="text-xs text-light-text mt-1">{customer.phone}</div>}</div>)}</div>}
       </div>
     </div>
   );
@@ -258,7 +262,8 @@ function AssignmentSummary({ icon, label, value, detail }: { icon: React.ReactNo
 }
 
 function AnalyticsPanel({ title, icon, rows }: { title: string; icon: React.ReactNode; rows: Array<{ id: string; name: string; detail: string; value: string }> }) {
-  return <div className="rounded-2xl border border-border bg-card p-5"><h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">{icon}{title}</h3>{rows.length === 0 ? <p className="text-sm text-body py-4 text-center">No confirmed sales yet.</p> : <div className="divide-y divide-border">{rows.map((row, index) => <div key={row.id} className="flex items-center gap-3 py-3"><div className="size-7 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">{index + 1}</div><div className="min-w-0 flex-1"><div className="text-sm font-medium text-foreground truncate">{row.name}</div><div className="text-xs text-body">{row.detail}</div></div><div className="text-sm font-semibold text-foreground">{row.value}</div></div>)}</div>}</div>;
+  const { t } = useRegional();
+  return <div className="rounded-2xl border border-border bg-card p-5"><h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">{icon}{title}</h3>{rows.length === 0 ? <p className="text-sm text-body py-4 text-center">{t('team.analyticsEmpty')}</p> : <div className="divide-y divide-border">{rows.map((row, index) => <div key={row.id} className="flex items-center gap-3 py-3"><div className="size-7 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">{index + 1}</div><div className="min-w-0 flex-1"><div className="text-sm font-medium text-foreground truncate">{row.name}</div><div className="text-xs text-body">{row.detail}</div></div><div className="text-sm font-semibold text-foreground">{row.value}</div></div>)}</div>}</div>;
 }
 
 function StatCard({ icon, label, value, sublabel }: { icon: React.ReactNode; label: string; value: string | number; sublabel?: string }) {
@@ -295,13 +300,14 @@ function formatDate(d: string) {
 }
 
 function ResetPasswordCard({ employeeId, employeeName }: { employeeId: string; employeeName: string }) {
+  const { t } = useRegional();
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   const submit = async () => {
     if (!password) {
-      setMessage({ type: "error", text: "Enter a new password." });
+      setMessage({ type: "error", text: t('team.enterPassword') });
       return;
     }
     setSaving(true);
@@ -313,11 +319,11 @@ function ResetPasswordCard({ employeeId, employeeName }: { employeeId: string; e
         body: JSON.stringify({ employeeId, newPassword: password }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to reset password");
-      setMessage({ type: "ok", text: "Password reset successfully for " + employeeName + "." });
+      if (!data.ok) throw new Error(data.error || t('team.resetFailed'));
+      setMessage({ type: "ok", text: t('team.resetSuccess').replace('{name}', employeeName) });
       setPassword("");
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to reset password" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('team.resetFailed') });
     } finally {
       setSaving(false);
     }
@@ -325,13 +331,13 @@ function ResetPasswordCard({ employeeId, employeeName }: { employeeId: string; e
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
-      <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2"><KeyRound className="size-5 text-warning" /> Reset Password</h3>
-      <p className="text-sm text-body mb-3">Set a new password for {employeeName}. They can sign in with it on their next login.</p>
+      <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2"><KeyRound className="size-5 text-warning" /> {t('team.resetPassword')}</h3>
+      <p className="text-sm text-body mb-3">{t('team.resetIntro').replace('{name}', employeeName)}</p>
       <input
         type="password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        placeholder="New password"
+        placeholder={t('team.resetPlaceholder')}
         className="w-full rounded-lg border border-input bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       <button
@@ -340,7 +346,7 @@ function ResetPasswordCard({ employeeId, employeeName }: { employeeId: string; e
         className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
       >
         {saving ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
-        {saving ? "Resetting..." : "Reset Password"}
+        {saving ? t('team.resetting') : t('team.resetPassword')}
       </button>
       {message && (
         <div className={cn("mt-3 text-sm", message.type === "ok" ? "text-success" : "text-destructive")}>
