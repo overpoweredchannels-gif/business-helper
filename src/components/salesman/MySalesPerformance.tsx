@@ -28,7 +28,7 @@ export function MySalesPerformance() {
     return () => { active = false; };
   }, []);
   const customers = new Map(sales.map(sale => [sale.customer_id ?? "", sale.customers?.shop_name || sale.customers?.customer_name || t('salesman.perf.customerFallback')]));
-  const brands = new Map(sales.flatMap(sale => sale.sales_items.map(item => [item.products?.brand_id ?? "", item.products?.brands?.name ?? "Unbranded"] as const)));
+  const brands = new Map(sales.flatMap(sale => sale.sales_items.map(item => [item.products?.brand_id ?? "", item.products?.brands?.name ?? t('salesman.perf.brandFallback')] as const)));
   const rows = filterPerformance(sales, filters);
   const update = (key: keyof typeof filters, value: string) => setFilters(current => ({ ...current, [key]: value }));
   return <><section className="rounded-xl border border-border bg-card p-4 sm:p-6">
