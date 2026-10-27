@@ -5637,6 +5637,14 @@ setCustomerOrganizationName("");
   // picker instead of the scanned line's unit/quantity. Only the first
   // scan of a fresh (lineless) detailed invoice takes this path.
   const [saleCustomerFocus, setSaleCustomerFocus] = useState(0);
+  // 2b fix: the customer picker's input, for synchronous focus from the
+  // detailed barcode box's afterScan hook (see below). The focusSignal
+  // effect alone lost the race with the box's own refocus after a scan.
+  const saleCustomerInputRef = useRef<HTMLInputElement>(null);
+  // 2b fix: set by the detailed box's onScan, consumed-and-cleared by its
+  // afterScan — true only when the last box scan was a first-scan add (or
+  // merge) that must route focus to Customer.
+  const detailScanCustomerFocusRef = useRef(false);
   // 2b: provisional next invoice number for the detailed header display
   // only (max S-number in the loaded sales history + 1). The server
   // still assigns the real number at save, so a stale preview here is
@@ -5743,17 +5751,29 @@ setCustomerOrganizationName("");
   };
   useEffect(() => {
     if (detailFocusFor === null) return;
-    const frame = requestAnimationFrame(() => {
+    // 2b fix: retry for up to ~10 frames. A single frame could miss a line
+    // whose row had not committed yet, leaving focus stranded in the
+    // barcode box with no later trigger to move it. On exhaustion the
+    // intent is cleared so a later line addition cannot yank focus to a
+    // stale row.
+    let cancelled = false;
+    let attempts = 0;
+    const tick = () => {
+      if (cancelled) return;
       const { kind, index } = detailFocusFor;
       if (kind === "quantity") {
         const field = Array.from(document.querySelectorAll<HTMLInputElement>(`[data-sale-quantity="${index}"]`)).find(input => input.getClientRects().length > 0);
-        if (field) { field.focus(); field.select(); setDetailFocusFor(null); }
+        if (field) { field.focus(); field.select(); setDetailFocusFor(null); return; }
       } else {
         const field = Array.from(document.querySelectorAll<HTMLSelectElement>(`[data-sale-unit="${index}"]`)).find(select => select.getClientRects().length > 0);
-        if (field) { field.focus(); setDetailFocusFor(null); }
+        if (field) { field.focus(); setDetailFocusFor(null); return; }
       }
-    });
-    return () => cancelAnimationFrame(frame);
+      attempts += 1;
+      if (attempts < 10) requestAnimationFrame(tick);
+      else setDetailFocusFor(null);
+    };
+    const frame = requestAnimationFrame(tick);
+    return () => { cancelled = true; cancelAnimationFrame(frame); };
   }, [detailFocusFor, salesLines.length]);
   const restoreCounterSale = (sale: CounterSale) => {
     salesPricingRequest.current += 1;
@@ -19031,12 +19051,18 @@ setCustomerOrganizationName("");
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
               <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? t('sell.quickSaleBarcode') : t('sell.scanProduct')}</h3>
               <label className="mb-3 block text-sm">{t('sell.eachScanAddsOne')} <select aria-label={t('sell.scanUnitAria')} data-entry-skip value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">{t('sell.scanSubUnit')}</option><option value="main">{t('sell.scanMainUnit')}</option></select></label>
-              <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} onScan={code => {
+              <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} afterScan={() => { const go = detailScanCustomerFocusRef.current; detailScanCustomerFocusRef.current = false; if (go) saleCustomerInputRef.current?.focus(); }} onScan={code => {
                 // 2b (Option A): first scan of a fresh invoice routes to
                 // Customer; later scans join the scan loop below.
                 const firstScan = salesLines.length === 0;
                 const result = runSalesScan(code);
                 if (result.status === "added") setSalesMessage(t('sell.scanAdded').replace('{name}', result.product.name));
+                // 2b fix: record the routing for afterScan, which runs
+                // synchronously inside the box's scan() AFTER its own
+                // refocus — so the customer focus lands after the box's,
+                // instead of racing it through a state effect. The
+                // focusSignal bump below stays as a backup.
+                detailScanCustomerFocusRef.current = firstScan && (result.status === "added" || result.status === "duplicate");
                 // Join the scan loop: a box scan lands on the new (or
                 // merged) line's unit select (two-unit products) or
                 // quantity (one-unit products), like a captured scan,
@@ -19054,7 +19080,7 @@ setCustomerOrganizationName("");
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('sell.customer')}</span>
-                <ProductSearchSelect label={t('sell.customer')} searchPlaceholder={t('sell.searchCustomer')} value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={invoiceCustomerOptions} focusSignal={saleCustomerFocus} />
+                <ProductSearchSelect label={t('sell.customer')} searchPlaceholder={t('sell.searchCustomer')} value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={invoiceCustomerOptions} focusSignal={saleCustomerFocus} inputRef={saleCustomerInputRef} />
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">

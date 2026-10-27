@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { focusNextEntryField } from "./entry-navigation";
 import { activeSuggestionIndex } from "./search-selection";
 import { highlightSearchMatches, rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
 import { isBarcodeShaped } from "@/lib/invoices/scan-submit";
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 
-export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankedFields, maxSuggestions = 12, onBarcodeEnter, focusSignal = 0 }: {
+export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankedFields, maxSuggestions = 12, onBarcodeEnter, focusSignal = 0, inputRef }: {
   value: string;
   onChange: (value: string) => void;
   products: Array<{ id: string; label: string }>;
@@ -35,6 +35,11 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
   maxSuggestions?: number;
   /** Bumping this focuses the search input (mirrors BarcodeInput's focusSignal). Callers that don't pass it are unaffected. */
   focusSignal?: number;
+  /** Optional caller-owned ref to the search input, for synchronous focus
+   * (e.g. a barcode box's afterScan hook) where waiting for a focusSignal
+   * effect would lose a race with the box's own refocus. Callers that don't
+   * pass it are unaffected. */
+  inputRef?: RefObject<HTMLInputElement | null>;
 }) {
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -93,7 +98,7 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
   };
 
   return <div ref={anchorRef} className="relative min-w-0">
-    <input ref={input} type="text" role="combobox" aria-label={label} aria-autocomplete="list"
+    <input ref={node => { input.current = node; if (inputRef) inputRef.current = node; }} type="text" role="combobox" aria-label={label} aria-autocomplete="list"
       aria-expanded={open} aria-controls={listId} aria-activedescendant={open && matches.length ? `${listId}-${activeIndex}` : undefined}
       autoComplete="off" required placeholder={searchPlaceholder} value={query ?? selected?.label ?? ""}
       onFocus={() => { setActive(null); setOpen(true); }} onBlur={() => setOpen(false)}
