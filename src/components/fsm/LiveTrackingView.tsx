@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { getMapProvider } from "@/lib/maps/map-provider";
 import { getPlaceName } from "@/lib/maps/client-maps";
@@ -22,6 +23,7 @@ import NavigateModal from "./NavigateModal";
 type FilterKey = "all" | "on_duty" | "off_duty" | "with_location" | "moving" | "live" | "stale";
 
 export default function LiveTrackingView({ compact = false }: { compact?: boolean }) {
+  const { t } = useRegional();
   const [employees, setEmployees] = useState<CurrentLocationView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,14 +44,14 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
         setEmployees(data.employees || []);
         setError(null);
       } else {
-        setError(data.error || "Failed to load live locations");
+        setError(data.error || t('fsm.tracking.loadFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -135,16 +137,16 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
       <div className="flex flex-wrap items-center gap-2">
         <div className="mr-auto flex flex-wrap gap-x-4 gap-y-1 text-sm text-body">
           <span>
-            <span className="font-semibold text-foreground">{employees.length}</span> employees
+            <span className="font-semibold text-foreground">{employees.length}</span> {t('fsm.tracking.employeesCount').replace('{count}', String(employees.length))}
           </span>
           <span>
-            <span className="font-semibold text-success">{onDuty.length}</span> on duty
+            <span className="font-semibold text-success">{onDuty.length}</span> {t('fsm.tracking.onDutyLower')}
           </span>
           <span>
-            <span className="font-semibold text-success">{live.length}</span> live
+            <span className="font-semibold text-success">{live.length}</span> {t('fsm.tracking.liveLower')}
           </span>
           <span>
-            <span className="font-semibold text-destructive">{stale.length}</span> stale
+            <span className="font-semibold text-destructive">{stale.length}</span> {t('fsm.tracking.staleLower')}
           </span>
         </div>
         <select
@@ -154,13 +156,13 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
         >
           {(
             [
-              ["all", "All Employees"],
-              ["on_duty", "On Duty"],
-              ["off_duty", "Off Duty"],
-              ["with_location", "With Location"],
-              ["moving", "Moving"],
-              ["live", "Live Now"],
-              ["stale", "Stale / No Update"],
+              ["all", t('fsm.tracking.filterAll')],
+              ["on_duty", t('supervisor.home.onDuty')],
+              ["off_duty", t('fsm.tracking.filterOffDuty')],
+              ["with_location", t('fsm.tracking.filterWithLocation')],
+              ["moving", t('fsm.tracking.filterMoving')],
+              ["live", t('fsm.tracking.filterLiveNow')],
+              ["stale", t('fsm.tracking.filterStale')],
             ] as [FilterKey, string][]
           ).map(([key, label]) => (
             <option key={key} value={key}>
@@ -173,16 +175,16 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
           onChange={(e) => setPollInterval(Number(e.target.value))}
           className="rounded-lg border border-border bg-card px-3 py-2 text-sm"
         >
-          <option value={5000}>5s refresh</option>
-          <option value={15000}>15s refresh</option>
-          <option value={30000}>30s refresh</option>
-          <option value={60000}>1m refresh</option>
+          <option value={5000}>{t('fsm.tracking.refresh5s')}</option>
+          <option value={15000}>{t('fsm.tracking.refresh15s')}</option>
+          <option value={30000}>{t('fsm.tracking.refresh30s')}</option>
+          <option value={60000}>{t('fsm.tracking.refresh1m')}</option>
         </select>
         <button
           onClick={load}
           className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
         >
-          Refresh
+          {t('fsm.routes.refresh')}
         </button>
       </div>
 
@@ -195,7 +197,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
       {loading && employees.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading live locations...</p>
+          <p className="text-sm text-body">{t('fsm.tracking.loading')}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-light-text">
@@ -221,7 +223,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                 <div className="px-4 py-3 flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-foreground truncate">{emp.employeeName}</div>
-                    <div className="text-xs text-body capitalize">{emp.role || "No role"}</div>
+                    <div className="text-xs text-body capitalize">{emp.role || t('fsm.tracking.noRole')}</div>
                     {emp.hasLocation ? (
                       <>
                         {placeLabel ? (
@@ -240,16 +242,16 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                           </div>
                         )}
                         <div className="text-[11px] text-light-text">
-                          {(emp.speed ?? 0) > 1 ? `Moving ${Math.round((emp.speed ?? 0) * 3.6)} km/h` : "Stationary"}
-                          {emp.lastUpdateAge < 60000 ? " · now" : ` · ${Math.round(emp.lastUpdateAge / 60000)}m ago`}
+                          {(emp.speed ?? 0) > 1 ? t('fsm.tracking.movingSpeed').replace('{speed}', String(Math.round((emp.speed ?? 0) * 3.6))) : t('fsm.tracking.stationary')}
+                          {emp.lastUpdateAge < 60000 ? ` · ${t('fsm.tracking.now')}` : ` · ${t('fsm.tracking.minutesAgo').replace('{minutes}', String(Math.round(emp.lastUpdateAge / 60000)))}`}
                         </div>
                       </>
                     ) : (
-                      emp.isOnDuty && <div className="text-xs text-warning mt-0.5">{emp.trackingError || "No location data"}</div>
+                      emp.isOnDuty && <div className="text-xs text-warning mt-0.5">{emp.trackingError || t('fsm.tracking.noLocationData')}</div>
                     )}
                     {emp.scheduledEndAt && emp.isOnDuty && (
                       <div className="mt-0.5 text-[11px] text-light-text">
-                        Cutoff {new Date(emp.scheduledEndAt).toLocaleTimeString()}
+                        {t('fsm.tracking.cutoff').replace('{time}', new Date(emp.scheduledEndAt).toLocaleTimeString())}
                       </div>
                     )}
                   </div>
@@ -272,7 +274,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                 {/* Embedded live map (auto, no manual link needed) */}
                 {embedUrl ? (
                   <iframe
-                    title={`Live location for ${emp.employeeName}`}
+                    title={t('fsm.tracking.liveLocationFor').replace('{name}', emp.employeeName)}
                     src={embedUrl}
                     loading="lazy"
                     allowFullScreen
@@ -282,7 +284,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                   />
                 ) : (
                   <div className="flex items-center gap-2 bg-muted/30 px-4 py-6 text-xs text-light-text border-y border-border">
-                    <MapPin className="size-4 shrink-0" /> No location to show for this employee yet.
+                    <MapPin className="size-4 shrink-0" /> {t('fsm.tracking.noLocationToShow')}
                   </div>
                 )}
 
@@ -293,13 +295,13 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                       onClick={() => handleNavigate(emp)}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
                     >
-                      <Navigation className="size-3.5" /> Navigate
+                      <Navigation className="size-3.5" /> {t('fsm.routes.navigate')}
                     </button>
                   )}
                   {expanded === emp.profileId && (
                     <span className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground">
                       <MapPin className="size-3.5" />
-                      {points.length} recorded points
+                      {t('fsm.tracking.recordedPoints').replace('{count}', String(points.length))}
                     </span>
                   )}
                   {emp.hasLocation && (
@@ -307,7 +309,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                       onClick={() => setTraceModal(emp.profileId)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40"
                     >
-                      <Maximize2 className="size-3.5" /> View Moments
+                      <Maximize2 className="size-3.5" /> {t('fsm.tracking.viewMoments')}
                     </button>
                   )}
                   <button
@@ -315,7 +317,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                     className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/40"
                   >
                     <Clock className="size-3.5" />
-                    {expanded === emp.profileId ? "Hide Movement" : "View Movement"}
+                    {expanded === emp.profileId ? t('fsm.tracking.hideMovement') : t('fsm.tracking.viewMovement')}
                     <ChevronDown className={`size-3.5 transition-transform ${expanded === emp.profileId ? "rotate-180" : ""}`} />
                   </button>
                 </div>
@@ -325,22 +327,22 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                   <div className="border-t border-border px-4 py-3 grid gap-3">
                     {booting === emp.profileId ? (
                       <div className="flex items-center gap-2 text-xs text-body">
-                        <Loader2 className="size-3.5 animate-spin" /> Loading movement trail...
+                        <Loader2 className="size-3.5 animate-spin" /> {t('fsm.tracking.loadingTrail')}
                       </div>
                     ) : points.length === 0 ? (
                       <div className="text-xs text-light-text">
-                        No location history found for this employee in the last 15 minutes.
+                        {t('fsm.tracking.noHistory')}
                       </div>
                     ) : (
                       <>
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-light-text">{points.length} recorded points</span>
-                          <span className="text-body">Last: {new Date(last.captured_at).toLocaleTimeString()}</span>
+                          <span className="text-light-text">{t('fsm.tracking.recordedPoints').replace('{count}', String(points.length))}</span>
+                          <span className="text-body">{t('fsm.tracking.lastSeen').replace('{time}', new Date(last.captured_at).toLocaleTimeString())}</span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-primary">
                           <Maximize2 className="size-3.5" />
                           <button onClick={() => setTraceModal(emp.profileId)} className="underline underline-offset-2">
-                            Open {emp.employeeName}&apos;s full movement map
+                            {t('fsm.tracking.openMovementMap').replace('{name}', emp.employeeName)}
                           </button>
                           <ExternalLink className="size-3.5 text-light-text" />
                         </div>
