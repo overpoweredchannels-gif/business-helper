@@ -4477,14 +4477,14 @@ setCustomerOrganizationName("");
       const { result, previousPendingConfirmed } = await createAtomicSale(supabase, scope, input);
       const transaction = result.transaction;
       const invoiceNumber = String(transaction.invoice_number ?? "");
-      if (quickSaleMode) {
-        setLastPOSReceipt(buildAtomicSaleReceipt(result, {
-          scope,
-          business: currentOrganization?.name || "TradeOS",
-          fallbackDate: salesInvoiceDate,
-          fallbackPayment: salesPaymentType,
-        }));
-      }
+      // Instant print (2g): wholesale saves build a receipt exactly like
+      // Retail POS — the dialog below auto-prints it on save.
+      setLastPOSReceipt(buildAtomicSaleReceipt(result, {
+        scope,
+        business: currentOrganization?.name || "TradeOS",
+        fallbackDate: salesInvoiceDate,
+        fallbackPayment: salesPaymentType,
+      }));
       if (previousPendingConfirmed) {
         setSalesMessage(`Earlier sale ${invoiceNumber} was confirmed. Your current basket is unchanged; review it before saving another sale.`);
         fetchSalesTransactions();
@@ -5678,13 +5678,35 @@ setCustomerOrganizationName("");
   };
   const clearSaleUnitPickerOpen = () => { saleUnitPickerOpenRef.current = false; };
   const handleSaleUnitPickerKeyDown = (index: number, event: ReactKeyboardEvent<HTMLSelectElement>) => {
-    if (event.key === "Escape") { saleUnitPickerOpenRef.current = false; return; }
+    if (event.key === "Escape") { const wasOpen = saleUnitPickerOpenRef.current; saleUnitPickerOpenRef.current = false; if (wasOpen) event.stopPropagation(); return; }
     if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
     if (!saleUnitPickerOpenRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     saleUnitPickerOpenRef.current = false;
     const field = document.querySelector(`[data-sale-quantity="${index}"]`);
+    if (field instanceof HTMLInputElement) { field.focus(); field.select(); }
+  };
+  // Wholesale line-discount type picker (2e): mirrors the Sell As picker —
+  // keyboard focus auto-opens the Amount/Percentage dropdown, Enter after
+  // the popup closes advances to the discount value.
+  const saleDiscountTypePickerOpenRef = useRef(false);
+  const openSaleDiscountTypePicker = (event: { currentTarget: HTMLSelectElement }) => {
+    if (!wasLastInputKeyboard()) return;
+    try {
+      (event.currentTarget as HTMLSelectElement & { showPicker?: () => void }).showPicker?.();
+      saleDiscountTypePickerOpenRef.current = true;
+    } catch { /* Popup already open, or no showPicker — ignore. */ }
+  };
+  const clearSaleDiscountTypePickerOpen = () => { saleDiscountTypePickerOpenRef.current = false; };
+  const handleSaleDiscountTypePickerKeyDown = (index: number, event: ReactKeyboardEvent<HTMLSelectElement>) => {
+    if (event.key === "Escape") { const wasOpen = saleDiscountTypePickerOpenRef.current; saleDiscountTypePickerOpenRef.current = false; if (wasOpen) event.stopPropagation(); return; }
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    if (!saleDiscountTypePickerOpenRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    saleDiscountTypePickerOpenRef.current = false;
+    const field = document.querySelector(`[data-sale-discount="${index}"]`);
     if (field instanceof HTMLInputElement) { field.focus(); field.select(); }
   };
   const runSalesScan = (code: string, options?: { reportNotFound?: boolean }) => {
@@ -19192,7 +19214,7 @@ setCustomerOrganizationName("");
               {salesLines.length === 0 ? (
                 <p className="mb-4 text-sm text-muted-foreground/80">{t('sell.noProductLines')}</p>
               ) : (
-                <InvoiceLineNavigation onAddLine={handleAddSalesLine}>
+                <InvoiceLineNavigation onAddLine={handleAddSalesLine} onSkipLine={(index) => { handleRemoveSalesLine(index); requestAnimationFrame(() => { const save = document.querySelector("[data-sale-save]"); if (save instanceof HTMLButtonElement && !save.disabled) { save.focus(); return; } const add = document.querySelector("[data-sale-add-line]"); if (add instanceof HTMLButtonElement) add.focus(); }); }}>
                   {salesLines.map((line, index) => {
                     const lineProduct = line.product_id
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
@@ -19276,6 +19298,19 @@ setCustomerOrganizationName("");
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.lineDiscount')}</span>
                           <div className="flex gap-2">
+                            <select
+                              data-sale-discount-type={index}
+                              aria-label={`Discount type for line ${index + 1}`}
+                              value={line.discount_type ?? "flat"}
+                              onFocus={openSaleDiscountTypePicker}
+                              onBlur={clearSaleDiscountTypePickerOpen}
+                              onKeyDown={(event) => handleSaleDiscountTypePickerKeyDown(index, event)}
+                              onChange={(e) => handleSalesLineChange(index, "discount_type", e.target.value)}
+                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            >
+                              <option value="flat">Amount</option>
+                              <option value="percent">%</option>
+                            </select>
                             <input
                               data-sale-discount={index}
                               type="text" inputMode="decimal"
@@ -19283,16 +19318,6 @@ setCustomerOrganizationName("");
                               onChange={(e) => handleSalesLineChange(index, "discount", e.target.value)}
                               className="w-full rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                             />
-                            <select
-                              data-sale-discount-type={index}
-                              aria-label={`Discount type for line ${index + 1}`}
-                              value={line.discount_type ?? "flat"}
-                              onChange={(e) => handleSalesLineChange(index, "discount_type", e.target.value)}
-                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
-                            >
-                              <option value="flat">Amount</option>
-                              <option value="percent">%</option>
-                            </select>
                           </div>
                           {currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "discount") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.lineIndex === index && issue.field === "discount")?.message}</span>}
                         </label>
@@ -19317,7 +19342,7 @@ setCustomerOrganizationName("");
 
               <button
                 type="button"
-                data-entry-add onClick={handleAddSalesLine}
+                data-entry-add data-sale-add-line onClick={handleAddSalesLine}
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
                 {t('sell.addProductLine')}
@@ -19347,6 +19372,7 @@ setCustomerOrganizationName("");
 
             <button
               type="button"
+              data-sale-save
               onClick={() => handleCreateSalesInvoice()}
               disabled={salesInvoiceLoading || !salesLines.length || !selectedCustomerIdForSale || !currentSaleDraft.valid}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
@@ -19356,7 +19382,7 @@ setCustomerOrganizationName("");
 
             </div>
             {drawerNotice && <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"><span>{drawerNotice}</span><button type="button" onClick={() => setDrawerNotice("")} className="min-h-11 rounded border border-input bg-background px-3 font-medium">{t('common.close')}</button></div>}
-            {quickSaleMode && lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} autoPrint onDone={() => {
+            {lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} autoPrint onDone={() => {
               // Next-sale reset (2026-10-26): the printed receipt clears,
               // the barcode box erases, and focus returns to it, so the
               // next product can be scanned immediately.

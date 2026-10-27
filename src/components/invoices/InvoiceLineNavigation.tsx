@@ -10,8 +10,10 @@ const focusField = (field?: Field) => {
   if (field instanceof HTMLInputElement && ["text", "search", "tel"].includes(field.type)) field.select();
 };
 
-/** Enter advances within invoice lines; it never triggers invoice submission. */
-export function InvoiceLineNavigation({ children, onAddLine }: { children: ReactNode; onAddLine: () => void }) {
+/** Enter advances within invoice lines; it never triggers invoice submission.
+ * Escape on a line with no entered values (no product, no quantity, price,
+ * discount or bonus typed) skips that line via onSkipLine instead. */
+export function InvoiceLineNavigation({ children, onAddLine, onSkipLine }: { children: ReactNode; onAddLine: () => void; onSkipLine?: (index: number) => void }) {
   const root = useRef<HTMLDivElement>(null);
   const pendingRow = useRef<number | null>(null);
   const previousCount = useRef(0);
@@ -28,11 +30,25 @@ export function InvoiceLineNavigation({ children, onAddLine }: { children: React
     }
   });
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Enter" || event.nativeEvent.isComposing || event.ctrlKey || event.altKey || event.metaKey) return;
+    if (event.nativeEvent.isComposing || event.ctrlKey || event.altKey || event.metaKey) return;
     const target = event.target;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
     const row = target.closest("[data-invoice-line]");
     if (!row) return;
+    if (event.key === "Escape") {
+      if (!onSkipLine) return;
+      // Only a line with nothing typed into it may be skipped; the two
+      // selects keep their defaults (unit "main", discount "flat"), so
+      // only text inputs decide emptiness.
+      const fields = fieldsIn(row);
+      if (fields.some(field => field instanceof HTMLInputElement && field.value.trim() !== "")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rows = Array.from(root.current?.querySelectorAll("[data-invoice-line]") ?? []);
+      onSkipLine(rows.indexOf(row));
+      return;
+    }
+    if (event.key !== "Enter") return;
     event.preventDefault();
     event.stopPropagation();
     if (event.repeat || pendingRow.current !== null) return;

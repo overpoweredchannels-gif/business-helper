@@ -128,7 +128,10 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
             else input.current?.reportValidity();
           }
         } else if (event.key === "Escape") {
-          event.preventDefault(); event.stopPropagation(); setOpen(false);
+          // Popup open: close it and swallow the key, as before. Popup
+          // already closed: let Escape bubble so an invoice-line
+          // container can skip an empty line with it.
+          if (open) { event.preventDefault(); event.stopPropagation(); setOpen(false); }
         }
       }} className="w-full rounded border border-input px-3 py-2 focus:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
     {open && <div ref={popoverRef} className={`absolute left-0 right-0 z-50 overflow-y-auto rounded border border-border bg-card shadow-lg ${placement === "below" ? "top-full mt-1" : "bottom-full mb-1"}`} style={{ maxHeight: maxHeightPx }}>
