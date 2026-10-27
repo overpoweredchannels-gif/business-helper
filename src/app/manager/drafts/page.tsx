@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import {
@@ -29,6 +30,7 @@ interface Draft {
 }
 
 export default function DraftApprovalsPage() {
+  const { t } = useRegional();
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,13 +47,13 @@ export default function DraftApprovalsPage() {
       const res = await authorizedFetch("/api/sales/drafts?status=pending_approval&limit=50");
       const data = await res.json();
       if (data.ok) setDrafts(data.drafts ?? []);
-      else setError(data.error || "Failed to load drafts");
+      else setError(data.error || t('manager.drafts.loadFailed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -64,7 +66,7 @@ export default function DraftApprovalsPage() {
       const body: any = { action };
       if (action === "reject") {
         if (!rejectReason.trim()) {
-          setMessage({ type: "error", text: "Enter a reason for rejection." });
+          setMessage({ type: "error", text: t('manager.drafts.reasonRequired') });
           setActing(null);
           return;
         }
@@ -76,14 +78,14 @@ export default function DraftApprovalsPage() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Action failed");
-      setMessage({ type: "ok", text: action === "approve" ? `Approved → invoice ${data.invoiceNumber ?? ""}` : "Draft rejected." });
+      if (!data.ok) throw new Error(data.error || t('manager.drafts.actionFailed'));
+      setMessage({ type: "ok", text: action === "approve" ? t('manager.drafts.approvedInvoice').replace('{number}', data.invoiceNumber ?? "") : t('manager.drafts.rejected') });
       setRejectReason("");
       setRejecting(null);
       setExpanded(null);
       await load();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Action failed" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('manager.drafts.actionFailed') });
     } finally {
       setActing(null);
     }
@@ -94,8 +96,8 @@ export default function DraftApprovalsPage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Draft Approvals</h1>
-        <p className="text-sm text-body mt-1">Approve drafts to convert them into invoices — stock and receivables update automatically.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('manager.drafts.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('manager.drafts.subtitle')}</p>
       </div>
 
       {message && (
@@ -117,13 +119,13 @@ export default function DraftApprovalsPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading drafts...</p>
+          <p className="text-sm text-body">{t('manager.drafts.loading')}</p>
         </div>
       ) : drafts.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <ClipboardList className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No drafts pending approval.</p>
-          <p className="text-xs text-light-text mt-1">New drafts from salesmen will appear here.</p>
+          <p className="text-sm text-body">{t('manager.drafts.noDrafts')}</p>
+          <p className="text-xs text-light-text mt-1">{t('manager.drafts.newDraftsHint')}</p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -137,7 +139,7 @@ export default function DraftApprovalsPage() {
                   <div className="min-w-0">
                     <div className="font-medium text-foreground">{d.so_number}</div>
                     <div className="text-xs text-body truncate">
-                      {d.customers?.shop_name || d.customers?.customer_name} · by {d.profiles?.full_name ?? "Salesman"}
+                      {d.customers?.shop_name || d.customers?.customer_name} · {t('draft.by')} {d.profiles?.full_name ?? t('sell.invoiceGen.salesmanFallback')}
                     </div>
                     <div className="text-xs text-light-text mt-0.5">{new Date(d.created_at).toLocaleString()}</div>
                   </div>
@@ -151,11 +153,11 @@ export default function DraftApprovalsPage() {
               {expanded === d.id && (
                 <div className="border-t border-border px-5 py-4 grid gap-4">
                   <div>
-                    <h3 className="text-sm font-medium text-foreground mb-2">Items</h3>
+                    <h3 className="text-sm font-medium text-foreground mb-2">{t('draft.items')}</h3>
                     <div className="rounded-lg border border-border divide-y divide-border">
                       {(d.sales_order_items ?? []).map((item, i) => (
                         <div key={i} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                          <span className="text-foreground">{item.products?.name ?? `Product #${item.product_id}`}</span>
+                          <span className="text-foreground">{item.products?.name ?? t('manager.drafts.productFallback').replace('{id}', String(item.product_id))}</span>
                           <span className="text-body">{item.quantity_ordered} × {fmt(item.unit_price)}</span>
                           <span className="font-semibold text-foreground">{fmt(item.quantity_ordered * item.unit_price - (item.discount ?? 0))}</span>
                         </div>
@@ -170,7 +172,7 @@ export default function DraftApprovalsPage() {
                         value={rejectReason}
                         onChange={(e) => setRejectReason(e.target.value)}
                         rows={2}
-                        placeholder="Reason for rejection (required)"
+                        placeholder={t('manager.drafts.rejectPlaceholder')}
                         className="w-full rounded-lg border border-input bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       />
                       <div className="flex gap-3">
@@ -180,13 +182,13 @@ export default function DraftApprovalsPage() {
                           className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-destructive text-destructive-foreground text-sm font-medium disabled:opacity-50"
                         >
                           {acting === d.id ? <Loader2 className="size-4 animate-spin" /> : <ThumbsDown className="size-4" />}
-                          Reject
+                          {t('sell.reject')}
                         </button>
                         <button
                           onClick={() => { setRejecting(null); setRejectReason(""); }}
                           className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted"
                         >
-                          Cancel
+                          {t('common.cancel')}
                         </button>
                       </div>
                     </div>
@@ -198,14 +200,14 @@ export default function DraftApprovalsPage() {
                         className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
                       >
                         {acting === d.id ? <Loader2 className="size-4 animate-spin" /> : <ThumbsUp className="size-4" />}
-                        Approve & convert
+                        {t('manager.drafts.approveConvert')}
                       </button>
                       <button
                         onClick={() => setRejecting(d.id)}
                         className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm font-medium hover:bg-destructive/10"
                       >
                         <XCircle className="size-4" />
-                        Reject
+                        {t('sell.reject')}
                       </button>
                     </div>
                   )}
