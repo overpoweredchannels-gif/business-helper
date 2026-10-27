@@ -5633,6 +5633,22 @@ setCustomerOrganizationName("");
   const [keepSaleCustomer, setKeepSaleCustomer] = useState(false);
   const [saleScanUnit, setSaleScanUnit] = useState<UnitMode>("subunit");
   const [saleScanFocus, setSaleScanFocus] = useState(0);
+  // 2b: first-scan routing — bumping this focuses the detailed customer
+  // picker instead of the scanned line's unit/quantity. Only the first
+  // scan of a fresh (lineless) detailed invoice takes this path.
+  const [saleCustomerFocus, setSaleCustomerFocus] = useState(0);
+  // 2b: provisional next invoice number for the detailed header display
+  // only (max S-number in the loaded sales history + 1). The server
+  // still assigns the real number at save, so a stale preview here is
+  // harmless display text, never a reservation.
+  const nextInvoicePreview = useMemo(() => {
+    let max = 0;
+    for (const tx of salesTransactions) {
+      const match = /^S-(\d+)$/.exec(String(tx.invoice_number ?? ""));
+      if (match) max = Math.max(max, Number(match[1]));
+    }
+    return max > 0 ? `S-${String(max + 1).padStart(6, "0")}` : null;
+  }, [salesTransactions]);
   // Bumped when a receipt dialog closes, so the POS barcode box erases
   // for the next sale (next-sale reset, 2026-10-26).
   const [saleBarcodeClearSignal, setSaleBarcodeClearSignal] = useState(0);
@@ -5833,9 +5849,14 @@ setCustomerOrganizationName("");
       }
     },
     handleScan: (code) => {
+      // 2b (Option A): the first scan of a fresh detailed invoice routes
+      // focus to Customer so the header walk starts there; every later
+      // scan keeps the verified lines loop (unit/quantity).
+      const firstScan = salesLines.length === 0;
       const result = runSalesScan(code, { reportNotFound: isBarcodeShaped(code) });
       if (result.status === "added" || result.status === "duplicate") {
-        setDetailFocusFor(detailScanFocusTarget(String(result.product.id)));
+        if (firstScan) setSaleCustomerFocus(value => value + 1);
+        else setDetailFocusFor(detailScanFocusTarget(String(result.product.id)));
       }
       return result.status !== "not-found";
     },
@@ -19011,6 +19032,9 @@ setCustomerOrganizationName("");
               <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? t('sell.quickSaleBarcode') : t('sell.scanProduct')}</h3>
               <label className="mb-3 block text-sm">{t('sell.eachScanAddsOne')} <select aria-label={t('sell.scanUnitAria')} data-entry-skip value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">{t('sell.scanSubUnit')}</option><option value="main">{t('sell.scanMainUnit')}</option></select></label>
               <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} onScan={code => {
+                // 2b (Option A): first scan of a fresh invoice routes to
+                // Customer; later scans join the scan loop below.
+                const firstScan = salesLines.length === 0;
                 const result = runSalesScan(code);
                 if (result.status === "added") setSalesMessage(t('sell.scanAdded').replace('{name}', result.product.name));
                 // Join the scan loop: a box scan lands on the new (or
@@ -19018,7 +19042,8 @@ setCustomerOrganizationName("");
                 // quantity (one-unit products), like a captured scan,
                 // instead of leaving focus in the barcode box.
                 if (result.status === "added" || result.status === "duplicate") {
-                  setDetailFocusFor(detailScanFocusTarget(String(result.product.id)));
+                  if (firstScan) setSaleCustomerFocus(value => value + 1);
+                  else setDetailFocusFor(detailScanFocusTarget(String(result.product.id)));
                 }
                 return result.status !== "not-found";
               }} />
@@ -19029,14 +19054,14 @@ setCustomerOrganizationName("");
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('sell.customer')}</span>
-                <ProductSearchSelect label={t('sell.customer')} searchPlaceholder={t('sell.searchCustomer')} value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={invoiceCustomerOptions} />
+                <ProductSearchSelect label={t('sell.customer')} searchPlaceholder={t('sell.searchCustomer')} value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={invoiceCustomerOptions} focusSignal={saleCustomerFocus} />
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('sell.invoiceNumber')}</span>
                 <input
                   type="text"
-                  value={t('sell.invoiceNumberAuto')}
+                  value={nextInvoicePreview ? t('sell.invoiceNumberPreview').replace('{number}', nextInvoicePreview) : t('sell.invoiceNumberAuto')}
                   readOnly
                   className="w-full rounded border border-border px-3 py-2 bg-muted text-muted-foreground"
                 />
