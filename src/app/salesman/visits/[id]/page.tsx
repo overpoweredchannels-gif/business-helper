@@ -103,10 +103,10 @@ export default function VisitDetailPage() {
         `/api/products/list?search=${encodeURIComponent(query)}&offset=${offset}&limit=${VISIT_PRODUCT_SEARCH_PAGE_SIZE}`,
       );
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Product search failed. Please try again.");
+      if (!data.ok) throw new Error(data.error || t('salesman.visitDetail.searchFailed'));
       return { products: data.products ?? [], nextOffset: data.nextOffset ?? null };
     },
-    [],
+    [t],
   );
 
   // Photos
@@ -127,11 +127,11 @@ export default function VisitDetailPage() {
         setError(data.error || t('salesman.visitDetail.notFound'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, [visitId]);
+  }, [visitId, t]);
 
   useEffect(() => {
     (async () => {
@@ -141,16 +141,16 @@ export default function VisitDetailPage() {
         if (data.ok && data.me?.employee) setEmployeeId(data.me.employee.id);
         loadVisit(data.me?.employee?.id);
       } catch {
-        setError("Could not load your profile.");
+        setError(t('salesman.visitDetail.profileLoadFailed'));
         setLoading(false);
       }
     })();
-  }, [loadVisit]);
+  }, [loadVisit, t]);
 
   const startVisit = async () => {
     setActionLoading(true);
     setError(null);
-    setGpsMessage("Getting your location...");
+    setGpsMessage(t('salesman.visitDetail.gettingLocation'));
     try {
       const pos = await getPosition();
       const res = await authorizedFetch("/api/visits/start", {
@@ -167,8 +167,8 @@ export default function VisitDetailPage() {
         }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to start visit");
-      setSuccess("Visit started. You can now add notes.");
+      if (!data.ok) throw new Error(data.error || t('salesman.visitDetail.startFailed'));
+      setSuccess(t('salesman.visitDetail.visitStarted'));
       await loadVisit(employeeId!);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('salesman.visitDetail.startFailed'));
@@ -188,12 +188,12 @@ export default function VisitDetailPage() {
         body: JSON.stringify({ visitId, notes }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to save notes");
+      if (!data.ok) throw new Error(data.error || t('salesman.visitDetail.saveNotesFailed'));
       setSavedNotes(notes);
-      setSuccess("Notes saved.");
+      setSuccess(t('salesman.visitDetail.notesSaved'));
       await loadVisit(employeeId!);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save notes");
+      setError(err instanceof Error ? err.message : t('salesman.visitDetail.saveNotesFailed'));
     } finally {
       setActionLoading(false);
     }
@@ -202,7 +202,7 @@ export default function VisitDetailPage() {
   const finishVisit = async () => {
     setActionLoading(true);
     setError(null);
-    setGpsMessage("Verifying your location...");
+    setGpsMessage(t('salesman.visitDetail.verifyingLocation'));
     try {
       const pos = await getPosition();
       const createDraftSale = items.length > 0;
@@ -225,19 +225,19 @@ export default function VisitDetailPage() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to finish visit");
+      if (!data.ok) throw new Error(data.error || t('salesman.visitDetail.finishFailed'));
       const draftCreated = createDraftSale && Boolean(data?.visit?.draftSale);
       if (createDraftSale && !draftCreated) {
-        setError("Visit finished, but the draft sale could not be created. Please contact your manager.");
+        setError(t('salesman.visitDetail.finishDraftFailed'));
         setItems([]);
         await loadVisit(employeeId!);
         return;
       }
-      setSuccess(draftCreated ? "Visit finished. Draft sale created and sent for approval." : "Visit finished.");
+      setSuccess(draftCreated ? t('salesman.visitDetail.finishDraftCreated') : t('salesman.visitDetail.visitFinished'));
       setItems([]);
       await loadVisit(employeeId!);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to finish visit");
+      setError(err instanceof Error ? err.message : t('salesman.visitDetail.finishFailed'));
     } finally {
       setActionLoading(false);
       setGpsMessage(null);
@@ -266,11 +266,11 @@ export default function VisitDetailPage() {
         body: formData,
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to upload photo");
-      setSuccess("Photo uploaded.");
+      if (!data.ok) throw new Error(data.error || t('salesman.visitDetail.uploadPhotoFailed'));
+      setSuccess(t('salesman.visitDetail.photoUploaded'));
       await loadVisit(employeeId!);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Photo upload failed");
+      setError(err instanceof Error ? err.message : t('salesman.visitDetail.uploadFailed'));
     } finally {
       setPhotoLoading(false);
     }
@@ -294,7 +294,7 @@ export default function VisitDetailPage() {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading visit...</p>
+        <p className="text-sm text-body">{t('salesman.visitDetail.loadingVisit')}</p>
       </div>
     );
   }
@@ -302,7 +302,7 @@ export default function VisitDetailPage() {
   if (!visit) {
     return (
       <div className="grid gap-4">
-        <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">{error ?? "Visit not found"}</div>
+        <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">{error ?? t('salesman.visitDetail.notFound')}</div>
         <button onClick={() => router.push("/salesman/visits")} className="inline-flex items-center gap-2 text-sm text-primary">
           <ArrowLeft className="size-4" /> Back to visits
         </button>
@@ -325,7 +325,7 @@ export default function VisitDetailPage() {
       </div>
 
       <div className="rounded-2xl border border-border bg-card p-6">
-        <h1 className="font-heading font-bold text-2xl text-foreground">{customer?.shop_name || customer?.customer_name || "Customer"}</h1>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{customer?.shop_name || customer?.customer_name || t('pos.customer')}</h1>
         {customer?.phone && <p className="text-sm text-body mt-1">{customer.phone}</p>}
         {visit.started_at && (
           <p className="text-xs text-light-text mt-2">
@@ -392,8 +392,8 @@ export default function VisitDetailPage() {
 
           {/* Visit photos */}
           <div className="rounded-2xl border border-border bg-card p-6">
-            <h2 className="font-semibold text-foreground mb-1">Visit photos</h2>
-            <p className="text-sm text-body mb-4">Capture proof of visit or product photos.</p>
+            <h2 className="font-semibold text-foreground mb-1">{t('salesman.visitDetail.photos')}</h2>
+            <p className="text-sm text-body mb-4">{t('salesman.visitDetail.photosHint')}</p>
             <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFileChange} />
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -401,14 +401,14 @@ export default function VisitDetailPage() {
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
             >
               {photoLoading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-              {photoLoading ? "Uploading..." : "Take / choose photo"}
+              {photoLoading ? t('salesman.visitDetail.uploading') : t('salesman.visitDetail.takeOrChoosePhoto')}
             </button>
 
             {visit.images && visit.images.length > 0 && (
               <div className="mt-4 grid grid-cols-3 gap-3">
                 {visit.images.map((img, i) => (
                   <a key={i} href={img.url} target="_blank" rel="noopener noreferrer" className="group relative aspect-square rounded-lg overflow-hidden border border-border bg-muted">
-                    <img src={img.url} alt={img.caption || "Visit photo"} className="size-full object-cover" loading="lazy" />
+                    <img src={img.url} alt={img.caption || t('salesman.visitDetail.visitPhotoAlt')} className="size-full object-cover" loading="lazy" />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                       <ImageIcon className="size-5 text-white" />
                     </div>
@@ -420,8 +420,8 @@ export default function VisitDetailPage() {
 
           {/* Draft sale builder */}
           <div className="rounded-2xl border border-border bg-card p-6">
-            <h2 className="font-semibold text-foreground mb-1">Record a sale (draft)</h2>
-            <p className="text-sm text-body mb-4">Add products to create a draft sale. The manager approves it and it becomes an invoice.</p>
+            <h2 className="font-semibold text-foreground mb-1">{t('salesman.visitDetail.recordSaleDraft')}</h2>
+            <p className="text-sm text-body mb-4">{t('salesman.visitDetail.recordSaleHint')}</p>
 
             <VisitProductLookup
               key={lookupScopeVersion}
@@ -450,7 +450,7 @@ export default function VisitDetailPage() {
                   </div>
                 ))}
                 <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
-                  <span className="text-sm font-medium text-foreground">Total</span>
+                  <span className="text-sm font-medium text-foreground">{t('common.total')}</span>
                   <span className="font-heading font-bold text-foreground">{fmt(items.reduce((s, i) => s + i.quantity * i.unitPrice, 0))}</span>
                 </div>
               </div>
@@ -458,7 +458,7 @@ export default function VisitDetailPage() {
           </div>
 
           <div className="rounded-2xl border border-primary/30 bg-primary-light p-6">
-            <h2 className="font-semibold text-foreground mb-1">Finish visit</h2>
+            <h2 className="font-semibold text-foreground mb-1">{t('salesman.visitDetail.finishTitle')}</h2>
             <p className="text-sm text-body mb-4">
               GPS will be verified near the customer{items.length > 0 ? ". Your draft sale will be sent for manager approval." : "."}
             </p>
@@ -468,7 +468,7 @@ export default function VisitDetailPage() {
               className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-primary px-8 text-primary-foreground font-medium disabled:opacity-50"
             >
               {actionLoading ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-              {actionLoading ? "Finishing..." : "Finish visit"}
+              {actionLoading ? t('salesman.visitDetail.finishing') : t('salesman.visitDetail.finish')}
             </button>
           </div>
         </>
@@ -493,6 +493,7 @@ export default function VisitDetailPage() {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useRegional();
   const styles: Record<string, string> = {
     planned: "bg-muted text-muted-foreground",
     in_progress: "bg-primary-light text-primary",
@@ -501,7 +502,7 @@ function StatusBadge({ status }: { status: string }) {
     cancelled: "bg-muted text-muted-foreground",
   };
   const labels: Record<string, string> = {
-    planned: "Planned", in_progress: "Active", completed: "Completed", missed: "Missed", cancelled: "Cancelled",
+    planned: t('salesman.visitDetail.statusPlanned'), in_progress: t('salesman.visitDetail.statusActive'), completed: t('salesman.visitDetail.statusCompleted'), missed: t('salesman.visitDetail.statusMissed'), cancelled: t('salesman.visitDetail.statusCancelled'),
   };
   return (
     <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${styles[status] ?? "bg-muted text-muted-foreground"}`}>
