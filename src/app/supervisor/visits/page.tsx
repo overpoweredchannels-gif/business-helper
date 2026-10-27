@@ -31,13 +31,13 @@ export default function SupervisorVisitsPage() {
       const res = await authorizedFetch("/api/supervisor/team");
       const json = await res.json();
       if (json.ok) setData(json);
-      else setError(json.error || "Failed to load visits");
+      else setError(json.error || t('supervisor.visits.loadFailed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -47,7 +47,7 @@ export default function SupervisorVisitsPage() {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading team visits...</p>
+        <p className="text-sm text-body">{t('supervisor.visits.loadingTeam')}</p>
       </div>
     );
   }
@@ -55,7 +55,7 @@ export default function SupervisorVisitsPage() {
   if (error || !data) {
     return (
       <div className="flex items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">
-        <AlertCircle className="size-4 shrink-0" /> {error ?? "Visits unavailable"}
+        <AlertCircle className="size-4 shrink-0" /> {error ?? t('supervisor.visits.unavailable')}
       </div>
     );
   }
@@ -72,29 +72,29 @@ export default function SupervisorVisitsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Total Visits" value={totalVisits} tone="text-foreground" />
-        <StatCard label="Completed" value={completed} tone="text-success" />
-        <StatCard label="In Progress" value={inProgress} tone="text-warning" />
+        <StatCard label={t('supervisor.visits.totalVisits')} value={totalVisits} tone="text-foreground" />
+        <StatCard label={t('salesman.visits.completed')} value={completed} tone="text-success" />
+        <StatCard label={t('supervisor.visits.inProgress')} value={inProgress} tone="text-warning" />
       </div>
 
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border">{t('supervisor.visits.member')}</div>
         <div className="divide-y divide-border/40">
           {data.members.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-light-text">No team members assigned.</div>
+            <div className="px-4 py-8 text-center text-sm text-light-text">{t('supervisor.att.noMembers')}</div>
           ) : (
             data.members.map((m) => (
               <div key={m.id} className="px-4 py-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-medium text-foreground truncate">{m.full_name}</div>
-                  <div className="text-xs text-body capitalize">{m.designation ?? "staff"}</div>
+                  <div className="text-xs text-body capitalize">{m.designation ?? t('supervisor.att.staffFallback')}</div>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="px-2.5 py-1 rounded-full bg-warning/10 text-warning font-medium">
-                    {m.visits.inProgress} in progress
+                    {t('supervisor.visits.inProgressLabel').replace('{count}', String(m.visits.inProgress))}
                   </span>
                   <span className="px-2.5 py-1 rounded-full bg-success/10 text-success font-medium">
-                    {m.visits.completed}/{m.visits.total} done
+                    {t('supervisor.visits.doneLabel').replace('{completed}', String(m.visits.completed)).replace('{total}', String(m.visits.total))}
                   </span>
                 </div>
               </div>
