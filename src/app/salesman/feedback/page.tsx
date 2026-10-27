@@ -52,11 +52,11 @@ export default function MyFeedbackPage() {
       if (fData.ok) setFeedback(fData.feedback ?? []);
       if (Array.isArray(cData.customers)) setCustomers(cData.customers);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -66,21 +66,21 @@ export default function MyFeedbackPage() {
     setSaving(true);
     setMessage(null);
     try {
-      if (!customerId) throw new Error("Select a customer");
-      if (!description.trim()) throw new Error("Describe the feedback");
+      if (!customerId) throw new Error(t('salesman.collections.selectCustomerError'));
+      if (!description.trim()) throw new Error(t('salesman.feedback.describeError'));
       const res = await authorizedFetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId, type, title: title.trim() || undefined, description: description.trim(), priority }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to record feedback");
-      setMessage({ type: "ok", text: "Feedback recorded. The manager can now review it." });
+      if (!data.ok) throw new Error(data.error || t('salesman.feedback.recordFailed'));
+      setMessage({ type: "ok", text: t('salesman.feedback.recorded') });
       setCustomerId(""); setTitle(""); setDescription("");
       setShowNew(false);
       await load();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to record feedback" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('salesman.feedback.recordFailed') });
     } finally {
       setSaving(false);
     }
@@ -98,7 +98,7 @@ export default function MyFeedbackPage() {
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground"
         >
           {showNew ? <X className="size-4" /> : <Plus className="size-4" />}
-          {showNew ? "Close" : "New feedback"}
+          {showNew ? t('common.close') : t('salesman.feedback.newFeedback')}
         </button>
       </div>
 
@@ -124,7 +124,7 @@ export default function MyFeedbackPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-foreground">Customer</label>
+              <label className="text-sm font-medium text-foreground">{t('salesman.feedback.customer')}</label>
               <div className="relative mt-1.5">
                 <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
                 <select
@@ -132,7 +132,7 @@ export default function MyFeedbackPage() {
                   onChange={(e) => setCustomerId(e.target.value)}
                   className="w-full h-11 rounded-lg border border-input bg-card px-3.5 pr-10 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none"
                 >
-                  <option value="">Select customer...</option>
+                  <option value="">{t('salesman.feedback.selectCustomer')}</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>{c.shop_name || c.customer_name}</option>
                   ))}
@@ -140,51 +140,51 @@ export default function MyFeedbackPage() {
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground">Type</label>
+              <label className="text-sm font-medium text-foreground">{t('salesman.feedback.type')}</label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as any)}
                 className="w-full mt-1.5 h-11 rounded-lg border border-input bg-card px-3.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none"
               >
-                <option value="feedback">Feedback</option>
-                <option value="complaint">Complaint</option>
-                <option value="request">Request</option>
-                <option value="note">Note</option>
+                <option value="feedback">{t('salesman.feedback.type.feedback')}</option>
+                <option value="complaint">{t('salesman.feedback.type.complaint')}</option>
+                <option value="request">{t('salesman.feedback.type.request')}</option>
+                <option value="note">{t('salesman.feedback.type.note')}</option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-foreground">Title (optional)</label>
+              <label className="text-sm font-medium text-foreground">{t('salesman.feedback.titleLabel')}</label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Short title"
+                placeholder={t('salesman.feedback.titlePlaceholder')}
                 className="w-full mt-1.5 h-11 rounded-lg border border-input bg-card px-3.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground">Priority</label>
+              <label className="text-sm font-medium text-foreground">{t('salesman.feedback.priority')}</label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as any)}
                 className="w-full mt-1.5 h-11 rounded-lg border border-input bg-card px-3.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none"
               >
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
+                <option value="high">{t('salesman.feedback.priority.high')}</option>
+                <option value="medium">{t('salesman.feedback.priority.medium')}</option>
+                <option value="low">{t('salesman.feedback.priority.low')}</option>
               </select>
             </div>
           </div>
 
           <div>
-            <label className="text-sm font-medium text-foreground">Description</label>
+            <label className="text-sm font-medium text-foreground">{t('salesman.feedback.description')}</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              placeholder="Describe the feedback or complaint..."
+              placeholder={t('salesman.feedback.descriptionPlaceholder')}
               className="w-full mt-1.5 rounded-lg border border-input bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
@@ -195,7 +195,7 @@ export default function MyFeedbackPage() {
             className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-primary px-6 text-primary-foreground font-medium disabled:opacity-50"
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : <MessageSquareText className="size-4" />}
-            {saving ? "Saving..." : "Record feedback"}
+            {saving ? t('salesman.visitDetail.saving') : t('salesman.feedback.recordTitle')}
           </button>
         </div>
       )}
@@ -203,12 +203,12 @@ export default function MyFeedbackPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading feedback...</p>
+          <p className="text-sm text-body">{t('salesman.feedback.loading')}</p>
         </div>
       ) : feedback.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <MessageSquareText className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No feedback recorded yet.</p>
+          <p className="text-sm text-body">{t('salesman.feedback.noFeedback')}</p>
         </div>
       ) : (
         <div className="grid gap-4">
