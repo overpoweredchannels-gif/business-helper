@@ -102,6 +102,7 @@ function PasswordField({ label, error, ...props }: {
   label: string;
   error?: string | null;
 } & React.InputHTMLAttributes<HTMLInputElement>) {
+  const { t } = useRegional();
   const [show, setShow] = useState(false);
   const generatedId = React.useId();
   return (
@@ -128,7 +129,7 @@ function PasswordField({ label, error, ...props }: {
           onClick={() => setShow(s => !s)}
           className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
           tabIndex={-1}
-          aria-label={show ? "Hide password" : "Show password"}
+          aria-label={show ? t('auth.hidePassword') : t('auth.showPassword')}
         >
           {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
         </button>
@@ -184,11 +185,12 @@ function Alert({ variant = "error", children }: { variant?: "error" | "success" 
 }
 
 function TrustBadges() {
+  const { t } = useRegional();
   return (
     <div className="flex items-center justify-center gap-2 mt-6 text-xs text-light-text">
       <span>256-bit encryption</span>
       <span className="text-muted-light">·</span>
-      <span>SOC 2 compliant</span>
+      <span>{t('auth.socBadge')}</span>
       <span className="text-muted-light">·</span>
       <span>99.9% uptime</span>
     </div>
@@ -196,6 +198,7 @@ function TrustBadges() {
 }
 
 function LeftPanel() {
+  const { t } = useRegional();
   return (
     <div className="hidden lg:flex w-[45%] min-h-screen bg-panel p-10 xl:p-14 flex-col justify-between">
       <div>
@@ -216,9 +219,9 @@ function LeftPanel() {
 
         <div className="grid gap-4 mt-10">
           {[
-            { icon: BarChart3, title: "Real-time Analytics", desc: "Monitor inventory, sales, and margins in real-time" },
-            { icon: Users, title: "Smart Inventory", desc: "AI-driven stock management and demand forecasting" },
-            { icon: Shield, title: "Enterprise Security", desc: "SOC 2 compliant with end-to-end encryption" },
+            { icon: BarChart3, title: t('auth.featureAnalytics'), desc: t('auth.featureAnalyticsDesc') },
+            { icon: Users, title: t('auth.featureInventory'), desc: t('auth.featureInventoryDesc') },
+            { icon: Shield, title: t('auth.featureSecurity'), desc: t('auth.featureSecurityDesc') },
           ].map((item, i) => (
             <div
               key={item.title}
@@ -239,9 +242,9 @@ function LeftPanel() {
 
       <div className="flex items-center gap-6 pt-8 border-t border-white/10">
         {[
-          { value: "10K+", label: "Businesses" },
-          { value: "99.9%", label: "Uptime" },
-          { value: "24/7", label: "Support" },
+          { value: "10K+", label: t('auth.statBusinesses') },
+          { value: "99.9%", label: t('auth.statUptime') },
+          { value: "24/7", label: t('auth.statSupport') },
         ].map((stat) => (
           <div key={stat.label}>
             <p className="font-heading font-bold text-lg text-white">{stat.value}</p>
@@ -270,14 +273,14 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
     setLoading(true);
     try {
       if (method === "staff") {
-        if (!loginId.trim() || !password) throw new Error("Enter your Profile ID and password.");
+        if (!loginId.trim() || !password) throw new Error(t('auth.enterProfileIdPassword'));
         const res = await fetch("/api/identity/staff/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ loginId: loginId.trim(), password }),
         });
         const data = await res.json();
-        if (!data.ok) throw new Error(data.error || "Sign in failed");
+        if (!data.ok) throw new Error(data.error || t('auth.signInFailed'));
         const { error: setSessionError } = await supabase.auth.setSession({
           access_token: data.accessToken,
           refresh_token: data.refreshToken,
@@ -326,23 +329,23 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
         router.push("/");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
+      setError(err instanceof Error ? err.message : t('auth.signInFailed'));
     } finally {
       setLoading(false);
     }
-  }, [method, email, loginId, password, rememberMe, router]);
+  }, [method, email, loginId, password, rememberMe, router, t]);
 
   return (
     <form onSubmit={handleSubmit} autoComplete="on" className="animate-slideUp">
       <div className="text-center mb-6">
         <h1 className="font-heading font-bold text-2xl text-foreground">{t('auth.signin.title')}</h1>
-        <p className="text-body text-sm mt-1.5">Welcome back! Enter your credentials to continue.</p>
+        <p className="text-body text-sm mt-1.5">{t('auth.welcomeBack')}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/30 p-1 mb-4">
         {([
-          { key: "email", label: "Email" },
-          { key: "staff", label: "Profile ID" },
+          { key: "email", label: t('auth.email') },
+          { key: "staff", label: t('auth.profileId') },
         ] as const).map((tab) => (
           <button
             key={tab.key}
@@ -363,7 +366,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
       <div className="grid gap-4">
         {method === "email" ? (
           <Field
-            label="Email"
+            label={t('auth.email')}
             type="email"
             placeholder="m@example.com"
             required
@@ -371,11 +374,11 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
             value={email}
             onChange={e => setEmail(e.target.value)}
             icon={<Mail className="size-4" />}
-            error={error && error.includes("email") ? error : null}
+            error={error && (error.includes("email") || error.includes(t('auth.email'))) ? error : null}
           />
         ) : (
           <Field
-            label="Profile ID"
+            label={t('auth.profileId')}
             type="text"
             placeholder="e.g. ALI01"
             required
@@ -383,23 +386,23 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
             value={loginId}
             onChange={e => setLoginId(e.target.value)}
             icon={<User className="size-4" />}
-            error={error && error.includes("Profile ID") ? error : null}
+            error={error && (error.includes("Profile ID") || error.includes(t('auth.profileId'))) ? error : null}
           />
         )}
         <PasswordField
-          label="Password"
+          label={t('auth.signin.password')}
           required
           autoComplete="current-password"
-          placeholder="Enter your password"
+          placeholder={t('auth.enterPassword')}
           value={password}
           onChange={e => setPassword(e.target.value)}
-          error={error && !error.includes("email") && !error.includes("Profile ID") ? error : null}
+          error={error && !error.includes("email") && !error.includes(t('auth.email')) && !error.includes("Profile ID") && !error.includes(t('auth.profileId')) ? error : null}
         />
 
         <div className="flex items-center justify-between">
-          <Checkbox label="Keep me signed in" checked={rememberMe} onChange={setRememberMe} />
+          <Checkbox label={t('auth.keepSignedIn')} checked={rememberMe} onChange={setRememberMe} />
           <button type="button" onClick={() => onNavigate("forgot", { email })} className="text-sm text-primary hover:text-primary-hover transition-colors">
-            Forgot password?
+            {t('auth.forgotPassword')}
           </button>
         </div>
 
@@ -413,7 +416,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
 
         <Button type="submit" disabled={loading} size="lg">
           {loading ? <Loader2 className="size-4 animate-spin" /> : null}
-          {loading ? "Signing in..." : "Sign in to TradeOS"}
+          {loading ? t('auth.signingIn') : t('auth.signInToTradeOs')}
         </Button>
       </div>
 
@@ -422,16 +425,16 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
           <div className="w-full border-t border-border" />
         </div>
         <div className="relative flex justify-center">
-          <span className="bg-card px-3 text-xs text-light-text">or continue with</span>
+          <span className="bg-card px-3 text-xs text-light-text">{t('auth.orContinueWith')}</span>
         </div>
       </div>
 
       <GoogleButton />
 
       <p className="text-center text-sm text-body mt-6">
-        Don&apos;t have an account?{" "}
+        {t('auth.signin.noAccount')}{" "}
         <button type="button" onClick={() => onNavigate("signup")} className="text-primary hover:text-primary-hover font-medium transition-colors">
-          Sign up
+          {t('auth.signUp')}
         </button>
       </p>
     </form>
@@ -439,6 +442,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
 }
 
 function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { email?: string }) => void }) {
+  const { t } = useRegional();
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -452,7 +456,7 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
     setError(null);
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t('auth.passwordsMismatch'));
       return;
     }
 
@@ -471,22 +475,22 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
       if (signUpError) throw signUpError;
       onNavigate("verify", { email });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign up failed");
+      setError(err instanceof Error ? err.message : t('auth.signUpFailed'));
     } finally {
       setLoading(false);
     }
-  }, [fullName, email, password, confirmPassword, router, onNavigate]);
+  }, [fullName, email, password, confirmPassword, router, onNavigate, t]);
 
   return (
     <form onSubmit={handleSubmit} autoComplete="on" className="animate-slideUp">
       <div className="text-center mb-6">
-        <h1 className="font-heading font-bold text-2xl text-foreground">Create your account</h1>
-        <p className="text-body text-sm mt-1.5">Get started with your free account.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('auth.signup.title')}</h1>
+        <p className="text-body text-sm mt-1.5">{t('auth.getStartedFree')}</p>
       </div>
 
       <div className="grid gap-4">
         <Field
-          label="Full Name"
+          label={t('auth.fullName')}
           type="text"
           placeholder="John Doe"
           required
@@ -496,7 +500,7 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
           icon={<User className="size-4" />}
         />
         <Field
-          label="Email"
+          label={t('auth.email')}
           type="email"
           placeholder="m@example.com"
           required
@@ -506,18 +510,18 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
           icon={<Mail className="size-4" />}
         />
         <PasswordField
-          label="Password"
+          label={t('auth.signin.password')}
           required
           autoComplete="new-password"
-          placeholder="Create a password"
+          placeholder={t('auth.createPassword')}
           value={password}
           onChange={e => setPassword(e.target.value)}
         />
         <PasswordField
-          label="Confirm Password"
+          label={t('auth.confirmPassword')}
           required
           autoComplete="new-password"
-          placeholder="Confirm your password"
+          placeholder={t('auth.confirmPasswordPlaceholder')}
           value={confirmPassword}
           onChange={e => setConfirmPassword(e.target.value)}
         />
@@ -526,7 +530,7 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
 
         <Button type="submit" disabled={loading} size="lg">
           {loading ? <Loader2 className="size-4 animate-spin" /> : null}
-          {loading ? "Creating account..." : "Create account"}
+          {loading ? t('auth.creatingAccount') : t('auth.signup.submit')}
         </Button>
       </div>
 
@@ -535,16 +539,16 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
           <div className="w-full border-t border-border" />
         </div>
         <div className="relative flex justify-center">
-          <span className="bg-card px-3 text-xs text-light-text">or continue with</span>
+          <span className="bg-card px-3 text-xs text-light-text">{t('auth.orContinueWith')}</span>
         </div>
       </div>
 
       <GoogleButton />
 
       <p className="text-center text-sm text-body mt-6">
-        Already have an account?{" "}
+        {t('auth.signup.hasAccount')}{" "}
         <button type="button" onClick={() => onNavigate("signin")} className="text-primary hover:text-primary-hover font-medium transition-colors">
-          Sign in
+          {t('auth.signup.signinLink')}
         </button>
       </p>
     </form>
@@ -552,6 +556,7 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
 }
 
 function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: AuthView, data?: { email?: string }) => void; initialEmail?: string }) {
+  const { t } = useRegional();
   const [email, setEmail] = useState(initialEmail || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -559,7 +564,7 @@ function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: A
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!email) { setError("Please enter your email"); return; }
+    if (!email) { setError(t('auth.enterEmail')); return; }
     setLoading(true);
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
@@ -568,11 +573,11 @@ function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: A
       if (resetError) throw resetError;
       onNavigate("reset-sent", { email });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send reset link");
+      setError(err instanceof Error ? err.message : t('auth.resetLinkFailed'));
     } finally {
       setLoading(false);
     }
-  }, [email, onNavigate]);
+  }, [email, onNavigate, t]);
 
   return (
     <form onSubmit={handleSubmit} className="animate-slideUp">
@@ -580,13 +585,13 @@ function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: A
         <div className="mx-auto mb-4 size-14 rounded-full bg-primary-light flex items-center justify-center">
           <Lock className="size-6 text-primary" />
         </div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Forgot your password?</h1>
-        <p className="text-body text-sm mt-1.5">Enter your email and we&apos;ll send you a reset link.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('auth.forgotPassword')}</h1>
+        <p className="text-body text-sm mt-1.5">{t('auth.forgotSubtitle')}</p>
       </div>
 
       <div className="grid gap-4">
         <Field
-          label="Email"
+          label={t('auth.email')}
           type="email"
           placeholder="m@example.com"
           required
@@ -599,19 +604,20 @@ function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: A
 
         <Button type="submit" disabled={loading} size="lg">
           {loading ? <Loader2 className="size-4 animate-spin" /> : null}
-          {loading ? "Sending..." : "Send reset link"}
+          {loading ? t('auth.sending') : t('auth.sendResetLink')}
         </Button>
       </div>
 
       <button type="button" onClick={() => onNavigate("signin")} className="flex items-center justify-center gap-1.5 text-sm text-body hover:text-foreground transition-colors mt-6 mx-auto">
         <ArrowLeft className="size-4" />
-        Back to sign in
+        {t('auth.backToSignIn')}
       </button>
     </form>
   );
 }
 
 function VerifyEmail({ email, onNavigate }: { email?: string; onNavigate: (view: AuthView, data?: { email?: string }) => void }) {
+  const { t } = useRegional();
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
 
@@ -634,7 +640,7 @@ function VerifyEmail({ email, onNavigate }: { email?: string; onNavigate: (view:
         <div className="mx-auto mb-4 size-14 rounded-full bg-primary-light flex items-center justify-center">
           <Mail className="size-6 text-primary" />
         </div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Verify your email</h1>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('auth.verifyEmail')}</h1>
         {email && (
           <p className="text-body text-sm mt-1.5">
             We&apos;ve sent a verification link to <span className="font-medium text-foreground">{email}</span>
@@ -643,48 +649,50 @@ function VerifyEmail({ email, onNavigate }: { email?: string; onNavigate: (view:
       </div>
 
       <Alert variant="warning">
-        Didn&apos;t receive the email? Check your spam folder or try again.
+        {t('auth.didntReceive')}
       </Alert>
 
       <div className="mt-6 grid gap-3">
         <Button variant="outline" onClick={handleResend} disabled={resending || resent}>
           {resending ? <Loader2 className="size-4 animate-spin" /> : null}
-          {resent ? "Verification email sent" : "Resend verification email"}
+          {resent ? t('auth.verificationSent') : t('auth.resendVerification')}
         </Button>
       </div>
 
       <button type="button" onClick={() => onNavigate("signin")} className="flex items-center justify-center gap-1.5 text-sm text-body hover:text-foreground transition-colors mt-6 mx-auto">
         <ArrowLeft className="size-4" />
-        Back to sign in
+        {t('auth.backToSignIn')}
       </button>
     </div>
   );
 }
 
 function ResetSent({ email, onNavigate }: { email?: string; onNavigate: (view: AuthView) => void }) {
+  const { t } = useRegional();
   return (
     <div className="animate-slideUp">
       <div className="text-center mb-6">
         <div className="mx-auto mb-4 size-14 rounded-full bg-primary-light flex items-center justify-center">
           <CheckCircle2 className="size-6 text-primary" />
         </div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Check your inbox</h1>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('auth.checkInbox')}</h1>
         {email && (
           <p className="text-body text-sm mt-1.5">
             We&apos;ve sent a password reset link to <span className="font-medium text-foreground">{email}</span>.
-            Please check your inbox and follow the instructions.
+            {t('auth.checkInboxInstructions')}
           </p>
         )}
       </div>
 
       <Button onClick={() => onNavigate("signin")} size="lg">
-        Back to sign in
+        {t('auth.backToSignIn')}
       </Button>
     </div>
   );
 }
 
 function GoogleButton() {
+  const { t } = useRegional();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -702,10 +710,10 @@ function GoogleButton() {
       });
       if (oauthError) throw oauthError;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Google sign in failed");
+      setError(err instanceof Error ? err.message : t('auth.googleFailed'));
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   return (
     <div className="grid gap-2">
@@ -720,7 +728,7 @@ function GoogleButton() {
             <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
           </svg>
         )}
-        {loading ? "Connecting..." : "Continue with Google"}
+        {loading ? t('auth.connecting') : t('auth.signin.google')}
       </Button>
       {error && <Alert>{error}</Alert>}
     </div>
@@ -732,7 +740,6 @@ interface AuthUIProps {
 }
 
 export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
-  const { t } = useRegional();
   const [view, setView] = useState<AuthView>(defaultMode);
   const [email, setEmail] = useState<string>("");
 
