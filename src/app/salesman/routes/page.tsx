@@ -29,7 +29,7 @@ export default function MyRoutesPage() {
       const meRes = await authorizedFetch("/api/identity/staff/me");
       const meData = await meRes.json();
       if (!meData.ok || !meData.me?.employee) {
-        setError("No staff profile linked to this account.");
+        setError(t('salesman.routes.noProfile'));
         setLoading(false);
         return;
       }
@@ -42,18 +42,20 @@ export default function MyRoutesPage() {
         const mine = routesData.routes.filter((r: RouteItem) => r.assigned_salesman_id === empId);
         setRoutes(mine);
       } else {
-        setError("Failed to load routes");
+        setError(t('salesman.routes.loadFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const freqLabels: Record<string, string> = { daily: t('fsm.routes.freqDaily'), weekly: t('fsm.routes.freqWeekly'), monthly: t('fsm.routes.freqMonthly'), none: t('common.none') };
 
   if (loading) {
     return (
@@ -81,7 +83,7 @@ export default function MyRoutesPage() {
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <RouteIcon className="size-8 text-light-text mx-auto mb-3" />
           <p className="text-sm text-body">{t('salesman.routes.noRoutes')}</p>
-          <p className="text-xs text-light-text mt-1">Ask your manager to assign a route from the business app.</p>
+          <p className="text-xs text-light-text mt-1">{t('salesman.routes.noRoutesHint')}</p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card divide-y divide-border">
@@ -93,11 +95,11 @@ export default function MyRoutesPage() {
                 </div>
                 <div>
                   <div className="font-medium text-foreground">{r.name}</div>
-                  <div className="text-xs text-body">{r.description || `${r.route_frequency ?? "daily"} route`}</div>
+                  <div className="text-xs text-body">{r.description || t('salesman.routes.routeFallback').replace('{frequency}', freqLabels[r.route_frequency ?? "daily"] ?? r.route_frequency ?? "daily")}</div>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {r.is_active === false && <span className="text-xs text-light-text">Inactive</span>}
+                {r.is_active === false && <span className="text-xs text-light-text">{t('salesman.routes.inactive')}</span>}
                 <MapPin className="size-4 text-light-text" />
                 <ChevronRight className="size-4 text-light-text" />
               </div>
