@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 interface InvitationView {
@@ -38,7 +39,8 @@ export default function InvitationPanel() {
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [isOwner, setIsOwner] = useState(true);
 
-  const load = async () => {
+  const { t } = useRegional();
+  const load = useCallback(async () => {
     try {
       const res = await authorizedFetch("/api/identity/invite");
       const data = await res.json();
@@ -46,17 +48,17 @@ export default function InvitationPanel() {
         setInvitations(data.invitations || []);
         setMessage(null);
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to load invitations" });
+        setMessage({ type: "error", text: data.error || t('identity.invitations.loadFailed') });
         if (res.status === 403) setIsOwner(false);
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const sendInvite = async () => {
     const res = await authorizedFetch("/api/identity/invite", {
@@ -68,19 +70,19 @@ export default function InvitationPanel() {
     if (data.ok) {
       setMessage({
         type: "ok",
-        text: `Invitation sent to ${email} as ${role}. Share code ${data.invitation.code} with them.`,
+        text: t('identity.invitations.inviteSent').replace('{email}', email).replace('{role}', role).replace('{code}', data.invitation.code),
       });
       setEmail("");
       load();
     } else {
-      setMessage({ type: "error", text: data.error || "Invitation failed" });
+      setMessage({ type: "error", text: data.error || t('identity.invitations.inviteFailed') });
     }
   };
 
   return (
     <div style={{ padding: "1.5rem" }}>
       <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 1rem" }}>
-        Employee Invitations
+        {t('identity.invitations.title')}
       </h2>
 
       {message && (
@@ -119,13 +121,13 @@ export default function InvitationPanel() {
             ))}
           </select>
           <button style={buttonStyle} onClick={sendInvite} disabled={!email.trim()}>
-            Send Invitation
+            {t('identity.invitations.sendInvitation')}
           </button>
         </div>
       )}
 
       {invitations.length === 0 ? (
-        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>No invitations yet.</p>
+        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('identity.invitations.noInvitations')}</p>
       ) : (
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
           {invitations.map((inv, index) => (
@@ -144,7 +146,7 @@ export default function InvitationPanel() {
               <div>
                 <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{inv.email}</div>
                 <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-                  {inv.role} &middot; expires {new Date(inv.expiresAt).toLocaleDateString()}
+                  {inv.role} &middot; {t('identity.invitations.expiresAt').replace('{date}', new Date(inv.expiresAt).toLocaleDateString())}
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -157,7 +159,7 @@ export default function InvitationPanel() {
                     padding: "0.125rem 0.5rem",
                   }}
                 >
-                  {inv.acceptedAt ? "Accepted" : `Code: ${inv.code}`}
+                  {inv.acceptedAt ? t('identity.invitations.accepted') : t('identity.invitations.codeLabel').replace('{code}', inv.code)}
                 </span>
               </div>
             </div>
