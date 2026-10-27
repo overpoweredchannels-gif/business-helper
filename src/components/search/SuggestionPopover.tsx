@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef } from "react";
 import { highlightSearchMatches } from "@/lib/products/search-rank";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 export interface SuggestionPopoverItem {
   id: string;
@@ -74,16 +75,21 @@ export function SuggestionPopover({
   activeIndex,
   query,
   status,
-  emptyText = "No matches found.",
-  loadingText = "Loading…",
-  errorText = "Couldn't load results.",
-  staleText = "Couldn't refresh — showing saved results.",
+  emptyText,
+  loadingText,
+  errorText,
+  staleText,
   statusNote,
   footer,
   onSelect,
   onHover,
 }: SuggestionPopoverProps) {
+  const { t } = useRegional();
   const popoverRef = useRef<HTMLDivElement>(null);
+  const resolvedEmptyText = emptyText ?? t('search.popover.empty');
+  const resolvedLoadingText = loadingText ?? t('search.popover.loading');
+  const resolvedErrorText = errorText ?? t('search.popover.error');
+  const resolvedStaleText = staleText ?? t('search.popover.stale');
   useLayoutEffect(() => {
     // Keep the active option visible by scrolling the popover's own scroll
     // container only. Element.scrollIntoView would also scroll the page
@@ -116,11 +122,11 @@ export function SuggestionPopover({
     >
       {showLoading ? (
         <p role="status" className="px-3 py-3 text-sm text-muted-foreground">
-          {loadingText}
+          {resolvedLoadingText}
         </p>
       ) : showError ? (
         <p role="status" className="px-3 py-3 text-sm text-destructive">
-          {errorText}
+          {resolvedErrorText}
         </p>
       ) : (
         <>
@@ -136,7 +142,7 @@ export function SuggestionPopover({
           )}
           {status === "error" && items.length > 0 && !statusNote && (
             <p role="status" className="border-b border-border px-3 py-2 text-xs text-warning">
-              {staleText}
+              {resolvedStaleText}
             </p>
           )}
           {items.length > 0 ? (
@@ -177,7 +183,7 @@ export function SuggestionPopover({
             </ul>
           ) : statusNote ? null : (
             <p role="status" className="px-3 py-3 text-sm text-muted-foreground">
-              {emptyText}
+              {resolvedEmptyText}
             </p>
           )}
           {footer && (footer.text || (footer.actionLabel && footer.onAction)) && (
