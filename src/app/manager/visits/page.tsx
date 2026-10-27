@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { MapPin, Loader2, AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Visit {
   id: string;
@@ -16,6 +17,7 @@ interface Visit {
 }
 
 export default function VisitMonitorPage() {
+  const { t } = useRegional();
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,19 +31,20 @@ export default function VisitMonitorPage() {
       const res = await authorizedFetch("/api/visits/owner?limit=100");
       const data = await res.json();
       if (data.ok) setVisits(data.visits ?? []);
-      else setError(data.error || "Failed to load visits");
+      else setError(data.error || t('supervisor.visits.loadFailed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const filtered = filter === "all" ? visits : visits.filter((v) => v.visit_status === filter);
+  const filterLabels: Record<typeof filter, string> = { all: t('fsm.notifications.filterAll'), in_progress: t('salesman.visits.inProgress'), completed: t('salesman.visits.completed'), missed: t('salesman.visits.missed'), planned: t('salesman.visits.planned') };
   const inProgress = visits.filter((v) => v.visit_status === "in_progress").length;
   const completed = visits.filter((v) => v.visit_status === "completed").length;
   const missed = visits.filter((v) => v.visit_status === "missed").length;
@@ -49,21 +52,21 @@ export default function VisitMonitorPage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Visit Monitor</h1>
-        <p className="text-sm text-body mt-1">Live view of field visits recorded by your team.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('manager.visits.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('manager.visits.subtitle')}</p>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
         <div className="rounded-2xl border border-border bg-card p-5">
-          <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">Active now</div>
+          <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">{t('manager.visits.activeNow')}</div>
           <div className="font-heading font-bold text-2xl text-primary">{inProgress}</div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-5">
-          <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">Completed</div>
+          <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">{t('salesman.visits.completed')}</div>
           <div className="font-heading font-bold text-2xl text-success">{completed}</div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-5">
-          <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">Missed</div>
+          <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">{t('salesman.visits.missed')}</div>
           <div className="font-heading font-bold text-2xl text-destructive">{missed}</div>
         </div>
       </div>
@@ -94,7 +97,7 @@ export default function VisitMonitorPage() {
               filter === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
             )}
           >
-            {f.replace("_", " ")}
+            {filterLabels[f]}
           </button>
         ))}
       </div>
@@ -102,12 +105,12 @@ export default function VisitMonitorPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading visits...</p>
+          <p className="text-sm text-body">{t('supervisor.visits.loading')}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <MapPin className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No visits in this view.</p>
+          <p className="text-sm text-body">{t('manager.visits.noVisits')}</p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card divide-y divide-border">
@@ -115,10 +118,10 @@ export default function VisitMonitorPage() {
             <div key={v.id} className="flex items-center justify-between gap-3 px-5 py-4">
               <div className="min-w-0">
                 <div className="font-medium text-foreground">{v.customers?.shop_name || v.customers?.customer_name}</div>
-                <div className="text-xs text-body">{v.employees?.full_name ?? "Team member"}{v.customers?.phone ? ` · ${v.customers.phone}` : ""}</div>
+                <div className="text-xs text-body">{v.employees?.full_name ?? t('manager.visits.teamMember')}{v.customers?.phone ? ` · ${v.customers.phone}` : ""}</div>
                 <div className="text-xs text-light-text mt-0.5">
-                  {v.started_at ? `Started ${new Date(v.started_at).toLocaleString()}` : "Not started"}
-                  {v.ended_at ? ` · Ended ${new Date(v.ended_at).toLocaleTimeString()}` : ""}
+                  {v.started_at ? t('manager.visits.started').replace('{date}', new Date(v.started_at).toLocaleString()) : t('manager.visits.notStarted')}
+                  {v.ended_at ? ` · ${t('manager.visits.ended').replace('{time}', new Date(v.ended_at).toLocaleTimeString())}` : ""}
                 </div>
               </div>
               <VisitStatus status={v.visit_status} />
@@ -131,6 +134,7 @@ export default function VisitMonitorPage() {
 }
 
 function VisitStatus({ status }: { status: string }) {
+  const { t } = useRegional();
   const styles: Record<string, string> = {
     planned: "bg-muted text-muted-foreground",
     in_progress: "bg-primary-light text-primary",
@@ -139,9 +143,10 @@ function VisitStatus({ status }: { status: string }) {
     cancelled: "bg-muted text-muted-foreground",
   };
   const Icon = status === "completed" ? CheckCircle2 : status === "missed" ? XCircle : MapPin;
+  const statusLabels: Record<string, string> = { planned: t('salesman.visits.planned'), in_progress: t('salesman.visits.inProgress'), completed: t('salesman.visits.completed'), missed: t('salesman.visits.missed'), cancelled: t('salesman.visits.status.cancelled') };
   return (
     <span className={cn("px-2.5 py-1 rounded-full text-[11px] font-medium capitalize flex items-center gap-1 whitespace-nowrap", styles[status] ?? "bg-muted text-muted-foreground")}>
-      <Icon className="size-3" /> {status.replace("_", " ")}
+      <Icon className="size-3" /> {statusLabels[status] ?? status.replace("_", " ")}
     </span>
   );
 }
