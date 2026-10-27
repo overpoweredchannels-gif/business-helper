@@ -1,24 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { NotificationCategory, NotificationItem } from "@/lib/tradeos/types";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { Bell, CheckCircle2, X } from "lucide-react";
-
-const CATEGORY_LABELS: Record<NotificationCategory, string> = {
-  draft_sale: "Draft Sale",
-  approval: "Approval",
-  target: "Target",
-  route: "Route",
-  duty: "Duty",
-  off_route: "Off Route",
-  missed_customer: "Missed Customer",
-  inventory: "Inventory",
-  attendance: "Attendance",
-  leave: "Leave",
-  collection: "Collection",
-  general: "General",
-};
 
 const CATEGORY_STYLES: Record<string, string> = {
   draft_sale: "bg-warning/10 text-warning border-warning/30",
@@ -35,29 +21,46 @@ const CATEGORY_STYLES: Record<string, string> = {
   general: "bg-muted text-muted-foreground border-border",
 };
 
-const FILTER_OPTIONS: Array<{ id: string; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "unread", label: "Unread" },
-  { id: "draft_sale", label: "Draft Sales" },
-  { id: "approval", label: "Approvals" },
-  { id: "inventory", label: "Inventory" },
-  { id: "attendance", label: "Attendance" },
-  { id: "collection", label: "Collections" },
-  { id: "general", label: "General" },
-];
-
 interface NotificationCenterProps {
   onReviewDraft?: (draftEntityId: string) => void;
 }
 
 export default function NotificationCenter({ onReviewDraft }: NotificationCenterProps) {
+  const { t } = useRegional();
+  const categoryLabel = (c: NotificationCategory) => {
+    const labels: Record<NotificationCategory, string> = {
+      draft_sale: t('fsm.notifications.catDraftSale'),
+      approval: t('fsm.notifications.catApproval'),
+      target: t('fsm.notifications.catTarget'),
+      route: t('fsm.notifications.catRoute'),
+      duty: t('fsm.notifications.catDuty'),
+      off_route: t('fsm.notifications.catOffRoute'),
+      missed_customer: t('fsm.notifications.catMissedCustomer'),
+      inventory: t('fsm.notifications.catInventory'),
+      attendance: t('fsm.notifications.catAttendance'),
+      leave: t('fsm.notifications.catLeave'),
+      collection: t('fsm.notifications.catCollection'),
+      general: t('fsm.notifications.catGeneral'),
+    };
+    return labels[c] ?? c;
+  };
+  const filterOptions: Array<{ id: string; label: string }> = [
+    { id: "all", label: t('fsm.notifications.filterAll') },
+    { id: "unread", label: t('fsm.notifications.filterUnread') },
+    { id: "draft_sale", label: t('fsm.notifications.filterDraftSales') },
+    { id: "approval", label: t('fsm.notifications.filterApprovals') },
+    { id: "inventory", label: t('fsm.notifications.catInventory') },
+    { id: "attendance", label: t('fsm.notifications.catAttendance') },
+    { id: "collection", label: t('team.metricCollections') },
+    { id: "general", label: t('fsm.notifications.catGeneral') },
+  ];
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [maxVisible, setMaxVisible] = useState(30);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       const res = await authorizedFetch("/api/notifications?limit=100");
@@ -66,18 +69,18 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
         setNotifications(data.notifications);
         setMessage(null);
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to load notifications" });
+        setMessage({ type: "error", text: data.error || t('fsm.notifications.loadFailed') });
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const markRead = async (id: string) => {
     const res = await authorizedFetch("/api/notifications", {
@@ -90,7 +93,7 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)));
       setMessage(null);
     } else {
-      setMessage({ type: "error", text: data.error || "Failed to update notification" });
+      setMessage({ type: "error", text: data.error || t('fsm.notifications.updateFailed') });
     }
   };
 
@@ -103,14 +106,14 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
     const data = await res.json();
     if (data.ok) {
       setNotifications((prev) => prev.map((n) => (n.is_read ? n : { ...n, is_read: true, read_at: new Date().toISOString() })));
-      setMessage({ type: "ok", text: "All notifications marked as read." });
+      setMessage({ type: "ok", text: t('fsm.notifications.allRead') });
     } else {
-      setMessage({ type: "error", text: data.error || "Failed to update notifications" });
+      setMessage({ type: "error", text: data.error || t('fsm.notifications.updateAllFailed') });
     }
   };
 
   const clearAll = async () => {
-    if (!window.confirm("Clear all notifications?")) return;
+    if (!window.confirm(t('fsm.notifications.clearConfirm'))) return;
     const res = await authorizedFetch("/api/notifications", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -119,9 +122,9 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
     const data = await res.json();
     if (data.ok) {
       setNotifications([]);
-      setMessage({ type: "ok", text: "Notifications cleared." });
+      setMessage({ type: "ok", text: t('fsm.notifications.cleared') });
     } else {
-      setMessage({ type: "error", text: data.error || "Failed to clear notifications" });
+      setMessage({ type: "error", text: data.error || t('fsm.notifications.clearFailed') });
     }
   };
 
@@ -143,9 +146,9 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
     <div className="p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-medium text-foreground">Notifications</h2>
+          <h2 className="text-xl font-medium text-foreground">{t('fsm.notifications.title')}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {unreadCount > 0 ? `${unreadCount} unread` : "You're all caught up"} · in-app center
+            {unreadCount > 0 ? t('fsm.notifications.unreadCount').replace('{count}', String(unreadCount)) : t('fsm.notifications.caughtUp')} · {t('fsm.notifications.inAppCenter')}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -156,7 +159,7 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
             className="inline-flex items-center gap-1.5 rounded border border-border bg-card px-3 py-1.5 text-xs text-foreground/80 hover:bg-muted/30 disabled:opacity-40"
           >
             <CheckCircle2 className="size-3.5 text-success" />
-            Mark all read
+            {t('fsm.notifications.markAllRead')}
           </button>
           <button
             type="button"
@@ -165,13 +168,13 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
             className="inline-flex items-center gap-1.5 rounded border border-destructive/40 bg-card px-3 py-1.5 text-xs text-destructive hover:bg-destructive/5 disabled:opacity-40"
           >
             <X className="size-3.5" />
-            Clear all
+            {t('fsm.notifications.clearAll')}
           </button>
         </div>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-1.5">
-        {FILTER_OPTIONS.map((option) => {
+        {filterOptions.map((option) => {
           let count: number | null = null;
           if (option.id === "all") count = notifications.length;
           else if (option.id === "unread") count = unreadCount;
@@ -212,11 +215,10 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
       )}
 
       {loading ? (
-        <p className="mt-6 text-sm text-muted-foreground">Loading notifications...</p>
+        <p className="mt-6 text-sm text-muted-foreground">{t('fsm.notifications.loading')}</p>
       ) : visible.length === 0 ? (
         <p className="mt-6 text-sm text-muted-foreground">
-          No notifications{filter !== "all" ? " for this filter" : ""} yet. Notifications from field sales (draft sales,
-          approvals, route changes, duties) will appear here.
+          {filter !== "all" ? t('fsm.notifications.emptyFiltered') : t('fsm.notifications.emptyAll')}
         </p>
       ) : (
         <div className="mt-4 overflow-hidden rounded-xl border border-border bg-card">
@@ -244,11 +246,11 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
                   {note.body && <p className="mt-0.5 text-sm text-foreground/80">{note.body}</p>}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${categoryClass}`}>
-                      {CATEGORY_LABELS[category] ?? category}
+                      {categoryLabel(category)}
                     </span>
                     {!note.is_read && (
                       <span className="rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
-                        Unread
+                        {t('fsm.notifications.filterUnread')}
                       </span>
                     )}
                     {isDraft && onReviewDraft && (
@@ -257,7 +259,7 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
                         onClick={() => onReviewDraft(note.entity_id!)}
                         className="rounded bg-primary px-2.5 py-0.5 text-[11px] font-medium text-white hover:bg-primary/90"
                       >
-                        Review draft
+                        {t('fsm.notifications.reviewDraft')}
                       </button>
                     )}
                     {!note.is_read && (
@@ -266,7 +268,7 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
                         onClick={() => markRead(note.id)}
                         className="rounded border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
                       >
-                        Mark read
+                        {t('fsm.notifications.markRead')}
                       </button>
                     )}
                   </div>
@@ -283,7 +285,7 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
           onClick={() => setMaxVisible((prev) => prev + 30)}
           className="mt-4 rounded border border-border bg-card px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
         >
-          Show more ({filteredCount - maxVisible} more)
+          {t('fsm.notifications.showMore').replace('{count}', String(filteredCount - maxVisible))}
         </button>
       )}
     </div>
