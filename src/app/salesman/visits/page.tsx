@@ -53,7 +53,7 @@ export default function VisitsPage() {
         setError(data.error || t('salesman.visits.loadFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }

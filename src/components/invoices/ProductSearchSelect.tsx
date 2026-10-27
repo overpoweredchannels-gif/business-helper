@@ -6,8 +6,9 @@ import { activeSuggestionIndex } from "./search-selection";
 import { highlightSearchMatches, rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
 import { isBarcodeShaped } from "@/lib/invoices/scan-submit";
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
-export function ProductSearchSelect({ value, onChange, products, label = "Product", searchPlaceholder = "Search name, brand or SKU", rankedFields, maxSuggestions = 12, onBarcodeEnter, focusSignal = 0, inputRef }: {
+export function ProductSearchSelect({ value, onChange, products, label, searchPlaceholder, rankedFields, maxSuggestions = 12, onBarcodeEnter, focusSignal = 0, inputRef }: {
   value: string;
   onChange: (value: string) => void;
   products: Array<{ id: string; label: string }>;
@@ -42,6 +43,9 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
   inputRef?: RefObject<HTMLInputElement | null>;
 }) {
   const listId = useId();
+  const { t } = useRegional();
+  const resolvedLabel = label ?? t('search.select.labelDefault');
+  const resolvedPlaceholder = searchPlaceholder ?? t('search.select.placeholderDefault');
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { if (focusSignal > 0) input.current?.focus(); }, [focusSignal]);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -69,8 +73,8 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
   const activeIndex = activeSuggestionIndex(matches, value, active);
   const { anchorRef, placement, maxHeightPx } = useSuggestionPlacement(open);
   useLayoutEffect(() => {
-    input.current?.setCustomValidity(selected ? "" : `Choose a ${label.toLowerCase()} from the suggestions.`);
-  }, [selected, label]);
+    input.current?.setCustomValidity(selected ? "" : t('search.select.chooseFrom').replace('{label}', resolvedLabel.toLowerCase()));
+  }, [selected, resolvedLabel, t]);
   useLayoutEffect(() => {
     // Keep the active option visible by scrolling the popover's own scroll
     // container only — never the page itself.
@@ -98,9 +102,9 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
   };
 
   return <div ref={anchorRef} className="relative min-w-0">
-    <input ref={node => { input.current = node; if (inputRef) inputRef.current = node; }} type="text" role="combobox" aria-label={label} aria-autocomplete="list"
+    <input ref={node => { input.current = node; if (inputRef) inputRef.current = node; }} type="text" role="combobox" aria-label={resolvedLabel} aria-autocomplete="list"
       aria-expanded={open} aria-controls={listId} aria-activedescendant={open && matches.length ? `${listId}-${activeIndex}` : undefined}
-      autoComplete="off" required placeholder={searchPlaceholder} value={query ?? selected?.label ?? ""}
+      autoComplete="off" required placeholder={resolvedPlaceholder} value={query ?? selected?.label ?? ""}
       onFocus={() => { setActive(null); setOpen(true); }} onBlur={() => setOpen(false)}
       onChange={event => { setQuery(event.target.value); setOpen(true); setActive(0); if (value) onChange(""); }}
       onKeyDown={event => {
@@ -143,7 +147,7 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
         }
       }} className="w-full rounded border border-input px-3 py-2 focus:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
     {open && <div ref={popoverRef} className={`absolute left-0 right-0 z-50 overflow-y-auto rounded border border-border bg-card shadow-lg ${placement === "below" ? "top-full mt-1" : "bottom-full mb-1"}`} style={{ maxHeight: maxHeightPx }}>
-      <ul id={listId} role="listbox" aria-label={`${label} suggestions`}>
+      <ul id={listId} role="listbox" aria-label={t('search.footer.listSuggestions').replace('{label}', resolvedLabel)}>
         {matches.map((product, index) => <li key={product.id} id={`${listId}-${index}`} role="option" aria-selected={index === activeIndex}
           data-suggestion-id={product.id}
           onMouseDown={event => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => choose(product.id)}
@@ -157,7 +161,7 @@ export function ProductSearchSelect({ value, onChange, products, label = "Produc
           )}
         </li>)}
       </ul>
-      {!matches.length && <p role="status" className="px-3 py-3 text-sm text-muted-foreground">No matches found. Try another name.</p>}
+      {!matches.length && <p role="status" className="px-3 py-3 text-sm text-muted-foreground">{t('search.select.noMatches')}</p>}
       {rankedAll.length > matches.length && matches.length > 0 && (
         <div className="border-t border-border">
           <button

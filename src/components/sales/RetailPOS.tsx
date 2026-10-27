@@ -605,7 +605,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
         return handleScannedCode(text, { reportNotFound: isBarcodeShaped(text) });
       }} onChange={id => { if (id) { const picked = products.find(item => String(item.id) === id); if (picked && hasSubunit(picked)) setFocusUnitFor(sale.lines.length); else setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} />
         <label className="flex items-center gap-3 text-sm">{t("pos.addOne")}<select data-pos-scan-unit value={scanUnit} onChange={event => onUnit(event.target.value as "main" | "subunit")} className="min-h-11 rounded border border-input bg-background px-3"><option value="subunit">{t("pos.scanUnitPiece")}</option><option value="main">{t("pos.scanUnitBox")}</option></select></label>
-        <label className="block text-sm font-medium">{t("pos.customer")}</label><ProductSearchSelect label="Customer" value={sale.customerId ?? ""} rankedFields={customerRankFields} products={customerOptions} onChange={onCustomer} />
+        <label className="block text-sm font-medium">{t("pos.customer")}</label><ProductSearchSelect label={t("pos.customer")} value={sale.customerId ?? ""} rankedFields={customerRankFields} products={customerOptions} onChange={onCustomer} />
       </div>
     </fieldset>
     <div data-pos-desktop-table className="hidden overflow-x-auto rounded-xl border bg-card sm:block"><table className="w-full min-w-[680px] text-sm"><thead className="bg-muted text-left"><tr>{[t("sell.product"), t("pos.unit"), t("sell.quantity"), t("pos.price"), t("common.discount"), t("common.total"), ""].map((text, index) => <th key={index} className="p-3">{text}</th>)}</tr></thead>
