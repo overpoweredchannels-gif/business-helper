@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface RoleView {
   id: string;
@@ -34,29 +35,6 @@ const ALL_PERMISSIONS = [
   "settings_manage",
 ];
 
-const PERMISSION_LABELS: Record<string, string> = {
-  sales_view: "View Sales",
-  sales_create: "Create Sales",
-  sales_manage: "Manage Sales",
-  purchases_view: "View Purchases",
-  purchases_create: "Create Purchases",
-  inventory_view: "View Inventory",
-  inventory_manage: "Manage Inventory",
-  customers_view: "View Customers",
-  customers_manage: "Manage Customers",
-  suppliers_view: "View Suppliers",
-  suppliers_manage: "Manage Suppliers",
-  reports_view: "View Reports",
-  profit_view: "View Profit",
-  payments_manage: "Manage Payments",
-  expenses_manage: "Manage Expenses",
-  tasks_manage: "Manage Tasks",
-  location_view: "View Locations",
-  ai_assistant: "AI Assistant",
-  administration: "Administration",
-  settings_manage: "Manage Settings",
-};
-
 const rowStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -85,6 +63,32 @@ const buttonStyle: React.CSSProperties = {
 };
 
 export default function RoleManagement() {
+  const { t } = useRegional();
+  const permissionLabel = (p: string) => {
+    const labels: Record<string, string> = {
+      sales_view: t('identity.roles.perm.salesView'),
+      sales_create: t('identity.roles.perm.salesCreate'),
+      sales_manage: t('identity.roles.perm.salesManage'),
+      purchases_view: t('identity.roles.perm.purchasesView'),
+      purchases_create: t('identity.roles.perm.purchasesCreate'),
+      inventory_view: t('identity.roles.perm.inventoryView'),
+      inventory_manage: t('identity.roles.perm.inventoryManage'),
+      customers_view: t('identity.roles.perm.customersView'),
+      customers_manage: t('identity.roles.perm.customersManage'),
+      suppliers_view: t('identity.roles.perm.suppliersView'),
+      suppliers_manage: t('identity.roles.perm.suppliersManage'),
+      reports_view: t('identity.roles.perm.reportsView'),
+      profit_view: t('identity.roles.perm.profitView'),
+      payments_manage: t('identity.roles.perm.paymentsManage'),
+      expenses_manage: t('identity.roles.perm.expensesManage'),
+      tasks_manage: t('identity.roles.perm.tasksManage'),
+      location_view: t('identity.roles.perm.locationView'),
+      ai_assistant: t('identity.roles.perm.aiAssistant'),
+      administration: t('identity.roles.perm.administration'),
+      settings_manage: t('identity.roles.perm.settingsManage'),
+    };
+    return labels[p] ?? p;
+  };
   const [roles, setRoles] = useState<RoleView[]>([]);
   const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
@@ -102,10 +106,10 @@ export default function RoleManagement() {
         setPermissionMatrix(data.permissionMatrix || {});
         setError(null);
       } else {
-        setError(data.error || "Failed to load roles");
+        setError(data.error || t('identity.roles.loadFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     }
   };
 
@@ -134,16 +138,16 @@ export default function RoleManagement() {
       setNewPermissions([]);
       loadRoles();
     } else {
-      setError(data.error || "Role creation failed");
+      setError(data.error || t('identity.roles.createFailed'));
     }
   };
 
   return (
     <div style={{ padding: "1.5rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-        <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>Role Management</h2>
+        <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>{t('identity.roles.title')}</h2>
         <button style={buttonStyle} onClick={() => setShowCreate((v) => !v)}>
-          {showCreate ? "Cancel" : "New Custom Role"}
+          {showCreate ? t('common.cancel') : t('identity.roles.newCustomRole')}
         </button>
       </div>
 
@@ -156,13 +160,13 @@ export default function RoleManagement() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
             <input
               style={inputStyle}
-              placeholder="Role name (e.g. Cashier)"
+              placeholder={t('identity.roles.roleNamePlaceholder')}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
             />
             <input
               style={inputStyle}
-              placeholder="Description"
+              placeholder={t('identity.roles.descriptionPlaceholder')}
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
             />
@@ -188,12 +192,12 @@ export default function RoleManagement() {
                   checked={newPermissions.includes(permission)}
                   onChange={() => togglePermission(permission)}
                 />
-                {PERMISSION_LABELS[permission] || permission}
+                {permissionLabel(permission)}
               </label>
             ))}
           </div>
           <button style={buttonStyle} onClick={createRole} disabled={!newName.trim()}>
-            Create Role
+            {t('identity.roles.createRole')}
           </button>
         </div>
       )}
@@ -213,16 +217,16 @@ export default function RoleManagement() {
                     color: "#4b5563",
                   }}
                 >
-                  built-in
+                  {t('identity.roles.builtIn')}
                 </span>
               )}
             </div>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.8125rem", color: "#6b7280" }}>
-              {role.description || `${role.permissions.length} permissions`}
+              {role.description || t('identity.roles.permissionsCount').replace('{count}', String(role.permissions.length))}
             </p>
           </div>
           <span style={{ fontSize: "0.8125rem", color: "#374151", whiteSpace: "nowrap" }}>
-            {role.permissions.length} permissions
+            {t('identity.roles.permissionsCount').replace('{count}', String(role.permissions.length))}
           </span>
         </div>
       ))}
