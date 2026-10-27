@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getGoogleMaps } from "@/lib/maps/client-loader";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 export interface RouteMapStop {
   key: string;
@@ -35,6 +36,7 @@ export default function RouteMapBuilder({
   onRemoveStop,
   onReorder,
 }: RouteMapBuilderProps) {
+  const { t } = useRegional();
   const googleRef = useRef<any>(null);
   const mapRef = useRef<any>(null);
   const circleRef = useRef<any>(null);
@@ -176,11 +178,11 @@ export default function RouteMapBuilder({
       geocoder.geocode({ location: { lat, lng } }, (results: any[], geocodeStatus: string) => {
         const result = geocodeStatus === "OK" ? results?.[0] : null;
         if (!result) {
-          setSelectionError("Google Maps could not identify this point. Search for the shop or click a labeled place.");
+          setSelectionError(t('fsm.routes.map.identifyFailed'));
           return;
         }
         selectMapPlace({
-          name: result.formatted_address ?? "Map location",
+          name: result.formatted_address ?? t('fsm.routes.map.mapLocation'),
           address: result.formatted_address ?? "",
           lat,
           lng,
@@ -200,7 +202,7 @@ export default function RouteMapBuilder({
           (place: any, placeStatus: string) => {
             if (placeStatus === google.maps.places.PlacesServiceStatus.OK && place?.geometry?.location) {
               selectMapPlace({
-                name: place.name ?? place.formatted_address ?? "Map location",
+                name: place.name ?? place.formatted_address ?? t('fsm.routes.map.mapLocation'),
                 address: place.formatted_address ?? "",
                 lat: place.geometry.location.lat(),
                 lng: place.geometry.location.lng(),
@@ -240,7 +242,7 @@ export default function RouteMapBuilder({
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
         selectMapPlace({
-          name: place.name ?? place.formatted_address ?? "Stop",
+          name: place.name ?? place.formatted_address ?? t('fsm.routes.map.stopFallback'),
           address: place.formatted_address ?? "",
           lat,
           lng,
@@ -249,7 +251,7 @@ export default function RouteMapBuilder({
     }
 
     setStatus("ready");
-  }, [selectMapPlace, territoryArea]);
+  }, [selectMapPlace, territoryArea, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -258,9 +260,7 @@ export default function RouteMapBuilder({
       if (cancelled) return;
       if (!google) {
         setStatus("error");
-        setLoadError(
-          "Google Maps API key is not configured. Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY and reload.",
-        );
+        setLoadError(t('fsm.routes.map.apiKeyMissing'));
         return;
       }
       googleRef.current = google;
@@ -270,11 +270,11 @@ export default function RouteMapBuilder({
     return () => {
       cancelled = true;
     };
-  }, [initMap]);
+  }, [initMap, t]);
 
   const addPicked = () => {
     if (!pickedPlace) {
-      setLoadError("Search a place first, then press Add stop.");
+      setLoadError(t('fsm.routes.map.searchFirst'));
       setStatus("ready");
       return;
     }
@@ -331,7 +331,7 @@ export default function RouteMapBuilder({
             color: "#111827",
           }}
         >
-          <option value="">Custom location (no customer)</option>
+          <option value="">{t('fsm.routes.map.customLocationOption')}</option>
           {customers
             .filter((customer) => !stops.some((stop) => stop.customerId === customer.id))
             .map((customer) => (
@@ -343,7 +343,7 @@ export default function RouteMapBuilder({
         <input
           ref={searchInputRef}
           type="text"
-          placeholder="Search shop, street, or area for stop #1/#2/#3..."
+          placeholder={t('fsm.routes.map.searchPlaceholder')}
           value={searchValue}
           onChange={(e) => {
             setSearchValue(e.target.value);
@@ -373,19 +373,19 @@ export default function RouteMapBuilder({
             cursor: pickedPlace ? "pointer" : "not-allowed",
           }}
         >
-          {selectedCustomerId ? "Tag customer at stop" : "Add custom stop"} {stops.length + 1}
+          {selectedCustomerId ? t('fsm.routes.map.tagCustomer') : t('fsm.routes.map.addCustomStop')} {stops.length + 1}
         </button>
       </div>
 
       <div style={{ marginBottom: "0.5rem", border: `1px solid ${pickedPlace ? "#86efac" : "#e5e7eb"}`, borderRadius: "0.375rem", background: pickedPlace ? "#f0fdf4" : "#f9fafb", padding: "0.6rem 0.75rem", fontSize: "0.78rem" }}>
         {pickedPlace ? (
           <>
-            <div><strong>Customer:</strong> {customers.find((customer) => customer.id === selectedCustomerId)?.customer_name ?? "Custom location"}</div>
-            <div><strong>Google Maps location:</strong> {pickedPlace.name}</div>
-            <div style={{ color: "#4b5563" }}>{pickedPlace.address || "No formatted address returned"}</div>
+            <div><strong>{t('fsm.routes.map.customerLabel')}</strong> {customers.find((customer) => customer.id === selectedCustomerId)?.customer_name ?? t('fsm.routes.map.customLocation')}</div>
+            <div><strong>{t('fsm.routes.map.mapsLocationLabel')}</strong> {pickedPlace.name}</div>
+            <div style={{ color: "#4b5563" }}>{pickedPlace.address || t('fsm.routes.map.noAddress')}</div>
             <div style={{ color: "#6b7280" }}>{pickedPlace.lat.toFixed(6)}, {pickedPlace.lng.toFixed(6)}</div>
           </>
-        ) : <span style={{ color: "#6b7280" }}>Search for a shop or click a labeled shop/place directly on the map to select its exact location.</span>}
+        ) : <span style={{ color: "#6b7280" }}>{t('fsm.routes.map.searchHint')}</span>}
         {selectionError && <div style={{ color: "#b91c1c", marginTop: "0.25rem" }}>{selectionError}</div>}
       </div>
 
@@ -420,7 +420,7 @@ export default function RouteMapBuilder({
                 <span style={{ fontWeight: 600, color: "#374151" }}>
                   {index + 1}. {stop.label}
                 </span>
-                {stop.customerId && <span style={{ color: "#166534", marginLeft: "0.5rem" }}>Customer tagged</span>}
+                {stop.customerId && <span style={{ color: "#166534", marginLeft: "0.5rem" }}>{t('fsm.routes.map.customerTagged')}</span>}
                 {stop.address && <span style={{ color: "#6b7280", marginLeft: "0.5rem" }}>{stop.address}</span>}
                 <span style={{ color: "#9ca3af", marginLeft: "0.5rem" }}>
                   {stop.latitude.toFixed(6)}, {stop.longitude.toFixed(6)}
@@ -456,7 +456,7 @@ export default function RouteMapBuilder({
                     borderRadius: "0.25rem",
                   }}
                 >
-                  Remove
+                  {t('sell.remove')}
                 </button>
               </div>
             </div>
