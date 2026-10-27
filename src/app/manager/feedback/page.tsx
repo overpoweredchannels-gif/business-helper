@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { MessageSquareText, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Feedback {
   id: string;
@@ -18,6 +19,7 @@ interface Feedback {
 }
 
 export default function FeedbackPage() {
+  const { t } = useRegional();
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,13 +32,13 @@ export default function FeedbackPage() {
       const res = await authorizedFetch("/api/feedback?limit=100");
       const data = await res.json();
       if (data.ok) setFeedback(data.feedback ?? []);
-      else setError(data.error || "Failed to load feedback");
+      else setError(data.error || t('manager.feedback.loadFailed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -44,12 +46,13 @@ export default function FeedbackPage() {
 
   const filtered = filter === "all" ? feedback : feedback.filter((f) => (f.status ?? "open") === filter);
   const open = feedback.filter((f) => (f.status ?? "open") === "open").length;
+  const filterLabel = (f: typeof filter) => ({ all: t('manager.feedback.filterAll'), open: t('manager.feedback.filterOpen'), in_progress: t('manager.feedback.filterInProgress'), resolved: t('manager.feedback.filterResolved') })[f];
 
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Customer Feedback</h1>
-        <p className="text-sm text-body mt-1">Complaints, feedback, notes, and requests recorded during field visits.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.feedback.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('manager.feedback.subtitle')}</p>
       </div>
 
       {error && (
@@ -68,7 +71,7 @@ export default function FeedbackPage() {
               filter === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
             )}
           >
-            {f.replace("_", " ")}{f === "open" && open > 0 ? ` (${open})` : ""}
+            {filterLabel(f)}{f === "open" && open > 0 ? ` (${open})` : ""}
           </button>
         ))}
       </div>
@@ -76,12 +79,12 @@ export default function FeedbackPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading feedback...</p>
+          <p className="text-sm text-body">{t('salesman.feedback.loading')}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <MessageSquareText className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No feedback items.</p>
+          <p className="text-sm text-body">{t('manager.feedback.noItems')}</p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -97,7 +100,7 @@ export default function FeedbackPage() {
               <div className="font-medium text-foreground">{f.title || f.type}</div>
               <p className="text-sm text-body mt-1">{f.description}</p>
               <div className="text-xs text-light-text mt-2">
-                {f.customers?.shop_name || f.customers?.customer_name} · {f.employees?.full_name ?? "Staff"} · {new Date(f.created_at).toLocaleString()}
+                {f.customers?.shop_name || f.customers?.customer_name} · {f.employees?.full_name ?? t('manager.feedback.staffFallback')} · {new Date(f.created_at).toLocaleString()}
               </div>
             </div>
           ))}
@@ -108,6 +111,8 @@ export default function FeedbackPage() {
 }
 
 function TypeBadge({ type }: { type: string }) {
+  const { t } = useRegional();
+  const typeLabels: Record<string, string> = { complaint: t('salesman.feedback.type.complaint'), feedback: t('salesman.feedback.type.feedback'), note: t('salesman.feedback.type.note'), request: t('salesman.feedback.type.request') };
   const colors: Record<string, string> = {
     complaint: "bg-destructive/10 text-destructive",
     feedback: "bg-primary/10 text-primary",
@@ -116,12 +121,14 @@ function TypeBadge({ type }: { type: string }) {
   };
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium capitalize", colors[type] ?? "bg-muted text-muted-foreground")}>
-      {type}
+      {typeLabels[type] ?? type}
     </span>
   );
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
+  const { t } = useRegional();
+  const priorityLabels: Record<string, string> = { high: t('salesman.feedback.priority.high'), medium: t('salesman.feedback.priority.medium'), low: t('salesman.feedback.priority.low') };
   const colors: Record<string, string> = {
     high: "bg-destructive/10 text-destructive",
     medium: "bg-warning/10 text-warning",
@@ -129,12 +136,14 @@ function PriorityBadge({ priority }: { priority: string }) {
   };
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium capitalize", colors[priority] ?? "bg-muted text-muted-foreground")}>
-      {priority}
+      {priorityLabels[priority] ?? priority}
     </span>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useRegional();
+  const statusLabels: Record<string, string> = { open: t('manager.feedback.filterOpen'), in_progress: t('manager.feedback.filterInProgress'), resolved: t('manager.feedback.filterResolved'), closed: t('manager.feedback.statusClosed') };
   const colors: Record<string, string> = {
     open: "bg-warning/10 text-warning",
     in_progress: "bg-primary/10 text-primary",
@@ -143,7 +152,7 @@ function StatusBadge({ status }: { status: string }) {
   };
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium capitalize", colors[status] ?? "bg-muted text-muted-foreground")}>
-      {status.replace("_", " ")}
+      {statusLabels[status] ?? status.replace("_", " ")}
     </span>
   );
 }
