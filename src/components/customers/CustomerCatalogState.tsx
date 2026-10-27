@@ -1,4 +1,5 @@
 import type { DashboardReadStatus } from "@/lib/dashboard/data-read-state";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 /**
  * Compact failure banner with retry, shown above the customers list when a
@@ -17,19 +18,20 @@ export function CustomerCatalogErrorBanner({
   onRetry: () => void;
   hasStaleData: boolean;
 }) {
+  const { t } = useRegional();
   return (
     <div role="alert" className="space-y-2 rounded-lg border border-destructive/30 bg-destructive-bg p-3">
       <p className="text-sm text-destructive">
         {hasStaleData
-          ? "Couldn't refresh the customer list. Showing previously loaded customers."
-          : "Couldn't load the customer list. Check your connection and try again."}
+          ? t('customers.catalog.staleError')
+          : t('customers.catalog.loadError')}
       </p>
       <button
         type="button"
         onClick={onRetry}
         className="min-h-11 rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Retry
+        {t('ai.assistant.retry')}
       </button>
     </div>
   );
@@ -62,10 +64,11 @@ export function CustomerCatalogState({
   hasCustomers: boolean;
   onRetry: () => void;
 }) {
+  const { t } = useRegional();
   if (status === "loading" || status === "not-loaded") {
     return (
       <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-        Loading customers...
+        {t('manager.customers.loading')}
       </p>
     );
   }
@@ -75,12 +78,12 @@ export function CustomerCatalogState({
   }
 
   if (status === "successful-empty") {
-    return <p className="text-sm text-muted-foreground">No customers added yet.</p>;
+    return <p className="text-sm text-muted-foreground">{t('summary.noCustomers')}</p>;
   }
 
   const trimmed = searchQuery.trim();
   if (matchCount === 0 && trimmed) {
-    return <p className="text-sm text-muted-foreground">No customers match &ldquo;{trimmed}&rdquo;.</p>;
+    return <p className="text-sm text-muted-foreground">{t('customers.catalog.noMatch').replace('{query}', trimmed)}</p>;
   }
 
   return null;
