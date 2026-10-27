@@ -331,6 +331,13 @@ async function authorizedFetch(input: string, init: RequestInit = {}): Promise<R
 export default function Home() {
   const router = useRouter();
   const { t, language } = useRegional();
+  // Auth-guard error lines, translated once per render and reused by the
+  // 60+ handlers below (keeps the t() calls out of the handler bodies).
+  const orgNotLoadedMessage = t('page.orgNotLoaded');
+  const orgNotLoadedErrorMessage = t('page.orgNotLoadedError');
+  const orgNotLoadedActionTemplate = t('page.orgNotLoadedAction');
+  const profileNotLoadedMessage = t('page.profileNotLoaded');
+  const staffProfileNotLoadedMessage = t('page.staffProfileNotLoaded');
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [printPreviewTitle, setPrintPreviewTitle] = useState("");
@@ -2065,7 +2072,7 @@ setCustomerOrganizationName("");
 
   const requireOrganization = (actionName: string) => {
     if (!currentOrganizationId) {
-      const message = `Organization not loaded. Cannot ${actionName}. Please login again.`;
+      const message = orgNotLoadedActionTemplate.replace('{action}', actionName);
       console.error(message);
       setAuthError(message);
       return false;
@@ -2928,12 +2935,12 @@ setCustomerOrganizationName("");
     setAiAssistantMessage(null);
 
     if (!requireOrganization("create AI action draft")) {
-      setAiAssistantError("Organization not loaded. Please login again.");
+      setAiAssistantError(orgNotLoadedMessage);
       return;
     }
 
     if (!currentProfile?.id) {
-      setAiAssistantError("Current profile is not loaded. Please login again.");
+      setAiAssistantError(profileNotLoadedMessage);
       return;
     }
 
@@ -2999,7 +3006,7 @@ setCustomerOrganizationName("");
     nextStatus: "needs_info" | "cancelled"
   ) => {
     if (!requireOrganization("update AI action draft")) {
-      setAiAssistantError("Organization not loaded. Please login again.");
+      setAiAssistantError(orgNotLoadedMessage);
       return;
     }
 
@@ -3039,7 +3046,7 @@ setCustomerOrganizationName("");
     setAiAssistantMessage(null);
 
     if (!requireOrganization("save AI draft answers")) {
-      setAiAssistantError("Organization not loaded. Please login again.");
+      setAiAssistantError(orgNotLoadedMessage);
       return;
     }
 
@@ -3154,7 +3161,7 @@ setCustomerOrganizationName("");
     setAiConversationMessage(null);
 
     if (!requireOrganization("send AI conversation answer")) {
-      setAiConversationError("Organization not loaded. Please login again.");
+      setAiConversationError(orgNotLoadedMessage);
       return;
     }
 
@@ -3327,12 +3334,12 @@ setCustomerOrganizationName("");
     setAiAssistantMessage(null);
 
     if (!requireOrganization("execute AI action draft")) {
-      setAiAssistantError("Organization not loaded. Please login again.");
+      setAiAssistantError(orgNotLoadedMessage);
       return;
     }
 
     if (!currentProfile?.id) {
-      setAiAssistantError("Current profile is not loaded. Please login again.");
+      setAiAssistantError(profileNotLoadedMessage);
       return;
     }
 
@@ -3976,12 +3983,12 @@ setCustomerOrganizationName("");
     setLocationTrackingMessage(null);
 
     if (!requireOrganization("start duty")) {
-      setLocationTrackingError("Organization not loaded. Please login again.");
+      setLocationTrackingError(orgNotLoadedMessage);
       return;
     }
 
     if (!currentProfile?.id) {
-      setLocationTrackingError("Current staff profile is not loaded. Please login again.");
+      setLocationTrackingError(staffProfileNotLoadedMessage);
       return;
     }
 
@@ -4044,12 +4051,12 @@ setCustomerOrganizationName("");
     setLocationTrackingMessage(null);
 
     if (!requireOrganization("end duty")) {
-      setLocationTrackingError("Organization not loaded. Please login again.");
+      setLocationTrackingError(orgNotLoadedMessage);
       return;
     }
 
     if (!currentProfile?.id) {
-      setLocationTrackingError("Current staff profile is not loaded. Please login again.");
+      setLocationTrackingError(staffProfileNotLoadedMessage);
       return;
     }
 
@@ -4443,7 +4450,7 @@ setCustomerOrganizationName("");
 
     try {
       if (!requireOrganization("create sales invoice")) {
-        setSalesError("Organization not loaded. Please login again.");
+        setSalesError(orgNotLoadedMessage);
         setSalesInvoiceLoading(false);
         return;
       }
@@ -4605,7 +4612,7 @@ setCustomerOrganizationName("");
 
     try {
       if (!requireOrganization("create customer payment")) {
-        setCustomerPaymentError("Organization not loaded. Please login again.");
+        setCustomerPaymentError(orgNotLoadedMessage);
         setCustomerPaymentLoading(false);
         return;
       }
@@ -4757,7 +4764,7 @@ setCustomerOrganizationName("");
 
     try {
       if (!requireOrganization("create supplier payment")) {
-        setSupplierPaymentError("Organization not loaded. Please login again.");
+        setSupplierPaymentError(orgNotLoadedMessage);
         setSupplierPaymentLoading(false);
         return;
       }
@@ -4855,7 +4862,7 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("create expense")) {
-      setExpenseMessage("Error: Organization not loaded. Please login again.");
+      setExpenseMessage(orgNotLoadedErrorMessage);
       return;
     }
 
@@ -4976,7 +4983,7 @@ setCustomerOrganizationName("");
     setPurchaseExpenseStatusMessage(null);
 
     if (!requireOrganization("update purchase expense review")) {
-      setPurchaseExpenseStatusMessage("Organization not loaded. Please login again.");
+      setPurchaseExpenseStatusMessage(orgNotLoadedMessage);
       return;
     }
 
@@ -6990,7 +6997,7 @@ setCustomerOrganizationName("");
     setBulkStockError(null);
     setBulkStockMessage(null);
     if (!requireOrganization("add stock")) {
-      setBulkStockError("Organization not loaded. Please login again.");
+      setBulkStockError(orgNotLoadedMessage);
       return;
     }
     if (!canManageInventory) {
@@ -7064,7 +7071,7 @@ setCustomerOrganizationName("");
     setAdjustmentMessage(null);
 
     if (!requireOrganization("adjust stock")) {
-      setAdjustmentError("Organization not loaded. Please login again.");
+      setAdjustmentError(orgNotLoadedMessage);
       return;
     }
 
@@ -7188,7 +7195,7 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("add brand")) {
-      setBrandError("Organization not loaded. Please login again.");
+      setBrandError(orgNotLoadedMessage);
       setBrandMessage(null);
       return;
     }
@@ -7227,7 +7234,7 @@ setCustomerOrganizationName("");
     setBrandError(null);
     setBrandMessage(null);
     if (!requireOrganization("delete brand")) {
-      setBrandError("Organization not loaded. Please login again.");
+      setBrandError(orgNotLoadedMessage);
       return;
     }
     setBrandsLoading(true);
@@ -7277,7 +7284,7 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("add category")) {
-      setCategoryError("Organization not loaded. Please login again.");
+      setCategoryError(orgNotLoadedMessage);
       setCategoryMessage(null);
       return;
     }
@@ -7353,7 +7360,7 @@ setCustomerOrganizationName("");
     setCategoryError(null);
     setCategoryMessage(null);
     if (!requireOrganization("delete category")) {
-      setCategoryError("Organization not loaded. Please login again.");
+      setCategoryError(orgNotLoadedMessage);
       return;
     }
     setCategoriesLoading(true);
@@ -7391,7 +7398,7 @@ setCustomerOrganizationName("");
     setMessage(null);
     setError(null);
     if (!requireOrganization("archive product")) {
-      setError("Organization not loaded. Please login again.");
+      setError(orgNotLoadedMessage);
       return;
     }
     setArchivingProductId(productId);
@@ -7440,7 +7447,7 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("add customer")) {
-      setCustomerError("Organization not loaded. Please login again.");
+      setCustomerError(orgNotLoadedMessage);
       setCustomerMessage(null);
       return;
     }
@@ -7637,7 +7644,7 @@ setCustomerOrganizationName("");
     setCustomerError(null);
     setCustomerMessage(null);
     if (!requireOrganization("archive customer")) {
-      setCustomerError("Organization not loaded. Please login again.");
+      setCustomerError(orgNotLoadedMessage);
       return;
     }
     setCustomersLoading(true);
@@ -7680,7 +7687,7 @@ setCustomerOrganizationName("");
     setCustomerError(null);
     setCustomerMessage(null);
     if (!requireOrganization("restore customer")) {
-      setCustomerError("Organization not loaded. Please login again.");
+      setCustomerError(orgNotLoadedMessage);
       return;
     }
     setCustomersLoading(true);
@@ -7723,7 +7730,7 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("save supplier")) {
-      setSupplierError("Organization not loaded. Please login again.");
+      setSupplierError(orgNotLoadedMessage);
       setSupplierMessage(null);
       return;
     }
@@ -7830,7 +7837,7 @@ setCustomerOrganizationName("");
     setSupplierError(null);
     setSupplierMessage(null);
     if (!requireOrganization("archive supplier")) {
-      setSupplierError("Organization not loaded. Please login again.");
+      setSupplierError(orgNotLoadedMessage);
       return;
     }
     setSuppliersLoading(true);
@@ -7991,13 +7998,13 @@ setCustomerOrganizationName("");
 
     try {
       if (!requireOrganization("create purchase invoice")) {
-        setInvoiceError("Organization not loaded. Please login again.");
+        setInvoiceError(orgNotLoadedMessage);
         setInvoiceLoading(false);
         return;
       }
 
       if (!currentOrganizationId) {
-        setInvoiceError("Organization not loaded. Please login again.");
+        setInvoiceError(orgNotLoadedMessage);
         setInvoiceLoading(false);
         return;
       }
@@ -8106,7 +8113,7 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("create purchase order")) {
-      setPoError("Organization not loaded. Please login again.");
+      setPoError(orgNotLoadedMessage);
       setPoMessage(null);
       return;
     }
@@ -8116,7 +8123,7 @@ setCustomerOrganizationName("");
     setPoLoading(true);
 
     if (!currentOrganizationId) {
-      setPoError("Organization not loaded. Please login again.");
+      setPoError(orgNotLoadedMessage);
       setPoMessage(null);
       setPoLoading(false);
       return;
@@ -8267,13 +8274,13 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("receive purchase order")) {
-      setReceiveError("Organization not loaded. Please login again.");
+      setReceiveError(orgNotLoadedMessage);
       setReceiveMessage(null);
       return;
     }
 
     if (!currentOrganizationId) {
-      setReceiveError("Organization not loaded. Please login again.");
+      setReceiveError(orgNotLoadedMessage);
       setReceiveMessage(null);
       return;
     }
@@ -8515,7 +8522,7 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("create purchase return")) {
-      setReturnError("Organization not loaded. Please login again.");
+      setReturnError(orgNotLoadedMessage);
       setReturnMessage(null);
       return;
     }
@@ -8525,7 +8532,7 @@ setCustomerOrganizationName("");
     setReturnLoading(true);
 
     if (!currentOrganizationId) {
-      setReturnError("Organization not loaded. Please login again.");
+      setReturnError(orgNotLoadedMessage);
       setReturnMessage(null);
       setReturnLoading(false);
       return;
@@ -8694,13 +8701,13 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("save sales order")) {
-      setSoError("Organization not loaded. Please login again.");
+      setSoError(orgNotLoadedMessage);
       setSoMessage(null);
       return;
     }
 
     if (!currentOrganizationId) {
-      setSoError("Organization not loaded. Please login again.");
+      setSoError(orgNotLoadedMessage);
       setSoMessage(null);
       return;
     }
@@ -9199,13 +9206,13 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("create sales return")) {
-      setSrError("Organization not loaded. Please login again.");
+      setSrError(orgNotLoadedMessage);
       setSrMessage(null);
       return;
     }
 
     if (!currentOrganizationId) {
-      setSrError("Organization not loaded. Please login again.");
+      setSrError(orgNotLoadedMessage);
       setSrMessage(null);
       return;
     }
@@ -11685,7 +11692,7 @@ setCustomerOrganizationName("");
     setAiAnalyticsResult(null);
 
     if (!requireOrganization("ask AI analytics")) {
-      setAiAnalyticsError("Organization not loaded. Please login again.");
+      setAiAnalyticsError(orgNotLoadedMessage);
       return;
     }
     if (!isOwnerOrAdmin()) {
@@ -12019,7 +12026,7 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("create task")) {
-      setTaskError("Organization not loaded. Please login again.");
+      setTaskError(orgNotLoadedMessage);
       return;
     }
 
@@ -12089,7 +12096,7 @@ setCustomerOrganizationName("");
     setTaskError(null);
 
     if (!requireOrganization("update task status")) {
-      setTaskError("Organization not loaded. Please login again.");
+      setTaskError(orgNotLoadedMessage);
       return;
     }
 
@@ -12241,7 +12248,7 @@ setCustomerOrganizationName("");
 
   const createTaskFromSuggestion = async (suggestion: (typeof taskSuggestions)[number]) => {
     if (!requireOrganization("create suggested task")) {
-      setTaskError("Organization not loaded. Please login again.");
+      setTaskError(orgNotLoadedMessage);
       return;
     }
 
@@ -13367,7 +13374,7 @@ setCustomerOrganizationName("");
     setAiBriefingError(null);
 
     if (!requireOrganization("generate AI business alerts")) {
-      setAiBriefingError("Organization not loaded. Please login again.");
+      setAiBriefingError(orgNotLoadedMessage);
       return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
     }
     if (!isOwnerOrAdmin()) {
@@ -13595,7 +13602,7 @@ setCustomerOrganizationName("");
     setAiBriefingError(null);
 
     if (!requireOrganization("update AI alert")) {
-      setAiBriefingError("Organization not loaded. Please login again.");
+      setAiBriefingError(orgNotLoadedMessage);
       return;
     }
 
@@ -13634,7 +13641,7 @@ setCustomerOrganizationName("");
     setAiBriefingError(null);
 
     if (!requireOrganization("generate daily briefing")) {
-      setAiBriefingError("Organization not loaded. Please login again.");
+      setAiBriefingError(orgNotLoadedMessage);
       return null;
     }
     if (!isOwnerOrAdmin()) {
@@ -13824,7 +13831,7 @@ setCustomerOrganizationName("");
     setAiBusinessQueryResult(null);
 
     if (!requireOrganization("ask AI business query")) {
-      setAiBusinessQueryError("Organization not loaded. Please login again.");
+      setAiBusinessQueryError(orgNotLoadedMessage);
       return;
     }
     if (!isOwnerOrAdmin()) {
@@ -14017,7 +14024,7 @@ setCustomerOrganizationName("");
     setAiVoiceOperatorError(null);
     setAiVoiceOperatorMessage(null);
     if (!requireOrganization("start AI voice operator session")) {
-      setAiVoiceOperatorError("Organization not loaded. Please login again.");
+      setAiVoiceOperatorError(orgNotLoadedMessage);
       return null;
     }
     const now = new Date().toISOString();
@@ -14653,7 +14660,7 @@ setCustomerOrganizationName("");
     setAiVoiceOperatorMessage(null);
     setAiVoiceHandsFreeError(null);
     if (!requireOrganization("send to AI voice operator")) {
-      setAiVoiceOperatorError("Organization not loaded. Please login again.");
+      setAiVoiceOperatorError(orgNotLoadedMessage);
       return;
     }
     if (!isOwnerOrAdmin()) {
@@ -15125,7 +15132,7 @@ setCustomerOrganizationName("");
     setError(null);
 
     if (!requireOrganization("save product")) {
-      setError("Organization not loaded. Please login again.");
+      setError(orgNotLoadedMessage);
       return;
     }
 
@@ -15456,7 +15463,7 @@ setCustomerOrganizationName("");
     setMarketImportQueueError(null);
 
     if (!requireOrganization("create market import queue item")) {
-      setMarketImportQueueError("Organization not loaded. Please login again.");
+      setMarketImportQueueError(orgNotLoadedMessage);
       return;
     }
 
@@ -15521,7 +15528,7 @@ setCustomerOrganizationName("");
     setMarketIntelligenceError(null);
 
     if (!requireOrganization("create market intelligence item")) {
-      setMarketIntelligenceError("Organization not loaded. Please login again.");
+      setMarketIntelligenceError(orgNotLoadedMessage);
       return;
     }
 
@@ -15662,7 +15669,7 @@ setCustomerOrganizationName("");
     setMarketIntelligenceError(null);
 
     if (!requireOrganization("create market news source")) {
-      setMarketIntelligenceError("Organization not loaded. Please login again.");
+      setMarketIntelligenceError(orgNotLoadedMessage);
       return;
     }
 
@@ -15719,7 +15726,7 @@ setCustomerOrganizationName("");
     setMarketIntelligenceError(null);
 
     if (!requireOrganization("update market intelligence status")) {
-      setMarketIntelligenceError("Organization not loaded. Please login again.");
+      setMarketIntelligenceError(orgNotLoadedMessage);
       return;
     }
 
@@ -15780,7 +15787,7 @@ setCustomerOrganizationName("");
     setMarketImportQueueError(null);
 
     if (!requireOrganization("update market import queue status")) {
-      setMarketImportQueueError("Organization not loaded. Please login again.");
+      setMarketImportQueueError(orgNotLoadedMessage);
       return;
     }
 
@@ -15878,7 +15885,7 @@ setCustomerOrganizationName("");
     setMarketAiAnalysisError(null);
 
     if (!requireOrganization("analyze market intelligence with AI")) {
-      setMarketAiAnalysisError("Organization not loaded. Please login again.");
+      setMarketAiAnalysisError(orgNotLoadedMessage);
       return;
     }
 
@@ -16044,7 +16051,7 @@ setCustomerOrganizationName("");
     setMarketAiAnalysisError(null);
 
     if (!requireOrganization("update market AI analysis status")) {
-      setMarketAiAnalysisError("Organization not loaded. Please login again.");
+      setMarketAiAnalysisError(orgNotLoadedMessage);
       return;
     }
 
@@ -16107,7 +16114,7 @@ setCustomerOrganizationName("");
     setMarketIntelligenceError(null);
 
     if (!requireOrganization("delete market intelligence item")) {
-      setMarketIntelligenceError("Organization not loaded. Please login again.");
+      setMarketIntelligenceError(orgNotLoadedMessage);
       return;
     }
 
@@ -16141,7 +16148,7 @@ setCustomerOrganizationName("");
     setMarketIntelligenceError(null);
 
     if (!requireOrganization("delete market news source")) {
-      setMarketIntelligenceError("Organization not loaded. Please login again.");
+      setMarketIntelligenceError(orgNotLoadedMessage);
       return;
     }
 
@@ -16180,7 +16187,7 @@ setCustomerOrganizationName("");
     }
 
     if (!requireOrganization("save business settings")) {
-      setBusinessSettingsError("Organization not loaded. Please login again.");
+      setBusinessSettingsError(orgNotLoadedMessage);
       return;
     }
 
@@ -16546,7 +16553,7 @@ setCustomerOrganizationName("");
     setSecurityCheckError(null);
 
     if (!requireOrganization("seed security checklist")) {
-      setSecurityCheckError("Organization not loaded. Please login again.");
+      setSecurityCheckError(orgNotLoadedMessage);
       return;
     }
 
@@ -16586,7 +16593,7 @@ setCustomerOrganizationName("");
     setSecurityCheckError(null);
 
     if (!requireOrganization("update security check")) {
-      setSecurityCheckError("Organization not loaded. Please login again.");
+      setSecurityCheckError(orgNotLoadedMessage);
       return;
     }
 
