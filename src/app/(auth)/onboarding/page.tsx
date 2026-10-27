@@ -4,8 +4,10 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/auth-fuse";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 export default function OnboardingPage() {
+  const { t } = useRegional();
   const router = useRouter();
   const [businessName, setBusinessName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -17,11 +19,11 @@ export default function OnboardingPage() {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated.");
+      if (!user) throw new Error(t('auth.onboarding.notAuthenticated'));
 
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
-      if (!token) throw new Error("No session.");
+      if (!token) throw new Error(t('auth.onboarding.noSession'));
 
       const provisionRes = await fetch("/api/auth/provision", {
         method: "POST",
@@ -30,16 +32,16 @@ export default function OnboardingPage() {
       });
       if (!provisionRes.ok) {
         const body = await provisionRes.json().catch(() => ({}));
-        throw new Error(body.error || "Setup failed.");
+        throw new Error(body.error || t('auth.onboarding.setupFailed'));
       }
 
       router.push("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to complete setup.");
+      setError(err instanceof Error ? err.message : t('auth.onboarding.setupFailedFallback'));
     } finally {
       setLoading(false);
     }
-  }, [businessName, router]);
+  }, [businessName, router, t]);
 
   return (
     <div className="flex min-h-screen items-center justify-center p-6 bg-background">
@@ -54,15 +56,15 @@ export default function OnboardingPage() {
         </div>
         <div className="bg-card rounded-[18px] border border-border p-6 sm:p-8 shadow-[0_2px_12px_rgba(45,41,38,0.08)]">
           <div className="text-center mb-6">
-            <h1 className="font-brand font-bold text-2xl text-foreground">Welcome!</h1>
+            <h1 className="font-brand font-bold text-2xl text-foreground">{t('auth.onboarding.welcome')}</h1>
             <p className="text-body text-sm mt-1.5">
-              One last step. What&apos;s your business called?
+              {t('auth.onboarding.welcomePrompt')}
             </p>
           </div>
           <form onSubmit={handleSubmit} className="grid gap-4">
             <div className="grid gap-1.5">
               <label htmlFor="business-name" className="text-sm font-medium text-foreground">
-                Business Name
+                {t('settings.businessName')}
               </label>
               <input
                 id="business-name"
@@ -76,7 +78,7 @@ export default function OnboardingPage() {
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={loading} size="lg">
-              {loading ? "Setting up..." : "Complete Setup"}
+              {loading ? t('auth.onboarding.settingUp') : t('auth.onboarding.completeSetup')}
             </Button>
           </form>
         </div>
