@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
@@ -14,6 +15,7 @@ interface Visit { id: string; visit_status: string; customers?: { customer_name?
 interface Feedback { id: string; type: string; status: string; title?: string }
 
 export default function ManagerOverview() {
+  const { t } = useRegional();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -40,11 +42,11 @@ export default function ManagerOverview() {
       if (vData.ok) setVisits(vData.visits ?? []);
       if (fData.ok) setFeedback(fData.feedback ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load overview");
+      setError(err instanceof Error ? err.message : t('manager.overview.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -62,7 +64,7 @@ export default function ManagerOverview() {
         <Icon className="size-4 text-primary" />
       </div>
       <div className="font-heading font-bold text-2xl text-foreground">{value}</div>
-      <div className="flex items-center gap-1 text-xs text-primary mt-2">View <ChevronRight className="size-3" /></div>
+      <div className="flex items-center gap-1 text-xs text-primary mt-2">{t('products.view')} <ChevronRight className="size-3" /></div>
     </Link>
   );
 
@@ -70,7 +72,7 @@ export default function ManagerOverview() {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading overview...</p>
+        <p className="text-sm text-body">{t('manager.overview.loading')}</p>
       </div>
     );
   }
@@ -78,8 +80,8 @@ export default function ManagerOverview() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Field Sales Overview</h1>
-        <p className="text-sm text-body mt-1">Approve drafts, review collections, and monitor your field team.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('manager.overview.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('manager.overview.subtitle')}</p>
       </div>
 
       {error && (
@@ -89,15 +91,15 @@ export default function ManagerOverview() {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stat("Pending draft approvals", pendingDrafts, "/manager/drafts", ClipboardList)}
-        {stat("Pending collections", pendingCollections, "/manager/collections", Banknote)}
-        {stat("Active visits", activeVisits, "/manager/visits", MapPin)}
-        {stat("Open feedback", openFeedback, "/manager/feedback", MessageSquareText)}
+        {stat(t('manager.overview.pendingDrafts'), pendingDrafts, "/manager/drafts", ClipboardList)}
+        {stat(t('manager.overview.pendingCollections'), pendingCollections, "/manager/collections", Banknote)}
+        {stat(t('manager.overview.activeVisits'), activeVisits, "/manager/visits", MapPin)}
+        {stat(t('manager.overview.openFeedback'), openFeedback, "/manager/feedback", MessageSquareText)}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
-        <Section title="Pending draft approvals" href="/manager/drafts">
-          {pendingDrafts === 0 ? <Empty text="Nothing awaiting approval." /> : (
+        <Section title={t('manager.overview.pendingDrafts')} href="/manager/drafts">
+          {pendingDrafts === 0 ? <Empty text={t('manager.overview.nothingAwaiting')} /> : (
             <ul className="divide-y divide-border">
               {drafts.map((d) => (
                 <li key={d.id} className="flex items-center justify-between py-3">
@@ -107,7 +109,7 @@ export default function ManagerOverview() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-semibold text-foreground">{fmt(d.total_amount)}</span>
-                    <Link href="/manager/drafts" className="text-xs text-primary hover:underline">Review</Link>
+                    <Link href="/manager/drafts" className="text-xs text-primary hover:underline">{t('sell.review')}</Link>
                   </div>
                 </li>
               ))}
@@ -115,8 +117,8 @@ export default function ManagerOverview() {
           )}
         </Section>
 
-        <Section title="Pending collections" href="/manager/collections">
-          {pendingCollections === 0 ? <Empty text="No pending collections." /> : (
+        <Section title={t('manager.overview.pendingCollections')} href="/manager/collections">
+          {pendingCollections === 0 ? <Empty text={t('manager.overview.noPendingCollections')} /> : (
             <ul className="divide-y divide-border">
               {collections.filter((c) => c.status === "pending").map((c) => (
                 <li key={c.id} className="flex items-center justify-between py-3">
@@ -126,7 +128,7 @@ export default function ManagerOverview() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-semibold text-foreground">{fmt(c.amount)}</span>
-                    <Link href="/manager/collections" className="text-xs text-primary hover:underline">Review</Link>
+                    <Link href="/manager/collections" className="text-xs text-primary hover:underline">{t('sell.review')}</Link>
                   </div>
                 </li>
               ))}
@@ -136,8 +138,8 @@ export default function ManagerOverview() {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
-        <Section title="Recent visits" href="/manager/visits">
-          {visits.length === 0 ? <Empty text="No visits recorded yet." /> : (
+        <Section title={t('manager.overview.recentVisits')} href="/manager/visits">
+          {visits.length === 0 ? <Empty text={t('manager.overview.noVisits')} /> : (
             <ul className="divide-y divide-border">
               {visits.map((v) => (
                 <li key={v.id} className="flex items-center justify-between py-3">
@@ -152,8 +154,8 @@ export default function ManagerOverview() {
           )}
         </Section>
 
-        <Section title="Open feedback" href="/manager/feedback">
-          {openFeedback === 0 ? <Empty text="No open feedback items." /> : (
+        <Section title={t('manager.overview.openFeedback')} href="/manager/feedback">
+          {openFeedback === 0 ? <Empty text={t('manager.overview.noOpenFeedback')} /> : (
             <ul className="divide-y divide-border">
               {feedback.filter((f) => f.status === "open").map((f) => (
                 <li key={f.id} className="flex items-center justify-between py-3">
@@ -161,7 +163,7 @@ export default function ManagerOverview() {
                     <div className="text-sm font-medium text-foreground">{f.title || f.type}</div>
                     <div className="text-xs text-body capitalize">{f.type}</div>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full bg-warning/10 text-warning text-[11px] font-medium">Open</span>
+                  <span className="px-2 py-0.5 rounded-full bg-warning/10 text-warning text-[11px] font-medium">{t('common.open')}</span>
                 </li>
               ))}
             </ul>
@@ -173,11 +175,12 @@ export default function ManagerOverview() {
 }
 
 function Section({ title, href, children }: { title: string; href: string; children: React.ReactNode }) {
+  const { t } = useRegional();
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-semibold text-foreground">{title}</h3>
-        <Link href={href} className="text-xs text-primary hover:underline">View all</Link>
+        <Link href={href} className="text-xs text-primary hover:underline">{t('dashboard.viewAll')}</Link>
       </div>
       {children}
     </div>
