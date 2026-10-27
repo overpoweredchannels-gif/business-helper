@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Store, Loader2, Search, Save, AlertCircle, CheckCircle2, MapPin, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Customer {
   id: string;
@@ -35,6 +36,7 @@ interface Territory {
 const FIELD_STAFF = ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor"];
 
 export default function CustomersPage() {
+  const { t } = useRegional();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [territories, setTerritories] = useState<Territory[]>([]);
@@ -65,16 +67,19 @@ export default function CustomersPage() {
       setEmployees(emps.filter((e: Employee) => FIELD_STAFF.includes(e.designation ?? "")));
       setTerritories(tData.territories ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  const filterLabels: Record<typeof filter, string> = { all: t('fsm.notifications.filterAll'), unassigned: t('fsm.routes.unassigned'), assigned: t('manager.customers.assigned') };
+  const freqLabels: Record<string, string> = { daily: t('fsm.routes.freqDaily'), weekly: t('fsm.routes.freqWeekly'), monthly: t('fsm.routes.freqMonthly'), none: t('common.none') };
+  const priorityLabels: Record<string, string> = { high: t('salesman.feedback.priority.high'), medium: t('salesman.feedback.priority.medium'), low: t('salesman.feedback.priority.low') };
   const filtered = customers.filter((c) => {
     const q = search.trim().toLowerCase();
     const matchesSearch =
@@ -118,12 +123,12 @@ export default function CustomersPage() {
         }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to save");
-      setMessage({ type: "ok", text: "Assignment saved." });
+      if (!data.ok) throw new Error(data.error || t('manager.customers.saveFailed'));
+      setMessage({ type: "ok", text: t('manager.customers.assignmentSaved') });
       setEditingId(null);
       await load();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to save" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('manager.customers.saveFailed') });
     } finally {
       setSavingId(null);
     }
@@ -132,8 +137,8 @@ export default function CustomersPage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Customers</h1>
-        <p className="text-sm text-body mt-1">Assign salesmen, territories, priority, and visit frequency to each customer.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('manager.customers.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('manager.customers.subtitle')}</p>
       </div>
 
       {message && (
@@ -158,7 +163,7 @@ export default function CustomersPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search customers..."
+            placeholder={t('manager.customers.searchPlaceholder')}
             className="w-full h-11 rounded-lg border border-input bg-card pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
@@ -172,7 +177,7 @@ export default function CustomersPage() {
                 filter === f ? "bg-primary text-primary-foreground border-primary" : "bg-card text-body border-input hover:bg-muted",
               )}
             >
-              {f === "all" ? "All" : f === "unassigned" ? "Unassigned" : "Assigned"}
+              {filterLabels[f]}
             </button>
           ))}
         </div>
@@ -181,12 +186,12 @@ export default function CustomersPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading customers...</p>
+          <p className="text-sm text-body">{t('manager.customers.loading')}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <Store className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No customers found.</p>
+          <p className="text-sm text-body">{t('manager.customers.noCustomers')}</p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -194,12 +199,12 @@ export default function CustomersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-light-text">
-                  <th className="px-5 py-3 font-medium">Customer</th>
-                  <th className="px-3 py-3 font-medium">Salesman</th>
-                  <th className="px-3 py-3 font-medium">Territory</th>
-                  <th className="px-3 py-3 font-medium">Frequency</th>
-                  <th className="px-3 py-3 font-medium">Priority</th>
-                  <th className="px-3 py-3 font-medium text-right">Actions</th>
+                  <th className="px-5 py-3 font-medium">{t('pos.customer')}</th>
+                  <th className="px-3 py-3 font-medium">{t('history.colSalesman')}</th>
+                  <th className="px-3 py-3 font-medium">{t('history.territory')}</th>
+                  <th className="px-3 py-3 font-medium">{t('fsm.routes.frequency')}</th>
+                  <th className="px-3 py-3 font-medium">{t('tasks.colPriority')}</th>
+                  <th className="px-3 py-3 font-medium text-right">{t('tasks.colActions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -221,14 +226,14 @@ export default function CustomersPage() {
                             onChange={(e) => setForm({ ...form, assigned_salesman_id: e.target.value })}
                             className="h-10 rounded-lg border border-input bg-card px-2 text-sm text-foreground appearance-none"
                           >
-                            <option value="">Unassigned</option>
+                            <option value="">{t('fsm.routes.unassigned')}</option>
                             {employees.map((e) => (
                               <option key={e.id} value={e.id}>{e.full_name}</option>
                             ))}
                           </select>
                         ) : (
                           <span className={cn("text-foreground", !c.assigned_salesman_id && "text-light-text")}>
-                            {salesman?.full_name ?? "Unassigned"}
+                            {salesman?.full_name ?? t('fsm.routes.unassigned')}
                           </span>
                         )}
                       </td>
@@ -239,7 +244,7 @@ export default function CustomersPage() {
                             onChange={(e) => setForm({ ...form, assigned_territory_id: e.target.value })}
                             className="h-10 rounded-lg border border-input bg-card px-2 text-sm text-foreground appearance-none"
                           >
-                            <option value="">None</option>
+                            <option value="">{t('common.none')}</option>
                             {territories.map((t) => (
                               <option key={t.id} value={t.id}>{t.name}</option>
                             ))}
@@ -257,13 +262,13 @@ export default function CustomersPage() {
                             onChange={(e) => setForm({ ...form, visit_frequency: e.target.value })}
                             className="h-10 rounded-lg border border-input bg-card px-2 text-sm text-foreground appearance-none"
                           >
-                            <option value="daily">Daily</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="monthly">Monthly</option>
-                            <option value="none">None</option>
+                            <option value="daily">{t('fsm.routes.freqDaily')}</option>
+                            <option value="weekly">{t('fsm.routes.freqWeekly')}</option>
+                            <option value="monthly">{t('fsm.routes.freqMonthly')}</option>
+                            <option value="none">{t('common.none')}</option>
                           </select>
                         ) : (
-                          <span className="capitalize">{c.visit_frequency ?? "weekly"}</span>
+                          <span className="capitalize">{freqLabels[c.visit_frequency ?? "weekly"] ?? c.visit_frequency ?? "weekly"}</span>
                         )}
                       </td>
                       <td className="px-3 py-3">
@@ -273,9 +278,9 @@ export default function CustomersPage() {
                             onChange={(e) => setForm({ ...form, priority: e.target.value })}
                             className="h-10 rounded-lg border border-input bg-card px-2 text-sm text-foreground appearance-none"
                           >
-                            <option value="high">High</option>
-                            <option value="medium">Medium</option>
-                            <option value="low">Low</option>
+                            <option value="high">{t('salesman.feedback.priority.high')}</option>
+                            <option value="medium">{t('salesman.feedback.priority.medium')}</option>
+                            <option value="low">{t('salesman.feedback.priority.low')}</option>
                           </select>
                         ) : (
                           <span
@@ -285,7 +290,7 @@ export default function CustomersPage() {
                               c.priority === "low" ? "bg-muted text-muted-foreground" : "bg-warning/10 text-warning",
                             )}
                           >
-                            {c.priority ?? "medium"}
+                            {priorityLabels[c.priority ?? "medium"] ?? c.priority ?? "medium"}
                           </span>
                         )}
                       </td>
@@ -298,13 +303,13 @@ export default function CustomersPage() {
                               className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50"
                             >
                               {savingId === c.id ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                              Save
+                              {t('common.save')}
                             </button>
                             <button
                               onClick={() => setEditingId(null)}
                               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-input px-3 text-xs font-medium text-body hover:bg-muted"
                             >
-                              <X className="size-3.5" /> Cancel
+                              <X className="size-3.5" /> {t('common.cancel')}
                             </button>
                           </div>
                         ) : (
@@ -312,7 +317,7 @@ export default function CustomersPage() {
                             onClick={() => startEdit(c)}
                             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-input px-3 text-xs font-medium text-foreground hover:bg-muted"
                           >
-                            <MapPin className="size-3.5" /> Assign
+                            <MapPin className="size-3.5" /> {t('fsm.employees.assign')}
                           </button>
                         )}
                       </td>
