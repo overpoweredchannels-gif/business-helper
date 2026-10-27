@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface AuditEntryView {
   id: string;
@@ -14,29 +15,32 @@ interface AuditEntryView {
   success: boolean;
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  login: "Sign in",
-  logout: "Sign out",
-  login_failed: "Failed sign in",
-  password_changed: "Password changed",
-  password_reset_requested: "Reset requested",
-  password_reset_completed: "Reset completed",
-  role_assigned: "Role assigned",
-  account_activated: "Account activated",
-  account_deactivated: "Account deactivated",
-  invitation_sent: "Invitation sent",
-  invitation_accepted: "Invitation accepted",
-  custom_role_created: "Role created",
-  custom_role_updated: "Role updated",
-  custom_role_deleted: "Role deleted",
-  session_revoked: "Session revoked",
-  all_sessions_revoked: "All sessions revoked",
-  session_policy_updated: "Policy updated",
-  ai_action_denied: "AI action denied",
-  initial_provision: "Workspace provisioned",
-};
-
 export default function AuditLogPanel() {
+  const { t } = useRegional();
+  const actionLabel = (a: string) => {
+    const labels: Record<string, string> = {
+      login: t('identity.audit.actionLogin'),
+      logout: t('identity.audit.actionLogout'),
+      login_failed: t('identity.audit.actionLoginFailed'),
+      password_changed: t('identity.audit.actionPasswordChanged'),
+      password_reset_requested: t('identity.audit.actionPasswordResetRequested'),
+      password_reset_completed: t('identity.audit.actionPasswordResetCompleted'),
+      role_assigned: t('identity.audit.actionRoleAssigned'),
+      account_activated: t('identity.audit.actionAccountActivated'),
+      account_deactivated: t('identity.audit.actionAccountDeactivated'),
+      invitation_sent: t('identity.audit.actionInvitationSent'),
+      invitation_accepted: t('identity.audit.actionInvitationAccepted'),
+      custom_role_created: t('identity.audit.actionCustomRoleCreated'),
+      custom_role_updated: t('identity.audit.actionCustomRoleUpdated'),
+      custom_role_deleted: t('identity.audit.actionCustomRoleDeleted'),
+      session_revoked: t('identity.audit.actionSessionRevoked'),
+      all_sessions_revoked: t('identity.audit.actionAllSessionsRevoked'),
+      session_policy_updated: t('identity.audit.actionSessionPolicyUpdated'),
+      ai_action_denied: t('identity.audit.actionAiDenied'),
+      initial_provision: t('identity.audit.actionInitialProvision'),
+    };
+    return labels[a] ?? a;
+  };
   const [entries, setEntries] = useState<AuditEntryView[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,20 +52,20 @@ export default function AuditLogPanel() {
         if (data.ok) {
           setEntries(data.entries || []);
         } else {
-          setError(data.error || "Failed to load audit log");
+          setError(data.error || t('identity.audit.loadFailed'));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Network error");
+        setError(err instanceof Error ? err.message : t('tracking.networkError'));
       }
     })();
-  }, []);
+  }, [t]);
 
   return (
     <div style={{ padding: "1.5rem" }}>
-      <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 1rem" }}>Audit Log</h2>
+      <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 1rem" }}>{t('identity.audit.title')}</h2>
       {error && <p style={{ fontSize: "0.875rem", color: "#dc2626", marginBottom: "0.75rem" }}>{error}</p>}
       {entries.length === 0 ? (
-        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>No audit events yet.</p>
+        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('identity.audit.empty')}</p>
       ) : (
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
           {entries.slice(0, 50).map((entry, index) => (
@@ -86,11 +90,11 @@ export default function AuditLogPanel() {
                   whiteSpace: "nowrap",
                 }}
               >
-                {entry.success ? "OK" : "FAIL"}
+                {entry.success ? t('identity.audit.ok') : t('identity.audit.fail')}
               </span>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 500 }}>
-                  {ACTION_LABELS[entry.action] || entry.action}
+                  {actionLabel(entry.action)}
                   {entry.actorEmail ? <span style={{ color: "#6b7280" }}> — {entry.actorEmail}</span> : null}
                 </div>
                 {entry.description && <div style={{ color: "#6b7280" }}>{entry.description}</div>}
