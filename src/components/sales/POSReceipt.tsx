@@ -127,6 +127,7 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
 
 export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Receipt; autoPrint?: boolean; /** Runs once when the dialog closes, by any path (printed, closed, or escaped), so the parent can clear the printed receipt and reset the sale screen for the next customer. */
   onDone?: () => void }) {
+  const { t } = useRegional();
   const labels = useReceiptSummaryLabels();
   const chromeLabels = useReceiptChromeLabels();
   const [open, setOpen] = useState(false);
@@ -329,7 +330,7 @@ export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Re
       } catch {
         if (settled || runToken.isAborted()) return;
         cleanup();
-        setError("The receipt could not be prepared for printing. The preview is still available.");
+        setError(t('receipt.prepareFailed'));
       }
     };
 
@@ -340,22 +341,22 @@ export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Re
       watchdogTimer = window.setTimeout(() => {
         if (!settled && !runToken.isAborted()) {
           cleanup();
-          setError("The receipt did not finish loading for printing. The preview is still available.");
+          setError(t('receipt.loadFailed'));
         }
       }, 45000);
       fallbackTimer = window.setTimeout(() => {
         if (!settled && !runToken.isAborted()) {
           cleanup();
-          setError("The receipt did not finish loading for printing. The preview is still available.");
+          setError(t('receipt.loadFailed'));
         }
       }, 30000);
     } catch {
       if (!runToken.isAborted()) {
         cleanup();
-        setError("The receipt could not be prepared for printing. The preview is still available.");
+        setError(t('receipt.prepareFailed'));
       }
     }
-  }, [receipt, template, templateReady, labels, chromeLabels, printRuns, printUiLock]);
+  }, [receipt, template, templateReady, labels, chromeLabels, printRuns, printUiLock, t]);
 
   // Auto-print (POS quick sale): open the preview for each new receipt and
   // print it as soon as its template is ready. The receipt key is recorded
@@ -411,24 +412,24 @@ export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Re
       }
     } catch {
       setTemplate(previous);
-      setError("The paper width could not be saved, so the previous width was restored. You can also set it in the receipt template editor.");
+      setError(t('receipt.widthSaveFailed'));
     } finally {
       setSavingWidth(false);
     }
-  }, [savingWidth, template, templateReady]);
+  }, [savingWidth, template, templateReady, t]);
 
   const preview = useMemo(() => <POSReceiptPreview receipt={receipt} template={activeTemplate} />, [receipt, activeTemplate]);
   return <>
-    <button type="button" onClick={() => setOpen(true)} className="min-h-11 rounded-lg border border-primary px-4 font-medium text-primary">Receipt for {receipt.number}</button>
+    <button type="button" onClick={() => setOpen(true)} className="min-h-11 rounded-lg border border-primary px-4 font-medium text-primary">{t('receipt.openButton').replace('{number}', receipt.number)}</button>
     {error && !open && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
     {open && createPortal(
-      <div data-context-help-skip role="dialog" aria-modal="true" aria-label={`Receipt ${receipt.number}`} className="fixed inset-0 z-[100] overflow-auto bg-black/30 p-4">
+      <div data-context-help-skip role="dialog" aria-modal="true" aria-label={t('receipt.dialogAria').replace('{number}', receipt.number)} className="fixed inset-0 z-[100] overflow-auto bg-black/30 p-4">
         <div className="mx-auto max-w-md rounded-xl bg-white p-4 shadow-xl">
           <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
             <label className="mr-auto flex min-h-11 items-center gap-2 text-sm">
-              <span>Paper width</span>
+              <span>{t('receipt.paperWidth')}</span>
               <select
-                aria-label="Receipt paper width"
+                aria-label={t('receipt.paperWidthAria')}
                 value={getReceiptWidthMm(activeTemplate)}
                 disabled={!templateReady || savingWidth}
                 onChange={event => void changePaperWidth(event.target.value === "58" ? 58 : 80)}
@@ -438,11 +439,11 @@ export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Re
                 <option value="80">80 mm</option>
               </select>
             </label>
-            <button type="button" onClick={() => setCustomizing(true)} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Edit POS receipt template</button>
-            <button type="button" onClick={() => void print()} disabled={!templateReady || printing} className="min-h-11 min-w-11 rounded bg-primary px-3 py-2 text-sm text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">{printing ? "Preparing receipt…" : "Print receipt"}</button>
-            <button type="button" onClick={dismissReceipt} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Close</button>
+            <button type="button" onClick={() => setCustomizing(true)} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('receipt.editTemplate')}</button>
+            <button type="button" onClick={() => void print()} disabled={!templateReady || printing} className="min-h-11 min-w-11 rounded bg-primary px-3 py-2 text-sm text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">{printing ? t('receipt.preparing') : t('receipt.printReceipt')}</button>
+            <button type="button" onClick={dismissReceipt} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('common.close')}</button>
           </div>
-          {!templateReady && <p role="status" className="mb-2 text-sm">Loading receipt template…</p>}
+          {!templateReady && <p role="status" className="mb-2 text-sm">{t('receipt.loadingTemplate')}</p>}
           {error && <p role="alert" className="mb-2 text-sm text-destructive">{error}</p>}
           {preview}
         </div>
