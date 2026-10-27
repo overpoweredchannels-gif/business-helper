@@ -75,10 +75,14 @@ export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled,
     if (!scanned || disabled) return;
     if (scanned === lastSubmitted.current) {
       // Same code already submitted and untouched since — a duplicate
-      // trigger (auto-detect + Enter), not a new scan.
+      // trigger (auto-detect + Enter), not a new scan. When the parent
+      // owns post-scan focus (afterScan), defer to it: the box's own
+      // refocus here used to yank focus back out of the customer picker
+      // / line field the accepted scan had routed it to, defeating the
+      // 2b walk. Parents without afterScan keep the old box focus.
+      if (afterScan) { afterScan(); return; }
       input.current?.focus();
       if (value === undefined) input.current?.select();
-      afterScan?.();
       return;
     }
     const outcome = onScan(scanned);

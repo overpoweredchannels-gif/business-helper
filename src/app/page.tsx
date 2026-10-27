@@ -5641,9 +5641,11 @@ setCustomerOrganizationName("");
   // detailed barcode box's afterScan hook (see below). The focusSignal
   // effect alone lost the race with the box's own refocus after a scan.
   const saleCustomerInputRef = useRef<HTMLInputElement>(null);
-  // 2b fix: set by the detailed box's onScan, consumed-and-cleared by its
-  // afterScan — true only when the last box scan was a first-scan add (or
-  // merge) that must route focus to Customer.
+  // 2b fix: refreshed by the detailed box's onScan on every accepted
+  // scan — true only when the last accepted box scan was a first-scan
+  // add (or merge) that must route focus to Customer. Deliberately NOT
+  // cleared by afterScan: a duplicate trigger (auto-detect + Enter) must
+  // re-apply the same routing instead of yanking focus back to the box.
   const detailScanCustomerFocusRef = useRef(false);
   // 2b: provisional next invoice number for the detailed header display
   // only (max S-number in the loaded sales history + 1). The server
@@ -19051,7 +19053,7 @@ setCustomerOrganizationName("");
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
               <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? t('sell.quickSaleBarcode') : t('sell.scanProduct')}</h3>
               <label className="mb-3 block text-sm">{t('sell.eachScanAddsOne')} <select aria-label={t('sell.scanUnitAria')} data-entry-skip value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">{t('sell.scanSubUnit')}</option><option value="main">{t('sell.scanMainUnit')}</option></select></label>
-              <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} afterScan={() => { const go = detailScanCustomerFocusRef.current; detailScanCustomerFocusRef.current = false; if (go) saleCustomerInputRef.current?.focus(); }} onScan={code => {
+              <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} afterScan={() => { if (detailScanCustomerFocusRef.current) saleCustomerInputRef.current?.focus(); }} onScan={code => {
                 // 2b (Option A): first scan of a fresh invoice routes to
                 // Customer; later scans join the scan loop below.
                 const firstScan = salesLines.length === 0;
