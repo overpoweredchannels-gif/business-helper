@@ -84,7 +84,7 @@ export default function DraftsPage() {
         setError(data.error || t('salesman.drafts.loadFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
@@ -152,7 +152,7 @@ export default function DraftsPage() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || t('salesman.drafts.createFailed'));
-      setMessage({ type: "ok", text: `Draft ${data.draft?.so_number ?? ""} created and sent for approval.` });
+      setMessage({ type: "ok", text: t('salesman.drafts.createdMessage').replace('{number}', data.draft?.so_number ?? "") });
       setItems([]);
       setCustomerId("");
       setNotes("");
@@ -295,7 +295,7 @@ export default function DraftsPage() {
                   </div>
                 ))}
                 <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
-                  <span className="text-sm font-medium text-foreground">Total</span>
+                  <span className="text-sm font-medium text-foreground">{t('common.total')}</span>
                   <span className="font-heading font-bold text-foreground">{fmt(total)}</span>
                 </div>
               </div>
