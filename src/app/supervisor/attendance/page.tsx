@@ -31,15 +31,6 @@ interface TeamState {
   };
 }
 
-const ATT_LABEL: Record<string, string> = {
-  present: "Present",
-  late: "Late",
-  absent: "Absent",
-  half_day: "Half Day",
-  leave: "On Leave",
-  holiday: "Holiday",
-  no_record: "No record yet",
-};
 
 const ATT_TONE: Record<string, string> = {
   present: "text-success bg-success/10",
@@ -53,6 +44,15 @@ const ATT_TONE: Record<string, string> = {
 
 export default function SupervisorAttendancePage() {
   const { t } = useRegional();
+  const ATT_LABEL: Record<string, string> = {
+    present: t('supervisor.att.statusPresent'),
+    late: t('supervisor.att.statusLate'),
+    absent: t('supervisor.att.statusAbsent'),
+    half_day: t('supervisor.att.statusHalfDay'),
+    leave: t('supervisor.att.statusLeave'),
+    holiday: t('supervisor.att.statusHoliday'),
+    no_record: t('supervisor.att.statusNoRecord'),
+  };
   const [data, setData] = useState<TeamState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,13 +64,13 @@ export default function SupervisorAttendancePage() {
       const res = await authorizedFetch("/api/supervisor/team");
       const json = await res.json();
       if (json.ok) setData(json);
-      else setError(json.error || "Failed to load attendance");
+      else setError(json.error || t('supervisor.att.loadFailed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -80,7 +80,7 @@ export default function SupervisorAttendancePage() {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading attendance...</p>
+        <p className="text-sm text-body">{t('supervisor.att.loading')}</p>
       </div>
     );
   }
@@ -88,7 +88,7 @@ export default function SupervisorAttendancePage() {
   if (error || !data) {
     return (
       <div className="flex items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">
-        <AlertCircle className="size-4 shrink-0" /> {error ?? "Attendance unavailable"}
+        <AlertCircle className="size-4 shrink-0" /> {error ?? t('supervisor.att.unavailable')}
       </div>
     );
   }
@@ -102,18 +102,18 @@ export default function SupervisorAttendancePage() {
 
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">Today</span>
+          <span className="text-sm font-semibold text-foreground">{t('supervisor.att.today')}</span>
           <span className="text-xs text-light-text">{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</span>
         </div>
         <div className="divide-y divide-border/40">
           {data.members.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-light-text">No team members assigned.</div>
+            <div className="px-4 py-8 text-center text-sm text-light-text">{t('supervisor.att.noMembers')}</div>
           ) : (
             data.members.map((m) => (
               <div key={m.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-foreground">{m.full_name}</div>
-                  <div className="text-xs text-body">{m.designation ?? "staff"}</div>
+                  <div className="text-xs text-body">{m.designation ?? t('supervisor.att.staffFallback')}</div>
                 </div>
                 <div className="flex items-center gap-3">
                   {m.attendance.duty_at && (
