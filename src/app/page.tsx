@@ -5647,7 +5647,10 @@ setCustomerOrganizationName("");
   // Detailed-form scan loop (2026-10-26): after a scan adds (or merges) a
   // line, focus lands on that line's quantity field, mirroring RetailPOS —
   // so the next scan can arrive while the cashier is still editing a line.
-  const [detailFocusQuantityFor, setDetailFocusQuantityFor] = useState<number | null>(null);
+  // Unit-first scan focus (2026-10-27): a two-unit product stops at its
+  // Sell As select (which pops open on keyboard focus); a one-unit
+  // product skips it and lands on Quantity directly.
+  const [detailFocusFor, setDetailFocusFor] = useState<{ kind: "quantity" | "unit"; index: number } | null>(null);
   // Line index a scanned product lands on, following addScannedLine's
   // semantics exactly: an existing line merges, otherwise an empty line
   // is filled, otherwise a new line is appended.
@@ -5656,6 +5659,33 @@ setCustomerOrganizationName("");
     if (existing >= 0) return existing;
     const empty = salesLines.findIndex(line => !line.product_id && !line.quantity && !line.selling_price && !line.discount && !line.bonus);
     return empty >= 0 ? empty : salesLines.length;
+  };
+  const detailScanFocusTarget = (productId: string): { kind: "quantity" | "unit"; index: number } => {
+    const index = detailScanFocusIndex(productId);
+    const product = products.find(item => String(item.id) === productId);
+    return { kind: product && hasSubunit(product) ? "unit" : "quantity", index };
+  };
+  // Sell As picker auto-open, mirroring RetailPOS's select pattern:
+  // keyboard focus pops the list open; the flag lets Enter advance to
+  // Quantity after a no-change commit instead of reopening.
+  const saleUnitPickerOpenRef = useRef(false);
+  const openSaleUnitPicker = (event: { currentTarget: HTMLSelectElement }) => {
+    if (!wasLastInputKeyboard()) return;
+    try {
+      (event.currentTarget as HTMLSelectElement & { showPicker?: () => void }).showPicker?.();
+      saleUnitPickerOpenRef.current = true;
+    } catch { /* Popup already open, or no showPicker — ignore. */ }
+  };
+  const clearSaleUnitPickerOpen = () => { saleUnitPickerOpenRef.current = false; };
+  const handleSaleUnitPickerKeyDown = (index: number, event: ReactKeyboardEvent<HTMLSelectElement>) => {
+    if (event.key === "Escape") { saleUnitPickerOpenRef.current = false; return; }
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    if (!saleUnitPickerOpenRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    saleUnitPickerOpenRef.current = false;
+    const field = document.querySelector(`[data-sale-quantity="${index}"]`);
+    if (field instanceof HTMLInputElement) { field.focus(); field.select(); }
   };
   const runSalesScan = (code: string, options?: { reportNotFound?: boolean }) => {
     const submitter = (scanSubmitter.current ??= createScanSubmitter());
@@ -5674,13 +5704,19 @@ setCustomerOrganizationName("");
     return result;
   };
   useEffect(() => {
-    if (detailFocusQuantityFor === null) return;
+    if (detailFocusFor === null) return;
     const frame = requestAnimationFrame(() => {
-      const field = Array.from(document.querySelectorAll<HTMLInputElement>(`[data-sale-quantity="${detailFocusQuantityFor}"]`)).find(input => input.getClientRects().length > 0);
-      if (field) { field.focus(); field.select(); setDetailFocusQuantityFor(null); }
+      const { kind, index } = detailFocusFor;
+      if (kind === "quantity") {
+        const field = Array.from(document.querySelectorAll<HTMLInputElement>(`[data-sale-quantity="${index}"]`)).find(input => input.getClientRects().length > 0);
+        if (field) { field.focus(); field.select(); setDetailFocusFor(null); }
+      } else {
+        const field = Array.from(document.querySelectorAll<HTMLSelectElement>(`[data-sale-unit="${index}"]`)).find(select => select.getClientRects().length > 0);
+        if (field) { field.focus(); setDetailFocusFor(null); }
+      }
     });
     return () => cancelAnimationFrame(frame);
-  }, [detailFocusQuantityFor, salesLines.length]);
+  }, [detailFocusFor, salesLines.length]);
   const restoreCounterSale = (sale: CounterSale) => {
     salesPricingRequest.current += 1;
     // Held sales and baskets saved before per-line discount types exist
@@ -5743,19 +5779,41 @@ setCustomerOrganizationName("");
         if (target.dataset.saleQuantity !== undefined) return { kind: "quantity", index: Number(target.dataset.saleQuantity) };
         if (target.dataset.salePrice !== undefined) return { kind: "price", index: Number(target.dataset.salePrice) };
         if (target.dataset.saleDiscount !== undefined) return { kind: "discount", index: Number(target.dataset.saleDiscount) };
+        if (target.dataset.saleBonus !== undefined) return { kind: "bonus", index: Number(target.dataset.saleBonus) };
+        if (target.dataset.saleInvoiceDiscount !== undefined) return { kind: "invoiceDiscount" };
       }
-      if (target instanceof HTMLSelectElement && target.dataset.saleDiscountType !== undefined) {
-        return { kind: "discountType", index: Number(target.dataset.saleDiscountType) };
+      if (target instanceof HTMLSelectElement) {
+        if (target.dataset.saleUnit !== undefined) return { kind: "unit", index: Number(target.dataset.saleUnit) };
+        if (target.dataset.saleDiscountType !== undefined) return { kind: "discountType", index: Number(target.dataset.saleDiscountType) };
+        if (target.dataset.salePaymentType !== undefined) return { kind: "paymentType" };
       }
       return null;
     },
     restoreField: (field, value) => {
-      handleSalesLineChange(field.index, field.kind === "price" ? "selling_price" : field.kind === "discountType" ? "discount_type" : field.kind, value);
+      switch (field.kind) {
+        case "quantity":
+        case "price":
+        case "discount":
+        case "discountType":
+        case "unit":
+        case "bonus":
+          handleSalesLineChange(field.index ?? 0, field.kind === "price" ? "selling_price" : field.kind === "discountType" ? "discount_type" : field.kind === "unit" ? "unit_mode" : field.kind, value);
+          return;
+        case "invoiceDiscount":
+          clearCreditOverrideState();
+          setSalesDiscountAmount(value);
+          return;
+        case "paymentType":
+          handleSalesPaymentTypeChange(value as "cash" | "card" | "credit");
+          return;
+        default:
+          return;
+      }
     },
     handleScan: (code) => {
       const result = runSalesScan(code, { reportNotFound: isBarcodeShaped(code) });
       if (result.status === "added" || result.status === "duplicate") {
-        setDetailFocusQuantityFor(detailScanFocusIndex(String(result.product.id)));
+        setDetailFocusFor(detailScanFocusTarget(String(result.product.id)));
       }
       return result.status !== "not-found";
     },
@@ -18934,10 +18992,11 @@ setCustomerOrganizationName("");
                 const result = runSalesScan(code);
                 if (result.status === "added") setSalesMessage(t('sell.scanAdded').replace('{name}', result.product.name));
                 // Join the scan loop: a box scan lands on the new (or
-                // merged) line's quantity, like a captured scan, instead
-                // of leaving focus in the barcode box.
+                // merged) line's unit select (two-unit products) or
+                // quantity (one-unit products), like a captured scan,
+                // instead of leaving focus in the barcode box.
                 if (result.status === "added" || result.status === "duplicate") {
-                  setDetailFocusQuantityFor(detailScanFocusIndex(String(result.product.id)));
+                  setDetailFocusFor(detailScanFocusTarget(String(result.product.id)));
                 }
                 return result.status !== "not-found";
               }} />
@@ -18981,6 +19040,7 @@ setCustomerOrganizationName("");
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('sell.paymentType')}</span>
                 <select
+                  data-sale-payment-type
                   value={salesPaymentType}
                   onChange={(e) => handleSalesPaymentTypeChange(e.target.value as "cash" | "card" | "credit")}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
@@ -19020,6 +19080,7 @@ setCustomerOrganizationName("");
                   </span>
                 </span>
                 <input
+                  data-sale-invoice-discount
                   type="text" inputMode="decimal"
                   value={salesDiscountAmount}
                   onChange={(e) => {
@@ -19159,10 +19220,21 @@ setCustomerOrganizationName("");
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.sellAs')}</span>
                           <select
+                            data-sale-unit={index}
                             value={line.unit_mode ?? "main"}
-                            onChange={(e) =>
-                              handleSalesLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main")
-                            }
+                            onFocus={openSaleUnitPicker}
+                            onBlur={clearSaleUnitPickerOpen}
+                            onKeyDown={(event) => handleSaleUnitPickerKeyDown(index, event)}
+                            onChange={(e) => {
+                              handleSalesLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main");
+                              const target = e.currentTarget;
+                              requestAnimationFrame(() => {
+                                if (document.activeElement === target) {
+                                  const field = document.querySelector(`[data-sale-quantity="${index}"]`);
+                                  if (field instanceof HTMLInputElement) { field.focus(); field.select(); }
+                                }
+                              });
+                            }}
                             disabled={!lineProduct || !hasSubunit(lineProduct)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                           >
@@ -19228,6 +19300,7 @@ setCustomerOrganizationName("");
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.bonusFree')}</span>
                           <input
+                            data-sale-bonus={index}
                             type="text" inputMode="decimal"
                             value={line.bonus}
                             onChange={(e) => handleSalesLineChange(index, "bonus", e.target.value)}
