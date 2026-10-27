@@ -236,7 +236,7 @@ export default function EurInvoiceForm({ onSubmit, className }: EurInvoiceFormPr
           {quotesLoading ? (
             <div className="flex min-h-11 items-center gap-2 text-sm text-body">
               <Loader2 className="size-4 animate-spin" />
-              {t("eur.form.loadQuotes")}...
+              {t("eur.form.loadingQuotes")}
             </div>
           ) : quotesError || quotes.length === 0 ? (
             <div className="space-y-2">
