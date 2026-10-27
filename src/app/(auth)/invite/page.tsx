@@ -7,6 +7,7 @@ import {
   CheckCircle2, AlertCircle, ArrowLeft, Eye, EyeOff,
 } from "lucide-react";
 import { validateStaffPassword } from "@/lib/identity/staff-invitation";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface InviteInfo {
   employeeId: string;
@@ -19,9 +20,10 @@ interface InviteInfo {
 }
 
 export default function InvitePage() {
+  const { t } = useRegional();
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-panel p-4">
-      <div className="text-sm text-body">Loading invitation...</div>
+      <div className="text-sm text-body">{t('auth.invite.loading')}</div>
     </div>}>
       <InviteContent />
     </Suspense>
@@ -29,6 +31,7 @@ export default function InvitePage() {
 }
 
 function InviteContent() {
+  const { t } = useRegional();
   const router = useRouter();
   const searchParams = useSearchParams();
   const codeFromUrl = searchParams.get("code") ?? "";
@@ -61,15 +64,15 @@ function InviteContent() {
         setInfo(data.info);
       } else {
         setInfo(null);
-        setLoadError(data.error || "Invitation not found.");
+        setLoadError(data.error || t('auth.invite.notFound'));
       }
     } catch {
       setInfo(null);
-      setLoadError("Could not reach the server. Please try again.");
+      setLoadError(t('auth.invite.serverUnreachable'));
     } finally {
       setLoadingInfo(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (codeFromUrl) loadInvite(codeFromUrl.toUpperCase());
@@ -103,7 +106,7 @@ function InviteContent() {
     e.preventDefault();
     setError(null);
     if (!code.trim()) {
-      setError("Please enter your invitation code.");
+      setError(t('auth.invite.codeRequired'));
       return;
     }
     const passwordError = validateStaffPassword(password);
@@ -112,7 +115,7 @@ function InviteContent() {
       return;
     }
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError(t('auth.invite.passwordsMismatch'));
       return;
     }
     setLoading(true);
@@ -124,15 +127,15 @@ function InviteContent() {
       });
       const data = await res.json();
       if (!data.ok) {
-        setError(data.error || "Invitation could not be accepted.");
+        setError(data.error || t('auth.invite.acceptFailed'));
         return;
       }
       setSuccess(
-        `Account activated for ${info?.fullName ?? ""}. You can now sign in with your Profile ID and password.`,
+        t('auth.invite.activated').replace('{name}', info?.fullName ?? ""),
       );
       setTimeout(() => router.push("/login"), 1600);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t('auth.invite.genericError'));
     } finally {
       setLoading(false);
     }
@@ -150,7 +153,7 @@ function InviteContent() {
             </div>
             <span className="font-bold text-xl text-foreground">TradeOS</span>
           </div>
-          <h1 className="font-bold text-2xl text-foreground">Activate your staff account</h1>
+          <h1 className="font-bold text-2xl text-foreground">{t('auth.invite.title')}</h1>
           <p className="text-sm text-body mt-1.5">
             Set your password to start using TradeOS. You do not need an email address.
           </p>
@@ -160,19 +163,19 @@ function InviteContent() {
           <div className="flex flex-col items-center gap-3 py-6">
             <CheckCircle2 className="size-12 text-success" />
             <p className="text-sm text-success text-center">{success}</p>
-            <p className="text-xs text-body">Taking you to sign in...</p>
+            <p className="text-xs text-body">{t('auth.invite.redirecting')}</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="grid gap-4">
             <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-foreground">Invitation code</label>
+              <label className="text-sm font-medium text-foreground">{t('auth.invite.codeLabel')}</label>
               <div className="relative">
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
                   <Lock className="size-4" />
                 </div>
                 <input
                   className="flex h-11 w-full rounded-lg border border-input bg-card px-3.5 py-2.5 pl-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Enter the code from your invite"
+                  placeholder={t('auth.invite.codePlaceholder')}
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
                   required
@@ -188,7 +191,7 @@ function InviteContent() {
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/5 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
               >
                 {loadingInfo ? <Loader2 className="size-4 animate-spin" /> : null}
-                {loadingInfo ? "Checking..." : "Check invitation"}
+                {loadingInfo ? t('auth.invite.checking') : t('auth.invite.checkInvitation')}
               </button>
             )}
 
@@ -202,26 +205,26 @@ function InviteContent() {
             {info && (
               <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-4">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Your details (provided by {info.organizationName || "your manager"})
+                  {t('auth.invite.detailsProvided').replace('{org}', info.organizationName || t('auth.invite.managerFallback'))}
                 </p>
-                {lockedField("Employee name", info.fullName, User)}
-                {lockedField("Profile ID", info.loginId, Hash)}
+                {lockedField(t('auth.invite.employeeName'), info.fullName, User)}
+                {lockedField(t('auth.profileId'), info.loginId, Hash)}
                 <div className="grid grid-cols-2 gap-3">
-                  {lockedField("Organization", info.organizationName, Building2)}
+                  {lockedField(t('auth.invite.organization'), info.organizationName, Building2)}
                   {lockedField(
-                    "Designation",
-                    info.designation ? info.designation.replace(/_/g, " ") : "Staff",
+                    t('auth.invite.designation'),
+                    info.designation ? info.designation.replace(/_/g, " ") : t('auth.invite.designationFallback'),
                     Briefcase,
                   )}
                 </div>
-                {info.phone ? lockedField("Mobile number", info.phone, Phone) : null}
+                {info.phone ? lockedField(t('auth.invite.mobileNumber'), info.phone, Phone) : null}
               </div>
             )}
 
             {showPasswordField && (
               <>
                 <div className="grid gap-1.5">
-                  <label className="text-sm font-medium text-foreground">Create password</label>
+                  <label className="text-sm font-medium text-foreground">{t('auth.invite.createPassword')}</label>
                   <div className="relative">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
                       <Lock className="size-4" />
@@ -229,7 +232,7 @@ function InviteContent() {
                     <input
                       className={passwordInputClass}
                       type={showPassword ? "text" : "password"}
-                      placeholder="At least 8 characters, letters and numbers"
+                      placeholder={t('auth.invite.passwordHint')}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
@@ -239,7 +242,7 @@ function InviteContent() {
                       onClick={() => setShowPassword((s) => !s)}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                       tabIndex={-1}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
                     >
                       {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
@@ -247,7 +250,7 @@ function InviteContent() {
                 </div>
 
                 <div className="grid gap-1.5">
-                  <label className="text-sm font-medium text-foreground">Confirm password</label>
+                  <label className="text-sm font-medium text-foreground">{t('auth.invite.confirmPassword')}</label>
                   <div className="relative">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
                       <Lock className="size-4" />
@@ -255,7 +258,7 @@ function InviteContent() {
                     <input
                       className={passwordInputClass}
                       type={showConfirm ? "text" : "password"}
-                      placeholder="Repeat your password"
+                      placeholder={t('auth.invite.confirmPlaceholder')}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       required
@@ -265,7 +268,7 @@ function InviteContent() {
                       onClick={() => setShowConfirm((s) => !s)}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                       tabIndex={-1}
-                      aria-label={showConfirm ? "Hide password" : "Show password"}
+                      aria-label={showConfirm ? t('auth.hidePassword') : t('auth.showPassword')}
                     >
                       {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
@@ -287,7 +290,7 @@ function InviteContent() {
               className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground font-medium shadow-sm transition-all hover:shadow-md disabled:opacity-50"
             >
               {loading ? <Loader2 className="size-4 animate-spin" /> : null}
-              {loading ? "Activating..." : "Activate my account"}
+              {loading ? t('auth.invite.activating') : t('auth.invite.activate')}
             </button>
 
             <button
