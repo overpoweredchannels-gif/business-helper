@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import type { SalesInvoiceDoc } from "@/lib/sales/sales-invoice-service";
 import { SalesInvoiceDocument } from "@/lib/sales/sales-invoice-render";
 import type { PrintTemplate } from "@/lib/print/print-template-types";
@@ -28,6 +29,7 @@ const inputCls =
   "rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
 export default function SalesInvoiceGenerator() {
+  const { t } = useRegional();
   const [customers, setCustomers] = useState<Option[]>([]);
   const [salesmen, setSalesmen] = useState<Option[]>([]);
   const [routes, setRoutes] = useState<Option[]>([]);
@@ -154,11 +156,11 @@ export default function SalesInvoiceGenerator() {
       if (dateTo) params.set("date_to", dateTo);
       const res = await authorizedFetch(`/api/sales/invoices/query?${params.toString()}`);
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to load invoices");
+      if (!data.ok) throw new Error(data.error || t('sell.invoiceGen.loadFailed'));
       setDocs(data.docs ?? []);
       setGenerated(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load invoices");
+      setError(err instanceof Error ? err.message : t('sell.invoiceGen.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -174,17 +176,17 @@ export default function SalesInvoiceGenerator() {
     }
     return [...map.entries()].map(([id, list]) => ({
       salesman_id: id,
-      salesman_name: list[0]?.salesman_name ?? "Salesman",
+      salesman_name: list[0]?.salesman_name ?? t('sell.invoiceGen.salesmanFallback'),
       docs: list,
       total: list.reduce((s, d) => s + d.grand_total, 0),
     }));
-  }, [docs]);
+  }, [docs, t]);
 
   const rangeLabel = () => {
-    if (rangeKey === "today") return "Today";
-    if (rangeKey === "last7") return "Last 7 days";
-    if (rangeKey === "last30") return "Last 30 days";
-    return dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : "Custom range";
+    if (rangeKey === "today") return t('sell.invoiceGen.rangeToday');
+    if (rangeKey === "last7") return t('sell.invoiceGen.rangeLast7');
+    if (rangeKey === "last30") return t('sell.invoiceGen.rangeLast30');
+    return dateFrom && dateTo ? t('sell.invoiceGen.rangeSpan').replace('{from}', dateFrom).replace('{to}', dateTo) : t('sell.invoiceGen.rangeCustom');
   };
 
   const openPrint = (list: SalesInvoiceDoc[], title: string) => {
@@ -200,7 +202,7 @@ export default function SalesInvoiceGenerator() {
       {/* Template Selector Bar */}
       <div className="flex flex-wrap items-center gap-3 rounded border border-border bg-muted/30 p-3">
         <label className="flex items-center gap-2 text-sm text-foreground/80">
-          <span className="font-medium">Template:</span>
+          <span className="font-medium">{t('sell.invoiceGen.templateLabel')}</span>
           <select
             value={selectedTemplateId}
             onChange={(e) => setSelectedTemplateId(e.target.value)}
@@ -231,9 +233,9 @@ export default function SalesInvoiceGenerator() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded border border-border bg-muted/30 p-4">
-          <h3 className="mb-2 text-sm font-medium text-foreground">Customers</h3>
+          <h3 className="mb-2 text-sm font-medium text-foreground">{t('sell.invoiceGen.customersHeading')}</h3>
           {customers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Loading customers...</p>
+            <p className="text-xs text-muted-foreground">{t('sell.invoiceGen.loadingCustomers')}</p>
           ) : (
             <div className="max-h-44 space-y-1 overflow-y-auto">
               {customers.map((c) => (
@@ -252,9 +254,9 @@ export default function SalesInvoiceGenerator() {
         </div>
 
         <div className="rounded border border-border bg-muted/30 p-4">
-          <h3 className="mb-2 text-sm font-medium text-foreground">Salesmen</h3>
+          <h3 className="mb-2 text-sm font-medium text-foreground">{t('sell.invoiceGen.salesmenHeading')}</h3>
           {salesmen.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Loading salesmen...</p>
+            <p className="text-xs text-muted-foreground">{t('sell.invoiceGen.loadingSalesmen')}</p>
           ) : (
             <div className="max-h-44 space-y-1 overflow-y-auto">
               {salesmen.map((s) => (
@@ -273,9 +275,9 @@ export default function SalesInvoiceGenerator() {
         </div>
 
         <div className="rounded border border-border bg-muted/30 p-4">
-          <h3 className="mb-2 text-sm font-medium text-foreground">Routes</h3>
+          <h3 className="mb-2 text-sm font-medium text-foreground">{t('sell.invoiceGen.routesHeading')}</h3>
           {routes.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Loading routes...</p>
+            <p className="text-xs text-muted-foreground">{t('sell.invoiceGen.loadingRoutes')}</p>
           ) : (
             <div className="max-h-44 space-y-1 overflow-y-auto">
               {routes.map((r) => (
@@ -294,9 +296,9 @@ export default function SalesInvoiceGenerator() {
         </div>
 
         <div className="rounded border border-border bg-muted/30 p-4">
-          <h3 className="mb-2 text-sm font-medium text-foreground">Areas</h3>
+          <h3 className="mb-2 text-sm font-medium text-foreground">{t('sell.invoiceGen.areasHeading')}</h3>
           {areas.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No areas found.</p>
+            <p className="text-xs text-muted-foreground">{t('sell.invoiceGen.noAreas')}</p>
           ) : (
             <div className="max-h-44 space-y-1 overflow-y-auto">
               {areas.map((a) => (
@@ -315,9 +317,9 @@ export default function SalesInvoiceGenerator() {
         </div>
 
         <div className="rounded border border-border bg-muted/30 p-4">
-          <h3 className="mb-2 text-sm font-medium text-foreground">Cities</h3>
+          <h3 className="mb-2 text-sm font-medium text-foreground">{t('sell.invoiceGen.citiesHeading')}</h3>
           {cities.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No cities found.</p>
+            <p className="text-xs text-muted-foreground">{t('sell.invoiceGen.noCities')}</p>
           ) : (
             <div className="max-h-44 space-y-1 overflow-y-auto">
               {cities.map((c) => (
@@ -336,7 +338,7 @@ export default function SalesInvoiceGenerator() {
         </div>
 
         <div className="rounded border border-border bg-muted/30 p-4">
-          <h3 className="mb-2 text-sm font-medium text-foreground">Period</h3>
+          <h3 className="mb-2 text-sm font-medium text-foreground">{t('sell.invoiceGen.periodHeading')}</h3>
           <div className="flex flex-wrap gap-2">
             {(["today", "last7", "last30"] as RangeKey[]).map((key) => (
               <button
@@ -347,13 +349,13 @@ export default function SalesInvoiceGenerator() {
                   rangeKey === key ? "bg-primary text-white" : "border border-border text-foreground/80"
                 }`}
               >
-                {key === "today" ? "Today" : key === "last7" ? "7 days" : "30 days"}
+                {key === "today" ? t('sell.invoiceGen.rangeToday') : key === "last7" ? t('sell.invoiceGen.range7days') : t('sell.invoiceGen.range30days')}
               </button>
             ))}
           </div>
           <div className="mt-2 flex gap-2">
-            <input type="date" value={dateFrom} onChange={(e) => setCustomDate(setDateFrom, e.target.value)} className={inputCls} aria-label="Date from" />
-            <input type="date" value={dateTo} onChange={(e) => setCustomDate(setDateTo, e.target.value)} className={inputCls} aria-label="Date to" />
+            <input type="date" value={dateFrom} onChange={(e) => setCustomDate(setDateFrom, e.target.value)} className={inputCls} aria-label={t('sell.invoiceGen.dateFromAria')} />
+            <input type="date" value={dateTo} onChange={(e) => setCustomDate(setDateTo, e.target.value)} className={inputCls} aria-label={t('sell.invoiceGen.dateToAria')} />
           </div>
         </div>
       </div>
@@ -365,7 +367,7 @@ export default function SalesInvoiceGenerator() {
           disabled={loading}
           className="rounded bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
         >
-          {loading ? "Loading..." : "Generate Invoices"}
+          {loading ? t('sell.invoiceGen.generating') : t('sell.invoiceGen.generate')}
         </button>
         <button
           type="button"
@@ -388,7 +390,7 @@ export default function SalesInvoiceGenerator() {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {generated && count === 0 && (
-        <p className="text-sm text-muted-foreground">No invoices found for the selected filters.</p>
+        <p className="text-sm text-muted-foreground">{t('sell.invoiceGen.noInvoices')}</p>
       )}
 
       {generated && count > 0 && (
@@ -406,7 +408,7 @@ export default function SalesInvoiceGenerator() {
                   <span className="text-sm text-muted-foreground">{sm.docs.length} invoice{sm.docs.length > 1 ? "s" : ""}</span>
                   <button
                     type="button"
-                    onClick={() => openPrint(sm.docs, `${sm.salesman_name} — ${sm.docs.length} Invoice${sm.docs.length > 1 ? "s" : ""}`)}
+                    onClick={() => openPrint(sm.docs, t('sell.invoiceGen.printTitle').replace('{name}', sm.salesman_name).replace('{count}', String(sm.docs.length)))}
                     className="rounded border border-primary px-3 py-1 text-xs text-primary hover:bg-primary/5"
                   >
                     Print {sm.salesman_name}&apos;s Invoices
