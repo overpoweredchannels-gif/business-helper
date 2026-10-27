@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { cn } from "@/lib/utils";
 import { dashboardWidgetDefinition, type DashboardWidgetId } from "@/lib/preferences/dashboard-widgets";
 
@@ -18,6 +19,7 @@ export function DashboardWidget({ id, label: labelProp, hidden = false, customiz
   className?: string;
   children: React.ReactNode;
 }) {
+  const { t } = useRegional();
   if (hidden) return null;
   const label = labelProp ?? dashboardWidgetDefinition(id)?.label ?? "this card";
   return (
@@ -26,12 +28,12 @@ export function DashboardWidget({ id, label: labelProp, hidden = false, customiz
         <button
           type="button"
           onClick={() => onRemove?.(id)}
-          aria-label={`Remove ${label} from the home dashboard`}
-          title={`Remove ${label}`}
+          aria-label={t('dashboard.widget.removeAria').replace('{label}', label)}
+          title={t('dashboard.widget.removeTitle').replace('{label}', label)}
           className="absolute right-2 top-2 z-30 inline-flex min-h-9 items-center gap-1 rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-destructive-foreground shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="size-3" />
-          Remove
+          {t('sell.remove')}
         </button>
       )}
       {children}

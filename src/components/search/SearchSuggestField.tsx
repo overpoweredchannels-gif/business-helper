@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { activeSuggestionIndex } from "@/components/invoices/search-selection";
 import { rankSearchResults, type SearchRankFields } from "@/lib/products/search-rank";
 import { SuggestionPopover, type SuggestionStatus } from "./SuggestionPopover";
@@ -62,6 +63,7 @@ export function SearchSuggestField({
   onSelectItem,
   onViewAll,
 }: SearchSuggestFieldProps) {
+  const { t } = useRegional();
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<number | null>(null);
@@ -145,7 +147,7 @@ export function SearchSuggestField({
       {showPopover && (
         <SuggestionPopover
           listId={listId}
-          ariaLabel={listAriaLabel ?? `${label} suggestions`}
+          ariaLabel={listAriaLabel ?? t('search.footer.listSuggestions').replace('{label}', label)}
           placement={placement}
           maxHeightPx={maxHeightPx}
           items={matches}
@@ -156,8 +158,8 @@ export function SearchSuggestField({
           footer={
             ranked.length > matches.length && matches.length > 0
               ? {
-                  text: `Showing ${matches.length} of ${ranked.length} matches`,
-                  ...(onViewAll ? { actionLabel: "View all", onAction: viewAll } : {}),
+                  text: t('search.footer.showing').replace('{shown}', String(matches.length)).replace('{total}', String(ranked.length)),
+                  ...(onViewAll ? { actionLabel: t('search.footer.viewAll'), onAction: viewAll } : {}),
                 }
               : undefined
           }

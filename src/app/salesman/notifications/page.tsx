@@ -51,7 +51,7 @@ export default function NotificationsPage() {
       if (data.ok) setNotifs(data.notifications ?? []);
       else setError(data.error || t('salesman.notif.loadFailed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
