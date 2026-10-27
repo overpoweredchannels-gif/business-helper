@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { Loader2, AlertCircle, TrendingUp, Target, MapPin, Banknote, Calendar, Clock, Award } from "lucide-react";
@@ -15,6 +16,7 @@ interface PerformanceMetrics {
 }
 
 export default function ManagerPerformancePage() {
+  const { t } = useRegional();
   const [performance, setPerformance] = useState<PerformanceMetrics | null>(null);
   const [performanceList, setPerformanceList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,14 +116,14 @@ export default function ManagerPerformancePage() {
           setPerformanceList([]);
         }
       } else {
-        setError(data.error || "Failed to load performance data");
+        setError(data.error || t('manager.performance.loadFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -136,7 +138,7 @@ export default function ManagerPerformancePage() {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading performance dashboard...</p>
+        <p className="text-sm text-body">{t('manager.performance.loading')}</p>
       </div>
     );
   }
@@ -145,7 +147,7 @@ export default function ManagerPerformancePage() {
     return (
       <div className="grid gap-4">
         <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">
-          <AlertCircle className="size-4 mt-0.5 shrink-0" /> {error ?? "Performance data not available"}
+          <AlertCircle className="size-4 mt-0.5 shrink-0" /> {error ?? t('manager.performance.notAvailable')}
         </div>
       </div>
     );
@@ -154,19 +156,19 @@ export default function ManagerPerformancePage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Performance Leaderboard</h1>
-        <p className="text-sm text-body mt-1">Monthly rankings and achievement metrics for all field staff.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('manager.performance.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('manager.performance.subtitle')}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={<TrendingUp className="size-5 text-primary" />} label="Total Sales" value={formatCurrency(performance.sales.total)} sublabel={`${performance.sales.count} orders`} />
-        <StatCard icon={<Target className="size-5 text-warning" />} label="Collections" value={formatCurrency(performance.collections.amount)} sublabel={`${performance.collections.approved} approved`} />
-        <StatCard icon={<MapPin className="size-5 text-info" />} label="Visits" value={`${performance.visits.completed}/${performance.visits.total}`} sublabel={`${performance.visits.missed} missed`} />
-        <StatCard icon={<Clock className="size-5 text-success" />} label="Attendance" value={`${performance.attendance.present}/${performance.attendance.days}`} sublabel={`${performance.attendance.totalHours}h total`} />
+        <StatCard icon={<TrendingUp className="size-5 text-primary" />} label={t('team.totalSales')} value={formatCurrency(performance.sales.total)} sublabel={t('team.ordersCount').replace('{count}', String(performance.sales.count))} />
+        <StatCard icon={<Target className="size-5 text-warning" />} label={t('team.metricCollections')} value={formatCurrency(performance.collections.amount)} sublabel={t('team.approvedCount').replace('{count}', String(performance.collections.approved))} />
+        <StatCard icon={<MapPin className="size-5 text-info" />} label={t('team.visits')} value={`${performance.visits.completed}/${performance.visits.total}`} sublabel={t('team.visitsMissed').replace('{count}', String(performance.visits.missed))} />
+        <StatCard icon={<Clock className="size-5 text-success" />} label={t('salesman.att.title')} value={`${performance.attendance.present}/${performance.attendance.days}`} sublabel={t('manager.performance.hoursTotal').replace('{hours}', String(performance.attendance.totalHours))} />
       </div>
 
       <div className="rounded-2xl border border-border bg-card p-6">
-        <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2"><Award className="size-5 text-primary" /> Top Performers</h2>
+        <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2"><Award className="size-5 text-primary" /> {t('manager.performance.topPerformers')}</h2>
         <div className="grid gap-3">
           {performanceList.slice(0, 10).map((p: any, index: number) => (
             <div key={p.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
@@ -189,23 +191,23 @@ export default function ManagerPerformancePage() {
               </div>
               <div className="grid grid-cols-5 gap-6 text-sm text-right">
                 <div>
-                  <div className="text-xs text-light-text">Sales</div>
+                  <div className="text-xs text-light-text">{t('sell.salesColumn')}</div>
                   <div className="font-medium text-foreground">{formatCurrency(p.sales.total)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-light-text">Visits</div>
+                  <div className="text-xs text-light-text">{t('team.visits')}</div>
                   <div className="font-medium text-foreground">{p.visits.completed}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-light-text">Collections</div>
+                  <div className="text-xs text-light-text">{t('team.metricCollections')}</div>
                   <div className="font-medium text-foreground">{p.collections.approved}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-light-text">Attendance</div>
+                  <div className="text-xs text-light-text">{t('salesman.att.title')}</div>
                   <div className="font-medium text-foreground">{p.attendance.present}/{p.attendance.days}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-light-text">Score</div>
+                  <div className="text-xs text-light-text">{t('dashboard.score')}</div>
                   <div className={cn("font-bold",
                     p.metrics.performanceScore >= 80 ? "text-success" :
                     p.metrics.performanceScore >= 60 ? "text-primary" :
