@@ -5,6 +5,7 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { Banknote, Loader2, AlertCircle, CheckCircle2, ThumbsUp, ThumbsDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Collection {
   id: string;
@@ -18,6 +19,7 @@ interface Collection {
 }
 
 export default function CollectionsApprovalPage() {
+  const { t } = useRegional();
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,13 +34,13 @@ export default function CollectionsApprovalPage() {
       const res = await authorizedFetch("/api/collections?limit=100");
       const data = await res.json();
       if (data.ok) setCollections(data.collections ?? []);
-      else setError(data.error || "Failed to load collections");
+      else setError(data.error || t('manager.collections.loadFailed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -54,24 +56,25 @@ export default function CollectionsApprovalPage() {
         body: JSON.stringify({ action }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Action failed");
-      setMessage({ type: "ok", text: action === "approve" ? "Collection approved. Customer balance updated." : "Collection rejected." });
+      if (!data.ok) throw new Error(data.error || t('manager.collections.actionFailed'));
+      setMessage({ type: "ok", text: action === "approve" ? t('manager.collections.approved') : t('manager.collections.rejected') });
       await load();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Action failed" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('manager.collections.actionFailed') });
     } finally {
       setActing(null);
     }
   };
 
   const filtered = filter === "all" ? collections : collections.filter((c) => c.status === filter);
+  const filterLabels: Record<typeof filter, string> = { pending: t('salesman.collections.status.pending'), approved: t('salesman.collections.status.approved'), rejected: t('salesman.collections.status.rejected'), all: t('fsm.notifications.filterAll') };
   const pendingCount = collections.filter((c) => c.status === "pending").length;
 
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Collections</h1>
-        <p className="text-sm text-body mt-1">Approve collections from field staff. Approved amounts reduce the customer's balance.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('manager.collections.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('manager.collections.subtitle')}</p>
       </div>
 
       {message && (
@@ -100,7 +103,7 @@ export default function CollectionsApprovalPage() {
               filter === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
             )}
           >
-            {f}{f === "pending" && pendingCount > 0 ? ` (${pendingCount})` : ""}
+            {filterLabels[f]}{f === "pending" && pendingCount > 0 ? ` (${pendingCount})` : ""}
           </button>
         ))}
       </div>
@@ -108,12 +111,12 @@ export default function CollectionsApprovalPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading collections...</p>
+          <p className="text-sm text-body">{t('manager.collections.loading')}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <Banknote className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No collections in this view.</p>
+          <p className="text-sm text-body">{t('manager.collections.noCollections')}</p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -122,7 +125,7 @@ export default function CollectionsApprovalPage() {
               <div className="min-w-0">
                 <div className="font-medium text-foreground">{c.customers?.shop_name || c.customers?.customer_name}</div>
                 <div className="text-xs text-body capitalize">
-                  {c.method.replace("_", " ")}{c.reference_number ? ` · ${c.reference_number}` : ""} · {c.employees?.full_name ?? "Staff"}
+                  {c.method.replace("_", " ")}{c.reference_number ? ` · ${c.reference_number}` : ""} · {c.employees?.full_name ?? t('supervisor.att.staffFallback')}
                 </div>
                 <div className="text-xs text-light-text mt-0.5">{new Date(c.created_at).toLocaleString()}</div>
               </div>
@@ -138,7 +141,7 @@ export default function CollectionsApprovalPage() {
                       disabled={acting === c.id}
                       className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50"
                     >
-                      <ThumbsUp className="size-4" /> Approve
+                      <ThumbsUp className="size-4" /> {t('manager.collections.approve')}
                     </button>
                     <button
                       onClick={() => act(c.id, "reject")}
@@ -159,12 +162,13 @@ export default function CollectionsApprovalPage() {
 }
 
 function CollectionStatus({ status }: { status: string }) {
+  const { t } = useRegional();
   const styles: Record<string, string> = {
     pending: "bg-warning/10 text-warning",
     approved: "bg-success/10 text-success",
     rejected: "bg-destructive/10 text-destructive",
   };
-  const labels: Record<string, string> = { pending: "Pending", approved: "Approved", rejected: "Rejected" };
+  const labels: Record<string, string> = { pending: t('salesman.collections.status.pending'), approved: t('salesman.collections.status.approved'), rejected: t('salesman.collections.status.rejected') };
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap", styles[status] ?? "bg-muted text-muted-foreground")}>
       {labels[status] ?? status}
