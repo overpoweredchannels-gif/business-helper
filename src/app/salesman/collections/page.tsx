@@ -55,11 +55,11 @@ export default function CollectionsPage() {
       if (colData.ok) setCollections(colData.collections ?? []);
       if (Array.isArray(custData.customers)) setCustomers(custData.customers);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadData();
@@ -70,8 +70,8 @@ export default function CollectionsPage() {
     setMessage(null);
     try {
       const amt = Number(amount);
-      if (!customerId) throw new Error("Select a customer");
-      if (!amt || amt <= 0) throw new Error("Enter a valid amount");
+      if (!customerId) throw new Error(t('salesman.collections.selectCustomerError'));
+      if (!amt || amt <= 0) throw new Error(t('salesman.collections.validAmount'));
       const payload: any = { customerId, amount: amt, method };
       if (referenceNumber.trim()) payload.referenceNumber = referenceNumber.trim();
       if (notes.trim()) payload.notes = notes.trim();
@@ -81,13 +81,13 @@ export default function CollectionsPage() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to record collection");
-      setMessage({ type: "ok", text: "Collection recorded. It awaits approval." });
+      if (!data.ok) throw new Error(data.error || t('salesman.collections.recordFailed'));
+      setMessage({ type: "ok", text: t('salesman.collections.recorded') });
       setCustomerId(""); setAmount(""); setReferenceNumber(""); setNotes("");
       setShowNew(false);
       await loadData();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to record collection" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('salesman.collections.recordFailed') });
     } finally {
       setSaving(false);
     }
@@ -108,7 +108,7 @@ export default function CollectionsPage() {
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground"
         >
           {showNew ? <X className="size-4" /> : <Banknote className="size-4" />}
-          {showNew ? "Close" : "Record collection"}
+          {showNew ? t('common.close') : t('salesman.collections.recordCollection')}
         </button>
       </div>
 
@@ -191,7 +191,7 @@ export default function CollectionsPage() {
           {method !== "cash" && (
             <div>
               <label className="text-sm font-medium text-foreground">
-                {method === "cheque" ? "Cheque number" : "Transfer reference"}
+                {method === "cheque" ? t('salesman.collections.chequeNumber') : t('salesman.collections.transferReference')}
               </label>
               <input
                 value={referenceNumber}
@@ -203,11 +203,11 @@ export default function CollectionsPage() {
           )}
 
           <div>
-            <label className="text-sm font-medium text-foreground">Notes (optional)</label>
+            <label className="text-sm font-medium text-foreground">{t('salesman.collections.notes')}</label>
             <input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any notes"
+              placeholder={t('salesman.collections.anyNotes')}
               className="w-full mt-1.5 h-11 rounded-lg border border-input bg-card px-3.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
@@ -218,7 +218,7 @@ export default function CollectionsPage() {
             className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-primary px-6 text-primary-foreground font-medium disabled:opacity-50"
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Banknote className="size-4" />}
-            {saving ? "Recording..." : "Record collection"}
+            {saving ? t('salesman.collections.recording') : t('salesman.collections.recordCollection')}
           </button>
         </div>
       )}
@@ -226,12 +226,12 @@ export default function CollectionsPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading collections...</p>
+          <p className="text-sm text-body">{t('salesman.collections.loading')}</p>
         </div>
       ) : collections.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <Banknote className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No collections recorded yet.</p>
+          <p className="text-sm text-body">{t('salesman.collections.noCollections')}</p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card divide-y divide-border">
@@ -255,12 +255,13 @@ export default function CollectionsPage() {
 }
 
 function CollectionStatus({ status }: { status: string }) {
+  const { t } = useRegional();
   const styles: Record<string, string> = {
     pending: "bg-warning/10 text-warning",
     approved: "bg-success/10 text-success",
     rejected: "bg-destructive/10 text-destructive",
   };
-  const labels: Record<string, string> = { pending: "Pending", approved: "Approved", rejected: "Rejected" };
+  const labels: Record<string, string> = { pending: t('salesman.collections.status.pending'), approved: t('salesman.collections.status.approved'), rejected: t('salesman.collections.status.rejected') };
   return (
     <span className={cn("px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap", styles[status] ?? "bg-muted text-muted-foreground")}>
       {labels[status] ?? status}
