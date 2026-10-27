@@ -1,4 +1,5 @@
 import type { DashboardReadStatus } from "@/lib/dashboard/data-read-state";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 /**
  * Compact failure banner with retry, shown wherever products are selectable
@@ -17,19 +18,20 @@ export function ProductCatalogErrorBanner({
   onRetry: () => void;
   hasStaleData: boolean;
 }) {
+  const { t } = useRegional();
   return (
     <div role="alert" className="space-y-2 rounded-lg border border-destructive/30 bg-destructive-bg p-3">
       <p className="text-sm text-destructive">
         {hasStaleData
-          ? "Couldn't refresh the product catalog. Showing previously loaded products."
-          : "Couldn't load the product catalog. Check your connection and try again."}
+          ? t('products.catalog.staleError')
+          : t('products.catalog.loadError')}
       </p>
       <button
         type="button"
         onClick={onRetry}
         className="min-h-11 rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Retry
+        {t('ai.assistant.retry')}
       </button>
     </div>
   );
@@ -62,10 +64,11 @@ export function ProductCatalogState({
   hasProducts: boolean;
   onRetry: () => void;
 }) {
+  const { t } = useRegional();
   if (status === "loading" || status === "not-loaded") {
     return (
       <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-        Loading products...
+        {t('products.catalog.loading')}
       </p>
     );
   }
@@ -75,12 +78,12 @@ export function ProductCatalogState({
   }
 
   if (status === "successful-empty") {
-    return <p className="text-sm text-muted-foreground">No products added yet.</p>;
+    return <p className="text-sm text-muted-foreground">{t('products.catalog.empty')}</p>;
   }
 
   const trimmed = searchQuery.trim();
   if (matchCount === 0 && trimmed) {
-    return <p className="text-sm text-muted-foreground">No products match &ldquo;{trimmed}&rdquo;.</p>;
+    return <p className="text-sm text-muted-foreground">{t('products.catalog.noMatch').replace('{query}', trimmed)}</p>;
   }
 
   return null;
