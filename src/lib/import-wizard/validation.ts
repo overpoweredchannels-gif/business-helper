@@ -12,25 +12,28 @@ import type {
   ProductImportField,
 } from "./types";
 
-export const IMPORT_FIELD_OPTIONS: { value: ProductImportField; label: string }[] = [
-  { value: "name", label: "Product Name *" },
-  { value: "sku", label: "SKU" },
-  { value: "barcode", label: "Barcode" },
-  { value: "brand", label: "Brand" },
-  { value: "category", label: "Category" },
-  { value: "unit_type", label: "Unit Type" },
-  { value: "subunit_type", label: "Subunit Type (e.g. Pieces)" },
-  { value: "units_per_pack", label: "Units Per Pack" },
-  { value: "default_purchase_price", label: "Purchase Price" },
-  { value: "default_selling_price", label: "Selling Price" },
-  { value: "minimum_stock_level", label: "Minimum Stock Level" },
-  { value: "reorder_level", label: "Reorder Level" },
-  { value: "track_batch", label: "Track Batch" },
-  { value: "track_expiry", label: "Track Expiry" },
-  { value: "overselling_policy", label: "Overselling Policy" },
-  { value: "initial_stock", label: "Initial Stock — Main Units (e.g. Cartons)" },
-  { value: "initial_stock_subunit", label: "Initial Stock — Pieces / Subunits" },
-  { value: "skip", label: "Do not import" },
+// Importable fields in dropdown order. Display labels live in ImportWizard
+// (importOptionLabel) so they follow the UI language; this list carries
+// values only.
+export const IMPORT_FIELD_VALUES: ProductImportField[] = [
+  "name",
+  "sku",
+  "barcode",
+  "brand",
+  "category",
+  "unit_type",
+  "subunit_type",
+  "units_per_pack",
+  "default_purchase_price",
+  "default_selling_price",
+  "minimum_stock_level",
+  "reorder_level",
+  "track_batch",
+  "track_expiry",
+  "overselling_policy",
+  "initial_stock",
+  "initial_stock_subunit",
+  "skip",
 ];
 
 const FIELD_ALIASES: Record<Exclude<ProductImportField, "skip">, string[]> = {
