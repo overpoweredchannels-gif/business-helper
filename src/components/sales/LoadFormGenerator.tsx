@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { LoadFormDocument } from "@/lib/sales/load-form-render";
 import type { LoadFormSummary } from "@/lib/sales/load-form-service";
@@ -57,6 +58,7 @@ const inputCls =
   "rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
 export default function LoadFormGenerator() {
+  const { t } = useRegional();
   const [customers, setCustomers] = useState<Option[]>([]);
   const [salesmen, setSalesmen] = useState<Option[]>([]);
   const [brands, setBrands] = useState<Option[]>([]);
@@ -172,11 +174,11 @@ export default function LoadFormGenerator() {
       params.set("group_by", groupBy);
       const res = await authorizedFetch(`/api/sales/load-form?${params.toString()}`);
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to build load form");
+      if (!data.ok) throw new Error(data.error || t('sell.loadForm.buildFailed'));
       setSummary(data.summary ?? null);
       setGenerated(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to build load form");
+      setError(err instanceof Error ? err.message : t('sell.loadForm.buildFailed'));
     } finally {
       setLoading(false);
     }
@@ -199,10 +201,10 @@ export default function LoadFormGenerator() {
     summary?.salesmen.reduce((s, sm) => s + (sm.brands.length > 0 ? sm.brands : sm.customers).reduce((c, g) => c + g.lines.length, 0), 0) ?? 0;
 
   const rangeLabel = () => {
-    if (rangeKey === "today") return "Today";
-    if (rangeKey === "last7") return "Last 7 days";
-    if (rangeKey === "last30") return "Last 30 days";
-    return dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : "Custom range";
+    if (rangeKey === "today") return t('sell.rangeToday');
+    if (rangeKey === "last7") return t('sell.loadForm.rangeLast7');
+    if (rangeKey === "last30") return t('sell.loadForm.rangeLast30');
+    return dateFrom && dateTo ? t('sell.loadForm.rangeDates').replace('{from}', dateFrom).replace('{to}', dateTo) : t('sell.loadForm.rangeCustom');
   };
 
   return (
@@ -210,7 +212,7 @@ export default function LoadFormGenerator() {
       {/* Template Selector Bar */}
       <div className="flex flex-wrap items-center gap-3 rounded border border-border bg-muted/30 p-3">
         <label className="flex items-center gap-2 text-sm text-foreground/80">
-          <span className="font-medium">Template:</span>
+          <span className="font-medium">{t('sell.loadForm.templateLabel')}</span>
           <select
             value={selectedTemplateId}
             onChange={(e) => setSelectedTemplateId(e.target.value)}
@@ -241,9 +243,9 @@ export default function LoadFormGenerator() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded border border-border bg-muted/30 p-4">
-          <h3 className="mb-2 text-sm font-medium text-foreground">Customers</h3>
+          <h3 className="mb-2 text-sm font-medium text-foreground">{t('sell.invoiceGen.customersHeading')}</h3>
           {customers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Loading customers...</p>
+            <p className="text-xs text-muted-foreground">{t('sell.loadForm.loadingCustomers')}</p>
           ) : (
             <div className="max-h-52 overflow-y-auto space-y-1">
               {customers.map((c) => (
@@ -262,9 +264,9 @@ export default function LoadFormGenerator() {
         </div>
 
         <div className="rounded border border-border bg-muted/30 p-4">
-          <h3 className="mb-2 text-sm font-medium text-foreground">Salesmen</h3>
+          <h3 className="mb-2 text-sm font-medium text-foreground">{t('sell.invoiceGen.salesmenHeading')}</h3>
           {salesmen.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Loading salesmen...</p>
+            <p className="text-xs text-muted-foreground">{t('sell.loadForm.loadingSalesmen')}</p>
           ) : (
             <div className="max-h-52 overflow-y-auto space-y-1">
               {salesmen.map((s) => (
@@ -283,9 +285,9 @@ export default function LoadFormGenerator() {
         </div>
 
         <div className="rounded border border-border bg-muted/30 p-4">
-          <h3 className="mb-2 text-sm font-medium text-foreground">Brands</h3>
+          <h3 className="mb-2 text-sm font-medium text-foreground">{t('summary.brandsTitle')}</h3>
           {brands.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Loading brands...</p>
+            <p className="text-xs text-muted-foreground">{t('sell.loadForm.loadingBrands')}</p>
           ) : (
             <div className="max-h-52 overflow-y-auto space-y-1">
               {brands.map((b) => (
@@ -306,7 +308,7 @@ export default function LoadFormGenerator() {
 
       <div className="rounded border border-border bg-muted/30 p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm font-medium text-foreground">Period</span>
+          <span className="text-sm font-medium text-foreground">{t('sell.invoiceGen.periodHeading')}</span>
           {(["today", "last7", "last30"] as RangeKey[]).map((key) => (
             <button
               key={key}
@@ -318,20 +320,20 @@ export default function LoadFormGenerator() {
                   : "border border-border text-foreground/80 hover:bg-muted/40"
               }`}
             >
-              {key === "today" ? "Today" : key === "last7" ? "Last 7 days" : "Last 30 days"}
+              {key === "today" ? t('sell.rangeToday') : key === "last7" ? t('sell.loadForm.rangeLast7') : t('sell.loadForm.rangeLast30')}
             </button>
           ))}
           <label className="flex items-center gap-1 text-sm text-foreground/80">
-            <span>From:</span>
+            <span>{t('sell.loadForm.fromLabel')}</span>
             <input type="date" value={dateFrom} onChange={(e) => setCustomDate(setDateFrom, e.target.value)} className={inputCls} />
           </label>
           <label className="flex items-center gap-1 text-sm text-foreground/80">
-            <span>To:</span>
+            <span>{t('sell.loadForm.toLabel')}</span>
             <input type="date" value={dateTo} onChange={(e) => setCustomDate(setDateTo, e.target.value)} className={inputCls} />
           </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <span className="text-sm font-medium text-foreground">Group by</span>
+          <span className="text-sm font-medium text-foreground">{t('sell.loadForm.groupBy')}</span>
           {(["brand", "customer"] as const).map((key) => (
             <button
               key={key}
@@ -356,7 +358,7 @@ export default function LoadFormGenerator() {
           disabled={loading}
           className="rounded bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
         >
-          {loading ? "Generating..." : "Generate Load Form Summary"}
+          {loading ? t('sell.loadForm.generating') : t('sell.loadForm.generate')}
         </button>
         <button
           type="button"
@@ -379,23 +381,23 @@ export default function LoadFormGenerator() {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {generated && summary && summary.salesmen.length === 0 && (
-        <p className="text-sm text-muted-foreground">No sales found for the selected filters.</p>
+        <p className="text-sm text-muted-foreground">{t('sell.loadForm.noSales')}</p>
       )}
 
       {generated && summary && summary.salesmen.length > 0 && (
         <div className="space-y-4">
           <div className="rounded border border-border bg-muted/30 p-3 text-sm text-foreground">
-            <span className="font-semibold">Period:</span> {rangeLabel()}
+            <span className="font-semibold">{t('sell.loadForm.periodLabel')}</span> {rangeLabel()}
             {salesmanLabels && (
               <>
                 {" "}
-                · <span className="font-semibold">Salesmen:</span> {salesmanLabels}
+                · <span className="font-semibold">{t('sell.loadForm.salesmenLabel')}</span> {salesmanLabels}
               </>
             )}
             {brandLabels && (
               <>
                 {" "}
-                · <span className="font-semibold">Brands:</span> {brandLabels}
+                · <span className="font-semibold">{t('sell.loadForm.brandsLabel')}</span> {brandLabels}
               </>
             )}
             {" "}
@@ -418,18 +420,18 @@ export default function LoadFormGenerator() {
                   <table className="w-full text-left text-sm">
                     <thead className="text-[11px] uppercase text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-1.5">Product</th>
-                        <th className="px-2 py-1.5 text-right">Quantity</th>
-                        <th className="px-2 py-1.5 text-right">Bns</th>
-                        <th className="px-4 py-1.5 text-right">Value</th>
+                        <th className="px-4 py-1.5">{t('sell.product')}</th>
+                        <th className="px-2 py-1.5 text-right">{t('sell.quantity')}</th>
+                        <th className="px-2 py-1.5 text-right">{t('sell.loadForm.bns')}</th>
+                        <th className="px-4 py-1.5 text-right">{t('sell.loadForm.valueHeader')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {grp.lines.map((line, i) => (
                         <tr key={i}>
                           <td className="px-4 py-1.5 text-foreground">{line.product_name}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">{quantityLabel(line)}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">{bonusLabel(line)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{quantityLabel(line, t('sell.loadForm.unitFallback'), t('sell.loadForm.subunitFallback'))}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{bonusLabel(line, t('sell.loadForm.unitFallback'), t('sell.loadForm.subunitFallback'))}</td>
                           <td className="px-4 py-1.5 text-right tabular-nums">{fmt(line.total_value)}</td>
                         </tr>
                       ))}
@@ -456,15 +458,15 @@ export default function LoadFormGenerator() {
           ))}
           <div className="grid grid-cols-2 gap-2 border-t border-border bg-muted/30 p-3 text-sm sm:grid-cols-3">
             <div>
-              <span className="text-muted-foreground">Total Value:</span>{" "}
+              <span className="text-muted-foreground">{t('sell.loadForm.totalValue')}</span>{" "}
               <span className="font-semibold">{fmt(summary.grand_total)}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Bonus Value:</span>{" "}
+              <span className="text-muted-foreground">{t('sell.loadForm.bonusValue')}</span>{" "}
               <span className="font-semibold">{fmt(summary.grand_bonus)}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Net Value:</span>{" "}
+              <span className="text-muted-foreground">{t('sell.loadForm.netValue')}</span>{" "}
               <span className="font-semibold">{fmt(summary.grand_net)}</span>
             </div>
           </div>
@@ -542,18 +544,18 @@ function groupTitle(g: LoadFormCustomer | LoadFormBrand): string {
   return "brand_name" in g ? g.brand_name : g.customer_name;
 }
 
-function quantityLabel(line: LoadFormLine): string {
-  const unitType = line.unit_type ?? "Units";
-  const subunitType = line.subunit_type ?? "Pcs";
+function quantityLabel(line: LoadFormLine, unitFallback: string, subunitFallback: string): string {
+  const unitType = line.unit_type ?? unitFallback;
+  const subunitType = line.subunit_type ?? subunitFallback;
   const parts: string[] = [];
   if (line.main_qty > 0) parts.push(`${trim(line.main_qty)} ${unitType}`);
   if (line.subunit_qty > 0) parts.push(`${trim(line.subunit_qty)} ${subunitType}`);
   return parts.length > 0 ? parts.join(" + ") : "0";
 }
 
-function bonusLabel(line: LoadFormLine): string {
-  const unitType = line.unit_type ?? "Units";
-  const subunitType = line.subunit_type ?? "Pcs";
+function bonusLabel(line: LoadFormLine, unitFallback: string, subunitFallback: string): string {
+  const unitType = line.unit_type ?? unitFallback;
+  const subunitType = line.subunit_type ?? subunitFallback;
   const parts: string[] = [];
   if (line.bonus_main_qty > 0) parts.push(`${trim(line.bonus_main_qty)} ${unitType}`);
   if (line.bonus_subunit_qty > 0) parts.push(`${trim(line.bonus_subunit_qty)} ${subunitType}`);
