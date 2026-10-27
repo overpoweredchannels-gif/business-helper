@@ -17,6 +17,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { useAIChat, type ChatMessage, type ChatContext } from "@/hooks/useAIChat";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { SuggestedQuestions } from "./SuggestedQuestions";
 import { extractBusinessCards, BusinessCard } from "./BusinessCard";
@@ -28,6 +29,7 @@ interface AIAssistantProps {
 }
 
 function ChatBubble({ message, onRetry }: { message: ChatMessage; onRetry: () => void }) {
+  const { t } = useRegional();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const isUser = message.role === "user";
   const hasError = !!message.error;
@@ -65,7 +67,7 @@ function ChatBubble({ message, onRetry }: { message: ChatMessage; onRetry: () =>
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-red-600">
                 <AlertCircle className="size-4 shrink-0" />
-                <span className="text-sm font-medium">Error</span>
+                <span className="text-sm font-medium">{t('ai.assistant.errorLabel')}</span>
               </div>
               <p className="text-sm text-muted-foreground">{message.error}</p>
             </div>
@@ -81,13 +83,13 @@ function ChatBubble({ message, onRetry }: { message: ChatMessage; onRetry: () =>
 
         {!isUser && hasContent && (
           <div className="hover-reveal flex items-center gap-0.5 px-1">
-            <button onClick={handleCopy} className="flex min-h-6 items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={copiedId === message.id ? "Copied" : "Copy response"}>
+            <button onClick={handleCopy} className="flex min-h-6 items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={copiedId === message.id ? t('ai.assistant.copied') : t('ai.assistant.copyResponse')}>
               {copiedId === message.id ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
-              <span>{copiedId === message.id ? "Copied" : "Copy"}</span>
+              <span>{copiedId === message.id ? t('ai.assistant.copied') : t('ai.assistant.copy')}</span>
             </button>
-            <button onClick={onRetry} className="flex min-h-6 items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title="Retry">
+            <button onClick={onRetry} className="flex min-h-6 items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={t('ai.assistant.retry')}>
               <RotateCcw className="size-3" />
-              <span>Retry</span>
+              <span>{t('ai.assistant.retry')}</span>
             </button>
           </div>
         )}
@@ -97,6 +99,7 @@ function ChatBubble({ message, onRetry }: { message: ChatMessage; onRetry: () =>
 }
 
 function WaitingBubble() {
+  const { t } = useRegional();
   return (
     <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
       <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-sm">
@@ -105,7 +108,7 @@ function WaitingBubble() {
       <div className="rounded-2xl rounded-tl-md bg-card border border-border/60 px-4 py-3 shadow-sm">
         <div className="flex items-center gap-2">
           <Loader2 className="size-4 animate-spin text-muted-foreground" />
-          <span className="text-sm text-muted-foreground animate-pulse">Thinking...</span>
+          <span className="text-sm text-muted-foreground animate-pulse">{t('ai.assistant.thinking')}</span>
         </div>
       </div>
     </div>
@@ -113,14 +116,15 @@ function WaitingBubble() {
 }
 
 function EmptyState({ onSelectQuestion }: { onSelectQuestion: (q: string) => void }) {
+  const { t } = useRegional();
   return (
     <div className="flex flex-col items-center justify-center flex-1 px-4 py-16 text-center">
       <div className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-primary/10">
         <Brain className="size-8 text-primary" />
       </div>
-      <h2 className="text-xl font-semibold text-foreground mb-2">AI Business Assistant</h2>
+      <h2 className="text-xl font-semibold text-foreground mb-2">{t('ai.assistant.emptyTitle')}</h2>
       <p className="text-sm text-muted-foreground max-w-md mb-8">
-        Ask anything about your business — revenue, inventory, customers, recommendations, or forecasts. Your personal AI understands context and remembers your conversation.
+        {t('ai.assistant.emptyHelp')}
       </p>
       <SuggestedQuestions onSelect={onSelectQuestion} visible={true} />
     </div>
@@ -128,6 +132,7 @@ function EmptyState({ onSelectQuestion }: { onSelectQuestion: (q: string) => voi
 }
 
 export function AIAssistant({ onChat, brainAvailable }: AIAssistantProps) {
+  const { t } = useRegional();
   const { messages, isWaiting, sendMessage, retry, clearHistory } = useAIChat(onChat);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -176,9 +181,9 @@ export function AIAssistant({ onChat, brainAvailable }: AIAssistantProps) {
           <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted">
             <AlertCircle className="size-7 text-muted-foreground" />
           </div>
-          <h3 className="text-base font-semibold text-foreground mb-2">Business Brain Not Ready</h3>
+          <h3 className="text-base font-semibold text-foreground mb-2">{t('ai.assistant.brainNotReady')}</h3>
           <p className="text-sm text-muted-foreground">
-            Load your business data first from the Dashboard. The AI Assistant needs your business context to provide insights.
+            {t('ai.assistant.brainNotReadyHelp')}
           </p>
         </div>
       </div>
@@ -190,21 +195,21 @@ export function AIAssistant({ onChat, brainAvailable }: AIAssistantProps) {
       <div className="flex items-center justify-between border-b border-border/50 px-6 py-3">
         <div className="flex items-center gap-2">
           <MessageSquare className="size-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">AI Assistant</h2>
+          <h2 className="text-sm font-semibold text-foreground">{t('ai.assistant.title')}</h2>
           {isWaiting && (
             <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <span className="relative flex size-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/40"></span>
                 <span className="relative inline-flex size-2 rounded-full bg-primary"></span>
               </span>
-              Active
+              {t('products.active')}
             </span>
           )}
         </div>
         {messages.length > 0 && (
           <button onClick={clearHistory} className="flex min-h-6 items-center gap-1 rounded-md px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Trash2 className="size-3" />
-            Clear chat
+            {t('ai.assistant.clearChat')}
           </button>
         )}
       </div>
@@ -231,7 +236,7 @@ export function AIAssistant({ onChat, brainAvailable }: AIAssistantProps) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about your business..."
+              placeholder={t('ai.assistant.inputPlaceholder')}
               rows={1}
               style={{ height: `${Math.min(inputHeight, 5) * 1.5 + 0.75}rem` }}
               className="w-full resize-none rounded-xl border border-border/60 bg-muted/20 px-4 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
@@ -247,7 +252,7 @@ export function AIAssistant({ onChat, brainAvailable }: AIAssistantProps) {
           </button>
         </div>
         <p className="mt-1.5 text-[10px] text-muted-foreground/50 text-center">
-          Press Enter to send · Shift+Enter for new line
+          {t('ai.assistant.enterHint')}
         </p>
       </div>
     </div>
