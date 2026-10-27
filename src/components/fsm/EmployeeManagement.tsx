@@ -6,6 +6,7 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { buildWhatsAppUrl, buildWhatsAppInviteMessage, designationLabel } from "@/lib/identity/staff-invitation";
 import { DEFAULT_STAFF_DESIGNATION } from "@/lib/identity/staff-roles";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 const DESIGNATIONS: EmployeeDesignation[] = [
   "salesman",
@@ -84,6 +85,19 @@ type EmployeeSummary = Employee & {
 };
 
 export default function EmployeeManagement() {
+  const { t } = useRegional();
+  const designationDisplay = (d: string) => {
+    const labels: Record<string, string> = {
+      salesman: t('fsm.employees.designation.salesman'),
+      delivery_rider: t('fsm.employees.designation.deliveryRider'),
+      field_officer: t('fsm.employees.designation.fieldOfficer'),
+      collection_officer: t('fsm.employees.designation.collectionOfficer'),
+      supervisor: t('fsm.employees.designation.supervisor'),
+      manager: t('fsm.employees.designation.manager'),
+      owner: t('fsm.employees.designation.owner'),
+    };
+    return labels[d] ?? d;
+  };
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [form, setForm] = useState<Record<string, string>>({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -128,11 +142,11 @@ export default function EmployeeManagement() {
       const [data, optionsData, summariesData] = await Promise.all([res.json(), optionsRes.json(), summariesRes.json()]);
       if (res.status === 403) {
         setIsOwner(false);
-        setMessage({ type: "error", text: data.error || "Access denied" });
+        setMessage({ type: "error", text: data.error || t('fsm.routes.accessDenied') });
       } else if (Array.isArray(data.employees)) {
         setEmployees(data.employees);
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to load employees" });
+        setMessage({ type: "error", text: data.error || t('fsm.employees.loadEmployeesFailed') });
       }
       if (optionsData.ok) {
         setTerritories(optionsData.territories ?? []);
@@ -144,7 +158,7 @@ export default function EmployeeManagement() {
       const customerData = await customerRes.json();
       if (Array.isArray(customerData.customers)) setCustomers(customerData.customers);
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     } finally {
       setLoading(false);
     }
@@ -187,7 +201,7 @@ export default function EmployeeManagement() {
 
   const save = async () => {
     if (!form.full_name?.trim()) {
-      setMessage({ type: "error", text: "Employee name is required." });
+      setMessage({ type: "error", text: t('fsm.employees.nameRequired') });
       return;
     }
     try {
@@ -213,14 +227,14 @@ export default function EmployeeManagement() {
         });
         const assignmentData = await assignmentRes.json();
         if (!assignmentRes.ok || !assignmentData.ok) throw new Error(assignmentData.error ?? "Employee saved, but assignment failed");
-        setMessage({ type: "ok", text: editingId ? "Employee updated." : "Employee added." });
+        setMessage({ type: "ok", text: editingId ? t('fsm.employees.employeeUpdated') : t('fsm.employees.employeeAdded') });
         resetForm();
         load();
       } else {
-        setMessage({ type: "error", text: data.error || "Save failed" });
+        setMessage({ type: "error", text: data.error || t('fsm.employees.saveFailed') });
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     }
   };
 
@@ -229,15 +243,15 @@ export default function EmployeeManagement() {
       const res = await authorizedFetch(`/api/identity/employees/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
-        setMessage({ type: "ok", text: "Employee deleted." });
+        setMessage({ type: "ok", text: t('fsm.employees.employeeDeleted') });
         if (editingId === id) resetForm();
         setPendingDeleteId(null);
         load();
       } else {
-        setMessage({ type: "error", text: data.error || "Delete failed" });
+        setMessage({ type: "error", text: data.error || t('fsm.employees.deleteFailed') });
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     }
   };
 
@@ -254,13 +268,13 @@ export default function EmployeeManagement() {
       }
       return { error: data.error || "Invite generation failed" };
     } catch (err) {
-      return { error: err instanceof Error ? err.message : "Network error" };
+      return { error: err instanceof Error ? err.message : t('tracking.networkError') };
     }
   };
 
   const inviteViaWhatsApp = async (emp: Employee) => {
     if (!emp.phone) {
-      setMessage({ type: "error", text: "Add a phone number to this employee before sending a WhatsApp invite." });
+      setMessage({ type: "error", text: t('fsm.employees.phoneForInvite') });
       return;
     }
     setInvitingId(emp.id);
@@ -269,7 +283,7 @@ export default function EmployeeManagement() {
       const result = await generateInvite(emp);
       if (!result) return;
       if (result.error || !result.loginId || !result.inviteLink) {
-        setMessage({ type: "error", text: result.error || "Invite generation failed" });
+        setMessage({ type: "error", text: result.error || t('fsm.employees.inviteGenFailed') });
         return;
       }
       const text = buildWhatsAppInviteMessage({
@@ -281,10 +295,10 @@ export default function EmployeeManagement() {
       });
       const waUrl = buildWhatsAppUrl(emp.phone) + `?text=${encodeURIComponent(text)}`;
       window.open(waUrl, "_blank", "noopener,noreferrer");
-      setMessage({ type: "ok", text: `Profile ID ${result.loginId} generated. WhatsApp invite opened for ${emp.full_name}.` });
+      setMessage({ type: "ok", text: t('fsm.employees.profileIdGenerated').replace('{loginId}', result.loginId).replace('{name}', emp.full_name) });
       load();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     } finally {
       setInvitingId(null);
     }
@@ -296,14 +310,14 @@ export default function EmployeeManagement() {
     try {
       const result = await generateInvite(emp);
       if (!result || result.error || !result.inviteLink) {
-        setMessage({ type: "error", text: result?.error || "Invite generation failed" });
+        setMessage({ type: "error", text: result?.error || t('fsm.employees.inviteGenFailed') });
         return;
       }
       await navigator.clipboard.writeText(result.inviteLink);
-      setMessage({ type: "ok", text: `Invite link copied. Share it with ${emp.full_name}.` });
+      setMessage({ type: "ok", text: t('fsm.employees.inviteLinkCopied').replace('{name}', emp.full_name) });
       load();
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     } finally {
       setInvitingId(null);
     }
@@ -330,7 +344,7 @@ export default function EmployeeManagement() {
         }}
       >
         <div>
-          <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0" }}>Employees</h2>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0" }}>{t('fsm.employees.title')}</h2>
           <p style={{ fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0 0" }}>
             Field sales team, delivery riders, and supervisors.
           </p>
@@ -339,7 +353,7 @@ export default function EmployeeManagement() {
           style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }}
           onClick={load}
         >
-          Refresh
+          {t('fsm.routes.refresh')}
         </button>
       </div>
 
@@ -356,8 +370,8 @@ export default function EmployeeManagement() {
       )}
 
       <div style={{ display: "flex", gap: "0.5rem", margin: "1rem 0", borderBottom: "1px solid #e5e7eb", paddingBottom: "0.75rem" }}>
-        <button style={{ ...buttonStyle, background: tab === "management" ? "#111827" : "#fff", color: tab === "management" ? "#fff" : "#374151", border: "1px solid #d1d5db" }} onClick={() => setTab("management")}>Employee Management</button>
-        <button style={{ ...buttonStyle, background: tab === "profiles" ? "#111827" : "#fff", color: tab === "profiles" ? "#fff" : "#374151", border: "1px solid #d1d5db" }} onClick={() => setTab("profiles")}>Employee Profiles</button>
+        <button style={{ ...buttonStyle, background: tab === "management" ? "#111827" : "#fff", color: tab === "management" ? "#fff" : "#374151", border: "1px solid #d1d5db" }} onClick={() => setTab("management")}>{t('fsm.employees.tabManagement')}</button>
+        <button style={{ ...buttonStyle, background: tab === "profiles" ? "#111827" : "#fff", color: tab === "profiles" ? "#fff" : "#374151", border: "1px solid #d1d5db" }} onClick={() => setTab("profiles")}>{t('fsm.employees.tabProfiles')}</button>
       </div>
 
       {tab === "management" ? <>
@@ -375,39 +389,39 @@ export default function EmployeeManagement() {
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Full name *</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.fullName')}</label>
             <input style={inputStyle} value={form.full_name} onChange={(e) => setField("full_name", e.target.value)} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Designation</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.designation')}</label>
             <select style={inputStyle} value={form.designation} onChange={(e) => setField("designation", e.target.value)}>
               {DESIGNATIONS.map((d) => (
                 <option key={d} value={d}>
-                  {DESIGNATION_LABELS[d]}
+                  {designationDisplay(d)}
                 </option>
               ))}
             </select>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Territory</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.territory')}</label>
             <select style={inputStyle} value={form.assigned_territory_id} onChange={(event) => { setField("assigned_territory_id", event.target.value); setField("assigned_route_id", ""); setSelectedCustomerIds([]); }}>
-              <option value="">No territory</option>
+              <option value="">{t('fsm.employees.noTerritory')}</option>
               {territories.map((territory) => <option key={territory.id} value={territory.id}>{territory.name}</option>)}
             </select>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Route</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.route')}</label>
             <select style={inputStyle} value={form.assigned_route_id} disabled={!form.assigned_territory_id} onChange={(event) => { setField("assigned_route_id", event.target.value); setSelectedCustomerIds([]); }}>
-              <option value="">No route</option>
+              <option value="">{t('fsm.employees.noRoute')}</option>
               {availableRoutes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}
             </select>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Assign customers</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.assignCustomers')}</label>
             <select style={inputStyle} value={assignmentScope} disabled={!form.assigned_territory_id} onChange={(event) => setAssignmentScope(event.target.value as "route_only" | "route_all" | "selected")}>
-              <option value="route_only">Route/territory only</option>
-              <option value="route_all">All customers in selection</option>
-              <option value="selected">Only selected customers</option>
+              <option value="route_only">{t('fsm.employees.assignRouteOnly')}</option>
+              <option value="route_all">{t('fsm.employees.assignAllSelection')}</option>
+              <option value="selected">{t('fsm.employees.assignSelectedOnly')}</option>
             </select>
           </div>
           {assignmentScope === "selected" && form.assigned_territory_id && (
@@ -415,40 +429,40 @@ export default function EmployeeManagement() {
               <div style={{ fontSize: "0.78rem", fontWeight: 600, marginBottom: "0.5rem" }}>Choose customers from {form.assigned_route_id ? "this route" : "this territory"}</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
                 {eligibleCustomers.map((customer) => <label key={customer.id} style={{ display: "flex", gap: "0.45rem", border: "1px solid #e5e7eb", borderRadius: "0.35rem", padding: "0.45rem", fontSize: "0.75rem" }}><input type="checkbox" checked={selectedCustomerIds.includes(customer.id)} onChange={(event) => setSelectedCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} /><span>{customer.customer_name}{customer.shop_name ? ` · ${customer.shop_name}` : ""}</span></label>)}
-                {eligibleCustomers.length === 0 && <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>No customers are available; add customers to the territory and route first.</span>}
+                {eligibleCustomers.length === 0 && <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>{t('fsm.employees.noCustomersAvailable')}</span>}
               </div>
             </div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Phone</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.phone')}</label>
             <input style={inputStyle} value={form.phone} onChange={(e) => setField("phone", e.target.value)} placeholder="03xx-xxxxxxx" />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>CNIC</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.cnic')}</label>
             <input style={inputStyle} value={form.cnic} onChange={(e) => setField("cnic", e.target.value)} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Email</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.email')}</label>
             <input style={inputStyle} value={form.email} onChange={(e) => setField("email", e.target.value)} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Department</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.department')}</label>
             <input style={inputStyle} value={form.department} onChange={(e) => setField("department", e.target.value)} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Employee ID</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.employeeId')}</label>
             <input style={inputStyle} value={form.employee_id} onChange={(e) => setField("employee_id", e.target.value)} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Joining date</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.joiningDate')}</label>
             <input style={inputStyle} type="date" value={form.joining_date} onChange={(e) => setField("joining_date", e.target.value)} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Status</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.status')}</label>
             <select style={inputStyle} value={form.status} onChange={(e) => setField("status", e.target.value)}>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="archived">Archived</option>
+              <option value="active">{t('products.active')}</option>
+              <option value="inactive">{t('products.inactive')}</option>
+              <option value="archived">{t('common.archived')}</option>
             </select>
           </div>
           <div
@@ -460,14 +474,14 @@ export default function EmployeeManagement() {
             }}
           >
             <button style={buttonStyle} onClick={save}>
-              {editingId ? "Save Changes" : "Add Employee"}
+              {editingId ? t('fsm.employees.saveChanges') : t('fsm.employees.addEmployee')}
             </button>
             {editingId && (
               <button
                 style={{ ...buttonStyle, background: "#6b7280" }}
                 onClick={resetForm}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             )}
           </div>
@@ -475,7 +489,7 @@ export default function EmployeeManagement() {
       )}
 
       {loading ? (
-        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Loading employees...</p>
+        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('fsm.employees.loadingEmployees')}</p>
       ) : employees.length === 0 ? (
         <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>
           No employees yet. Add your first field sales team member above.
@@ -514,7 +528,7 @@ export default function EmployeeManagement() {
                   )}
                 </div>
                 <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-                  {DESIGNATION_LABELS[emp.designation] ?? emp.designation}
+                  {designationDisplay(emp.designation)}
                   {emp.phone ? ` · ${emp.phone}` : ""}
                   {emp.employee_id ? ` · ID: ${emp.employee_id}` : ""}
                   {emp.login_id ? ` · Profile ID: ${emp.login_id}` : ""}
@@ -544,14 +558,14 @@ export default function EmployeeManagement() {
                         onClick={() => inviteViaWhatsApp(emp)}
                         disabled={invitingId === emp.id}
                       >
-                        {invitingId === emp.id ? "Generating..." : "WhatsApp Invite"}
+                        {invitingId === emp.id ? t('fsm.employees.generating') : t('fsm.employees.whatsappInvite')}
                       </button>
                       <button
                         style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }}
                         onClick={() => copyInviteLink(emp)}
                         disabled={invitingId === emp.id}
                       >
-                        Copy Link
+                        {t('fsm.employees.copyLink')}
                       </button>
                     </>
                   )}
@@ -559,26 +573,26 @@ export default function EmployeeManagement() {
                     style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }}
                     onClick={() => startEdit(emp)}
                   >
-                    Edit
+                    {t('fsm.employees.edit')}
                   </button>
                   {pendingDeleteId === emp.id ? (
                     <>
                       <span style={{ fontSize: "0.75rem", color: "#991b1b", alignSelf: "center" }}>
-                        Delete this employee record?
+                        {t('fsm.employees.deleteConfirmPrompt')}
                       </span>
                       <button style={dangerButtonStyle} onClick={() => remove(emp.id)}>
-                        Confirm Delete
+                        {t('fsm.employees.confirmDelete')}
                       </button>
                       <button
                         style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }}
                         onClick={() => setPendingDeleteId(null)}
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     </>
                   ) : (
                     <button style={dangerButtonStyle} onClick={() => setPendingDeleteId(emp.id)}>
-                      Delete
+                      {t('fsm.employees.delete')}
                     </button>
                   )}
                 </div>
@@ -591,23 +605,23 @@ export default function EmployeeManagement() {
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", minWidth: "980px", borderCollapse: "collapse", fontSize: "0.78rem" }}>
-              <thead><tr style={{ background: "#f9fafb", textAlign: "left", color: "#4b5563" }}><th style={{ padding: "0.7rem" }}>Employee</th><th>Territory / Route</th><th>Customers</th><th>Invoices</th><th>Total Sales</th><th>Remaining</th><th>Unpaid</th><th>Actions</th></tr></thead>
+              <thead><tr style={{ background: "#f9fafb", textAlign: "left", color: "#4b5563" }}><th style={{ padding: "0.7rem" }}>{t('fsm.employees.colEmployee')}</th><th>{t('fsm.employees.colTerritoryRoute')}</th><th>{t('fsm.employees.colCustomers')}</th><th>{t('fsm.employees.colInvoices')}</th><th>{t('fsm.employees.colTotalSales')}</th><th>{t('fsm.employees.colRemaining')}</th><th>{t('fsm.employees.colUnpaid')}</th><th>{t('fsm.employees.colActions')}</th></tr></thead>
               <tbody>{summaries.map((employee) => <Fragment key={employee.id}>
                 <tr style={{ borderTop: "1px solid #e5e7eb" }}>
-                  <td style={{ padding: "0.7rem" }}><strong>{employee.full_name}</strong><div style={{ color: "#6b7280", textTransform: "capitalize" }}>{employee.designation}</div></td>
+                  <td style={{ padding: "0.7rem" }}><strong>{employee.full_name}</strong><div style={{ color: "#6b7280", textTransform: "capitalize" }}>{designationDisplay(employee.designation)}</div></td>
                   <td>{employee.assigned_territory_name ?? "No territory"}<div style={{ color: "#6b7280" }}>{employee.assigned_route_name ?? "No route"}</div></td>
                   <td>{employee.assigned_customer_count}</td><td>{employee.invoice_count}<div style={{ color: "#6b7280" }}>{employee.authored_invoice_count} created by employee</div></td>
                   <td>{formatMoney(employee.total_sales)}</td><td style={{ color: employee.remaining_balance > 0 ? "#b45309" : "#166534", fontWeight: 600 }}>{formatMoney(employee.remaining_balance)}</td><td>{employee.unpaid_invoices}</td>
-                  <td><div style={{ display: "flex", gap: "0.35rem" }}><button style={smallProfileButton} onClick={() => setExpandedProfileId((current) => current === employee.id ? null : employee.id)}>{expandedProfileId === employee.id ? "Close" : "Customers"}</button><button style={smallProfileButton} onClick={() => { startEdit(employee); setTab("management"); }}>Assign</button></div></td>
+                  <td><div style={{ display: "flex", gap: "0.35rem" }}><button style={smallProfileButton} onClick={() => setExpandedProfileId((current) => current === employee.id ? null : employee.id)}>{expandedProfileId === employee.id ? t('fsm.employees.close') : t('fsm.employees.colCustomers')}</button><button style={smallProfileButton} onClick={() => { startEdit(employee); setTab("management"); }}>{t('fsm.employees.assign')}</button></div></td>
                 </tr>
                 {expandedProfileId === employee.id && <tr key={`${employee.id}-customers`}><td colSpan={8} style={{ padding: "0.8rem", background: "#fafafa" }}>
-                  <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>Assigned customer portfolio</div>
-                  {employee.customers.length === 0 ? <span style={{ color: "#6b7280" }}>No customers assigned.</span> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left", color: "#6b7280" }}><th style={{ padding: "0.4rem" }}>Customer</th><th>Invoices</th><th>Sales</th><th>Remaining</th><th>Unpaid</th></tr></thead><tbody>{employee.customers.map((customer) => <tr key={customer.id} style={{ borderTop: "1px solid #e5e7eb" }}><td style={{ padding: "0.45rem" }}>{customer.customer_name}{customer.shop_name ? ` · ${customer.shop_name}` : ""}</td><td>{customer.invoice_count}</td><td>{formatMoney(customer.total_sales)}</td><td>{formatMoney(customer.remaining_balance)}</td><td>{customer.unpaid_invoices}</td></tr>)}</tbody></table></div>}
+                  <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>{t('fsm.employees.assignedPortfolio')}</div>
+                  {employee.customers.length === 0 ? <span style={{ color: "#6b7280" }}>{t('fsm.employees.noCustomersAssigned')}</span> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ textAlign: "left", color: "#6b7280" }}><th style={{ padding: "0.4rem" }}>{t('fsm.employees.colCustomer')}</th><th>{t('fsm.employees.colInvoices')}</th><th>{t('fsm.employees.colSales')}</th><th>{t('fsm.employees.colRemaining')}</th><th>{t('fsm.employees.colUnpaid')}</th></tr></thead><tbody>{employee.customers.map((customer) => <tr key={customer.id} style={{ borderTop: "1px solid #e5e7eb" }}><td style={{ padding: "0.45rem" }}>{customer.customer_name}{customer.shop_name ? ` · ${customer.shop_name}` : ""}</td><td>{customer.invoice_count}</td><td>{formatMoney(customer.total_sales)}</td><td>{formatMoney(customer.remaining_balance)}</td><td>{customer.unpaid_invoices}</td></tr>)}</tbody></table></div>}
                 </td></tr>}
               </Fragment>)}</tbody>
             </table>
           </div>
-          {!loading && summaries.length === 0 && <p style={{ padding: "1rem", color: "#6b7280", fontSize: "0.8rem" }}>No employee profiles found.</p>}
+          {!loading && summaries.length === 0 && <p style={{ padding: "1rem", color: "#6b7280", fontSize: "0.8rem" }}>{t('fsm.employees.noProfilesFound')}</p>}
         </div>
       )}
     </div>
