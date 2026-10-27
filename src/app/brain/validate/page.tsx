@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { runAllValidations, printReport, formatAsMarkdown, ValidationReport } from "@/lib/brain/validation";
 
 export default function BrainValidationPage() {
+  const { t } = useRegional();
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [markdown, setMarkdown] = useState("");
   const [running, setRunning] = useState(false);
@@ -29,18 +31,18 @@ export default function BrainValidationPage() {
   return (
     <div style={{ padding: "24px", fontFamily: "monospace", maxWidth: "960px", margin: "0 auto" }}>
       <h1 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "16px" }}>
-        Business Brain Validation
+        {t('brain.validate.title')}
       </h1>
 
       {running && (
         <div style={{ padding: "16px", background: "#f0f0f0", borderRadius: "8px" }}>
-          Running validation suite...
+          {t('brain.validate.running')}
         </div>
       )}
 
       {error && (
         <div style={{ padding: "16px", background: "#fee", borderRadius: "8px", color: "#c00" }}>
-          <strong>Error:</strong> {error}
+          <strong>{t('brain.validate.errorLabel')}</strong> {error}
         </div>
       )}
 
@@ -55,9 +57,9 @@ export default function BrainValidationPage() {
               fontSize: "18px",
             }}
           >
-            <strong>Verdict: {report.verdict}</strong>
+            <strong>{t('brain.validate.verdictLabel')} {report.verdict}</strong>
             <span style={{ marginLeft: "16px", fontSize: "14px" }}>
-              {report.totalPassed}/{report.totalTests} passed | {report.totalDurationMs}ms
+              {report.totalPassed}/{report.totalTests} {t('brain.validate.passed')} | {report.totalDurationMs}ms
             </span>
           </div>
 
@@ -115,7 +117,7 @@ export default function BrainValidationPage() {
           })}
 
           <div style={{ marginTop: "24px" }}>
-            <h2 style={{ fontSize: "18px", marginBottom: "8px" }}>Raw Report</h2>
+            <h2 style={{ fontSize: "18px", marginBottom: "8px" }}>{t('brain.validate.rawReport')}</h2>
             <pre
               style={{
                 background: "#f5f5f5",
