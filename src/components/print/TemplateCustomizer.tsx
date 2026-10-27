@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import {
   PRINT_FONTS,
   type PrintDocumentType,
@@ -29,28 +30,6 @@ interface TemplateOption {
   is_default: boolean;
   is_builtin: boolean;
 }
-
-const SECTIONS: { key: keyof PrintTemplate["header"]; label: string }[] = [
-  { key: "showSalesman", label: "Salesman" },
-  { key: "showCustomer", label: "Customer" },
-  { key: "showCustomerCity", label: "Customer City" },
-  { key: "showDate", label: "Date" },
-  { key: "showInvoiceNo", label: "Invoice No" },
-];
-
-const SIZE_FIELDS: { key: string; label: string }[] = [
-  { key: "header.orgNameSizePx", label: "Business Name" },
-  { key: "header.contactSizePx", label: "Address / Phone" },
-  { key: "header.headingSizePx", label: "Heading" },
-  { key: "header.metaSizePx", label: "Meta / Party lines" },
-  { key: "columns.headerSizePx", label: "Table Header" },
-  { key: "columns.rowSizePx", label: "Table Rows" },
-  { key: "groups.groupSizePx", label: "Group Titles" },
-  { key: "salesman.sizePx", label: "Salesman Section" },
-  { key: "footer.labelSizePx", label: "Totals Label" },
-  { key: "footer.valueSizePx", label: "Totals Value" },
-  { key: "footer.footnoteSizePx", label: "Footnote" },
-];
 
 const inputCls =
   "w-full rounded border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
@@ -136,6 +115,27 @@ export default function TemplateCustomizer({
   onSaved,
   orgBranding,
 }: TemplateCustomizerProps) {
+  const { t } = useRegional();
+  const SECTIONS: { key: keyof PrintTemplate["header"]; label: string }[] = [
+    { key: "showSalesman", label: t('print.template.sectionSalesman') },
+    { key: "showCustomer", label: t('print.template.sectionCustomer') },
+    { key: "showCustomerCity", label: t('print.template.sectionCustomerCity') },
+    { key: "showDate", label: t('print.template.sectionDate') },
+    { key: "showInvoiceNo", label: t('print.template.sectionInvoiceNo') },
+  ];
+  const SIZE_FIELDS: { key: string; label: string }[] = [
+    { key: "header.orgNameSizePx", label: t('print.template.sizeBusinessName') },
+    { key: "header.contactSizePx", label: t('print.template.sizeAddressPhone') },
+    { key: "header.headingSizePx", label: t('print.template.sizeHeading') },
+    { key: "header.metaSizePx", label: t('print.template.sizeMetaParty') },
+    { key: "columns.headerSizePx", label: t('print.template.sizeTableHeader') },
+    { key: "columns.rowSizePx", label: t('print.template.sizeTableRows') },
+    { key: "groups.groupSizePx", label: t('print.template.sizeGroupTitles') },
+    { key: "salesman.sizePx", label: t('print.template.sizeSalesmanSection') },
+    { key: "footer.labelSizePx", label: t('print.template.sizeTotalsLabel') },
+    { key: "footer.valueSizePx", label: t('print.template.sizeTotalsValue') },
+    { key: "footer.footnoteSizePx", label: t('print.template.sizeFootnote') },
+  ];
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [selectedId, setSelectedId] = useState<string>(() => `default-${docType}`);
   const [name, setName] = useState("");
@@ -168,11 +168,11 @@ export default function TemplateCustomizer({
           }
         }
       })
-      .catch(() => setError("Failed to load templates."));
+      .catch(() => setError(t('print.template.loadFailed')));
     return () => {
       cancelled = true;
     };
-  }, [docType]);
+  }, [docType, t]);
 
   const selected = useMemo(
     () => templates.find((t) => t.id === selectedId) ?? null,
@@ -243,7 +243,7 @@ export default function TemplateCustomizer({
   };
 
   const handleSave = async () => {
-    const finalName = name.trim() || "Custom Template";
+    const finalName = name.trim() || t('print.template.customTemplate');
     setSaving(true);
     setMessage(null);
     setError(null);
@@ -260,13 +260,13 @@ export default function TemplateCustomizer({
         }),
       });
       const data = await res.json();
-      if (!data?.ok) throw new Error(data?.error || "Failed to save template");
-      setMessage(`Saved template "${finalName}".`);
+      if (!data?.ok) throw new Error(data?.error || t('print.template.saveFailed'));
+      setMessage(t('print.template.saved').replace('{name}', finalName));
       onSaved?.(data.template?.config ?? configToSave);
       await reloadTemplates();
       if (data.template?.id) setSelectedId(data.template.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save template");
+      setError(err instanceof Error ? err.message : t('print.template.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -279,14 +279,14 @@ export default function TemplateCustomizer({
     try {
       const res = await authorizedFetch(`/api/print-templates/${selected.id}`, { method: "DELETE" });
       const data = await res.json();
-      if (!data?.ok) throw new Error(data?.error || "Failed to delete template");
-      setMessage(`Deleted template "${selected.name}".`);
+      if (!data?.ok) throw new Error(data?.error || t('print.template.deleteFailed'));
+      setMessage(t('print.template.deleted').replace('{name}', selected.name));
       await reloadTemplates();
       setSelectedId(`default-${docType}`);
       const def = templates.find((t) => t.id === `default-${docType}`);
       if (def) setName(`${def.name} (Custom)`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete template");
+      setError(err instanceof Error ? err.message : t('print.template.deleteFailed'));
     }
   };
 
@@ -321,32 +321,32 @@ export default function TemplateCustomizer({
   });
 
   const headerSectionItems = [
-    { id: "orgName", label: "Business Name", enabled: working.header.showOrgName },
-    { id: "contact", label: "Address / Phone", enabled: working.header.showOrgAddress || working.header.showOrgPhone },
-    { id: "heading", label: "Document Heading", enabled: true },
-    { id: "meta", label: "Meta Fields (Salesman/Customer/City/Date/Invoice)", enabled: true },
+    { id: "orgName", label: t('print.template.sizeBusinessName'), enabled: working.header.showOrgName },
+    { id: "contact", label: t('print.template.sizeAddressPhone'), enabled: working.header.showOrgAddress || working.header.showOrgPhone },
+    { id: "heading", label: t('print.template.previewDocumentHeading'), enabled: true },
+    { id: "meta", label: t('print.template.previewMetaFields'), enabled: true },
   ];
 
   return (
     <div className="fixed inset-0 z-[120] flex flex-col bg-background">
       <ReferenceTemplateReview docType={docType} previewRenderer={previewRenderer} onAccept={template => {
-        const option = { id: template.id, name: template.name, description: "Created from reference; reviewed by user", config: template, is_default: false, is_builtin: true };
+        const option = { id: template.id, name: template.name, description: t('print.template.fromReferenceDesc'), config: template, is_default: false, is_builtin: true };
         setTemplates(previous => [...previous.filter(t => t.id !== template.id), option]);
         setSelectedId(template.id); setName(template.name); setDescription(option.description);
         setHeaderOrder(template.header.headerOrder ?? ["orgName", "contact", "heading", "meta"]);
-        setMessage("Reference settings confirmed. Review or adjust, then Save Template to use for future prints.");
+        setMessage(t('print.template.referenceConfirmed').replace('{save}', t('print.template.saveTemplate')));
       }} />
       {/* ------------------------------- Toolbar ------------------------------ */}
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
         <h2 className="text-lg font-semibold text-foreground">
-          Customize {docType === "sales_invoice" ? "Sales Invoice" : docType === "retail_receipt" ? "Retail Receipt" : "Load Form"} Template
+          {t('print.template.customize').replace('{doc}', docType === "sales_invoice" ? t('print.template.docSalesInvoice') : docType === "retail_receipt" ? t('print.template.docRetailReceipt') : t('print.template.docLoadForm'))}
         </h2>
         <div className="flex-1" />
         <select value={selectedId} onChange={(e) => handleSelect(e.target.value)} className={inputCls + " w-auto"}>
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-              {t.is_builtin ? " (default)" : ""}
+          {templates.map((tpl) => (
+            <option key={tpl.id} value={tpl.id}>
+              {tpl.name}
+              {tpl.is_builtin ? t('print.template.builtinSuffix') : ""}
             </option>
           ))}
         </select>
@@ -356,7 +356,7 @@ export default function TemplateCustomizer({
           disabled={saving}
           className="rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Save Template"}
+          {saving ? t('print.template.saving') : t('print.template.saveTemplate')}
         </button>
         {selected && !selected.is_builtin && (
           <button
@@ -364,7 +364,7 @@ export default function TemplateCustomizer({
             onClick={handleDelete}
             className="rounded border border-destructive px-4 py-2 text-sm text-destructive hover:bg-destructive/5"
           >
-            Delete
+            {t('common.delete')}
           </button>
         )}
         <button
@@ -372,7 +372,7 @@ export default function TemplateCustomizer({
           onClick={onClose}
           className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/40"
         >
-          Close
+          {t('common.close')}
         </button>
       </div>
 
@@ -384,7 +384,7 @@ export default function TemplateCustomizer({
 
         <div className="space-y-4">
             {docType === "retail_receipt" && <label className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span className="font-medium">Receipt paper width</span>
+              <span className="font-medium">{t('print.template.receiptWidth')}</span>
               <select
                 value={working.receiptWidthMm === 58 ? "58" : "80"}
                 onChange={(event) => update({ receiptWidthMm: event.target.value === "58" ? 58 : 80 })}
@@ -395,11 +395,11 @@ export default function TemplateCustomizer({
               </select>
             </label>}
             <label className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span className="font-medium">Template Name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Custom Template" />
+              <span className="font-medium">{t('print.template.templateName')}</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder={t('print.template.customTemplate')} />
             </label>
             <label className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span className="font-medium">Description</span>
+              <span className="font-medium">{t('print.template.description')}</span>
               <input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -410,7 +410,7 @@ export default function TemplateCustomizer({
 
             {/* Fonts */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Font</h3>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">{t('print.template.font')}</h3>
               <select
                 value={PRINT_FONTS.find((f) => f.family === working.fontFamily)?.id ?? ""}
                 onChange={(e) => {
@@ -430,12 +430,12 @@ export default function TemplateCustomizer({
             {/* Business Settings Presets */}
             {orgBranding && (
               <div>
-                <h3 className="mb-2 text-sm font-semibold text-foreground">Business Settings (from Organization)</h3>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">{t('print.template.businessSettings')}</h3>
                 <div className="space-y-1.5 text-sm text-foreground/70">
-                  <p><strong>Business Name:</strong> {orgBranding.name || "—"}</p>
-                  <p><strong>Address:</strong> {orgBranding.address || "—"}</p>
-                  <p><strong>City:</strong> {orgBranding.city || "—"}</p>
-                  <p><strong>Phone:</strong> {orgBranding.phone || "—"}</p>
+                  <p><strong>{t('print.template.orgBusinessName')}</strong> {orgBranding.name || "—"}</p>
+                  <p><strong>{t('print.template.orgAddress')}</strong> {orgBranding.address || "—"}</p>
+                  <p><strong>{t('print.template.orgCity')}</strong> {orgBranding.city || "—"}</p>
+                  <p><strong>{t('print.template.orgPhone')}</strong> {orgBranding.phone || "—"}</p>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   These values come from Settings → Organization. The template uses them automatically when printing.
@@ -445,7 +445,7 @@ export default function TemplateCustomizer({
 
             {/* Header Section Order (Drag & Drop) */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Header Section Order (Drag to Reorder)</h3>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">{t('print.template.headerOrder')}</h3>
               <div className="space-y-1.5">
                 {headerSectionItems.map((section, i) => (
                   <div
@@ -480,9 +480,9 @@ export default function TemplateCustomizer({
                     />
                     <span className="flex-1">{section.label}</span>
                     {section.enabled ? (
-                      <span className="text-[10px] text-green-600">Enabled</span>
+                      <span className="text-[10px] text-green-600">{t('print.template.enabled')}</span>
                     ) : (
-                      <span className="text-[10px] text-muted-foreground">Disabled</span>
+                      <span className="text-[10px] text-muted-foreground">{t('print.template.disabled')}</span>
                     )}
                   </div>
                 ))}
@@ -491,7 +491,7 @@ export default function TemplateCustomizer({
 
             {/* Header toggles (legacy checkboxes, kept for granular control) */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Header Fields (Granular)</h3>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">{t('print.template.headerFields')}</h3>
               <div className="space-y-1.5">
                 {SECTIONS.map((s) => (
                   <label key={s.key} className="flex items-center gap-2 text-sm text-foreground/80">
@@ -509,7 +509,7 @@ export default function TemplateCustomizer({
 
             {/* Business name position */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Business Name Position</h3>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">{t('print.template.businessPosition')}</h3>
               <div className="flex gap-2">
                 {(["top", "bottom"] as const).map((pos) => (
                   <button
@@ -530,7 +530,7 @@ export default function TemplateCustomizer({
 
             {/* Sizes */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Font Sizes</h3>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">{t('print.template.fontSizes')}</h3>
               <div className="space-y-3">
                 {SIZE_FIELDS.map((f) => {
                   const [section, prop] = f.key.split(".") as [keyof PrintTemplate, string];
@@ -562,12 +562,12 @@ export default function TemplateCustomizer({
                 onChange={(e) => update({ boldBody: e.target.checked })}
                 className="accent-primary"
               />
-              <span>Bold table rows</span>
+              <span>{t('print.template.boldRows')}</span>
             </label>
 
             {/* Columns (Drag & Drop Reorder) */}
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Columns (Drag to Reorder)</h3>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">{t('print.template.columns')}</h3>
               <div className="space-y-2">
                 {working.columns.labels.map((col, i) => (
                   <div
@@ -588,7 +588,7 @@ export default function TemplateCustomizer({
                       onClick={() => moveColumn(i, -1)}
                       disabled={i === 0}
                       className="rounded border border-border px-1.5 text-xs disabled:opacity-30"
-                      aria-label="Move left"
+                      aria-label={t('print.template.moveLeft')}
                     >
                       ←
                     </button>
@@ -597,7 +597,7 @@ export default function TemplateCustomizer({
                       onClick={() => moveColumn(i, 1)}
                       disabled={i === working.columns.labels.length - 1}
                       className="rounded border border-border px-1.5 text-xs disabled:opacity-30"
-                      aria-label="Move right"
+                      aria-label={t('print.template.moveRight')}
                     >
                       →
                     </button>
@@ -625,7 +625,7 @@ export default function TemplateCustomizer({
 
             {/* Footnote */}
             <label className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span className="font-medium">Footer Note / Disclaimer</span>
+              <span className="font-medium">{t('print.template.footerNote')}</span>
               <textarea
                 value={working.footer.footnoteText}
                 onChange={(e) => update({ footer: { ...working.footer, footnoteText: e.target.value } })}
