@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, X, Navigation, MapPin, Clock, Route as RouteIcon, AlertCircle } from "lucide-react";
 import { getEta, getPlaceName, formatEta, type EtaResult } from "@/lib/maps/client-maps";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import type { CurrentLocationView } from "@/lib/location/types";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 
@@ -12,6 +13,7 @@ interface NavigateModalProps {
 }
 
 export default function NavigateModal({ employee, onClose }: NavigateModalProps) {
+  const { t } = useRegional();
   const [ownerPos, setOwnerPos] = useState<{ lat: number; lng: number } | null>(null);
   const [ownerError, setOwnerError] = useState<string | null>(null);
   const [eta, setEta] = useState<EtaResult | null>(null);
@@ -39,7 +41,7 @@ export default function NavigateModal({ employee, onClose }: NavigateModalProps)
       })
       .catch((error) => {
         if (!alive) return;
-        setOwnerError(`${getBrowserLocationErrorMessage(error)} ETA is unavailable, but Google Maps navigation is still available.`);
+        setOwnerError(getBrowserLocationErrorMessage(error));
       });
     return () => {
       alive = false;
@@ -107,17 +109,17 @@ export default function NavigateModal({ employee, onClose }: NavigateModalProps)
         <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="text-base font-semibold text-foreground truncate">
-              Navigate to {employee.employeeName}
+              {t('fsm.routes.navNavigateTo').replace('{name}', employee.employeeName)}
             </div>
             <div className="text-xs text-body flex items-center gap-1.5">
               <MapPin className="size-3.5 text-primary" />
-              <span className="truncate">{destPlace ?? "Live location"}</span>
+              <span className="truncate">{destPlace ?? t('fsm.trace.liveLocation')}</span>
             </div>
           </div>
           <button
             onClick={onClose}
             className="rounded-full p-2 text-body hover:bg-muted/60 hover:text-foreground"
-            aria-label="Close"
+            aria-label={t('common.close')}
           >
             <X className="size-5" />
           </button>
@@ -127,7 +129,7 @@ export default function NavigateModal({ employee, onClose }: NavigateModalProps)
         <div className="relative min-h-[260px] w-full flex-1 border-b border-border">
           {routeEmbedUrl ? (
             <iframe
-              title={`Route to ${employee.employeeName}`}
+              title={t('fsm.routes.navRouteTo').replace('{name}', employee.employeeName)}
               src={routeEmbedUrl}
               loading="lazy"
               allowFullScreen
@@ -138,11 +140,11 @@ export default function NavigateModal({ employee, onClose }: NavigateModalProps)
             <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-2 px-6 text-center text-sm text-body">
               <RouteIcon className="size-6 text-light-text" />
               {ownerError ? (
-                <p>{ownerError}</p>
+                <p>{ownerError} {t('fsm.routes.navEtaUnavailable')}</p>
               ) : (
                 <>
                   <Loader2 className="size-5 animate-spin text-primary" />
-                  <p>Waiting for your location to draw the route…</p>
+                  <p>{t('fsm.routes.navWaitingLocation')}</p>
                 </>
               )}
             </div>
@@ -157,23 +159,23 @@ export default function NavigateModal({ employee, onClose }: NavigateModalProps)
               <span>
                 {ownerPos && !etaDone ? (
                   <span className="flex items-center gap-1.5">
-                    <Loader2 className="size-3.5 animate-spin" /> Calculating travel time…
+                    <Loader2 className="size-3.5 animate-spin" /> {t('fsm.routes.navCalculating')}
                   </span>
                 ) : eta ? (
-                  <span className="text-foreground font-semibold">{formatEta(eta)} to reach</span>
+                  <span className="text-foreground font-semibold">{t('fsm.routes.navEtaToReach').replace('{eta}', formatEta(eta))}</span>
                 ) : (
-                  <span>Travelling to {employee.employeeName}&apos;s live location</span>
+                  <span>{t('fsm.routes.navTravellingTo').replace('{name}', employee.employeeName)}</span>
                 )}
               </span>
             </div>
             {ownerPos ? (
-              <span className="text-[10px] text-success font-medium uppercase tracking-wide">using your location</span>
+              <span className="text-[10px] text-success font-medium uppercase tracking-wide">{t('fsm.routes.navUsingYourLocation')}</span>
             ) : null}
           </div>
 
           {ownerError && (
             <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
-              <AlertCircle className="size-3.5 mt-0.5 shrink-0" /> {ownerError}
+              <AlertCircle className="size-3.5 mt-0.5 shrink-0" /> {ownerError} {t('fsm.routes.navEtaUnavailable')}
             </div>
           )}
 
@@ -184,13 +186,13 @@ export default function NavigateModal({ employee, onClose }: NavigateModalProps)
               rel="noopener noreferrer"
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
             >
-              <Navigation className="size-4" /> Start Turn-by-Turn Navigation
-              <span className="text-[10px] font-normal opacity-80">(opens Google Maps)</span>
+              <Navigation className="size-4" /> {t('fsm.routes.navStartNavigation')}
+              <span className="text-[10px] font-normal opacity-80">{t('fsm.routes.navOpensMaps')}</span>
             </a>
           )}
 
           <p className="text-center text-[11px] text-light-text">
-            Tap the button to get step-by-step driving directions to {employee.employeeName}&apos;s current position.
+            {t('fsm.routes.navTapForDirections').replace('{name}', employee.employeeName)}
           </p>
         </div>
       </div>
