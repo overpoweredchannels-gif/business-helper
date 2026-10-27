@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Brand, Category, Product } from "@/lib/tradeos/types";
 import { parseCsv } from "@/lib/import-wizard/csv";
@@ -54,34 +55,6 @@ interface ImportWizardProps {
 
 type Step = "file" | "mapping" | "preview" | "done";
 
-const STATUS_LABEL: Record<string, string> = {
-  new: "New",
-  update: "Update",
-  skipped: "Skipped",
-  error: "Error",
-  warning: "Import (fix)",
-};
-
-const PREVIEW_FIELD_LABELS: Partial<Record<ProductImportField, string>> = {
-  name: "Name",
-  sku: "SKU",
-  barcode: "Barcode",
-  brand: "Brand",
-  category: "Category",
-  unit_type: "Unit Type",
-  subunit_type: "Subunit Type",
-  units_per_pack: "Units/Pack",
-  default_purchase_price: "Purchase",
-  default_selling_price: "Selling",
-  minimum_stock_level: "Min Stock",
-  reorder_level: "Reorder",
-  initial_stock: "Initial Stock (Main Units)",
-  initial_stock_subunit: "Initial Stock (Pieces/Subunits)",
-  track_batch: "Track Batch",
-  track_expiry: "Track Expiry",
-  overselling_policy: "Oversell",
-};
-
 export default function ImportWizard({
   supabase,
   organizationId,
@@ -92,6 +65,17 @@ export default function ImportWizard({
   createAuditLog,
   onImported,
 }: ImportWizardProps) {
+  const { t } = useRegional();
+  const statusLabel = (s: string) => {
+    const labels: Record<string, string> = {
+      new: t('inventory.import.statusNew'),
+      update: t('inventory.import.statusUpdate'),
+      skipped: t('inventory.import.statusSkipped'),
+      error: t('inventory.import.statusError'),
+      warning: t('inventory.import.statusWarning'),
+    };
+    return labels[s] ?? s;
+  };
   const [step, setStep] = useState<Step>("file");
   const [fileName, setFileName] = useState("");
   const [fileError, setFileError] = useState<string | null>(null);
@@ -145,7 +129,28 @@ export default function ImportWizard({
     return order.filter((field) => used.has(field));
   }, [preview]);
 
-  const previewFieldLabel = (field: ValueField) => PREVIEW_FIELD_LABELS[field] ?? field;
+  const previewFieldLabel = (field: ValueField) => {
+    const labels: Partial<Record<ProductImportField, string>> = {
+      name: t('inventory.import.field.name'),
+      sku: t('inventory.import.field.sku'),
+      barcode: t('inventory.import.field.barcode'),
+      brand: t('inventory.import.field.brand'),
+      category: t('inventory.import.field.category'),
+      unit_type: t('inventory.import.field.unitType'),
+      subunit_type: t('inventory.import.field.subunitType'),
+      units_per_pack: t('inventory.import.field.unitsPerPack'),
+      default_purchase_price: t('inventory.import.field.purchase'),
+      default_selling_price: t('inventory.import.field.selling'),
+      minimum_stock_level: t('inventory.import.field.minStock'),
+      reorder_level: t('inventory.import.field.reorder'),
+      initial_stock: t('inventory.import.field.initialStock'),
+      initial_stock_subunit: t('inventory.import.field.initialStockSubunit'),
+      track_batch: t('inventory.import.field.trackBatch'),
+      track_expiry: t('inventory.import.field.trackExpiry'),
+      overselling_policy: t('inventory.import.field.oversell'),
+    };
+    return labels[field] ?? field;
+  };
 
   const resetFile = () => {
     setStep("file");
@@ -167,7 +172,7 @@ export default function ImportWizard({
 
     const lower = file.name.toLowerCase();
     if (!/\.(csv|xlsx|xls|ods)$/.test(lower)) {
-      setFileError("Unsupported file type. Use .csv, .xlsx, .xls, or .ods files.");
+      setFileError(t('inventory.import.unsupportedType'));
       return;
     }
 
@@ -181,7 +186,7 @@ export default function ImportWizard({
         const workbook = XLSX.read(buffer, { type: "array" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         if (!sheet) {
-          setFileError("The file has no sheets.");
+          setFileError(t('inventory.import.noSheets'));
           return;
         }
         const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
@@ -194,7 +199,7 @@ export default function ImportWizard({
 
       const nonEmptyRows = matrix.filter((row) => row.some((cell) => cell.trim() !== ""));
       if (nonEmptyRows.length < 2) {
-        setFileError("The file needs a header row plus at least one data row.");
+        setFileError(t('inventory.import.needsHeaderRow'));
         return;
       }
 
@@ -215,13 +220,13 @@ export default function ImportWizard({
         setTemplateMessage(`Default template "${defaultTemplate.name}" applied.`);
       } else if (defaultTemplateId === "default") {
         setMapping(guessColumnMapping(headerRow));
-        setTemplateMessage("Default (guessed) template applied.");
+        setTemplateMessage(t('inventory.import.templateApplied'));
       } else {
         setMapping({});
         setTemplateMessage(null);
       }
     } catch (err) {
-      setFileError(err instanceof Error ? `Failed to read file: ${err.message}` : "Failed to read file.");
+      setFileError(err instanceof Error ? t('inventory.import.readFailedWith').replace('{error}', err.message) : t('inventory.import.readFailed'));
     }
   };
 
@@ -248,7 +253,7 @@ export default function ImportWizard({
   const handleLoadTemplate = (templateId: string) => {
     if (templateId === "default") {
       setMapping(guessColumnMapping(headers));
-      setTemplateMessage("Default (guessed) template loaded.");
+      setTemplateMessage(t('inventory.import.templateLoaded'));
       return;
     }
     const template = templates.find((t) => t.id === templateId);
@@ -274,7 +279,7 @@ export default function ImportWizard({
     setTemplates(renameTemplate(templateId, editingTemplateName.trim()));
     setEditingTemplateId(null);
     setEditingTemplateName("");
-    setTemplateMessage("Template renamed.");
+    setTemplateMessage(t('inventory.import.templateRenamed'));
   };
 
   const handleReplaceTemplate = (templateId: string) => {
@@ -288,18 +293,18 @@ export default function ImportWizard({
     setDefaultTemplateIdState(nextDefault);
     setDefaultTemplateId(nextDefault);
     setTemplateMessage(
-      nextDefault === null ? "Default template cleared." : "Default template set."
+      nextDefault === null ? t('inventory.import.defaultCleared') : t('inventory.import.defaultSet')
     );
   };
 
   const handleDeleteTemplate = (template: SavedImportTemplate) => {
-    if (!window.confirm(`Delete template "${template.name}"?`)) return;
+    if (!window.confirm(t('inventory.import.confirmDeleteTemplate').replace('{name}', template.name))) return;
     setTemplates(deleteTemplate(template.id));
     if (defaultTemplateId === template.id) {
       setDefaultTemplateIdState(null);
       setDefaultTemplateId(null);
     }
-    setTemplateMessage("Template deleted.");
+    setTemplateMessage(t('inventory.import.templateDeleted'));
   };
 
   const runImport = async () => {
@@ -340,7 +345,7 @@ export default function ImportWizard({
     for (const row of preview.rows) {
       if (row.errors.length > 0) {
         result.failed += 1;
-        result.failures.push({ rowLabel: `Row ${row.rowIndex}`, message: row.errors.join(" ") });
+        result.failures.push({ rowLabel: t('inventory.import.rowLabel').replace('{index}', String(row.rowIndex)), message: row.errors.join(" ") });
         continue;
       }
       const v = row.values;
@@ -356,7 +361,7 @@ export default function ImportWizard({
       if (skuKey && importedSkuKeys.has(skuKey)) {
         deDuplicated += 1;
         result.failures.push({
-          rowLabel: `Row ${row.rowIndex}`,
+          rowLabel: t('inventory.import.rowLabel').replace('{index}', String(row.rowIndex)),
           message: `Duplicate SKU "${v.sku}" already imported from this file; row skipped.`,
         });
         continue;
@@ -364,7 +369,7 @@ export default function ImportWizard({
       if (importedNameKeys.has(nameKey)) {
         deDuplicated += 1;
         result.failures.push({
-          rowLabel: `Row ${row.rowIndex}`,
+          rowLabel: t('inventory.import.rowLabel').replace('{index}', String(row.rowIndex)),
           message: `Duplicate product name "${v.name}" already imported from this file; row skipped.`,
         });
         continue;
@@ -410,7 +415,7 @@ export default function ImportWizard({
 
       try {
         const initialStock = importedInitialStock(v);
-        if (initialStock > 0 && !actorProfileId) throw new Error("Sign in again before importing initial stock.");
+        if (initialStock > 0 && !actorProfileId) throw new Error(t('inventory.import.signInAgain'));
         if (row.existingProductId) {
           // In update mode, only overwrite fields the file actually provides —
           // empty cells must not wipe existing product data.
@@ -463,7 +468,7 @@ export default function ImportWizard({
             } catch (adjustError) {
               result.failed += 1;
               result.failures.push({
-                rowLabel: `Row ${row.rowIndex}`,
+                rowLabel: t('inventory.import.rowLabel').replace('{index}', String(row.rowIndex)),
                 message: `Product "${v.name}" (${inserted.id}) was created, but opening stock ${initialStock} was NOT confirmed: ${adjustError instanceof Error ? adjustError.message : String(adjustError)}. Check its inventory ledger before retrying; importing an existing product does not add opening stock.`,
               });
             }
@@ -482,16 +487,16 @@ export default function ImportWizard({
                 .join(" ")
             : String(err);
         result.failures.push({
-          rowLabel: `Row ${row.rowIndex}`,
-          message: details || "Failed to import row",
+          rowLabel: t('inventory.import.rowLabel').replace('{index}', String(row.rowIndex)),
+          message: details || t('inventory.import.rowImportFailed'),
         });
       }
     }
 
     if (deDuplicated > 0) {
       result.failures.push({
-        rowLabel: "Import",
-        message: `${deDuplicated} duplicate row(s) were skipped because a product with the same name or SKU was already imported from this file.`,
+        rowLabel: t('inventory.import.summaryRowLabel'),
+        message: t('inventory.import.duplicatesSkipped').replace('{count}', String(deDuplicated)),
       });
     }
 
@@ -525,11 +530,9 @@ export default function ImportWizard({
   return (
     <div className="space-y-6">
       <div className="rounded border border-border bg-card p-4">
-        <h3 className="mb-1 text-lg font-medium text-foreground">Import Products</h3>
+        <h3 className="mb-1 text-lg font-medium text-foreground">{t('inventory.import.title')}</h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          Upload a CSV, Excel (.xlsx / .xls), or OpenDocument (.ods) file to create or update products in bulk.
-          Map your columns, preview and fix validation errors, then import. Initial stock quantities are recorded
-          through the stock ledger as adjustments, so your inventory stays consistent.
+          {t('inventory.import.intro')}
         </p>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -541,7 +544,7 @@ export default function ImportWizard({
             className="block w-full text-sm text-foreground file:mr-3 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:text-white hover:file:bg-primary/90 sm:w-auto"
           />
           {fileName && (
-            <span className="text-sm text-muted-foreground">Selected: {fileName}</span>
+            <span className="text-sm text-muted-foreground">{t('inventory.import.selected').replace('{file}', fileName)}</span>
           )}
         </div>
         {fileError && <p className="mt-3 text-sm text-destructive">{fileError}</p>}
@@ -549,14 +552,14 @@ export default function ImportWizard({
 
       {step === "mapping" && (
         <div className="rounded border border-border bg-card p-4">
-          <h3 className="mb-3 text-lg font-medium text-foreground">Map Columns</h3>
+          <h3 className="mb-3 text-lg font-medium text-foreground">{t('inventory.import.mapColumns')}</h3>
           <p className="mb-4 text-sm text-muted-foreground">
-            {headers.length} columns, {dataRows.length} data rows detected. Tell TradeOS what each column means.
+            {t('inventory.import.mappingHeader').replace('{columns}', String(headers.length)).replace('{rows}', String(dataRows.length))}
           </p>
 
           <div className="mb-4 flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span>Load template</span>
+              <span>{t('inventory.import.loadTemplate')}</span>
               <select
                 defaultValue=""
                 onChange={(e) => {
@@ -564,8 +567,8 @@ export default function ImportWizard({
                 }}
                 className="rounded border border-border px-3 py-2"
               >
-                <option value="">Select a template...</option>
-                <option value="default">Default (guessed)</option>
+                <option value="">{t('inventory.import.selectTemplate')}</option>
+                <option value="default">{t('inventory.import.defaultGuessed')}</option>
                 {templates.map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.name}
@@ -574,13 +577,13 @@ export default function ImportWizard({
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span>Save current mapping as</span>
+              <span>{t('inventory.import.saveMappingAs')}</span>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="Template name"
+                  placeholder={t('inventory.import.templateName')}
                   className="rounded border border-border px-3 py-2"
                 />
                 <button
@@ -595,7 +598,7 @@ export default function ImportWizard({
             </label>
             {templates.length > 0 && (
               <div className="w-full">
-                <span className="text-xs text-muted-foreground">Saved templates</span>
+                <span className="text-xs text-muted-foreground">{t('inventory.import.savedTemplates')}</span>
                 <ul className="mt-1 space-y-1">
                   {templates.map((template) => {
                     const isDefault = defaultTemplateId === template.id;
@@ -611,7 +614,7 @@ export default function ImportWizard({
                               value={editingTemplateName}
                               onChange={(e) => setEditingTemplateName(e.target.value)}
                               autoFocus
-                              placeholder="Template name"
+                              placeholder={t('inventory.import.templateName')}
                               className="min-w-[120px] flex-1 rounded border border-border px-2 py-1 text-sm"
                             />
                             <button
@@ -648,7 +651,7 @@ export default function ImportWizard({
                             <button
                               type="button"
                               onClick={() => handleReplaceTemplate(template.id)}
-                              title="Replace this template's mapping with the current mapping"
+                              title={t('inventory.import.replaceTemplateTitle')}
                               className="rounded border border-border px-2 py-1 text-xs text-foreground/80 hover:bg-muted/30"
                             >
                               Replace
@@ -665,8 +668,8 @@ export default function ImportWizard({
                               onClick={() => handleToggleDefaultTemplate(template.id)}
                               title={
                                 isDefault
-                                  ? "Remove as the default template"
-                                  : "Use as the default template (applied automatically when a file is selected)"
+                                  ? t('inventory.import.removeDefault')
+                                  : t('inventory.import.useDefault')
                               }
                               className={`rounded border px-2 py-1 text-xs ${
                                 isDefault
@@ -674,7 +677,7 @@ export default function ImportWizard({
                                   : "border-border text-muted-foreground hover:bg-muted/30"
                               }`}
                             >
-                              {isDefault ? "Default" : "Set default"}
+                              {isDefault ? t('inventory.import.isDefault') : t('inventory.import.setDefault')}
                             </button>
                             <button
                               type="button"
@@ -698,8 +701,8 @@ export default function ImportWizard({
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-muted-foreground">
-                  <th className="py-2 pr-4 font-medium">File Column</th>
-                  <th className="py-2 font-medium">Import As</th>
+                  <th className="py-2 pr-4 font-medium">{t('inventory.import.fileColumn')}</th>
+                  <th className="py-2 font-medium">{t('inventory.import.importAs')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -727,7 +730,7 @@ export default function ImportWizard({
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span className="font-medium">Duplicate handling</span>
+              <span className="font-medium">{t('inventory.import.duplicateHandling')}</span>
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="radio"
@@ -735,7 +738,7 @@ export default function ImportWizard({
                   onChange={() => setMode("skip")}
                   className="h-4 w-4"
                 />
-                Skip rows that already exist
+                {t('inventory.import.skipExisting')}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -744,7 +747,7 @@ export default function ImportWizard({
                   onChange={() => setMode("update")}
                   className="h-4 w-4"
                 />
-                Update existing products (by SKU, then by name + brand)
+                {t('inventory.import.updateExisting')}
               </label>
               <label className="mt-1 flex items-center gap-2 text-sm">
                 <input
@@ -753,7 +756,7 @@ export default function ImportWizard({
                   onChange={(e) => setCreateMissingBrands(e.target.checked)}
                   className="h-4 w-4 accent-primary"
                 />
-                Auto-create brands that don&apos;t exist yet
+                {t('inventory.import.autoCreateBrands')}
               </label>
               <p className="text-xs text-muted-foreground">
                 Your “Import As” selection determines what each column means, regardless of its file heading.
@@ -767,7 +770,7 @@ export default function ImportWizard({
               disabled={mappedFieldCount === 0 || !headers.some((h) => mapping[h] === "name")}
               className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
-              Preview Import
+              {t('inventory.import.previewImport')}
             </button>
           </div>
         </div>
@@ -777,17 +780,17 @@ export default function ImportWizard({
         <div className="space-y-4">
           <div className="rounded border border-border bg-card p-4">
             <div className="flex flex-wrap items-center gap-4">
-              <h3 className="text-lg font-medium text-foreground">Preview</h3>
-              <span className="rounded bg-success/10 px-2 py-1 text-xs text-success">New: {preview.newCount}</span>
-              <span className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">Update: {preview.updateCount}</span>
-              <span className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">Skipped: {preview.skipCount}</span>
-              <span className="rounded bg-warning/10 px-2 py-1 text-xs text-warning">Warnings: {preview.warningCount}</span>
-              <span className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">Errors: {preview.errorCount}</span>
+              <h3 className="text-lg font-medium text-foreground">{t('inventory.import.previewTitle')}</h3>
+              <span className="rounded bg-success/10 px-2 py-1 text-xs text-success">{t('inventory.import.previewNew').replace('{count}', String(preview.newCount))}</span>
+              <span className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">{t('inventory.import.previewUpdate').replace('{count}', String(preview.updateCount))}</span>
+              <span className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">{t('inventory.import.previewSkipped').replace('{count}', String(preview.skipCount))}</span>
+              <span className="rounded bg-warning/10 px-2 py-1 text-xs text-warning">{t('inventory.import.previewWarnings').replace('{count}', String(preview.warningCount))}</span>
+              <span className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">{t('inventory.import.previewErrors').replace('{count}', String(preview.errorCount))}</span>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
               {preview.errorCount > 0
-                ? "Rows with an error are omitted. Everything else is imported — values that could not be read are saved as \"not available\"."
-                : `Ready to import ${preview.newCount + preview.updateCount} rows. Missing or unreadable values are saved as "not available"; new brands are created automatically.`}
+                ? t('inventory.import.previewNote')
+                : t('inventory.import.readyToImport').replace('{count}', String(preview.newCount + preview.updateCount))}
             </p>
           </div>
 
@@ -811,14 +814,14 @@ export default function ImportWizard({
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Row</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">{t('inventory.import.colRow')}</th>
+                  <th className="px-3 py-2 font-medium">{t('inventory.import.colStatus')}</th>
                   {previewPreviewFields.map((field) => (
                     <th key={field} className="px-3 py-2 font-medium">
                       {previewFieldLabel(field)}
                     </th>
                   ))}
-                  <th className="px-3 py-2 font-medium">Notes</th>
+                  <th className="px-3 py-2 font-medium">{t('inventory.import.colNotes')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -841,7 +844,7 @@ export default function ImportWizard({
                                     : "bg-success/10 text-success"
                           }`}
                         >
-                          {STATUS_LABEL[status]}
+                          {statusLabel(status)}
                         </span>
                       </td>
                       {previewPreviewFields.map((field) => (
@@ -880,8 +883,8 @@ export default function ImportWizard({
               className="rounded bg-success px-4 py-2 text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
               {importing
-                ? "Importing..."
-                : `Import ${preview.newCount + preview.updateCount} rows`}
+                ? t('inventory.import.importing')
+                : t('inventory.import.importRows').replace('{count}', String(preview.newCount + preview.updateCount))}
             </button>
             <button
               type="button"
@@ -889,7 +892,7 @@ export default function ImportWizard({
               disabled={importing}
               className="rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30"
             >
-              Back to Mapping
+              {t('inventory.import.backToMapping')}
             </button>
             <button
               type="button"
@@ -897,7 +900,7 @@ export default function ImportWizard({
               disabled={importing}
               className="rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </div>
@@ -905,12 +908,12 @@ export default function ImportWizard({
 
       {step === "done" && importResult && (
         <div className="rounded border border-border bg-card p-4">
-          <h3 className="mb-3 text-lg font-medium text-foreground">{importResult.failed > 0 ? "Import Needs Attention — Some Rows or Stock Failed" : "Import Complete"}</h3>
+          <h3 className="mb-3 text-lg font-medium text-foreground">{importResult.failed > 0 ? t('inventory.import.needsAttention') : t('inventory.import.importComplete')}</h3>
           <div className="flex flex-wrap items-center gap-4 text-sm">
-            <span className="rounded bg-success/10 px-2 py-1 text-success">Created: {importResult.created}</span>
-            <span className="rounded bg-primary/10 px-2 py-1 text-primary">Updated: {importResult.updated}</span>
-            <span className="rounded bg-muted px-2 py-1 text-muted-foreground">Skipped: {importResult.skipped}</span>
-            <span className="rounded bg-destructive/10 px-2 py-1 text-destructive">Failed: {importResult.failed}</span>
+            <span className="rounded bg-success/10 px-2 py-1 text-success">{t('inventory.import.created').replace('{count}', String(importResult.created))}</span>
+            <span className="rounded bg-primary/10 px-2 py-1 text-primary">{t('inventory.import.updated').replace('{count}', String(importResult.updated))}</span>
+            <span className="rounded bg-muted px-2 py-1 text-muted-foreground">{t('inventory.import.skipped').replace('{count}', String(importResult.skipped))}</span>
+            <span className="rounded bg-destructive/10 px-2 py-1 text-destructive">{t('inventory.import.failed').replace('{count}', String(importResult.failed))}</span>
           </div>
           {importResult.failures.length > 0 && (
             <ul className="mt-4 max-h-48 space-y-1 overflow-y-auto text-sm text-destructive">
@@ -926,7 +929,7 @@ export default function ImportWizard({
             onClick={resetFile}
             className="mt-4 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90"
           >
-            Import Another File
+            {t('inventory.import.importAnother')}
           </button>
         </div>
       )}
