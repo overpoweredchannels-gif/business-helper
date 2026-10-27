@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Loader2, MapPin, ArrowLeft, Navigation, Route as RouteIcon, AlertCircle, ExternalLink } from "lucide-react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface RouteDetail {
   id: string;
@@ -29,6 +30,8 @@ export default function RouteDetailPage() {
   const router = useRouter();
   const routeId = params.id;
 
+  const { t } = useRegional();
+  const freqLabels: Record<string, string> = { daily: t('fsm.routes.freqDaily'), weekly: t('fsm.routes.freqWeekly'), monthly: t('fsm.routes.freqMonthly'), none: t('common.none') };
   const [route, setRoute] = useState<RouteDetail | null>(null);
   const [stops, setStops] = useState<Stop[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,21 +48,21 @@ export default function RouteDetailPage() {
           setRoute(data.route);
           setStops(data.stops ?? []);
         } else {
-          setError(data.error || "Route not found");
+          setError(data.error || t('salesman.routes.detailNotFound'));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Network error");
+        setError(err instanceof Error ? err.message : t('tracking.networkError'));
       } finally {
         setLoading(false);
       }
     })();
-  }, [routeId]);
+  }, [routeId, t]);
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-body">Loading route...</p>
+        <p className="text-sm text-body">{t('salesman.routes.detailLoading')}</p>
       </div>
     );
   }
@@ -67,9 +70,9 @@ export default function RouteDetailPage() {
   if (!route) {
     return (
       <div className="grid gap-4">
-        <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">{error ?? "Route not found"}</div>
+        <div className="rounded-2xl border border-destructive/30 bg-destructive-bg p-4 text-sm text-destructive">{error ?? t('salesman.routes.detailNotFound')}</div>
         <button onClick={() => router.push("/salesman/routes")} className="inline-flex items-center gap-2 text-sm text-primary">
-          <ArrowLeft className="size-4" /> Back to routes
+          <ArrowLeft className="size-4" /> {t('salesman.routes.detailBackToRoutes')}
         </button>
       </div>
     );
@@ -81,7 +84,7 @@ export default function RouteDetailPage() {
     <div className="grid gap-6">
       <div className="flex items-center justify-between">
         <button onClick={() => router.push("/salesman/routes")} className="inline-flex items-center gap-2 text-sm text-primary hover:underline">
-          <ArrowLeft className="size-4" /> Back
+          <ArrowLeft className="size-4" /> {t('common.back')}
         </button>
         <RouteIcon className="size-5 text-primary" />
       </div>
@@ -91,10 +94,10 @@ export default function RouteDetailPage() {
         {route.description && <p className="text-sm text-body mt-1">{route.description}</p>}
         <div className="flex items-center gap-2 mt-3">
           <span className="px-2.5 py-1 rounded-full bg-muted text-xs font-medium text-muted-foreground capitalize">
-            {route.route_frequency ?? "daily"}
+            {freqLabels[route.route_frequency ?? "daily"] ?? route.route_frequency ?? "daily"}
           </span>
-          {route.is_active === false && <span className="px-2.5 py-1 rounded-full bg-destructive/10 text-xs font-medium text-destructive">Inactive</span>}
-          <span className="px-2.5 py-1 rounded-full bg-primary-light text-primary text-xs font-medium">{orderedStops.length} stops</span>
+          {route.is_active === false && <span className="px-2.5 py-1 rounded-full bg-destructive/10 text-xs font-medium text-destructive">{t('salesman.routes.inactive')}</span>}
+          <span className="px-2.5 py-1 rounded-full bg-primary-light text-primary text-xs font-medium">{t('salesman.routes.stops').replace('{count}', String(orderedStops.length))}</span>
         </div>
       </div>
 
@@ -105,11 +108,11 @@ export default function RouteDetailPage() {
       )}
 
       <div className="rounded-2xl border border-border bg-card p-6">
-        <h2 className="font-semibold text-foreground mb-1">Route stops</h2>
-        <p className="text-sm text-body mb-4">Navigate to each stop and start a visit when you arrive.</p>
+        <h2 className="font-semibold text-foreground mb-1">{t('salesman.routes.detailStopsHeading')}</h2>
+        <p className="text-sm text-body mb-4">{t('salesman.routes.detailStopsHelp')}</p>
 
         {orderedStops.length === 0 ? (
-          <p className="text-sm text-body text-center py-6">This route has no stops yet.</p>
+          <p className="text-sm text-body text-center py-6">{t('salesman.routes.detailNoStops')}</p>
         ) : (
           <ol className="relative">
             {orderedStops.map((stop, index) => (
@@ -121,14 +124,14 @@ export default function RouteDetailPage() {
                   {index < orderedStops.length - 1 && <div className="w-px flex-1 bg-border mt-1" />}
                 </div>
                 <div className="pt-1 min-w-0">
-                  <div className="text-sm font-medium text-foreground">{stop.label || `Stop ${stop.stop_order}`}</div>
+                  <div className="text-sm font-medium text-foreground">{stop.label || t('salesman.routes.detailStopLabel').replace('{order}', String(stop.stop_order))}</div>
                   {stop.address && <div className="text-xs text-body">{stop.address}</div>}
 {stop.latitude != null && stop.longitude != null ? (
                       <div className="flex items-center gap-1 text-[11px] text-light-text mt-0.5">
-                        <MapPin className="size-3" /> Has location
+                        <MapPin className="size-3" /> {t('salesman.routes.detailHasLocation')}
                       </div>
                     ) : (
-                      <div className="text-[11px] text-light-text mt-0.5">No GPS coordinates set</div>
+                      <div className="text-[11px] text-light-text mt-0.5">{t('salesman.routes.detailNoGps')}</div>
                     )}
                     {stop.latitude != null && stop.longitude != null && (
                       <a
@@ -137,7 +140,7 @@ export default function RouteDetailPage() {
                         rel="noopener noreferrer"
                         className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
                       >
-                        <ExternalLink className="size-3" /> Open in Google Maps
+                        <ExternalLink className="size-3" /> {t('fsm.tracking.mapOpenInMaps')}
                       </a>
                     )}
                     {stop.customer_id && (
@@ -145,7 +148,7 @@ export default function RouteDetailPage() {
                       onClick={() => router.push(`/salesman/visits?customer=${stop.customer_id}`)}
                       className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
                     >
-                      <Navigation className="size-3" /> Visit customer
+                      <Navigation className="size-3" /> {t('salesman.routes.detailVisitCustomer')}
                     </button>
                   )}
                 </div>
