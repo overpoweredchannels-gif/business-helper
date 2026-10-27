@@ -29,14 +29,14 @@ export default function EurInvoicesPage() {
       if (data.ok) {
         setInvoices(data.invoices);
       } else {
-        setError(data.error || "Failed to load invoices");
+        setError(data.error || t('eur.invoices.loadFailed'));
       }
     } catch (err) {
-      setError("Failed to load invoices");
+      setError(t('eur.invoices.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadInvoices();
