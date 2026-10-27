@@ -9,21 +9,23 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { useCallback, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
+import type { RegionalUiKey } from "@/lib/regional/ui-messages";
 import { MobileNavigation } from "@/components/dashboard/MobileNavigation";
 
-const NAV_ITEMS = [
-  { href: "/manager", label: "Overview", icon: LayoutDashboard },
-  { href: "/manager/drafts", label: "Draft Approvals", icon: ClipboardList },
-  { href: "/manager/collections", label: "Collections", icon: Banknote },
-  { href: "/manager/visits", label: "Visit Monitor", icon: MapPin },
-  { href: "/manager/customers", label: "Customers", icon: Store },
-  { href: "/manager/routes", label: "Route Dashboard", icon: RouteIcon },
-  { href: "/manager/live", label: "Live Tracking", icon: Radar },
-  { href: "/manager/performance", label: "Performance", icon: Trophy },
-  { href: "/manager/leaves", label: "Leave Requests", icon: CalendarClock },
-  { href: "/manager/feedback", label: "Feedback", icon: MessageSquareText },
-  { href: "/manager/targets", label: "Sales Targets", icon: Target },
-  { href: "/manager/team", label: "Team", icon: Users },
+const NAV_ITEMS: { href: string; labelKey: RegionalUiKey; icon: React.ComponentType<{ className?: string }> }[] = [
+  { href: "/manager", labelKey: "owner.nav.overview", icon: LayoutDashboard },
+  { href: "/manager/drafts", labelKey: "owner.nav.drafts", icon: ClipboardList },
+  { href: "/manager/collections", labelKey: "owner.nav.collections", icon: Banknote },
+  { href: "/manager/visits", labelKey: "owner.nav.visits", icon: MapPin },
+  { href: "/manager/customers", labelKey: "owner.nav.customers", icon: Store },
+  { href: "/manager/routes", labelKey: "owner.nav.routes", icon: RouteIcon },
+  { href: "/manager/live", labelKey: "owner.nav.live", icon: Radar },
+  { href: "/manager/performance", labelKey: "owner.nav.performance", icon: Trophy },
+  { href: "/manager/leaves", labelKey: "owner.nav.leaves", icon: CalendarClock },
+  { href: "/manager/feedback", labelKey: "owner.nav.feedback", icon: MessageSquareText },
+  { href: "/manager/targets", labelKey: "owner.nav.targets", icon: Target },
+  { href: "/manager/team", labelKey: "owner.nav.team", icon: Users },
 ];
 
 interface OwnerFsmLayoutProps {
@@ -33,6 +35,7 @@ interface OwnerFsmLayoutProps {
 }
 
 export default function OwnerFsmLayout({ organizationName, userName, children }: OwnerFsmLayoutProps) {
+  const { ui } = useRegional();
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -51,7 +54,7 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
         </div>
         <div className="min-w-0">
           <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
-          <div className="text-[10px] text-light-text truncate">Field Sales Admin</div>
+          <div className="text-[10px] text-light-text truncate">{ui('owner.roleTitle')}</div>
         </div>
       </div>
 
@@ -61,7 +64,7 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
           className="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground/70 hover:text-foreground hover:bg-muted transition-all duration-150"
         >
           <Home className="size-4.5 shrink-0" />
-          <span>Main App</span>
+          <span>{ui('owner.mainApp')}</span>
         </button>
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
@@ -77,7 +80,7 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
               )}
             >
               <Icon className="size-4.5 shrink-0" />
-              <span>{item.label}</span>
+              <span>{ui(item.labelKey)}</span>
             </Link>
           );
         })}
@@ -89,8 +92,8 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
             {(userName ?? "O").slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground truncate">{userName ?? "Owner"}</div>
-            <div className="text-[10px] text-light-text">{organizationName ?? "Business"}</div>
+            <div className="text-sm font-medium text-foreground truncate">{userName ?? ui('owner.userFallback')}</div>
+            <div className="text-[10px] text-light-text">{organizationName ?? ui('owner.orgFallback')}</div>
           </div>
         </div>
         <button
@@ -98,7 +101,7 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
           className="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground/70 hover:text-foreground hover:bg-muted transition-all duration-150"
         >
           <LogOut className="size-4.5 shrink-0" />
-          <span>Log out</span>
+          <span>{ui('owner.logOut')}</span>
         </button>
       </div>
     </aside>
@@ -113,12 +116,12 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
           <div className="size-7 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-brand font-bold text-xs">T</span>
           </div>
-          <span className="font-brand font-bold text-sm text-foreground">Field Admin</span>
+          <span className="font-brand font-bold text-sm text-foreground">{ui('owner.mobileTitle')}</span>
         </div>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
           className="p-2 rounded-lg text-foreground hover:bg-muted transition-colors"
-          aria-label="Open navigation menu"
+          aria-label={ui('owner.openMenu')}
           aria-expanded={mobileOpen}
         >
           {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
