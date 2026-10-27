@@ -4,6 +4,14 @@
 // email. Internally TradeOS uses Supabase Auth with a generated hidden email
 // address (never shown/entered by the employee). The employee is linked to the
 // owner's organization and all access is governed by the owner's permissions.
+//
+// Language note: this module has no React hook, so the WhatsApp template
+// reads its lines straight from the message tables via the caller's
+// `language` instead of t(). The caller (EmployeeManagement) passes its
+// current language, so the invite arrives in the owner's UI language.
+
+import { messages } from "@/lib/regional/messages";
+import type { Language } from "@/lib/regional/settings";
 
 export const INVITE_TTL_HOURS = 72;
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -70,24 +78,26 @@ export function buildWhatsAppInviteMessage(input: {
   designationLabel?: string | null;
   loginId: string;
   inviteLink: string;
+  language: Language;
 }): string {
+  const m = messages[input.language];
   const lines = [
-    `Welcome to ${input.organizationName} (TradeOS)`,
+    m['fsm.invite.welcome'].replace('{org}', input.organizationName),
     "",
-    `Hello ${input.employeeName},`,
-    input.designationLabel ? `You have been added as ${input.designationLabel}.` : "",
+    m['fsm.invite.hello'].replace('{name}', input.employeeName),
+    input.designationLabel ? m['fsm.invite.addedAs'].replace('{designation}', input.designationLabel) : "",
     "",
-    `Profile ID: ${input.loginId}`,
+    m['fsm.invite.profileId'].replace('{id}', input.loginId),
     "",
-    "Click the link below to activate your account and create your password:",
+    m['fsm.invite.activate'],
     "",
     input.inviteLink,
     "",
-    "After activation, log in using:",
-    `Profile ID: ${input.loginId}`,
-    "Password: (the one you create)",
+    m['fsm.invite.loginUsing'],
+    m['fsm.invite.profileId'].replace('{id}', input.loginId),
+    m['fsm.invite.password'],
     "",
-    "You do NOT need an email address.",
+    m['fsm.invite.noEmail'],
   ];
   return lines.filter((line) => line !== null).join("\n");
 }

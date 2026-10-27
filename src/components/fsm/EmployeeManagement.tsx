@@ -4,7 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Customer, Employee, EmployeeDesignation, SalesRoute, SalesRouteStop, Territory } from "@/lib/tradeos/types";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
-import { buildWhatsAppUrl, buildWhatsAppInviteMessage, designationLabel } from "@/lib/identity/staff-invitation";
+import { buildWhatsAppUrl, buildWhatsAppInviteMessage } from "@/lib/identity/staff-invitation";
 import { DEFAULT_STAFF_DESIGNATION } from "@/lib/identity/staff-roles";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
@@ -17,16 +17,6 @@ const DESIGNATIONS: EmployeeDesignation[] = [
   "manager",
   "owner",
 ];
-
-const DESIGNATION_LABELS: Record<string, string> = {
-  salesman: "Salesman",
-  delivery_rider: "Delivery Rider",
-  field_officer: "Field Officer",
-  collection_officer: "Collection Officer",
-  supervisor: "Supervisor",
-  manager: "Manager",
-  owner: "Owner",
-};
 
 const inputStyle: React.CSSProperties = {
   padding: "0.5rem 0.75rem",
@@ -85,7 +75,7 @@ type EmployeeSummary = Employee & {
 };
 
 export default function EmployeeManagement() {
-  const { t } = useRegional();
+  const { t, language } = useRegional();
   const designationDisplay = (d: string) => {
     const labels: Record<string, string> = {
       salesman: t('fsm.employees.designation.salesman'),
@@ -289,9 +279,10 @@ export default function EmployeeManagement() {
       const text = buildWhatsAppInviteMessage({
         organizationName,
         employeeName: emp.full_name,
-        designationLabel: designationLabel(emp.designation, DESIGNATION_LABELS),
+        designationLabel: designationDisplay(emp.designation),
         loginId: result.loginId,
         inviteLink: result.inviteLink,
+        language,
       });
       const waUrl = buildWhatsAppUrl(emp.phone) + `?text=${encodeURIComponent(text)}`;
       window.open(waUrl, "_blank", "noopener,noreferrer");
