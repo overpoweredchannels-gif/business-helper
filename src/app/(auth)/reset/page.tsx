@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { useRouter } from "next/navigation";
 import { Lock, Loader2, CheckCircle2, AlertCircle, ArrowLeft } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
 function ResetForm() {
+  const { t } = useRegional();
   const router = useRouter();
   const [sessionReady, setSessionReady] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -19,38 +21,38 @@ function ResetForm() {
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
       setSessionReady(Boolean(data.session));
-      if (!data.session) setError("This password reset link is missing or has expired. Please request a new one.");
+      if (!data.session) setError(t('auth.reset.linkExpired'));
     });
     return () => { active = false; };
-  }, []);
+  }, [t]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!sessionReady) {
-      setError("This password reset link is missing or has expired. Please request a new one.");
+      setError(t('auth.reset.linkExpired'));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError(t('auth.invite.passwordsMismatch'));
       return;
     }
     if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
-      setError("Password must be at least 8 characters and contain a letter and a number.");
+      setError(t('auth.reset.passwordRule'));
       return;
     }
     setLoading(true);
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
       if (updateError) {
-        setError(updateError.message || "Password reset failed.");
+        setError(updateError.message || t('auth.reset.resetFailed'));
         return;
       }
       await supabase.auth.signOut();
-      setSuccess("Password updated. You can now sign in with your new password.");
+      setSuccess(t('auth.reset.updated'));
       setTimeout(() => router.push("/login"), 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : t('auth.invite.genericError'));
     } finally {
       setLoading(false);
     }
@@ -66,20 +68,20 @@ function ResetForm() {
           <div className="mx-auto mb-4 size-14 rounded-full bg-primary-light flex items-center justify-center">
             <Lock className="size-6 text-primary" />
           </div>
-          <h1 className="font-bold text-2xl text-foreground">Reset your password</h1>
-          <p className="text-sm text-body mt-1.5">Choose a new password for your TradeOS account.</p>
+          <h1 className="font-bold text-2xl text-foreground">{t('auth.reset.title')}</h1>
+          <p className="text-sm text-body mt-1.5">{t('auth.reset.subtitle')}</p>
         </div>
 
         {success ? (
           <div className="flex flex-col items-center gap-3 py-6">
             <CheckCircle2 className="size-12 text-success" />
             <p className="text-sm text-success text-center">{success}</p>
-            <p className="text-xs text-body">Taking you to sign in...</p>
+            <p className="text-xs text-body">{t('auth.reset.redirecting')}</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="grid gap-4">
             <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-foreground">New password</label>
+              <label className="text-sm font-medium text-foreground">{t('team.resetPlaceholder')}</label>
               <div className="relative">
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
                   <Lock className="size-4" />
@@ -87,7 +89,7 @@ function ResetForm() {
                 <input
                   className={inputClass}
                   type="password"
-                  placeholder="At least 8 characters with letters and numbers"
+                  placeholder={t('auth.reset.passwordPlaceholder')}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
@@ -96,7 +98,7 @@ function ResetForm() {
             </div>
 
             <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-foreground">Confirm new password</label>
+              <label className="text-sm font-medium text-foreground">{t('auth.reset.confirmPassword')}</label>
               <div className="relative">
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
                   <Lock className="size-4" />
@@ -104,7 +106,7 @@ function ResetForm() {
                 <input
                   className={inputClass}
                   type="password"
-                  placeholder="Repeat your new password"
+                  placeholder={t('auth.reset.confirmPlaceholder')}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
@@ -125,7 +127,7 @@ function ResetForm() {
               className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground font-medium shadow-sm transition-all hover:shadow-md disabled:opacity-50"
             >
               {loading ? <Loader2 className="size-4 animate-spin" /> : null}
-              {loading ? "Resetting..." : "Reset password"}
+              {loading ? t('team.resetting') : t('auth.reset.resetPassword')}
             </button>
 
             <button
@@ -134,7 +136,7 @@ function ResetForm() {
               className="flex items-center justify-center gap-1.5 text-sm text-body hover:text-foreground transition-colors mx-auto"
             >
               <ArrowLeft className="size-4" />
-              Back to sign in
+              {t('auth.backToSignIn')}
             </button>
           </form>
         )}
