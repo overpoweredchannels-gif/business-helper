@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import LiveMap from "./LiveMap";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import type { CurrentLocationView } from "../../lib/location/types";
 
 export default function LocationDashboard() {
+  const { t } = useRegional();
   const [employees, setEmployees] = useState<CurrentLocationView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,15 +25,15 @@ export default function LocationDashboard() {
         setEmployees(data.employees || []);
         setError(null);
       } else {
-        setError(data.error || "Failed to load locations");
+        setError(data.error || t('fsm.tracking.loadLocationsFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
       setLastRefresh(new Date().toLocaleTimeString());
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchLocations();
@@ -54,36 +56,36 @@ export default function LocationDashboard() {
   return (
     <div style={{ padding: "1.5rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "0.75rem" }}>
-        <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>Live Workforce Tracking</h2>
+        <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>{t('fsm.tracking.title')}</h2>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>
-            {employees.length} employees &middot; {onDuty.length} on duty &middot; {live.length} live &middot; {stale.length} stale
+            {t('fsm.tracking.employeesCount').replace('{count}', String(employees.length))} &middot; {onDuty.length} {t('fsm.tracking.onDutyLower')} &middot; {live.length} {t('fsm.tracking.liveLower')} &middot; {stale.length} {t('fsm.tracking.staleLower')}
           </span>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
             style={selectStyle}
           >
-            <option value="all">All Employees</option>
-            <option value="on_duty">On Duty</option>
-            <option value="off_duty">Off Duty</option>
-            <option value="with_location">With Location</option>
-            <option value="moving">Moving</option>
-            <option value="live">Live Now</option>
-            <option value="stale">Stale / No Update</option>
+            <option value="all">{t('fsm.tracking.filterAll')}</option>
+            <option value="on_duty">{t('fsm.tracking.filterOnDuty')}</option>
+            <option value="off_duty">{t('fsm.tracking.filterOffDuty')}</option>
+            <option value="with_location">{t('fsm.tracking.filterWithLocation')}</option>
+            <option value="moving">{t('fsm.tracking.filterMoving')}</option>
+            <option value="live">{t('fsm.tracking.filterLiveNow')}</option>
+            <option value="stale">{t('fsm.tracking.filterStale')}</option>
           </select>
           <select
             value={pollInterval}
             onChange={(e) => setPollInterval(Number(e.target.value))}
             style={selectStyle}
           >
-            <option value={5000}>5s refresh</option>
-            <option value={15000}>15s refresh</option>
-            <option value={30000}>30s refresh</option>
-            <option value={60000}>1m refresh</option>
+            <option value={5000}>{t('fsm.tracking.refresh5s')}</option>
+            <option value={15000}>{t('fsm.tracking.refresh15s')}</option>
+            <option value={30000}>{t('fsm.tracking.refresh30s')}</option>
+            <option value={60000}>{t('fsm.tracking.refresh1m')}</option>
           </select>
           <button onClick={fetchLocations} style={buttonStyle}>
-            Refresh Now
+            {t('fsm.tracking.refreshNow')}
           </button>
         </div>
       </div>
@@ -105,13 +107,13 @@ export default function LocationDashboard() {
 
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "auto", maxHeight: "600px" }}>
           <div style={{ padding: "0.75rem", borderBottom: "1px solid #e5e7eb", fontWeight: 600, fontSize: "0.875rem", background: "#f9fafb" }}>
-            Employee List
+            {t('fsm.tracking.employeeList')}
             {lastRefresh && <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: "0.5rem" }}>({lastRefresh})</span>}
           </div>
           {loading ? (
-            <div style={{ padding: "2rem", textAlign: "center", color: "#9ca3af" }}>Loading...</div>
+            <div style={{ padding: "2rem", textAlign: "center", color: "#9ca3af" }}>{t('common.loading')}</div>
           ) : filtered.length === 0 ? (
-            <div style={{ padding: "2rem", textAlign: "center", color: "#9ca3af" }}>No employees match the current filter.</div>
+            <div style={{ padding: "2rem", textAlign: "center", color: "#9ca3af" }}>{t('fsm.tracking.noFilterMatch')}</div>
           ) : (
             filtered.map((emp) => (
               <div
@@ -128,7 +130,7 @@ export default function LocationDashboard() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontWeight: 500 }}>{emp.employeeName}</div>
-                    <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>{emp.role || "No role"}</div>
+                    <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>{emp.role || t('fsm.tracking.noRole')}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <span style={{
@@ -146,17 +148,17 @@ export default function LocationDashboard() {
                   <div style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.25rem" }}>
                     {emp.latitude.toFixed(4)}, {emp.longitude.toFixed(4)}
                     {emp.speed && emp.speed > 1 ? ` - ${Math.round(emp.speed * 3.6)} km/h` : ""}
-                    {emp.lastUpdateAge < 60000 ? " (now)" : ` (${Math.round(emp.lastUpdateAge / 60000)}m ago)`}
+                    {emp.lastUpdateAge < 60000 ? ` (${t('fsm.tracking.now')})` : ` (${t('fsm.tracking.minutesAgo').replace('{minutes}', String(Math.round(emp.lastUpdateAge / 60000)))})`}
                   </div>
                 )}
                 {!emp.hasLocation && emp.isOnDuty && (
                   <div style={{ fontSize: "0.75rem", color: "#f59e0b", marginTop: "0.25rem" }}>
-                    {emp.trackingError || "No location data received for this duty session."}
+                    {emp.trackingError || t('fsm.tracking.noLocationForSession')}
                   </div>
                 )}
                 {emp.scheduledEndAt && emp.isOnDuty && (
                   <div style={{ fontSize: "0.7rem", color: "#6b7280", marginTop: "0.25rem" }}>
-                    Scheduled end: {new Date(emp.scheduledEndAt).toLocaleTimeString()}
+                    {t('fsm.tracking.scheduledEnd').replace('{time}', new Date(emp.scheduledEndAt).toLocaleTimeString())}
                   </div>
                 )}
               </div>
@@ -173,7 +175,7 @@ export default function LocationDashboard() {
             rel="noopener noreferrer"
             style={{ color: "#2563eb", textDecoration: "underline", fontSize: "0.875rem" }}
           >
-            Open Google Maps Navigation to {selectedEmployee.employeeName}
+            {t('fsm.tracking.mapsNavigation').replace('{name}', selectedEmployee.employeeName)}
           </a>
         </div>
       )}
