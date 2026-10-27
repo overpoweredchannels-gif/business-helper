@@ -5,6 +5,7 @@ import { SalesRoute, SalesRouteStop, Customer, Employee, Territory } from "@/lib
 import { buildMultiStopNavigationUrl, getMapProvider } from "@/lib/maps/map-provider";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import RouteMapBuilder, { RouteMapStop } from "@/components/fsm/RouteMapBuilder";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 const inputStyle: React.CSSProperties = {
   padding: "0.5rem 0.75rem",
@@ -48,6 +49,7 @@ const emptyStopDraft: StopDraft = {
 };
 
 export default function RoutesManager() {
+  const { t } = useRegional();
   const [routes, setRoutes] = useState<SalesRoute[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
@@ -89,13 +91,13 @@ export default function RoutesManager() {
       const customerData = await customerRes.json().catch(() => ({}));
       if (routeRes.status === 403) {
         setIsOwner(false);
-        setMessage({ type: "error", text: routeData.error || "Access denied" });
+        setMessage({ type: "error", text: routeData.error || t('fsm.routes.accessDenied') });
         return;
       }
       if (Array.isArray(routeData.routes)) {
         setRoutes(routeData.routes);
       } else {
-        setMessage({ type: "error", text: routeData.error || "Failed to load routes" });
+        setMessage({ type: "error", text: routeData.error || t('fsm.routes.loadRoutesFailed') });
       }
       if (Array.isArray(territoryData.territories)) {
         setTerritories(territoryData.territories);
@@ -112,7 +114,7 @@ export default function RoutesManager() {
         setCustomers(customerData.customers);
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     } finally {
       setLoading(false);
     }
@@ -124,11 +126,11 @@ export default function RoutesManager() {
 
   const create = async () => {
     if (!name.trim()) {
-      setMessage({ type: "error", text: "Route name is required." });
+      setMessage({ type: "error", text: t('fsm.routes.routeNameRequired') });
       return;
     }
     if (!territoryId) {
-      setMessage({ type: "error", text: "Select a territory before creating a route." });
+      setMessage({ type: "error", text: t('fsm.routes.selectTerritoryFirst') });
       return;
     }
     try {
@@ -152,7 +154,7 @@ export default function RoutesManager() {
           body: JSON.stringify({ action: "sync_customers", customer_ids: selectedRouteCustomerIds }),
         });
         const customerSyncData = await customerSync.json();
-        if (!customerSync.ok) throw new Error(customerSyncData.error ?? "Failed to save route customers");
+        if (!customerSync.ok) throw new Error(customerSyncData.error ?? t('fsm.routes.saveCustomersFailed'));
         // Batch-persist any stops planned on the map.
         const plannedStopIds: string[] = [];
         if (routeStops.length > 0) {
@@ -186,17 +188,17 @@ export default function RoutesManager() {
           if (!reorderResponse.ok || !Array.isArray(reorderData.stops)) throw new Error(reorderData.error ?? "Failed to preserve the planned stop order");
         }
         const taggedCount = routeStops.filter((stop) => stop.customerId).length;
-        setMessage({ type: "ok", text: `Route "${name.trim()}" created with ${selectedRouteCustomerIds.length} customer(s), including ${taggedCount} mapped customer stop(s).` });
+        setMessage({ type: "ok", text: t('fsm.routes.routeCreated').replace('{name}', name.trim()).replace('{customers}', String(selectedRouteCustomerIds.length)).replace('{mapped}', String(taggedCount)) });
         setName("");
         setTerritoryId("");
         setRouteStops([]);
         setSelectedRouteCustomerIds([]);
         load();
       } else {
-        setMessage({ type: "error", text: data.error || "Create failed" });
+        setMessage({ type: "error", text: data.error || t('fsm.routes.createFailed') });
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     }
   };
 
@@ -251,10 +253,10 @@ export default function RoutesManager() {
         setStops(data.stops);
         setSelectedRouteCustomerIds(data.stops.filter((stop: SalesRouteStop) => stop.customer_id).map((stop: SalesRouteStop) => String(stop.customer_id)));
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to load stops" });
+        setMessage({ type: "error", text: data.error || t('fsm.routes.loadStopsFailed') });
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     } finally {
       setLoadingStops(false);
     }
@@ -269,11 +271,11 @@ export default function RoutesManager() {
         body: JSON.stringify({ action: "sync_customers", customer_ids: selectedRouteCustomerIds }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Failed to save route customers");
+      if (!response.ok) throw new Error(result.error ?? t('fsm.routes.saveCustomersFailed'));
       if (Array.isArray(result.stops)) setStops(result.stops);
-      setMessage({ type: "ok", text: `${selectedRouteCustomerIds.length} customer(s) saved on ${route.name}.` });
+      setMessage({ type: "ok", text: t('fsm.routes.customersSaved').replace('{customers}', String(selectedRouteCustomerIds.length)).replace('{route}', route.name) });
     } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "Failed to save route customers" });
+      setMessage({ type: "error", text: error instanceof Error ? error.message : t('fsm.routes.saveCustomersFailed') });
     } finally {
       setSavingRouteCustomers(false);
     }
@@ -299,11 +301,11 @@ export default function RoutesManager() {
     const lng = parseFloat(draft.longitude);
     const hasCoords = draft.latitude.trim() !== "" || draft.longitude.trim() !== "";
     if (hasCoords && (!Number.isFinite(lat) || !Number.isFinite(lng))) {
-      setMessage({ type: "error", text: "Latitude and longitude must be valid numbers." });
+      setMessage({ type: "error", text: t('fsm.routes.latLngValid') });
       return;
     }
     if (!draft.customerId && !draft.label.trim()) {
-      setMessage({ type: "error", text: "Choose a customer or enter a stop label." });
+      setMessage({ type: "error", text: t('fsm.routes.chooseCustomerOrLabel') });
       return;
     }
     try {
@@ -321,19 +323,19 @@ export default function RoutesManager() {
       });
       const data = await res.json();
       if (data.stop) {
-        setMessage({ type: "ok", text: "Stop added." });
+        setMessage({ type: "ok", text: t('fsm.routes.stopAdded') });
         setDraft({ ...emptyStopDraft });
         await loadStops(routeId);
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to add stop" });
+        setMessage({ type: "error", text: data.error || t('fsm.routes.addStopFailed') });
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     }
   };
 
   const removeStop = async (routeId: string, stopId: string) => {
-    if (!window.confirm("Remove this stop from the route?")) return;
+    if (!window.confirm(t('fsm.routes.confirmRemoveStop'))) return;
     try {
       const res = await authorizedFetch(`/api/routes/${routeId}`, {
         method: "DELETE",
@@ -342,13 +344,13 @@ export default function RoutesManager() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage({ type: "ok", text: "Stop removed." });
+        setMessage({ type: "ok", text: t('fsm.routes.stopRemoved') });
         if (Array.isArray(data.stops)) setStops(data.stops);
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to remove stop" });
+        setMessage({ type: "error", text: data.error || t('fsm.routes.removeStopFailed') });
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     }
   };
 
@@ -371,13 +373,13 @@ export default function RoutesManager() {
       const data = await res.json();
       if (Array.isArray(data.stops)) {
         setStops(data.stops);
-        setMessage({ type: "ok", text: "Stop order updated." });
+        setMessage({ type: "ok", text: t('fsm.routes.stopOrderUpdated') });
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to reorder stops" });
+        setMessage({ type: "error", text: data.error || t('fsm.routes.reorderStopsFailed') });
         await loadStops(routeId);
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
       await loadStops(routeId);
     }
   };
@@ -388,7 +390,7 @@ export default function RoutesManager() {
     try {
       const targetEmployeeId = employeeId || previousEmployeeId;
       if (!targetEmployeeId) {
-        setMessage({ type: "ok", text: "Route is already unassigned." });
+        setMessage({ type: "ok", text: t('fsm.routes.routeAlreadyUnassigned') });
         return;
       }
       const scope = employeeId ? (assignmentScopeByRoute[routeId] ?? "route_only") : "route_only";
@@ -404,14 +406,14 @@ export default function RoutesManager() {
       });
       const data = await res.json();
       if (data.ok) {
-        setMessage({ type: "ok", text: employeeId ? `Employee and ${data.customer_ids?.length ?? 0} customer(s) assigned.` : "Employee removed from route." });
+        setMessage({ type: "ok", text: employeeId ? t('fsm.routes.employeeAssigned').replace('{count}', String(data.customer_ids?.length ?? 0)) : t('fsm.routes.employeeRemoved') });
         setRoutes((current) => current.map((item) => item.id === routeId ? { ...item, assigned_salesman_id: employeeId || null } : item));
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to assign salesman" });
+        setMessage({ type: "error", text: data.error || t('fsm.routes.assignSalesmanFailed') });
         setSalesmanByRoute((current) => ({ ...current, [routeId]: previousEmployeeId }));
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
       setSalesmanByRoute((current) => ({ ...current, [routeId]: previousEmployeeId }));
     }
   };
@@ -450,7 +452,7 @@ export default function RoutesManager() {
     if (coords.length === 0) {
       setMessage({
         type: "error",
-        text: "This route has no stops with coordinates. Add latitude/longitude to stops to navigate to exact locations.",
+        text: t('fsm.routes.routeNoCoords'),
       });
       return;
     }
@@ -466,7 +468,7 @@ export default function RoutesManager() {
     const provider = getMapProvider();
     const first = coords[0];
     const label =
-      first.label ?? customerLabel(first.customer_id) ?? routes.find((r) => r.id === mapRouteId)?.name ?? "Route";
+      first.label ?? customerLabel(first.customer_id) ?? routes.find((r) => r.id === mapRouteId)?.name ?? t('fsm.routes.routeFallback');
     return provider.buildEmbedMapUrl(
       { latitude: first.latitude!, longitude: first.longitude! },
       label,
@@ -490,7 +492,7 @@ export default function RoutesManager() {
 
   const navigateStop = (stop: SalesRouteStop) => {
     if (stop.latitude == null || stop.longitude == null) {
-      setMessage({ type: "error", text: "This stop has no coordinates." });
+      setMessage({ type: "error", text: t('fsm.routes.stopNoCoords') });
       return;
     }
     const provider = getMapProvider();
@@ -520,13 +522,13 @@ export default function RoutesManager() {
         }}
       >
         <div>
-          <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0" }}>Sales Routes</h2>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0" }}>{t('fsm.routes.title')}</h2>
           <p style={{ fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0 0" }}>
-            Define delivery and visit routes with exact stop coordinates. Navigation opens in Google Maps.
+            {t('fsm.routes.subtitle')}
           </p>
         </div>
         <button style={smallButtonStyle} onClick={load}>
-          Refresh
+          {t('fsm.routes.refresh')}
         </button>
       </div>
 
@@ -556,13 +558,13 @@ export default function RoutesManager() {
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Route name *</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.routes.routeName')}</label>
             <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gulberg Morning" />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Territory *</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.routes.territory')}</label>
             <select style={inputStyle} value={territoryId} onChange={(e) => { setTerritoryId(e.target.value); setSelectedRouteCustomerIds([]); setRouteStops([]); }}>
-              <option value="">Select territory</option>
+              <option value="">{t('fsm.routes.selectTerritory')}</option>
               {territories.map((territory) => (
                 <option key={territory.id} value={territory.id}>
                   {territory.name}
@@ -571,23 +573,23 @@ export default function RoutesManager() {
             </select>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Frequency</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.routes.frequency')}</label>
             <select style={inputStyle} value={frequency} onChange={(e) => setFrequency(e.target.value as "daily" | "weekly" | "monthly")}>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
+              <option value="daily">{t('fsm.routes.freqDaily')}</option>
+              <option value="weekly">{t('fsm.routes.freqWeekly')}</option>
+              <option value="monthly">{t('fsm.routes.freqMonthly')}</option>
             </select>
           </div>
           <button style={buttonStyle} onClick={create}>
-            Add Route
+            {t('fsm.routes.addRoute')}
           </button>
 
           {territoryId && (
             <div style={{ gridColumn: "1 / -1" }}>
               <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.375rem", padding: "0.75rem", marginBottom: "0.75rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-                  <div><strong style={{ fontSize: "0.82rem" }}>Route customers</strong><div style={{ fontSize: "0.7rem", color: "#6b7280" }}>Only customers saved in this territory are available.</div></div>
-                  <input style={{ ...inputStyle, minWidth: "220px" }} value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Search territory customers..." />
+                  <div><strong style={{ fontSize: "0.82rem" }}>{t('fsm.routes.routeCustomers')}</strong><div style={{ fontSize: "0.7rem", color: "#6b7280" }}>{t('fsm.routes.onlyTerritoryCustomers')}</div></div>
+                  <input style={{ ...inputStyle, minWidth: "220px" }} value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder={t('fsm.routes.searchTerritoryCustomers')} />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
                   {selectedTerritoryCustomers.filter((customer) => !customerSearch.trim() || [customer.customer_name, customer.shop_name, customer.area].some((value) => String(value ?? "").toLowerCase().includes(customerSearch.trim().toLowerCase()))).map((customer) => (
@@ -602,8 +604,8 @@ export default function RoutesManager() {
                 </div>
               </div>
               <div style={{ fontSize: "0.75rem", color: "#374151", marginBottom: "0.25rem" }}>
-                Build the route on the map below — search each stop (shops, streets, areas), then Add stop #1/#2/#3.
-                {territoryArea ? " The green area is your selected territory." : " Note: this territory has no map area saved yet."}
+                {t('fsm.routes.mapHint')}
+                {territoryArea ? t('fsm.routes.territoryAreaNote') : t('fsm.routes.noMapAreaNote')}
               </div>
               <RouteMapBuilder
                 territoryArea={territoryArea}
@@ -615,7 +617,7 @@ export default function RoutesManager() {
               />
               {routeStops.length > 0 && (
                 <p style={{ fontSize: "0.8rem", color: "#166534", marginTop: "0.5rem" }}>
-                  {routeStops.length} stop(s) planned. They will be saved when you press Add Route.
+                  {t('fsm.routes.stopsPlanned').replace('{count}', String(routeStops.length)).replace('{addRoute}', t('fsm.routes.addRoute'))}
                 </p>
               )}
             </div>
@@ -624,9 +626,9 @@ export default function RoutesManager() {
       )}
 
       {loading && routes.length === 0 ? (
-        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Loading routes…</p>
+        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('fsm.routes.loadingRoutes')}</p>
       ) : routes.length === 0 ? (
-        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>No routes yet.</p>
+        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('fsm.routes.noRoutes')}</p>
       ) : (
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
           {routes.map((route, index) => (
@@ -645,17 +647,17 @@ export default function RoutesManager() {
                 <div>
                   <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{route.name}</div>
                   <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-                    {route.route_frequency} route
+                    {route.route_frequency === 'daily' ? t('fsm.routes.freqDailyRoute') : route.route_frequency === 'weekly' ? t('fsm.routes.freqWeeklyRoute') : route.route_frequency === 'monthly' ? t('fsm.routes.freqMonthlyRoute') : `${route.route_frequency} route`}
                     {route.territory_id ? ` · Territory: ${territories.find((t) => t.id === route.territory_id)?.name ?? "assigned"}` : ""}
                     {salesmanName(route.assigned_salesman_id) ? ` · Assigned: ${salesmanName(route.assigned_salesman_id)}` : ""}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                   <button style={smallButtonStyle} onClick={() => navigateRoute(route.id)}>
-                    Navigate Route
+                    {t('fsm.routes.navigateRoute')}
                   </button>
                   <button style={smallButtonStyle} onClick={() => toggleRoute(route.id)}>
-                    {expandedRouteId === route.id ? "Close Stops" : "Manage Stops"}
+                    {expandedRouteId === route.id ? t('fsm.routes.closeStops') : t('fsm.routes.manageStops')}
                   </button>
                   <span
                     style={{
@@ -666,7 +668,7 @@ export default function RoutesManager() {
                       padding: "0.125rem 0.5rem",
                     }}
                   >
-                    {route.is_active ? "Active" : "Inactive"}
+                    {route.is_active ? t('products.active') : t('products.inactive')}
                   </span>
                 </div>
               </div>
@@ -674,7 +676,7 @@ export default function RoutesManager() {
               {mapRouteId === route.id && (
                 <div style={{ borderTop: "1px solid #e5e7eb", padding: "1rem", background: "#fafafa" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
-                    <h4 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0 }}>Route Map</h4>
+                    <h4 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0 }}>{t('fsm.routes.routeMap')}</h4>
                     {buildRouteDirectionsUrl() && (
                       <button
                         style={{ ...smallButtonStyle, marginLeft: "auto" }}
@@ -689,7 +691,7 @@ export default function RoutesManager() {
                   </div>
                   {routeEmbedUrl() ? (
                     <iframe
-                      title={`Route map for ${route.name}`}
+                      title={t('fsm.routes.routeMapFor').replace('{name}', route.name)}
                       src={routeEmbedUrl()}
                       loading="lazy"
                       allowFullScreen
@@ -697,7 +699,7 @@ export default function RoutesManager() {
                       style={{ width: "100%", minHeight: "320px", border: "0", borderRadius: "0.375rem" }}
                     />
                   ) : (
-                    <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>No coordinates available for this route.</p>
+                    <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('fsm.routes.noCoordsForRoute')}</p>
                   )}
                 </div>
               )}
@@ -705,8 +707,8 @@ export default function RoutesManager() {
               {expandedRouteId === route.id && (
                 <div style={{ borderTop: "1px solid #e5e7eb", padding: "1rem", background: "#fafafa" }}>
                   <div style={{ border: "1px solid #e5e7eb", background: "#fff", borderRadius: "0.375rem", padding: "0.75rem", marginBottom: "0.75rem" }}>
-                    <div style={{ fontSize: "0.82rem", fontWeight: 600 }}>Customers on this route</div>
-                    <div style={{ fontSize: "0.7rem", color: "#6b7280", marginBottom: "0.5rem" }}>Only customers assigned to {territories.find((territory) => territory.id === route.territory_id)?.name ?? "this territory"} can be selected.</div>
+                    <div style={{ fontSize: "0.82rem", fontWeight: 600 }}>{t('fsm.routes.customersOnRoute')}</div>
+                    <div style={{ fontSize: "0.7rem", color: "#6b7280", marginBottom: "0.5rem" }}>{t('fsm.routes.onlyAssignedCustomers').replace('{territory}', territories.find((territory) => territory.id === route.territory_id)?.name ?? t('fsm.routes.thisTerritory'))}</div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
                       {customers.filter((customer) => customer.is_active !== false && customer.assigned_territory_id === route.territory_id).map((customer) => (
                         <label key={customer.id} style={{ display: "flex", gap: "0.45rem", padding: "0.45rem", border: "1px solid #e5e7eb", borderRadius: "0.35rem", fontSize: "0.76rem" }}>
@@ -715,22 +717,22 @@ export default function RoutesManager() {
                         </label>
                       ))}
                     </div>
-                    <button style={{ ...smallButtonStyle, marginTop: "0.6rem" }} disabled={savingRouteCustomers} onClick={() => saveRouteCustomers(route)}>{savingRouteCustomers ? "Saving..." : `Save ${selectedRouteCustomerIds.length} Route Customer(s)`}</button>
+                    <button style={{ ...smallButtonStyle, marginTop: "0.6rem" }} disabled={savingRouteCustomers} onClick={() => saveRouteCustomers(route)}>{savingRouteCustomers ? t('fsm.routes.saving') : t('fsm.routes.saveRouteCustomers').replace('{count}', String(selectedRouteCustomerIds.length))}</button>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
-                    <label style={{ fontSize: "0.75rem", color: "#374151" }}>Customer assignment</label>
+                    <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.routes.customerAssignment')}</label>
                     <select style={{ ...inputStyle, padding: "0.375rem 0.75rem", fontSize: "0.75rem" }} value={assignmentScopeByRoute[route.id] ?? "route_only"} onChange={(event) => setAssignmentScopeByRoute((current) => ({ ...current, [route.id]: event.target.value as "route_only" | "route_all" | "selected" }))}>
-                      <option value="route_only">Assign route only</option>
-                      <option value="route_all">Assign all route customers</option>
-                      <option value="selected">Assign selected route customers</option>
+                      <option value="route_only">{t('fsm.routes.assignRouteOnly')}</option>
+                      <option value="route_all">{t('fsm.routes.assignAllCustomers')}</option>
+                      <option value="selected">{t('fsm.routes.assignSelectedCustomers')}</option>
                     </select>
-                    <label style={{ fontSize: "0.75rem", color: "#374151" }}>Assigned employee</label>
+                    <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.routes.assignedEmployee')}</label>
                     <select
                       style={{ ...inputStyle, padding: "0.375rem 0.75rem", fontSize: "0.75rem" }}
                       value={salesmanByRoute[route.id] ?? ""}
                       onChange={(e) => setSalesmanByRoute((current) => ({ ...current, [route.id]: e.target.value }))}
                     >
-                      <option value="">Unassigned</option>
+                      <option value="">{t('fsm.routes.unassigned')}</option>
                       {salesmen
                         .filter((s) => ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor"].includes(s.designation))
                         .map((s) => (
@@ -739,13 +741,13 @@ export default function RoutesManager() {
                       </option>
                     ))}
                     </select>
-                    <button style={smallButtonStyle} onClick={() => assignSalesman(route, salesmanByRoute[route.id] ?? "")}>Save Assignment</button>
+                    <button style={smallButtonStyle} onClick={() => assignSalesman(route, salesmanByRoute[route.id] ?? "")}>{t('fsm.routes.saveAssignment')}</button>
                   </div>
 
-                  <h4 style={{ fontSize: "0.875rem", fontWeight: 600, margin: "0 0 0.5rem" }}>Stops</h4>
+                  <h4 style={{ fontSize: "0.875rem", fontWeight: 600, margin: "0 0 0.5rem" }}>{t('fsm.routes.stops')}</h4>
 
                   {loadingStops ? (
-                    <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Loading stops...</p>
+                    <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('fsm.routes.loadingStops')}</p>
                   ) : stops.length === 0 ? (
                     <p style={{ fontSize: "0.875rem", color: "#6b7280", marginBottom: "0.75rem" }}>
                       No stops yet. Add a customer stop or a custom location with coordinates below.
@@ -781,7 +783,7 @@ export default function RoutesManager() {
                             </div>
                             <div style={{ display: "flex", gap: "0.375rem", alignItems: "center" }}>
                               <button style={smallButtonStyle} onClick={() => navigateStop(stop)} disabled={!hasCoords}>
-                                Navigate
+                                {t('fsm.routes.navigate')}
                               </button>
                               <button style={smallButtonStyle} onClick={() => moveStop(route.id, stopIndex, -1)} disabled={stopIndex === 0}>
                                 ↑
@@ -793,7 +795,7 @@ export default function RoutesManager() {
                                 style={{ ...smallButtonStyle, background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca" }}
                                 onClick={() => removeStop(route.id, stop.id)}
                               >
-                                Remove
+                                {t('fsm.routes.remove')}
                               </button>
                             </div>
                           </div>
@@ -814,13 +816,13 @@ export default function RoutesManager() {
                     }}
                   >
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                      <label style={{ fontSize: "0.7rem", color: "#374151" }}>Customer (optional)</label>
+                      <label style={{ fontSize: "0.7rem", color: "#374151" }}>{t('fsm.routes.customerOptional')}</label>
                       <select
                         style={{ ...inputStyle, padding: "0.375rem 0.75rem", fontSize: "0.8rem" }}
                         value={draft.customerId}
                         onChange={(e) => setDraftField("customerId", e.target.value)}
                       >
-                        <option value="">Custom stop</option>
+                        <option value="">{t('fsm.routes.customStop')}</option>
                         {customers.filter((customer) => customer.assigned_territory_id === route.territory_id).map((customer) => (
                           <option key={customer.id} value={customer.id}>
                             {customer.customer_name}
@@ -830,7 +832,7 @@ export default function RoutesManager() {
                       </select>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                      <label style={{ fontSize: "0.7rem", color: "#374151" }}>Stop label *</label>
+                      <label style={{ fontSize: "0.7rem", color: "#374151" }}>{t('fsm.routes.stopLabel')}</label>
                       <input
                         style={{ ...inputStyle, padding: "0.375rem 0.75rem", fontSize: "0.8rem" }}
                         value={draft.label}
@@ -839,16 +841,16 @@ export default function RoutesManager() {
                       />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                      <label style={{ fontSize: "0.7rem", color: "#374151" }}>Address</label>
+                      <label style={{ fontSize: "0.7rem", color: "#374151" }}>{t('fsm.routes.address')}</label>
                       <input
                         style={{ ...inputStyle, padding: "0.375rem 0.75rem", fontSize: "0.8rem" }}
                         value={draft.address}
                         onChange={(e) => setDraftField("address", e.target.value)}
-                        placeholder="Shop address"
+                        placeholder={t('fsm.routes.shopAddress')}
                       />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                      <label style={{ fontSize: "0.7rem", color: "#374151" }}>Latitude</label>
+                      <label style={{ fontSize: "0.7rem", color: "#374151" }}>{t('fsm.routes.latitude')}</label>
                       <input
                         style={{ ...inputStyle, padding: "0.375rem 0.75rem", fontSize: "0.8rem" }}
                         value={draft.latitude}
@@ -857,7 +859,7 @@ export default function RoutesManager() {
                       />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                      <label style={{ fontSize: "0.7rem", color: "#374151" }}>Longitude</label>
+                      <label style={{ fontSize: "0.7rem", color: "#374151" }}>{t('fsm.routes.longitude')}</label>
                       <input
                         style={{ ...inputStyle, padding: "0.375rem 0.75rem", fontSize: "0.8rem" }}
                         value={draft.longitude}
@@ -866,7 +868,7 @@ export default function RoutesManager() {
                       />
                     </div>
                     <button style={{ ...buttonStyle, padding: "0.375rem 0.75rem", fontSize: "0.8rem" }} onClick={() => addStop(route.id)}>
-                      Add Stop
+                      {t('fsm.routes.addStop')}
                     </button>
                   </div>
                 </div>
