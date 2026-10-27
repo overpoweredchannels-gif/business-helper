@@ -4,24 +4,42 @@ import { useEffect, useRef } from "react";
 
 // Shared scanner-wedge capture for the two sales surfaces (Retail POS and
 // the detailed invoice form). A wedge scanner "types" the code with
-// inhumanly even, tiny gaps and finishes with Enter. When focus sits on a
-// sale line field (quantity, price, discount value, discount type), on
-// bare page, a button, or a checkbox, a rapid burst ending in Enter is a
-// scan: it is routed through the scan handler instead of letting the
-// digits land in the focused field or the Enter activate the focused
-// button. Once a burst is under way its characters are consumed here
-// (never typed into the field); its first character may still land, so
-// the field's value is snapshotted and restored when the scan completes.
-// The listener runs in the capture phase so a detected scan Enter is
-// consumed before any section entry-navigation handler can treat it as
-// "advance / run the primary action". Human-speed typing never builds a
-// burst (any gap >= 50ms resets it) and is left completely untouched, as
-// are text inputs, textareas and selects that are not sale line fields.
-export type ScannerFieldKind = "quantity" | "price" | "discount" | "discountType";
+// inhumanly even, tiny gaps and finishes with Enter. The scanner is
+// active at all times during billing: when focus sits on a sale line
+// field (unit, quantity, price, discount value, discount type, bonus),
+// a payment-bar field (cash received, bill discount, payment type,
+// scan-unit toggle), on bare page, a button, or a checkbox, a rapid
+// burst ending in Enter is a scan: it is routed through the scan handler
+// instead of letting the digits land in the focused field or the Enter
+// activate the focused button. Once a burst is under way its characters
+// are consumed here (never typed into the field); its first character
+// may still land, so the field's value is snapshotted and restored when
+// the scan completes. The listener runs in the capture phase so a
+// detected scan Enter is consumed before any section entry-navigation
+// handler can treat it as "advance / run the primary action".
+// Human-speed typing never builds a burst (any gap >= 50ms resets it)
+// and is left completely untouched, as are text inputs, textareas and
+// selects that are not sale fields: the barcode box itself (which owns
+// its own scan handling), product/customer search boxes (typing a name
+// or phone number is the job there), and header typing fields such as
+// sale date and tax rate.
+export type ScannerFieldKind =
+  | "quantity"
+  | "price"
+  | "discount"
+  | "discountType"
+  | "unit"
+  | "bonus"
+  | "cashReceived"
+  | "invoiceDiscount"
+  | "invoiceDiscountType"
+  | "scanUnit"
+  | "paymentType";
 
 export interface ScannerFieldRef {
   kind: ScannerFieldKind;
-  index: number;
+  /** Line index for line fields; absent for sale-wide fields (cash received, bill discount, payment type). */
+  index?: number;
 }
 
 export interface ScannerCaptureOptions {
