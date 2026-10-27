@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface MatrixRole {
   id: string;
@@ -32,30 +33,33 @@ const ALL_PERMISSIONS = [
   "settings_manage",
 ];
 
-const PERMISSION_LABELS: Record<string, string> = {
-  sales_view: "View Sales",
-  sales_create: "Create Sales",
-  sales_manage: "Manage Sales",
-  purchases_view: "View Purchases",
-  purchases_create: "Create Purchases",
-  inventory_view: "View Inventory",
-  inventory_manage: "Manage Inventory",
-  customers_view: "View Customers",
-  customers_manage: "Manage Customers",
-  suppliers_view: "View Suppliers",
-  suppliers_manage: "Manage Suppliers",
-  reports_view: "View Reports",
-  profit_view: "View Profit",
-  payments_manage: "Manage Payments",
-  expenses_manage: "Manage Expenses",
-  tasks_manage: "Manage Tasks",
-  location_view: "View Locations",
-  ai_assistant: "AI Assistant",
-  administration: "Administration",
-  settings_manage: "Manage Settings",
-};
-
 export default function PermissionMatrix() {
+  const { t } = useRegional();
+  const permissionLabel = (p: string) => {
+    const labels: Record<string, string> = {
+      sales_view: t('identity.roles.perm.salesView'),
+      sales_create: t('identity.roles.perm.salesCreate'),
+      sales_manage: t('identity.roles.perm.salesManage'),
+      purchases_view: t('identity.roles.perm.purchasesView'),
+      purchases_create: t('identity.roles.perm.purchasesCreate'),
+      inventory_view: t('identity.roles.perm.inventoryView'),
+      inventory_manage: t('identity.roles.perm.inventoryManage'),
+      customers_view: t('identity.roles.perm.customersView'),
+      customers_manage: t('identity.roles.perm.customersManage'),
+      suppliers_view: t('identity.roles.perm.suppliersView'),
+      suppliers_manage: t('identity.roles.perm.suppliersManage'),
+      reports_view: t('identity.roles.perm.reportsView'),
+      profit_view: t('identity.roles.perm.profitView'),
+      payments_manage: t('identity.roles.perm.paymentsManage'),
+      expenses_manage: t('identity.roles.perm.expensesManage'),
+      tasks_manage: t('identity.roles.perm.tasksManage'),
+      location_view: t('identity.roles.perm.locationView'),
+      ai_assistant: t('identity.roles.perm.aiAssistant'),
+      administration: t('identity.roles.perm.administration'),
+      settings_manage: t('identity.roles.perm.settingsManage'),
+    };
+    return labels[p] ?? p;
+  };
   const [roles, setRoles] = useState<MatrixRole[]>([]);
   const [matrix, setMatrix] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
@@ -70,10 +74,10 @@ export default function PermissionMatrix() {
           setRoles(builtIn);
           setMatrix(data.permissionMatrix || {});
         } else {
-          setError(data.error || "Failed to load permission matrix");
+          setError(data.error || t('identity.matrix.loadFailed'));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Network error");
+        setError(err instanceof Error ? err.message : t('tracking.networkError'));
       }
     })();
   }, []);
@@ -85,13 +89,13 @@ export default function PermissionMatrix() {
   return (
     <div style={{ padding: "1.5rem", overflowX: "auto" }}>
       <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 1rem" }}>
-        Permission Matrix
+        {t('identity.matrix.title')}
       </h2>
       <table style={{ borderCollapse: "collapse", fontSize: "0.8125rem", minWidth: "100%" }}>
         <thead>
           <tr>
             <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", borderBottom: "2px solid #e5e7eb" }}>
-              Permission
+              {t('identity.matrix.permission')}
             </th>
             {roles.map((role) => (
               <th
@@ -107,7 +111,7 @@ export default function PermissionMatrix() {
           {ALL_PERMISSIONS.map((permission) => (
             <tr key={permission}>
               <td style={{ padding: "0.375rem 0.75rem", borderBottom: "1px solid #f3f4f6" }}>
-                {PERMISSION_LABELS[permission] || permission}
+                {permissionLabel(permission)}
               </td>
               {roles.map((role) => {
                 const has = (matrix[role.id] || []).includes(permission);
