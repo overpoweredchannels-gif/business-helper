@@ -13,7 +13,7 @@ const LANGUAGES = [
 ] as const;
 
 export function LanguageSwitcher({ className }: { className?: string }) {
-  const { language, setLanguage } = useRegional();
+  const { language, setLanguage, ui } = useRegional();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -35,7 +35,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
         type="button"
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 px-3 py-2 rounded-lg border border-input bg-background text-sm font-medium text-foreground hover:bg-muted transition-colors min-h-[44px]"
-        aria-label="Select language"
+        aria-label={ui('header.selectLanguage')}
         aria-expanded={open}
       >
         <Globe className="h-4 w-4" />
