@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { getGoogleMaps } from "@/lib/maps/client-loader";
 import { getMapProvider } from "@/lib/maps/map-provider";
 import { getPlaceName } from "@/lib/maps/client-maps";
@@ -94,6 +95,7 @@ function InteractiveTrace({
   liveLat?: number;
   liveLng?: number;
 }) {
+  const { t } = useRegional();
   const ref = useCallback(
     (node: HTMLDivElement | null) => {
       if (!node || !google) return;
@@ -124,7 +126,7 @@ function InteractiveTrace({
         new google.maps.Marker({
           position: path[0],
           map,
-          title: "Start",
+          title: t('fsm.trace.start'),
           label: { text: "S", color: "#ffffff", fontSize: "11px" },
         });
         path.forEach((p, i) => {
@@ -164,7 +166,7 @@ function InteractiveTrace({
         });
         marker.addListener("click", () => {
           infoWindow.setContent(
-            `<div style="font-family:sans-serif;font-size:13px;line-height:1.5"><strong>${employee.employeeName}</strong><br/>Live location</div>`
+            `<div style="font-family:sans-serif;font-size:13px;line-height:1.5"><strong>${employee.employeeName}</strong><br/>${t('fsm.trace.liveLocation')}</div>`
           );
           infoWindow.open(map, marker);
         });
@@ -180,13 +182,14 @@ function InteractiveTrace({
       };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [google, employee.employeeName, employee.profileId, liveLat, liveLng]
+    [google, employee.employeeName, employee.profileId, liveLat, liveLng, t]
   );
 
   return <div ref={ref} className="h-full min-h-[420px] w-full" />;
 }
 
 export default function TraceModal({ employee, points, onClose }: TraceModalProps) {
+  const { t } = useRegional();
   const { google, loading: mapLoading, available: mapAvailable } = useInteractiveMap();
   const [placeMap, setPlaceMap] = useState<Record<string, string>>({});
   const [resolving, setResolving] = useState<string | null>(null);
@@ -218,7 +221,7 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
         if (placeMap[key]) continue;
         const place = await getPlaceName(p.latitude, p.longitude);
         if (!alive) return;
-        setPlaceMap((prev) => (prev[key] ? prev : { ...prev, [key]: place?.label ?? "Unknown location" }));
+        setPlaceMap((prev) => (prev[key] ? prev : { ...prev, [key]: place?.label ?? t('fsm.trace.unknownLocation') }));
       }
     })();
     return () => {
@@ -232,7 +235,7 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
     if (placeMap[key]) return;
     setResolving(key);
     const place = await getPlaceName(p.latitude, p.longitude);
-    setPlaceMap((prev) => ({ ...prev, [key]: place?.label ?? "Unknown location" }));
+    setPlaceMap((prev) => ({ ...prev, [key]: place?.label ?? t('fsm.trace.unknownLocation') }));
     setResolving(null);
   };// eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -252,19 +255,19 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
           <div className="min-w-0 flex-1">
             <div className="text-base font-semibold text-foreground truncate">{employee.employeeName}</div>
             <div className="text-xs text-body flex items-center gap-1.5">
-              {employee.isOnDuty ? "On duty" : "Off duty"}
+              {employee.isOnDuty ? t('fsm.trace.onDuty') : t('fsm.trace.offDuty')}
               {liveLat != null && liveLng != null && (
                 <span className="inline-flex items-center gap-1 text-success">
-                  <Crosshair className="size-3" /> Live
+                  <Crosshair className="size-3" /> {t('fsm.trace.live')}
                 </span>
               )}
-              <span className="text-light-text">· {points.length} recorded points</span>
+              <span className="text-light-text">· {t('fsm.tracking.recordedPoints').replace('{count}', String(points.length))}</span>
             </div>
           </div>
           <button
             onClick={onClose}
             className="rounded-full p-2 text-body hover:bg-muted/60 hover:text-foreground"
-            aria-label="Close"
+            aria-label={t('common.close')}
           >
             <X className="size-5" />
           </button>
@@ -280,7 +283,7 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
             </div>
           ) : embedUrl ? (
             <iframe
-              title={`Movement trail for ${employee.employeeName}`}
+              title={t('fsm.trace.trailFor').replace('{name}', employee.employeeName)}
               src={embedUrl}
               loading="lazy"
               allowFullScreen
@@ -315,10 +318,10 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
             <span className="font-medium text-foreground flex items-center gap-1.5">
               <Clock className="size-3.5 text-primary" /> Recorded points
             </span>
-            <span className="text-light-text">Street names are resolved automatically; tap for details</span>
+            <span className="text-light-text">{t('fsm.trace.streetNamesHint')}</span>
           </div>
           {reversed.length === 0 ? (
-            <p className="text-sm text-light-text">No recorded points in the last 2 hours.</p>
+            <p className="text-sm text-light-text">{t('fsm.trace.noPoints')}</p>
           ) : (
             <div className="grid gap-2">
               {reversed.map((p, i) => {
@@ -340,13 +343,13 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
                         isNewest ? "bg-success/15 text-success" : "bg-primary/10 text-primary"
                       }`}
                     >
-                      {isNewest ? "LIVE" : `#${i}`}
+                      {isNewest ? t('fsm.trace.liveBadge') : `#${i}`}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <MapPin className="size-3.5 shrink-0 text-primary" />
                         <span className="text-xs font-medium text-foreground truncate">
-                          {place ?? (isResolving ? "Resolving place name..." : "Place name not available")}
+                          {place ?? (isResolving ? t('fsm.trace.resolvingPlace') : t('fsm.trace.placeUnavailable'))}
                         </span>
                       </div>
                       <div className="mt-0.5 font-mono text-[10px] text-light-text">
@@ -370,7 +373,7 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
                       className="shrink-0 rounded-full border border-border p-1.5 text-body hover:bg-muted/60 hover:text-foreground"
-                      aria-label="Open in Google Maps"
+                      aria-label={t('fsm.trace.openInGoogleMaps')}
                     >
                       <ExternalLink className="size-3.5" />
                     </a>
