@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { Users, Loader2, AlertCircle, Briefcase, Route as RouteIcon, ExternalLink } from "lucide-react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Employee {
   id: string;
@@ -15,6 +16,8 @@ interface Employee {
 }
 
 export default function TeamPage() {
+  const { t } = useRegional();
+  const designationLabels: Record<string, string> = { salesman: t('fsm.employees.designation.salesman'), field_officer: t('fsm.employees.designation.fieldOfficer'), collection_officer: t('fsm.employees.designation.collectionOfficer'), delivery_rider: t('fsm.employees.designation.deliveryRider'), supervisor: t('fsm.employees.designation.supervisor') };
   const router = useRouter();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,11 +32,11 @@ export default function TeamPage() {
       const list = Array.isArray(data.employees) ? data.employees : Array.isArray(data) ? data : [];
       setEmployees(list);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -44,8 +47,8 @@ export default function TeamPage() {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="font-heading font-bold text-2xl text-foreground">Field Team</h1>
-        <p className="text-sm text-body mt-1">Your field staff and their assignments. Click to view ledger.</p>
+        <h1 className="font-heading font-bold text-2xl text-foreground">{t('manager.team.title')}</h1>
+        <p className="text-sm text-body mt-1">{t('manager.team.subtitle')}</p>
       </div>
 
       {error && (
@@ -57,12 +60,12 @@ export default function TeamPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading team...</p>
+          <p className="text-sm text-body">{t('manager.team.loading')}</p>
         </div>
       ) : salesmen.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <Users className="size-8 text-light-text mx-auto mb-3" />
-          <p className="text-sm text-body">No field staff yet. Invite staff from the main app.</p>
+          <p className="text-sm text-body">{t('manager.team.noStaff')}</p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -79,14 +82,14 @@ export default function TeamPage() {
                 <div className="min-w-0">
                   <div className="font-medium text-foreground truncate">{e.full_name}</div>
                   <div className="text-xs text-body capitalize flex items-center gap-1">
-                    <Briefcase className="size-3" /> {(e.designation ?? "staff").replace(/_/g, " ")}
+                    <Briefcase className="size-3" /> {designationLabels[e.designation ?? ""] ?? t('manager.feedback.staffFallback')}
                   </div>
                 </div>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1 text-xs text-light-text">
                   <RouteIcon className="size-3" />
-                  {e.assigned_route_id ? "Route assigned" : "No route assigned"}
+                  {e.assigned_route_id ? t('manager.team.routeAssigned') : t('manager.team.noRoute')}
                 </div>
                 <ExternalLink className="size-4 text-light-text hover:text-primary transition-colors" />
               </div>
