@@ -94,33 +94,33 @@ export function StaffDashboardView({
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         <KPICard
-          title="My Sales"
+          title={t('dashboard.staff.mySales')}
           value={String(mySalesCount)}
-          trend={{ value: todaySalesCount, label: `${todaySalesCount} today` }}
+          trend={{ value: todaySalesCount, label: t('dashboard.staff.trendToday').replace('{count}', String(todaySalesCount)) }}
           icon={<TrendingUp className="size-4" />}
           onClick={() => onKPIClick?.("My Sales")}
         />
         <KPICard
-          title="My Sales Total"
+          title={t('dashboard.staff.mySalesTotal')}
           value={mySalesTotal}
-          trend={{ value: 1, label: `${todaySalesTotal} today` }}
+          trend={{ value: 1, label: t('dashboard.staff.trendToday').replace('{count}', String(todaySalesTotal)) }}
           icon={<DollarSign className="size-4" />}
           onClick={() => onKPIClick?.("My Sales Total")}
         />
         <KPICard
-          title="My Customers"
+          title={t('dashboard.staff.myCustomers')}
           value={String(myCustomersCount)}
           icon={<Users className="size-4" />}
           onClick={() => onKPIClick?.("My Customers")}
         />
         <KPICard
-          title="Pending Tasks"
+          title={t('dashboard.staff.pendingTasks')}
           value={String(pendingTasksCount)}
           icon={<ClipboardList className="size-4" />}
           onClick={() => onKPIClick?.("Pending Tasks")}
         />
         <KPICard
-          title="My Products Sold"
+          title={t('dashboard.staff.myProductsSold')}
           value={String(myProductsCount)}
           icon={<Package className="size-4" />}
           onClick={() => onKPIClick?.("My Products Sold")}
@@ -130,11 +130,11 @@ export function StaffDashboardView({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-foreground">My Sales by Product</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('dashboard.staff.salesByProduct')}</h3>
             <span className="text-[10px] text-light-text uppercase tracking-wider">Top {myTopProducts.length}</span>
           </div>
           {myTopProducts.length === 0 ? (
-            <p className="text-sm text-light-text">No sales yet.</p>
+            <p className="text-sm text-light-text">{t('dashboard.staff.noSalesYet')}</p>
           ) : (
             <div className="space-y-2.5">
               {myTopProducts.map((p) => (
@@ -152,11 +152,11 @@ export function StaffDashboardView({
 
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-foreground">My Sales by Customer</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('dashboard.staff.salesByCustomer')}</h3>
             <span className="text-[10px] text-light-text uppercase tracking-wider">Top {myTopCustomers.length}</span>
           </div>
           {myTopCustomers.length === 0 ? (
-            <p className="text-sm text-light-text">No sales yet.</p>
+            <p className="text-sm text-light-text">{t('dashboard.staff.noSalesYet')}</p>
           ) : (
             <div className="space-y-2.5">
               {myTopCustomers.map((c) => (
@@ -173,11 +173,11 @@ export function StaffDashboardView({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-foreground">My Recent Sales</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('dashboard.staff.recentSales')}</h3>
             <span className="text-[10px] text-light-text uppercase tracking-wider">{myRecentSales.length} invoices</span>
           </div>
           {myRecentSales.length === 0 ? (
-            <p className="text-sm text-light-text">No recent sales.</p>
+            <p className="text-sm text-light-text">{t('dashboard.staff.noRecentSales')}</p>
           ) : (
             <div className="space-y-2">
               {myRecentSales.map((s) => (
@@ -197,11 +197,11 @@ export function StaffDashboardView({
 
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-foreground">My Customers</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('dashboard.staff.myCustomers')}</h3>
             <span className="text-[10px] text-light-text uppercase tracking-wider">{myCustomers.length} assigned</span>
           </div>
           {myCustomers.length === 0 ? (
-            <p className="text-sm text-light-text">No assigned customers.</p>
+            <p className="text-sm text-light-text">{t('dashboard.staff.noAssignedCustomers')}</p>
           ) : (
             <div className="space-y-2">
               {myCustomers.slice(0, 8).map((c) => (
@@ -224,11 +224,11 @@ export function StaffDashboardView({
 
       <div className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-foreground">My Tasks</h3>
+          <h3 className="text-sm font-semibold text-foreground">{t('dashboard.staff.myTasks')}</h3>
           <span className="text-[10px] text-light-text uppercase tracking-wider">{myPendingTasks.length} pending</span>
         </div>
         {myPendingTasks.length === 0 ? (
-          <p className="text-sm text-light-text">No pending tasks.</p>
+          <p className="text-sm text-light-text">{t('dashboard.staff.noPendingTasks')}</p>
         ) : (
           <div className="space-y-2">
             {myPendingTasks.slice(0, 8).map((t) => (
