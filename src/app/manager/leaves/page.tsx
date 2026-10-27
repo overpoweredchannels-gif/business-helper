@@ -5,6 +5,7 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { formatDate } from "@/lib/tradeos/formatters";
 import { Loader2, AlertCircle, CalendarClock, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface LeaveRequest {
   id: string;
@@ -18,12 +19,12 @@ interface LeaveRequest {
   employee: { id: string; full_name: string; designation: string | null } | null;
 }
 
-const TYPE_LABEL: Record<string, string> = {
-  annual: "Annual",
-  sick: "Sick",
-  casual: "Casual",
-  unpaid: "Unpaid",
-  other: "Other",
+const TYPE_KEYS: Record<string, "salesman.leave.typeAnnual" | "salesman.leave.typeSick" | "salesman.leave.typeCasual" | "salesman.leave.typeUnpaid" | "salesman.leave.typeOther"> = {
+  annual: "salesman.leave.typeAnnual",
+  sick: "salesman.leave.typeSick",
+  casual: "salesman.leave.typeCasual",
+  unpaid: "salesman.leave.typeUnpaid",
+  other: "salesman.leave.typeOther",
 };
 
 const STATUS_TONE: Record<string, string> = {
@@ -34,6 +35,7 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export default function ManagerLeavesPage() {
+  const { t } = useRegional();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,13 +49,13 @@ export default function ManagerLeavesPage() {
       const res = await authorizedFetch(`/api/leave?scope=all&status=${filter}`);
       const data = await res.json();
       if (data.ok) setRequests(data.requests ?? []);
-      else setError(data.error || "Failed to load leave requests");
+      else setError(data.error || t('salesman.leave.loadFailed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, t]);
 
   useEffect(() => {
     load();
@@ -68,31 +70,28 @@ export default function ManagerLeavesPage() {
         body: JSON.stringify({ status }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to update");
+      if (!data.ok) throw new Error(data.error || t('manager.leaves.updateFailed'));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update request");
+      setError(err instanceof Error ? err.message : t('manager.leaves.updateRequestFailed'));
     } finally {
       setActingId(null);
     }
   };
 
   const [actingId, setActingId] = useState<string | null>(null);
+  const statusLabels: Record<string, string> = { pending: t('salesman.collections.status.pending'), approved: t('salesman.collections.status.approved'), rejected: t('salesman.collections.status.rejected'), cancelled: t('manager.leaves.statusCancelled') };
+  const filterOptions: Array<[string, string]> = [["pending", statusLabels.pending], ["approved", statusLabels.approved], ["rejected", statusLabels.rejected], ["all", t('fsm.notifications.filterAll')]];
 
   return (
     <div className="grid gap-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="font-heading font-bold text-2xl text-foreground">Leave Requests</h1>
-          <p className="text-sm text-body mt-1">Review and manage field staff leave requests.</p>
+          <h1 className="font-heading font-bold text-2xl text-foreground">{t('salesman.leave.title')}</h1>
+          <p className="text-sm text-body mt-1">{t('manager.leaves.subtitle')}</p>
         </div>
         <div className="flex gap-2">
-          {[
-            ["pending", "Pending"],
-            ["approved", "Approved"],
-            ["rejected", "Rejected"],
-            ["all", "All"],
-          ].map(([v, l]) => (
+          {filterOptions.map(([v, l]) => (
             <button
               key={v}
               onClick={() => setFilter(v)}
@@ -116,12 +115,12 @@ export default function ManagerLeavesPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="size-8 text-primary animate-spin" />
-          <p className="text-sm text-body">Loading leave requests...</p>
+          <p className="text-sm text-body">{t('manager.leaves.loading')}</p>
         </div>
       ) : requests.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-light-text">
           <CalendarClock className="size-8 mx-auto mb-2 opacity-50" />
-          No {filter !== "all" ? `${filter} ` : ""}leave requests.
+          {filter === "all" ? t('manager.leaves.noRequests') : t('manager.leaves.noFilteredRequests').replace('{filter}', statusLabels[filter] ?? filter)}
         </div>
       ) : (
         <div className="grid gap-4">
@@ -136,23 +135,23 @@ export default function ManagerLeavesPage() {
                         {r.employee?.full_name.slice(0, 1).toUpperCase() ?? "?"}
                       </div>
                       <div>
-                        <div className="font-medium text-foreground">{r.employee?.full_name ?? "Unknown"}</div>
-                        <div className="text-xs text-body capitalize">{r.employee?.designation ?? "staff"}</div>
+                        <div className="font-medium text-foreground">{r.employee?.full_name ?? t('sell.unknown')}</div>
+                        <div className="text-xs text-body capitalize">{r.employee?.designation ?? t('supervisor.att.staffFallback')}</div>
                       </div>
                     </div>
                     <div className="mt-3 text-sm">
-                      <span className="font-medium text-foreground">{TYPE_LABEL[r.leave_type] ?? r.leave_type} leave</span>
+                      <span className="font-medium text-foreground">{TYPE_KEYS[r.leave_type] ? t(TYPE_KEYS[r.leave_type]) : r.leave_type} {t('manager.leaves.leaveWord')}</span>
                       <span className="text-body ml-2">
                         {formatDate(r.start_date)} → {formatDate(r.end_date)}
-                        <span className="text-light-text ml-1">({days} day{days > 1 ? "s" : ""})</span>
+                        <span className="text-light-text ml-1">({days === 1 ? t('manager.leaves.daysOne').replace('{days}', String(days)) : t('manager.leaves.daysMany').replace('{days}', String(days))})</span>
                       </span>
                     </div>
                     {r.reason && <div className="text-sm text-body mt-1">{r.reason}</div>}
-                    {r.review_note && <div className="text-xs text-light-text mt-1">Note: {r.review_note}</div>}
+                    {r.review_note && <div className="text-xs text-light-text mt-1">{t('buy.notesPrefix')} {r.review_note}</div>}
                   </div>
                   <div className="flex flex-col items-start sm:items-end gap-2 shrink-0">
                     <span className={cn("inline-flex px-2.5 py-1 rounded-full text-xs font-medium capitalize", STATUS_TONE[r.status] ?? "bg-muted text-muted-foreground")}>
-                      {r.status}
+                      {statusLabels[r.status] ?? r.status}
                     </span>
                     {r.status === "pending" && (
                       <div className="flex gap-2">
@@ -161,14 +160,14 @@ export default function ManagerLeavesPage() {
                           disabled={actingId === r.id}
                           className="inline-flex items-center gap-1 rounded-lg bg-success px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
                         >
-                          <Check className="size-3.5" /> Approve
+                          <Check className="size-3.5" /> {t('manager.collections.approve')}
                         </button>
                         <button
                           onClick={() => review(r.id, "rejected")}
                           disabled={actingId === r.id}
                           className="inline-flex items-center gap-1 rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
                         >
-                          <X className="size-3.5" /> Reject
+                          <X className="size-3.5" /> {t('sell.reject')}
                         </button>
                       </div>
                     )}
