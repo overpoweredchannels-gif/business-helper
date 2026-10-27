@@ -17,7 +17,7 @@ import type {
   SavedImportTemplate,
 } from "@/lib/import-wizard/types";
 import {
-  IMPORT_FIELD_OPTIONS,
+  IMPORT_FIELD_VALUES,
   assignImportColumn,
   guessColumnMapping,
   validateImportRows,
@@ -150,6 +150,34 @@ export default function ImportWizard({
       overselling_policy: t('inventory.import.field.oversell'),
     };
     return labels[field] ?? field;
+  };
+
+  // Dropdown labels for the column-mapping step. Reuses the preview field
+  // keys wherever the English text is identical; the rest get their own
+  // option.* keys because the dropdown wording differs (e.g. "Purchase
+  // Price" vs the preview's short "Purchase").
+  const importOptionLabel = (field: ProductImportField) => {
+    const labels: Record<ProductImportField, string> = {
+      name: t('inventory.import.option.productName'),
+      sku: t('inventory.import.field.sku'),
+      barcode: t('inventory.import.field.barcode'),
+      brand: t('inventory.import.field.brand'),
+      category: t('inventory.import.field.category'),
+      unit_type: t('inventory.import.field.unitType'),
+      subunit_type: t('inventory.import.option.subunitType'),
+      units_per_pack: t('inventory.import.option.unitsPerPack'),
+      default_purchase_price: t('inventory.import.option.purchasePrice'),
+      default_selling_price: t('inventory.import.option.sellingPrice'),
+      minimum_stock_level: t('inventory.import.option.minStockLevel'),
+      reorder_level: t('inventory.import.option.reorderLevel'),
+      track_batch: t('inventory.import.field.trackBatch'),
+      track_expiry: t('inventory.import.field.trackExpiry'),
+      overselling_policy: t('inventory.import.option.oversellingPolicy'),
+      initial_stock: t('inventory.import.option.initialStockMain'),
+      initial_stock_subunit: t('inventory.import.option.initialStockSubunit'),
+      skip: t('inventory.import.option.doNotImport'),
+    };
+    return labels[field];
   };
 
   const resetFile = () => {
@@ -715,9 +743,9 @@ export default function ImportWizard({
                         onChange={(e) => setFieldForColumn(header, e.target.value as ProductImportField)}
                         className="rounded border border-border px-2 py-1.5"
                       >
-                        {IMPORT_FIELD_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
+                        {IMPORT_FIELD_VALUES.map((field) => (
+                          <option key={field} value={field}>
+                            {importOptionLabel(field)}
                           </option>
                         ))}
                       </select>
@@ -759,9 +787,9 @@ export default function ImportWizard({
                 {t('inventory.import.autoCreateBrands')}
               </label>
               <p className="text-xs text-muted-foreground">
-                Your “Import As” selection determines what each column means, regardless of its file heading.
-                Choose Main Units for cartons/boxes, or Pieces / Subunits for loose quantities and map Units Per Pack.
-                For example, 120 pieces with 12 pieces per carton adds 10 cartons. Prices are per main unit.
+                {t('inventory.import.mappingHelp1')}
+                {' '}{t('inventory.import.mappingHelp2')}
+                {' '}{t('inventory.import.mappingHelp3')}
               </p>
             </div>
             <button
