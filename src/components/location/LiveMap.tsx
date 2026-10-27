@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import type { CurrentLocationView } from "../../lib/location/types";
 
 interface LiveMapProps {
@@ -17,6 +18,7 @@ declare global {
 }
 
 export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, selectedEmployeeId }: LiveMapProps) {
+  const { t } = useRegional();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
@@ -45,7 +47,7 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
       return;
     }
     if (!googleMapsKey) {
-      setMapError("Google Maps API key not configured. Set NEXT_PUBLIC_GOOGLE_MAPS_KEY in .env.local.");
+      setMapError(t('fsm.tracking.mapApiKeyMissing'));
       return;
     }
     window.initTradeOSMap = initMap;
@@ -54,7 +56,7 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
     script.async = true;
     script.defer = true;
     script.onerror = () => {
-      setMapError("Failed to load Google Maps. Check your API key and network.");
+      setMapError(t('fsm.tracking.mapLoadFailed'));
     };
     document.head.appendChild(script);
     return () => {
@@ -62,7 +64,7 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
       const scripts = document.head.querySelectorAll("script[src*='maps.googleapis.com']");
       scripts.forEach((s) => s.remove());
     };
-  }, [googleMapsKey, initMap]);
+  }, [googleMapsKey, initMap, t]);
 
   useEffect(() => {
     if (!mapLoaded || !mapInstanceRef.current || !window.google) return;
@@ -93,18 +95,18 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
         },
       });
 
-      const age = emp.lastUpdateAge < 60000 ? "Just now" : `${Math.round(emp.lastUpdateAge / 60000)} min ago`;
+      const age = emp.lastUpdateAge < 60000 ? t('fsm.tracking.mapJustNow') : t('fsm.tracking.mapMinAgo').replace('{minutes}', String(Math.round(emp.lastUpdateAge / 60000)));
       const speed = emp.speed ? `, ${Math.round(emp.speed * 3.6)} km/h` : "";
       const content = `
         <div style="min-width:180px;font-family:sans-serif;font-size:13px;line-height:1.5">
           <strong>${emp.employeeName}</strong><br/>
-          Role: ${emp.role || "N/A"}<br/>
-          Status: ${emp.trackingStatusLabel}<br/>
-          Updated: ${age}${speed}<br/>
+          ${t('fsm.tracking.mapRole')} ${emp.role || "N/A"}<br/>
+          ${t('fsm.tracking.mapStatus')} ${emp.trackingStatusLabel}<br/>
+          ${t('fsm.tracking.mapUpdated')} ${age}${speed}<br/>
           <a href="https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}"
              target="_blank" rel="noopener noreferrer"
              style="color:#2563eb;text-decoration:underline">
-            Open in Google Maps
+            ${t('fsm.tracking.mapOpenInMaps')}
           </a>
         </div>
       `;
@@ -125,7 +127,7 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
     if (hasBounds) {
       mapInstanceRef.current.fitBounds(bounds, 50);
     }
-  }, [employees, mapLoaded, selectedEmployeeId, onEmployeeClick]);
+  }, [employees, mapLoaded, selectedEmployeeId, onEmployeeClick, t]);
 
   if (mapError) {
     return (
@@ -138,7 +140,7 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
   if (!googleMapsKey) {
     return (
       <div style={{ padding: "1rem", background: "#fefce8", border: "1px solid #fde68a", borderRadius: "0.5rem", color: "#92400e" }}>
-        Google Maps is not configured. Set NEXT_PUBLIC_GOOGLE_MAPS_KEY in your environment variables to enable the live map.
+        {t('fsm.tracking.mapNotConfigured')}
       </div>
     );
   }
@@ -147,7 +149,7 @@ export default function LiveMap({ employees, googleMapsKey, onEmployeeClick, sel
     <div ref={mapRef} style={{ width: "100%", height: "100%", minHeight: "400px", borderRadius: "0.5rem" }}>
       {!mapLoaded && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "400px", color: "#6b7280" }}>
-          Loading map...
+          {t('fsm.tracking.mapLoading')}
         </div>
       )}
     </div>
