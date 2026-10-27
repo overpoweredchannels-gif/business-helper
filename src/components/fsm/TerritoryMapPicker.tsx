@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { getGoogleMaps } from "@/lib/maps/client-loader";
 
 export interface TerritoryGeoSelection {
@@ -45,6 +46,7 @@ export default function TerritoryMapPicker({
   const placeNameRef = useRef("");
   const placeAddressRef = useRef("");
 
+  const { t } = useRegional();
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [center, setCenter] = useState<{ lat: number; lng: number } | null>(
@@ -79,7 +81,7 @@ export default function TerritoryMapPicker({
       if (!google) {
         setStatus("error");
         setLoadError(
-          "Google Maps API key is not configured. Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY and reload.",
+          t('fsm.territories.mapApiKeyMissing'),
         );
         return;
       }
@@ -103,7 +105,7 @@ export default function TerritoryMapPicker({
         position: start,
         map,
         draggable: true,
-        title: "Territory center",
+        title: t('fsm.territories.mapMarkerTitle'),
       });
       markerRef.current = marker;
 
@@ -229,12 +231,12 @@ export default function TerritoryMapPicker({
     <div style={{ marginTop: "0.75rem" }}>
       <div style={{ marginBottom: "0.5rem" }}>
         <label style={{ fontSize: "0.75rem", color: "#374151", display: "block", marginBottom: "0.25rem" }}>
-          Search an area (e.g. DHA Phase 6)
+          {t('fsm.territories.mapSearchLabel')}
         </label>
         <input
           ref={searchInputRef}
           type="text"
-          placeholder="Search for a place, area, or landmark..."
+          placeholder={t('fsm.territories.mapSearchPlaceholder')}
           disabled={status !== "ready"}
           style={{
             width: "100%",
@@ -255,7 +257,7 @@ export default function TerritoryMapPicker({
 
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <span style={{ fontSize: "0.75rem", color: "#374151" }}>Coverage radius:</span>
+          <span style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.territories.mapCoverageRadius')}</span>
           <input
             type="range"
             min={MIN_RADIUS_KM}
@@ -279,7 +281,7 @@ export default function TerritoryMapPicker({
 
       {center && (
         <p style={{ fontSize: "0.8rem", color: "#166534", margin: "0.5rem 0 0" }}>
-          Territory will cover all areas within a {radiusKm} km radius of the selected point.
+          {t('fsm.territories.mapCoverageNote').replace('{radius}', String(radiusKm))}
         </p>
       )}
     </div>
