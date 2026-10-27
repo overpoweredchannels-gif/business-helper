@@ -19009,7 +19009,7 @@ setCustomerOrganizationName("");
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
               <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? t('sell.quickSaleBarcode') : t('sell.scanProduct')}</h3>
-              <label className="mb-3 block text-sm">{t('sell.eachScanAddsOne')} <select aria-label={t('sell.scanUnitAria')} value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">{t('sell.scanSubUnit')}</option><option value="main">{t('sell.scanMainUnit')}</option></select></label>
+              <label className="mb-3 block text-sm">{t('sell.eachScanAddsOne')} <select aria-label={t('sell.scanUnitAria')} data-entry-skip value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">{t('sell.scanSubUnit')}</option><option value="main">{t('sell.scanMainUnit')}</option></select></label>
               <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} onScan={code => {
                 const result = runSalesScan(code);
                 if (result.status === "added") setSalesMessage(t('sell.scanAdded').replace('{name}', result.product.name));
@@ -19054,7 +19054,6 @@ setCustomerOrganizationName("");
                   value={salesInvoiceDate}
                   onChange={(e) => handleSalesInvoiceDateChange(e.target.value)}
                   required
-                  data-entry-skip
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                 />
               </label>
