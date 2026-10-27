@@ -90,11 +90,11 @@ export function VisitProductLookup({
       } catch (err) {
         if (requestId !== invalidationRef.current) return;
         if (!append) setResults([]);
-        setError(err instanceof Error ? err.message : "Search failed. Please try again.");
+        setError(err instanceof Error ? err.message : t('salesman.lookup.searchFailedFallback'));
         setStatus("failed");
       }
     },
-    [invalidationRef, searchProducts],
+    [invalidationRef, searchProducts, t],
   );
 
   // Debounced search-as-you-type. Clearing the input hides results (the render
@@ -202,7 +202,7 @@ export function VisitProductLookup({
           )}
 
           {results.length > 0 && (
-            <div id={listId} role="listbox" aria-label="Product results" className="max-h-52 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+            <div id={listId} role="listbox" aria-label={t('salesman.lookup.resultsLabel')} className="max-h-52 overflow-y-auto rounded-lg border border-border divide-y divide-border">
               {results.map((p, index) => (
                 <button
                   key={p.id}
@@ -220,7 +220,7 @@ export function VisitProductLookup({
                   <span className="min-w-0">
                     <span className="block truncate font-medium text-foreground">{p.name}</span>
                     <span className="block text-xs text-muted-foreground">
-                      {p.sku ? `SKU: ${p.sku} · ` : ""}Stock: {p.current_stock}
+                      {p.sku ? `${t('products.sku')}: ${p.sku} · ` : ""}{t('products.stock')}: {p.current_stock}
                       {p.unit_type ? ` · ${p.unit_type}` : ""}
                     </span>
                   </span>
