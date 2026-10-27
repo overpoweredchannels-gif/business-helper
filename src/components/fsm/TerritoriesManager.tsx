@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Customer, Territory } from "@/lib/tradeos/types";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import TerritoryMapPicker, { TerritoryGeoSelection } from "@/components/fsm/TerritoryMapPicker";
 
 const inputStyle: React.CSSProperties = {
@@ -36,6 +37,7 @@ const overlayInputCss: React.CSSProperties = {
 };
 
 export default function TerritoriesManager() {
+  const { t } = useRegional();
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
@@ -50,7 +52,7 @@ export default function TerritoriesManager() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [savingCustomers, setSavingCustomers] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [res, customerRes] = await Promise.all([
@@ -64,28 +66,28 @@ export default function TerritoriesManager() {
       const data = await res.json().catch(() => ({}));
       if (res.status === 403) {
         setIsOwner(false);
-        setMessage({ type: "error", text: data.error || "Access denied" });
+        setMessage({ type: "error", text: data.error || t('fsm.routes.accessDenied') });
       } else if (Array.isArray(data.territories)) {
         setTerritories(data.territories);
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to load territories" });
+        setMessage({ type: "error", text: data.error || t('fsm.territories.loadFailed') });
       }
       const customerData = await customerRes.json().catch(() => ({}));
       if (Array.isArray(customerData.customers)) setCustomers(customerData.customers);
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const create = async () => {
     if (!name.trim()) {
-      setMessage({ type: "error", text: "Territory name is required." });
+      setMessage({ type: "error", text: t('fsm.territories.nameRequired') });
       return;
     }
     try {
@@ -111,10 +113,10 @@ export default function TerritoriesManager() {
         setExpandedTerritoryId(data.territory.id);
         setSelectedCustomerIds([]);
       } else {
-        setMessage({ type: "error", text: data.error || "Create failed" });
+        setMessage({ type: "error", text: data.error || t('fsm.territories.createFailed') });
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "Network error" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     }
   };
 
@@ -137,11 +139,11 @@ export default function TerritoriesManager() {
         body: JSON.stringify({ customer_ids: selectedCustomerIds }),
       });
       const result = await response.json();
-      if (!response.ok || !result.ok) throw new Error(result.error ?? "Failed to save territory customers");
+      if (!response.ok || !result.ok) throw new Error(result.error ?? t('fsm.territories.saveCustomersFailed'));
       setMessage({ type: "ok", text: `${selectedCustomerIds.length} customer(s) saved in ${territory.name}.` });
       await load();
     } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "Failed to save territory customers" });
+      setMessage({ type: "error", text: error instanceof Error ? error.message : t('fsm.territories.saveCustomersFailed') });
     } finally {
       setSavingCustomers(false);
     }
@@ -168,13 +170,13 @@ export default function TerritoriesManager() {
         }}
       >
         <div>
-          <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0" }}>Territories</h2>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0" }}>{t('fsm.territories.title')}</h2>
           <p style={{ fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0 0" }}>
             Sales areas used to organize customers, routes, and field staff assignments.
           </p>
         </div>
         <button style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }} onClick={load}>
-          Refresh
+          {t('fsm.routes.refresh')}
         </button>
       </div>
 
@@ -205,15 +207,15 @@ export default function TerritoriesManager() {
         >
           <style>{mapsOverlayCss}</style>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", ...overlayInputCss }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Name *</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.territories.nameLabel')}</label>
             <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gulberg Zone" />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", ...overlayInputCss }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>Description</label>
+            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.territories.descriptionLabel')}</label>
             <input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <button style={{ ...buttonStyle, ...overlayInputCss }} onClick={create}>
-            Add Territory
+            {t('fsm.territories.addTerritory')}
           </button>
 
           <div style={{ gridColumn: "1 / -1" }}>
@@ -222,17 +224,17 @@ export default function TerritoriesManager() {
 
           {useGeoName && geoSelection && (
             <div style={{ gridColumn: "1 / -1", fontSize: "0.8rem", color: "#374151" }}>
-              <span style={{ fontWeight: 600 }}>Name:</span> {geoSelection.name} &nbsp;
-              <span style={{ fontWeight: 600 }}>Radius:</span> {geoSelection.radiusKm} km
+              <span style={{ fontWeight: 600 }}>{t('fsm.territories.geoName')}</span> {geoSelection.name} &nbsp;
+              <span style={{ fontWeight: 600 }}>{t('fsm.territories.geoRadius')}</span> {t('fsm.territories.geoRadiusValue').replace('{radius}', String(geoSelection.radiusKm))}
             </div>
           )}
         </div>
       )}
 
       {loading && territories.length === 0 ? (
-        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Loading territories…</p>
+        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('fsm.territories.loading')}</p>
       ) : territories.length === 0 ? (
-        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>No territories yet.</p>
+        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('fsm.territories.empty')}</p>
       ) : (
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
           {territories.map((territory, index) => {
@@ -253,14 +255,14 @@ export default function TerritoriesManager() {
                 {territory.center_lat != null && territory.center_lng != null && (
                   <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.125rem" }}>
                     {territory.center_lat.toFixed(6)}, {territory.center_lng.toFixed(6)}
-                    {territory.radius_km != null ? ` · ${territory.radius_km} km radius` : ""}
+                    {territory.radius_km != null ? ` · ${t('fsm.territories.radiusDisplay').replace('{radius}', String(territory.radius_km))}` : ""}
                   </div>
                 )}
-                <div style={{ fontSize: "0.72rem", color: "#4b5563", marginTop: "0.2rem" }}>{memberCount} customer(s)</div>
+                <div style={{ fontSize: "0.72rem", color: "#4b5563", marginTop: "0.2rem" }}>{t('fsm.territories.memberCount').replace('{count}', String(memberCount))}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <button style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }} onClick={() => openCustomers(territory.id)}>
-                {expandedTerritoryId === territory.id ? "Close Customers" : "Manage Customers"}
+                {expandedTerritoryId === territory.id ? t('fsm.territories.closeCustomers') : t('fsm.territories.manageCustomers')}
               </button>
               <span
                 style={{
@@ -271,25 +273,25 @@ export default function TerritoriesManager() {
                   padding: "0.125rem 0.5rem",
                 }}
               >
-                {territory.is_active ? "Active" : "Inactive"}
+                {territory.is_active ? t('products.active') : t('products.inactive')}
               </span>
               </div>
               </div>
               {expandedTerritoryId === territory.id && (
                 <div style={{ borderTop: "1px solid #e5e7eb", background: "#fafafa", padding: "1rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
-                    <div><div style={{ fontSize: "0.875rem", fontWeight: 600 }}>Customers in {territory.name}</div><div style={{ fontSize: "0.72rem", color: "#6b7280" }}>Only unassigned customers and existing members of this territory are available.</div></div>
-                    <input style={{ ...inputStyle, minWidth: "240px" }} value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Search customers..." />
+                    <div><div style={{ fontSize: "0.875rem", fontWeight: 600 }}>{t('fsm.territories.customersIn').replace('{name}', territory.name)}</div><div style={{ fontSize: "0.72rem", color: "#6b7280" }}>{t('fsm.territories.customersAvailable')}</div></div>
+                    <input style={{ ...inputStyle, minWidth: "240px" }} value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder={t('fsm.territories.searchPlaceholder')} />
                   </div>
                   <div style={{ maxHeight: "300px", overflowY: "auto", display: "grid", gap: "0.4rem", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
                     {visibleCustomers.map((customer) => (
                       <label key={customer.id} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", border: "1px solid #e5e7eb", borderRadius: "0.375rem", padding: "0.55rem", background: "#fff", fontSize: "0.78rem" }}>
                         <input type="checkbox" checked={selectedCustomerIds.includes(customer.id)} onChange={(event) => setSelectedCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} />
-                        <span><strong>{customer.customer_name}</strong>{customer.shop_name ? ` · ${customer.shop_name}` : ""}<br /><span style={{ color: "#6b7280" }}>{[customer.area, customer.city].filter(Boolean).join(", ") || "No area"}</span></span>
+                        <span><strong>{customer.customer_name}</strong>{customer.shop_name ? ` · ${customer.shop_name}` : ""}<br /><span style={{ color: "#6b7280" }}>{[customer.area, customer.city].filter(Boolean).join(", ") || t('team.noArea')}</span></span>
                       </label>
                     ))}
                   </div>
-                  <button style={{ ...buttonStyle, marginTop: "0.75rem" }} disabled={savingCustomers} onClick={() => saveCustomers(territory)}>{savingCustomers ? "Saving..." : `Save ${selectedCustomerIds.length} Customer(s)`}</button>
+                  <button style={{ ...buttonStyle, marginTop: "0.75rem" }} disabled={savingCustomers} onClick={() => saveCustomers(territory)}>{savingCustomers ? t('fsm.territories.saving') : t('fsm.territories.saveCustomers').replace('{count}', String(selectedCustomerIds.length))}</button>
                 </div>
               )}
             </div>
