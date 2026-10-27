@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 interface SessionView {
@@ -44,7 +45,8 @@ export default function SessionManagement() {
   const [message, setMessage] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(true);
 
-  const load = async () => {
+  const { t } = useRegional();
+  const load = useCallback(async () => {
     try {
       const res = await authorizedFetch("/api/identity/sessions");
       const data = await res.json();
@@ -53,16 +55,16 @@ export default function SessionManagement() {
         if (data.policy) setPolicy(data.policy);
         setError(null);
       } else {
-        setError(data.error || "Failed to load sessions");
+        setError(data.error || t('identity.sessions.loadFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const revoke = async (sessionId: string) => {
     const res = await authorizedFetch("/api/identity/sessions", {
@@ -72,10 +74,10 @@ export default function SessionManagement() {
     });
     const data = await res.json();
     if (data.ok) {
-      setMessage("Session revoked.");
+      setMessage(t('identity.sessions.revoked'));
       load();
     } else {
-      setError(data.error || "Revoke failed");
+      setError(data.error || t('identity.sessions.revokeFailed'));
       if (res.status === 403) setIsOwner(false);
     }
   };
@@ -89,9 +91,9 @@ export default function SessionManagement() {
     const data = await res.json();
     if (data.ok) {
       setPolicy(data.policy);
-      setMessage("Session policy updated.");
+      setMessage(t('identity.sessions.policyUpdated'));
     } else {
-      setError(data.error || "Policy update failed");
+      setError(data.error || t('identity.sessions.policyFailed'));
       if (res.status === 403) setIsOwner(false);
     }
   };
@@ -99,7 +101,7 @@ export default function SessionManagement() {
   return (
     <div style={{ padding: "1.5rem" }}>
       <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 1rem" }}>
-        Session Management
+        {t('identity.sessions.title')}
       </h2>
 
       {message && (
@@ -124,7 +126,7 @@ export default function SessionManagement() {
           }}
         >
           <label style={{ fontSize: "0.8125rem", display: "flex", alignItems: "center", gap: "0.375rem" }}>
-            Timeout (minutes)
+            {t('identity.sessions.timeoutMinutes')}
             <input
               type="number"
               min={15}
@@ -140,28 +142,28 @@ export default function SessionManagement() {
               checked={policy.singleDevice}
               onChange={(e) => setPolicy({ ...policy, singleDevice: e.target.checked })}
             />
-            Single device per user
+            {t('identity.sessions.singleDevice')}
           </label>
           <button onClick={savePolicy} style={buttonStyle}>
-            Save Policy
+            {t('identity.sessions.savePolicy')}
           </button>
         </div>
       )}
 
       {sessions.length === 0 ? (
-        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>No active sessions.</p>
+        <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('identity.sessions.noSessions')}</p>
       ) : (
         sessions.map((session) => (
           <div key={session.sessionId} style={rowStyle}>
             <div>
               <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{session.deviceName}</div>
               <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-                Last active {new Date(session.lastActiveAt).toLocaleString()} &middot;{" "}
-                {session.rememberDevice ? "remembered" : `expires ${new Date(session.expiresAt).toLocaleString()}`}
+                {t('identity.sessions.lastActive').replace('{time}', new Date(session.lastActiveAt).toLocaleString())} &middot;{" "}
+                {session.rememberDevice ? t('identity.sessions.remembered') : t('identity.sessions.expiresAt').replace('{time}', new Date(session.expiresAt).toLocaleString())}
               </div>
             </div>
             <button onClick={() => revoke(session.sessionId)} style={buttonStyle}>
-              Revoke
+              {t('identity.sessions.revoke')}
             </button>
           </div>
         ))
