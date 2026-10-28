@@ -3056,7 +3056,7 @@ setCustomerOrganizationName("");
       entity_type: "ai_action_draft",
       entity_id: data?.id ?? null,
       entity_label: parsed.actionType,
-      description: `Created AI action draft: ${parsed.confirmationSummary}`,
+      description: t('page.createdAiDraft').replace('{summary}', parsed.confirmationSummary),
       new_values: payload,
     });
     setSelectedAiDraftId(data?.id ?? "");
@@ -3100,7 +3100,7 @@ setCustomerOrganizationName("");
       entity_type: "ai_action_draft",
       entity_id: draft.id,
       entity_label: draft.action_type,
-      description: `${nextStatus === "cancelled" ? "Cancelled" : "Marked needs info for"} AI action draft`,
+      description: nextStatus === "cancelled" ? t('page.auditCancelledAiDraft') : t('page.auditMarkedNeedsInfoAiDraft'),
       old_values: { status: draft.status },
       new_values: { status: nextStatus },
     });
@@ -3370,7 +3370,7 @@ setCustomerOrganizationName("");
       entity_type: "ai_action_draft",
       entity_id: draft.id,
       entity_label: draft.action_type,
-      description: `Saved AI conversation answer for ${field}`,
+      description: t('page.savedAiConversationAnswer').replace('{field}', field),
       new_values: { [field]: parsedAnswer.parsedValue },
     });
 
@@ -3519,7 +3519,7 @@ setCustomerOrganizationName("");
         entity_type: "ai_action_draft",
         entity_id: draft.id,
         entity_label: draft.action_type,
-        description: `Executed AI expense draft into expense ${expenseTypeValue}`,
+        description: t('page.executedAiExpense').replace('{value}', expenseTypeValue),
         old_values: { status: draft.status },
         new_values: { status: "executed", executed_entity_type: "expense", executed_entity_id: insertedExpense?.id ?? null },
       });
@@ -3586,7 +3586,7 @@ setCustomerOrganizationName("");
         entity_type: "ai_action_draft",
         entity_id: draft.id,
         entity_label: draft.action_type,
-        description: `Executed AI action draft into task ${title}`,
+        description: t('page.executedAiAction').replace('{title}', title),
         old_values: { status: draft.status },
         new_values: { status: "executed", executed_entity_type: "task", executed_entity_id: insertedTask?.id ?? null },
       });
@@ -3644,7 +3644,7 @@ setCustomerOrganizationName("");
         entity_type: "ai_action_draft",
         entity_id: draft.id,
         entity_label: draft.action_type,
-        description: `Executed AI purchase draft into invoice ${invoiceNumber}`,
+        description: t('page.executedAiPurchase').replace('{number}', invoiceNumber),
         new_values: { purchase_transaction_id: purchaseTransactionId, invoice_number: invoiceNumber },
       });
       setAiAssistantMessage(t('page.aiPurchaseDraftExecuted').replace('{number}', invoiceNumber));
@@ -3746,7 +3746,7 @@ setCustomerOrganizationName("");
         entity_type: "ai_action_draft",
         entity_id: draft.id,
         entity_label: draft.action_type,
-        description: `Executed AI sale draft into invoice ${invoiceNumber}`,
+        description: t('page.executedAiSale').replace('{number}', invoiceNumber),
         new_values: { sales_transaction_id: salesTransactionId, invoice_number: invoiceNumber },
       });
       setAiAssistantMessage(t('page.aiSaleDraftExecuted').replace('{number}', invoiceNumber));
@@ -4743,8 +4743,8 @@ setCustomerOrganizationName("");
         entity_label: paymentCustomer?.customer_name ?? "Customer payment",
         description:
           allocationsToInsert.length > 0
-            ? `Created and allocated customer payment for ${paymentCustomer?.customer_name ?? t('sell.unknownCustomer')}`
-            : `Created customer payment for ${paymentCustomer?.customer_name ?? t('sell.unknownCustomer')}`,
+            ? t('page.createdAllocCustomerPayment').replace('{customer}', paymentCustomer?.customer_name ?? t('sell.unknownCustomer'))
+            : t('page.createdCustomerPayment').replace('{customer}', paymentCustomer?.customer_name ?? t('sell.unknownCustomer')),
         new_values: {
           customer_id: selectedCustomerPaymentId,
           amount: paymentAmount,
@@ -4895,8 +4895,8 @@ setCustomerOrganizationName("");
         entity_label: paymentSupplier?.supplier_name ?? "Supplier payment",
         description:
           allocationsToInsert.length > 0
-            ? `Created and allocated supplier payment for ${paymentSupplier?.supplier_name ?? t('page.unknownSupplier')}`
-            : `Created supplier payment for ${paymentSupplier?.supplier_name ?? t('page.unknownSupplier')}`,
+            ? t('page.createdAllocSupplierPayment').replace('{supplier}', paymentSupplier?.supplier_name ?? t('page.unknownSupplier'))
+            : t('page.createdSupplierPayment').replace('{supplier}', paymentSupplier?.supplier_name ?? t('page.unknownSupplier')),
         new_values: {
           supplier_id: selectedSupplierPaymentId,
           amount: paymentAmount,
@@ -4998,8 +4998,8 @@ setCustomerOrganizationName("");
       entity_id: expenseData?.id ?? null,
       entity_label: expenseType,
       description: selectedExpensePurchaseId
-        ? `Created linked purchase expense ${expenseType}`
-        : `Created expense ${expenseType}`,
+        ? t('page.createdLinkedExpense').replace('{type}', expenseType)
+        : t('page.createdExpense').replace('{type}', expenseType),
       new_values: {
         expense_type: expenseType,
         amount,
@@ -5085,8 +5085,8 @@ setCustomerOrganizationName("");
       entity_label: reviewedPurchase?.invoice_number ?? purchaseId,
       description:
         status === "no_additional_expense"
-          ? `Marked purchase invoice ${reviewedPurchase?.invoice_number ?? purchaseId} as no additional expense`
-          : `Marked purchase invoice ${reviewedPurchase?.invoice_number ?? purchaseId} for review later`,
+          ? t('page.markedNoAdditionalExpense').replace('{number}', reviewedPurchase?.invoice_number ?? purchaseId)
+          : t('page.markedForReviewLater').replace('{number}', reviewedPurchase?.invoice_number ?? purchaseId),
       new_values: {
         expense_review_status: status,
         expense_reviewed_at: updateData.expense_reviewed_at,
@@ -7111,7 +7111,7 @@ setCustomerOrganizationName("");
           entity_type: "inventory_transaction",
           entity_id: result.transactionId,
           entity_label: line.name,
-          description: `Bulk add-to-stock of ${qty} on ${line.name} (opening stock / restock import).`,
+          description: t('page.bulkAddDesc').replace('{qty}', String(qty)).replace('{name}', line.name),
           new_values: { product_id: line.productId, quantity_delta: qty, reason: "bulk add-to-stock" },
         });
         succeeded.push(`${line.name} +${qty}`);
@@ -7191,7 +7191,7 @@ setCustomerOrganizationName("");
         entity_type: "inventory_transaction",
         entity_id: result.transactionId,
         entity_label: product?.name ?? `Product ${productId}`,
-        description: `Stock adjustment ${adjustmentDirection === "in" ? "in" : "out"} of ${quantity} on ${product?.name ?? `Product ${productId}`} — ${adjustmentReason.trim()}`,
+        description: t('page.stockAdjustmentDesc').replace('{direction}', adjustmentDirection === "in" ? "in" : "out").replace('{qty}', String(quantity)).replace('{product}', product?.name ?? `Product ${productId}`).replace('{reason}', adjustmentReason.trim()),
         new_values: {
           product_id: productId,
           quantity_delta: quantityDelta,
@@ -7290,7 +7290,7 @@ setCustomerOrganizationName("");
       entity_type: "brand",
       entity_id: data?.id ?? null,
       entity_label: brandName,
-      description: `Created brand ${brandName}`,
+      description: t('page.createdBrand').replace('{name}', brandName),
       new_values: { name: brandName },
     });
     setBrandMessage(t('page.brandAdded'));
@@ -7327,7 +7327,7 @@ setCustomerOrganizationName("");
       entity_type: "brand",
       entity_id: brandId,
       entity_label: brandToDelete?.name ?? brandId,
-      description: `Deleted brand ${brandToDelete?.name ?? brandId}`,
+      description: t('page.deletedBrand').replace('{name}', brandToDelete?.name ?? brandId),
       old_values: brandToDelete ? { name: brandToDelete.name } : null,
     });
     setBrandMessage(t('page.brandDeleted'));
@@ -7384,7 +7384,7 @@ setCustomerOrganizationName("");
       entity_type: "category",
       entity_id: data?.id ?? null,
       entity_label: categoryName,
-      description: `Created category ${categoryName}`,
+      description: t('page.createdCategory').replace('{name}', categoryName),
       new_values: { name: categoryName, parent_category_id: parentCategoryId },
     });
     setCategoryMessage(t('page.categoryAdded'));
@@ -7418,7 +7418,7 @@ setCustomerOrganizationName("");
       entity_type: "category",
       entity_id: categoryId,
       entity_label: category?.name ?? categoryId,
-      description: `Updated overselling policy for category ${category?.name ?? categoryId} to ${nextPolicy ?? "inherit"}`,
+      description: t('page.updatedOverselling').replace('{name}', category?.name ?? categoryId).replace('{policy}', nextPolicy ?? "inherit"),
       old_values: { overselling_policy: category?.overselling_policy ?? null },
       new_values: { overselling_policy: nextPolicy },
     });
@@ -7453,7 +7453,7 @@ setCustomerOrganizationName("");
       entity_type: "category",
       entity_id: categoryId,
       entity_label: categoryToDelete?.name ?? categoryId,
-      description: `Deleted category ${categoryToDelete?.name ?? categoryId}`,
+      description: t('page.deletedCategory').replace('{name}', categoryToDelete?.name ?? categoryId),
       old_values: categoryToDelete
         ? { name: categoryToDelete.name, parent_category_id: categoryToDelete.parent_category_id }
         : null,
@@ -7491,7 +7491,7 @@ setCustomerOrganizationName("");
       entity_type: "product",
       entity_id: productId,
       entity_label: productToArchive?.name ?? String(productId),
-      description: `Archived product ${productToArchive?.name ?? productId}`,
+      description: t('page.archivedProduct').replace('{name}', productToArchive?.name ?? productId),
       old_values: productToArchive
         ? {
             name: productToArchive.name,
@@ -7590,7 +7590,7 @@ setCustomerOrganizationName("");
         entity_type: "customer",
         entity_id: customerEditingId,
         entity_label: customerName.trim(),
-        description: `Updated customer ${customerName.trim()}`,
+        description: t('page.updatedCustomer').replace('{name}', customerName.trim()),
         new_values: {
           customer_name: customerName.trim(),
           shop_name: shopName || null,
@@ -7620,7 +7620,7 @@ setCustomerOrganizationName("");
         entity_type: "customer",
         entity_id: result.customer?.id ?? null,
         entity_label: customerName,
-        description: `Created customer ${customerName}`,
+        description: t('page.createdCustomer').replace('{name}', customerName),
         new_values: {
           customer_name: customerName,
           shop_name: shopName || null,
@@ -7737,7 +7737,7 @@ setCustomerOrganizationName("");
       entity_type: "customer",
       entity_id: customerId,
       entity_label: customerToArchive?.customer_name ?? customerId,
-      description: `Archived customer ${customerToArchive?.customer_name ?? customerId}`,
+      description: t('page.archivedCustomer').replace('{name}', customerToArchive?.customer_name ?? customerId),
       old_values: customerToArchive
         ? {
             customer_name: customerToArchive.customer_name,
@@ -7780,7 +7780,7 @@ setCustomerOrganizationName("");
       entity_type: "customer",
       entity_id: customerId,
       entity_label: customerToRestore?.customer_name ?? customerId,
-      description: `Restored customer ${customerToRestore?.customer_name ?? customerId}`,
+      description: t('page.restoredCustomer').replace('{name}', customerToRestore?.customer_name ?? customerId),
     });
     setCustomerMessage(t('page.customerRestored'));
     fetchCustomers();
@@ -7838,7 +7838,7 @@ setCustomerOrganizationName("");
         entity_type: "supplier",
         entity_id: data?.id ?? supplierEditingId,
         entity_label: supplierName,
-        description: `Updated supplier ${supplierName}`,
+        description: t('page.updatedSupplier').replace('{name}', supplierName),
         new_values: payload,
       });
       setSupplierMessage(t('page.supplierUpdated'));
@@ -7861,7 +7861,7 @@ setCustomerOrganizationName("");
         entity_type: "supplier",
         entity_id: data?.id ?? null,
         entity_label: supplierName,
-        description: `Created supplier ${supplierName}`,
+        description: t('page.createdSupplier').replace('{name}', supplierName),
         new_values: payload,
       });
       setSupplierMessage(t('page.supplierSaved'));
@@ -7931,7 +7931,7 @@ setCustomerOrganizationName("");
       entity_type: "supplier",
       entity_id: supplierId,
       entity_label: supplierToArchive?.supplier_name ?? supplierId,
-      description: `${isActive ? "Archived" : "Restored"} supplier ${supplierToArchive?.supplier_name ?? supplierId}`,
+      description: isActive ? t('page.archivedSupplier').replace('{name}', supplierToArchive?.supplier_name ?? supplierId) : t('page.restoredSupplier').replace('{name}', supplierToArchive?.supplier_name ?? supplierId),
       old_values: supplierToArchive
         ? {
             supplier_name: supplierToArchive.supplier_name,
@@ -8239,7 +8239,7 @@ setCustomerOrganizationName("");
         entity_type: "purchase_order",
         entity_id: poId,
         entity_label: poNumber,
-        description: `Created purchase order ${poNumber} for ${poSupplier?.supplier_name ?? t('page.unknownSupplier')}`,
+        description: t('page.createdPo').replace('{number}', poNumber).replace('{supplier}', poSupplier?.supplier_name ?? t('page.unknownSupplier')),
         new_values: {
           supplier_id: poSupplierId,
           po_number: poNumber,
@@ -8286,7 +8286,7 @@ setCustomerOrganizationName("");
       entity_type: "purchase_order",
       entity_id: poId,
       entity_label: po.po_number,
-      description: `Cancelled purchase order ${po.po_number}`,
+      description: t('page.cancelledPo').replace('{number}', po.po_number),
       old_values: { status: po.status },
       new_values: { status: "cancelled" },
     });
@@ -8641,7 +8641,7 @@ setCustomerOrganizationName("");
         entity_type: "purchase_return",
         entity_id: returnId,
         entity_label: returnNumber,
-        description: `Created purchase return ${returnNumber} for ${returnSupplier?.supplier_name ?? t('page.unknownSupplier')}`,
+        description: t('page.createdPr').replace('{number}', returnNumber).replace('{supplier}', returnSupplier?.supplier_name ?? t('page.unknownSupplier')),
         new_values: {
           supplier_id: returnSupplierId,
           return_number: returnNumber,
@@ -8695,7 +8695,7 @@ setCustomerOrganizationName("");
       entity_type: "purchase_return",
       entity_id: returnId,
       entity_label: purchaseReturn.return_number,
-      description: `Deleted purchase return ${purchaseReturn.return_number}`,
+      description: t('page.deletedPr').replace('{number}', purchaseReturn.return_number),
       old_values: { return_number: purchaseReturn.return_number },
     });
 
@@ -8909,7 +8909,7 @@ setCustomerOrganizationName("");
         entity_type: "sales_order",
         entity_id: soId,
         entity_label: soNumber,
-        description: `${soEditingId ? "Updated" : "Created"} sales order ${soNumber} for ${soCustomer?.customer_name ?? t('sell.unknownCustomer')}`,
+        description: soEditingId ? t('page.updatedSo').replace('{number}', soNumber).replace('{customer}', soCustomer?.customer_name ?? t('sell.unknownCustomer')) : t('page.createdSo').replace('{number}', soNumber).replace('{customer}', soCustomer?.customer_name ?? t('sell.unknownCustomer')),
         new_values: {
           customer_id: soCustomerId,
           so_number: soNumber,
@@ -9117,7 +9117,7 @@ setCustomerOrganizationName("");
       entity_type: "sales_order",
       entity_id: soId,
       entity_label: order.so_number,
-      description: `Deleted sales order ${order.so_number}`,
+      description: t('page.deletedSo').replace('{number}', order.so_number),
       old_values: { status: order.status },
     });
 
@@ -9324,7 +9324,7 @@ setCustomerOrganizationName("");
         entity_type: "sales_return",
         entity_id: result.returnId,
         entity_label: result.returnNumber,
-        description: `Created sales return ${result.returnNumber}`,
+        description: t('page.createdSr').replace('{number}', result.returnNumber),
         new_values: {
           customer_id: srCustomerId,
           sales_transaction_id: srSalesTransactionId || null,
@@ -9395,7 +9395,7 @@ setCustomerOrganizationName("");
       entity_type: "sales_return",
       entity_id: returnId,
       entity_label: salesReturn.return_number,
-      description: `Deleted sales return ${salesReturn.return_number}`,
+      description: t('page.deletedSr').replace('{number}', salesReturn.return_number),
       old_values: { status: salesReturn.status },
     });
 
@@ -12192,10 +12192,10 @@ setCustomerOrganizationName("");
       entity_label: taskToUpdate?.title ?? taskId,
       description:
         nextStatus === "completed"
-          ? `Completed task ${taskToUpdate?.title ?? taskId}`
+          ? t('page.completedTask').replace('{title}', taskToUpdate?.title ?? taskId)
           : nextStatus === "cancelled"
-            ? `Cancelled task ${taskToUpdate?.title ?? taskId}`
-            : `Marked task ${taskToUpdate?.title ?? taskId} in progress`,
+            ? t('page.cancelledTask').replace('{title}', taskToUpdate?.title ?? taskId)
+            : t('page.markedTaskInProgress').replace('{title}', taskToUpdate?.title ?? taskId),
       old_values: taskToUpdate
         ? { status: taskToUpdate.status, completed_at: taskToUpdate.completed_at }
         : null,
@@ -12352,7 +12352,7 @@ setCustomerOrganizationName("");
         entity_type: "task",
         entity_id: data?.id ?? null,
         entity_label: suggestion.title,
-        description: `Created task ${suggestion.title}`,
+        description: t('page.createdTask').replace('{title}', suggestion.title),
         new_values: {
           title: suggestion.title,
           task_type: suggestion.task_type,
@@ -13657,7 +13657,7 @@ setCustomerOrganizationName("");
       entity_type: "ai_alert",
       entity_id: null,
       entity_label: "AI business alerts",
-      description: `Generated ${newCandidates.length} AI business alert(s)`,
+      description: (newCandidates.length === 1 ? t('page.generatedAlertsOne') : t('page.generatedAlertsMany')).replace('{count}', String(newCandidates.length)),
       new_values: { count: newCandidates.length, alerts: newCandidates.map((item) => item.title) },
     });
     await fetchAiAlerts(currentOrganizationId);
@@ -13696,7 +13696,7 @@ setCustomerOrganizationName("");
       entity_type: "ai_alert",
       entity_id: alert.id,
       entity_label: alert.title,
-      description: `Updated AI alert status to ${nextStatus}`,
+      description: t('page.updatedAiAlertStatus').replace('{status}', nextStatus),
       old_values: { status: alert.status },
       new_values: { status: nextStatus },
     });
@@ -13982,7 +13982,7 @@ setCustomerOrganizationName("");
         entity_type: "ai_business_query",
         entity_id: null,
         entity_label: question,
-        description: `Asked AI business query: ${question}`,
+        description: t('page.askedAiQuery').replace('{question}', question),
         new_values: {
           query_type: queryType,
           language,
@@ -14334,7 +14334,7 @@ setCustomerOrganizationName("");
       entity_type: "ai_action_draft",
       entity_id: draft.id,
       entity_label: draft.action_type,
-      description: `Saved AI voice operator answer for ${field}`,
+      description: t('page.savedAiVoiceAnswer').replace('{field}', field),
       new_values: { [field]: parsedAnswer.parsedValue },
     });
 
@@ -14469,7 +14469,7 @@ setCustomerOrganizationName("");
       entity_type: "ai_action_draft",
       entity_id: data?.id ?? null,
       entity_label: parsed.actionType,
-      description: `Created AI action draft from voice operator: ${parsed.confirmationSummary}`,
+      description: t('page.createdAiDraftVoice').replace('{summary}', parsed.confirmationSummary),
       new_values: payload,
     });
     setSelectedAiDraftId(data?.id ?? "");
@@ -15333,7 +15333,7 @@ setCustomerOrganizationName("");
         entity_type: "product",
         entity_id: editingProductId,
         entity_label: trimmedName,
-        description: `Updated product ${trimmedName}`,
+        description: t('page.updatedProduct').replace('{name}', trimmedName),
         old_values: originalProduct
           ? {
               name: originalProduct.name,
@@ -15384,7 +15384,7 @@ setCustomerOrganizationName("");
       entity_type: "product",
       entity_id: productData?.id ?? null,
       entity_label: trimmedName,
-      description: `Created product ${trimmedName}`,
+      description: t('page.createdProduct').replace('{name}', trimmedName),
       new_values: {
         name: payload.name,
         brand_id: payload.brand_id,
@@ -15646,7 +15646,7 @@ setCustomerOrganizationName("");
       entity_type: "market_intelligence_item",
       entity_id: data?.id ?? null,
       entity_label: title,
-      description: `Created market intelligence item ${title}`,
+      description: t('page.createdMiItem').replace('{title}', title),
       new_values: payload,
     });
     let conversionWarning: string | null = null;
@@ -15675,7 +15675,7 @@ setCustomerOrganizationName("");
             entity_type: "market_import_queue",
             entity_id: selectedMarketImportQueueId,
             entity_label: title,
-            description: `Converted import queue item into market intelligence item ${title}`,
+            description: t('page.convertedImportItem').replace('{title}', title),
             new_values: {
               review_status: "converted",
               converted_intelligence_item_id: data?.id ?? null,
@@ -15715,7 +15715,7 @@ setCustomerOrganizationName("");
             entity_type: "market_ai_analysis",
             entity_id: selectedAiAnalysisId,
             entity_label: title,
-            description: `Converted AI analysis into market intelligence item ${title}`,
+            description: t('page.convertedAiAnalysis').replace('{title}', title),
             new_values: {
               review_status: "converted",
               converted_intelligence_item_id: data?.id ?? null,
@@ -15774,7 +15774,7 @@ setCustomerOrganizationName("");
       entity_type: "market_news_source",
       entity_id: data?.id ?? null,
       entity_label: sourceName,
-      description: `Created market news source ${sourceName}`,
+      description: t('page.createdNewsSource').replace('{name}', sourceName),
       new_values: payload,
     });
     setMarketNewsSourceName("");
@@ -15838,7 +15838,7 @@ setCustomerOrganizationName("");
       entity_type: "market_intelligence_item",
       entity_id: itemId,
       entity_label: item.title,
-      description: `Updated market intelligence item ${item.title} to ${nextStatus}`,
+      description: t('page.updatedMiItem').replace('{title}', item.title).replace('{status}', nextStatus),
       old_values: { status: item.status },
       new_values: updatePayload,
     });
@@ -15894,7 +15894,7 @@ setCustomerOrganizationName("");
       entity_type: "market_import_queue",
       entity_id: item.id,
       entity_label: item.raw_title ?? item.source_name ?? "Market import queue item",
-      description: `Updated market import queue item to ${nextStatus}`,
+      description: t('page.updatedImportItem').replace('{status}', nextStatus),
       old_values: { review_status: item.review_status },
       new_values: updatePayload,
     });
@@ -16158,7 +16158,7 @@ setCustomerOrganizationName("");
       entity_type: "market_ai_analysis",
       entity_id: analysis.id,
       entity_label: analysis.input_title ?? analysis.ai_summary ?? "Market AI analysis",
-      description: `Updated market AI analysis to ${nextStatus}`,
+      description: t('page.updatedAiAnalysis').replace('{status}', nextStatus),
       old_values: { review_status: analysis.review_status },
       new_values: updatePayload,
     });
@@ -16203,7 +16203,7 @@ setCustomerOrganizationName("");
       entity_type: "market_intelligence_item",
       entity_id: item.id,
       entity_label: item.title,
-      description: `Deleted market intelligence item ${item.title}`,
+      description: t('page.deletedMiItem').replace('{title}', item.title),
       old_values: { ...item },
     });
     await fetchMarketIntelligenceItems(currentOrganizationId);
@@ -16237,7 +16237,7 @@ setCustomerOrganizationName("");
       entity_type: "market_news_source",
       entity_id: source.id,
       entity_label: source.source_name,
-      description: `Deleted market news source ${source.source_name}`,
+      description: t('page.deletedNewsSource').replace('{name}', source.source_name),
       old_values: { ...source },
     });
     await fetchMarketNewsSources(currentOrganizationId);
@@ -16526,7 +16526,7 @@ setCustomerOrganizationName("");
       entity_type: "staff_profile",
       entity_id: profileId,
       entity_label: updatePayload.display_name ?? profile.email ?? profileId,
-      description: `Updated staff profile ${updatePayload.display_name ?? profile.email ?? profileId}`,
+      description: t('page.updatedStaffProfile').replace('{name}', updatePayload.display_name ?? profile.email ?? profileId),
       old_values: {
         display_name: profile.display_name ?? null,
         role: profile.role ?? null,
@@ -16607,7 +16607,7 @@ setCustomerOrganizationName("");
       entity_type: "staff_permissions",
       entity_id: selectedStaffProfileId,
       entity_label: selectedProfile.display_name ?? selectedProfile.email ?? selectedStaffProfileId,
-      description: `Updated staff permissions for ${selectedProfile.display_name ?? selectedProfile.email ?? selectedStaffProfileId}`,
+      description: t('page.updatedStaffPermissions').replace('{name}', selectedProfile.display_name ?? selectedProfile.email ?? selectedStaffProfileId),
       old_values: previousPermissionValues,
       new_values: permissionPayload,
     });
@@ -16692,7 +16692,7 @@ setCustomerOrganizationName("");
       entity_type: "security_check",
       entity_id: check.id ?? check.check_key,
       entity_label: check.check_label,
-      description: `Updated security check ${check.check_label} to ${status}`,
+      description: t('page.updatedSecurityCheck').replace('{label}', check.check_label).replace('{status}', status),
       old_values: {
         status: check.status,
         notes: check.notes,
