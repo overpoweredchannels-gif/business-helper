@@ -25532,7 +25532,7 @@ setCustomerOrganizationName("");
                             onClick={() => deleteMarketIntelligenceItem(item)}
                             className="rounded border border-destructive bg-card px-3 py-2 text-xs text-destructive hover:bg-destructive/5"
                           >
-                            Delete
+                            {t('common.delete')}
                           </button>
                         </div>
                       </div>
