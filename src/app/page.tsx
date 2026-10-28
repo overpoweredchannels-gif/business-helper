@@ -401,6 +401,11 @@ export default function Home() {
     Low: t('page.marketUrgencyLow'),
     Monitor: t('page.marketUrgencyMonitor'),
   };
+  const payStatusLabelMap: Record<string, string> = {
+    Paid: t('page.payStatusPaid'),
+    Overdue: t('page.payStatusOverdue'),
+    "Payment Pending": t('page.payStatusPending'),
+  };
   const marketCategoryOptionsT = marketCategoryOptions.map((option) => ({ ...option, label: marketCategoryLabelByValue[option.value] ?? option.label }));
   const marketImpactDirectionOptionsT = marketImpactDirectionOptions.map((option) => ({ ...option, label: marketImpactLabelByValue[option.value] ?? option.label }));
   const marketImpactLevelOptionsT = marketImpactLevelOptions.map((option) => ({ ...option, label: marketLevelLabelByValue[option.value] ?? option.label }));
@@ -1612,7 +1617,7 @@ export default function Home() {
       const res = await authorizedFetch("/api/staff/delete-inactive", { method: "POST" });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
-      alert(`Deleted ${data.deletedCount ?? 0} inactive staff profile(s).`);
+      alert(((data.deletedCount ?? 0) === 1 ? t('page.deletedInactiveProfilesOne') : t('page.deletedInactiveProfilesMany')).replace('{count}', String(data.deletedCount ?? 0)));
       fetchStaffProfilesAndPermissions(currentOrganizationId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('page.failedDeleteInactiveStaff');
@@ -2707,7 +2712,7 @@ setCustomerOrganizationName("");
         ? quantity / Number(product.units_per_pack)
         : quantity;
     if (mainQuantity > available) {
-      return `Cannot sell ${quantity} ${unitMode === "subunit" ? "units" : ""} of ${product.name}: only ${available} in stock (overselling is blocked for this product).`;
+      return t('page.cannotSell').replace('{qty}', String(quantity)).replace('{unit}', unitMode === "subunit" ? t('sell.units') : "").replace('{product}', product.name).replace('{available}', String(available));
     }
     return null;
   };
@@ -2759,7 +2764,7 @@ setCustomerOrganizationName("");
     });
     const followUpQuestions = missingFields.map((field) => ({
       field,
-      question: aiQuestionLabels[field] ?? `Provide ${field}`,
+      question: aiQuestionLabels[field] ?? t('page.provideField').replace('{field}', field),
       input_type: ["quantity", "purchase_price", "selling_price", "amount"].includes(field) ? "number" : "text",
     }));
     const readyToExecute = missingFields.length === 0 && actionType !== "unknown";
@@ -2776,7 +2781,7 @@ setCustomerOrganizationName("");
       };
     } else if (actionType === "create_purchase_draft") {
       const total = (quantity ?? 0) * (purchasePrice ?? 0);
-      confirmationSummary = `Prepare purchase draft for ${product?.name ?? "unknown product"} from ${supplier?.supplier_name ?? "unknown supplier"}.`;
+      confirmationSummary = t('page.preparePurchaseDraft').replace('{product}', product?.name ?? t('page.unknownProduct')).replace('{supplier}', supplier?.supplier_name ?? t('page.unknownSupplier'));
       executionPreview = {
         supplier: supplier?.supplier_name ?? null,
         product: product?.name ?? null,
@@ -2789,7 +2794,7 @@ setCustomerOrganizationName("");
     } else if (actionType === "create_sale_draft") {
       const availableStock = product ? getAvailableStockForProduct(product.id) : null;
       const total = (quantity ?? 0) * (sellingPrice ?? 0);
-      confirmationSummary = `Prepare sale draft for ${customer?.customer_name ?? "unknown customer"} with ${product?.name ?? "unknown product"}.`;
+      confirmationSummary = t('page.prepareSaleDraft').replace('{customer}', customer?.customer_name ?? t('sell.unknownCustomer')).replace('{product}', product?.name ?? t('page.unknownProduct'));
       executionPreview = {
         customer: customer?.customer_name ?? null,
         product: product?.name ?? null,
@@ -2800,12 +2805,12 @@ setCustomerOrganizationName("");
         available_stock: availableStock,
         stock_warning:
           availableStock !== null && quantity !== null && availableStock < quantity
-            ? `Available stock is ${availableStock}, below requested quantity ${quantity}.`
+            ? t('page.stockBelowRequested').replace('{available}', String(availableStock)).replace('{quantity}', String(quantity))
             : null,
         note: t('page.createSalesInvoiceDesc'),
       };
     } else if (actionType === "create_expense_draft") {
-      confirmationSummary = `Prepare expense draft for ${expenseType || "unknown expense type"} amount ${formatBooksMoney(amount)}.`;
+      confirmationSummary = t('page.prepareExpenseDraft').replace('{type}', expenseType || t('page.unknownExpenseType')).replace('{amount}', formatBooksMoney(amount));
       executionPreview = {
         expense_type: expenseType || null,
         amount,
@@ -3214,7 +3219,7 @@ setCustomerOrganizationName("");
           draftId: draft.id,
           role: "assistant",
           messageType: "confirmation",
-          messageText: `${evaluation.confirmationSummary} Should I execute this now?`,
+          messageText: `${evaluation.confirmationSummary} ${t('page.shouldExecuteNow')}`,
         });
         if (confirmationMessage) nextMessages = [...nextMessages, confirmationMessage];
       }
@@ -3298,7 +3303,7 @@ setCustomerOrganizationName("");
         draftId: draft.id,
         role: "assistant",
         messageType: "confirmation",
-        messageText: `${evaluationBeforeAnswer.confirmationSummary} Should I execute this now?`,
+        messageText: `${evaluationBeforeAnswer.confirmationSummary} ${t('page.shouldExecuteNow')}`,
       });
       setAiConversationInput("");
       await fetchAiActionMessages(draft.id, currentOrganizationId);
@@ -3361,7 +3366,7 @@ setCustomerOrganizationName("");
       draftId: draft.id,
       role: "system",
       messageType: "answer",
-      messageText: `Saved answer for ${field}.`,
+      messageText: t('page.savedAnswer').replace('{field}', field),
       relatedField: field,
       parsedValue: parsedAnswer.parsedValue,
     });
@@ -3389,7 +3394,7 @@ setCustomerOrganizationName("");
         draftId: draft.id,
         role: "assistant",
         messageType: "confirmation",
-        messageText: `${evaluation.confirmationSummary} Should I execute this now?`,
+        messageText: `${evaluation.confirmationSummary} ${t('page.shouldExecuteNow')}`,
       });
       setAiConversationMessage(t('page.aiDraftComplete'));
     }
@@ -3672,7 +3677,7 @@ setCustomerOrganizationName("");
         availableStock < quantity &&
         (!draftProduct || getEffectiveOversellingPolicy(draftProduct) === "block")
       ) {
-        await markDraftFailed(`Not enough stock. Available stock is ${availableStock}, requested quantity is ${quantity}.`);
+        await markDraftFailed(t('page.notEnoughStock').replace('{available}', String(availableStock)).replace('{quantity}', String(quantity)));
         return;
       }
 
@@ -4105,9 +4110,7 @@ setCustomerOrganizationName("");
         },
       });
       setLocationTrackingMessage(
-        `Duty started. Browser tracking remains active while TradeOS is open${
-          result.scheduledEndAt ? ` and ends automatically at ${formatDateTime(result.scheduledEndAt)}` : ""
-        }. Use the Workforce mobile app for background tracking.`
+        t('page.dutyStartedMsg').replace('{ending}', result.scheduledEndAt ? t('page.dutyAutoEnd').replace('{time}', formatDateTime(result.scheduledEndAt)) : "")
       );
     } catch (err) {
       setLocationTrackingError(getBrowserLocationErrorMessage(err));
@@ -6550,7 +6553,7 @@ setCustomerOrganizationName("");
     const businessImpact =
       String(advisory?.business_impact ?? "").trim() ||
       latestAnalysis?.ai_reasoning ||
-      `Potential impact on ${affectedBusinessAreas.join(", ")} based on supplied item text.`;
+      t('page.potentialImpactLine').replace('{areas}', affectedBusinessAreas.join(", "));
     const whyItMatters =
       String(advisory?.why_it_matters ?? "").trim() ||
       t('page.marketMattersBecause');
@@ -6572,7 +6575,7 @@ setCustomerOrganizationName("");
       businessHealthImpact,
       businessHealthReason:
         String(advisory?.business_health_reason ?? "").trim() ||
-        `${businessHealthImpact} impact based on risk score ${riskScore} and opportunity score ${opportunityScore}.`,
+        t('page.healthImpactLine').replace('{impact}', businessHealthImpact).replace('{risk}', String(riskScore)).replace('{opportunity}', String(opportunityScore)),
       whyItMatters,
     };
   };
@@ -7040,7 +7043,7 @@ setCustomerOrganizationName("");
         }
       }
       if (!lookup || !qty) {
-        resolved.push({ productId: "", name: `Unparsed: "${line}"`, qty: "", currentStock: 0, matched: false });
+        resolved.push({ productId: "", name: t('page.unparsedLine').replace('{line}', line), qty: "", currentStock: 0, matched: false });
         continue;
       }
       const match = activeMap.get(lookup.toLowerCase());
@@ -7080,7 +7083,7 @@ setCustomerOrganizationName("");
     }
     if (invalid.length > 0) {
       setBulkStockError(
-        `Some lines are unmatched or have no quantity (${invalid.length}). Matched lines can still be added — remove the bad rows to proceed cleanly, or add them now.`
+        t('page.someLinesUnmatched').replace('{count}', String(invalid.length))
       );
     }
 
@@ -7117,7 +7120,7 @@ setCustomerOrganizationName("");
         succeeded.push(`${line.name} +${qty}`);
       }
       setBulkStockMessage(
-        `Added stock for ${succeeded.length} product line(s).` +
+        (succeeded.length === 1 ? t('page.bulkAddedStockOne') : t('page.bulkAddedStockMany')).replace('{count}', String(succeeded.length)) +
           (succeeded.length > 0 ? ` (${succeeded.join(", ")})` : "") +
           (failed.length > 0 ? ` Failed: ${failed.map((f) => `${f.name} — ${f.error}`).join(" | ")}` : "")
       );
@@ -8267,7 +8270,7 @@ setCustomerOrganizationName("");
     const po = purchaseOrders.find((item) => item.id === poId);
     if (!po || po.status === "received" || po.status === "cancelled") return;
 
-    if (!window.confirm(`Cancel purchase order ${po.po_number}? This cannot be undone.`)) return;
+    if (!window.confirm(t('page.cancelPoConfirm').replace('{number}', po.po_number))) return;
 
     const { error } = await supabase
       .from("purchase_orders")
@@ -8672,7 +8675,7 @@ setCustomerOrganizationName("");
 
     if (
       !window.confirm(
-        `Delete purchase return ${purchaseReturn.return_number}? Its stock will be restored to inventory.`
+        t('page.deletePrConfirm').replace('{number}', purchaseReturn.return_number)
       )
     ) {
       return;
@@ -8943,7 +8946,7 @@ setCustomerOrganizationName("");
     if (nextStatus === "cancelled") {
       setConfirmDialog({
         title: t('page.cancelSalesOrder'),
-        body: `Cancel sales order ${order.so_number}? This cannot be undone.`,
+        body: t('page.cancelSoConfirm').replace('{number}', order.so_number),
         confirmLabel: t('page.cancelOrder'),
         onConfirm: () => {
           void applySalesOrderStatus(soId, nextStatus);
@@ -8998,7 +9001,7 @@ setCustomerOrganizationName("");
       return;
     }
 
-    if (!window.confirm(`Approve ${order.so_number}? This converts it into a sales invoice and updates stock.`)) return;
+    if (!window.confirm(t('page.approveSoConfirm').replace('{number}', order.so_number))) return;
 
     setSoError(null);
     setSoMessage(null);
@@ -9078,7 +9081,7 @@ setCustomerOrganizationName("");
 
     setConfirmDialog({
       title: t('page.deleteSalesOrder'),
-      body: `Delete draft sales order ${order.so_number}? This cannot be undone.`,
+      body: t('page.deleteDraftSoConfirm').replace('{number}', order.so_number),
       confirmLabel: t('page.deleteOrder'),
       onConfirm: () => {
         void applyDeleteSalesOrder(soId);
@@ -9376,7 +9379,7 @@ setCustomerOrganizationName("");
     const salesReturn = salesReturns.find((item) => item.id === returnId);
     if (!salesReturn) return;
 
-    if (!window.confirm(`Delete sales return ${salesReturn.return_number}? Stock restoration will be reversed.`)) return;
+    if (!window.confirm(t('page.deleteSrConfirm').replace('{number}', salesReturn.return_number))) return;
 
     const { error } = await supabase
       .from("sales_returns")
@@ -10580,10 +10583,10 @@ setCustomerOrganizationName("");
   );
   const invoiceNumbersByReferenceId = new Map<string, string>();
   for (const transaction of purchaseTransactions) {
-    invoiceNumbersByReferenceId.set(transaction.id, `Purchase ${transaction.invoice_number}`);
+    invoiceNumbersByReferenceId.set(transaction.id, t('page.refPurchase').replace('{number}', transaction.invoice_number));
   }
   for (const transaction of salesTransactions) {
-    invoiceNumbersByReferenceId.set(transaction.id, `Sale ${transaction.invoice_number}`);
+    invoiceNumbersByReferenceId.set(transaction.id, t('page.refSale').replace('{number}', transaction.invoice_number));
   }
   const ledgerQuery = useMemo(
     () =>
@@ -10925,7 +10928,7 @@ setCustomerOrganizationName("");
     !record?.organization_id || !currentOrganizationId || record.organization_id === currentOrganizationId;
   const getBiProfileLabel = (profileId: unknown) => {
     const profile = staffProfiles.find((item) => String(item.id) === String(profileId));
-    return profile?.display_name || profile?.email || (profileId ? `Profile ${String(profileId).slice(0, 8)}` : "Unassigned");
+    return profile?.display_name || profile?.email || (profileId ? t('page.profileShort').replace('{id}', String(profileId).slice(0, 8)) : t('page.unassigned'));
   };
   const getRecordProfileId = (record: any) =>
     record?.created_by_profile_id ?? record?.profile_id ?? record?.created_by ?? record?.actor_profile_id ?? null;
@@ -11363,7 +11366,7 @@ setCustomerOrganizationName("");
     const bestCustomer = topCustomersBySales[0] ?? null;
     const marketSignalNote =
       marketIntelligenceSummary.highCritical > 0
-        ? `${marketIntelligenceSummary.highCritical} high or critical market signal(s) need review.`
+        ? (marketIntelligenceSummary.highCritical === 1 ? t('page.highCriticalSignalOne') : t('page.highCriticalSignalMany')).replace('{count}', String(marketIntelligenceSummary.highCritical))
         : t('page.noHighImpactSignals');
 
     return {
@@ -11436,12 +11439,12 @@ setCustomerOrganizationName("");
         bestCustomer,
         lowStockWarning:
           outOfStockProducts.length > 0
-            ? `${outOfStockProducts.length} product(s) are out of stock.`
+            ? t('page.outOfStockProducts').replace('{count}', String(outOfStockProducts.length))
             : lowStockProducts.length > 0
-              ? `${lowStockProducts.length} product(s) are at or below reorder level.`
+              ? t('page.atOrBelowReorder').replace('{count}', String(lowStockProducts.length))
               : t('page.noUrgentLowStockFiltered'),
         staffActivityNote:
-          "Staff attribution depends on which records contain creator/profile information.",
+          t('page.staffAttributionNote'),
         marketSignalNote,
       },
     };
@@ -11563,7 +11566,7 @@ setCustomerOrganizationName("");
     }
     if (overview.outOfStockCount > 0) {
       score -= 20;
-      reasons.push(`${overview.outOfStockCount} product(s) are out of stock.`);
+      reasons.push(t('page.outOfStockProducts').replace('{count}', String(overview.outOfStockCount)));
     } else if (overview.lowStockCount > 0) {
       score -= 10;
       reasons.push(t('page.lowStockProducts').replace('{count}', String(overview.lowStockCount)));
@@ -11722,19 +11725,19 @@ setCustomerOrganizationName("");
   const getAnalyticsTopPriorities = () => {
     const priorities: string[] = [];
     const topOutstanding = businessIntelligenceAnalytics.customersWithHighOutstanding[0];
-    if (topOutstanding) priorities.push(`Collect overdue or outstanding payments from ${topOutstanding.customerName} (${formatBooksMoney(topOutstanding.outstandingBalance)}).`);
+    if (topOutstanding) priorities.push(t('page.collectOverdue').replace('{customer}', topOutstanding.customerName).replace('{amount}', formatBooksMoney(topOutstanding.outstandingBalance)));
     const topOutOfStock = businessIntelligenceAnalytics.outOfStockProducts[0];
-    if (topOutOfStock) priorities.push(`Reorder ${topOutOfStock.productName}; current stock is ${topOutOfStock.currentStock}.`);
+    if (topOutOfStock) priorities.push(t('page.reorderCurrentStock').replace('{product}', topOutOfStock.productName).replace('{stock}', String(topOutOfStock.currentStock)));
     const topLowStock = businessIntelligenceAnalytics.lowStockProducts[0];
-    if (!topOutOfStock && topLowStock) priorities.push(`Prepare reorder for ${topLowStock.productName}; stock is near reorder level.`);
+    if (!topOutOfStock && topLowStock) priorities.push(t('page.prepareReorderNearLevel').replace('{product}', topLowStock.productName));
     const topExpense = businessIntelligenceAnalytics.expensesByType[0];
-    if (topExpense) priorities.push(`Review ${topExpense.expenseType} expenses (${formatBooksMoney(topExpense.totalAmount)}).`);
+    if (topExpense) priorities.push(t('page.reviewExpenseType').replace('{type}', topExpense.expenseType).replace('{amount}', formatBooksMoney(topExpense.totalAmount)));
     const lowMargin = businessIntelligenceAnalytics.lowMarginProducts[0];
-    if (lowMargin) priorities.push(`Review pricing or cost for low-margin product ${lowMargin.productName}.`);
+    if (lowMargin) priorities.push(t('page.reviewPricingLowMargin').replace('{product}', lowMargin.productName));
     const slowMoving = businessIntelligenceAnalytics.slowMovingProducts[0];
-    if (slowMoving) priorities.push(`Check slow-moving stock for ${slowMoving.productName}.`);
+    if (slowMoving) priorities.push(t('page.checkSlowMoving').replace('{product}', slowMoving.productName));
     const inactiveCustomer = businessIntelligenceAnalytics.inactiveCustomers[0];
-    if (inactiveCustomer) priorities.push(`Follow up inactive customer ${inactiveCustomer.customerName}.`);
+    if (inactiveCustomer) priorities.push(t('page.followUpInactive').replace('{customer}', inactiveCustomer.customerName));
     if (priorities.length === 0) priorities.push(t('page.keepRecording'));
     return priorities.slice(0, 5);
   };
@@ -12244,7 +12247,7 @@ setCustomerOrganizationName("");
         const dueDate = getDateOnly(transaction.credit_due_date);
         const customer = customers.find((item) => item.id === transaction.customer_id);
         if (!dueDate || dueDate >= todayDateValue || remainingUnpaidAmount <= 0) return null;
-        const title = `Collect overdue payment from ${customer?.customer_name ?? t('sell.unknownCustomer')}`;
+        const title = t('page.collectOverduePayment').replace('{customer}', customer?.customer_name ?? t('sell.unknownCustomer'));
         const relation = {
           customer_id: transaction.customer_id,
           sales_transaction_id: transaction.id,
@@ -12253,7 +12256,7 @@ setCustomerOrganizationName("");
         return {
           key: `overdue-${transaction.id}`,
           title,
-          reason: `Invoice ${transaction.invoice_number} is overdue with ${formatBooksMoney(remainingUnpaidAmount)} remaining.`,
+          reason: t('page.invoiceOverdue').replace('{number}', transaction.invoice_number).replace('{amount}', formatBooksMoney(remainingUnpaidAmount)),
           task_type: "payment_collection",
           priority: "urgent",
           customer_id: transaction.customer_id,
@@ -12269,7 +12272,7 @@ setCustomerOrganizationName("");
       )
       .map((transaction) => {
         const supplier = suppliers.find((item) => item.id === transaction.supplier_id);
-        const title = `Review purchase expenses for invoice ${transaction.invoice_number}`;
+        const title = t('page.reviewPurchaseExpenses').replace('{number}', transaction.invoice_number);
         const relation = {
           supplier_id: transaction.supplier_id,
           purchase_transaction_id: transaction.id,
@@ -12278,7 +12281,7 @@ setCustomerOrganizationName("");
         return {
           key: `expense-review-${transaction.id}`,
           title,
-          reason: `Purchase invoice ${transaction.invoice_number} needs expense review.`,
+          reason: t('page.purchaseNeedsExpenseReview').replace('{number}', transaction.invoice_number),
           task_type: "expense_review",
           priority: "medium",
           customer_id: null,
@@ -12293,7 +12296,7 @@ setCustomerOrganizationName("");
         recommendation.status === "Out of Stock" || recommendation.status === "Urgent Reorder"
       )
       .map((recommendation) => {
-        const title = `Prepare reorder for ${recommendation.productName}`;
+        const title = t('page.prepareReorder').replace('{product}', recommendation.productName);
         const relation = { product_id: recommendation.productId };
         if (hasActiveTask(title, relation)) return null;
         return {
@@ -13424,15 +13427,15 @@ setCustomerOrganizationName("");
     const market = summaryData.market_intelligence ?? {};
     const alerts = summaryData.alerts ?? {};
     const lines = [
-      `${summaryData.date_range?.label ?? t('bi.rangeToday')} briefing:`,
-      `Sales: ${safeNumber(sales.count)} invoices totaling ${formatBooksMoney(safeNumber(sales.total_amount))}.`,
-      `Purchases: ${safeNumber(purchases.count)} invoices totaling ${formatBooksMoney(safeNumber(purchases.total_amount))}.`,
-      `Customer collections: ${safeNumber(customerPayments.count)} payments totaling ${formatBooksMoney(safeNumber(customerPayments.total_amount))}.`,
-      `Supplier payments: ${safeNumber(supplierPayments.count)} payments totaling ${formatBooksMoney(safeNumber(supplierPayments.total_amount))}.`,
-      `Expenses: ${safeNumber(expensesSummary.count)} entries totaling ${formatBooksMoney(safeNumber(expensesSummary.total_amount))}.`,
-      `Inventory: ${safeNumber(inventory.stock_summary?.outOfStockCount)} out of stock, ${safeNumber(inventory.stock_summary?.urgentReorderCount)} urgent reorder, ${safeNumber(inventory.stock_summary?.healthyCount)} healthy, ${safeNumber(inventory.stock_summary?.missingReorderLevelCount)} missing a reorder level.`,
-      `Alerts: ${safeNumber(alerts.active_count)} active, including ${safeNumber(alerts.critical_count)} critical and ${safeNumber(alerts.high_count)} high severity.`,
-      `Market signals: ${getArrayValue(market.critical_items).length} critical, ${getArrayValue(market.high_impact_items).length} high impact, ${getArrayValue(market.price_up_signals).length} price-up, ${getArrayValue(market.supply_shortage_signals).length} supply-shortage.`,
+      t('page.briefingTitle').replace('{label}', summaryData.date_range?.label ?? t('bi.rangeToday')),
+      t('page.briefingSales').replace('{count}', String(safeNumber(sales.count))).replace('{total}', formatBooksMoney(safeNumber(sales.total_amount))),
+      t('page.briefingPurchases').replace('{count}', String(safeNumber(purchases.count))).replace('{total}', formatBooksMoney(safeNumber(purchases.total_amount))),
+      t('page.briefingCollections').replace('{count}', String(safeNumber(customerPayments.count))).replace('{total}', formatBooksMoney(safeNumber(customerPayments.total_amount))),
+      t('page.briefingSupplierPayments').replace('{count}', String(safeNumber(supplierPayments.count))).replace('{total}', formatBooksMoney(safeNumber(supplierPayments.total_amount))),
+      t('page.briefingExpenses').replace('{count}', String(safeNumber(expensesSummary.count))).replace('{total}', formatBooksMoney(safeNumber(expensesSummary.total_amount))),
+      t('page.briefingInventory').replace('{out}', String(safeNumber(inventory.stock_summary?.outOfStockCount))).replace('{urgent}', String(safeNumber(inventory.stock_summary?.urgentReorderCount))).replace('{healthy}', String(safeNumber(inventory.stock_summary?.healthyCount))).replace('{missing}', String(safeNumber(inventory.stock_summary?.missingReorderLevelCount))),
+      t('page.briefingAlerts').replace('{active}', String(safeNumber(alerts.active_count))).replace('{critical}', String(safeNumber(alerts.critical_count))).replace('{high}', String(safeNumber(alerts.high_count))),
+      t('page.briefingMarketSignals').replace('{critical}', String(getArrayValue(market.critical_items).length)).replace('{high}', String(getArrayValue(market.high_impact_items).length)).replace('{priceUp}', String(getArrayValue(market.price_up_signals).length)).replace('{shortage}', String(getArrayValue(market.supply_shortage_signals).length)),
     ];
     return lines.join("\n");
   };
@@ -13468,7 +13471,7 @@ setCustomerOrganizationName("");
       .forEach((recommendation) => {
         candidates.push({
           alert_type: "inventory",
-          title: `${recommendation.status}: ${recommendation.productName}`,
+          title: t('page.statusName').replace('{status}', recommendation.status).replace('{name}', recommendation.productName),
           summary: t('page.productStockSummary').replace('{product}', recommendation.productName).replace('{stock}', String(recommendation.currentStock)).replace('{unit}', recommendation.unitType).replace('{reorder}', String(recommendation.reorderLevel)),
           severity: recommendation.status === "Out of Stock" ? "critical" : "high",
           source_type: "inventory",
@@ -13490,7 +13493,7 @@ setCustomerOrganizationName("");
       .forEach((task) => {
         candidates.push({
           alert_type: "task",
-          title: `Overdue task: ${task.title}`,
+          title: t('page.overdueTask').replace('{title}', task.title),
           summary: t('page.taskDueStill').replace('{date}', formatDate(task.due_date)).replace('{status}', task.status),
           severity: task.priority === "urgent" ? "high" : "medium",
           source_type: "task",
@@ -13514,8 +13517,8 @@ setCustomerOrganizationName("");
         const severity = item.impact_level === "critical" ? "critical" : item.impact_level === "high" ? "high" : "medium";
         candidates.push({
           alert_type: "market",
-          title: `Market signal: ${item.title}`,
-          summary: item.summary ?? `Market impact: ${item.impact_direction || "neutral"}.`,
+          title: t('page.marketSignalLine').replace('{title}', item.title),
+          summary: item.summary ?? t('page.marketImpactLine').replace('{direction}', item.impact_direction || "neutral"),
           severity,
           source_type: "market_intelligence",
           source_entity_type: "market_intelligence_item",
@@ -13532,7 +13535,7 @@ setCustomerOrganizationName("");
       .forEach(({ customer, summary }) => {
         candidates.push({
           alert_type: "payment",
-          title: `Overdue receivable: ${customer.customer_name}`,
+          title: t('page.overdueReceivable').replace('{customer}', customer.customer_name),
           summary: t('page.overdueSummary').replace('{amount}', formatBooksMoney(summary.overdueAmount)).replace('{count}', String(summary.overdueInvoiceCount)),
           severity: summary.overdueAmount >= 50000 ? "high" : "medium",
           source_type: "customer_credit",
@@ -13560,7 +13563,7 @@ setCustomerOrganizationName("");
       .forEach(({ supplier, payable }) => {
         candidates.push({
           alert_type: "payment",
-          title: `Supplier payable pressure: ${supplier.supplier_name}`,
+          title: t('page.supplierPayablePressure').replace('{supplier}', supplier.supplier_name),
           summary: t('page.currentPayableMsg').replace('{amount}', formatBooksMoney(payable)),
           severity: payable >= 250000 ? "high" : "medium",
           source_type: "supplier_ledger",
@@ -13767,15 +13770,15 @@ setCustomerOrganizationName("");
       const topSignals = [
         ...getArrayValue(summaryData.alerts?.active_alerts)
           .slice(0, 8)
-          .map((alert: any) => `${String(alert.severity ?? "medium").toUpperCase()}: ${String(alert.title ?? "Alert")}`),
+          .map((alert: any) => t('page.alertSeverityTitle').replace('{severity}', String(alert.severity ?? "medium").toUpperCase()).replace('{title}', String(alert.title ?? t('page.fallbackAlertTitle')))),
         ...reorderRecommendations
           .filter((item) => item.status === "Out of Stock" || item.status === "Urgent Reorder")
           .slice(0, 5)
-          .map((item) => `${item.status}: ${item.productName}`),
+          .map((item) => t('page.statusName').replace('{status}', item.status).replace('{name}', item.productName)),
         ...marketIntelligenceItems
           .filter((item) => item.status === "active" && (item.impact_level === "critical" || item.impact_level === "high"))
           .slice(0, 5)
-          .map((item) => `Market ${item.impact_level}: ${item.title}`),
+          .map((item) => t('page.marketLevelTitle').replace('{level}', marketLevelLabelByValue[item.impact_level] ?? item.impact_level).replace('{title}', item.title)),
       ].slice(0, 15);
       const recommendedActions = [
         ...activeAiAlerts.map((alert) => alert.recommended_action).filter(Boolean).slice(0, 10),
@@ -13844,7 +13847,7 @@ setCustomerOrganizationName("");
     if (activeAiAlerts.length === 0) {
       const result = await generateAiBusinessAlerts();
       if (result.createdCount > 0) {
-        return `Generated ${result.createdCount} new active alert${result.createdCount === 1 ? "" : "s"}. Please review the Daily Briefing and Alerts panel for details.`;
+        return (result.createdCount === 1 ? t('page.generatedNewAlertOne') : t('page.generatedNewAlertMany')).replace('{count}', String(result.createdCount));
       }
     }
     const visibleAlerts = aiAlerts.filter((alert) => alert.status === "active").slice(0, 8);
@@ -13852,9 +13855,9 @@ setCustomerOrganizationName("");
       return t('page.noActiveAlerts');
     }
     return [
-      `You have ${visibleAlerts.length} active alert${visibleAlerts.length === 1 ? "" : "s"}.`,
+      (visibleAlerts.length === 1 ? t('page.activeAlertOne') : t('page.activeAlertsMany')).replace('{count}', String(visibleAlerts.length)),
       ...visibleAlerts.map(
-        (alert) => `${alert.severity.toUpperCase()} ${alert.alert_type}: ${alert.title}. ${alert.recommended_action ?? ""}`.trim()
+        (alert) => t('page.alertFullLine').replace('{severity}', alert.severity.toUpperCase()).replace('{type}', alert.alert_type).replace('{title}', alert.title).replace('{action}', alert.recommended_action ?? "").trim()
       ),
     ].join("\n");
   };
@@ -14225,7 +14228,7 @@ setCustomerOrganizationName("");
       return;
     }
 
-    const confirmation = `I have all details. Please confirm: ${evaluation.confirmationSummary} Should I save it?`;
+    const confirmation = t('page.confirmSaveDetails').replace('{summary}', evaluation.confirmationSummary);
     setAiVoiceActiveMissingField("");
     setAiVoiceAwaitingConfirmation(true);
     setAiVoiceActionConversationMessage(confirmation);
@@ -14255,7 +14258,7 @@ setCustomerOrganizationName("");
     const field = aiVoiceActiveMissingField;
     const parsedAnswer = parseConversationAnswer(draft, field, answer);
     if (parsedAnswer.parsedValue === null || parsedAnswer.parsedValue === "") {
-      const retryQuestion = `I could not understand that answer. ${getAiVoiceActionQuestionText(field)}`;
+      const retryQuestion = t('page.couldNotUnderstand').replace('{question}', getAiVoiceActionQuestionText(field));
       setAiVoiceActionConversationError(retryQuestion);
       setAiVoiceLastResponse(retryQuestion);
       await addAiVoiceOperatorMessage({
@@ -14325,7 +14328,7 @@ setCustomerOrganizationName("");
       draftId: draft.id,
       role: "system",
       messageType: "answer",
-      messageText: `Saved answer for ${field}.`,
+      messageText: t('page.savedAnswer').replace('{field}', field),
       relatedField: field,
       parsedValue: parsedAnswer.parsedValue,
     });
@@ -14382,7 +14385,7 @@ setCustomerOrganizationName("");
     }
     const evaluation = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
     if (evaluation.missingFields.length > 0 || (!draft.ready_to_execute && !evaluation.readyToExecute)) {
-      const reply = `This draft needs more information first: ${evaluation.missingFields.join(", ")}.`;
+      const reply = t('page.draftNeedsInfoFirst').replace('{fields}', evaluation.missingFields.join(", "));
       setAiVoiceActionConversationError(reply);
       setAiVoiceLastResponse(reply);
       if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
@@ -14410,7 +14413,7 @@ setCustomerOrganizationName("");
     const executed = refreshedDraft?.status === "executed";
     const reply = executed
       ? getAiVoiceExecutionSuccessText(draft.action_type)
-      : `Could not complete this action: ${refreshedDraft?.error_message || aiAssistantError || t('page.reviewLinkedDraft')}`;
+      : t('page.couldNotCompleteAction').replace('{details}', refreshedDraft?.error_message || aiAssistantError || t('page.reviewLinkedDraft'));
     await addAiVoiceOperatorMessage({
       sessionId,
       role: "assistant",
@@ -14700,7 +14703,7 @@ setCustomerOrganizationName("");
     recognition.onerror = (event) => {
       setIsAiVoiceListening(false);
       clearAiVoiceAutoSendTimers();
-      setAiVoiceOperatorError(event.error ? `Voice input error: ${event.error}` : t('page.voiceInputFailed'));
+      setAiVoiceOperatorError(event.error ? t('page.voiceInputError').replace('{error}', event.error) : t('page.voiceInputFailed'));
     };
     recognition.onend = () => {
       setIsAiVoiceListening(false);
@@ -16084,9 +16087,9 @@ setCustomerOrganizationName("");
     setSelectedMarketImportQueueId("");
     const summaryParts = [
       analysis.ai_summary,
-      analysis.ai_reasoning ? `Reasoning: ${analysis.ai_reasoning}` : "",
-      analysis.ai_risks ? `Risks: ${analysis.ai_risks}` : "",
-      analysis.ai_owner_questions ? `Owner questions: ${analysis.ai_owner_questions}` : "",
+      analysis.ai_reasoning ? {t('page.reasoningLabel')} ${analysis.ai_reasoning} : "",
+      analysis.ai_risks ? {t('page.risksLabel')} ${analysis.ai_risks} : "",
+      analysis.ai_owner_questions ? {t('page.ownerQuestionsLabel')} ${analysis.ai_owner_questions} : "",
     ].filter(Boolean);
     setMarketTitle(analysis.input_title ?? analysis.ai_summary ?? t('page.aiMarketAnalysisFallback'));
     setMarketSummary(summaryParts.join("\n\n"));
@@ -16169,7 +16172,7 @@ setCustomerOrganizationName("");
   const deleteMarketIntelligenceItem = async (item: MarketIntelligenceItem) => {
     setConfirmDialog({
       title: t('page.deleteMarketItem'),
-      body: `Delete market intelligence item "${item.title}"?`,
+      body: t('page.deleteMiItemConfirm').replace('{title}', item.title),
       confirmLabel: t('page.deleteItem'),
       onConfirm: () => {
         void applyDeleteMarketIntelligenceItem(item);
@@ -16211,7 +16214,7 @@ setCustomerOrganizationName("");
   };
 
   const deleteMarketNewsSource = async (source: MarketNewsSource) => {
-    if (!window.confirm(`Delete news source "${source.source_name}"?`)) return;
+    if (!window.confirm(t('page.deleteNewsSourceConfirm').replace('{name}', source.source_name))) return;
     setMarketIntelligenceMessage(null);
     setMarketIntelligenceError(null);
 
@@ -16729,9 +16732,9 @@ setCustomerOrganizationName("");
   }
   const myTopProducts = [...productTotals.entries()]
     .map(([productId, { qty, value }]) => ({
-      name: productById.get(productId)?.name ?? `Product #${productId}`,
+      name: productById.get(productId)?.name ?? t('page.productHash').replace('{id}', String(productId)),
       value: formatBooksMoney(value),
-      detail: `${qty} sold`,
+      detail: t('page.qtySold').replace('{qty}', String(qty)),
     }))
     .sort((a, b) => b.value.localeCompare(a.value, undefined, { numeric: true }))
     .slice(0, 6);
@@ -19427,7 +19430,7 @@ setCustomerOrganizationName("");
                           <div className="flex gap-2">
                             <select
                               data-sale-discount-type={index}
-                              aria-label={`Discount type for line ${index + 1}`}
+                              aria-label={t('page.discountTypeLine').replace('{n}', String(index + 1))}
                               value={line.discount_type ?? "flat"}
                               onFocus={openSaleDiscountTypePicker}
                               onBlur={clearSaleDiscountTypePickerOpen}
@@ -20890,7 +20893,7 @@ setCustomerOrganizationName("");
                                 : "bg-warning/10 text-warning"
                           }`}
                         >
-                          {invoiceItem.status}
+                          {payStatusLabelMap[invoiceItem.status] ?? invoiceItem.status}
                         </span>
                         {invoiceItem.remainingUnpaidAmount > 0 && (
                           <span>{t('payments.remaining')}: {formatBooksMoney(invoiceItem.remainingUnpaidAmount)}</span>
