@@ -1720,7 +1720,7 @@ export default function Home() {
       console.error("Profile load error details:", JSON.stringify(profileError, null, 2));
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
-      setAuthError("Failed to load profile. Please try again.");
+      setAuthError(t('page.profileLoadFailed'));
       return;
     }
 
@@ -1728,7 +1728,7 @@ export default function Home() {
       console.error("No profile found for user:", userId);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
-      setAuthError("No profile found for this account. Please complete signup again or contact support.");
+      setAuthError(t('page.noProfileFound'));
       return;
     }
 
@@ -1736,7 +1736,7 @@ export default function Home() {
       console.error("Profile has no organization_id for user:", userId);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
-      setAuthError("Profile is incomplete. Missing organization. Please contact support.");
+      setAuthError(t('page.profileIncompleteOrg'));
       return;
     }
 
@@ -1902,7 +1902,7 @@ export default function Home() {
     setAuthLoading(true);
 
     if (!fullName.trim() || !organizationName.trim() || !email.trim() || !password.trim()) {
-      setAuthError("Please fill in all signup fields.");
+      setAuthError(t('page.fillSignupFields'));
       setAuthLoading(false);
       return;
     }
@@ -1928,7 +1928,7 @@ export default function Home() {
         throw new Error("Signup succeeded but no user was returned.");
       }
 
-      setAuthMessage("Account created. Please verify your email before signing in.");
+      setAuthMessage(t('page.accountCreatedVerify'));
       setEmail("");
       setPassword("");
       setFullName("");
@@ -2010,7 +2010,7 @@ setCustomerOrganizationName("");
     setAuthLoading(true);
 
     if (!email.trim() || !password.trim()) {
-      setAuthError("Please enter email and password.");
+      setAuthError(t('page.enterEmailPassword'));
       setAuthLoading(false);
       return;
     }
@@ -2035,7 +2035,7 @@ setCustomerOrganizationName("");
         setCurrentProfile(null);
         setCurrentOrganizationId(null);
       }
-      setAuthMessage("Logged in successfully.");
+      setAuthMessage(t('page.loggedIn'));
       setPassword("");
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Failed to log in");
@@ -2060,7 +2060,7 @@ setCustomerOrganizationName("");
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
-      setAuthMessage("Logged out successfully.");
+      setAuthMessage(t('page.loggedOut'));
       router.push("/login");
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Failed to log out");
@@ -2280,7 +2280,7 @@ setCustomerOrganizationName("");
   const handleAutoAllocateCustomerPayment = () => {
     const paymentAmount = Number(customerPaymentAmount);
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
-      setCustomerPaymentError("Please enter a valid payment amount before auto allocating.");
+      setCustomerPaymentError(t('page.validPaymentAutoAlloc'));
       setCustomerPaymentMessage(null);
       return;
     }
@@ -2321,7 +2321,7 @@ setCustomerOrganizationName("");
   const handleAutoAllocateSupplierPayment = () => {
     const paymentAmount = Number(supplierPaymentAmount);
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
-      setSupplierPaymentError("Please enter a valid payment amount before auto allocating.");
+      setSupplierPaymentError(t('page.validPaymentAutoAlloc'));
       setSupplierPaymentMessage(null);
       return;
     }
@@ -3714,7 +3714,7 @@ setCustomerOrganizationName("");
 
     const SpeechRecognitionConstructor = getSpeechRecognitionConstructor();
     if (!SpeechRecognitionConstructor) {
-      setVoiceInputError("This browser does not support speech recognition. Try Chrome or another supported browser.");
+      setVoiceInputError(t('page.browserNoSpeech'));
       setIsVoiceListening(false);
       return;
     }
@@ -3755,7 +3755,7 @@ setCustomerOrganizationName("");
       speechRecognitionRef.current = recognition;
       recognition.start();
       setIsVoiceListening(true);
-      setVoiceInputMessage("Listening... speak your TradeOS command");
+      setVoiceInputMessage(t('page.voiceListenCommand'));
     } catch (err) {
       speechRecognitionRef.current = null;
       setIsVoiceListening(false);
@@ -3792,7 +3792,7 @@ setCustomerOrganizationName("");
 
     const SpeechRecognitionConstructor = getSpeechRecognitionConstructor();
     if (!SpeechRecognitionConstructor) {
-      setVoiceAnswerError("This browser does not support speech recognition. Try Chrome or another supported browser.");
+      setVoiceAnswerError(t('page.browserNoSpeech'));
       setIsVoiceAnswerListening(false);
       return;
     }
@@ -3832,7 +3832,7 @@ setCustomerOrganizationName("");
       speechRecognitionRef.current = recognition;
       recognition.start();
       setIsVoiceAnswerListening(true);
-      setVoiceAnswerMessage("Listening... answer the current TradeOS question");
+      setVoiceAnswerMessage(t('page.voiceListenAnswer'));
     } catch (err) {
       speechRecognitionRef.current = null;
       setIsVoiceAnswerListening(false);
@@ -3912,7 +3912,7 @@ setCustomerOrganizationName("");
         stopLocationWatch();
         setActiveDutySession(null);
         activeDutySessionIdRef.current = null;
-        setLocationTrackingMessage("Duty ended at the scheduled cutoff. Start duty again on the next working day.");
+        setLocationTrackingMessage(t('tracking.dutyEnded'));
         await fetchDutySessions(currentOrganizationId, currentProfile.id);
         return;
       }
@@ -3940,7 +3940,7 @@ setCustomerOrganizationName("");
 
   const startLocationWatch = (sessionId: string) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setLocationTrackingError("This browser does not support live location tracking.");
+      setLocationTrackingError(t('page.browserNoLiveTracking'));
       return;
     }
 
@@ -3961,7 +3961,7 @@ setCustomerOrganizationName("");
       },
       (error) => {
         if (error.code === error.TIMEOUT || error.code === 3) {
-          setLocationTrackingMessage("Live tracking is active and waiting for the next GPS update.");
+          setLocationTrackingMessage(t('tracking.waitingForGps'));
           return;
         }
         setLocationTrackingError(getBrowserLocationErrorMessage(error));
@@ -3975,7 +3975,7 @@ setCustomerOrganizationName("");
 
     locationWatchIdRef.current = watchId;
     setIsTrackingLocation(true);
-    setLocationTrackingMessage("Live location tracking is active while TradeOS remains open.");
+    setLocationTrackingMessage(t('page.liveTrackingOpen'));
   };
 
   const handleStartDuty = async () => {
@@ -3993,7 +3993,7 @@ setCustomerOrganizationName("");
     }
 
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setLocationTrackingError("This browser does not support location tracking.");
+      setLocationTrackingError(t('tracking.noGeolocation'));
       return;
     }
 
@@ -4065,7 +4065,7 @@ setCustomerOrganizationName("");
     );
     if (!sessionToEnd) {
       stopLocationWatch();
-      setLocationTrackingMessage("No active duty session found.");
+      setLocationTrackingMessage(t('page.noDutySession'));
       return;
     }
 
@@ -4112,7 +4112,7 @@ setCustomerOrganizationName("");
         ended_reason: result.endedReason ?? "manual_stop",
       },
     });
-    setLocationTrackingMessage("Duty ended successfully.");
+    setLocationTrackingMessage(t('page.dutyEndedOk'));
   };
 
   const handleCreateSalesInvoice = async (overrideConfirmed = false) => {
@@ -4122,7 +4122,7 @@ setCustomerOrganizationName("");
     finally { saleSubmitLock.current = false; }
   };
   const saveSalesInvoice = async (overrideConfirmed = false) => {
-    if (!canUseSalesTool("invoice")) { setSalesError("Sales invoice permission is required."); return; }
+    if (!canUseSalesTool("invoice")) { setSalesError(t('page.salesInvoicePermRequired')); return; }
     if (salesInvoiceLoading) {
       return;
     }
@@ -4155,7 +4155,7 @@ setCustomerOrganizationName("");
           fetchCustomerPaymentAllocations();
           return;
         }
-        setSalesError("An earlier sale changed in another window. Reload and review the current basket before continuing.");
+        setSalesError(t('page.saleChangedElsewhere'));
         setSalesMessage(null);
         return;
       } catch (err) {
@@ -4191,7 +4191,7 @@ setCustomerOrganizationName("");
 
     if (quickSaleMode && isOwnerOrAdmin() && salesPaymentType === "cash") {
       if (posCashReceived.trim() !== "" && !hasAllowedPrecision(posCashReceived, SALE_MONEY_DECIMAL_PLACES)) {
-        setSalesError("Cash received supports up to two decimal places.");
+        setSalesError(t('page.cashTwoDecimals'));
         setSalesMessage(null);
         return;
       }
@@ -4207,7 +4207,7 @@ setCustomerOrganizationName("");
     for (const line of invoiceLines) {
       if (!line.product_id) continue;
       const product = products.find((p) => String(p.id) === String(line.product_id));
-      if (!product || product.is_active === false) { setSalesError("A product is unavailable. Remove it or choose an active product."); return; }
+      if (!product || product.is_active === false) { setSalesError(t('page.productUnavailable')); return; }
       const price = Number(line.selling_price);
       const bonus = Number(line.bonus || 0);
       if (line.selling_price.trim() === "" || !Number.isFinite(price) || price < 0 || !hasAllowedPrecision(line.selling_price, SALE_MONEY_DECIMAL_PLACES) || !Number.isFinite(bonus) || bonus < 0 || !hasAllowedPrecision(line.bonus || "0", SALE_QUANTITY_DECIMAL_PLACES)) { setSalesError(`Enter a price with up to two decimal places and a bonus with up to three decimal places for ${product.name}.`); return; }
@@ -4234,7 +4234,7 @@ setCustomerOrganizationName("");
     }
 
     if (!salesInvoiceDate || Number.isNaN(new Date(`${salesInvoiceDate}T00:00:00`).getTime())) {
-      setSalesError("Please select a valid sale date");
+      setSalesError(t('page.selectValidSaleDate'));
       setSalesMessage(null);
       return;
     }
@@ -4253,19 +4253,19 @@ setCustomerOrganizationName("");
       return;
     }
     if (salesDiscountType === "percent" && rawInvoiceDiscount > 100) {
-      setSalesError("Invoice discount percentage cannot exceed 100");
+      setSalesError(t('page.invoiceDiscountMax'));
       setSalesMessage(null);
       return;
     }
 
     const parsedTaxRate = salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate);
     if (staffSaleGateOutcome === "approval" && (rawInvoiceDiscount !== 0 || parsedTaxRate !== 0)) {
-      setSalesError("Employee approval currently supports line discounts only. Clear invoice discount and tax before submitting.");
+      setSalesError(t('page.approvalLineDiscountsOnly'));
       return;
     }
 
     if (salesTaxRate.trim() !== "" && (!Number.isFinite(parsedTaxRate) || parsedTaxRate < 0 || !hasAllowedPrecision(salesTaxRate, SALE_MONEY_DECIMAL_PLACES))) {
-      setSalesError("Tax rate must be a valid percentage with up to two decimal places");
+      setSalesError(t('page.taxRateValid'));
       setSalesMessage(null);
       return;
     }
@@ -4301,7 +4301,7 @@ setCustomerOrganizationName("");
 
     if (salesPaymentType === "credit") {
       if (!selectedSalesCustomer) {
-        setSalesError("Please select a valid customer");
+        setSalesError(t('page.selectValidCustomer'));
         setSalesMessage(null);
         return;
       }
@@ -4371,13 +4371,13 @@ setCustomerOrganizationName("");
           Number.isInteger(selectedCustomerCreditDays) &&
           selectedCustomerCreditDays >= 0;
         if (!validCreditDays) {
-          setSalesError("Customer credit days are invalid.");
+          setSalesError(t('page.creditDaysInvalid'));
           setSalesMessage(null);
           return;
         }
 
         if (!addDaysToDateInputValue(salesInvoiceDate, selectedCustomerCreditDays)) {
-          setSalesError("Could not calculate a valid credit due date.");
+          setSalesError(t('page.creditDueDateFailed'));
           setSalesMessage(null);
           return;
         }
@@ -4592,7 +4592,7 @@ setCustomerOrganizationName("");
       ({ invoice, allocationAmount }) => allocationAmount > invoice.remainingUnpaidAmount
     );
     if (allocationExceedsInvoice) {
-      setCustomerPaymentError("Allocation cannot exceed an invoice remaining balance.");
+      setCustomerPaymentError(t('page.allocExceedsBalance'));
       setCustomerPaymentMessage(null);
       return;
     }
@@ -4744,7 +4744,7 @@ setCustomerOrganizationName("");
       ({ invoice, allocationAmount }) => allocationAmount > invoice.remainingPayableAmount
     );
     if (allocationExceedsInvoice) {
-      setSupplierPaymentError("Allocation cannot exceed an invoice remaining payable amount.");
+      setSupplierPaymentError(t('page.allocExceedsPayable'));
       setSupplierPaymentMessage(null);
       return;
     }
@@ -4867,13 +4867,13 @@ setCustomerOrganizationName("");
     }
 
     if (!expenseType) {
-      setExpenseMessage("Error: Please select an expense type.");
+      setExpenseMessage(t('page.errorSelectExpenseType'));
       return;
     }
 
     const amount = Number(expenseAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      setExpenseMessage("Error: Please enter an amount greater than zero.");
+      setExpenseMessage(t('page.errorAmountPositive'));
       return;
     }
 
@@ -5911,10 +5911,10 @@ setCustomerOrganizationName("");
         bonus: String(line.bonus),
         unit_mode: line.unit_mode,
       })));
-      setSalesError("A saved sale request is waiting for confirmation. Retry it to reconcile the same sale.");
+      setSalesError(t('page.savedSaleWaiting'));
     } catch (error) {
       console.error("Could not restore pending sale:", error);
-      setSalesError("A saved sale request could not be read. Keep this session open and contact an owner before submitting another sale.");
+      setSalesError(t('page.savedSaleUnreadable'));
     }
   }, [currentOrganizationId, currentProfile?.id]);
 
@@ -6990,7 +6990,7 @@ setCustomerOrganizationName("");
       });
     }
     setBulkStockLines(resolved);
-    if (resolved.length === 0) setBulkStockError("Paste one product line per row.");
+    if (resolved.length === 0) setBulkStockError(t('page.bulkPasteOnePerRow'));
   };
 
   const handleBulkAddStock = async () => {
@@ -7007,7 +7007,7 @@ setCustomerOrganizationName("");
     const pending = bulkStockLines.filter((line) => line.matched && safeNumber(line.qty) > 0);
     const invalid = bulkStockLines.filter((line) => !line.matched || safeNumber(line.qty) <= 0);
     if (pending.length === 0) {
-      setBulkStockError("No valid matched lines with a positive quantity to add.");
+      setBulkStockError(t('page.bulkNoValidLines'));
       return;
     }
     if (invalid.length > 0) {
@@ -7189,7 +7189,7 @@ setCustomerOrganizationName("");
 
     const duplicateBrand = brands.find((b) => b.name.trim().toLowerCase() === brandName.trim().toLowerCase());
     if (duplicateBrand) {
-      setBrandError("A brand with this name already exists.");
+      setBrandError(t('page.brandExists'));
       setBrandMessage(null);
       return;
     }
@@ -7212,7 +7212,7 @@ setCustomerOrganizationName("");
     setBrandsLoading(false);
 
     if (error) {
-      setBrandError("Failed to add brand");
+      setBrandError(t('page.brandAddFailed'));
       console.error("Supabase add brand error:", error);
       return;
     }
@@ -7225,7 +7225,7 @@ setCustomerOrganizationName("");
       description: `Created brand ${brandName}`,
       new_values: { name: brandName },
     });
-    setBrandMessage("Brand added successfully");
+    setBrandMessage(t('page.brandAdded'));
     setBrandName("");
     fetchBrands();
   };
@@ -7249,7 +7249,7 @@ setCustomerOrganizationName("");
     setBrandsLoading(false);
 
     if (error) {
-      setBrandError("Failed to delete brand");
+      setBrandError(t('page.brandDeleteFailed'));
       console.error("Supabase delete brand error:", JSON.stringify(error, null, 2));
       return;
     }
@@ -7262,7 +7262,7 @@ setCustomerOrganizationName("");
       description: `Deleted brand ${brandToDelete?.name ?? brandId}`,
       old_values: brandToDelete ? { name: brandToDelete.name } : null,
     });
-    setBrandMessage("Brand deleted successfully");
+    setBrandMessage(t('page.brandDeleted'));
     fetchBrands();
   };
 
@@ -7278,7 +7278,7 @@ setCustomerOrganizationName("");
       (c) => c.name.trim().toLowerCase() === categoryName.trim().toLowerCase()
     );
     if (duplicateCategory) {
-      setCategoryError("A category with this name already exists.");
+      setCategoryError(t('page.categoryExists'));
       setCategoryMessage(null);
       return;
     }
@@ -7306,7 +7306,7 @@ setCustomerOrganizationName("");
     setCategoriesLoading(false);
 
     if (error) {
-      setCategoryError("Failed to add category");
+      setCategoryError(t('page.categoryAddFailed'));
       console.error("Supabase add category error:", error);
       return;
     }
@@ -7319,7 +7319,7 @@ setCustomerOrganizationName("");
       description: `Created category ${categoryName}`,
       new_values: { name: categoryName, parent_category_id: parentCategoryId },
     });
-    setCategoryMessage("Category added successfully");
+    setCategoryMessage(t('page.categoryAdded'));
     setCategoryName("");
     setParentCategoryId(null);
     setCategoryOversellingPolicy("inherit");
@@ -7340,7 +7340,7 @@ setCustomerOrganizationName("");
       .eq("organization_id", currentOrganizationId);
     if (error) {
       setCategories(previousCategories);
-      setCategoryError("Failed to update category overselling policy");
+      setCategoryError(t('page.categoryPolicyFailed'));
       console.error("Supabase category policy update error:", error);
       return;
     }
@@ -7375,7 +7375,7 @@ setCustomerOrganizationName("");
     setCategoriesLoading(false);
 
     if (error) {
-      setCategoryError("Failed to delete category");
+      setCategoryError(t('page.categoryDeleteFailed'));
       console.error("Supabase delete category error:", JSON.stringify(error, null, 2));
       return;
     }
@@ -7390,7 +7390,7 @@ setCustomerOrganizationName("");
         ? { name: categoryToDelete.name, parent_category_id: categoryToDelete.parent_category_id }
         : null,
     });
-    setCategoryMessage("Category deleted successfully");
+    setCategoryMessage(t('page.categoryDeleted'));
     fetchCategories();
   };
 
@@ -7413,7 +7413,7 @@ setCustomerOrganizationName("");
     setArchivingProductId(null);
 
     if (error) {
-      setError("Failed to archive product");
+      setError(t('page.productArchiveFailed'));
       console.error("Supabase archive product error:", JSON.stringify(error, null, 2));
       return;
     }
@@ -7435,13 +7435,13 @@ setCustomerOrganizationName("");
         : null,
       new_values: { is_active: false },
     });
-    setMessage("Product archived successfully");
+    setMessage(t('page.productArchived'));
     fetchProducts();
   };
 
   const handleAddCustomer = async () => {
     if (!customerName.trim()) {
-      setCustomerError("Customer name is required");
+      setCustomerError(t('page.customerNameRequired'));
       setCustomerMessage(null);
       return;
     }
@@ -7461,7 +7461,7 @@ setCustomerOrganizationName("");
       requiresCreditLimit &&
       (!creditLimit.trim() || !Number.isFinite(parsedCreditLimit) || parsedCreditLimit < 0)
     ) {
-      setCustomerError("Credit limit must be a valid amount greater than or equal to zero.");
+      setCustomerError(t('page.creditLimitValid'));
       setCustomerMessage(null);
       return;
     }
@@ -7473,7 +7473,7 @@ setCustomerOrganizationName("");
         !Number.isInteger(parsedCreditDays) ||
         parsedCreditDays < 0)
     ) {
-      setCustomerError("Credit days must be a whole number greater than or equal to zero.");
+      setCustomerError(t('page.creditDaysWhole'));
       setCustomerMessage(null);
       return;
     }
@@ -7532,7 +7532,7 @@ setCustomerOrganizationName("");
           credit_policy: creditPolicy,
         },
       });
-      setCustomerMessage("Customer updated successfully");
+      setCustomerMessage(t('page.customerUpdated'));
     } else {
       const response = await authorizedFetch("/api/customers", {
         method: "POST",
@@ -7562,7 +7562,7 @@ setCustomerOrganizationName("");
           credit_policy: creditPolicy,
         },
       });
-      setCustomerMessage("Customer saved successfully");
+      setCustomerMessage(t('page.customerSaved'));
     }
 
     setCustomerEditingId(null);
@@ -7679,7 +7679,7 @@ setCustomerOrganizationName("");
           }
         : null,
     });
-    setCustomerMessage("Customer archived successfully");
+    setCustomerMessage(t('page.customerArchived'));
     fetchCustomers();
   };
 
@@ -7714,7 +7714,7 @@ setCustomerOrganizationName("");
       entity_label: customerToRestore?.customer_name ?? customerId,
       description: `Restored customer ${customerToRestore?.customer_name ?? customerId}`,
     });
-    setCustomerMessage("Customer restored successfully");
+    setCustomerMessage(t('page.customerRestored'));
     fetchCustomers();
   };
 
@@ -7724,7 +7724,7 @@ setCustomerOrganizationName("");
 
   const handleSaveSupplier = async () => {
     if (!supplierName.trim()) {
-      setSupplierError("Supplier name is required");
+      setSupplierError(t('page.supplierNameRequired'));
       setSupplierMessage(null);
       return;
     }
@@ -7760,7 +7760,7 @@ setCustomerOrganizationName("");
       setSuppliersLoading(false);
 
       if (error) {
-        setSupplierError("Failed to update supplier");
+        setSupplierError(t('page.supplierUpdateFailed'));
         console.error("Supabase update supplier error:", error);
         return;
       }
@@ -7773,7 +7773,7 @@ setCustomerOrganizationName("");
         description: `Updated supplier ${supplierName}`,
         new_values: payload,
       });
-      setSupplierMessage("Supplier updated successfully");
+      setSupplierMessage(t('page.supplierUpdated'));
     } else {
       const { data, error } = await supabase.from("suppliers").insert({
         ...payload,
@@ -7783,7 +7783,7 @@ setCustomerOrganizationName("");
       setSuppliersLoading(false);
 
       if (error) {
-        setSupplierError("Failed to save supplier");
+        setSupplierError(t('page.supplierSaveFailed'));
         console.error("Supabase add supplier error:", error);
         return;
       }
@@ -7796,7 +7796,7 @@ setCustomerOrganizationName("");
         description: `Created supplier ${supplierName}`,
         new_values: payload,
       });
-      setSupplierMessage("Supplier saved successfully");
+      setSupplierMessage(t('page.supplierSaved'));
     }
 
     setSupplierEditingId(null);
@@ -7853,7 +7853,7 @@ setCustomerOrganizationName("");
     setSuppliersLoading(false);
 
     if (error) {
-      setSupplierError("Failed to archive supplier");
+      setSupplierError(t('page.supplierArchiveFailed'));
       console.error("Supabase archive supplier error:", JSON.stringify(error, null, 2));
       return;
     }
@@ -7981,13 +7981,13 @@ setCustomerOrganizationName("");
     }
 
     if (invoiceLines.some((line) => Number(line.quantity) <= 0)) {
-      setInvoiceError("Each line needs a quantity greater than zero");
+      setInvoiceError(t('page.lineQtyPositive'));
       setInvoiceMessage(null);
       return;
     }
 
     if (invoiceLines.some((line) => Number(line.purchase_price) < 0)) {
-      setInvoiceError("Purchase price cannot be negative");
+      setInvoiceError(t('page.purchasePriceNonNegative'));
       setInvoiceMessage(null);
       return;
     }
@@ -8017,7 +8017,7 @@ setCustomerOrganizationName("");
       const transactionId = result.transaction.id;
       const systemInvoiceNumber = result.transaction.invoice_number;
 
-      setInvoiceMessage("Purchase invoice created successfully");
+      setInvoiceMessage(t('page.purchaseInvoiceCreated'));
       setNewPurchaseExpenseReminder({
         id: transactionId,
         invoiceNumber: systemInvoiceNumber,
@@ -8287,7 +8287,7 @@ setCustomerOrganizationName("");
 
     const po = purchaseOrders.find((item) => item.id === receivePoId);
     if (!po) {
-      setReceiveError("Purchase order not found.");
+      setReceiveError(t('page.purchaseOrderNotFound'));
       return;
     }
 
@@ -11420,7 +11420,7 @@ setCustomerOrganizationName("");
         "Stock Status": product.stockStatus,
       }))
     );
-    setBiMessage("Product analytics CSV exported.");
+    setBiMessage(t('page.biProductCsvExported'));
     setBiError(null);
   };
   const exportBiCustomerAnalyticsCsv = () => {
@@ -11440,7 +11440,7 @@ setCustomerOrganizationName("");
         "Last Payment": getDateOnly(customer.lastPaymentDate),
       }))
     );
-    setBiMessage("Customer analytics CSV exported.");
+    setBiMessage(t('page.biCustomerCsvExported'));
     setBiError(null);
   };
   const exportBiStaffAnalyticsCsv = () => {
@@ -11460,7 +11460,7 @@ setCustomerOrganizationName("");
         "Activity Logs": staff.activityLogCount,
       }))
     );
-    setBiMessage("Staff analytics CSV exported.");
+    setBiMessage(t('page.biStaffCsvExported'));
     setBiError(null);
   };
   const exportBiExpenseAnalyticsCsv = () => {
@@ -11472,7 +11472,7 @@ setCustomerOrganizationName("");
         "Total Amount": expense.totalAmount,
       }))
     );
-    setBiMessage("Expense analytics CSV exported.");
+    setBiMessage(t('page.biExpenseCsvExported'));
     setBiError(null);
   };
   const getBusinessHealthScore = () => {
@@ -11764,7 +11764,7 @@ setCustomerOrganizationName("");
   };
   const handleProfitLossEndDateChange = (value: string) => {
     if (profitLossStartDate && value && value < profitLossStartDate) {
-      setProfitLossDateError("End Date cannot be earlier than Start Date.");
+      setProfitLossDateError(t('page.endBeforeStart'));
       return;
     }
     setProfitLossEndDate(value);
@@ -11790,7 +11790,7 @@ setCustomerOrganizationName("");
   };
   const handleSupplierLedgerEndDateChange = (value: string) => {
     if (supplierLedgerStartDate && value && value < supplierLedgerStartDate) {
-      setSupplierLedgerDateError("End Date cannot be earlier than Start Date.");
+      setSupplierLedgerDateError(t('page.endBeforeStart'));
       return;
     }
     setSupplierLedgerEndDate(value);
@@ -12021,7 +12021,7 @@ setCustomerOrganizationName("");
 
     const trimmedTitle = taskTitle.trim();
     if (!trimmedTitle) {
-      setTaskError("Task title is required.");
+      setTaskError(t('page.taskTitleRequired'));
       return;
     }
 
@@ -12031,7 +12031,7 @@ setCustomerOrganizationName("");
     }
 
     if (taskDueDate && Number.isNaN(new Date(`${taskDueDate}T00:00:00`).getTime())) {
-      setTaskError("Please enter a valid due date.");
+      setTaskError(t('page.validDueDate'));
       return;
     }
 
@@ -12080,7 +12080,7 @@ setCustomerOrganizationName("");
           ...relations,
         },
       });
-      setTaskMessage("Task saved successfully.");
+      setTaskMessage(t('page.taskSaved'));
       resetTaskForm();
       await fetchTasks(currentOrganizationId);
     } catch (err) {
@@ -12298,7 +12298,7 @@ setCustomerOrganizationName("");
           sales_transaction_id: suggestion.sales_transaction_id,
         },
       });
-      setTaskMessage("Suggested task created.");
+      setTaskMessage(t('page.taskSuggestedCreated'));
       await fetchTasks(currentOrganizationId);
     } catch (err) {
       setTaskError(err instanceof Error ? err.message : "Failed to create suggested task.");
@@ -14597,7 +14597,7 @@ setCustomerOrganizationName("");
     setAiVoiceOperatorError(null);
     setAiVoiceHandsFreeError(null);
     setAiVoiceHandsFreeMessage(t('page.aiListening'));
-    cancelAiVoiceAutoSend("Listening... speak your TradeOS command.");
+    cancelAiVoiceAutoSend(t('page.voiceCancelListen'));
     const Recognition = getSpeechRecognitionConstructor();
     if (!Recognition) {
       setAiVoiceOperatorError(t('page.aiVoiceInputNotSupported'));
@@ -15160,7 +15160,7 @@ setCustomerOrganizationName("");
     // the ledger and the product's stock figure always agree.
     const openingStock = productCurrentStock.trim() === "" ? 0 : Number(productCurrentStock);
     if (!editingProductId && productCurrentStock.trim() !== "" && (!Number.isFinite(openingStock) || openingStock < 0)) {
-      setError("Current stock must be zero or more.");
+      setError(t('page.stockNonNegative'));
       return;
     }
 
@@ -15254,7 +15254,7 @@ setCustomerOrganizationName("");
 
       if (updateError) {
         setProducts(previousProducts);
-        setError("Failed to update product");
+        setError(t('page.productUpdateFailed'));
         console.error("Supabase update error:", updateError);
         return;
       }
@@ -15295,7 +15295,7 @@ setCustomerOrganizationName("");
           is_active: payload.is_active,
         },
       });
-      setMessage("Product updated successfully");
+      setMessage(t('page.productUpdated'));
       resetProductForm();
       fetchProducts();
       return;
@@ -15306,7 +15306,7 @@ setCustomerOrganizationName("");
     setLoading(false);
 
     if (insertError) {
-      setError("Failed to save product");
+      setError(t('page.productSaveFailed'));
       console.error("Supabase insert error:", insertError);
       return;
     }
@@ -15474,7 +15474,7 @@ setCustomerOrganizationName("");
       marketImportSourceUrl,
     ].some((value) => value.trim().length > 0);
     if (!hasRawInput) {
-      setMarketImportQueueError("Add at least a raw title, summary, text note, or source URL.");
+      setMarketImportQueueError(t('page.importQueueMinFields'));
       return;
     }
 
@@ -15519,7 +15519,7 @@ setCustomerOrganizationName("");
     });
     resetMarketImportQueueForm();
     await fetchMarketImportQueueItems(currentOrganizationId);
-    setMarketImportQueueMessage("Import queue item added for review.");
+    setMarketImportQueueMessage(t('page.importQueueAdded'));
   };
 
   const createMarketIntelligenceItem = async (event: FormEvent<HTMLFormElement>) => {
@@ -15534,11 +15534,11 @@ setCustomerOrganizationName("");
 
     const title = marketTitle.trim();
     if (!title) {
-      setMarketIntelligenceError("Title is required.");
+      setMarketIntelligenceError(t('page.titleRequired'));
       return;
     }
     if (!marketCategory || !marketImpactDirection || !marketImpactLevel || !marketConfidenceLevel || !marketAffectedArea) {
-      setMarketIntelligenceError("Market category, impact direction, impact level, confidence, and affected area are required.");
+      setMarketIntelligenceError(t('page.marketFieldsRequired'));
       return;
     }
 
@@ -15676,7 +15676,7 @@ setCustomerOrganizationName("");
     const sourceName = marketNewsSourceName.trim();
     const sourceType = marketNewsSourceType.trim();
     if (!sourceName || !sourceType) {
-      setMarketIntelligenceError("Source name and source type are required.");
+      setMarketIntelligenceError(t('page.sourceNameTypeRequired'));
       return;
     }
 
@@ -15715,7 +15715,7 @@ setCustomerOrganizationName("");
     setMarketNewsSourceCountry("Pakistan");
     setMarketNewsSourceIsActive(true);
     await fetchMarketNewsSources(currentOrganizationId);
-    setMarketIntelligenceMessage("Market news source added.");
+    setMarketIntelligenceMessage(t('page.marketSourceAdded'));
   };
 
   const updateMarketIntelligenceStatus = async (
@@ -15733,12 +15733,12 @@ setCustomerOrganizationName("");
     const itemId = item.id;
     const allowedStatuses = ["active", "watching", "archived"];
     if (!itemId || !isValidUuid(itemId)) {
-      setMarketIntelligenceError("Cannot update status because this market intelligence item has an invalid ID.");
+      setMarketIntelligenceError(t('page.marketItemBadId'));
       return;
     }
 
     if (!allowedStatuses.includes(nextStatus)) {
-      setMarketIntelligenceError("Cannot update status because the requested status is not supported.");
+      setMarketIntelligenceError(t('page.statusNotSupported'));
       return;
     }
 
@@ -15756,12 +15756,12 @@ setCustomerOrganizationName("");
 
       if (error) {
         console.error("Supabase market intelligence status update error:", error);
-        setMarketIntelligenceError("Failed to update item status. Please try again.");
+        setMarketIntelligenceError(t('page.marketItemStatusFailed'));
         return;
       }
     } catch (err) {
       console.error("Supabase market intelligence status update error:", err);
-      setMarketIntelligenceError("Failed to update item status. Please try again.");
+      setMarketIntelligenceError(t('page.marketItemStatusFailed'));
       return;
     }
 
@@ -15792,13 +15792,13 @@ setCustomerOrganizationName("");
     }
 
     if (!item.id || !isValidUuid(item.id)) {
-      setMarketImportQueueError("Cannot update import queue status because this item has an invalid ID.");
+      setMarketImportQueueError(t('page.importQueueBadId'));
       return;
     }
 
     const allowedStatuses = ["pending", "reviewing", "ignored"];
     if (!allowedStatuses.includes(nextStatus)) {
-      setMarketImportQueueError("Cannot update import queue status because the requested status is not supported.");
+      setMarketImportQueueError(t('page.importQueueStatusUnsupported'));
       return;
     }
 
@@ -15817,7 +15817,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase market import queue status update error:", JSON.stringify(error, null, 2));
-      setMarketImportQueueError("Failed to update import queue status. Please try again.");
+      setMarketImportQueueError(t('page.importQueueStatusFailed'));
       return;
     }
 
@@ -15851,7 +15851,7 @@ setCustomerOrganizationName("");
     setMarketSuggestedAction(item.suggested_action ?? "");
     setMarketNewsDate(toDateInputValue(new Date()));
     setMarketStatus("active");
-    setMarketIntelligenceMessage("Review details, then save as intelligence item.");
+    setMarketIntelligenceMessage(t('page.reviewThenSaveIntel'));
     window.setTimeout(() => {
       document.getElementById("market-intelligence-item-form")?.scrollIntoView({
         behavior: "smooth",
@@ -15890,13 +15890,13 @@ setCustomerOrganizationName("");
     }
 
     if (!isOwnerOrAdmin()) {
-      setMarketAiAnalysisError("Only owner/admin users can run AI market analysis.");
+      setMarketAiAnalysisError(t('page.aiMarketOwnerOnly'));
       return;
     }
 
     const sourceId = marketImportQueueId ?? marketIntelligenceItemId;
     if (!sourceId || !isValidUuid(sourceId)) {
-      setMarketAiAnalysisError("Cannot analyze this item because its ID is invalid.");
+      setMarketAiAnalysisError(t('page.aiAnalyzeBadId'));
       return;
     }
 
@@ -15978,7 +15978,7 @@ setCustomerOrganizationName("");
         new_values: payload,
       });
       await fetchMarketAiAnalyses(currentOrganizationId);
-      setMarketAiAnalysisMessage("AI analysis created for owner review.");
+      setMarketAiAnalysisMessage(t('page.aiAnalysisCreatedReview'));
     } catch (error) {
       console.error("Market AI analysis request error:", error);
       setMarketAiAnalysisError(t('page.aiAnalysisFailedRetry'));
@@ -16034,7 +16034,7 @@ setCustomerOrganizationName("");
     setMarketSuggestedAction(analysis.ai_suggested_action ?? "");
     setMarketNewsDate(toDateInputValue(new Date()));
     setMarketStatus("active");
-    setMarketAiAnalysisMessage("Review AI analysis, then save as intelligence item.");
+    setMarketAiAnalysisMessage(t('page.reviewAiThenSave'));
     window.setTimeout(() => {
       document.getElementById("market-intelligence-item-form")?.scrollIntoView({
         behavior: "smooth",
@@ -16056,13 +16056,13 @@ setCustomerOrganizationName("");
     }
 
     if (!analysis.id || !isValidUuid(analysis.id)) {
-      setMarketAiAnalysisError("Cannot update AI analysis status because this analysis has an invalid ID.");
+      setMarketAiAnalysisError(t('page.aiAnalysisBadId'));
       return;
     }
 
     const allowedStatuses = ["draft", "reviewed", "ignored"];
     if (!allowedStatuses.includes(nextStatus)) {
-      setMarketAiAnalysisError("Cannot update AI analysis because the requested status is not supported.");
+      setMarketAiAnalysisError(t('page.aiAnalysisStatusUnsupported'));
       return;
     }
 
@@ -16081,7 +16081,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase market AI analysis status update error:", JSON.stringify(error, null, 2));
-      setMarketAiAnalysisError("Failed to update AI analysis status. Please try again.");
+      setMarketAiAnalysisError(t('page.aiAnalysisStatusFailed'));
       return;
     }
 
@@ -16139,7 +16139,7 @@ setCustomerOrganizationName("");
       old_values: { ...item },
     });
     await fetchMarketIntelligenceItems(currentOrganizationId);
-    setMarketIntelligenceMessage("Market intelligence item deleted.");
+    setMarketIntelligenceMessage(t('page.marketItemDeleted'));
   };
 
   const deleteMarketNewsSource = async (source: MarketNewsSource) => {
@@ -16173,7 +16173,7 @@ setCustomerOrganizationName("");
       old_values: { ...source },
     });
     await fetchMarketNewsSources(currentOrganizationId);
-    setMarketIntelligenceMessage("Market news source deleted.");
+    setMarketIntelligenceMessage(t('page.marketSourceDeleted'));
   };
 
   const handleSaveBusinessSettings = async () => {
@@ -16182,7 +16182,7 @@ setCustomerOrganizationName("");
 
     const trimmedName = businessSettingsName.trim();
     if (!trimmedName) {
-      setBusinessSettingsError("Business name is required.");
+      setBusinessSettingsError(t('page.businessNameRequired'));
       return;
     }
 
@@ -16279,7 +16279,7 @@ setCustomerOrganizationName("");
         new_values: newBusinessSettings,
       });
       await fetchCurrentOrganization(currentOrganizationId);
-      setBusinessSettingsMessage("Business settings saved successfully.");
+      setBusinessSettingsMessage(t('page.businessSettingsSaved'));
     } catch (err) {
       setBusinessSettingsError(
         err instanceof Error ? err.message : "Failed to save business settings."
@@ -16406,13 +16406,13 @@ setCustomerOrganizationName("");
     setStaffPermissionError(null);
 
     if (!profileId || !requireOrganization("update staff profile")) {
-      setStaffPermissionError("Staff profile or organization is missing.");
+      setStaffPermissionError(t('page.staffProfileOrOrgMissing'));
       return;
     }
 
     const profile = staffProfiles.find((item) => item.id === profileId);
     if (!profile) {
-      setStaffPermissionError("Staff profile was not found.");
+      setStaffPermissionError(t('page.staffProfileNotFound'));
       return;
     }
 
@@ -16425,12 +16425,12 @@ setCustomerOrganizationName("");
     const isSelf = currentProfile?.id === profileId;
 
     if (isSelf && draft.is_active === false) {
-      setStaffPermissionError("You cannot deactivate your own account.");
+      setStaffPermissionError(t('page.cannotDeactivateOwn'));
       return;
     }
 
     if (isSelf && currentProfile?.role === "owner" && nextRole !== "owner") {
-      setStaffPermissionError("You cannot remove your own owner role.");
+      setStaffPermissionError(t('page.cannotRemoveOwnOwner'));
       return;
     }
 
@@ -16472,7 +16472,7 @@ setCustomerOrganizationName("");
     }
 
     await fetchStaffProfilesAndPermissions(currentOrganizationId);
-    setStaffPermissionMessage("Staff profile updated successfully.");
+    setStaffPermissionMessage(t('page.staffProfileUpdated'));
   };
 
   const saveStaffPermissions = async () => {
@@ -16480,13 +16480,13 @@ setCustomerOrganizationName("");
     setStaffPermissionError(null);
 
     if (!selectedStaffProfileId || !requireOrganization("save staff permissions")) {
-      setStaffPermissionError("Please select a staff member first.");
+      setStaffPermissionError(t('page.selectStaffFirst'));
       return;
     }
 
     const selectedProfile = staffProfiles.find((profile) => profile.id === selectedStaffProfileId);
     if (!selectedProfile) {
-      setStaffPermissionError("Selected staff member was not found.");
+      setStaffPermissionError(t('page.staffMemberNotFound'));
       return;
     }
 
@@ -16545,7 +16545,7 @@ setCustomerOrganizationName("");
     });
 
     await fetchStaffProfilesAndPermissions(currentOrganizationId);
-    setStaffPermissionMessage("Staff permissions saved successfully.");
+    setStaffPermissionMessage(t('page.staffPermsSaved'));
   };
 
   const seedSecurityChecklist = async () => {
@@ -16582,7 +16582,7 @@ setCustomerOrganizationName("");
     }
 
     await fetchSecurityChecks(currentOrganizationId);
-    setSecurityCheckMessage("Security checklist seeded successfully.");
+    setSecurityCheckMessage(t('page.securitySeeded'));
   };
 
   const updateSecurityCheckStatus = async (
