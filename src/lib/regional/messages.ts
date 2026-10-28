@@ -6999,7 +6999,7 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'page.saveSalesInvoiceFailed': 'Salvataggio della fattura di vendita non riuscito',
     'page.validAmount': 'Inserisci un importo valido',
     'page.allocationNonNegative': 'Gli importi assegnati devono essere zero o superiori.',
-    'page.allocationExceeds': 'Il totale assegnato non può superare l'importo del pagamento.',
+    'page.allocationExceeds': "Il totale assegnato non può superare l'importo del pagamento.",
     'page.paymentSaved': 'Pagamento salvato con successo',
     'page.savePaymentFailed': 'Salvataggio del pagamento non riuscito',
     'page.selectSupplier': 'Seleziona un fornitore',
