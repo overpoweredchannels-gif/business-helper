@@ -19451,7 +19451,7 @@ setCustomerOrganizationName("");
                               onChange={(e) => handleSalesLineChange(index, "discount_type", e.target.value)}
                               className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                             >
-                              <option value="flat">Amount</option>
+                              <option value="flat">{t('page.jsxAmount')}</option>
                               <option value="percent">%</option>
                             </select>
                             <input
@@ -24759,7 +24759,7 @@ setCustomerOrganizationName("");
                 <div className="mt-1 text-2xl font-semibold text-success/90">{marketIntelligenceSummary.active}</div>
               </div>
               <div className="rounded border border-success/20 bg-card p-3">
-                <div className="text-sm text-success">High/Critical</div>
+                <div className="text-sm text-success">{t('page.jsxHighCritical')}</div>
                 <div className="mt-1 text-2xl font-semibold text-success/90">{marketIntelligenceSummary.highCritical}</div>
               </div>
               <div className="rounded border border-success/20 bg-card p-3">
@@ -24838,11 +24838,11 @@ setCustomerOrganizationName("");
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs sm:min-w-[260px]">
                 <div className="rounded border border-primary/20 bg-primary/5 p-2">
-                  <div className="text-primary">Pending</div>
+                  <div className="text-primary">{t('page.jsxPending')}</div>
                   <div className="text-lg font-semibold text-primary/90">{marketImportQueueSummary.pending}</div>
                 </div>
                 <div className="rounded border border-primary/20 bg-primary/5 p-2">
-                  <div className="text-primary">Reviewing</div>
+                  <div className="text-primary">{t('page.jsxReviewing')}</div>
                   <div className="text-lg font-semibold text-primary/90">{marketImportQueueSummary.reviewing}</div>
                 </div>
               </div>
@@ -24972,18 +24972,16 @@ setCustomerOrganizationName("");
                   />
                   <select value={marketImportQueueStatusFilter} onChange={(e) => setMarketImportQueueStatusFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
                     <option value="all">{t('page.jsxAllStatuses')}</option>
-                    <option value="pending">Pending</option>
-                    <option value="reviewing">Reviewing</option>
-                    <option value="converted">Converted</option>
-                    <option value="ignored">Ignored</option>
+                    <option value="pending">{t('page.jsxPending')}</option>
+                    <option value="reviewing">{t('page.jsxReviewing')}</option>
+                    <option value="converted">{t('page.jsxConverted')}</option>
+                    <option value="ignored">{t('page.jsxIgnored')}</option>
                   </select>
                 </div>
               </div>
               <div className="mt-4 space-y-3">
                 {filteredMarketImportQueueItems.length === 0 ? (
-                  <p className="rounded border border-border bg-card px-3 py-3 text-sm text-muted-foreground">
-                    No import queue items match the current filters.
-                  </p>
+                  <p className="rounded border border-border bg-card px-3 py-3 text-sm text-muted-foreground">{t('page.jsxNoQueueMatch')}</p>
                 ) : (
                   filteredMarketImportQueueItems.map((item) => (
                     <div key={item.id} className="rounded border border-border bg-card p-4">
@@ -25050,9 +25048,7 @@ setCustomerOrganizationName("");
                             onClick={() => updateMarketImportQueueStatus(item, "ignored")}
                             disabled={item.review_status === "ignored" || item.review_status === "converted"}
                             className="rounded border border-muted-foreground bg-card px-3 py-2 text-xs text-foreground/80 hover:bg-muted disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
-                          >
-                            Ignore
-                          </button>
+                          >{t('page.jsxIgnore')}</button>
                           <button
                             type="button"
                             onClick={() => updateMarketImportQueueStatus(item, "pending")}
@@ -25064,9 +25060,7 @@ setCustomerOrganizationName("");
                             onClick={() => convertMarketImportQueueItem(item)}
                             disabled={item.review_status === "converted"}
                             className="rounded bg-success px-3 py-2 text-xs text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-muted"
-                          >
-                            Convert to Intelligence Item
-                          </button>
+                          >{t('page.jsxConvertItem')}</button>
                         </div>
                       </div>
                     </div>
@@ -25086,15 +25080,15 @@ setCustomerOrganizationName("");
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs sm:min-w-[300px]">
                 <div className="rounded border border-primary/20 bg-primary/5 p-2">
-                  <div className="text-primary">Draft</div>
+                  <div className="text-primary">{t('page.jsxDraft')}</div>
                   <div className="text-lg font-semibold text-primary/90">{marketAiAnalysisSummary.draft}</div>
                 </div>
                 <div className="rounded border border-primary/20 bg-primary/5 p-2">
-                  <div className="text-primary">High</div>
+                  <div className="text-primary">{t('page.jsxHigh')}</div>
                   <div className="text-lg font-semibold text-primary/90">{marketAiAnalysisSummary.high}</div>
                 </div>
                 <div className="rounded border border-primary/20 bg-primary/5 p-2">
-                  <div className="text-primary">Critical</div>
+                  <div className="text-primary">{t('page.jsxCritical')}</div>
                   <div className="text-lg font-semibold text-primary/90">{marketAiAnalysisSummary.critical}</div>
                 </div>
               </div>
@@ -25173,9 +25167,7 @@ setCustomerOrganizationName("");
                           onClick={() => updateMarketAiAnalysisStatus(analysis, "ignored")}
                           disabled={analysis.review_status === "ignored" || analysis.review_status === "converted"}
                           className="rounded border border-muted-foreground bg-card px-3 py-2 text-xs text-foreground/80 hover:bg-muted disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
-                        >
-                          Ignore
-                        </button>
+                        >{t('page.jsxIgnore')}</button>
                         <button
                           type="button"
                           onClick={() => updateMarketAiAnalysisStatus(analysis, "draft")}
@@ -25212,7 +25204,7 @@ setCustomerOrganizationName("");
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Title</span>
+                  <span>{t('page.jsxTitleHdr')}</span>
                   <input value={marketTitle} onChange={(e) => setMarketTitle(e.target.value)} className="rounded border border-border px-3 py-2" required />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
@@ -25220,7 +25212,7 @@ setCustomerOrganizationName("");
                   <input value={marketSourceName} onChange={(e) => setMarketSourceName(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
-                  <span>Summary</span>
+                  <span>{t('page.jsxSummary')}</span>
                   <textarea value={marketSummary} onChange={(e) => setMarketSummary(e.target.value)} rows={3} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
@@ -25239,7 +25231,7 @@ setCustomerOrganizationName("");
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>{t('page.jsxRelatedProductCategory')}</span>
                   <select value={marketRelatedProductCategory} onChange={(e) => setMarketRelatedProductCategory(e.target.value)} className="rounded border border-border px-3 py-2">
-                    <option value="">None</option>
+                    <option value="">{t('page.jsxNone')}</option>
                     {categories.map((category) => (
                       <option key={category.id} value={category.name}>{category.name}</option>
                     ))}
@@ -25248,7 +25240,7 @@ setCustomerOrganizationName("");
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>{t('page.jsxRelatedProduct')}</span>
                   <select value={marketRelatedProductId} onChange={(e) => setMarketRelatedProductId(e.target.value)} className="rounded border border-border px-3 py-2">
-                    <option value="">None</option>
+                    <option value="">{t('page.jsxNone')}</option>
                     {activeProducts.map((product) => (
                       <option key={product.id} value={product.id}>{product.name}</option>
                     ))}
@@ -25295,7 +25287,7 @@ setCustomerOrganizationName("");
                   <input type="date" value={marketNewsDate} onChange={(e) => setMarketNewsDate(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Status</span>
+                  <span>{t('page.jsxStatusHdr')}</span>
                   <select value={marketStatus} onChange={(e) => setMarketStatus(e.target.value)} className="rounded border border-border px-3 py-2">
                     {marketIntelligenceStatusOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
@@ -25327,12 +25319,12 @@ setCustomerOrganizationName("");
                     <input value={marketNewsSourceUrl} onChange={(e) => setMarketNewsSourceUrl(e.target.value)} className="rounded border border-border px-3 py-2" />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                    <span>Country</span>
+                    <span>{t('page.jsxCountry')}</span>
                     <input value={marketNewsSourceCountry} onChange={(e) => setMarketNewsSourceCountry(e.target.value)} className="rounded border border-border px-3 py-2" />
                   </label>
                   <label className="flex items-center gap-2 text-sm text-foreground/80">
                     <input type="checkbox" checked={marketNewsSourceIsActive} onChange={(e) => setMarketNewsSourceIsActive(e.target.checked)} />
-                    Active
+                    {t('page.jsxActive')}
                   </label>
                 </div>
                 <button type="submit" className="mt-4 rounded bg-foreground px-4 py-2 text-sm text-white hover:bg-foreground/80">{t('page.jsxSaveNewsSource')}</button>
@@ -25429,7 +25421,7 @@ setCustomerOrganizationName("");
                               <div className="mt-1 text-lg font-semibold text-foreground">{advisory.opportunityScore}</div>
                             </div>
                             <div className="rounded border border-border bg-card p-3">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Confidence</div>
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxConfidenceHdr')}</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{advisory.confidence}</div>
                             </div>
                             <div className="rounded border border-border bg-card p-3">
@@ -25528,17 +25520,13 @@ setCustomerOrganizationName("");
                             onClick={() => updateMarketIntelligenceStatus(item, "archived")}
                             disabled={item.status === "archived"}
                             className="rounded border border-muted-foreground bg-card px-3 py-2 text-xs text-foreground/80 hover:bg-muted disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
-                          >
-                            Archive
-                          </button>
+                          >{t('page.jsxArchive')}</button>
                           <button
                             type="button"
                             onClick={() => updateMarketIntelligenceStatus(item, "active")}
                             disabled={item.status === "active"}
                             className="rounded border border-success bg-card px-3 py-2 text-xs text-success hover:bg-success/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
-                          >
-                            Reactivate
-                          </button>
+                          >{t('page.jsxReactivate')}</button>
                           <button
                             type="button"
                             onClick={() => deleteMarketIntelligenceItem(item)}
@@ -25695,12 +25683,12 @@ setCustomerOrganizationName("");
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
-                      <th className="px-3 py-2">Staff</th>
-                      <th className="px-3 py-2">Role</th>
-                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">{t('page.jsxStaff')}</th>
+                      <th className="px-3 py-2">{t('page.jsxRole')}</th>
+                      <th className="px-3 py-2">{t('page.jsxStatusHdr')}</th>
                       <th className="px-3 py-2">{t('page.jsxLatestLocation')}</th>
                       <th className="px-3 py-2">{t('page.jsxLastUpdate')}</th>
-                      <th className="px-3 py-2">Accuracy</th>
+                      <th className="px-3 py-2">{t('page.jsxAccuracy')}</th>
                       <th className="px-3 py-2">{t('page.jsxLatestSessionStart')}</th>
                     </tr>
                   </thead>
@@ -25757,11 +25745,11 @@ setCustomerOrganizationName("");
                     <thead className="bg-card text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                       <tr>
                         <th className="px-3 py-2">{t('page.jsxCapturedAt')}</th>
-                        <th className="px-3 py-2">Latitude</th>
-                        <th className="px-3 py-2">Longitude</th>
-                        <th className="px-3 py-2">Accuracy</th>
-                        <th className="px-3 py-2">Speed</th>
-                        <th className="px-3 py-2">Map</th>
+                        <th className="px-3 py-2">{t('page.jsxLatitudeHdr')}</th>
+                        <th className="px-3 py-2">{t('page.jsxLongitudeHdr')}</th>
+                        <th className="px-3 py-2">{t('page.jsxAccuracy')}</th>
+                        <th className="px-3 py-2">{t('page.jsxSpeed')}</th>
+                        <th className="px-3 py-2">{t('page.jsxMap')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-card">
@@ -25807,11 +25795,11 @@ setCustomerOrganizationName("");
                     <table className="min-w-full divide-y divide-purple-200 text-sm">
                       <thead className="bg-card text-left text-xs uppercase tracking-wide text-primary">
                         <tr>
-                          <th className="px-3 py-2">Start</th>
-                          <th className="px-3 py-2">End</th>
-                          <th className="px-3 py-2">Duration</th>
+                          <th className="px-3 py-2">{t('page.jsxStart')}</th>
+                          <th className="px-3 py-2">{t('page.jsxEnd')}</th>
+                          <th className="px-3 py-2">{t('page.jsxDuration')}</th>
                           <th className="px-3 py-2">{t('page.jsxApproxLocation')}</th>
-                          <th className="px-3 py-2">Map</th>
+                          <th className="px-3 py-2">{t('page.jsxMap')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-purple-200 bg-card">
@@ -26150,9 +26138,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 type="button"
                 onClick={() => fetchSecurityChecks(currentOrganizationId)}
                 className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
-              >
-                Refresh
-              </button>
+              >{t('page.jsxRefresh')}</button>
             </div>
           </div>
 
@@ -26165,15 +26151,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               <div className="mt-1 text-2xl font-semibold text-foreground">{securityCheckSummary.total}</div>
             </div>
             <div className="rounded border border-success/20 bg-card p-3">
-              <div className="text-sm text-success">Passed</div>
+              <div className="text-sm text-success">{t('page.jsxPassed')}</div>
               <div className="mt-1 text-2xl font-semibold text-success">{securityCheckSummary.passed}</div>
             </div>
             <div className="rounded border border-warning/20 bg-card p-3">
-              <div className="text-sm text-warning">Pending</div>
+              <div className="text-sm text-warning">{t('page.jsxPending')}</div>
               <div className="mt-1 text-2xl font-semibold text-warning">{securityCheckSummary.pending}</div>
             </div>
             <div className="rounded border border-destructive/20 bg-card p-3">
-              <div className="text-sm text-destructive">Failed</div>
+              <div className="text-sm text-destructive">{t('page.jsxFailed')}</div>
               <div className="mt-1 text-2xl font-semibold text-destructive/90">{securityCheckSummary.failed}</div>
             </div>
           </div>
@@ -26221,7 +26207,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                       </div>
                     </div>
                     <label className="mt-3 flex flex-col gap-2 text-sm text-foreground/80">
-                      <span>Notes</span>
+                      <span>{t('page.jsxNotesHdr')}</span>
                       <textarea
                         value={securityCheckNotes[check.check_key] ?? ""}
                         onChange={(e) =>
@@ -27220,9 +27206,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   type="button"
                   onClick={() => setConfirmDialog(null)}
                   className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
-                >
-                  Keep
-                </button>
+                >{t('page.jsxKeep')}</button>
                 <button
                   type="button"
                   onClick={() => {
