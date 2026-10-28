@@ -8149,7 +8149,7 @@ setCustomerOrganizationName("");
 
       if (poErrorResult) throw poErrorResult;
       const poId = poData?.id;
-      if (!poId) throw new Error("Failed to create purchase order");
+      if (!poId) throw new Error(t('page.createPurchaseOrderFailed'));
 
       for (const line of poLines) {
         if (!line.product_id) continue;
@@ -8179,7 +8179,7 @@ setCustomerOrganizationName("");
         },
       });
 
-      setPoMessage("Purchase order created successfully");
+      setPoMessage(t('page.purchaseOrderCreated'));
       setPoSupplierId("");
       setPoOrderDate(toDateInputValue(new Date()));
       setPoExpectedDate("");
@@ -8188,7 +8188,7 @@ setCustomerOrganizationName("");
       await fetchPurchaseOrders();
       await fetchPurchaseOrderItems();
     } catch (err) {
-      setPoError(err instanceof Error ? err.message : "Failed to create purchase order");
+      setPoError(err instanceof Error ? err.message : t('page.createPurchaseOrderFailed'));
       console.error("Error creating purchase order:", err);
     } finally {
       setPoLoading(false);
@@ -8208,7 +8208,7 @@ setCustomerOrganizationName("");
       .eq("organization_id", currentOrganizationId);
 
     if (error) {
-      setPoError("Failed to cancel purchase order");
+      setPoError(t('page.cancelPurchaseOrderFailed'));
       console.error("Supabase cancel purchase order error:", error);
       return;
     }
@@ -8223,7 +8223,7 @@ setCustomerOrganizationName("");
       new_values: { status: "cancelled" },
     });
 
-    setPoMessage("Purchase order cancelled");
+    setPoMessage(t('page.purchaseOrderCancelled'));
     fetchPurchaseOrders();
   };
 
@@ -8562,7 +8562,7 @@ setCustomerOrganizationName("");
 
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.ok) {
-        throw new Error(result?.error ?? "Failed to create purchase return");
+        throw new Error(result?.error ?? t('page.createPurchaseReturnFailed'));
       }
       const returnId: string = result.returnId;
       const returnNumber: string = result.returnNumber;
@@ -8581,7 +8581,7 @@ setCustomerOrganizationName("");
         },
       });
 
-      setReturnMessage("Purchase return created successfully. Stock updated.");
+      setReturnMessage(t('page.purchaseReturnCreated'));
       setReturnSupplierId("");
       setReturnDate(toDateInputValue(new Date()));
       setReturnReason("");
@@ -8591,7 +8591,7 @@ setCustomerOrganizationName("");
       await fetchPurchaseReturnItems();
       fetchProducts();
     } catch (err) {
-      setReturnError(err instanceof Error ? err.message : "Failed to create purchase return");
+      setReturnError(err instanceof Error ? err.message : t('page.createPurchaseReturnFailed'));
       console.error("Error creating purchase return:", err);
     } finally {
       setReturnLoading(false);
@@ -8617,7 +8617,7 @@ setCustomerOrganizationName("");
       .eq("organization_id", currentOrganizationId);
 
     if (error) {
-      setReturnError("Failed to delete purchase return");
+      setReturnError(t('page.deletePurchaseReturnFailed'));
       console.error("Supabase delete purchase return error:", error);
       return;
     }
@@ -8631,7 +8631,7 @@ setCustomerOrganizationName("");
       old_values: { return_number: purchaseReturn.return_number },
     });
 
-    setReturnMessage("Purchase return deleted. Stock restored.");
+    setReturnMessage(t('page.purchaseReturnDeleted'));
     await fetchPurchaseReturns();
     await fetchPurchaseReturnItems();
     fetchProducts();
@@ -8681,7 +8681,7 @@ setCustomerOrganizationName("");
   // ── Sales Orders (Phase 4) ────────────────────────────────────────────────
 
   const handleSaveSalesOrder = async () => {
-    if (!canUseSalesTool("orders")) { setSoError("Sales order permission is required."); return; }
+    if (!canUseSalesTool("orders")) { setSoError(t('page.salesOrderPermissionRequired')); return; }
     const validation = validateSalesOrderInput({
       customer_id: soCustomerId || null,
       order_date: soOrderDate,
@@ -8742,7 +8742,7 @@ setCustomerOrganizationName("");
           }),
         });
         const data = await res.json();
-        if (!data.ok) throw new Error(data.error || "Failed to create sales order");
+        if (!data.ok) throw new Error(data.error || t('page.createSalesOrderFailed'));
         setSoMessage(`Sales order ${data.draft?.so_number ?? ""} created and sent for approval.`);
         setSoEditingId(null);
         setSoCustomerId("");
@@ -8753,7 +8753,7 @@ setCustomerOrganizationName("");
         await fetchSalesOrders();
         await fetchSalesOrderItems();
       } catch (err) {
-        setSoError(err instanceof Error ? err.message : "Failed to save sales order");
+        setSoError(err instanceof Error ? err.message : t('page.saveSalesOrderFailed'));
         console.error("Error saving sales order:", err);
       } finally {
         setSoLoading(false);
@@ -8770,10 +8770,10 @@ setCustomerOrganizationName("");
       if (soEditingId) {
         const existing = salesOrders.find((order) => order.id === soEditingId);
         if (!existing) {
-          throw new Error("Sales order not found");
+          throw new Error(t('page.salesOrderNotFound'));
         }
         if (existing.status !== "draft") {
-          throw new Error("Only draft sales orders can be edited");
+          throw new Error(t('page.onlyDraftSalesOrdersEditable'));
         }
         soNumber = existing.so_number;
 
@@ -8818,7 +8818,7 @@ setCustomerOrganizationName("");
 
         if (soErrorResult) throw soErrorResult;
         soId = soData?.id;
-        if (!soId) throw new Error("Failed to create sales order");
+        if (!soId) throw new Error(t('page.createSalesOrderFailed'));
       }
 
       for (const line of soLines) {
@@ -8849,7 +8849,7 @@ setCustomerOrganizationName("");
         },
       });
 
-      setSoMessage(soEditingId ? "Sales order updated successfully" : "Sales order created successfully");
+      setSoMessage(soEditingId ? t('page.salesOrderUpdated') : t('page.salesOrderCreated'));
       setSoEditingId(null);
       setSoCustomerId("");
       setSoOrderDate(toDateInputValue(new Date()));
@@ -8859,7 +8859,7 @@ setCustomerOrganizationName("");
       await fetchSalesOrders();
       await fetchSalesOrderItems();
     } catch (err) {
-      setSoError(err instanceof Error ? err.message : "Failed to save sales order");
+      setSoError(err instanceof Error ? err.message : t('page.saveSalesOrderFailed'));
       console.error("Error saving sales order:", err);
     } finally {
       setSoLoading(false);
@@ -8898,7 +8898,7 @@ setCustomerOrganizationName("");
       .eq("organization_id", currentOrganizationId);
 
     if (error) {
-      setSoError("Failed to update sales order status");
+      setSoError(t('page.updateSalesOrderStatusFailed'));
       console.error("Supabase update sales order status error:", error);
       return;
     }
@@ -8943,14 +8943,14 @@ setCustomerOrganizationName("");
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Action failed");
+      if (!data.ok) throw new Error(data.error || t('page.actionFailed'));
 
       setSoMessage(`${order.so_number} approved → invoice ${data.invoiceNumber ?? ""}`);
       fetchSalesOrders();
       fetchSalesTransactions();
       fetchRealNotifications();
     } catch (err) {
-      setSoError(err instanceof Error ? err.message : "Action failed");
+      setSoError(err instanceof Error ? err.message : t('page.actionFailed'));
       console.error("Draft approval error:", err);
     }
   };
@@ -8960,7 +8960,7 @@ setCustomerOrganizationName("");
     const order = draftReviewOrder;
 
     if (draftReviewAction === "reject" && !draftReviewReason.trim()) {
-      setSoError("A rejection reason is required.");
+      setSoError(t('page.rejectionReasonRequired'));
       return;
     }
 
@@ -8977,7 +8977,7 @@ setCustomerOrganizationName("");
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Action failed");
+      if (!data.ok) throw new Error(data.error || t('page.actionFailed'));
 
       if (draftReviewAction === "approve") {
         setSoMessage(`${order.so_number} approved → invoice ${data.invoiceNumber ?? ""}`);
@@ -8991,7 +8991,7 @@ setCustomerOrganizationName("");
       fetchSalesTransactions();
       fetchRealNotifications();
     } catch (err) {
-      setSoError(err instanceof Error ? err.message : "Action failed");
+      setSoError(err instanceof Error ? err.message : t('page.actionFailed'));
       console.error("Draft review error:", err);
     } finally {
       setDraftReviewLoading(false);
@@ -9003,7 +9003,7 @@ setCustomerOrganizationName("");
     if (!order) return;
 
     if (order.status !== "draft") {
-      setSoError("Only draft sales orders can be deleted");
+      setSoError(t('page.onlyDraftSalesOrdersDeletable'));
       setSoMessage(null);
       return;
     }
@@ -9027,7 +9027,7 @@ setCustomerOrganizationName("");
       .delete()
       .eq("sales_order_id", soId);
     if (itemError) {
-      setSoError("Failed to delete sales order items");
+      setSoError(t('page.deleteSalesOrderItemsFailed'));
       console.error("Supabase delete sales order items error:", itemError);
       return;
     }
@@ -9039,7 +9039,7 @@ setCustomerOrganizationName("");
       .eq("organization_id", currentOrganizationId);
 
     if (error) {
-      setSoError("Failed to delete sales order");
+      setSoError(t('page.deleteSalesOrderFailed'));
       console.error("Supabase delete sales order error:", error);
       return;
     }
@@ -9053,7 +9053,7 @@ setCustomerOrganizationName("");
       old_values: { status: order.status },
     });
 
-    setSoMessage("Sales order deleted");
+    setSoMessage(t('page.salesOrderDeleted'));
     if (soEditingId === soId) setSoEditingId(null);
     fetchSalesOrders();
     fetchSalesOrderItems();
@@ -9063,7 +9063,7 @@ setCustomerOrganizationName("");
     const order = salesOrders.find((item) => item.id === soId);
     if (!order) return;
     if (order.status !== "draft") {
-      setSoError("Only draft sales orders can be edited");
+      setSoError(t('page.onlyDraftSalesOrdersEditable'));
       setSoMessage(null);
       return;
     }
@@ -9247,7 +9247,7 @@ setCustomerOrganizationName("");
       });
       const result = await response.json();
       if (!response.ok || !result.ok) {
-        setSrError(result.error ?? "Failed to create sales return");
+        setSrError(result.error ?? t('page.createSalesReturnFailed'));
         return;
       }
 
@@ -9297,7 +9297,7 @@ setCustomerOrganizationName("");
       await fetchInventoryTransactions();
       await fetchProducts();
     } catch (err) {
-      setSrError(err instanceof Error ? err.message : "Failed to create sales return");
+      setSrError(err instanceof Error ? err.message : t('page.createSalesReturnFailed'));
       console.error("Error creating sales return:", err);
     } finally {
       setSrLoading(false);
@@ -9317,7 +9317,7 @@ setCustomerOrganizationName("");
       .eq("organization_id", currentOrganizationId);
 
     if (error) {
-      setSrError("Failed to delete sales return");
+      setSrError(t('page.deleteSalesReturnFailed'));
       console.error("Supabase delete sales return error:", error);
       return;
     }
@@ -9331,7 +9331,7 @@ setCustomerOrganizationName("");
       old_values: { status: salesReturn.status },
     });
 
-    setSrMessage("Sales return deleted");
+    setSrMessage(t('page.salesReturnDeleted'));
     fetchSalesReturns();
     fetchSalesReturnItems();
     fetchInventoryTransactions();
