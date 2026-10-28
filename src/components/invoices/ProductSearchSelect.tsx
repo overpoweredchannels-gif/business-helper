@@ -106,7 +106,24 @@ export function ProductSearchSelect({ value, onChange, products, label, searchPl
       aria-expanded={open} aria-controls={listId} aria-activedescendant={open && matches.length ? `${listId}-${activeIndex}` : undefined}
       autoComplete="off" required placeholder={resolvedPlaceholder} value={query ?? selected?.label ?? ""}
       onFocus={() => { setActive(null); setOpen(true); }} onBlur={() => setOpen(false)}
-      onChange={event => { setQuery(event.target.value); setOpen(true); setActive(0); if (value) onChange(""); }}
+      onChange={event => {
+        const text = event.target.value;
+        setQuery(text);
+        // POS scanning: when the typed text is barcode-shaped and matches
+        // exactly one saved product barcode (via the caller's rank
+        // fields), keep the dropdown closed — the scan resolves directly
+        // on Enter through onBarcodeEnter instead of flashing same-name
+        // options. Pickers without rank fields, and customer pickers
+        // (whose rank fields carry no barcode), keep the old behavior.
+        // Any edit away from the exact code (e.g. Backspace) falls back
+        // to the normal open dropdown, so options stay one key away.
+        // The existing selection is also preserved until Enter resolves,
+        // so a mistyped scan cannot clobber a filled line product.
+        const exactBarcode = rankedFields !== undefined && isBarcodeShaped(text) &&
+          Array.from(rankedFields.values()).some(fields => fields.barcode != null && fields.barcode === text.trim());
+        if (exactBarcode) { setOpen(false); setActive(null); }
+        else { setOpen(true); setActive(0); if (value) onChange(""); }
+      }}
       onKeyDown={event => {
         if (event.nativeEvent.isComposing || event.ctrlKey || event.altKey || event.metaKey) return;
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
