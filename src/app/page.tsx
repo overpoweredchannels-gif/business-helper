@@ -781,7 +781,7 @@ export default function Home() {
     end: string;
     label: string;
     preset: string;
-  }>({ start: toDateInputValue(new Date()), end: toDateInputValue(new Date()), label: "Today", preset: "today" });
+  }>({ start: toDateInputValue(new Date()), end: toDateInputValue(new Date()), label: t('bi.rangeToday'), preset: "today" });
   const [isAiBusinessSpeaking, setIsAiBusinessSpeaking] = useState(false);
   const [aiBusinessVoiceMessage, setAiBusinessVoiceMessage] = useState<string | null>(null);
   const [aiBusinessVoiceError, setAiBusinessVoiceError] = useState<string | null>(null);
@@ -2946,7 +2946,7 @@ setCustomerOrganizationName("");
 
     const commandText = aiCommandText.trim();
     if (!commandText) {
-      setAiAssistantError("Enter a business command first.");
+      setAiAssistantError(t('page.aiEnterCommandFirst'));
       return;
     }
 
@@ -2994,7 +2994,7 @@ setCustomerOrganizationName("");
     setSelectedAiDraftId(data?.id ?? "");
     setSelectedConversationDraftId(data?.id ?? "");
     setAiCommandText("");
-    setAiAssistantMessage("Draft action created for owner review.");
+    setAiAssistantMessage(t('page.aiDraftCreatedReview'));
     await fetchAiActionDrafts(currentOrganizationId);
     if (data?.id) {
       await continueAiConversation(data as AiActionDraft);
@@ -3138,7 +3138,7 @@ setCustomerOrganizationName("");
 
     if (nextField) {
       nextMessages = await ensureAiQuestionMessage(draft, nextField, nextMessages);
-      setAiConversationMessage("Conversation opened. Answer the current question to continue.");
+      setAiConversationMessage(t('page.aiConversationOpened'));
     } else if (draft.ready_to_execute || evaluation.readyToExecute) {
       const hasConfirmation = nextMessages.some((message) => message.message_type === "confirmation");
       if (!hasConfirmation) {
@@ -3150,7 +3150,7 @@ setCustomerOrganizationName("");
         });
         if (confirmationMessage) nextMessages = [...nextMessages, confirmationMessage];
       }
-      setAiConversationMessage("Draft is ready. Confirm before execution.");
+      setAiConversationMessage(t('page.aiDraftReady'));
     }
 
     setAiConversationMessages(nextMessages);
@@ -3167,13 +3167,13 @@ setCustomerOrganizationName("");
 
     const draft = getConversationDraft();
     if (!draft) {
-      setAiConversationError("Select a draft conversation first.");
+      setAiConversationError(t('page.aiSelectDraftFirst'));
       return;
     }
 
     const answer = aiConversationInput.trim();
     if (!answer) {
-      setAiConversationError("Type or speak an answer first.");
+      setAiConversationError(t('page.aiTypeAnswerFirst'));
       return;
     }
 
@@ -3201,7 +3201,7 @@ setCustomerOrganizationName("");
         entity_type: "ai_action_draft",
         entity_id: draft.id,
         entity_label: draft.action_type,
-        description: "AI draft execution confirmed from conversation",
+        description: t('page.aiDraftExecConfirmed'),
       });
       setAiConversationInput("");
       await executeAiActionDraft(draft);
@@ -3315,7 +3315,7 @@ setCustomerOrganizationName("");
     setActiveMissingField(nextField);
     if (nextField) {
       await ensureAiQuestionMessage(refreshedDraft, nextField);
-      setAiConversationMessage("Answer saved. Next question is ready.");
+      setAiConversationMessage(t('page.aiAnswerSaved'));
     } else {
       await addAiActionMessage({
         draftId: draft.id,
@@ -3323,7 +3323,7 @@ setCustomerOrganizationName("");
         messageType: "confirmation",
         messageText: `${evaluation.confirmationSummary} Should I execute this now?`,
       });
-      setAiConversationMessage("Draft is complete. Confirm before execution.");
+      setAiConversationMessage(t('page.aiDraftComplete'));
     }
     setAiConversationInput("");
     await fetchAiActionMessages(draft.id, currentOrganizationId);
@@ -3344,7 +3344,7 @@ setCustomerOrganizationName("");
     }
 
     if (draft.status !== "draft" && draft.status !== "needs_info") {
-      setAiAssistantError("Only draft or needs-info AI actions can be executed.");
+      setAiAssistantError(t('page.aiOnlyDraftExecutable'));
       return;
     }
 
@@ -3356,7 +3356,7 @@ setCustomerOrganizationName("");
     }
 
     if (!draft.ready_to_execute && !evaluation.readyToExecute) {
-      setAiAssistantError("Owner confirmation requires this draft to be ready to execute first. Save answers before executing.");
+      setAiAssistantError(t('page.aiOwnerConfirmFirst'));
       return;
     }
 
@@ -3381,7 +3381,7 @@ setCustomerOrganizationName("");
       const amount = Number(parsedData.amount);
       const expenseTypeValue = safeTextOrNull(parsedData.expense_type);
       if (!Number.isFinite(amount) || amount <= 0 || !expenseTypeValue || !expenseTypes.includes(expenseTypeValue)) {
-        setAiAssistantError("Expense drafts require a valid amount and supported expense type before execution.");
+        setAiAssistantError(t('page.aiExpenseDraftRequirements'));
         return;
       }
 
@@ -3455,7 +3455,7 @@ setCustomerOrganizationName("");
         old_values: { status: draft.status },
         new_values: { status: "executed", executed_entity_type: "expense", executed_entity_id: insertedExpense?.id ?? null },
       });
-      setAiAssistantMessage("AI expense draft executed into a real expense.");
+      setAiAssistantMessage(t('page.aiExpenseExecuted'));
       await fetchExpenses(currentOrganizationId);
       if (linkedPurchaseId) await fetchPurchaseTransactions(currentOrganizationId);
       await fetchAiActionDrafts(currentOrganizationId);
@@ -3522,7 +3522,7 @@ setCustomerOrganizationName("");
         old_values: { status: draft.status },
         new_values: { status: "executed", executed_entity_type: "task", executed_entity_id: insertedTask?.id ?? null },
       });
-      setAiAssistantMessage("AI task draft executed into a real task.");
+      setAiAssistantMessage(t('page.aiTaskExecuted'));
       await fetchTasks(currentOrganizationId);
       await fetchAiActionDrafts(currentOrganizationId);
       return;
@@ -3594,7 +3594,7 @@ setCustomerOrganizationName("");
       const sellingPrice = Number(parsedData.selling_price);
       const paymentType = String(parsedData.payment_type ?? "");
       if (paymentType !== "cash") {
-        setAiAssistantMessage("Credit sale execution will be added in a later phase. For now, AI sale execution supports cash sales only.");
+        setAiAssistantMessage(t('page.aiCreditSaleLater'));
         return;
       }
 
@@ -3628,13 +3628,13 @@ setCustomerOrganizationName("");
 
       if (tx.error) {
         console.error("Supabase AI sales transaction insert error:", JSON.stringify(tx.error, null, 2));
-        await markDraftFailed("Failed to create sales invoice from draft.", tx.error);
+        await markDraftFailed(t('page.aiCreateSalesInvoiceFromDraftFailed'), tx.error);
         return;
       }
 
       const salesTransactionId = tx.data?.id;
       if (!salesTransactionId) {
-        await markDraftFailed("Failed to create sales invoice from draft.");
+        await markDraftFailed(t('page.aiCreateSalesInvoiceFromDraftFailed'));
         return;
       }
 
@@ -3689,7 +3689,7 @@ setCustomerOrganizationName("");
       return;
     }
 
-    setAiAssistantError("This AI action type is not supported for execution yet.");
+    setAiAssistantError(t('page.aiActionTypeUnsupported'));
   };
 
   const getSpeechRecognitionConstructor = () => {
@@ -3705,7 +3705,7 @@ setCustomerOrganizationName("");
       speechRecognitionRef.current = null;
     }
     setIsVoiceListening(false);
-    setVoiceInputMessage("Voice input stopped.");
+    setVoiceInputMessage(t('page.aiVoiceInputStopped'));
   };
 
   const startVoiceInput = () => {
@@ -3747,7 +3747,7 @@ setCustomerOrganizationName("");
     };
     recognition.onend = () => {
       setIsVoiceListening(false);
-      setVoiceInputMessage("Voice input finished. Review the command text before creating a draft.");
+      setVoiceInputMessage(t('page.aiVoiceInputFinished'));
       speechRecognitionRef.current = null;
     };
 
@@ -3783,7 +3783,7 @@ setCustomerOrganizationName("");
       speechRecognitionRef.current = null;
     }
     setIsVoiceAnswerListening(false);
-    setVoiceAnswerMessage("Voice answer stopped.");
+    setVoiceAnswerMessage(t('page.aiVoiceAnswerStopped'));
   };
 
   const startVoiceAnswerInput = () => {
@@ -3824,7 +3824,7 @@ setCustomerOrganizationName("");
     };
     recognition.onend = () => {
       setIsVoiceAnswerListening(false);
-      setVoiceAnswerMessage("Voice answer finished. Review the answer before sending.");
+      setVoiceAnswerMessage(t('page.aiVoiceAnswerFinished'));
       speechRecognitionRef.current = null;
     };
 
@@ -10821,7 +10821,7 @@ setCustomerOrganizationName("");
     const lastMonthRange = getMonthRange(-1);
 
     if (biDateRange === "today") {
-      return { start: todayDateValue, end: todayDateValue, label: "Today" };
+      return { start: todayDateValue, end: todayDateValue, label: t('bi.rangeToday') };
     }
     if (biDateRange === "yesterday") {
       const value = toDateInputValue(yesterday);
@@ -11674,7 +11674,7 @@ setCustomerOrganizationName("");
   const fillAiAnalyticsQuestion = (question: string) => {
     setAiAnalyticsQuestion(question);
     setAiAnalyticsError(null);
-    setAiAnalyticsMessage("Question loaded. Review or ask AI.");
+    setAiAnalyticsMessage(t('page.aiQuestionLoaded'));
     window.setTimeout(() => document.getElementById("ai-analytics-question")?.focus(), 0);
   };
   const openAiAnalyticsFromBusinessIntelligence = () => {
@@ -11696,12 +11696,12 @@ setCustomerOrganizationName("");
       return;
     }
     if (!isOwnerOrAdmin()) {
-      setAiAnalyticsError("Only owner/admin users can use AI Analytics in this version.");
+      setAiAnalyticsError(t('page.aiAnalyticsOwnerOnly'));
       return;
     }
     const question = aiAnalyticsQuestion.trim();
     if (!question) {
-      setAiAnalyticsError("Please enter an analytics question.");
+      setAiAnalyticsError(t('page.aiEnterAnalyticsQuestion'));
       return;
     }
     const analyticsContext = buildAnalyticsContext();
@@ -11735,14 +11735,14 @@ setCustomerOrganizationName("");
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.ok) {
         const details = typeof result?.details === "string" ? result.details : "";
-        setAiAnalyticsError(details ? `${result?.error ?? "AI analytics failed"} - ${details}` : result?.error ?? "AI analytics failed. Please try again.");
+        setAiAnalyticsError(details ? `${result?.error ?? t('page.aiAnalyticsFailed')} - ${details}` : result?.error ?? t('page.aiAnalyticsFailedRetry'));
         return;
       }
       setAiAnalyticsResult(result.result);
-      setAiAnalyticsMessage("AI analytics explanation generated from current OP OWNER data.");
+      setAiAnalyticsMessage(t('page.aiAnalyticsExplained'));
     } catch (error) {
       console.error("AI analytics request error:", error);
-      setAiAnalyticsError("AI analytics failed. Please try again.");
+      setAiAnalyticsError(t('page.aiAnalyticsFailedRetry'));
     } finally {
       setAiAnalyticsLoading(false);
     }
@@ -12875,7 +12875,7 @@ setCustomerOrganizationName("");
         preset,
       };
     }
-    return { start: today, end: today, label: "Today", preset: "today" };
+    return { start: today, end: today, label: t('bi.rangeToday'), preset: "today" };
   };
 
   const setAiBusinessPresetRange = (preset: string) => {
@@ -13024,11 +13024,11 @@ setCustomerOrganizationName("");
 
     const text = (answerText ?? aiBusinessQueryResult?.answer ?? "").trim();
     if (!text) {
-      setAiBusinessVoiceError("No AI answer is available to read aloud.");
+      setAiBusinessVoiceError(t('page.aiNoAnswerToRead'));
       return;
     }
     if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
-      setAiBusinessVoiceError("Voice reply is not supported in this browser.");
+      setAiBusinessVoiceError(t('page.aiVoiceNotSupported'));
       return;
     }
 
@@ -13036,7 +13036,7 @@ setCustomerOrganizationName("");
     const detectedLanguage = detectAiBusinessLanguage(text);
     const speechText = prepareLocalizedSpeechText(text, detectedLanguage);
     if (!speechText) {
-      setAiBusinessVoiceError("The AI answer did not contain readable speech text.");
+      setAiBusinessVoiceError(t('page.aiNoSpeechText'));
       return;
     }
     setAiVoiceSpeechCleanPreview(speechText);
@@ -13058,17 +13058,17 @@ setCustomerOrganizationName("");
     utterance.pitch = safeNumber(aiBusinessVoicePitch) || 1;
     utterance.onstart = () => {
       setIsAiBusinessSpeaking(true);
-      setAiBusinessVoiceMessage("Reading AI answer aloud.");
+      setAiBusinessVoiceMessage(t('page.aiReadingAloud'));
     };
     utterance.onend = () => {
       currentUtteranceRef.current = null;
       setIsAiBusinessSpeaking(false);
-      setAiBusinessVoiceMessage("Voice reply finished.");
+      setAiBusinessVoiceMessage(t('page.aiVoiceFinished'));
     };
     utterance.onerror = () => {
       currentUtteranceRef.current = null;
       setIsAiBusinessSpeaking(false);
-      setAiBusinessVoiceError("Voice reply could not be played. Try another browser voice.");
+      setAiBusinessVoiceError(t('page.aiVoicePlayFailedBrowser'));
     };
     currentUtteranceRef.current = utterance;
     window.speechSynthesis.speak(utterance);
@@ -13356,7 +13356,7 @@ setCustomerOrganizationName("");
     const market = summaryData.market_intelligence ?? {};
     const alerts = summaryData.alerts ?? {};
     const lines = [
-      `${summaryData.date_range?.label ?? "Today"} briefing:`,
+      `${summaryData.date_range?.label ?? t('bi.rangeToday')} briefing:`,
       `Sales: ${safeNumber(sales.count)} invoices totaling ${formatBooksMoney(safeNumber(sales.total_amount))}.`,
       `Purchases: ${safeNumber(purchases.count)} invoices totaling ${formatBooksMoney(safeNumber(purchases.total_amount))}.`,
       `Customer collections: ${safeNumber(customerPayments.count)} payments totaling ${formatBooksMoney(safeNumber(customerPayments.total_amount))}.`,
@@ -13378,7 +13378,7 @@ setCustomerOrganizationName("");
       return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
     }
     if (!isOwnerOrAdmin()) {
-      setAiBriefingError("Only owner/admin users can generate AI alerts.");
+      setAiBriefingError(t('page.aiAlertsOwnerOnly'));
       return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
     }
 
@@ -13645,14 +13645,14 @@ setCustomerOrganizationName("");
       return null;
     }
     if (!isOwnerOrAdmin()) {
-      setAiBriefingError("Only owner/admin users can generate daily briefings.");
+      setAiBriefingError(t('page.aiBriefingOwnerOnly'));
       return null;
     }
 
     setAiBriefingLoading(true);
     try {
       const alertResult = await generateAiBusinessAlerts();
-      const dateRange = { start: todayDateValue, end: todayDateValue, label: "Today" };
+      const dateRange = { start: todayDateValue, end: todayDateValue, label: t('bi.rangeToday') };
       const language = aiVoiceLanguage === "auto" ? "auto" : aiVoiceLanguage;
       const summaryData = buildDailyBriefingSummary(dateRange, language) as Record<string, any>;
       if (alertResult.createdAlerts.length > 0) {
@@ -13753,7 +13753,7 @@ setCustomerOrganizationName("");
         new_values: { briefing_date: todayDateValue, top_signals: topSignals.length },
       });
       await fetchAiDailyBriefings(currentOrganizationId);
-      setAiBriefingMessage("Today's briefing generated.");
+      setAiBriefingMessage(t('page.aiBriefingGenerated'));
       setAiVoiceLastResponse(briefingSummary);
       if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(briefingSummary);
       return data as AiDailyBriefing;
@@ -13765,7 +13765,7 @@ setCustomerOrganizationName("");
   const readLatestDailyBriefing = () => {
     const briefing = latestAiDailyBriefing;
     if (!briefing?.summary) {
-      setAiBriefingError("No briefing is available yet. Generate today's briefing first.");
+      setAiBriefingError(t('page.aiNoBriefingYet'));
       return;
     }
     setAiVoiceLastResponse(briefing.summary);
@@ -13835,13 +13835,13 @@ setCustomerOrganizationName("");
       return;
     }
     if (!isOwnerOrAdmin()) {
-      setAiBusinessQueryError("Only owner/admin users can use AI Business Query in this version.");
+      setAiBusinessQueryError(t('page.aiBusinessQueryOwnerOnly'));
       return;
     }
 
     const question = aiBusinessQuestion.trim();
     if (!question) {
-      setAiBusinessQueryError("Please enter a business question.");
+      setAiBusinessQueryError(t('page.aiEnterBusinessQuestion'));
       return;
     }
 
@@ -13869,8 +13869,8 @@ setCustomerOrganizationName("");
       if (!response.ok || !result?.ok) {
         const details = typeof result?.details === "string" ? result.details : "";
         const errorMessage = details
-          ? `AI business query failed: ${result?.error ?? t('page.requestFailed')} - ${details}`
-          : result?.error ?? "AI business query failed. Please try again.";
+          ? t('page.aiQueryFailed').replace('{error}', result?.error ?? t('page.requestFailed')).replace('{details}', details)
+          : result?.error ?? t('page.aiBusinessQueryFailedRetry');
         setAiBusinessQueryError(errorMessage);
         await saveAiBusinessQueryLog({
           question,
@@ -13923,10 +13923,10 @@ setCustomerOrganizationName("");
         },
       });
       await fetchAiBusinessQueryLogs(currentOrganizationId);
-      setAiBusinessQueryMessage("AI business answer generated and logged.");
+      setAiBusinessQueryMessage(t('page.aiBusinessAnswerLogged'));
     } catch (error) {
       console.error("AI business query request error:", error);
-      setAiBusinessQueryError("AI business query failed. Please try again.");
+      setAiBusinessQueryError(t('page.aiBusinessQueryFailedRetry'));
     } finally {
       setAiBusinessQueryLoading(false);
     }
@@ -14043,13 +14043,13 @@ setCustomerOrganizationName("");
       .single();
     if (error) {
       console.error("Supabase AI voice session insert error:", JSON.stringify(error, null, 2));
-      setAiVoiceOperatorError("Could not start voice session. Please try again.");
+      setAiVoiceOperatorError(t('page.aiVoiceStartFailed'));
       return null;
     }
     setSelectedAiVoiceSessionId(data.id);
     await fetchAiVoiceOperatorSessions(currentOrganizationId);
     await fetchAiVoiceOperatorMessages(data.id, currentOrganizationId);
-    setAiVoiceOperatorMessage("Voice operator session started.");
+    setAiVoiceOperatorMessage(t('page.aiVoiceOpStarted'));
     return data.id as string;
   };
 
@@ -14068,11 +14068,11 @@ setCustomerOrganizationName("");
       .eq("organization_id", currentOrganizationId);
     if (error) {
       console.error("Supabase AI voice session end error:", JSON.stringify(error, null, 2));
-      setAiVoiceOperatorError("Could not end voice session. Please try again.");
+      setAiVoiceOperatorError(t('page.aiVoiceEndFailed'));
       return;
     }
     await fetchAiVoiceOperatorSessions(currentOrganizationId);
-    setAiVoiceOperatorMessage("Voice operator session ended.");
+    setAiVoiceOperatorMessage(t('page.aiVoiceOpEnded'));
   };
 
   const getAiVoiceActionQuestionText = (field: string) => {
@@ -14180,7 +14180,7 @@ setCustomerOrganizationName("");
       aiActionDrafts.find((item) => item.id === aiVoiceActiveActionDraftId) ??
       null;
     if (!draft || !aiVoiceActiveMissingField) {
-      setAiVoiceActionConversationError("No active action question is waiting for an answer.");
+      setAiVoiceActionConversationError(t('page.aiNoActiveQuestion'));
       return;
     }
 
@@ -14432,8 +14432,8 @@ setCustomerOrganizationName("");
     if (!response.ok || !result?.ok) {
       const details = typeof result?.details === "string" ? result.details : "";
       const errorMessage = details
-        ? `AI business query failed: ${result?.error ?? t('page.requestFailed')} - ${details}`
-        : result?.error ?? "AI business query failed. Please try again.";
+        ? t('page.aiQueryFailed').replace('{error}', result?.error ?? t('page.requestFailed')).replace('{details}', details)
+        : result?.error ?? t('page.aiBusinessQueryFailedRetry');
       const failedLogId = await saveAiBusinessQueryLog({
         question,
         answer: null,
@@ -14482,7 +14482,7 @@ setCustomerOrganizationName("");
   const speakAiVoiceOperatorReply = (text: string) => {
     if (!text.trim()) return;
     if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
-      setAiVoiceOperatorError("Voice reply is not supported in this browser.");
+      setAiVoiceOperatorError(t('page.aiVoiceNotSupported'));
       return;
     }
     stopAiVoiceOperatorReply();
@@ -14504,7 +14504,7 @@ setCustomerOrganizationName("");
     utterance.onerror = () => {
       aiVoiceUtteranceRef.current = null;
       setIsAiVoiceSpeaking(false);
-      setAiVoiceOperatorError("Voice reply could not be played in this browser.");
+      setAiVoiceOperatorError(t('page.aiVoicePlayFailed'));
     };
     aiVoiceUtteranceRef.current = utterance;
     window.speechSynthesis.speak(utterance);
@@ -14560,11 +14560,11 @@ setCustomerOrganizationName("");
       const lastSent = aiVoiceLastAutoSentRef.current;
       clearAiVoiceAutoSendTimers();
       if (aiVoiceOperatorLoadingRef.current) {
-        setAiVoiceHandsFreeError("Operator is still processing. Auto-send skipped.");
+        setAiVoiceHandsFreeError(t('page.aiOpStillProcessing'));
         return;
       }
       if (lastSent.text === cleanTranscript && now - lastSent.sentAt < 2000) {
-        setAiVoiceHandsFreeError("Duplicate voice send skipped.");
+        setAiVoiceHandsFreeError(t('page.aiDupVoiceSkipped'));
         return;
       }
       aiVoiceLastAutoSentRef.current = { text: cleanTranscript, sentAt: now };
@@ -14577,14 +14577,14 @@ setCustomerOrganizationName("");
   const sendAiVoicePendingNow = () => {
     const pendingText = (aiVoicePendingAutoSendText || aiVoiceInput).trim();
     if (!pendingText) {
-      setAiVoiceHandsFreeError("No pending voice text to send.");
+      setAiVoiceHandsFreeError(t('page.aiNoPendingVoice'));
       return;
     }
     clearAiVoiceAutoSendTimers();
     const now = Date.now();
     const lastSent = aiVoiceLastAutoSentRef.current;
     if (lastSent.text === pendingText && now - lastSent.sentAt < 2000) {
-      setAiVoiceHandsFreeError("Duplicate voice send skipped.");
+      setAiVoiceHandsFreeError(t('page.aiDupVoiceSkipped'));
       return;
     }
     aiVoiceLastAutoSentRef.current = { text: pendingText, sentAt: now };
@@ -14596,11 +14596,11 @@ setCustomerOrganizationName("");
   const startAiVoiceListening = () => {
     setAiVoiceOperatorError(null);
     setAiVoiceHandsFreeError(null);
-    setAiVoiceHandsFreeMessage("Listening...");
+    setAiVoiceHandsFreeMessage(t('page.aiListening'));
     cancelAiVoiceAutoSend("Listening... speak your TradeOS command.");
     const Recognition = getSpeechRecognitionConstructor();
     if (!Recognition) {
-      setAiVoiceOperatorError("Voice input is not supported in this browser.");
+      setAiVoiceOperatorError(t('page.aiVoiceInputNotSupported'));
       return;
     }
     if (aiVoiceRecognitionRef.current) {
@@ -14640,9 +14640,9 @@ setCustomerOrganizationName("");
       if (aiVoiceAutoSendEnabled && transcript) {
         scheduleAiVoiceAutoSend(transcript);
       } else if (transcript) {
-        setAiVoiceHandsFreeMessage("Voice captured. Review and send when ready.");
+        setAiVoiceHandsFreeMessage(t('page.aiVoiceCaptured'));
       } else {
-        setAiVoiceHandsFreeMessage("Listening ended. No speech was captured.");
+        setAiVoiceHandsFreeMessage(t('page.aiListeningEnded'));
       }
     };
     aiVoiceRecognitionRef.current = recognition;
@@ -14664,17 +14664,17 @@ setCustomerOrganizationName("");
       return;
     }
     if (!isOwnerOrAdmin()) {
-      setAiVoiceOperatorError("Only owner/admin users can use AI Voice Operator in this version.");
+      setAiVoiceOperatorError(t('page.aiVoiceOpOwnerOnly'));
       return;
     }
     if (aiVoiceOperatorLoadingRef.current) {
-      setAiVoiceHandsFreeError("Operator is already processing. Please wait.");
+      setAiVoiceHandsFreeError(t('page.aiOpAlreadyProcessing'));
       return;
     }
     clearAiVoiceAutoSendTimers();
     const input = (overrideText ?? aiVoiceInput).trim();
     if (!input) {
-      setAiVoiceOperatorError("Speak or type a command first.");
+      setAiVoiceOperatorError(t('page.aiSpeakOrType'));
       return;
     }
     setAiVoiceOperatorLoading(true);
@@ -14816,7 +14816,7 @@ setCustomerOrganizationName("");
       setAiVoiceTranscriptPreview("");
       setAiVoicePendingAutoSendText("");
       await fetchAiVoiceOperatorMessages(sessionId, currentOrganizationId);
-      setAiVoiceOperatorMessage("Voice operator handled the request safely.");
+      setAiVoiceOperatorMessage(t('page.aiVoiceOpSafe'));
       setAiVoiceHandsFreeMessage(t('page.sentToOperator'));
     } finally {
       setAiVoiceOperatorLoading(false);
@@ -15926,8 +15926,8 @@ setCustomerOrganizationName("");
               : "";
         setMarketAiAnalysisError(
           safeDetails
-            ? `AI analysis failed: ${result?.error ?? t('page.requestFailed')} - ${safeDetails}`
-            : result?.error ?? "AI analysis failed. Please try again."
+            ? t('page.aiAnalysisFailed').replace('{error}', result?.error ?? t('page.requestFailed')).replace('{details}', safeDetails)
+            : result?.error ?? t('page.aiAnalysisFailedRetry')
         );
         return;
       }
@@ -15981,7 +15981,7 @@ setCustomerOrganizationName("");
       setMarketAiAnalysisMessage("AI analysis created for owner review.");
     } catch (error) {
       console.error("Market AI analysis request error:", error);
-      setMarketAiAnalysisError("AI analysis failed. Please try again.");
+      setMarketAiAnalysisError(t('page.aiAnalysisFailedRetry'));
     } finally {
       setMarketAiAnalysisLoadingId("");
     }
@@ -17164,7 +17164,7 @@ setCustomerOrganizationName("");
             description: `Reorder level reached for ${lowStockProducts.length} products`,
             severity: lowStockProducts.length > 5 ? "critical" as const : "warning" as const,
             section: "inventory" as const,
-            time: "Today",
+            time: t('bi.rangeToday'),
           }] : []),
         ]}
         onNotificationClick={(n) => {
