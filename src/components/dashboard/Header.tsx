@@ -102,10 +102,14 @@ export function Header({
             {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
           <div className="flex items-center gap-2">
-            <div className="size-7 rounded-md bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-brand font-bold text-[10px]">T</span>
-            </div>
-            <span className="font-brand font-bold text-sm text-foreground hidden min-[375px]:inline">TradeOS</span>
+            <img
+              src="/aankh-icon.svg"
+              alt="AANKH logo"
+              width={28}
+              height={28}
+              className="size-7 shrink-0 rounded-md"
+            />
+            <span className="font-brand font-bold text-sm text-foreground hidden min-[375px]:inline">AANKH</span>
           </div>
         </div>
 

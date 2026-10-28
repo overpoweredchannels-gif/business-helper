@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Libre_Baskerville } from "next/font/google";
 import "./globals.css";
 import AppHelp from "@/components/help/AppHelp";
+import { AppFooter } from "@/components/branding/AppFooter";
 import { DISPLAY_ZOOM_BOOTSTRAP_SCRIPT } from "@/lib/preferences/display-zoom";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -19,17 +20,17 @@ const libreBaskerville = Libre_Baskerville({
 });
 
 export const metadata: Metadata = {
-  title: "TradeOS",
-  description: "Business operating system for traders, wholesalers, and retailers",
+  title: "AANKH",
+  description: "The eye of your business — business management for traders, wholesalers, and retailers",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    title: "TradeOS",
+    title: "AANKH",
     statusBarStyle: "black-translucent",
   },
   icons: {
-    icon: "/tradeos-icon.svg",
-    apple: "/tradeos-icon.svg",
+    icon: "/aankh-icon.svg",
+    apple: "/aankh-icon.svg",
   },
 };
 
@@ -50,7 +51,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: DISPLAY_ZOOM_BOOTSTRAP_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col">{children}<AppHelp /></body>
+      <body className="min-h-full flex flex-col">{children}<AppFooter /><AppHelp /></body>
     </html>
   );
 }

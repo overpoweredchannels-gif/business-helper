@@ -1,7 +1,7 @@
 {
-  "name": "TradeOS",
-  "short_name": "TradeOS",
-  "description": "Business operating system for traders, wholesalers, and retailers.",
+  "name": "AANKH",
+  "short_name": "AANKH",
+  "description": "The eye of your business \u2014 business management for traders, wholesalers, and retailers.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -10,13 +10,13 @@
   "theme_color": "#0f172a",
   "icons": [
     {
-      "src": "/tradeos-icon.svg",
+      "src": "/aankh-icon.svg",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/tradeos-maskable-icon.svg",
+      "src": "/aankh-maskable-icon.svg",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "maskable"

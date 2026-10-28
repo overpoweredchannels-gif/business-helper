@@ -145,14 +145,12 @@ function InviteContent() {
       <div className="w-full max-w-md bg-card rounded-2xl border border-border p-8 shadow-lg">
         <div className="text-center mb-6">
           <div className="inline-flex items-center gap-2 mb-4">
-            <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-lg">T</span>
-            </div>
-            <span className="font-bold text-xl text-foreground">TradeOS</span>
+            <img src="/aankh-icon.svg" alt="AANKH logo" width={36} height={36} className="size-9 rounded-xl" />
+            <span className="font-bold text-xl text-foreground">AANKH</span>
           </div>
           <h1 className="font-bold text-2xl text-foreground">Activate your staff account</h1>
           <p className="text-sm text-body mt-1.5">
-            Set your password to start using TradeOS. You do not need an email address.
+            Set your password to start using AANKH. You do not need an email address.
           </p>
         </div>
 

@@ -67,7 +67,7 @@ function ResetForm() {
             <Lock className="size-6 text-primary" />
           </div>
           <h1 className="font-bold text-2xl text-foreground">Reset your password</h1>
-          <p className="text-sm text-body mt-1.5">Choose a new password for your TradeOS account.</p>
+          <p className="text-sm text-body mt-1.5">Choose a new password for your AANKH account.</p>
         </div>
 
         {success ? (

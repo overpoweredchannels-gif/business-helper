@@ -139,12 +139,16 @@ export function Sidebar({
     >
       {/* Logo */}
       <div className={cn("border-b border-border flex items-center gap-3 px-5", collapsed ? "justify-center py-4" : "py-5")}>
-        <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <span className="text-primary-foreground font-brand font-bold text-sm">T</span>
-        </div>
+        <img
+          src="/aankh-icon.svg"
+          alt="AANKH logo"
+          width={32}
+          height={32}
+          className="size-8 shrink-0 rounded-lg"
+        />
         {!collapsed && (
           <div className="min-w-0">
-            <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
+            <div className="font-brand font-bold text-base text-foreground truncate">AANKH</div>
             {organizationName && (
               <div className="text-[10px] text-light-text truncate">{organizationName}</div>
             )}

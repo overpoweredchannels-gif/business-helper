@@ -201,7 +201,7 @@ function LeftPanel() {
           <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-brand font-bold text-lg">T</span>
           </div>
-          <span className="font-brand font-bold text-xl text-white/90">TradeOS</span>
+          <span className="font-brand font-bold text-xl text-white/90">AANKH</span>
         </div>
 
         <h2 className="font-heading font-bold text-3xl xl:text-4xl text-white leading-tight mb-4">
@@ -410,7 +410,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
 
         <Button type="submit" disabled={loading} size="lg">
           {loading ? <Loader2 className="size-4 animate-spin" /> : null}
-          {loading ? "Signing in..." : "Sign in to TradeOS"}
+          {loading ? "Signing in..." : "Sign in to AANKH"}
         </Button>
       </div>
 
@@ -753,7 +753,7 @@ export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
               <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
                 <span className="text-primary-foreground font-brand font-bold text-lg">T</span>
               </div>
-              <span className="font-brand font-bold text-xl text-foreground">TradeOS</span>
+              <span className="font-brand font-bold text-xl text-foreground">AANKH</span>
             </div>
           </div>
 
