@@ -16887,7 +16887,7 @@ setCustomerOrganizationName("");
         <div className="w-full rounded-xl bg-card p-6 shadow-sm">
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-foreground">TradeOS</h1>
-            <p className="text-sm text-muted-foreground/80">Business Management</p>
+            <p className="text-sm text-muted-foreground/80">{t('page.jsxBusinessManagement')}</p>
           </div>
 
           <section className="rounded border border-border bg-muted/30 p-5">
@@ -18677,8 +18677,8 @@ setCustomerOrganizationName("");
             <div className="rounded border border-border bg-card p-4">
               <h3 className="mb-1 text-lg font-medium text-foreground">{t('inventory.bulkTitle')}</h3>
               <p className="mb-3 text-sm text-muted-foreground">
-                {t('inventory.bulkHintStart')} <code className="rounded bg-muted px-1">Product Name [tab|comma] Qty</code> {t('inventory.bulkHintOr')}
-                <code className="rounded bg-muted px-1">Product Name Qty</code>{t('inventory.bulkHintEnd')}
+                {t('inventory.bulkHintStart')} <code className="rounded bg-muted px-1">{t('page.jsxBulkNameTabQty')}</code> {t('inventory.bulkHintOr')}
+                <code className="rounded bg-muted px-1">{t('page.jsxBulkNameQty')}</code>{t('inventory.bulkHintEnd')}
               </p>
               {bulkStockMessage && <p className="mb-3 whitespace-pre-wrap text-sm text-success">{bulkStockMessage}</p>}
               {bulkStockError && <p className="mb-3 whitespace-pre-wrap text-sm text-destructive">{bulkStockError}</p>}
@@ -24698,9 +24698,7 @@ setCustomerOrganizationName("");
                 fetchMarketAiAnalyses(currentOrganizationId);
               }}
               className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
-            >
-              Refresh Market Data
-            </button>
+            >{t('page.jsxRefreshMarketData')}</button>
           </div>
 
           <div className="mb-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
@@ -24788,14 +24786,14 @@ setCustomerOrganizationName("");
               className="rounded border border-border px-3 py-2 text-sm"
             />
             <select value={marketIntelligenceRiskFilter} onChange={(e) => setMarketIntelligenceRiskFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
-              <option value="all">All risk levels</option>
-              <option value="70">70+ risk</option>
-              <option value="50">50+ risk</option>
+              <option value="all">{t('page.jsxAllRiskLevels')}</option>
+              <option value="70">{t('page.jsxRisk70')}</option>
+              <option value="50">{t('page.jsxRisk50')}</option>
             </select>
             <select value={marketIntelligenceOpportunityFilter} onChange={(e) => setMarketIntelligenceOpportunityFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
-              <option value="all">All opportunity levels</option>
-              <option value="70">70+ opportunity</option>
-              <option value="50">50+ opportunity</option>
+              <option value="all">{t('page.jsxAllOppLevels')}</option>
+              <option value="70">{t('page.jsxOpp70')}</option>
+              <option value="50">{t('page.jsxOpp50')}</option>
             </select>
             <select value={marketIntelligenceUrgencyFilter} onChange={(e) => setMarketIntelligenceUrgencyFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
               <option value="all">{t('page.filterAllUrgencies')}</option>
@@ -24810,7 +24808,7 @@ setCustomerOrganizationName("");
               ))}
             </select>
             <select value={marketIntelligenceSourceFilter} onChange={(e) => setMarketIntelligenceSourceFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
-              <option value="all">All sources</option>
+              <option value="all">{t('page.jsxAllSources')}</option>
               {marketSourceOptions.map((option) => (
                 <option key={option} value={option}>{option}</option>
               ))}
@@ -24852,7 +24850,7 @@ setCustomerOrganizationName("");
             )}
 
             <form onSubmit={createMarketImportQueueItem} className="mt-4 rounded border border-border bg-muted/30 p-4">
-              <h4 className="text-base font-medium text-foreground">Add Import Queue Item</h4>
+              <h4 className="text-base font-medium text-foreground">{t('page.jsxAddImportQueueItem')}</h4>
               <div className="mt-3 flex flex-wrap gap-2">
                 {marketImportQueueExampleChips.map((example) => (
                   <button
@@ -24867,19 +24865,19 @@ setCustomerOrganizationName("");
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Source Name</span>
+                  <span>{t('page.jsxSourceName')}</span>
                   <input value={marketImportSourceName} onChange={(e) => setMarketImportSourceName(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Source URL</span>
+                  <span>{t('page.jsxSourceUrl')}</span>
                   <input value={marketImportSourceUrl} onChange={(e) => setMarketImportSourceUrl(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Raw Title</span>
+                  <span>{t('page.jsxRawTitle')}</span>
                   <input value={marketImportRawTitle} onChange={(e) => setMarketImportRawTitle(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Suggested Market Category</span>
+                  <span>{t('page.jsxSuggestedMarketCategory')}</span>
                   <select value={marketImportSuggestedCategory} onChange={(e) => setMarketImportSuggestedCategory(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">{t('page.marketNotSuggested')}</option>
                     {marketCategoryOptionsT.map((option) => (
@@ -24888,15 +24886,15 @@ setCustomerOrganizationName("");
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
-                  <span>Raw Summary</span>
+                  <span>{t('page.jsxRawSummary')}</span>
                   <textarea value={marketImportRawSummary} onChange={(e) => setMarketImportRawSummary(e.target.value)} rows={2} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
-                  <span>Raw Text / Notes</span>
+                  <span>{t('page.jsxRawTextNotes')}</span>
                   <textarea value={marketImportRawText} onChange={(e) => setMarketImportRawText(e.target.value)} rows={3} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Suggested Impact Direction</span>
+                  <span>{t('page.jsxSuggestedImpactDirection')}</span>
                   <select value={marketImportSuggestedImpactDirection} onChange={(e) => setMarketImportSuggestedImpactDirection(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">{t('page.marketNotSuggested')}</option>
                     {marketImpactDirectionOptionsT.map((option) => (
@@ -24905,7 +24903,7 @@ setCustomerOrganizationName("");
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Suggested Impact Level</span>
+                  <span>{t('page.jsxSuggestedImpactLevel')}</span>
                   <select value={marketImportSuggestedImpactLevel} onChange={(e) => setMarketImportSuggestedImpactLevel(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">{t('page.marketNotSuggested')}</option>
                     {marketImpactLevelOptionsT.map((option) => (
@@ -24914,7 +24912,7 @@ setCustomerOrganizationName("");
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Suggested Confidence</span>
+                  <span>{t('page.jsxSuggestedConfidence')}</span>
                   <select value={marketImportSuggestedConfidenceLevel} onChange={(e) => setMarketImportSuggestedConfidenceLevel(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">{t('page.marketNotSuggested')}</option>
                     {marketConfidenceOptionsT.map((option) => (
@@ -24923,7 +24921,7 @@ setCustomerOrganizationName("");
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Suggested Affected Area</span>
+                  <span>{t('page.jsxSuggestedAffectedArea')}</span>
                   <select value={marketImportSuggestedAffectedArea} onChange={(e) => setMarketImportSuggestedAffectedArea(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">{t('page.marketNotSuggested')}</option>
                     {marketAffectedAreaOptions.map((option) => (
@@ -24932,23 +24930,21 @@ setCustomerOrganizationName("");
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
-                  <span>Suggested Action</span>
+                  <span>{t('page.jsxSuggestedAction')}</span>
                   <textarea value={marketImportSuggestedAction} onChange={(e) => setMarketImportSuggestedAction(e.target.value)} rows={2} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
-                  <span>Internal Notes</span>
+                  <span>{t('page.jsxInternalNotes')}</span>
                   <textarea value={marketImportNotes} onChange={(e) => setMarketImportNotes(e.target.value)} rows={2} className="rounded border border-border px-3 py-2" />
                 </label>
               </div>
-              <button type="submit" className="mt-4 rounded bg-primary px-4 py-2 text-sm text-white hover:bg-primary/90">
-                Add to Import Queue
-              </button>
+              <button type="submit" className="mt-4 rounded bg-primary px-4 py-2 text-sm text-white hover:bg-primary/90">{t('page.jsxAddToImportQueue')}</button>
             </form>
 
             <div className="mt-5 rounded border border-border bg-muted/30 p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <h4 className="text-base font-medium text-foreground">Queued Imports</h4>
+                  <h4 className="text-base font-medium text-foreground">{t('page.jsxQueuedImports')}</h4>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Showing {filteredMarketImportQueueItems.length} of {marketImportQueueItems.length} queued imports.
                   </p>
@@ -24962,7 +24958,7 @@ setCustomerOrganizationName("");
                     className="rounded border border-border px-3 py-2 text-sm"
                   />
                   <select value={marketImportQueueStatusFilter} onChange={(e) => setMarketImportQueueStatusFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
-                    <option value="all">All statuses</option>
+                    <option value="all">{t('page.jsxAllStatuses')}</option>
                     <option value="pending">Pending</option>
                     <option value="reviewing">Reviewing</option>
                     <option value="converted">Converted</option>
@@ -25035,9 +25031,7 @@ setCustomerOrganizationName("");
                             onClick={() => updateMarketImportQueueStatus(item, "reviewing")}
                             disabled={item.review_status === "reviewing" || item.review_status === "converted"}
                             className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
-                          >
-                            Mark Reviewing
-                          </button>
+                          >{t('page.jsxMarkReviewing')}</button>
                           <button
                             type="button"
                             onClick={() => updateMarketImportQueueStatus(item, "ignored")}
@@ -25051,9 +25045,7 @@ setCustomerOrganizationName("");
                             onClick={() => updateMarketImportQueueStatus(item, "pending")}
                             disabled={item.review_status === "pending" || item.review_status === "converted"}
                             className="rounded border border-warning bg-card px-3 py-2 text-xs text-warning hover:bg-warning/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
-                          >
-                            Reopen Pending
-                          </button>
+                          >{t('page.jsxReopenPending')}</button>
                           <button
                             type="button"
                             onClick={() => convertMarketImportQueueItem(item)}
@@ -25074,7 +25066,7 @@ setCustomerOrganizationName("");
           <div className="mt-5 rounded border border-primary/20 bg-card p-4">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-foreground">AI Analysis Reviews</h3>
+                <h3 className="text-lg font-medium text-foreground">{t('page.jsxAiAnalysisReviews')}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   AI analysis is advisory. Owner should review before taking action.
                 </p>
@@ -25156,17 +25148,13 @@ setCustomerOrganizationName("");
                           onClick={() => convertMarketAiAnalysisToIntelligenceItem(analysis)}
                           disabled={analysis.review_status === "converted"}
                           className="rounded bg-success px-3 py-2 text-xs text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-muted"
-                        >
-                          Use as Intelligence Item
-                        </button>
+                        >{t('page.jsxUseAsIntelligenceItem')}</button>
                         <button
                           type="button"
                           onClick={() => updateMarketAiAnalysisStatus(analysis, "reviewed")}
                           disabled={analysis.review_status === "reviewed" || analysis.review_status === "converted"}
                           className="rounded border border-ring bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
-                        >
-                          Mark Reviewed
-                        </button>
+                        >{t('page.jsxMarkReviewed')}</button>
                         <button
                           type="button"
                           onClick={() => updateMarketAiAnalysisStatus(analysis, "ignored")}
@@ -25180,9 +25168,7 @@ setCustomerOrganizationName("");
                           onClick={() => updateMarketAiAnalysisStatus(analysis, "draft")}
                           disabled={analysis.review_status === "draft" || analysis.review_status === "converted"}
                           className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
-                        >
-                          Reopen Draft
-                        </button>
+                        >{t('page.jsxReopenDraft')}</button>
                       </div>
                     </div>
                   </div>
@@ -25193,7 +25179,7 @@ setCustomerOrganizationName("");
 
           <div className="mt-5 grid gap-5 lg:grid-cols-[2fr_1fr]">
             <form id="market-intelligence-item-form" onSubmit={createMarketIntelligenceItem} className="rounded border border-border bg-card p-4">
-              <h3 className="text-lg font-medium text-foreground">Add Intelligence Item</h3>
+              <h3 className="text-lg font-medium text-foreground">{t('page.jsxAddIntelligenceItem')}</h3>
               {selectedAiAnalysisId && (
                 <p className="mt-2 rounded border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
                   This form is prefilled from an AI analysis. Review details before saving.
@@ -25217,7 +25203,7 @@ setCustomerOrganizationName("");
                   <input value={marketTitle} onChange={(e) => setMarketTitle(e.target.value)} className="rounded border border-border px-3 py-2" required />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Source Name</span>
+                  <span>{t('page.jsxSourceName')}</span>
                   <input value={marketSourceName} onChange={(e) => setMarketSourceName(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
@@ -25225,20 +25211,20 @@ setCustomerOrganizationName("");
                   <textarea value={marketSummary} onChange={(e) => setMarketSummary(e.target.value)} rows={3} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Source URL</span>
+                  <span>{t('page.jsxSourceUrl')}</span>
                   <input value={marketSourceUrl} onChange={(e) => setMarketSourceUrl(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Market Category</span>
+                  <span>{t('page.jsxMarketCategory')}</span>
                   <select value={marketCategory} onChange={(e) => setMarketCategory(e.target.value)} className="rounded border border-border px-3 py-2" required>
-                    <option value="">Select category</option>
+                    <option value="">{t('page.jsxSelectCategory')}</option>
                     {marketCategoryOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Related Product Category</span>
+                  <span>{t('page.jsxRelatedProductCategory')}</span>
                   <select value={marketRelatedProductCategory} onChange={(e) => setMarketRelatedProductCategory(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">None</option>
                     {categories.map((category) => (
@@ -25247,7 +25233,7 @@ setCustomerOrganizationName("");
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Related Product</span>
+                  <span>{t('page.jsxRelatedProduct')}</span>
                   <select value={marketRelatedProductId} onChange={(e) => setMarketRelatedProductId(e.target.value)} className="rounded border border-border px-3 py-2">
                     <option value="">None</option>
                     {activeProducts.map((product) => (
@@ -25256,43 +25242,43 @@ setCustomerOrganizationName("");
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Impact Direction</span>
+                  <span>{t('page.jsxImpactDirection')}</span>
                   <select value={marketImpactDirection} onChange={(e) => setMarketImpactDirection(e.target.value)} className="rounded border border-border px-3 py-2" required>
-                    <option value="">Select direction</option>
+                    <option value="">{t('page.jsxSelectDirection')}</option>
                     {marketImpactDirectionOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Impact Level</span>
+                  <span>{t('page.jsxImpactLevel')}</span>
                   <select value={marketImpactLevel} onChange={(e) => setMarketImpactLevel(e.target.value)} className="rounded border border-border px-3 py-2" required>
-                    <option value="">Select level</option>
+                    <option value="">{t('page.jsxSelectLevel')}</option>
                     {marketImpactLevelOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Confidence Level</span>
+                  <span>{t('page.jsxConfidenceLevel')}</span>
                   <select value={marketConfidenceLevel} onChange={(e) => setMarketConfidenceLevel(e.target.value)} className="rounded border border-border px-3 py-2" required>
-                    <option value="">Select confidence</option>
+                    <option value="">{t('page.jsxSelectConfidence')}</option>
                     {marketConfidenceOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Affected Area</span>
+                  <span>{t('page.jsxAffectedArea')}</span>
                   <select value={marketAffectedArea} onChange={(e) => setMarketAffectedArea(e.target.value)} className="rounded border border-border px-3 py-2" required>
-                    <option value="">Select area</option>
+                    <option value="">{t('page.jsxSelectArea')}</option>
                     {marketAffectedAreaOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>News Date</span>
+                  <span>{t('page.jsxNewsDate')}</span>
                   <input type="date" value={marketNewsDate} onChange={(e) => setMarketNewsDate(e.target.value)} className="rounded border border-border px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
@@ -25304,29 +25290,27 @@ setCustomerOrganizationName("");
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80 sm:col-span-2">
-                  <span>Suggested Action</span>
+                  <span>{t('page.jsxSuggestedAction')}</span>
                   <textarea value={marketSuggestedAction} onChange={(e) => setMarketSuggestedAction(e.target.value)} rows={2} className="rounded border border-border px-3 py-2" />
                 </label>
               </div>
-              <button type="submit" className="mt-4 rounded bg-success px-4 py-2 text-sm text-white hover:bg-success/90">
-                Save Intelligence Item
-              </button>
+              <button type="submit" className="mt-4 rounded bg-success px-4 py-2 text-sm text-white hover:bg-success/90">{t('page.jsxSaveIntelligenceItem')}</button>
             </form>
 
             <div className="space-y-5">
               <form onSubmit={createMarketNewsSource} className="rounded border border-border bg-card p-4">
-                <h3 className="text-lg font-medium text-foreground">Add News Source</h3>
+                <h3 className="text-lg font-medium text-foreground">{t('page.jsxAddNewsSource')}</h3>
                 <div className="mt-4 space-y-3">
                   <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                    <span>Source Name</span>
+                    <span>{t('page.jsxSourceName')}</span>
                     <input value={marketNewsSourceName} onChange={(e) => setMarketNewsSourceName(e.target.value)} className="rounded border border-border px-3 py-2" required />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                    <span>Source Type</span>
+                    <span>{t('page.jsxSourceType')}</span>
                     <input value={marketNewsSourceType} onChange={(e) => setMarketNewsSourceType(e.target.value)} placeholder="newspaper, government, market, supplier" className="rounded border border-border px-3 py-2" required />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                    <span>Source URL</span>
+                    <span>{t('page.jsxSourceUrl')}</span>
                     <input value={marketNewsSourceUrl} onChange={(e) => setMarketNewsSourceUrl(e.target.value)} className="rounded border border-border px-3 py-2" />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-foreground/80">
@@ -25338,16 +25322,14 @@ setCustomerOrganizationName("");
                     Active
                   </label>
                 </div>
-                <button type="submit" className="mt-4 rounded bg-foreground px-4 py-2 text-sm text-white hover:bg-foreground/80">
-                  Save News Source
-                </button>
+                <button type="submit" className="mt-4 rounded bg-foreground px-4 py-2 text-sm text-white hover:bg-foreground/80">{t('page.jsxSaveNewsSource')}</button>
               </form>
 
               <div className="rounded border border-border bg-card p-4">
-                <h3 className="text-lg font-medium text-foreground">News Sources</h3>
+                <h3 className="text-lg font-medium text-foreground">{t('page.jsxNewsSources')}</h3>
                 <div className="mt-3 space-y-2">
                   {marketNewsSources.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No manual news sources added yet.</p>
+                    <p className="text-sm text-muted-foreground">{t('page.jsxNoManualSources')}</p>
                   ) : (
                     marketNewsSources.map((source) => (
                       <div key={source.id} className="rounded border border-border bg-muted/30 p-3 text-sm">
@@ -25358,9 +25340,7 @@ setCustomerOrganizationName("");
                           type="button"
                           onClick={() => deleteMarketNewsSource(source)}
                           className="mt-2 rounded border border-destructive/30 bg-card px-2 py-1 text-xs text-destructive hover:bg-destructive/5"
-                        >
-                          Delete Source
-                        </button>
+                        >{t('page.jsxDeleteSource')}</button>
                       </div>
                     ))
                   )}
@@ -25372,7 +25352,7 @@ setCustomerOrganizationName("");
           <div className="mt-5 rounded border border-border bg-card p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-foreground">Intelligence Feed</h3>
+                <h3 className="text-lg font-medium text-foreground">{t('page.jsxIntelligenceFeed')}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Showing {filteredMarketAdvisoryItems.length} of {marketAdvisoryItems.length} advisory items.
                 </p>
@@ -25412,27 +25392,27 @@ setCustomerOrganizationName("");
                           <h4 className="mt-2 text-base font-semibold text-foreground">{item.title}</h4>
                           {advisory.executiveSummary && (
                             <div className="mt-3 rounded border border-slate-200 bg-card p-3">
-                              <div className="text-xs uppercase tracking-wide text-slate-500">Executive Summary</div>
+                              <div className="text-xs uppercase tracking-wide text-slate-500">{t('page.jsxExecutiveSummary')}</div>
                               <p className="mt-1 text-sm text-foreground/80">{advisory.executiveSummary}</p>
                             </div>
                           )}
                           <div className="mt-3 grid gap-3 lg:grid-cols-2">
                             <div className="rounded border border-border bg-card p-3">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Business Impact</div>
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxBusinessImpact')}</div>
                               <p className="mt-1 text-sm text-foreground/80">{advisory.businessImpact}</p>
                             </div>
                             <div className="rounded border border-border bg-card p-3">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Why This Matters</div>
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxWhyThisMatters')}</div>
                               <p className="mt-1 text-sm text-foreground/80">{advisory.whyItMatters}</p>
                             </div>
                           </div>
                           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                             <div className="rounded border border-border bg-card p-3">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Risk Score</div>
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxRiskScore')}</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{advisory.riskScore}</div>
                             </div>
                             <div className="rounded border border-border bg-card p-3">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Opportunity Score</div>
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxOpportunityScore')}</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{advisory.opportunityScore}</div>
                             </div>
                             <div className="rounded border border-border bg-card p-3">
@@ -25446,7 +25426,7 @@ setCustomerOrganizationName("");
                           </div>
                           <div className="mt-3 grid gap-3 lg:grid-cols-2">
                             <div className="rounded border border-border bg-card p-3">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Affected Business Areas</div>
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxAffectedBusinessAreas')}</div>
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {advisory.affectedBusinessAreas.map((area) => (
                                   <span key={area} className="rounded border border-border bg-muted/30 px-2 py-1 text-xs text-foreground/80">{area}</span>
@@ -25454,7 +25434,7 @@ setCustomerOrganizationName("");
                               </div>
                             </div>
                             <div className="rounded border border-border bg-card p-3">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Affected Products & Categories</div>
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxAffectedProductsCategories')}</div>
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {advisory.affectedProducts.map((product) => (
                                   <span key={product} className="rounded border border-success/20 bg-success/5 px-2 py-1 text-xs text-success/90">{product}</span>
@@ -25467,28 +25447,28 @@ setCustomerOrganizationName("");
                           </div>
                           <div className="mt-3 grid gap-3 lg:grid-cols-2">
                             <div className="rounded border border-destructive/10 bg-destructive/5 p-3">
-                              <div className="text-xs uppercase tracking-wide text-destructive">Threat Detection</div>
+                              <div className="text-xs uppercase tracking-wide text-destructive">{t('page.jsxThreatDetection')}</div>
                               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-destructive/90">
                                 {advisory.threatDetection.length > 0 ? (
                                   advisory.threatDetection.map((threat) => <li key={threat}>{threat}</li>)
                                 ) : (
-                                  <li>No direct threat signals detected.</li>
+                                  <li>{t('page.jsxNoDirectThreatSignals')}</li>
                                 )}
                               </ul>
                             </div>
                             <div className="rounded border border-success/10 bg-success/5 p-3">
-                              <div className="text-xs uppercase tracking-wide text-success">Opportunity Detection</div>
+                              <div className="text-xs uppercase tracking-wide text-success">{t('page.jsxOpportunityDetection')}</div>
                               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-success/90">
                                 {advisory.opportunityDetection.length > 0 ? (
                                   advisory.opportunityDetection.map((opportunity) => <li key={opportunity}>{opportunity}</li>)
                                 ) : (
-                                  <li>No clear opportunity signals detected.</li>
+                                  <li>{t('page.jsxNoClearOppSignals')}</li>
                                 )}
                               </ul>
                             </div>
                           </div>
                           <div className="mt-3 rounded border border-border bg-card p-3">
-                            <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Suggested Owner Actions</div>
+                            <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxSuggestedOwnerActions')}</div>
                             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-foreground/80">
                               {advisory.suggestedOwnerActions.map((action) => (
                                 <li key={action}>{action}</li>
@@ -25496,7 +25476,7 @@ setCustomerOrganizationName("");
                             </ul>
                           </div>
                           <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3">
-                            <div className="text-xs uppercase tracking-wide text-slate-600">Business Health Impact</div>
+                            <div className="text-xs uppercase tracking-wide text-slate-600">{t('page.jsxBusinessHealthImpact')}</div>
                             <div className="mt-1 flex flex-wrap items-center gap-2">
                               <span className="rounded bg-card px-2 py-1 text-sm font-medium text-slate-800">{advisory.businessHealthImpact}</span>
                               <span className="text-sm text-slate-700">{advisory.businessHealthReason}</span>
@@ -25529,9 +25509,7 @@ setCustomerOrganizationName("");
                             onClick={() => updateMarketIntelligenceStatus(item, "watching")}
                             disabled={item.status === "watching"}
                             className="rounded border border-warning bg-card px-3 py-2 text-xs text-warning hover:bg-warning/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
-                          >
-                            Mark Watching
-                          </button>
+                          >{t('page.jsxMarkWatching')}</button>
                           <button
                             type="button"
                             onClick={() => updateMarketIntelligenceStatus(item, "archived")}
@@ -25590,9 +25568,7 @@ setCustomerOrganizationName("");
                 fetchLocationPoints(currentOrganizationId);
               }}
               className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
-            >
-              Refresh Duty Data
-            </button>
+            >{t('page.jsxRefreshDutyData')}</button>
           </div>
 
           <div className="mb-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
@@ -25612,7 +25588,7 @@ setCustomerOrganizationName("");
 
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="rounded border border-border bg-card p-4">
-              <div className="text-sm text-muted-foreground/80">Current Duty Status</div>
+              <div className="text-sm text-muted-foreground/80">{t('page.jsxCurrentDutyStatus')}</div>
               <div className={`mt-2 text-2xl font-semibold ${activeDutySession ? "text-success" : "text-foreground"}`}>
                 {activeDutySession ? t('page.dutyOn') : t('page.dutyOff')}
               </div>
@@ -25637,14 +25613,12 @@ setCustomerOrganizationName("");
                   onClick={handleEndDuty}
                   disabled={!activeDutySession}
                   className="rounded bg-destructive px-4 py-2 text-sm text-white hover:bg-destructive/90 disabled:cursor-not-allowed disabled:bg-muted"
-                >
-                  End Duty
-                </button>
+                >{t('page.jsxEndDuty')}</button>
               </div>
             </div>
 
             <div className="rounded border border-border bg-card p-4">
-              <div className="text-sm text-muted-foreground/80">Last Location Update</div>
+              <div className="text-sm text-muted-foreground/80">{t('page.jsxLastLocationUpdate')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
                 {latestOwnLocation ? formatDateTime(latestOwnLocation.captured_at) : t('page.noLocationYet')}
               </div>
@@ -25656,7 +25630,7 @@ setCustomerOrganizationName("");
             </div>
 
             <div className="rounded border border-primary/20 bg-primary/5 p-4">
-              <div className="text-sm font-medium text-primary/90">Browser Permission</div>
+              <div className="text-sm font-medium text-primary/90">{t('page.jsxBrowserPermission')}</div>
               <p className="mt-2 text-sm text-primary">
                 Your browser will ask for location permission when duty starts. Allow location access and keep TradeOS open for live updates.
               </p>
@@ -25667,17 +25641,17 @@ setCustomerOrganizationName("");
             <div className="mt-6 rounded border border-border bg-card p-4">
               <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-lg font-medium text-foreground">Owner Staff Location Monitor</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">Monitor staff duty sessions and recent location history.</p>
+                  <h3 className="text-lg font-medium text-foreground">{t('page.jsxOwnerStaffLocationMonitor')}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{t('page.jsxMonitorDutySessions')}</p>
                 </div>
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
-                  <span>Select Staff</span>
+                  <span>{t('page.jsxSelectStaff')}</span>
                   <select
                     value={selectedStaffForLocation}
                     onChange={(e) => setSelectedStaffForLocation(e.target.value)}
                     className="rounded border border-border px-3 py-2"
                   >
-                    <option value="">Current user</option>
+                    <option value="">{t('page.jsxCurrentUser')}</option>
                     {staffProfiles.map((profile) => (
                       <option key={profile.id} value={profile.id}>
                         {profile.display_name || profile.email || profile.id}
@@ -25689,15 +25663,15 @@ setCustomerOrganizationName("");
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded border border-border bg-muted/30 p-3">
-                  <div className="text-sm text-muted-foreground/80">On-duty staff</div>
+                  <div className="text-sm text-muted-foreground/80">{t('page.jsxOnDutyStaff')}</div>
                   <div className="mt-1 text-2xl font-semibold text-foreground">{ownerOnDutyCount}</div>
                 </div>
                 <div className="rounded border border-border bg-muted/30 p-3">
-                  <div className="text-sm text-muted-foreground/80">Off-duty/recent sessions</div>
+                  <div className="text-sm text-muted-foreground/80">{t('page.jsxOffDutySessions')}</div>
                   <div className="mt-1 text-2xl font-semibold text-foreground">{ownerRecentOffDutyCount}</div>
                 </div>
                 <div className="rounded border border-border bg-muted/30 p-3">
-                  <div className="text-sm text-muted-foreground/80">Last organization update</div>
+                  <div className="text-sm text-muted-foreground/80">{t('page.jsxLastOrgUpdate')}</div>
                   <div className="mt-1 text-sm font-semibold text-foreground">
                     {visibleLocationPoints[0] ? formatDateTime(visibleLocationPoints[0].captured_at) : t('page.noPointsYet')}
                   </div>
@@ -25711,16 +25685,16 @@ setCustomerOrganizationName("");
                       <th className="px-3 py-2">Staff</th>
                       <th className="px-3 py-2">Role</th>
                       <th className="px-3 py-2">Status</th>
-                      <th className="px-3 py-2">Latest Location</th>
-                      <th className="px-3 py-2">Last Update</th>
+                      <th className="px-3 py-2">{t('page.jsxLatestLocation')}</th>
+                      <th className="px-3 py-2">{t('page.jsxLastUpdate')}</th>
                       <th className="px-3 py-2">Accuracy</th>
-                      <th className="px-3 py-2">Latest Session Start</th>
+                      <th className="px-3 py-2">{t('page.jsxLatestSessionStart')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {staffProfiles.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-3 py-4 text-muted-foreground">No staff profiles loaded.</td>
+                        <td colSpan={7} className="px-3 py-4 text-muted-foreground">{t('page.jsxNoStaffLoaded')}</td>
                       </tr>
                     ) : (
                       staffProfiles.map((profile) => {
@@ -25769,7 +25743,7 @@ setCustomerOrganizationName("");
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
                     <thead className="bg-card text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                       <tr>
-                        <th className="px-3 py-2">Captured At</th>
+                        <th className="px-3 py-2">{t('page.jsxCapturedAt')}</th>
                         <th className="px-3 py-2">Latitude</th>
                         <th className="px-3 py-2">Longitude</th>
                         <th className="px-3 py-2">Accuracy</th>
@@ -25780,7 +25754,7 @@ setCustomerOrganizationName("");
                     <tbody className="divide-y divide-gray-200 bg-card">
                       {selectedStaffLocationPoints.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-3 py-4 text-muted-foreground">No recent location points for this staff member.</td>
+                          <td colSpan={6} className="px-3 py-4 text-muted-foreground">{t('page.jsxNoRecentPoints')}</td>
                         </tr>
                       ) : (
                         selectedStaffLocationPoints.slice(0, 50).map((point) => (
@@ -25796,9 +25770,7 @@ setCustomerOrganizationName("");
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-primary hover:underline"
-                              >
-                                Open Map
-                              </a>
+                              >{t('page.jsxOpenMap')}</a>
                             </td>
                           </tr>
                         ))
@@ -25809,14 +25781,14 @@ setCustomerOrganizationName("");
               </div>
 
               <div className="mt-5 rounded border border-primary/20 bg-primary/5 p-4">
-                <h4 className="text-base font-medium text-primary/90">Possible Stops</h4>
+                <h4 className="text-base font-medium text-primary/90">{t('page.jsxPossibleStops')}</h4>
                 <p className="mt-1 text-sm text-primary">
                   V1 stop detection checks for two consecutive points within roughly 50 meters over 5 minutes or more.
                 </p>
                 {selectedStaffChronologicalPoints.length < 2 ? (
-                  <p className="mt-3 text-sm text-primary">Not enough location history to detect stops yet.</p>
+                  <p className="mt-3 text-sm text-primary">{t('page.jsxNotEnoughHistory')}</p>
                 ) : possibleStops.length === 0 ? (
-                  <p className="mt-3 text-sm text-primary">No possible stops detected from the recent location history.</p>
+                  <p className="mt-3 text-sm text-primary">{t('page.jsxNoPossibleStops')}</p>
                 ) : (
                   <div className="mt-3 overflow-x-auto">
                     <table className="min-w-full divide-y divide-purple-200 text-sm">
@@ -25825,7 +25797,7 @@ setCustomerOrganizationName("");
                           <th className="px-3 py-2">Start</th>
                           <th className="px-3 py-2">End</th>
                           <th className="px-3 py-2">Duration</th>
-                          <th className="px-3 py-2">Approx Location</th>
+                          <th className="px-3 py-2">{t('page.jsxApproxLocation')}</th>
                           <th className="px-3 py-2">Map</th>
                         </tr>
                       </thead>
@@ -25842,9 +25814,7 @@ setCustomerOrganizationName("");
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-primary hover:underline"
-                              >
-                                Open Map
-                              </a>
+                              >{t('page.jsxOpenMap')}</a>
                             </td>
                           </tr>
                         ))}
@@ -25871,9 +25841,7 @@ setCustomerOrganizationName("");
               type="button"
               onClick={() => handleSectionChange("deployment")}
               className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5"
-            >
-              Open Deployment Readiness
-            </button>
+            >{t('page.jsxOpenDeploymentReadiness')}</button>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -25896,26 +25864,26 @@ setCustomerOrganizationName("");
             <div className="rounded border border-border bg-card p-4">
               <h3 className="mb-3 text-lg font-medium text-foreground">Android Chrome</h3>
               <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground/80">
-                <li>Open TradeOS in Chrome.</li>
-                <li>Tap three-dot menu.</li>
-                <li>Tap Add to Home screen or Install app.</li>
-                <li>Open TradeOS from the home screen icon.</li>
+                <li>{t('page.jsxOpenTradeosChrome')}</li>
+                <li>{t('page.jsxTapThreeDot')}</li>
+                <li>{t('page.jsxTapAddHomeOrInstall')}</li>
+                <li>{t('page.jsxOpenTradeosHomeIcon')}</li>
               </ol>
             </div>
 
             <div className="rounded border border-border bg-card p-4">
               <h3 className="mb-3 text-lg font-medium text-foreground">iPhone Safari</h3>
               <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground/80">
-                <li>Open TradeOS in Safari.</li>
-                <li>Tap Share.</li>
-                <li>Tap Add to Home Screen.</li>
-                <li>Open TradeOS from the home screen icon.</li>
+                <li>{t('page.jsxOpenTradeosSafari')}</li>
+                <li>{t('page.jsxTapShare')}</li>
+                <li>{t('page.jsxTapAddHomeScreen')}</li>
+                <li>{t('page.jsxOpenTradeosHomeIcon')}</li>
               </ol>
             </div>
           </div>
 
           <div className="mt-5 rounded border border-primary/20 bg-primary/5 p-4">
-            <h3 className="text-lg font-medium text-primary/90">Future Mobile Roadmap</h3>
+            <h3 className="text-lg font-medium text-primary/90">{t('page.jsxFutureMobileRoadmap')}</h3>
             <p className="mt-1 text-sm text-primary">
               These mobile capabilities are planned for later and are not active yet.
             </p>
@@ -26032,12 +26000,12 @@ setCustomerOrganizationName("");
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded border border-border bg-card p-4">
-              <div className="text-sm text-muted-foreground/80">App Build Status</div>
-              <div className="mt-2 text-lg font-semibold text-foreground">Manual build required</div>
-              <p className="mt-1 text-xs text-muted-foreground/80">Run the local production build before deployment.</p>
+              <div className="text-sm text-muted-foreground/80">{t('page.jsxAppBuildStatus')}</div>
+              <div className="mt-2 text-lg font-semibold text-foreground">{t('page.jsxManualBuildRequired')}</div>
+              <p className="mt-1 text-xs text-muted-foreground/80">{t('page.jsxRunLocalBuild')}</p>
             </div>
             <div className="rounded border border-border bg-card p-4">
-              <div className="text-sm text-muted-foreground/80">Environment Status</div>
+              <div className="text-sm text-muted-foreground/80">{t('page.jsxEnvironmentStatus')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
                 {deploymentWarningCount === 0 ? t('page.readyLocally') : t('page.needsReview')}
               </div>
@@ -26046,23 +26014,23 @@ setCustomerOrganizationName("");
               </p>
             </div>
             <div className="rounded border border-border bg-card p-4">
-              <div className="text-sm text-muted-foreground/80">Security Status</div>
+              <div className="text-sm text-muted-foreground/80">{t('page.jsxSecurityStatus')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
                 {allSecurityChecksPassed ? t('page.securityPassed') : t('page.finalChecksPending')}
               </div>
-              <p className="mt-1 text-xs text-muted-foreground/80">Use Security Check before launch.</p>
+              <p className="mt-1 text-xs text-muted-foreground/80">{t('page.jsxUseSecurityBeforeLaunch')}</p>
             </div>
             <div className="rounded border border-border bg-card p-4">
-              <div className="text-sm text-muted-foreground/80">Business Setup Status</div>
+              <div className="text-sm text-muted-foreground/80">{t('page.jsxBusinessSetupStatus')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
                 {businessSettingsComplete ? t('page.bizDetailsReady') : t('page.bizDetailsNeeded')}
               </div>
-              <p className="mt-1 text-xs text-muted-foreground/80">Business name plus phone or address recommended.</p>
+              <p className="mt-1 text-xs text-muted-foreground/80">{t('page.jsxBizNamePhoneAddress')}</p>
             </div>
           </div>
 
           <div className="mt-5 rounded border border-border bg-card p-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Environment Checklist</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('page.jsxEnvironmentChecklist')}</h3>
             <div className="grid gap-3 lg:grid-cols-2">
               {deploymentEnvironmentChecks.map((check) => {
                 const statusClass =
@@ -26089,44 +26057,44 @@ setCustomerOrganizationName("");
           </div>
 
           <div className="mt-5 rounded border border-border bg-card p-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Deployment Commands</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('page.jsxDeploymentCommands')}</h3>
             <div className="grid gap-4 lg:grid-cols-3">
               <div>
-                <h4 className="mb-2 text-sm font-medium text-foreground">Build locally</h4>
+                <h4 className="mb-2 text-sm font-medium text-foreground">{t('page.jsxBuildLocally')}</h4>
                 <pre className="overflow-x-auto rounded bg-foreground p-3 text-xs text-background">{`taskkill /F /IM node.exe
 rmdir /s /q .next
 set NODE_OPTIONS=--max-old-space-size=4096
 npm.cmd run build`}</pre>
               </div>
               <div>
-                <h4 className="mb-2 text-sm font-medium text-foreground">Push latest main</h4>
+                <h4 className="mb-2 text-sm font-medium text-foreground">{t('page.jsxPushLatestMain')}</h4>
                 <pre className="overflow-x-auto rounded bg-foreground p-3 text-xs text-background">{`git status
 git push origin main`}</pre>
               </div>
               <div>
-                <h4 className="mb-2 text-sm font-medium text-foreground">Vercel setup reminder</h4>
+                <h4 className="mb-2 text-sm font-medium text-foreground">{t('page.jsxVercelSetupReminder')}</h4>
                 <pre className="overflow-x-auto rounded bg-foreground p-3 text-xs text-background">{`Add these variables in Vercel:
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </div>
             </div>
-            <p className="mt-3 text-xs text-muted-foreground/80">Secret values are never displayed here.</p>
+            <p className="mt-3 text-xs text-muted-foreground/80">{t('page.jsxSecretNeverDisplayed')}</p>
           </div>
 
           <div className="mt-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
-            <h3 className="mb-2 text-lg font-medium text-warning/80">Before Public Launch</h3>
+            <h3 className="mb-2 text-lg font-medium text-warning/80">{t('page.jsxBeforePublicLaunch')}</h3>
             <ul className="list-disc space-y-1 pl-5">
-              <li>Do not expose service role key.</li>
-              <li>Confirm RLS policies are enabled.</li>
-              <li>Confirm owner account can login after deployment.</li>
-              <li>Test product/customer/supplier/purchase/sale/payment flows on deployed URL.</li>
-              <li>Keep database backups before major changes.</li>
+              <li>{t('page.jsxDoNotExposeServiceKey')}</li>
+              <li>{t('page.jsxConfirmRls')}</li>
+              <li>{t('page.jsxConfirmOwnerLogin')}</li>
+              <li>{t('page.jsxTestFlowsDeployed')}</li>
+              <li>{t('page.jsxKeepDbBackups')}</li>
             </ul>
           </div>
 
           <div className="mt-5 rounded border border-border bg-card p-4">
             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-medium text-foreground">Deployment Test Checklist</h3>
+              <h3 className="text-lg font-medium text-foreground">{t('page.jsxDeploymentTestChecklist')}</h3>
               <span className="text-sm text-muted-foreground/80">
                 {deploymentManualCompletedCount} / {deploymentManualChecklistItems.length} complete
               </span>
@@ -26164,9 +26132,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 type="button"
                 onClick={seedSecurityChecklist}
                 className="rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90"
-              >
-                Seed Security Checklist
-              </button>
+              >{t('page.jsxSeedSecurityChecklist')}</button>
               <button
                 type="button"
                 onClick={() => fetchSecurityChecks(currentOrganizationId)}
@@ -26182,7 +26148,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded border border-border bg-card p-3">
-              <div className="text-sm text-muted-foreground/80">Total Checks</div>
+              <div className="text-sm text-muted-foreground/80">{t('page.jsxTotalChecks')}</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{securityCheckSummary.total}</div>
             </div>
             <div className="rounded border border-success/20 bg-card p-3">
@@ -26200,7 +26166,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
           </div>
 
           <div className="mt-5 rounded border border-border bg-card p-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">Production Readiness Checklist</h3>
+            <h3 className="mb-3 text-lg font-medium text-foreground">{t('page.jsxProductionReadiness')}</h3>
             <div className="space-y-3">
               {displayedSecurityChecks.map((check) => {
                 const statusClass =
@@ -26228,23 +26194,17 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                           type="button"
                           onClick={() => updateSecurityCheckStatus(check, "pass")}
                           className="rounded border border-success px-3 py-2 text-xs text-success hover:bg-success/5"
-                        >
-                          Mark Pass
-                        </button>
+                        >{t('page.jsxMarkPass')}</button>
                         <button
                           type="button"
                           onClick={() => updateSecurityCheckStatus(check, "fail")}
                           className="rounded border border-destructive px-3 py-2 text-xs text-destructive hover:bg-destructive/5"
-                        >
-                          Mark Fail
-                        </button>
+                        >{t('page.jsxMarkFail')}</button>
                         <button
                           type="button"
                           onClick={() => updateSecurityCheckStatus(check, "pending")}
                           className="rounded border border-muted-foreground px-3 py-2 text-xs text-foreground/80 hover:bg-muted"
-                        >
-                          Reset Pending
-                        </button>
+                        >{t('page.jsxResetPending')}</button>
                       </div>
                     </div>
                     <label className="mt-3 flex flex-col gap-2 text-sm text-foreground/80">
