@@ -14,7 +14,10 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/") ||
     pathname === "/favicon.ico" ||
     pathname === "/manifest.json" ||
-    pathname.startsWith("/tradeos-icon.svg")
+    pathname.startsWith("/tradeos-icon.svg") ||
+    pathname.startsWith("/aankh-icon.svg") ||
+    pathname.startsWith("/aankh-maskable-icon.svg") ||
+    pathname.startsWith("/oppresso-monogram.png")
   ) {
     return NextResponse.next();
   }

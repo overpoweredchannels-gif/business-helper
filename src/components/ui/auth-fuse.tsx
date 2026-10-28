@@ -198,9 +198,7 @@ function LeftPanel() {
     <div className="hidden lg:flex w-[45%] min-h-screen bg-panel p-10 xl:p-14 flex-col justify-between">
       <div>
         <div className="flex items-center gap-2.5 mb-10">
-          <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-brand font-bold text-lg">T</span>
-          </div>
+          <img src="/aankh-icon.svg" alt="AANKH logo" width={36} height={36} className="size-9 rounded-xl" />
           <span className="font-brand font-bold text-xl text-white/90">AANKH</span>
         </div>
 
@@ -750,9 +748,7 @@ export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
         <div className="w-full max-w-[420px]">
           <div className="lg:hidden text-center mb-8 animate-fadeIn">
             <div className="inline-flex items-center gap-2">
-              <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-brand font-bold text-lg">T</span>
-              </div>
+              <img src="/aankh-icon.svg" alt="AANKH logo" width={36} height={36} className="size-9 rounded-xl" />
               <span className="font-brand font-bold text-xl text-foreground">AANKH</span>
             </div>
           </div>
