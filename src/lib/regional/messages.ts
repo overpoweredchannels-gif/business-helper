@@ -9088,7 +9088,7 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'page.cancelPoConfirm': "Annullare l'ordine di acquisto {number}? Questo non può essere annullato.",
     'page.cancelSoConfirm': "Annullare l'ordine di vendita {number}? Questo non può essere annullato.",
     'page.deleteDraftSoConfirm': 'Eliminare la bozza di ordine di vendita {number}? Questo non può essere annullato.',
-    'page.deleteMiItemConfirm': "Eliminare l'elemento di intelligence di mercato "{title}"?",
+    'page.deleteMiItemConfirm': "Eliminare l'elemento di intelligence di mercato {title}?",
     'page.deleteNewsSourceConfirm': 'Eliminare la fonte di notizie "{name}"?',
     'page.deletePrConfirm': 'Eliminare il reso di acquisto {number}? Il suo stock verrà ripristinato in magazzino.',
     'page.deleteSrConfirm': 'Eliminare il reso di vendita {number}? Il ripristino dello stock verrà annullato.',
