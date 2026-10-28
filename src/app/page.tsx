@@ -5916,7 +5916,7 @@ setCustomerOrganizationName("");
       console.error("Could not restore pending sale:", error);
       setSalesError(t('page.savedSaleUnreadable'));
     }
-  }, [currentOrganizationId, currentProfile?.id]);
+  }, [currentOrganizationId, currentProfile?.id, t]);
 
   // Sales Management (Phase 4) — sales orders + returns + reporting
   const [salesTab, setSalesTab] = useState<"invoice" | "orders" | "returns" | "report" | "loadform" | "invoices" | "history">("invoice");
