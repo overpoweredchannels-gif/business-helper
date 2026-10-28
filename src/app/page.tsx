@@ -6543,7 +6543,7 @@ setCustomerOrganizationName("");
     { draft: 0, high: 0, critical: 0 }
   );
   const marketSourceOptions = Array.from(
-    new Set(marketAdvisoryItems.map((advisory) => advisory.item.source_name || "Manual note"))
+    new Set(marketAdvisoryItems.map((advisory) => advisory.item.source_name || t('page.manualNote')))
   ).sort((a, b) => a.localeCompare(b));
   const marketV2Summary = marketAdvisoryItems.reduce(
     (summary, advisory) => {
@@ -6634,7 +6634,7 @@ setCustomerOrganizationName("");
       marketIntelligenceAreaFilter === "all" || advisory.affectedBusinessAreas.includes(marketIntelligenceAreaFilter);
     const matchesSource =
       marketIntelligenceSourceFilter === "all" ||
-      (item.source_name || "Manual note") === marketIntelligenceSourceFilter;
+      (item.source_name || t('page.manualNote')) === marketIntelligenceSourceFilter;
     const matchesTab =
       marketIntelligenceTab === "all" ||
       (marketIntelligenceTab === "overview" && item.status !== "archived") ||
@@ -6942,7 +6942,7 @@ setCustomerOrganizationName("");
     setBulkStockError(null);
     setBulkStockMessage(null);
     if (!canManageInventory) {
-      setBulkStockError("You need the Manage Inventory permission to add stock.");
+      setBulkStockError(t('page.addStockPermission'));
       return;
     }
     const activeMap = new Map<string, { id: string; name: string }>();
@@ -7001,7 +7001,7 @@ setCustomerOrganizationName("");
       return;
     }
     if (!canManageInventory) {
-      setBulkStockError("You need the Manage Inventory permission to add stock.");
+      setBulkStockError(t('page.addStockPermission'));
       return;
     }
     const pending = bulkStockLines.filter((line) => line.matched && safeNumber(line.qty) > 0);
@@ -7076,7 +7076,7 @@ setCustomerOrganizationName("");
     }
 
     if (!canManageInventory) {
-      setAdjustmentError("You need the Manage Inventory permission to adjust stock.");
+      setAdjustmentError(t('page.adjustStockPermission'));
       return;
     }
 
@@ -7113,7 +7113,7 @@ setCustomerOrganizationName("");
       });
       const result = await response.json();
       if (!response.ok || !result.ok) {
-        setAdjustmentError(result.error ?? "Failed to adjust stock");
+        setAdjustmentError(result.error ?? t('page.adjustStockFailed'));
         return;
       }
 
@@ -7143,7 +7143,7 @@ setCustomerOrganizationName("");
       await fetchInventoryTransactions();
       await fetchProducts();
     } catch (err) {
-      setAdjustmentError(err instanceof Error ? err.message : "Failed to adjust stock");
+      setAdjustmentError(err instanceof Error ? err.message : t('page.adjustStockFailed'));
     } finally {
       setAdjustmentSubmitting(false);
     }
@@ -10840,7 +10840,7 @@ setCustomerOrganizationName("");
       return { start: toDateInputValue(thisYearStart), end: todayDateValue, label: "This Year" };
     }
     if (biDateRange === "all_time") {
-      return { start: "", end: "", label: "All Time" };
+      return { start: "", end: "", label: t('bi.rangeAllTime') };
     }
     if (biDateRange === "custom") {
       return { start: biStartDate, end: biEndDate, label: "Custom Range" };
@@ -11036,8 +11036,8 @@ setCustomerOrganizationName("");
         return {
           productId,
           productName: product.name,
-          brandName: brand?.name ?? "No brand",
-          categoryName: category?.name ?? "No category",
+          brandName: brand?.name ?? t('inventory.noBrand'),
+          categoryName: category?.name ?? t('inventory.noCategory'),
           categoryId: product.category_id ?? "",
           quantitySold,
           salesValue,
@@ -11139,7 +11139,7 @@ setCustomerOrganizationName("");
         const activityLogCount = selectedAuditLogs.filter((log) => log.actor_profile_id === profileId).length;
         return {
           profileId,
-          staffName: profile.display_name || profile.email || "Unnamed staff",
+          staffName: profile.display_name || profile.email || t('page.unnamedStaff'),
           role: profile.role || "staff",
           salesCount,
           salesAmount,
@@ -11178,7 +11178,7 @@ setCustomerOrganizationName("");
 
     const dailyGroups: Record<string, { date: string; sales: number; purchases: number; collections: number; expenses: number; profit: number }> = {};
     const ensureDay = (dateValue: string | null | undefined) => {
-      const date = getDateOnly(dateValue) ?? "No date";
+      const date = getDateOnly(dateValue) ?? t('page.noDate');
       if (!dailyGroups[date]) dailyGroups[date] = { date, sales: 0, purchases: 0, collections: 0, expenses: 0, profit: 0 };
       return dailyGroups[date];
     };
@@ -11207,7 +11207,7 @@ setCustomerOrganizationName("");
       group.profit -= amount;
     });
     const dailyTrends = Object.values(dailyGroups)
-      .filter((group) => group.date !== "No date")
+      .filter((group) => group.date !== t('page.noDate'))
       .sort((a, b) => a.date.localeCompare(b.date));
 
     const monthlySalesGroups: Record<string, number> = {};
@@ -11236,7 +11236,7 @@ setCustomerOrganizationName("");
       const transaction = salesById[String(item.sales_transaction_id)];
       const dateValue = getDateOnly(getUsableTimestamp(transaction?.sale_date, transaction?.created_at).value);
       if (!dateValue) return groups;
-      const productName = productById[String(item.product_id)]?.name ?? "Unknown Product";
+      const productName = productById[String(item.product_id)]?.name ?? t('sell.unknownProduct');
       if (!groups[productName]) groups[productName] = {};
       addGroupedAmount(groups[productName], dateValue.slice(0, 7), safeNumber(item.quantity));
       return groups;
@@ -11931,7 +11931,7 @@ setCustomerOrganizationName("");
       if (!productId) return groups;
 
       const product = products.find((p) => String(p.id) === productId);
-      const productName = product?.name ?? "Unknown Product";
+      const productName = product?.name ?? t('sell.unknownProduct');
       const quantity = Number(item.quantity || 0);
       const sellingPrice = Number(item.selling_price || 0);
       const revenue = quantity * sellingPrice;
@@ -12689,8 +12689,8 @@ setCustomerOrganizationName("");
       "tradeos-inventory-report.csv",
       reorderRecommendations.map((recommendation) => ({
         "Product Name": recommendation.productName,
-        Brand: recommendation.brandName || "No brand",
-        Category: recommendation.categoryName || "No category",
+        Brand: recommendation.brandName || t('inventory.noBrand'),
+        Category: recommendation.categoryName || t('inventory.noCategory'),
         "Unit Type": recommendation.unitType,
         "Purchased Quantity": recommendation.purchasedQty,
         "Sold Quantity": recommendation.soldQty,
@@ -12710,8 +12710,8 @@ setCustomerOrganizationName("");
 
   const handleExportProfitLossCsv = () => {
     const summaryRows = [
-      { Section: "Summary", Metric: "Start Date", Value: profitLossStartDate || "All Time" },
-      { Section: "Summary", Metric: "End Date", Value: profitLossEndDate || "All Time" },
+      { Section: "Summary", Metric: "Start Date", Value: profitLossStartDate || t('bi.rangeAllTime') },
+      { Section: "Summary", Metric: "End Date", Value: profitLossEndDate || t('bi.rangeAllTime') },
       { Section: "Summary", Metric: "Total Revenue", Value: profitLossTotals.totalRevenue },
       { Section: "Summary", Metric: "Known Cost of Goods Sold", Value: profitLossTotals.knownCostOfGoodsSold },
       { Section: "Summary", Metric: "Gross Profit on Costed Sales", Value: grossProfitOnCostedSales },
@@ -13214,7 +13214,7 @@ setCustomerOrganizationName("");
       staff_activity: {
         staff_profiles: staffProfiles.map((profile) => ({
           id: profile.id,
-          name: profile.display_name || profile.email || profile.role || "Unnamed staff",
+          name: profile.display_name || profile.email || profile.role || t('page.unnamedStaff'),
           role: profile.role,
           is_active: profile.is_active,
         })),
@@ -13869,7 +13869,7 @@ setCustomerOrganizationName("");
       if (!response.ok || !result?.ok) {
         const details = typeof result?.details === "string" ? result.details : "";
         const errorMessage = details
-          ? `AI business query failed: ${result?.error ?? "Request failed"} - ${details}`
+          ? `AI business query failed: ${result?.error ?? t('page.requestFailed')} - ${details}`
           : result?.error ?? "AI business query failed. Please try again.";
         setAiBusinessQueryError(errorMessage);
         await saveAiBusinessQueryLog({
@@ -14432,7 +14432,7 @@ setCustomerOrganizationName("");
     if (!response.ok || !result?.ok) {
       const details = typeof result?.details === "string" ? result.details : "";
       const errorMessage = details
-        ? `AI business query failed: ${result?.error ?? "Request failed"} - ${details}`
+        ? `AI business query failed: ${result?.error ?? t('page.requestFailed')} - ${details}`
         : result?.error ?? "AI business query failed. Please try again.";
       const failedLogId = await saveAiBusinessQueryLog({
         question,
@@ -14569,7 +14569,7 @@ setCustomerOrganizationName("");
       }
       aiVoiceLastAutoSentRef.current = { text: cleanTranscript, sentAt: now };
       setAiVoicePendingAutoSendText("");
-      setAiVoiceHandsFreeMessage("Sent to operator.");
+      setAiVoiceHandsFreeMessage(t('page.sentToOperator'));
       void sendToAiVoiceOperator(cleanTranscript, "voice");
     }, aiVoiceAutoSendDelayMs);
   };
@@ -14589,7 +14589,7 @@ setCustomerOrganizationName("");
     }
     aiVoiceLastAutoSentRef.current = { text: pendingText, sentAt: now };
     setAiVoicePendingAutoSendText("");
-    setAiVoiceHandsFreeMessage("Sent to operator.");
+    setAiVoiceHandsFreeMessage(t('page.sentToOperator'));
     void sendToAiVoiceOperator(pendingText, "voice");
   };
 
@@ -14817,7 +14817,7 @@ setCustomerOrganizationName("");
       setAiVoicePendingAutoSendText("");
       await fetchAiVoiceOperatorMessages(sessionId, currentOrganizationId);
       setAiVoiceOperatorMessage("Voice operator handled the request safely.");
-      setAiVoiceHandsFreeMessage("Sent to operator.");
+      setAiVoiceHandsFreeMessage(t('page.sentToOperator'));
     } finally {
       setAiVoiceOperatorLoading(false);
       aiVoiceOperatorLoadingRef.current = false;
@@ -15926,7 +15926,7 @@ setCustomerOrganizationName("");
               : "";
         setMarketAiAnalysisError(
           safeDetails
-            ? `AI analysis failed: ${result?.error ?? "Request failed"} - ${safeDetails}`
+            ? `AI analysis failed: ${result?.error ?? t('page.requestFailed')} - ${safeDetails}`
             : result?.error ?? "AI analysis failed. Please try again."
         );
         return;
@@ -24926,7 +24926,7 @@ setCustomerOrganizationName("");
                           </div>
                           <h5 className="mt-2 text-sm font-semibold text-foreground">{item.raw_title || "Untitled import"}</h5>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            Source: {item.source_name || "Manual note"} · Created: {formatDateTime(item.created_at)}
+                            Source: {item.source_name || t('page.manualNote')} · Created: {formatDateTime(item.created_at)}
                           </div>
                           {item.source_url && <div className="mt-1 break-all text-xs text-primary">{item.source_url}</div>}
                           {item.raw_summary && <p className="mt-2 text-sm text-foreground/80">{item.raw_summary}</p>}
@@ -25054,7 +25054,7 @@ setCustomerOrganizationName("");
                           {analysis.input_title || analysis.ai_summary || "AI market analysis"}
                         </h4>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          Source: {analysis.input_source_name || "Manual note"} - Created: {formatDateTime(analysis.created_at)}
+                          Source: {analysis.input_source_name || t('page.manualNote')} - Created: {formatDateTime(analysis.created_at)}
                         </div>
                         {analysis.input_source_url && <div className="mt-1 break-all text-xs text-primary">{analysis.input_source_url}</div>}
                         {analysis.ai_summary && <p className="mt-2 text-sm text-foreground">{analysis.ai_summary}</p>}
@@ -25435,7 +25435,7 @@ setCustomerOrganizationName("");
                             Future versions will combine Business Intelligence, Inventory, Sales, Purchases, Customer demand, and Supplier history to generate personalized recommendations.
                           </div>
                           <div className="mt-3 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
-                            <div>Source: {item.source_name || "Manual note"}</div>
+                            <div>Source: {item.source_name || t('page.manualNote')}</div>
                             <div>Related product: {relatedProduct?.name ?? item.related_product_category ?? "-"}</div>
                             <div>News date: {formatDate(item.news_date)}</div>
                             <div>Created: {formatDateTime(item.created_at)}</div>
