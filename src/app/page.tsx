@@ -1270,7 +1270,7 @@ export default function Home() {
         body: JSON.stringify(markAll ? { action: "mark_all_read" } : { id }),
       });
       const data = await response.json();
-      if (!data.ok) throw new Error(data.error || "Failed to update notification");
+      if (!data.ok) throw new Error(data.error || t('fsm.notifications.updateFailed'));
       await fetchRealNotifications();
       await fetchNotificationHistory();
     } catch (err) {
@@ -1286,7 +1286,7 @@ export default function Home() {
         body: JSON.stringify({ id }),
       });
       const data = await response.json();
-      if (!data.ok) throw new Error(data.error || "Failed to delete notification");
+      if (!data.ok) throw new Error(data.error || t('page.failedDeleteNotification'));
       await fetchRealNotifications();
       await fetchNotificationHistory();
     } catch (err) {
@@ -1539,7 +1539,7 @@ export default function Home() {
 
   const handleDeleteInactiveStaff = async () => {
     if (!currentOrganizationId) return;
-    if (!confirm("This will permanently delete all inactive staff profiles and their permissions for this organization. Continue?")) return;
+    if (!confirm(t('page.confirmDeleteInactiveStaff'))) return;
     try {
       const res = await authorizedFetch("/api/staff/delete-inactive", { method: "POST" });
       const data = await res.json();
@@ -1547,7 +1547,7 @@ export default function Home() {
       alert(`Deleted ${data.deletedCount ?? 0} inactive staff profile(s).`);
       fetchStaffProfilesAndPermissions(currentOrganizationId);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to delete inactive staff";
+      const msg = err instanceof Error ? err.message : t('page.failedDeleteInactiveStaff');
       alert(msg);
     }
   };
@@ -1883,7 +1883,7 @@ export default function Home() {
         console.error(`${logTag} CATCH: provisionErr is Error? ${provisionErr instanceof Error}`);
         console.error(`${logTag} CATCH: provisionErr.message =`, provisionErr instanceof Error ? provisionErr.message : String(provisionErr));
         console.error(`${logTag} CATCH: provisionErr.stack =`, provisionErr instanceof Error ? provisionErr.stack : "N/A");
-        setAuthError(provisionErr instanceof Error ? provisionErr.message : "Workspace provisioning failed.");
+        setAuthError(provisionErr instanceof Error ? provisionErr.message : t('page.workspaceProvisionFailed'));
         setCurrentProfile(null);
         setCurrentOrganizationId(null);
         invalidateDashboardSession();
@@ -1925,7 +1925,7 @@ export default function Home() {
 
       const user = signUpData.user;
       if (!user) {
-        throw new Error("Signup succeeded but no user was returned.");
+        throw new Error(t('page.signupNoUser'));
       }
 
       setAuthMessage(t('page.accountCreatedVerify'));
@@ -1934,7 +1934,7 @@ export default function Home() {
       setFullName("");
 setCustomerOrganizationName("");
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "Failed to create account");
+      setAuthError(err instanceof Error ? err.message : t('page.failedCreateAccount'));
       console.error("Signup error:", err);
     } finally {
       setAuthLoading(false);
@@ -1953,7 +1953,7 @@ setCustomerOrganizationName("");
 
     if (!accessToken) {
       console.log(`${logTag} FAIL: no access token in session`);
-      throw new Error("Authentication session unavailable for workspace provisioning.");
+      throw new Error(t('page.authSessionUnavailable'));
     }
 
     const provisionResponse = await fetch("/api/auth/provision", {
@@ -1982,7 +1982,7 @@ setCustomerOrganizationName("");
       } catch {
         console.log(`${logTag} FAIL: response body is NOT valid JSON — likely HTML error page`);
       }
-      throw new Error((provisionBody.error as string) || "Workspace provisioning failed.");
+      throw new Error((provisionBody.error as string) || t('page.workspaceProvisionFailed'));
     }
 
     const responseBodyText = await provisionResponse.text();
@@ -2038,7 +2038,7 @@ setCustomerOrganizationName("");
       setAuthMessage(t('page.loggedIn'));
       setPassword("");
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "Failed to log in");
+      setAuthError(err instanceof Error ? err.message : t('page.failedLogin'));
       console.error("Login error:", err);
     } finally {
       setAuthLoading(false);
@@ -2063,7 +2063,7 @@ setCustomerOrganizationName("");
       setAuthMessage(t('page.loggedOut'));
       router.push("/login");
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "Failed to log out");
+      setAuthError(err instanceof Error ? err.message : t('page.failedLogout'));
       console.error("Logout error:", err);
     } finally {
       setAuthLoading(false);
@@ -2127,7 +2127,7 @@ setCustomerOrganizationName("");
     try {
       const response = await authorizedFetch(`/api/customers/${customerId}/pricing`);
       const result = await response.json();
-      if (!response.ok || !result.ok) throw new Error(result.error ?? "Failed to load recent prices");
+      if (!response.ok || !result.ok) throw new Error(result.error ?? t('page.failedLoadRecentPrices'));
       const prices = (result.prices ?? []) as Array<{
         product_id: string;
         last_selling_price: number;
@@ -2695,12 +2695,12 @@ setCustomerOrganizationName("");
       input_type: ["quantity", "purchase_price", "selling_price", "amount"].includes(field) ? "number" : "text",
     }));
     const readyToExecute = missingFields.length === 0 && actionType !== "unknown";
-    let confirmationSummary = "Command could not be matched to a supported draft action.";
+    let confirmationSummary = t('page.commandUnmatched');
     let executionPreview: Record<string, unknown> = { note: confirmationSummary };
 
     if (actionType === "create_task") {
       const title = getParsedText(normalizedData, "title");
-      confirmationSummary = `Prepare task: ${title || "Task title needed"}`;
+      confirmationSummary = t('page.prepareTask').replace('{title}', title || t('page.taskTitleNeeded'));
       executionPreview = {
         title,
         priority: "medium",
@@ -2716,7 +2716,7 @@ setCustomerOrganizationName("");
         purchase_price: purchasePrice,
         selling_price: sellingPrice,
         estimated_total_purchase_value: total,
-        note: "This will create a purchase invoice and purchase item.",
+        note: t('page.createPurchaseInvoiceDesc'),
       };
     } else if (actionType === "create_sale_draft") {
       const availableStock = product ? getAvailableStockForProduct(product.id) : null;
@@ -2734,7 +2734,7 @@ setCustomerOrganizationName("");
           availableStock !== null && quantity !== null && availableStock < quantity
             ? `Available stock is ${availableStock}, below requested quantity ${quantity}.`
             : null,
-        note: "This will create a sales invoice and sales item.",
+        note: t('page.createSalesInvoiceDesc'),
       };
     } else if (actionType === "create_expense_draft") {
       confirmationSummary = `Prepare expense draft for ${expenseType || "unknown expense type"} amount ${formatBooksMoney(amount)}.`;
@@ -2746,7 +2746,7 @@ setCustomerOrganizationName("");
         linked_customer: customer?.customer_name ?? null,
         linked_purchase_invoice: linkedPurchase?.invoice_number ?? null,
         linked_sales_invoice: linkedSale?.invoice_number ?? null,
-        note: "This will create an expense record.",
+        note: t('page.createExpenseDesc'),
       };
     }
 
@@ -3036,7 +3036,7 @@ setCustomerOrganizationName("");
       old_values: { status: draft.status },
       new_values: { status: nextStatus },
     });
-    setAiAssistantMessage(nextStatus === "cancelled" ? "Draft cancelled." : "Draft marked as needs info.");
+    setAiAssistantMessage(nextStatus === "cancelled" ? t('page.draftCancelled') : t('page.draftMarkedNeedsInfo'));
     setAiAssistantError(null);
     await fetchAiActionDrafts(currentOrganizationId);
   };
@@ -3103,12 +3103,12 @@ setCustomerOrganizationName("");
       entity_type: "ai_action_draft",
       entity_id: draft.id,
       entity_label: draft.action_type,
-      description: "Updated AI action draft follow-up answers",
+      description: t('page.aiDraftAnswersUpdatedDesc'),
       old_values: { missing_fields: draft.missing_fields, follow_up_answers: previousAnswers },
       new_values: updatePayload,
     });
     setAiDraftAnswerInputs((current) => ({ ...current, [draft.id]: {} }));
-    setAiAssistantMessage(evaluation.readyToExecute ? "Answers saved. Draft is ready for owner execution." : "Answers saved. More information is still needed.");
+    setAiAssistantMessage(evaluation.readyToExecute ? t('page.answersReady') : t('page.answersNeedInfo'));
     await fetchAiActionDrafts(currentOrganizationId);
   };
 
@@ -3194,7 +3194,7 @@ setCustomerOrganizationName("");
         draftId: draft.id,
         role: "assistant",
         messageType: "execution",
-        messageText: "Owner confirmed execution from conversation.",
+        messageText: t('page.ownerConfirmedConv'),
       });
       await createAuditLog({
         action: "executed",
@@ -3215,7 +3215,7 @@ setCustomerOrganizationName("");
         draftId: draft.id,
         role: "assistant",
         messageType: "text",
-        messageText: "Draft cancelled from conversation.",
+        messageText: t('page.draftCancelledConv'),
       });
       setAiConversationInput("");
       await fetchAiActionMessages(draft.id, currentOrganizationId);
@@ -3243,7 +3243,7 @@ setCustomerOrganizationName("");
         draftId: draft.id,
         role: "assistant",
         messageType: "question",
-        messageText: `I could not understand that answer. ${aiConversationQuestionText[field] ?? "Please try again."}`,
+        messageText: t('page.couldNotUnderstand').replace('{question}', aiConversationQuestionText[field] ?? t('page.tryAgain')),
         relatedField: field,
       });
       setAiConversationInput("");
@@ -3405,7 +3405,7 @@ setCustomerOrganizationName("");
 
       if (expenseError) {
         console.error("Supabase AI expense insert error:", JSON.stringify(expenseError, null, 2));
-        await markDraftFailed("Failed to create expense from draft.", expenseError);
+        await markDraftFailed(t('page.failedCreateExpenseDraft'), expenseError);
         return;
       }
 
@@ -3488,7 +3488,7 @@ setCustomerOrganizationName("");
 
       if (taskError) {
         console.error("Supabase AI task insert error:", JSON.stringify(taskError, null, 2));
-        await markDraftFailed("Failed to create task from draft.", taskError);
+        await markDraftFailed(t('page.failedCreateTaskDraft'), taskError);
         return;
       }
 
@@ -3540,14 +3540,14 @@ setCustomerOrganizationName("");
         const result = await createPurchase({
           supplier_id: supplierId, purchase_date: toDateInputValue(new Date()),
           payment_type: String(parsedData.payment_type || "cash").toLowerCase(),
-          notes: "Created from AI Assistant draft", request_key: "ai-draft:" + draft.id,
+          notes: t('page.createdFromAiDraft'), request_key: "ai-draft:" + draft.id,
           lines: [{ product_id: productId, quantity, purchase_price: purchasePrice,
             selling_price: Number.isFinite(sellingPrice) ? sellingPrice : null }],
         });
         purchaseTransactionId = result.transaction.id;
         invoiceNumber = result.transaction.invoice_number;
       } catch (error) {
-        await markDraftFailed(error instanceof Error ? error.message : "Could not create purchase");
+        await markDraftFailed(error instanceof Error ? error.message : t('page.couldNotCreatePurchase'));
         return;
       }
 
@@ -3620,7 +3620,7 @@ setCustomerOrganizationName("");
           credit_due_date: null,
           credit_limit_snapshot: null,
           credit_days_snapshot: null,
-          notes: "Created from AI Assistant draft",
+          notes: t('page.createdFromAiDraft'),
           organization_id: currentOrganizationId,
         })
         .select()
@@ -3649,7 +3649,7 @@ setCustomerOrganizationName("");
 
       if (itemError) {
         console.error("Supabase AI sales item insert error:", JSON.stringify(itemError, null, 2));
-        await markDraftFailed("Sales invoice was created, but sales item could not be saved.", itemError);
+        await markDraftFailed(t('page.saleInvoiceItemFailed'), itemError);
         return;
       }
 
@@ -3759,7 +3759,7 @@ setCustomerOrganizationName("");
     } catch (err) {
       speechRecognitionRef.current = null;
       setIsVoiceListening(false);
-      setVoiceInputError(err instanceof Error ? err.message : "Could not start voice input.");
+      setVoiceInputError(err instanceof Error ? err.message : t('page.couldNotStartVoiceInput'));
     }
   };
 
@@ -3836,7 +3836,7 @@ setCustomerOrganizationName("");
     } catch (err) {
       speechRecognitionRef.current = null;
       setIsVoiceAnswerListening(false);
-      setVoiceAnswerError(err instanceof Error ? err.message : "Could not start voice answer input.");
+      setVoiceAnswerError(err instanceof Error ? err.message : t('page.couldNotStartVoiceAnswer'));
     }
   };
 
@@ -4015,7 +4015,7 @@ setCustomerOrganizationName("");
       });
       const result = await response.json();
       if (!response.ok || !result.ok || !result.dutySessionId) {
-        setLocationTrackingError(result.error ?? "Could not start duty.");
+        setLocationTrackingError(result.error ?? t('page.couldNotStartDuty'));
         return;
       }
 
@@ -4029,7 +4029,7 @@ setCustomerOrganizationName("");
         entity_type: "staff_duty",
         entity_id: result.dutySessionId,
         entity_label: currentProfile.display_name ?? currentProfile.email ?? currentProfile.id,
-        description: "Started duty session",
+        description: t('page.dutyStartedDesc'),
         new_values: {
           status: "on_duty",
           started_at: result.startedAt ?? startedAt,
@@ -4090,7 +4090,7 @@ setCustomerOrganizationName("");
     });
     const result = await response.json();
     if (!response.ok || !result.ok) {
-      setLocationTrackingError(result.error ?? "Could not end duty.");
+      setLocationTrackingError(result.error ?? t('page.couldNotEndDuty'));
       return;
     }
 
@@ -4104,7 +4104,7 @@ setCustomerOrganizationName("");
       entity_type: "staff_duty",
       entity_id: sessionToEnd.id,
       entity_label: currentProfile.display_name ?? currentProfile.email ?? currentProfile.id,
-      description: "Ended duty session",
+      description: t('page.dutyEndedDesc'),
       old_values: { status: "on_duty" },
       new_values: {
         status: "off_duty",
@@ -4159,7 +4159,7 @@ setCustomerOrganizationName("");
         setSalesMessage(null);
         return;
       } catch (err) {
-        setSalesError(err instanceof Error ? err.message : "The earlier sale request could not be reconciled.");
+        setSalesError(err instanceof Error ? err.message : t('page.saleRequestUnreconciled'));
         setSalesMessage(null);
         return;
       } finally {
@@ -4170,7 +4170,7 @@ setCustomerOrganizationName("");
     const invoiceLines = enteredInvoiceLines(salesLines);
 
     if (!currentSaleDraft.valid) {
-      setSalesError(currentSaleDraft.issues[0]?.message ?? "Correct the highlighted sale fields before saving.");
+      setSalesError(currentSaleDraft.issues[0]?.message ?? t('page.correctSaleFields'));
       setSalesMessage(null);
       return;
     }
@@ -4246,8 +4246,8 @@ setCustomerOrganizationName("");
     ) {
       setSalesError(
         salesDiscountType === "percent"
-          ? "Invoice discount must be a valid percentage with up to two decimal places"
-          : "Invoice discount must be a valid amount with up to two decimal places"
+          ? t('page.invoiceDiscountPercentValid')
+          : t('page.invoiceDiscountAmountValid')
       );
       setSalesMessage(null);
       return;
@@ -4292,8 +4292,8 @@ setCustomerOrganizationName("");
         (isPercentDiscount ? lineDiscount > 100 : lineDiscount > Number(line.quantity) * Number(line.selling_price)));
       if (discountInvalid) {
         setSalesError(isPercentDiscount
-          ? "Line discount percentage cannot exceed 100"
-          : "Line discount must use up to two decimal places and stay between zero and the line subtotal");
+          ? t('page.lineDiscountMax')
+          : t('page.lineDiscountDecimals'));
         setSalesMessage(null);
         return;
       }
@@ -4307,7 +4307,7 @@ setCustomerOrganizationName("");
       }
 
       if (selectedCustomerCreditPolicy === "cash_only") {
-        const warning = "This customer is configured as Cash Only.";
+        const warning = t('page.customerCashOnly');
         setCreditWarning(warning);
         setSalesError(warning);
         setSalesMessage(null);
@@ -4416,7 +4416,7 @@ setCustomerOrganizationName("");
           }),
         });
         const data = await res.json();
-        if (!data.ok) throw new Error(data.error || "Failed to create draft sale");
+        if (!data.ok) throw new Error(data.error || t('page.failedCreateDraftSale'));
         setSalesMessage(t('page.soCreatedApproval').replace('{number}', data.draft?.so_number ?? ""));
         if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
         setSaleScanFocus(value => value + 1);
@@ -4455,7 +4455,7 @@ setCustomerOrganizationName("");
         return;
       }
       if (!currentOrganizationId || !currentProfile?.id || !selectedCustomerIdForSale) {
-        throw new Error("Organization, owner profile, and customer must be loaded before saving.");
+        throw new Error(t('page.orgLoadBeforeSave'));
       }
 
       const input = {
@@ -4634,7 +4634,7 @@ setCustomerOrganizationName("");
 
       const insertedPaymentId = paymentData?.id;
       if (!insertedPaymentId) {
-        throw new Error("Payment saved but no payment id was returned.");
+        throw new Error(t('page.paymentNoId'));
       }
 
       const allocationsToInsert = allocationRows
@@ -4658,7 +4658,7 @@ setCustomerOrganizationName("");
           );
           setCustomerPaymentMessage(null);
           setCustomerPaymentError(
-            "Payment saved, but one or more invoice allocations could not be saved."
+            t('page.paymentAllocFailed')
           );
           await fetchCustomerPayments(currentOrganizationId);
           await fetchCustomerPaymentAllocations(currentOrganizationId);
@@ -4786,7 +4786,7 @@ setCustomerOrganizationName("");
 
       const insertedSupplierPaymentId = paymentData?.id;
       if (!insertedSupplierPaymentId) {
-        throw new Error("Payment saved but no supplier payment id was returned.");
+        throw new Error(t('page.supplierPaymentNoId'));
       }
 
       const allocationsToInsert = allocationRows
@@ -4810,7 +4810,7 @@ setCustomerOrganizationName("");
           );
           setSupplierPaymentMessage(null);
           setSupplierPaymentError(
-            "Payment saved, but one or more supplier invoice allocations could not be saved."
+            t('page.supplierPaymentAllocFailed')
           );
           await fetchSupplierPayments(currentOrganizationId);
           await fetchSupplierPaymentAllocations(currentOrganizationId);
@@ -4911,7 +4911,7 @@ setCustomerOrganizationName("");
         .eq("organization_id", currentOrganizationId);
 
       if (statusUpdateError) {
-        statusUpdateWarning = "Expense saved, but purchase expense status could not be updated.";
+        statusUpdateWarning = t('page.expenseSavedBut');
         console.error(
           "Purchase expense status update error:",
           JSON.stringify(statusUpdateError, null, 2)
@@ -4943,7 +4943,7 @@ setCustomerOrganizationName("");
       },
     });
 
-    setExpenseMessage(statusUpdateWarning ?? "Expense saved successfully.");
+    setExpenseMessage(statusUpdateWarning ?? t('page.expenseSavedOk'));
     setExpenseType("");
     setExpenseAmount("");
     setExpenseNotes("");
@@ -5028,8 +5028,8 @@ setCustomerOrganizationName("");
     setNewPurchaseExpenseReminder(null);
     setPurchaseExpenseStatusMessage(
       status === "no_additional_expense"
-        ? "Purchase marked as having no additional expense."
-        : "Purchase marked for expense review later."
+        ? t('page.purchaseNoExpense')
+        : t('page.purchaseExpenseLater')
     );
   };
 
@@ -5805,7 +5805,7 @@ setCustomerOrganizationName("");
     setWalkInFailed(false);
     authorizedFetch("/api/sales/walk-in", { method: "POST" }).then(async response => {
       const result = await response.json();
-      if (!response.ok || !result.ok) throw new Error(result.error || "Could not prepare Walk-in customer.");
+      if (!response.ok || !result.ok) throw new Error(result.error || t('page.couldNotPrepareWalkin'));
       if (!cancelled) { walkInCustomerId.current = result.customer.id; setCustomers(current => current.some(customer => customer.id === result.customer.id) ? current : [...current, result.customer]); setSelectedCustomerIdForSale(current => current ?? result.customer.id); }
     }).catch(error => { if (!cancelled) { setWalkInFailed(true); setSalesError(error.message); } }).finally(() => { if (!cancelled) setWalkInBusy(false); });
     return () => { cancelled = true; };
@@ -6474,18 +6474,18 @@ setCustomerOrganizationName("");
         ? normalizeMarketArray(advisory?.suggested_owner_actions)
         : item.suggested_action
           ? [item.suggested_action]
-          : ["Review this signal before making buying, pricing, or inventory decisions."];
+          : [t('page.reviewSignalBefore')];
     const executiveSummary =
       String(advisory?.executive_summary ?? "").trim() ||
       item.summary ||
-      "This market intelligence item needs owner review before action.";
+      t('page.marketNeedsOwnerReview');
     const businessImpact =
       String(advisory?.business_impact ?? "").trim() ||
       latestAnalysis?.ai_reasoning ||
       `Potential impact on ${affectedBusinessAreas.join(", ")} based on supplied item text.`;
     const whyItMatters =
       String(advisory?.why_it_matters ?? "").trim() ||
-      "This matters because supplier rates, inventory availability, pricing, and customer demand can affect cashflow and margin.";
+      t('page.marketMattersBecause');
     return {
       item,
       latestAnalysis,
@@ -7035,7 +7035,7 @@ setCustomerOrganizationName("");
         });
         const result = await response.json();
         if (!response.ok || !result.ok) {
-          failed.push({ name: line.name, error: result.error ?? "Failed to add stock" });
+          failed.push({ name: line.name, error: result.error ?? t('page.failedAddStock') });
           continue;
         }
         await createAuditLog({
@@ -7060,7 +7060,7 @@ setCustomerOrganizationName("");
       await fetchInventoryTransactions();
       await fetchProducts();
     } catch (err) {
-      setBulkStockError(err instanceof Error ? err.message : "Failed to add stock in bulk");
+      setBulkStockError(err instanceof Error ? err.message : t('page.failedAddStockBulk'));
     } finally {
       setBulkStockSubmitting(false);
     }
@@ -7513,7 +7513,7 @@ setCustomerOrganizationName("");
       setCustomersLoading(false);
 
       if (!response.ok || !result.ok) {
-        setCustomerError(result.error ?? "Failed to update customer");
+        setCustomerError(result.error ?? t('page.failedUpdateCustomer'));
         return;
       }
 
@@ -7543,7 +7543,7 @@ setCustomerOrganizationName("");
       setCustomersLoading(false);
 
       if (!response.ok || !result.ok) {
-        setCustomerError(result.error ?? "Failed to save customer");
+        setCustomerError(result.error ?? t('page.failedSaveCustomer'));
         return;
       }
 
@@ -7660,7 +7660,7 @@ setCustomerOrganizationName("");
     setCustomersLoading(false);
 
     if (!response.ok || !result.ok) {
-      setCustomerError(result.error ?? "Failed to archive customer");
+      setCustomerError(result.error ?? t('page.failedArchiveCustomer'));
       return;
     }
 
@@ -7703,7 +7703,7 @@ setCustomerOrganizationName("");
     setCustomersLoading(false);
 
     if (!response.ok || !result.ok) {
-      setCustomerError(result.error ?? "Failed to restore customer");
+      setCustomerError(result.error ?? t('page.failedRestoreCustomer'));
       return;
     }
 
@@ -7873,7 +7873,7 @@ setCustomerOrganizationName("");
       new_values: { is_active: !isActive },
     });
     setSupplierMessage(
-      isActive ? "Supplier archived successfully" : "Supplier restored successfully"
+      isActive ? t('page.supplierArchivedOk') : t('page.supplierRestoredOk')
     );
     fetchSuppliers();
   };
@@ -8031,7 +8031,7 @@ setCustomerOrganizationName("");
       fetchPurchaseItems();
       fetchProducts();
     } catch (err) {
-      setInvoiceError(err instanceof Error ? err.message : "Failed to create purchase invoice");
+      setInvoiceError(err instanceof Error ? err.message : t('page.failedCreatePurchaseInvoice'));
       console.error("Error creating purchase invoice:", err);
     } finally {
       setInvoiceLoading(false);
@@ -8299,7 +8299,7 @@ setCustomerOrganizationName("");
       const result = await createPurchase({
         supplier_id: po.supplier_id, purchase_order_id: receivePoId,
         purchase_date: toDateInputValue(new Date()), payment_type: "cash",
-        notes: "Received purchase order " + po.po_number,
+        notes: t('page.receivedPoNote').replace('{number}', po.po_number),
         lines: receiveLines.filter((line) => Number(line.receiveQuantity) > 0).map((line) => ({
           order_item_id: line.itemId, product_id: line.productId, quantity: Number(line.receiveQuantity),
           purchase_price: Number(line.unitPrice || 0), unit_mode: line.unitMode || "main",
@@ -8317,7 +8317,7 @@ setCustomerOrganizationName("");
       fetchPurchaseItems();
       fetchProducts();
     } catch (err) {
-      setReceiveError(err instanceof Error ? err.message : "Failed to receive purchase order");
+      setReceiveError(err instanceof Error ? err.message : t('page.failedReceivePo'));
       console.error("Error receiving purchase order:", err);
     } finally {
       setReceiveLoading(false);
@@ -8874,9 +8874,9 @@ setCustomerOrganizationName("");
 
     if (nextStatus === "cancelled") {
       setConfirmDialog({
-        title: "Cancel sales order",
+        title: t('page.cancelSalesOrder'),
         body: `Cancel sales order ${order.so_number}? This cannot be undone.`,
-        confirmLabel: "Cancel order",
+        confirmLabel: t('page.cancelOrder'),
         onConfirm: () => {
           void applySalesOrderStatus(soId, nextStatus);
         },
@@ -9009,9 +9009,9 @@ setCustomerOrganizationName("");
     }
 
     setConfirmDialog({
-      title: "Delete sales order",
+      title: t('page.deleteSalesOrder'),
       body: `Delete draft sales order ${order.so_number}? This cannot be undone.`,
-      confirmLabel: "Delete order",
+      confirmLabel: t('page.deleteOrder'),
       onConfirm: () => {
         void applyDeleteSalesOrder(soId);
       },
@@ -12084,7 +12084,7 @@ setCustomerOrganizationName("");
       resetTaskForm();
       await fetchTasks(currentOrganizationId);
     } catch (err) {
-      setTaskError(err instanceof Error ? err.message : "Failed to save task.");
+      setTaskError(err instanceof Error ? err.message : t('page.failedSaveTask'));
       console.error("Error saving task:", err);
     } finally {
       setTaskLoading(false);
@@ -12233,8 +12233,8 @@ setCustomerOrganizationName("");
           title,
           reason:
             recommendation.status === "Out of Stock"
-              ? "Product is out of stock."
-              : "Product is at or below reorder level.",
+              ? t('page.productOutOfStockMsg')
+              : t('page.productReorderLevel'),
           task_type: "reorder",
           priority: recommendation.status === "Out of Stock" ? "urgent" : "high",
           customer_id: null,
@@ -12301,7 +12301,7 @@ setCustomerOrganizationName("");
       setTaskMessage(t('page.taskSuggestedCreated'));
       await fetchTasks(currentOrganizationId);
     } catch (err) {
-      setTaskError(err instanceof Error ? err.message : "Failed to create suggested task.");
+      setTaskError(err instanceof Error ? err.message : t('page.failedCreateSuggestedTask'));
       console.error("Error creating suggested task:", err);
     } finally {
       setTaskLoading(false);
@@ -13081,7 +13081,7 @@ setCustomerOrganizationName("");
 
   const getProfileLabel = (profileId: string | null | undefined) => {
     const profile = staffProfiles.find((item) => item.id === profileId);
-    return profile?.display_name || profile?.email || profile?.role || "Unknown staff";
+    return profile?.display_name || profile?.email || profile?.role || t('page.unknownStaff');
   };
 
   const buildAiBusinessSummary = (
@@ -13106,7 +13106,7 @@ setCustomerOrganizationName("");
         customer: customer?.customer_name ?? t('page.unknownCustomerLower'),
         payment_type: transaction.payment_type ?? "cash",
         total_amount: total,
-        staff: createdBy ? getProfileLabel(createdBy) : "Not available",
+        staff: createdBy ? getProfileLabel(createdBy) : t('page.notAvailable'),
       };
     });
     const purchasesInRange = purchaseTransactions.filter((transaction) =>
@@ -13117,7 +13117,7 @@ setCustomerOrganizationName("");
       return {
         invoice_number: transaction.invoice_number,
         date: getDateOnly(transaction.purchase_date ?? transaction.created_at),
-        supplier: supplier?.supplier_name ?? "Unknown supplier",
+        supplier: supplier?.supplier_name ?? t('page.unknownSupplier'),
         total_amount: purchaseInvoiceTotalsByTransaction[transaction.id] ?? 0,
       };
     });
@@ -13144,7 +13144,7 @@ setCustomerOrganizationName("");
     }, {});
     const supplierPaymentsBySupplier = supplierPaymentsInRange.reduce<Record<string, number>>((totals, payment) => {
       const supplier = suppliers.find((item) => item.id === payment.supplier_id);
-      const label = supplier?.supplier_name ?? "Unknown supplier";
+      const label = supplier?.supplier_name ?? t('page.unknownSupplier');
       totals[label] = (totals[label] ?? 0) + safeNumber(payment.amount);
       return totals;
     }, {});
@@ -13159,8 +13159,8 @@ setCustomerOrganizationName("");
       query_type: queryType,
       date_range: dateRange,
       notes: [
-        "This is a read-only summary built from currently loaded TradeOS data.",
-        staffProfiles.length === 0 ? "Staff profile data is not available." : "",
+        t('page.readonlySummary'),
+        staffProfiles.length === 0 ? t('page.staffProfileUnavailable') : "",
       ].filter(Boolean),
       sales: {
         count: salesInvoiceTotals.length,
@@ -13749,7 +13749,7 @@ setCustomerOrganizationName("");
         entity_type: "ai_daily_briefing",
         entity_id: data?.id ?? null,
         entity_label: payload.title,
-        description: "Generated daily business briefing",
+        description: t('page.briefingGeneratedDesc'),
         new_values: { briefing_date: todayDateValue, top_signals: topSignals.length },
       });
       await fetchAiDailyBriefings(currentOrganizationId);
@@ -13935,7 +13935,7 @@ setCustomerOrganizationName("");
   const reuseAiBusinessQuestion = (question: string, reAsk = false) => {
     setAiBusinessQuestion(question);
     setAiBusinessQueryError(null);
-    setAiBusinessQueryMessage(reAsk ? "Question loaded. Click Ask AI to re-run it." : "Question loaded.");
+    setAiBusinessQueryMessage(reAsk ? t('page.questionLoadedRerun') : t('page.questionLoaded'));
     window.setTimeout(() => {
       document.getElementById("ai-business-question")?.focus();
     }, 0);
@@ -14105,11 +14105,11 @@ setCustomerOrganizationName("");
   };
 
   const getAiVoiceExecutionSuccessText = (actionType: string) => {
-    if (actionType === "create_task") return "Task created successfully.";
-    if (actionType === "create_purchase_draft") return "Purchase invoice created successfully.";
-    if (actionType === "create_sale_draft") return "Sale invoice created successfully.";
-    if (actionType === "create_expense_draft") return "Expense recorded successfully.";
-    return "Action completed successfully.";
+    if (actionType === "create_task") return t('page.taskCreatedOk');
+    if (actionType === "create_purchase_draft") return t('page.purchaseInvoiceCreatedOk');
+    if (actionType === "create_sale_draft") return t('page.saleInvoiceCreatedOk');
+    if (actionType === "create_expense_draft") return t('page.expenseRecorded');
+    return t('page.actionCompleted');
   };
 
   const clearAiVoiceActionConversation = () => {
@@ -14246,7 +14246,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase AI voice action draft answer update error:", JSON.stringify(error, null, 2));
-      const message = "Could not save that answer to the action draft. Please try again.";
+      const message = t('page.couldNotSaveAnswer');
       setAiVoiceActionConversationError(message);
       setAiVoiceLastResponse(message);
       if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(message);
@@ -14284,7 +14284,7 @@ setCustomerOrganizationName("");
     if (draft) {
       await updateAiDraftStatus(draft, "cancelled");
     }
-    const reply = "Okay, I will not save it.";
+    const reply = t('page.okayNotSave');
     clearAiVoiceActionConversation();
     setAiVoiceActionConversationMessage(reply);
     setAiVoiceLastResponse(reply);
@@ -14325,7 +14325,7 @@ setCustomerOrganizationName("");
       draftId: draft.id,
       role: "assistant",
       messageType: "execution",
-      messageText: "Owner confirmed execution from AI Voice Operator.",
+      messageText: t('page.ownerConfirmedVoice'),
     });
     await executeAiActionDraft(draft);
 
@@ -14342,7 +14342,7 @@ setCustomerOrganizationName("");
     const executed = refreshedDraft?.status === "executed";
     const reply = executed
       ? getAiVoiceExecutionSuccessText(draft.action_type)
-      : `Could not complete this action: ${refreshedDraft?.error_message || aiAssistantError || "Please review the linked draft."}`;
+      : `Could not complete this action: ${refreshedDraft?.error_message || aiAssistantError || t('page.reviewLinkedDraft')}`;
     await addAiVoiceOperatorMessage({
       sessionId,
       role: "assistant",
@@ -14463,7 +14463,7 @@ setCustomerOrganizationName("");
     });
     await fetchAiBusinessQueryLogs(currentOrganizationId);
     return {
-      answer: result.result?.answer ?? "I could not produce an answer from the available data.",
+      answer: result.result?.answer ?? t('page.couldNotAnswer'),
       logId,
       queryType: result.result?.query_type ?? queryType,
       language: result.result?.language ?? language,
@@ -14523,7 +14523,7 @@ setCustomerOrganizationName("");
     setAiVoiceAutoSendCountdown(0);
   };
 
-  const cancelAiVoiceAutoSend = (message = "Auto-send cancelled. You can edit the text or send manually.") => {
+  const cancelAiVoiceAutoSend = (message = t('page.autoSendCancelledEdit')) => {
     clearAiVoiceAutoSendTimers();
     setAiVoicePendingAutoSendText("");
     setAiVoiceHandsFreeMessage(message);
@@ -14531,7 +14531,7 @@ setCustomerOrganizationName("");
   };
 
   const editAiVoiceBeforeSending = () => {
-    cancelAiVoiceAutoSend("Auto-send paused. Edit the text, then send when ready.");
+    cancelAiVoiceAutoSend(t('page.autoSendPaused'));
     window.setTimeout(() => aiVoiceInputRef.current?.focus(), 0);
   };
 
@@ -14632,7 +14632,7 @@ setCustomerOrganizationName("");
     recognition.onerror = (event) => {
       setIsAiVoiceListening(false);
       clearAiVoiceAutoSendTimers();
-      setAiVoiceOperatorError(event.error ? `Voice input error: ${event.error}` : "Voice input failed.");
+      setAiVoiceOperatorError(event.error ? `Voice input error: ${event.error}` : t('page.voiceInputFailed'));
     };
     recognition.onend = () => {
       setIsAiVoiceListening(false);
@@ -14742,7 +14742,7 @@ setCustomerOrganizationName("");
 
       if (route.intent === "daily_briefing") {
         const briefing = todayAiDailyBriefing ?? (await generateDailyBriefing());
-        const reply = briefing?.summary ?? "I could not generate today's briefing from the available data.";
+        const reply = briefing?.summary ?? t('page.couldNotBriefing');
         await addAiVoiceOperatorMessage({
           sessionId,
           role: "assistant",
@@ -14781,8 +14781,8 @@ setCustomerOrganizationName("");
       } else if (route.intent === "action_command") {
         const draft = await createAiActionDraftFromOperator(input);
         const reply = draft
-          ? "I prepared this as a draft. I will ask missing questions and require confirmation before saving."
-          : "I could not prepare this action draft. Please try again or open AI Assistant.";
+          ? t('page.preparedAsDraft')
+          : t('page.couldNotPrepareDraft');
         await addAiVoiceOperatorMessage({
           sessionId,
           role: "assistant",
@@ -15201,7 +15201,7 @@ setCustomerOrganizationName("");
       });
       const validateData = await validateResponse.json().catch(() => null);
       if (!validateResponse.ok || !validateData?.ok) {
-        setError(validateData?.error ?? "Product validation failed.");
+        setError(validateData?.error ?? t('page.productValidationFailed'));
         setLoading(false);
         return;
       }
@@ -15370,7 +15370,7 @@ setCustomerOrganizationName("");
     if (sectionId !== "ai-voice-operator") {
       stopAiVoiceListening();
       stopAiVoiceOperatorReply();
-      cancelAiVoiceAutoSend("Auto-send cancelled.");
+      cancelAiVoiceAutoSend(t('page.autoSendCancelled'));
     }
     // Territories / Routes managers load their data in a one-shot mount
     // effect. If that mount happens before the session has settled (e.g. a
@@ -15584,7 +15584,7 @@ setCustomerOrganizationName("");
     let conversionWarning: string | null = null;
     if (selectedMarketImportQueueId) {
       if (!isValidUuid(selectedMarketImportQueueId)) {
-        conversionWarning = "Intelligence item saved, but selected import queue ID was invalid.";
+        conversionWarning = t('page.intelSavedBadImportId');
       } else {
         const now = new Date().toISOString();
         const { error: queueUpdateError } = await supabase
@@ -15600,7 +15600,7 @@ setCustomerOrganizationName("");
 
         if (queueUpdateError) {
           console.error("Supabase market import queue conversion update error:", JSON.stringify(queueUpdateError, null, 2));
-          conversionWarning = "Intelligence item saved, but import queue item could not be marked converted.";
+          conversionWarning = t('page.intelSavedImportNotConverted');
         } else {
           await createAuditLog({
             action: "updated",
@@ -15622,7 +15622,7 @@ setCustomerOrganizationName("");
       if (!isValidUuid(selectedAiAnalysisId)) {
         conversionWarning = conversionWarning
           ? `${conversionWarning} AI analysis ID was invalid.`
-          : "Intelligence item saved, but selected AI analysis ID was invalid.";
+          : t('page.intelSavedBadAiId');
       } else {
         const now = new Date().toISOString();
         const { error: aiAnalysisUpdateError } = await supabase
@@ -15640,7 +15640,7 @@ setCustomerOrganizationName("");
           console.error("Supabase market AI analysis conversion update error:", JSON.stringify(aiAnalysisUpdateError, null, 2));
           conversionWarning = conversionWarning
             ? `${conversionWarning} AI analysis could not be marked converted.`
-            : "Intelligence item saved, but AI analysis could not be marked converted.";
+            : t('page.intelSavedAiNotConverted');
         } else {
           await createAuditLog({
             action: "updated",
@@ -16020,7 +16020,7 @@ setCustomerOrganizationName("");
       analysis.ai_risks ? `Risks: ${analysis.ai_risks}` : "",
       analysis.ai_owner_questions ? `Owner questions: ${analysis.ai_owner_questions}` : "",
     ].filter(Boolean);
-    setMarketTitle(analysis.input_title ?? analysis.ai_summary ?? "AI market analysis");
+    setMarketTitle(analysis.input_title ?? analysis.ai_summary ?? t('page.aiMarketAnalysisFallback'));
     setMarketSummary(summaryParts.join("\n\n"));
     setMarketSourceName(analysis.input_source_name ?? "");
     setMarketSourceUrl(analysis.input_source_url ?? "");
@@ -16100,9 +16100,9 @@ setCustomerOrganizationName("");
 
   const deleteMarketIntelligenceItem = async (item: MarketIntelligenceItem) => {
     setConfirmDialog({
-      title: "Delete market intelligence item",
+      title: t('page.deleteMarketItem'),
       body: `Delete market intelligence item "${item.title}"?`,
-      confirmLabel: "Delete item",
+      confirmLabel: t('page.deleteItem'),
       onConfirm: () => {
         void applyDeleteMarketIntelligenceItem(item);
       },
@@ -16274,7 +16274,7 @@ setCustomerOrganizationName("");
         entity_type: "business_settings",
         entity_id: currentOrganizationId,
         entity_label: trimmedName,
-        description: "Updated business settings",
+        description: t('page.bizSettingsUpdatedDesc'),
         old_values: oldBusinessSettings,
         new_values: newBusinessSettings,
       });
@@ -16282,7 +16282,7 @@ setCustomerOrganizationName("");
       setBusinessSettingsMessage(t('page.businessSettingsSaved'));
     } catch (err) {
       setBusinessSettingsError(
-        err instanceof Error ? err.message : "Failed to save business settings."
+        err instanceof Error ? err.message : t('page.failedSaveBizSettings')
       );
       console.error("Error saving business settings:", err);
     } finally {
@@ -16368,12 +16368,12 @@ setCustomerOrganizationName("");
       });
       const result = await response.json();
       if (!response.ok || !result.ok) {
-        throw new Error(result.error ?? "Failed to save duty schedule.");
+        throw new Error(result.error ?? t('page.failedSaveDutySchedule'));
       }
       await fetchCurrentOrganization(currentOrganizationId);
-      setDutyScheduleMessage(result.message ?? "Duty schedule saved successfully.");
+      setDutyScheduleMessage(result.message ?? t('page.dutyScheduleSaved'));
     } catch (err) {
-      setDutyScheduleError(err instanceof Error ? err.message : "Failed to save duty schedule.");
+      setDutyScheduleError(err instanceof Error ? err.message : t('page.failedSaveDutySchedule'));
     } finally {
       setDutyScheduleLoading(false);
     }
@@ -16447,9 +16447,9 @@ setCustomerOrganizationName("");
         body: JSON.stringify({ profile_id: profileId, ...updatePayload }),
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error ?? "Could not update staff profile.");
+      if (!response.ok) throw new Error(result.error ?? t('page.couldNotUpdateStaff'));
     } catch (error) {
-      setStaffPermissionError(error instanceof Error ? error.message : "Could not update staff profile. Please retry Save.");
+      setStaffPermissionError(error instanceof Error ? error.message : t('page.couldNotUpdateStaffRetry'));
       return;
     }
 
@@ -17309,7 +17309,7 @@ setCustomerOrganizationName("");
                 sectionCardDragOver ? "border-primary bg-primary/10 text-foreground" : "border-border bg-card/60 text-muted-foreground",
               )}
             >
-              {sectionCardDragOver ? "Drop it here to add this section as a card." : "Drag any section from the sidebar and drop it here to add it as a summary card. On a phone, tap a section above instead."}
+              {sectionCardDragOver ? t('page.dropSectionHint') : t('page.dragSectionHint')}
             </div>
           </div>
         )}
@@ -21466,9 +21466,9 @@ setCustomerOrganizationName("");
             {expenseMessage && (
               <p
                 className={`text-sm ${
-                  expenseMessage.startsWith("Error")
+                  expenseMessage.startsWith(t('page.errorPrefix'))
                     ? "text-destructive"
-                    : expenseMessage.startsWith("Expense saved, but")
+                    : expenseMessage.startsWith(t('page.expenseSavedButPrefix'))
                       ? "text-warning"
                       : "text-success"
                 }`}
@@ -24713,7 +24713,7 @@ setCustomerOrganizationName("");
               type="search"
               value={marketIntelligenceSearch}
               onChange={(e) => setMarketIntelligenceSearch(e.target.value)}
-              placeholder="Search advisory items"
+              placeholder=t('page.searchAdvisory')
               className="rounded border border-border px-3 py-2 text-sm"
             />
             <select value={marketIntelligenceRiskFilter} onChange={(e) => setMarketIntelligenceRiskFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
@@ -24887,7 +24887,7 @@ setCustomerOrganizationName("");
                     type="search"
                     value={marketImportQueueSearch}
                     onChange={(e) => setMarketImportQueueSearch(e.target.value)}
-                    placeholder="Search queue"
+                    placeholder=t('page.searchQueue')
                     className="rounded border border-border px-3 py-2 text-sm"
                   />
                   <select value={marketImportQueueStatusFilter} onChange={(e) => setMarketImportQueueStatusFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
@@ -24924,7 +24924,7 @@ setCustomerOrganizationName("");
                               </span>
                             )}
                           </div>
-                          <h5 className="mt-2 text-sm font-semibold text-foreground">{item.raw_title || "Untitled import"}</h5>
+                          <h5 className="mt-2 text-sm font-semibold text-foreground">{item.raw_title || t('page.untitledImport')}</h5>
                           <div className="mt-1 text-xs text-muted-foreground">
                             Source: {item.source_name || t('page.manualNote')} · Created: {formatDateTime(item.created_at)}
                           </div>
@@ -24957,7 +24957,7 @@ setCustomerOrganizationName("");
                             disabled={marketAiAnalysisLoadingId === `queue-${item.id}` || item.review_status === "converted"}
                             className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
-                            {marketAiAnalysisLoadingId === `queue-${item.id}` ? "Analyzing..." : "Analyze with AI"}
+                            {marketAiAnalysisLoadingId === `queue-${item.id}` ? "Analyzing..." : t('page.analyzeWithAi')}
                           </button>
                           <button
                             type="button"
@@ -25051,7 +25051,7 @@ setCustomerOrganizationName("");
                           </span>
                         </div>
                         <h4 className="mt-2 text-base font-semibold text-foreground">
-                          {analysis.input_title || analysis.ai_summary || "AI market analysis"}
+                          {analysis.input_title || analysis.ai_summary || t('page.aiMarketAnalysisFallback')}
                         </h4>
                         <div className="mt-1 text-xs text-muted-foreground">
                           Source: {analysis.input_source_name || t('page.manualNote')} - Created: {formatDateTime(analysis.created_at)}
@@ -25451,7 +25451,7 @@ setCustomerOrganizationName("");
                             disabled={marketAiAnalysisLoadingId === `item-${item.id}`}
                             className="rounded border border-primary bg-card px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >
-                            {marketAiAnalysisLoadingId === `item-${item.id}` ? "Analyzing..." : "Analyze with AI"}
+                            {marketAiAnalysisLoadingId === `item-${item.id}` ? "Analyzing..." : t('page.analyzeWithAi')}
                           </button>
                           <button
                             type="button"
@@ -25546,7 +25546,7 @@ setCustomerOrganizationName("");
                 {activeDutySession ? "On Duty" : "Off Duty"}
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
-                {isTrackingLocation ? "Live tracking is active." : "Live tracking is not active."}
+                {isTrackingLocation ? t('page.trackingActive') : t('page.trackingInactive')}
               </p>
               {activeDutySession?.scheduled_end_at && (
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -25559,7 +25559,7 @@ setCustomerOrganizationName("");
                   onClick={handleStartDuty}
                   className="rounded bg-success px-4 py-2 text-sm text-white hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-muted"
                 >
-                  {activeDutySession ? "Resume Tracking" : "Start Duty"}
+                  {activeDutySession ? t('page.resumeTracking') : t('page.startDutyBtn')}
                 </button>
                 <button
                   type="button"
@@ -25575,7 +25575,7 @@ setCustomerOrganizationName("");
             <div className="rounded border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">Last Location Update</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
-                {latestOwnLocation ? formatDateTime(latestOwnLocation.captured_at) : "No location yet"}
+                {latestOwnLocation ? formatDateTime(latestOwnLocation.captured_at) : t('page.noLocationYet')}
               </div>
               <div className="mt-3 space-y-1 text-sm text-foreground/80">
                 <div>Latitude: {latestOwnLocation ? formatCoordinate(latestOwnLocation.latitude) : "-"}</div>
@@ -25628,7 +25628,7 @@ setCustomerOrganizationName("");
                 <div className="rounded border border-border bg-muted/30 p-3">
                   <div className="text-sm text-muted-foreground/80">Last organization update</div>
                   <div className="mt-1 text-sm font-semibold text-foreground">
-                    {visibleLocationPoints[0] ? formatDateTime(visibleLocationPoints[0].captured_at) : "No points yet"}
+                    {visibleLocationPoints[0] ? formatDateTime(visibleLocationPoints[0].captured_at) : t('page.noPointsYet')}
                   </div>
                 </div>
               </div>
@@ -25666,7 +25666,7 @@ setCustomerOrganizationName("");
                               >
                                 {profile.display_name || profile.email || profile.id}
                               </button>
-                              <div className="text-xs text-muted-foreground/80">{profile.email ?? "No email"}</div>
+                              <div className="text-xs text-muted-foreground/80">{profile.email ?? t('staff.noEmail')}</div>
                             </td>
                             <td className="px-3 py-3">{profile.role ?? "staff"}</td>
                             <td className="px-3 py-3">
@@ -25968,7 +25968,7 @@ setCustomerOrganizationName("");
             <div className="rounded border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">Environment Status</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
-                {deploymentWarningCount === 0 ? "Ready locally" : "Needs review"}
+                {deploymentWarningCount === 0 ? t('page.readyLocally') : t('page.needsReview')}
               </div>
               <p className="mt-1 text-xs text-muted-foreground/80">
                 {deploymentPassedCount} passing, {deploymentManualCount} manual.
@@ -25977,14 +25977,14 @@ setCustomerOrganizationName("");
             <div className="rounded border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">Security Status</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
-                {allSecurityChecksPassed ? "Security checks passed" : "Final checks pending"}
+                {allSecurityChecksPassed ? t('page.securityPassed') : t('page.finalChecksPending')}
               </div>
               <p className="mt-1 text-xs text-muted-foreground/80">Use Security Check before launch.</p>
             </div>
             <div className="rounded border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">Business Setup Status</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
-                {businessSettingsComplete ? "Business details ready" : "Business details needed"}
+                {businessSettingsComplete ? t('page.bizDetailsReady') : t('page.bizDetailsNeeded')}
               </div>
               <p className="mt-1 text-xs text-muted-foreground/80">Business name plus phone or address recommended.</p>
             </div>
@@ -26188,7 +26188,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                         }
                         rows={2}
                         className="rounded border border-border px-3 py-2"
-                        placeholder="Add notes before marking status"
+                        placeholder=t('page.addNotesBeforeStatus')
                       />
                     </label>
                   </div>
@@ -26203,8 +26203,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               : "border-warning/20 bg-warning/5 text-warning/90"
           }`}>
             {allSecurityChecksPassed
-              ? "TradeOS is ready for deployment preparation."
-              : "Complete all security checks before deployment."}
+              ? t('page.tradeosReadyDeploy')
+              : t('page.completeSecurityChecks')}
           </div>
         </section>
         )}
