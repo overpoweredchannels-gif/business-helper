@@ -10825,27 +10825,27 @@ setCustomerOrganizationName("");
     }
     if (biDateRange === "yesterday") {
       const value = toDateInputValue(yesterday);
-      return { start: value, end: value, label: "Yesterday" };
+      return { start: value, end: value, label: t('bi.rangeYesterday') };
     }
     if (biDateRange === "last_7_days") {
-      return { start: toDateInputValue(lastSevenDays), end: todayDateValue, label: "Last 7 Days" };
+      return { start: toDateInputValue(lastSevenDays), end: todayDateValue, label: t('bi.rangeLast7') };
     }
     if (biDateRange === "this_month") {
-      return { start: currentMonthRange.start, end: currentMonthRange.end, label: "This Month" };
+      return { start: currentMonthRange.start, end: currentMonthRange.end, label: t('bi.rangeThisMonth') };
     }
     if (biDateRange === "last_month") {
-      return { start: lastMonthRange.start, end: lastMonthRange.end, label: "Last Month" };
+      return { start: lastMonthRange.start, end: lastMonthRange.end, label: t('bi.rangeLastMonth') };
     }
     if (biDateRange === "this_year") {
-      return { start: toDateInputValue(thisYearStart), end: todayDateValue, label: "This Year" };
+      return { start: toDateInputValue(thisYearStart), end: todayDateValue, label: t('bi.rangeThisYear') };
     }
     if (biDateRange === "all_time") {
       return { start: "", end: "", label: t('bi.rangeAllTime') };
     }
     if (biDateRange === "custom") {
-      return { start: biStartDate, end: biEndDate, label: "Custom Range" };
+      return { start: biStartDate, end: biEndDate, label: t('page.rangeCustomRange') };
     }
-    return { start: toDateInputValue(lastThirtyDays), end: todayDateValue, label: "Last 30 Days" };
+    return { start: toDateInputValue(lastThirtyDays), end: todayDateValue, label: t('bi.rangeLast30') };
   };
   const biResolvedDateRange = getBusinessIntelligenceDateRange();
   const isInBiRange = (...dateValues: Array<unknown>) => {
@@ -11296,7 +11296,7 @@ setCustomerOrganizationName("");
     const marketSignalNote =
       marketIntelligenceSummary.highCritical > 0
         ? `${marketIntelligenceSummary.highCritical} high or critical market signal(s) need review.`
-        : "No high-impact market signals in the current loaded data.";
+        : t('page.noHighImpactSignals');
 
     return {
       range: biResolvedDateRange,
@@ -11371,7 +11371,7 @@ setCustomerOrganizationName("");
             ? `${outOfStockProducts.length} product(s) are out of stock.`
             : lowStockProducts.length > 0
               ? `${lowStockProducts.length} product(s) are at or below reorder level.`
-              : "No urgent low-stock warning in this filtered view.",
+              : t('page.noUrgentLowStockFiltered'),
         staffActivityNote:
           "Staff attribution depends on which records contain creator/profile information.",
         marketSignalNote,
@@ -11481,41 +11481,41 @@ setCustomerOrganizationName("");
     const reasons: string[] = [];
     if (overview.totalSalesAmount > 0) {
       score += 10;
-      reasons.push("Sales are recorded in the selected analytics period.");
+      reasons.push(t('page.salesRecordedInPeriod'));
     } else {
       score -= 10;
-      reasons.push("No sales are recorded in the selected analytics period.");
+      reasons.push(t('page.noSalesInPeriod'));
     }
     if (overview.estimatedNetProfit > 0) {
       score += 20;
-      reasons.push("Estimated net profit is positive.");
+      reasons.push(t('page.netProfitPositive'));
     } else if (overview.totalSalesAmount > 0) {
       score -= 15;
-      reasons.push("Estimated net profit is not positive based on recorded cost and expense data.");
+      reasons.push(t('page.netProfitNotPositive'));
     }
     if (overview.outOfStockCount > 0) {
       score -= 20;
       reasons.push(`${overview.outOfStockCount} product(s) are out of stock.`);
     } else if (overview.lowStockCount > 0) {
       score -= 10;
-      reasons.push(`${overview.lowStockCount} product(s) are low stock.`);
+      reasons.push(t('page.lowStockProducts').replace('{count}', String(overview.lowStockCount)));
     } else {
       score += 10;
-      reasons.push("No urgent low-stock issue appears in the current analytics view.");
+      reasons.push(t('page.noUrgentLowStockView'));
     }
     if (overview.customerCollectionsTotal >= overview.totalSalesAmount * 0.5 || overview.totalSalesAmount === 0) {
       score += 10;
-      reasons.push("Collections look reasonable compared with recorded sales.");
+      reasons.push(t('page.collectionsReasonable'));
     } else {
       score -= 10;
-      reasons.push("Collections are low compared with recorded sales.");
+      reasons.push(t('page.collectionsLow'));
     }
     if (overview.expensesTotal > overview.totalSalesAmount && overview.totalSalesAmount > 0) {
       score -= 15;
-      reasons.push("Expenses are higher than recorded sales for the selected period.");
+      reasons.push(t('page.expensesHigher'));
     } else {
       score += 5;
-      reasons.push("Expenses are not higher than sales in this view.");
+      reasons.push(t('page.expensesNotHigher'));
     }
     const boundedScore = Math.max(0, Math.min(100, score));
     const label =
@@ -11667,7 +11667,7 @@ setCustomerOrganizationName("");
     if (slowMoving) priorities.push(`Check slow-moving stock for ${slowMoving.productName}.`);
     const inactiveCustomer = businessIntelligenceAnalytics.inactiveCustomers[0];
     if (inactiveCustomer) priorities.push(`Follow up inactive customer ${inactiveCustomer.customerName}.`);
-    if (priorities.length === 0) priorities.push("Keep recording sales, purchases, payments, expenses, and stock movement to improve analytics quality.");
+    if (priorities.length === 0) priorities.push(t('page.keepRecording'));
     return priorities.slice(0, 5);
   };
   const analyticsTopPriorities = getAnalyticsTopPriorities();
@@ -12841,14 +12841,14 @@ setCustomerOrganizationName("");
       const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
       const value = toDateInputValue(yesterday);
-      return { start: value, end: value, label: "Yesterday", preset };
+      return { start: value, end: value, label: t('bi.rangeYesterday'), preset };
     }
     if (preset === "this-week") {
       const weekStart = new Date(now);
       const day = weekStart.getDay();
       const diff = day === 0 ? -6 : 1 - day;
       weekStart.setDate(weekStart.getDate() + diff);
-      return { start: toDateInputValue(weekStart), end: today, label: "This Week", preset };
+      return { start: toDateInputValue(weekStart), end: today, label: t('page.rangeThisWeek'), preset };
     }
     if (preset === "last-week") {
       const end = new Date(now);
@@ -12857,11 +12857,11 @@ setCustomerOrganizationName("");
       end.setDate(end.getDate() + diff - 1);
       const start = new Date(end);
       start.setDate(start.getDate() - 6);
-      return { start: toDateInputValue(start), end: toDateInputValue(end), label: "Last Week", preset };
+      return { start: toDateInputValue(start), end: toDateInputValue(end), label: t('page.rangeLastWeek'), preset };
     }
     if (preset === "this-month") {
       const range = getMonthRange();
-      return { start: range.start, end: today < range.end ? today : range.end, label: "This Month", preset };
+      return { start: range.start, end: today < range.end ? today : range.end, label: t('bi.rangeThisMonth'), preset };
     }
     if (preset === "last-month") {
       const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -12871,7 +12871,7 @@ setCustomerOrganizationName("");
       return {
         start: toDateInputValue(lastMonthStart),
         end: toDateInputValue(lastMonthEnd),
-        label: "Last Month",
+        label: t('bi.rangeLastMonth'),
         preset,
       };
     }
@@ -12897,7 +12897,7 @@ setCustomerOrganizationName("");
     return {
       start: toDateInputValue(start),
       end: toDateInputValue(end),
-      label: "Last 7 Days",
+      label: t('bi.rangeLast7'),
       preset: "last-7-days",
     };
   };
@@ -13401,15 +13401,15 @@ setCustomerOrganizationName("");
         candidates.push({
           alert_type: "inventory",
           title: `${recommendation.status}: ${recommendation.productName}`,
-          summary: `${recommendation.productName} stock is ${recommendation.currentStock} ${recommendation.unitType}. Reorder level is ${recommendation.reorderLevel}.`,
+          summary: t('page.productStockSummary').replace('{product}', recommendation.productName).replace('{stock}', String(recommendation.currentStock)).replace('{unit}', recommendation.unitType).replace('{reorder}', String(recommendation.reorderLevel)),
           severity: recommendation.status === "Out of Stock" ? "critical" : "high",
           source_type: "inventory",
           source_entity_type: "product",
           source_entity_id: String(recommendation.productId),
           recommended_action:
             recommendation.status === "Out of Stock"
-              ? "Create purchase plan immediately or pause sales for this product."
-              : "Review stock and prepare reorder before shortage affects sales.",
+              ? t('page.createPurchasePlan')
+              : t('page.reviewStockReorder'),
         });
       });
 
@@ -13423,12 +13423,12 @@ setCustomerOrganizationName("");
         candidates.push({
           alert_type: "task",
           title: `Overdue task: ${task.title}`,
-          summary: `Task was due on ${formatDate(task.due_date)} and is still ${task.status}.`,
+          summary: t('page.taskDueStill').replace('{date}', formatDate(task.due_date)).replace('{status}', task.status),
           severity: task.priority === "urgent" ? "high" : "medium",
           source_type: "task",
           source_entity_type: "task",
           source_entity_id: task.id,
-          recommended_action: "Review the task owner and complete or reschedule it today.",
+          recommended_action: t('page.reviewTaskOwner'),
         });
       });
 
@@ -13452,7 +13452,7 @@ setCustomerOrganizationName("");
           source_type: "market_intelligence",
           source_entity_type: "market_intelligence_item",
           source_entity_id: item.id,
-          recommended_action: item.suggested_action || "Review pricing, buying, and inventory exposure.",
+          recommended_action: item.suggested_action || t('page.reviewPricingExposure'),
         });
       });
 
@@ -13465,12 +13465,12 @@ setCustomerOrganizationName("");
         candidates.push({
           alert_type: "payment",
           title: `Overdue receivable: ${customer.customer_name}`,
-          summary: `${formatBooksMoney(summary.overdueAmount)} overdue across ${summary.overdueInvoiceCount} invoice(s).`,
+          summary: t('page.overdueSummary').replace('{amount}', formatBooksMoney(summary.overdueAmount)).replace('{count}', String(summary.overdueInvoiceCount)),
           severity: summary.overdueAmount >= 50000 ? "high" : "medium",
           source_type: "customer_credit",
           source_entity_type: "customer",
           source_entity_id: customer.id,
-          recommended_action: "Contact customer and plan collection before allowing more credit.",
+          recommended_action: t('page.contactCollection'),
         });
       });
 
@@ -13493,12 +13493,12 @@ setCustomerOrganizationName("");
         candidates.push({
           alert_type: "payment",
           title: `Supplier payable pressure: ${supplier.supplier_name}`,
-          summary: `Current payable is ${formatBooksMoney(payable)}.`,
+          summary: t('page.currentPayableMsg').replace('{amount}', formatBooksMoney(payable)),
           severity: payable >= 250000 ? "high" : "medium",
           source_type: "supplier_ledger",
           source_entity_type: "supplier",
           source_entity_id: supplier.id,
-          recommended_action: "Review supplier payment plan and cashflow before new purchases.",
+          recommended_action: t('page.reviewSupplierCashflow'),
         });
       });
 
@@ -13507,26 +13507,26 @@ setCustomerOrganizationName("");
     if (todayExpenses.length > 0 && todayExpenseTotal >= 25000) {
       candidates.push({
         alert_type: "expense",
-        title: "High expenses recorded today",
-        summary: `${todayExpenses.length} expense entries total ${formatBooksMoney(todayExpenseTotal)} today.`,
+        title: t('page.highExpensesToday'),
+        summary: t('page.todayExpensesSummary').replace('{count}', String(todayExpenses.length)).replace('{total}', formatBooksMoney(todayExpenseTotal)),
         severity: todayExpenseTotal >= 75000 ? "high" : "medium",
         source_type: "expenses",
         source_entity_type: "expense_day",
         source_entity_id: todayDateValue,
-        recommended_action: "Review expense categories and confirm large costs are expected.",
+        recommended_action: t('page.reviewExpenseCategories'),
       });
     }
 
     if (staffProfiles.length > 0 && dutySessions.length > 0 && ownerOnDutyCount === 0) {
       candidates.push({
         alert_type: "staff",
-        title: "No staff currently on duty",
-        summary: "Staff duty tracking exists, but no active on-duty session is currently visible.",
+        title: t('page.noStaffOnDuty'),
+        summary: t('page.staffDutyNoSession'),
         severity: "medium",
         source_type: "staff_duty",
         source_entity_type: "staff_duty",
         source_entity_id: todayDateValue,
-        recommended_action: "Confirm whether staff should start duty tracking today.",
+        recommended_action: t('page.confirmDutyTracking'),
       });
     }
 
@@ -13554,7 +13554,7 @@ setCustomerOrganizationName("");
     );
 
     if (newCandidates.length === 0) {
-      const message = "No new alerts were created. Existing active alerts already cover current signals.";
+      const message = t('page.noNewAlerts');
       setAiBriefingMessage(message);
       return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
     }
@@ -13711,8 +13711,8 @@ setCustomerOrganizationName("");
       ].slice(0, 15);
       const recommendedActions = [
         ...activeAiAlerts.map((alert) => alert.recommended_action).filter(Boolean).slice(0, 10),
-        reorderRecommendationSummary.outOfStockCount > 0 ? "Prioritize out-of-stock product purchasing." : "",
-        marketIntelligenceSummary.priceUp > 0 ? "Review selling prices for categories affected by price-up signals." : "",
+        reorderRecommendationSummary.outOfStockCount > 0 ? t('page.prioritizeOutOfStock') : "",
+        marketIntelligenceSummary.priceUp > 0 ? t('page.reviewSellingPrices') : "",
       ].filter(Boolean);
       const now = new Date().toISOString();
       const payload = {
@@ -13781,7 +13781,7 @@ setCustomerOrganizationName("");
     }
     const visibleAlerts = aiAlerts.filter((alert) => alert.status === "active").slice(0, 8);
     if (visibleAlerts.length === 0) {
-      return "No active AI alerts found from currently loaded TradeOS data.";
+      return t('page.noActiveAlerts');
     }
     return [
       `You have ${visibleAlerts.length} active alert${visibleAlerts.length === 1 ? "" : "s"}.`,
@@ -14306,7 +14306,7 @@ setCustomerOrganizationName("");
       aiActionDrafts.find((item) => item.id === aiVoiceActiveActionDraftId) ??
       null;
     if (!draft) {
-      const reply = "No linked action draft is ready to execute.";
+      const reply = t('page.noLinkedDraftReady');
       setAiVoiceActionConversationError(reply);
       setAiVoiceLastResponse(reply);
       if (aiVoiceAutoSpeak) speakAiVoiceOperatorReply(reply);
@@ -15514,7 +15514,7 @@ setCustomerOrganizationName("");
       entity_type: "market_import_queue",
       entity_id: data?.id ?? null,
       entity_label: payload.raw_title ?? payload.source_name ?? "Market import queue item",
-      description: "Created market import queue item",
+      description: t('page.createdMarketImportDesc'),
       new_values: payload,
     });
     resetMarketImportQueueForm();
@@ -15660,7 +15660,7 @@ setCustomerOrganizationName("");
     }
     resetMarketIntelligenceForm();
     await fetchMarketIntelligenceItems(currentOrganizationId);
-    setMarketIntelligenceMessage(conversionWarning ?? "Market intelligence item added.");
+    setMarketIntelligenceMessage(conversionWarning ?? t('page.marketItemAdded'));
   };
 
   const createMarketNewsSource = async (event: FormEvent<HTMLFormElement>) => {
@@ -15974,7 +15974,7 @@ setCustomerOrganizationName("");
         entity_type: "market_ai_analysis",
         entity_id: data?.id ?? null,
         entity_label: payload.input_title ?? "Market AI analysis",
-        description: "Created market AI analysis",
+        description: t('page.createdMarketAiDesc'),
         new_values: payload,
       });
       await fetchMarketAiAnalyses(currentOrganizationId);
