@@ -406,6 +406,19 @@ export default function Home() {
     Overdue: t('page.payStatusOverdue'),
     "Payment Pending": t('page.payStatusPending'),
   };
+  const expenseTypeLabelMap: Record<string, string> = {
+    "Purchase Transport": t('page.expPurchaseTransport'),
+    "Sales Delivery": t('page.expSalesDelivery'),
+    Fuel: t('page.expFuel'),
+    "Vehicle Rent": t('page.expVehicleRent'),
+    "Loading/Unloading": t('page.expLoading'),
+    Salary: t('page.expSalary'),
+    Electricity: t('page.expElectricity'),
+    "Shop/Warehouse Rent": t('page.expShopRent'),
+    "Food/Travel": t('page.expFoodTravel'),
+    Maintenance: t('page.expMaintenance'),
+    Other: t('page.expOther'),
+  };
   const marketCategoryOptionsT = marketCategoryOptions.map((option) => ({ ...option, label: marketCategoryLabelByValue[option.value] ?? option.label }));
   const marketImpactDirectionOptionsT = marketImpactDirectionOptions.map((option) => ({ ...option, label: marketImpactLabelByValue[option.value] ?? option.label }));
   const marketImpactLevelOptionsT = marketImpactLevelOptions.map((option) => ({ ...option, label: marketLevelLabelByValue[option.value] ?? option.label }));
@@ -6489,24 +6502,24 @@ setCustomerOrganizationName("");
     const threats = normalizeMarketArray(advisory?.threat_detection);
     if (threats.length > 0) return threats;
     const inferred: string[] = [];
-    if (item.impact_direction === "price_up") inferred.push("Price increase");
-    if (item.impact_direction === "price_down") inferred.push("Price decrease");
-    if (item.impact_direction === "supply_shortage") inferred.push("Shortage");
-    if (item.impact_direction === "demand_up") inferred.push("Demand increase");
-    if (item.impact_direction === "demand_down") inferred.push("Demand decrease");
-    if (item.market_category === "currency_imports") inferred.push("Currency movement");
-    if (item.market_category === "taxes_policy") inferred.push("Tax change", "Government regulation");
-    if (item.market_category === "fuel_transport") inferred.push("Fuel impact", "Transport disruption");
-    if (item.market_category === "weather_agriculture") inferred.push("Weather impact");
+    if (item.impact_direction === "price_up") inferred.push(t('page.inferPriceIncrease'));
+    if (item.impact_direction === "price_down") inferred.push(t('page.inferPriceDecrease'));
+    if (item.impact_direction === "supply_shortage") inferred.push(t('page.inferShortage'));
+    if (item.impact_direction === "demand_up") inferred.push(t('page.inferDemandIncrease'));
+    if (item.impact_direction === "demand_down") inferred.push(t('page.inferDemandDecrease'));
+    if (item.market_category === "currency_imports") inferred.push(t('page.inferCurrencyMovement'));
+    if (item.market_category === "taxes_policy") inferred.push(t('page.inferTaxChange'), t('page.inferGovRegulation'));
+    if (item.market_category === "fuel_transport") inferred.push(t('page.inferFuelImpact'), t('page.inferTransportDisruption'));
+    if (item.market_category === "weather_agriculture") inferred.push(t('page.inferWeatherImpact'));
     return inferred;
   };
   const inferOpportunities = (item: MarketIntelligenceItem, advisory: any) => {
     const opportunities = normalizeMarketArray(advisory?.opportunity_detection);
     if (opportunities.length > 0) return opportunities;
     const inferred: string[] = [];
-    if (item.impact_direction === "demand_up") inferred.push("High demand");
-    if (item.impact_direction === "price_down" || item.impact_direction === "supply_improvement") inferred.push("Cheaper inventory", "Supplier opportunity");
-    if (item.impact_direction === "price_up") inferred.push("Margin improvement");
+    if (item.impact_direction === "demand_up") inferred.push(t('page.inferHighDemand'));
+    if (item.impact_direction === "price_down" || item.impact_direction === "supply_improvement") inferred.push(t('page.inferCheaperInventory'), t('page.inferSupplierOpportunity'));
+    if (item.impact_direction === "price_up") inferred.push(t('page.inferMarginImprovement'));
     return inferred;
   };
   const getMarketUrgency = (item: MarketIntelligenceItem, riskScore: number, opportunityScore: number, advisory: any) => {
@@ -8582,7 +8595,7 @@ setCustomerOrganizationName("");
         mainQuantity > available
       ) {
         stockErrors.push(
-          `${product.name}: cannot return ${quantity} ${unitLabelFor(product, line.unit_mode ?? "main")} — only ${available} ${unitLabelFor(product, "main")} in stock.`
+          t('page.cannotReturn').replace('{product}', product.name).replace('{qty}', String(quantity)).replace('{unit}', unitLabelFor(product, line.unit_mode ?? "main")).replace('{available}', String(available)).replace('{mainUnit}', unitLabelFor(product, "main"))
         );
       }
     }
@@ -21437,7 +21450,7 @@ setCustomerOrganizationName("");
                 >
                   <option value="">{t('expenses.selectType')}</option>
                   {expenseTypes.map((type) => (
-                    <option key={type} value={type}>{type}</option>
+                    <option key={type} value={type}>{expenseTypeLabelMap[type] ?? type}</option>
                   ))}
                 </select>
               </label>
@@ -21980,7 +21993,7 @@ setCustomerOrganizationName("");
               />
               {Number(productSellingPrice) > 0 && Number(unitsPerPack) > 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Piece price will be {formatBooksMoney(subunitPriceFromMain(Number(productSellingPrice), Number(unitsPerPack)))} ({productSellingPrice} ÷ {unitsPerPack} per pack)
+                  {t('page.piecePriceHint').replace('{price}', formatBooksMoney(subunitPriceFromMain(Number(productSellingPrice), Number(unitsPerPack)))).replace('{selling}', String(productSellingPrice)).replace('{pack}', String(unitsPerPack))}
                 </p>
               )}
             </div>
@@ -24946,7 +24959,7 @@ setCustomerOrganizationName("");
                 <div>
                   <h4 className="text-base font-medium text-foreground">{t('page.jsxQueuedImports')}</h4>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Showing {filteredMarketImportQueueItems.length} of {marketImportQueueItems.length} queued imports.
+                    {t('page.showingQueued').replace('{shown}', String(filteredMarketImportQueueItems.length)).replace('{total}', String(marketImportQueueItems.length))}
                   </p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[420px]">
@@ -24993,7 +25006,7 @@ setCustomerOrganizationName("");
                           </div>
                           <h5 className="mt-2 text-sm font-semibold text-foreground">{item.raw_title || t('page.untitledImport')}</h5>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            Source: {item.source_name || t('page.manualNote')} · Created: {formatDateTime(item.created_at)}
+                            {t('page.lblSource')} {item.source_name || t('page.manualNote')} · Created: {formatDateTime(item.created_at)}
                           </div>
                           {item.source_url && <div className="mt-1 break-all text-xs text-primary">{item.source_url}</div>}
                           {item.raw_summary && <p className="mt-2 text-sm text-foreground/80">{item.raw_summary}</p>}
@@ -25005,17 +25018,17 @@ setCustomerOrganizationName("");
                           <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
                             <div>{t('page.impactLabel')} {getMarketLabel(marketImpactLevelOptionsT, item.suggested_impact_level)}</div>
                             <div>{t('page.confidenceLabel')} {getMarketLabel(marketConfidenceOptionsT, item.suggested_confidence_level)}</div>
-                            <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, item.suggested_affected_area)}</div>
-                            <div>Converted item: {item.converted_intelligence_item_id ?? "-"}</div>
-                            <div>Reviewed: {formatDateTime(item.reviewed_at)}</div>
-                            <div>Updated: {formatDateTime(item.updated_at)}</div>
+                            <div>{t('page.lblAffectedArea')} {getMarketLabel(marketAffectedAreaOptions, item.suggested_affected_area)}</div>
+                            <div>{t('page.lblConvertedItem')} {item.converted_intelligence_item_id ?? "-"}</div>
+                            <div>{t('page.lblReviewed')} {formatDateTime(item.reviewed_at)}</div>
+                            <div>{t('page.lblUpdated')} {formatDateTime(item.updated_at)}</div>
                           </div>
                           {item.suggested_action && (
                             <div className="mt-2 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success/80">
-                              Suggested action: {item.suggested_action}
+                              {t('page.lblSuggestedAction')} {item.suggested_action}
                             </div>
                           )}
-                          {item.notes && <div className="mt-2 text-xs text-muted-foreground">Notes: {item.notes}</div>}
+                          {item.notes && <div className="mt-2 text-xs text-muted-foreground">{t('buy.notesPrefix')} {item.notes}</div>}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <button
@@ -25117,30 +25130,30 @@ setCustomerOrganizationName("");
                           {analysis.input_title || analysis.ai_summary || t('page.aiMarketAnalysisFallback')}
                         </h4>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          Source: {analysis.input_source_name || t('page.manualNote')} - Created: {formatDateTime(analysis.created_at)}
+                          {t('page.lblSource')} {analysis.input_source_name || t('page.manualNote')} - Created: {formatDateTime(analysis.created_at)}
                         </div>
                         {analysis.input_source_url && <div className="mt-1 break-all text-xs text-primary">{analysis.input_source_url}</div>}
                         {analysis.ai_summary && <p className="mt-2 text-sm text-foreground">{analysis.ai_summary}</p>}
                         {analysis.ai_reasoning && (
                           <div className="mt-2 rounded border border-primary/10 bg-card px-3 py-2 text-sm text-foreground/80">
-                            Reasoning: {analysis.ai_reasoning}
+                            {t('page.reasoningLabel')} {analysis.ai_reasoning}
                           </div>
                         )}
                         <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
                           <div>{t('page.confidenceLabel')} {getMarketLabel(marketConfidenceOptionsT, analysis.ai_confidence_level)}</div>
-                          <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, analysis.ai_affected_area)}</div>
-                          <div>Reviewed: {formatDateTime(analysis.reviewed_at)}</div>
-                          <div>Import queue: {analysis.market_import_queue_id ?? "-"}</div>
-                          <div>Market item: {analysis.market_intelligence_item_id ?? "-"}</div>
-                          <div>Converted item: {analysis.converted_intelligence_item_id ?? "-"}</div>
+                          <div>{t('page.lblAffectedArea')} {getMarketLabel(marketAffectedAreaOptions, analysis.ai_affected_area)}</div>
+                          <div>{t('page.lblReviewed')} {formatDateTime(analysis.reviewed_at)}</div>
+                          <div>{t('page.lblImportQueue')} {analysis.market_import_queue_id ?? "-"}</div>
+                          <div>{t('page.lblMarketItem')} {analysis.market_intelligence_item_id ?? "-"}</div>
+                          <div>{t('page.lblConvertedItem')} {analysis.converted_intelligence_item_id ?? "-"}</div>
                         </div>
                         {analysis.ai_suggested_action && (
                           <div className="mt-2 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success/80">
-                            Suggested action: {analysis.ai_suggested_action}
+                            {t('page.lblSuggestedAction')} {analysis.ai_suggested_action}
                           </div>
                         )}
-                        {analysis.ai_risks && <div className="mt-2 text-xs text-destructive">Risks: {analysis.ai_risks}</div>}
-                        {analysis.ai_owner_questions && <div className="mt-1 text-xs text-foreground/80">Owner questions: {analysis.ai_owner_questions}</div>}
+                        {analysis.ai_risks && <div className="mt-2 text-xs text-destructive">{t('page.risksLabel')} {analysis.ai_risks}</div>}
+                        {analysis.ai_owner_questions && <div className="mt-1 text-xs text-foreground/80">{t('page.ownerQuestionsLabel')} {analysis.ai_owner_questions}</div>}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -25354,7 +25367,7 @@ setCustomerOrganizationName("");
               <div>
                 <h3 className="text-lg font-medium text-foreground">{t('page.jsxIntelligenceFeed')}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Showing {filteredMarketAdvisoryItems.length} of {marketAdvisoryItems.length} advisory items.
+                  {t('page.showingAdvisory').replace('{shown}', String(filteredMarketAdvisoryItems.length)).replace('{total}', String(marketAdvisoryItems.length))}
                 </p>
               </div>
             </div>
@@ -25383,7 +25396,7 @@ setCustomerOrganizationName("");
                               {t('page.riskLabel')} {advisory.riskScore}
                             </span>
                             <span className="rounded bg-success/10 px-2 py-1 text-xs font-medium text-success">
-                              Opportunity {advisory.opportunityScore}
+                              {t('page.lblOpportunity')} {advisory.opportunityScore}
                             </span>
                             <span className="rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
                               {advisory.businessHealthImpact}
@@ -25486,8 +25499,8 @@ setCustomerOrganizationName("");
                             Future versions will combine Business Intelligence, Inventory, Sales, Purchases, Customer demand, and Supplier history to generate personalized recommendations.
                           </div>
                           <div className="mt-3 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
-                            <div>Source: {item.source_name || t('page.manualNote')}</div>
-                            <div>Related product: {relatedProduct?.name ?? item.related_product_category ?? "-"}</div>
+                            <div>{t('page.lblSource')} {item.source_name || t('page.manualNote')}</div>
+                            <div>{t('page.lblRelatedProduct')} {relatedProduct?.name ?? item.related_product_category ?? "-"}</div>
                             <div>{t('page.newsDateLabel')} {formatDate(item.news_date)}</div>
                             <div>{t('page.createdLabel')} {formatDateTime(item.created_at)}</div>
                             <div>{t('page.statusLabel')} {getMarketLabel(marketIntelligenceStatusOptionsT, item.status)}</div>
@@ -25597,7 +25610,7 @@ setCustomerOrganizationName("");
               </p>
               {activeDutySession?.scheduled_end_at && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Automatic cutoff: {formatDateTime(activeDutySession.scheduled_end_at)}
+                  {t('page.lblAutoCutoff')} {formatDateTime(activeDutySession.scheduled_end_at)}
                 </p>
               )}
               <div className="mt-4 flex flex-wrap gap-2">
@@ -25623,9 +25636,9 @@ setCustomerOrganizationName("");
                 {latestOwnLocation ? formatDateTime(latestOwnLocation.captured_at) : t('page.noLocationYet')}
               </div>
               <div className="mt-3 space-y-1 text-sm text-foreground/80">
-                <div>Latitude: {latestOwnLocation ? formatCoordinate(latestOwnLocation.latitude) : "-"}</div>
-                <div>Longitude: {latestOwnLocation ? formatCoordinate(latestOwnLocation.longitude) : "-"}</div>
-                <div>Accuracy: {latestOwnLocation?.accuracy ? `${Math.round(latestOwnLocation.accuracy)} m` : "-"}</div>
+                <div>{t('page.lblLatitude')} {latestOwnLocation ? formatCoordinate(latestOwnLocation.latitude) : "-"}</div>
+                <div>{t('page.lblLongitude')} {latestOwnLocation ? formatCoordinate(latestOwnLocation.longitude) : "-"}</div>
+                <div>{t('page.lblAccuracy')} {latestOwnLocation?.accuracy ? `${Math.round(latestOwnLocation.accuracy)} m` : "-"}</div>
               </div>
             </div>
 
@@ -25737,7 +25750,7 @@ setCustomerOrganizationName("");
 
               <div className="mt-6 rounded border border-border bg-muted/30 p-4">
                 <h4 className="text-base font-medium text-foreground">
-                  Recent Location History{selectedLocationProfile ? `: ${selectedLocationProfile.display_name || selectedLocationProfile.email || selectedLocationProfile.id}` : ""}
+                  {t('page.lblRecentHistory')}{selectedLocationProfile ? `: ${selectedLocationProfile.display_name || selectedLocationProfile.email || selectedLocationProfile.id}` : ""}
                 </h4>
                 <div className="mt-3 overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -26186,7 +26199,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                           </span>
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground/80">
-                          Checked at: {check.checked_at ? formatDate(check.checked_at) : "Not checked yet"}
+                          {t('page.lblCheckedAt')} {check.checked_at ? formatDate(check.checked_at) : t('page.notCheckedYet')}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
