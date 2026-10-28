@@ -16087,9 +16087,9 @@ setCustomerOrganizationName("");
     setSelectedMarketImportQueueId("");
     const summaryParts = [
       analysis.ai_summary,
-      analysis.ai_reasoning ? {t('page.reasoningLabel')} ${analysis.ai_reasoning} : "",
-      analysis.ai_risks ? {t('page.risksLabel')} ${analysis.ai_risks} : "",
-      analysis.ai_owner_questions ? {t('page.ownerQuestionsLabel')} ${analysis.ai_owner_questions} : "",
+      analysis.ai_reasoning ? `${t('page.reasoningLabel')} ${analysis.ai_reasoning}` : "",
+      analysis.ai_risks ? `${t('page.risksLabel')} ${analysis.ai_risks}` : "",
+      analysis.ai_owner_questions ? `${t('page.ownerQuestionsLabel')} ${analysis.ai_owner_questions}` : "",
     ].filter(Boolean);
     setMarketTitle(analysis.input_title ?? analysis.ai_summary ?? t('page.aiMarketAnalysisFallback'));
     setMarketSummary(summaryParts.join("\n\n"));
