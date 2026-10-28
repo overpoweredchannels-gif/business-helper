@@ -1687,7 +1687,7 @@ export default function Home() {
 
     if (error) {
       console.error("Supabase fetch organization error:", JSON.stringify(error, null, 2));
-      setBusinessSettingsError(`Failed to load business settings: ${JSON.stringify(error, null, 2)}`);
+      setBusinessSettingsError(t('page.bizSettingsLoadFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -2979,7 +2979,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase AI action draft insert error:", JSON.stringify(error, null, 2));
-      setAiAssistantError(`Failed to create AI action draft: ${JSON.stringify(error, null, 2)}`);
+      setAiAssistantError(t('page.aiDraftCreateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -3023,7 +3023,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase AI action draft update error:", JSON.stringify(error, null, 2));
-      setAiAssistantError(`Failed to update draft: ${JSON.stringify(error, null, 2)}`);
+      setAiAssistantError(t('page.draftUpdateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -3094,7 +3094,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase AI draft answers update error:", JSON.stringify(error, null, 2));
-      setAiAssistantError(`Failed to save answers: ${JSON.stringify(error, null, 2)}`);
+      setAiAssistantError(t('page.answersSaveFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -3285,7 +3285,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase AI conversation draft update error:", JSON.stringify(error, null, 2));
-      setAiConversationError(`Failed to update draft from answer: ${JSON.stringify(error, null, 2)}`);
+      setAiConversationError(t('page.draftAnswerUpdateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -3351,7 +3351,7 @@ setCustomerOrganizationName("");
     const evaluation = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
     const missingFields = evaluation.missingFields;
     if (missingFields.length > 0) {
-      setAiAssistantError(`This draft needs more information first: ${missingFields.join(", ")}.`);
+      setAiAssistantError(t('page.draftNeedsInfo').replace('{fields}', missingFields.join(", ")));
       return;
     }
 
@@ -3440,7 +3440,7 @@ setCustomerOrganizationName("");
 
       if (draftError) {
         console.error("Supabase AI expense draft update error:", JSON.stringify(draftError, null, 2));
-        setAiAssistantError(`Expense was created, but draft status could not be updated: ${JSON.stringify(draftError, null, 2)}`);
+        setAiAssistantError(t('page.expenseCreatedDraftFailed').replace('{error}', JSON.stringify(draftError, null, 2)));
         await fetchExpenses(currentOrganizationId);
         if (linkedPurchaseId) await fetchPurchaseTransactions(currentOrganizationId);
         return;
@@ -3508,7 +3508,7 @@ setCustomerOrganizationName("");
 
       if (draftError) {
         console.error("Supabase AI action draft execution update error:", JSON.stringify(draftError, null, 2));
-        setAiAssistantError(`Task was created, but draft status could not be updated: ${JSON.stringify(draftError, null, 2)}`);
+        setAiAssistantError(t('page.taskCreatedDraftFailed').replace('{error}', JSON.stringify(draftError, null, 2)));
         await fetchTasks(currentOrganizationId);
         return;
       }
@@ -3567,7 +3567,7 @@ setCustomerOrganizationName("");
 
       if (draftError) {
         console.error("Supabase AI purchase draft update error:", JSON.stringify(draftError, null, 2));
-        setAiAssistantError(`Purchase was created, but draft status could not be updated: ${JSON.stringify(draftError, null, 2)}`);
+        setAiAssistantError(t('page.purchaseCreatedDraftFailed').replace('{error}', JSON.stringify(draftError, null, 2)));
         return;
       }
 
@@ -3579,7 +3579,7 @@ setCustomerOrganizationName("");
         description: `Executed AI purchase draft into invoice ${invoiceNumber}`,
         new_values: { purchase_transaction_id: purchaseTransactionId, invoice_number: invoiceNumber },
       });
-      setAiAssistantMessage(`AI purchase draft executed into purchase invoice ${invoiceNumber}.`);
+      setAiAssistantMessage(t('page.aiPurchaseDraftExecuted').replace('{number}', invoiceNumber));
       await fetchPurchaseTransactions(currentOrganizationId);
       await fetchPurchaseItems();
       await fetchProducts(currentOrganizationId);
@@ -3669,7 +3669,7 @@ setCustomerOrganizationName("");
 
       if (draftError) {
         console.error("Supabase AI sale draft update error:", JSON.stringify(draftError, null, 2));
-        setAiAssistantError(`Sale was created, but draft status could not be updated: ${JSON.stringify(draftError, null, 2)}`);
+        setAiAssistantError(t('page.saleCreatedDraftFailed').replace('{error}', JSON.stringify(draftError, null, 2)));
         return;
       }
 
@@ -3681,7 +3681,7 @@ setCustomerOrganizationName("");
         description: `Executed AI sale draft into invoice ${invoiceNumber}`,
         new_values: { sales_transaction_id: salesTransactionId, invoice_number: invoiceNumber },
       });
-      setAiAssistantMessage(`AI sale draft executed into sales invoice ${invoiceNumber}.`);
+      setAiAssistantMessage(t('page.aiSaleDraftExecuted').replace('{number}', invoiceNumber));
       await fetchSalesTransactions(currentOrganizationId);
       await fetchSalesItems();
       await fetchProducts(currentOrganizationId);
@@ -3741,7 +3741,7 @@ setCustomerOrganizationName("");
     };
     recognition.onerror = (event) => {
       const errorCode = event.error ?? "unknown";
-      setVoiceInputError(`Voice input error: ${errorCode}. Please check microphone permission and try again.`);
+      setVoiceInputError(t('page.voiceInputErr').replace('{code}', errorCode));
       setVoiceInputMessage(null);
       setIsVoiceListening(false);
     };
@@ -3818,7 +3818,7 @@ setCustomerOrganizationName("");
     };
     recognition.onerror = (event) => {
       const errorCode = event.error ?? "unknown";
-      setVoiceAnswerError(`Voice answer error: ${errorCode}. Please check microphone permission and try again.`);
+      setVoiceAnswerError(t('page.voiceAnswerErr').replace('{code}', errorCode));
       setVoiceAnswerMessage(null);
       setIsVoiceAnswerListening(false);
     };
@@ -3917,7 +3917,7 @@ setCustomerOrganizationName("");
         return;
       }
       console.error("TradeOS location upload error:", JSON.stringify(result, null, 2));
-      setLocationTrackingError(`Could not save latest location: ${result.error ?? "Unknown error"}`);
+      setLocationTrackingError(t('page.locationSaveFailed').replace('{error}', result.error ?? t('page.unknownError')));
       return;
     }
 
@@ -3926,7 +3926,7 @@ setCustomerOrganizationName("");
       longitude: snapshot.longitude,
       capturedAt: capturedAtTime,
     };
-    setLocationTrackingMessage(`Location updated at ${formatDateTime(snapshot.captured_at)}.`);
+    setLocationTrackingMessage(t('page.locationUpdatedAt').replace('{time}', formatDateTime(snapshot.captured_at)));
     await fetchLocationPoints(currentOrganizationId);
   };
 
@@ -4147,7 +4147,7 @@ setCustomerOrganizationName("");
           }
           setSalesError(null);
           setCreditWarning(null);
-          setSalesMessage(`Earlier sale ${invoiceNumber} was confirmed. Your current basket is unchanged; review it before saving another sale.`);
+          setSalesMessage(t('page.earlierSaleConfirmed').replace('{number}', invoiceNumber));
           fetchSalesTransactions();
           fetchSalesItems();
           fetchProducts();
@@ -4197,7 +4197,7 @@ setCustomerOrganizationName("");
       }
       const cashSummary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal ?? 0, received: posCashReceived, currency: getActiveBooksCurrency() });
       if (cashSummary.status === "cash-short") {
-        setSalesError(`Cash is short by ${formatBooksMoney(cashSummary.shortfall)}.`);
+        setSalesError(t('page.cashShort').replace('{amount}', formatBooksMoney(cashSummary.shortfall)));
         setSalesMessage(null);
         return;
       }
@@ -4210,19 +4210,19 @@ setCustomerOrganizationName("");
       if (!product || product.is_active === false) { setSalesError(t('page.productUnavailable')); return; }
       const price = Number(line.selling_price);
       const bonus = Number(line.bonus || 0);
-      if (line.selling_price.trim() === "" || !Number.isFinite(price) || price < 0 || !hasAllowedPrecision(line.selling_price, SALE_MONEY_DECIMAL_PLACES) || !Number.isFinite(bonus) || bonus < 0 || !hasAllowedPrecision(line.bonus || "0", SALE_QUANTITY_DECIMAL_PLACES)) { setSalesError(`Enter a price with up to two decimal places and a bonus with up to three decimal places for ${product.name}.`); return; }
+      if (line.selling_price.trim() === "" || !Number.isFinite(price) || price < 0 || !hasAllowedPrecision(line.selling_price, SALE_MONEY_DECIMAL_PLACES) || !Number.isFinite(bonus) || bonus < 0 || !hasAllowedPrecision(line.bonus || "0", SALE_QUANTITY_DECIMAL_PLACES)) { setSalesError(t('page.priceBonusDecimals').replace('{product}', product.name)); return; }
       const quantity = Number(line.quantity);
       if (!hasAllowedPrecision(line.quantity, SALE_QUANTITY_DECIMAL_PLACES)) {
-        setSalesError(`Quantity for ${product.name} supports up to three decimal places. Adjust the entered value before saving.`);
+        setSalesError(t('page.qtyThreeDecimals').replace('{product}', product.name));
         setSalesMessage(null);
         return;
       }
       if (!Number.isFinite(quantity) || quantity <= 0) {
-        setSalesError(`Invalid quantity for ${product.name}.`);
+        setSalesError(t('page.invalidQtyProduct').replace('{product}', product.name));
         setSalesMessage(null);
         return;
       }
-      if (line.unit_mode === "subunit" && !(Number(product.units_per_pack) > 0)) { setSalesError(`Configure units per pack for ${product.name} before selling sub-units.`); return; }
+      if (line.unit_mode === "subunit" && !(Number(product.units_per_pack) > 0)) { setSalesError(t('page.configureUnitsPerPack').replace('{product}', product.name)); return; }
       const requestedMain = (requestedByProduct.get(product.id) ?? 0) + quantityToMainUnits(quantity + bonus, line.unit_mode ?? "main", product.units_per_pack);
       requestedByProduct.set(product.id, requestedMain);
       const violation = getOversellingViolationMessage(product, requestedMain, "main");
@@ -4417,7 +4417,7 @@ setCustomerOrganizationName("");
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "Failed to create draft sale");
-        setSalesMessage(`Sales order ${data.draft?.so_number ?? ""} created and sent for approval.`);
+        setSalesMessage(t('page.soCreatedApproval').replace('{number}', data.draft?.so_number ?? ""));
         if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
         setSaleScanFocus(value => value + 1);
         setSalesInvoiceNumber("");
@@ -4493,7 +4493,7 @@ setCustomerOrganizationName("");
         fallbackPayment: salesPaymentType,
       }));
       if (previousPendingConfirmed) {
-        setSalesMessage(`Earlier sale ${invoiceNumber} was confirmed. Your current basket is unchanged; review it before saving another sale.`);
+        setSalesMessage(t('page.earlierSaleConfirmed').replace('{number}', invoiceNumber));
         fetchSalesTransactions();
         fetchSalesItems();
         fetchProducts();
@@ -4523,10 +4523,10 @@ setCustomerOrganizationName("");
       const cashChangeMessage = quickSaleMode && isOwnerOrAdmin() && salesPaymentType === "cash"
         ? (() => {
           const summary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal ?? 0, received: posCashReceived, currency: getActiveBooksCurrency() });
-          return summary.change > 0 ? ` Change due: ${formatBooksMoney(summary.change)} — please give to the customer.` : "";
+          return summary.change > 0 ? t('page.changeDue').replace('{amount}', formatBooksMoney(summary.change)) : "";
         })()
         : "";
-      setSalesMessage(`Sales invoice ${invoiceNumber} saved successfully${result.replayed ? " (confirmed retry)" : ""}.${cashChangeMessage}`);
+      setSalesMessage(t('page.salesInvoiceSaved').replace('{number}', invoiceNumber).replace('{retry}', result.replayed ? t('page.confirmedRetry') : "").replace('{change}', cashChangeMessage));
       if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
       setSaleScanFocus(value => value + 1);
       setSalesInvoiceNumber("");
@@ -4893,7 +4893,7 @@ setCustomerOrganizationName("");
     }).select("id").single();
 
     if (error) {
-      setExpenseMessage(`Error saving expense: ${JSON.stringify(error, null, 2)}`);
+      setExpenseMessage(t('page.expenseSaveErr').replace('{error}', JSON.stringify(error, null, 2)));
       setExpenseLoading(false);
       return;
     }
@@ -5005,7 +5005,7 @@ setCustomerOrganizationName("");
       .eq("organization_id", currentOrganizationId);
 
     if (error) {
-      setPurchaseExpenseStatusMessage(`Failed to update expense review: ${JSON.stringify(error, null, 2)}`);
+      setPurchaseExpenseStatusMessage(t('page.expenseReviewFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -5353,7 +5353,7 @@ setCustomerOrganizationName("");
       },
       (error) => {
         console.error("Supabase fetch sales orders error:", error);
-        setSalesOrdersError(`Failed to load sales orders: ${error instanceof Error ? error.message : "Unknown read error"}`);
+        setSalesOrdersError(t('page.salesOrdersLoadFailed').replace('{error}', error instanceof Error ? error.message : t('page.unknownReadError')));
       },
     );
     setSalesOrdersLoading(false);
@@ -5382,7 +5382,7 @@ setCustomerOrganizationName("");
         .eq("organization_id", orgId);
       if (soError) {
         console.error("Supabase fetch sales order ids error:", soError);
-        setSalesOrdersError(`Failed to load sales order items: ${soError.message}`);
+        setSalesOrdersError(t('page.salesOrderItemsLoadFailed').replace('{error}', soError.message));
         return;
       }
       ids = (soRows ?? []).map((row) => row.id);
@@ -5401,7 +5401,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase fetch sales order items error:", error);
-      setSalesOrdersError(`Failed to load sales order items: ${error.message}`);
+      setSalesOrdersError(t('page.salesOrderItemsLoadFailed').replace('{error}', error.message));
       return;
     }
 
@@ -7133,7 +7133,7 @@ setCustomerOrganizationName("");
         },
       });
 
-      setAdjustmentMessage(`Stock adjusted successfully (${formatMovementChange(quantityDelta)}).`);
+      setAdjustmentMessage(t('page.stockAdjusted').replace('{change}', formatMovementChange(quantityDelta)));
       setAdjustmentProductId("");
       setAdjustmentDirection("in");
       setAdjustmentQuantity("");
@@ -8308,7 +8308,7 @@ setCustomerOrganizationName("");
       });
       const invoiceNumber = result.transaction.invoice_number;
       const nextStatus = result.purchase_order_status;
-      setReceiveMessage(`Purchase order received (${nextStatus === "received" ? "fully" : "partially"}). Invoice ${invoiceNumber} created and stock updated.`);
+      setReceiveMessage(t('page.poReceived').replace('{status}', nextStatus === "received" ? t('page.fully') : t('page.partially')).replace('{number}', invoiceNumber));
       setReceivePoId(null);
       setReceiveLines([]);
       await fetchPurchaseOrders();
@@ -8516,7 +8516,7 @@ setCustomerOrganizationName("");
       }
     }
     if (stockErrors.length > 0) {
-      setReturnError(`Stock validation failed: ${stockErrors.join(" ")}`);
+      setReturnError(t('page.stockValidationFailed').replace('{errors}', stockErrors.join(" ")));
       setReturnMessage(null);
       return;
     }
@@ -8743,7 +8743,7 @@ setCustomerOrganizationName("");
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || t('page.createSalesOrderFailed'));
-        setSoMessage(`Sales order ${data.draft?.so_number ?? ""} created and sent for approval.`);
+        setSoMessage(t('page.soCreatedApproval').replace('{number}', data.draft?.so_number ?? ""));
         setSoEditingId(null);
         setSoCustomerId("");
         setSoOrderDate(toDateInputValue(new Date()));
@@ -8908,12 +8908,12 @@ setCustomerOrganizationName("");
       entity_type: "sales_order",
       entity_id: soId,
       entity_label: order.so_number,
-      description: `Sales order ${order.so_number} marked ${nextStatus}`,
+      description: t('page.soMarked').replace('{number}', order.so_number).replace('{status}', nextStatus),
       old_values: { status: order.status },
       new_values: { status: nextStatus },
     });
 
-    setSoMessage(`Sales order ${order.so_number} marked ${nextStatus}`);
+    setSoMessage(t('page.soMarked').replace('{number}', order.so_number).replace('{status}', nextStatus));
     fetchSalesOrders();
   };
 
@@ -8945,7 +8945,7 @@ setCustomerOrganizationName("");
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || t('page.actionFailed'));
 
-      setSoMessage(`${order.so_number} approved → invoice ${data.invoiceNumber ?? ""}`);
+      setSoMessage(t('page.soApprovedInvoice').replace('{number}', order.so_number).replace('{invoice}', data.invoiceNumber ?? ""));
       fetchSalesOrders();
       fetchSalesTransactions();
       fetchRealNotifications();
@@ -8980,9 +8980,9 @@ setCustomerOrganizationName("");
       if (!data.ok) throw new Error(data.error || t('page.actionFailed'));
 
       if (draftReviewAction === "approve") {
-        setSoMessage(`${order.so_number} approved → invoice ${data.invoiceNumber ?? ""}`);
+        setSoMessage(t('page.soApprovedInvoice').replace('{number}', order.so_number).replace('{invoice}', data.invoiceNumber ?? ""));
       } else {
-        setSoMessage(`${order.so_number} rejected.`);
+        setSoMessage(t('page.soRejected').replace('{number}', order.so_number));
       }
       setDraftReviewOrder(null);
       setDraftReviewAction(null);
@@ -9286,7 +9286,7 @@ setCustomerOrganizationName("");
         });
       }
 
-      setSrMessage(`Sales return ${result.returnNumber} saved successfully`);
+      setSrMessage(t('page.salesReturnSaved').replace('{number}', result.returnNumber));
       setSrCustomerId("");
       setSrSalesTransactionId("");
       setSrReturnDate(toDateInputValue(new Date()));
@@ -11678,7 +11678,7 @@ setCustomerOrganizationName("");
     window.setTimeout(() => document.getElementById("ai-analytics-question")?.focus(), 0);
   };
   const openAiAnalyticsFromBusinessIntelligence = () => {
-    setAiAnalyticsQuestion(`Explain these ${businessIntelligenceAnalytics.range.label} analytics and tell me what to focus on.`);
+    setAiAnalyticsQuestion(t('page.explainAnalytics').replace('{range}', businessIntelligenceAnalytics.range.label));
     setActiveSection("ai-analytics");
     setMobileMenuOpen(false);
     window.setTimeout(() => {
@@ -12057,7 +12057,7 @@ setCustomerOrganizationName("");
 
       if (error) {
         console.error("Supabase task insert error:", JSON.stringify(error, null, 2));
-        setTaskError(`Failed to save task: ${JSON.stringify(error, null, 2)}`);
+        setTaskError(t('page.taskSaveFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
         return;
       }
 
@@ -12113,7 +12113,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase task status update error:", JSON.stringify(error, null, 2));
-      setTaskError(`Failed to update task: ${JSON.stringify(error, null, 2)}`);
+      setTaskError(t('page.taskUpdateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -12136,7 +12136,7 @@ setCustomerOrganizationName("");
         completed_at: completedAt,
       },
     });
-    setTaskMessage(`Task marked ${taskStatusLabels[nextStatus].toLowerCase()}.`);
+    setTaskMessage(t('page.taskMarked').replace('{status}', taskStatusLabels[nextStatus].toLowerCase()));
     await fetchTasks(currentOrganizationId);
   };
 
@@ -12275,7 +12275,7 @@ setCustomerOrganizationName("");
 
       if (error) {
         console.error("Supabase suggested task insert error:", JSON.stringify(error, null, 2));
-        setTaskError(`Failed to create suggested task: ${JSON.stringify(error, null, 2)}`);
+        setTaskError(t('page.taskSuggestFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
         return;
       }
 
@@ -13580,7 +13580,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase AI alerts insert error:", JSON.stringify(error, null, 2));
-      setAiBriefingError(`Failed to generate alerts: ${JSON.stringify(error, null, 2)}`);
+      setAiBriefingError(t('page.alertsGenerateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
     }
 
@@ -13593,7 +13593,7 @@ setCustomerOrganizationName("");
       new_values: { count: newCandidates.length, alerts: newCandidates.map((item) => item.title) },
     });
     await fetchAiAlerts(currentOrganizationId);
-    setAiBriefingMessage(`Generated ${newCandidates.length} new alert(s).`);
+    setAiBriefingMessage(t('page.alertsGenerated').replace('{count}', String(newCandidates.length)));
     return { createdCount: newCandidates.length, activeCount: activeAiAlerts.length + newCandidates.length, createdAlerts: newCandidates };
   };
 
@@ -13619,7 +13619,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase AI alert status update error:", JSON.stringify(error, null, 2));
-      setAiBriefingError(`Failed to update alert: ${JSON.stringify(error, null, 2)}`);
+      setAiBriefingError(t('page.alertUpdateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -13633,7 +13633,7 @@ setCustomerOrganizationName("");
       new_values: { status: nextStatus },
     });
     await fetchAiAlerts(currentOrganizationId);
-    setAiBriefingMessage(`Alert marked ${nextStatus}.`);
+    setAiBriefingMessage(t('page.alertMarked').replace('{status}', nextStatus));
   };
 
   const generateDailyBriefing = async () => {
@@ -13740,7 +13740,7 @@ setCustomerOrganizationName("");
 
       if (error) {
         console.error("Supabase AI daily briefing insert error:", JSON.stringify(error, null, 2));
-        setAiBriefingError(`Failed to save briefing: ${JSON.stringify(error, null, 2)}`);
+        setAiBriefingError(t('page.briefingSaveFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
         return null;
       }
 
@@ -14542,14 +14542,14 @@ setCustomerOrganizationName("");
     setAiVoicePendingAutoSendText(cleanTranscript);
     setAiVoiceInput(cleanTranscript);
     setAiVoiceHandsFreeError(null);
-    setAiVoiceHandsFreeMessage(`Sending in ${(aiVoiceAutoSendDelayMs / 1000).toFixed(1)} seconds...`);
+    setAiVoiceHandsFreeMessage(t('page.sendingIn').replace('{seconds}', (aiVoiceAutoSendDelayMs / 1000).toFixed(1)));
     setAiVoiceAutoSendTimerActive(true);
     setAiVoiceAutoSendCountdown(aiVoiceAutoSendDelayMs);
     const startedAt = Date.now();
     aiVoiceAutoSendIntervalRef.current = setInterval(() => {
       const remaining = Math.max(0, aiVoiceAutoSendDelayMs - (Date.now() - startedAt));
       setAiVoiceAutoSendCountdown(remaining);
-      setAiVoiceHandsFreeMessage(`Sending in ${(remaining / 1000).toFixed(1)} seconds...`);
+      setAiVoiceHandsFreeMessage(t('page.sendingIn').replace('{seconds}', (remaining / 1000).toFixed(1)));
       if (remaining <= 0 && aiVoiceAutoSendIntervalRef.current) {
         clearInterval(aiVoiceAutoSendIntervalRef.current);
         aiVoiceAutoSendIntervalRef.current = null;
@@ -15172,7 +15172,7 @@ setCustomerOrganizationName("");
         (p.brand_id ?? null) === selectedBrandId
     );
     if (duplicateProduct) {
-      setError(`A product named "${trimmedName}" with this brand already exists.`);
+      setError(t('page.productBrandExists').replace('{name}', trimmedName));
       return;
     }
 
@@ -15348,13 +15348,13 @@ setCustomerOrganizationName("");
         });
         if (!adjustResponse.ok) {
           const adjustData = await adjustResponse.json().catch(() => null);
-          openingStockNote = ` Opening stock could not be applied (${adjustData?.error ?? "adjustment failed"}) — add it from Inventory.`;
+          openingStockNote = t('page.openingStockFailedErr').replace('{error}', adjustData?.error ?? t('page.adjustmentFailed'));
         }
       } catch {
-        openingStockNote = " Opening stock could not be applied — add it from Inventory.";
+        openingStockNote = t('page.openingStockFailed');
       }
     }
-    setMessage(`Product saved successfully.${openingStockNote}`);
+    setMessage(t('page.productSavedNote').replace('{note}', openingStockNote));
     resetProductForm();
     fetchProducts();
     // The opening-stock adjustment writes a ledger row; refresh the
@@ -15505,7 +15505,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase market import queue insert error:", JSON.stringify(error, null, 2));
-      setMarketImportQueueError(`Failed to add import queue item: ${JSON.stringify(error, null, 2)}`);
+      setMarketImportQueueError(t('page.importQueueAddFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -15569,7 +15569,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase market intelligence insert error:", JSON.stringify(error, null, 2));
-      setMarketIntelligenceError(`Failed to add market intelligence item: ${JSON.stringify(error, null, 2)}`);
+      setMarketIntelligenceError(t('page.marketItemAddFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -15697,7 +15697,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase market news source insert error:", JSON.stringify(error, null, 2));
-      setMarketIntelligenceError(`Failed to add news source: ${JSON.stringify(error, null, 2)}`);
+      setMarketIntelligenceError(t('page.marketSourceAddFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -15776,7 +15776,7 @@ setCustomerOrganizationName("");
     });
     await fetchMarketIntelligenceItems(currentOrganizationId);
     setMarketIntelligenceError(null);
-    setMarketIntelligenceMessage(`Market intelligence item marked ${nextStatus}.`);
+    setMarketIntelligenceMessage(t('page.marketItemMarked').replace('{status}', nextStatus));
   };
 
   const updateMarketImportQueueStatus = async (
@@ -15831,7 +15831,7 @@ setCustomerOrganizationName("");
       new_values: updatePayload,
     });
     await fetchMarketImportQueueItems(currentOrganizationId);
-    setMarketImportQueueMessage(`Import queue item marked ${nextStatus}.`);
+    setMarketImportQueueMessage(t('page.importQueueMarked').replace('{status}', nextStatus));
   };
 
   const convertMarketImportQueueItem = (item: MarketImportQueueItem) => {
@@ -15965,7 +15965,7 @@ setCustomerOrganizationName("");
 
       if (error) {
         console.error("Supabase market AI analysis insert error:", JSON.stringify(error, null, 2));
-        setMarketAiAnalysisError(`Failed to save AI analysis: ${JSON.stringify(error, null, 2)}`);
+        setMarketAiAnalysisError(t('page.aiAnalysisSaveFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
         return;
       }
 
@@ -16095,7 +16095,7 @@ setCustomerOrganizationName("");
       new_values: updatePayload,
     });
     await fetchMarketAiAnalyses(currentOrganizationId);
-    setMarketAiAnalysisMessage(`AI analysis marked ${nextStatus}.`);
+    setMarketAiAnalysisMessage(t('page.aiAnalysisMarked').replace('{status}', nextStatus));
   };
 
   const deleteMarketIntelligenceItem = async (item: MarketIntelligenceItem) => {
@@ -16126,7 +16126,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase market intelligence delete error:", JSON.stringify(error, null, 2));
-      setMarketIntelligenceError(`Failed to delete item: ${JSON.stringify(error, null, 2)}`);
+      setMarketIntelligenceError(t('page.marketItemDeleteFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -16160,7 +16160,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase market news source delete error:", JSON.stringify(error, null, 2));
-      setMarketIntelligenceError(`Failed to delete source: ${JSON.stringify(error, null, 2)}`);
+      setMarketIntelligenceError(t('page.marketSourceDeleteFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -16241,7 +16241,7 @@ setCustomerOrganizationName("");
 
       if (error) {
         console.error("Supabase business settings update error:", JSON.stringify(error, null, 2));
-        setBusinessSettingsError(`Failed to save business settings: ${JSON.stringify(error, null, 2)}`);
+        setBusinessSettingsError(t('page.bizSettingsSaveFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
         return;
       }
 
@@ -16524,7 +16524,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase staff permissions upsert error:", JSON.stringify(error, null, 2));
-      setStaffPermissionError(`Failed to save staff permissions: ${JSON.stringify(error, null, 2)}`);
+      setStaffPermissionError(t('page.staffPermsSaveFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -16577,7 +16577,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase security checklist seed error:", JSON.stringify(error, null, 2));
-      setSecurityCheckError(`Failed to seed security checklist: ${JSON.stringify(error, null, 2)}`);
+      setSecurityCheckError(t('page.securitySeedFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -16615,7 +16615,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase security check update error:", JSON.stringify(error, null, 2));
-      setSecurityCheckError(`Failed to update security check: ${JSON.stringify(error, null, 2)}`);
+      setSecurityCheckError(t('page.securityCheckUpdateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
@@ -16634,7 +16634,7 @@ setCustomerOrganizationName("");
     });
 
     await fetchSecurityChecks(currentOrganizationId);
-    setSecurityCheckMessage(`Security check marked ${status}.`);
+    setSecurityCheckMessage(t('page.securityCheckMarked').replace('{status}', status));
   };
 
   const role = currentProfile?.role;
@@ -17160,8 +17160,8 @@ setCustomerOrganizationName("");
           })),
           ...(lowStockProducts.length > 0 ? [{
             id: "low-stock",
-            title: `${lowStockProducts.length} products low on stock`,
-            description: `Reorder level reached for ${lowStockProducts.length} products`,
+            title: t('page.notifLowStock').replace('{count}', String(lowStockProducts.length)),
+            description: t('page.notifReorderReached').replace('{count}', String(lowStockProducts.length)),
             severity: lowStockProducts.length > 5 ? "critical" as const : "warning" as const,
             section: "inventory" as const,
             time: t('bi.rangeToday'),
