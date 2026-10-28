@@ -114,7 +114,6 @@ import {
   taskPriorities,
   taskPriorityLabels,
   taskStatuses,
-  taskStatusLabels,
   taskTypeLabels,
   taskTypes,
 } from "@/lib/tradeos/constants";
@@ -338,6 +337,75 @@ export default function Home() {
   const orgNotLoadedActionTemplate = t('page.orgNotLoadedAction');
   const profileNotLoadedMessage = t('page.profileNotLoaded');
   const staffProfileNotLoadedMessage = t('page.staffProfileNotLoaded');
+  // Option-label maps: codes stay English (comparisons, filters, stored
+  // values); only the displayed label is translated. The CSV export sites
+  // keep using the English maps (creditPolicyLabels, module arrays).
+  const taskStatusLabelMap: Record<string, string> = {
+    pending: t('page.taskStatusPending'),
+    in_progress: t('page.taskStatusInProgress'),
+    completed: t('page.taskStatusCompleted'),
+    cancelled: t('page.taskStatusCancelled'),
+  };
+  const creditPolicyLabelMap: Record<string, string> = {
+    cash_only: t('page.creditCashOnly'),
+    limit_only: t('page.creditLimitOnly'),
+    days_only: t('page.creditDaysOnly'),
+    limit_and_days: t('page.creditLimitAndDays'),
+    unrestricted: t('page.creditUnrestricted'),
+  };
+  const marketCategoryLabelByValue: Record<string, string> = {
+    cooking_oil_ghee: t('page.marketCatCookingOilGhee'),
+    sugar: t('page.marketCatSugar'),
+    wheat_flour: t('page.marketCatWheatFlour'),
+    rice: t('page.marketCatRice'),
+    pulses: t('page.marketCatPulses'),
+    spices: t('page.marketCatSpices'),
+    beverages: t('page.marketCatBeverages'),
+    dairy: t('page.marketCatDairy'),
+    fuel_transport: t('page.marketCatFuelTransport'),
+    packaging: t('page.marketCatPackaging'),
+    currency_imports: t('page.marketCatCurrencyImports'),
+    taxes_policy: t('page.marketCatTaxesPolicy'),
+    weather_agriculture: t('page.marketCatWeatherAgriculture'),
+    general_fmcg: t('page.marketCatGeneralFmcg'),
+  };
+  const marketImpactLabelByValue: Record<string, string> = {
+    price_up: t('page.marketImpactPriceUp'),
+    price_down: t('page.marketImpactPriceDown'),
+    supply_shortage: t('page.marketImpactSupplyShortage'),
+    supply_improvement: t('page.marketImpactSupplyImprovement'),
+    demand_up: t('page.marketImpactDemandUp'),
+    demand_down: t('page.marketImpactDemandDown'),
+    neutral: t('page.marketImpactNeutral'),
+  };
+  const marketLevelLabelByValue: Record<string, string> = {
+    low: t('page.marketLevelLow'),
+    medium: t('page.marketLevelMedium'),
+    high: t('page.marketLevelHigh'),
+    critical: t('page.marketLevelCritical'),
+  };
+  const marketConfLabelByValue: Record<string, string> = {
+    low: t('page.marketConfLow'),
+    medium: t('page.marketConfMedium'),
+    high: t('page.marketConfHigh'),
+  };
+  const marketStatusLabelByValue: Record<string, string> = {
+    active: t('page.marketStatusActive'),
+    watching: t('page.marketStatusWatching'),
+    archived: t('page.marketStatusArchived'),
+  };
+  const urgencyLabelByValue: Record<string, string> = {
+    "Very High": t('page.marketUrgencyVeryHigh'),
+    High: t('page.marketUrgencyHigh'),
+    Medium: t('page.marketUrgencyMedium'),
+    Low: t('page.marketUrgencyLow'),
+    Monitor: t('page.marketUrgencyMonitor'),
+  };
+  const marketCategoryOptionsT = marketCategoryOptions.map((option) => ({ ...option, label: marketCategoryLabelByValue[option.value] ?? option.label }));
+  const marketImpactDirectionOptionsT = marketImpactDirectionOptions.map((option) => ({ ...option, label: marketImpactLabelByValue[option.value] ?? option.label }));
+  const marketImpactLevelOptionsT = marketImpactLevelOptions.map((option) => ({ ...option, label: marketLevelLabelByValue[option.value] ?? option.label }));
+  const marketConfidenceOptionsT = marketConfidenceOptions.map((option) => ({ ...option, label: marketConfLabelByValue[option.value] ?? option.label }));
+  const marketIntelligenceStatusOptionsT = marketIntelligenceStatusOptions.map((option) => ({ ...option, label: marketStatusLabelByValue[option.value] ?? option.label }));
   const [activeSection, setActiveSection] = useState<SectionId>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [printPreviewTitle, setPrintPreviewTitle] = useState("");
@@ -6315,11 +6383,11 @@ setCustomerOrganizationName("");
   const marketUrgencyOptions = ["Very High", "High", "Medium", "Low", "Monitor"];
   const marketHealthImpactOptions = ["Positive", "Neutral", "Negative", "Mixed"];
   const marketIntelligenceTabOptions = [
-    { value: "overview", label: "Overview" },
-    { value: "threats", label: "Threats" },
-    { value: "opportunities", label: "Opportunities" },
-    { value: "high-priority", label: "High Priority" },
-    { value: "all", label: "All Intelligence" },
+    { value: "overview", label: t('page.tabOverview') },
+    { value: "threats", label: t('page.tabThreats') },
+    { value: "opportunities", label: t('page.tabOpportunities') },
+    { value: "high-priority", label: t('page.tabHighPriority') },
+    { value: "all", label: t('page.tabAllIntelligence') },
   ];
   const getMarketAiAdvisoryPayload = (analysis: MarketAiAnalysis | null | undefined) => {
     const raw = analysis?.raw_ai_response as any;
@@ -12136,7 +12204,7 @@ setCustomerOrganizationName("");
         completed_at: completedAt,
       },
     });
-    setTaskMessage(t('page.taskMarked').replace('{status}', taskStatusLabels[nextStatus].toLowerCase()));
+    setTaskMessage(t('page.taskMarked').replace('{status}', (taskStatusLabelMap[nextStatus] ?? nextStatus).toLowerCase()));
     await fetchTasks(currentOrganizationId);
   };
 
@@ -19201,7 +19269,7 @@ setCustomerOrganizationName("");
               <div className="rounded border border-primary/10 bg-primary/5 p-4 text-sm text-primary/90">
                 <h3 className="mb-2 text-base font-medium text-primary/90">{t('sell.creditSummary')}</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div>{t('sell.creditPolicy')}: {creditPolicyLabels[selectedCustomerCreditPolicy] ?? "Cash Only"}</div>
+                  <div>{t('sell.creditPolicy')}: {creditPolicyLabelMap[selectedCustomerCreditPolicy] ?? t('page.creditCashOnly')}</div>
                   <div>{t('sell.outstandingBalance')}: {formatBooksMoney(selectedCustomerOutstandingBalance)}</div>
                   <div>{t('sell.currentInvoiceTotal')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : formatBooksMoney(currentSalesInvoiceTotal)}</div>
                   <div>{t('sell.projectedBalance')}: {currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : formatBooksMoney(projectedCustomerBalance)}</div>
@@ -24727,13 +24795,13 @@ setCustomerOrganizationName("");
               <option value="50">50+ opportunity</option>
             </select>
             <select value={marketIntelligenceUrgencyFilter} onChange={(e) => setMarketIntelligenceUrgencyFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
-              <option value="all">All urgencies</option>
+              <option value="all">{t('page.filterAllUrgencies')}</option>
               {marketUrgencyOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
+                <option key={option} value={option}>{urgencyLabelByValue[option] ?? option}</option>
               ))}
             </select>
             <select value={marketIntelligenceAreaFilter} onChange={(e) => setMarketIntelligenceAreaFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
-              <option value="all">All business areas</option>
+              <option value="all">{t('page.filterAllAreas')}</option>
               {marketBusinessAreaOptions.map((option) => (
                 <option key={option} value={option}>{option}</option>
               ))}
@@ -24810,8 +24878,8 @@ setCustomerOrganizationName("");
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Suggested Market Category</span>
                   <select value={marketImportSuggestedCategory} onChange={(e) => setMarketImportSuggestedCategory(e.target.value)} className="rounded border border-border px-3 py-2">
-                    <option value="">Not suggested</option>
-                    {marketCategoryOptions.map((option) => (
+                    <option value="">{t('page.marketNotSuggested')}</option>
+                    {marketCategoryOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -24827,8 +24895,8 @@ setCustomerOrganizationName("");
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Suggested Impact Direction</span>
                   <select value={marketImportSuggestedImpactDirection} onChange={(e) => setMarketImportSuggestedImpactDirection(e.target.value)} className="rounded border border-border px-3 py-2">
-                    <option value="">Not suggested</option>
-                    {marketImpactDirectionOptions.map((option) => (
+                    <option value="">{t('page.marketNotSuggested')}</option>
+                    {marketImpactDirectionOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -24836,8 +24904,8 @@ setCustomerOrganizationName("");
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Suggested Impact Level</span>
                   <select value={marketImportSuggestedImpactLevel} onChange={(e) => setMarketImportSuggestedImpactLevel(e.target.value)} className="rounded border border-border px-3 py-2">
-                    <option value="">Not suggested</option>
-                    {marketImpactLevelOptions.map((option) => (
+                    <option value="">{t('page.marketNotSuggested')}</option>
+                    {marketImpactLevelOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -24845,8 +24913,8 @@ setCustomerOrganizationName("");
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Suggested Confidence</span>
                   <select value={marketImportSuggestedConfidenceLevel} onChange={(e) => setMarketImportSuggestedConfidenceLevel(e.target.value)} className="rounded border border-border px-3 py-2">
-                    <option value="">Not suggested</option>
-                    {marketConfidenceOptions.map((option) => (
+                    <option value="">{t('page.marketNotSuggested')}</option>
+                    {marketConfidenceOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -24854,7 +24922,7 @@ setCustomerOrganizationName("");
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Suggested Affected Area</span>
                   <select value={marketImportSuggestedAffectedArea} onChange={(e) => setMarketImportSuggestedAffectedArea(e.target.value)} className="rounded border border-border px-3 py-2">
-                    <option value="">Not suggested</option>
+                    <option value="">{t('page.marketNotSuggested')}</option>
                     {marketAffectedAreaOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
@@ -24915,12 +24983,12 @@ setCustomerOrganizationName("");
                             </span>
                             {item.suggested_market_category && (
                               <span className="rounded bg-muted px-2 py-1 text-xs font-medium text-foreground/80">
-                                {getMarketLabel(marketCategoryOptions, item.suggested_market_category)}
+                                {getMarketLabel(marketCategoryOptionsT, item.suggested_market_category)}
                               </span>
                             )}
                             {item.suggested_impact_direction && (
                               <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
-                                {getMarketLabel(marketImpactDirectionOptions, item.suggested_impact_direction)}
+                                {getMarketLabel(marketImpactDirectionOptionsT, item.suggested_impact_direction)}
                               </span>
                             )}
                           </div>
@@ -24936,8 +25004,8 @@ setCustomerOrganizationName("");
                             </p>
                           )}
                           <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
-                            <div>Impact: {getMarketLabel(marketImpactLevelOptions, item.suggested_impact_level)}</div>
-                            <div>Confidence: {getMarketLabel(marketConfidenceOptions, item.suggested_confidence_level)}</div>
+                            <div>{t('page.impactLabel')} {getMarketLabel(marketImpactLevelOptionsT, item.suggested_impact_level)}</div>
+                            <div>{t('page.confidenceLabel')} {getMarketLabel(marketConfidenceOptionsT, item.suggested_confidence_level)}</div>
                             <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, item.suggested_affected_area)}</div>
                             <div>Converted item: {item.converted_intelligence_item_id ?? "-"}</div>
                             <div>Reviewed: {formatDateTime(item.reviewed_at)}</div>
@@ -25041,13 +25109,13 @@ setCustomerOrganizationName("");
                             {analysis.review_status}
                           </span>
                           <span className="rounded bg-card px-2 py-1 text-xs font-medium text-primary">
-                            {getMarketLabel(marketCategoryOptions, analysis.ai_market_category)}
+                            {getMarketLabel(marketCategoryOptionsT, analysis.ai_market_category)}
                           </span>
                           <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
-                            {getMarketLabel(marketImpactDirectionOptions, analysis.ai_impact_direction)}
+                            {getMarketLabel(marketImpactDirectionOptionsT, analysis.ai_impact_direction)}
                           </span>
                           <span className="rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                            {getMarketLabel(marketImpactLevelOptions, analysis.ai_impact_level)}
+                            {getMarketLabel(marketImpactLevelOptionsT, analysis.ai_impact_level)}
                           </span>
                         </div>
                         <h4 className="mt-2 text-base font-semibold text-foreground">
@@ -25064,7 +25132,7 @@ setCustomerOrganizationName("");
                           </div>
                         )}
                         <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
-                          <div>Confidence: {getMarketLabel(marketConfidenceOptions, analysis.ai_confidence_level)}</div>
+                          <div>{t('page.confidenceLabel')} {getMarketLabel(marketConfidenceOptionsT, analysis.ai_confidence_level)}</div>
                           <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, analysis.ai_affected_area)}</div>
                           <div>Reviewed: {formatDateTime(analysis.reviewed_at)}</div>
                           <div>Import queue: {analysis.market_import_queue_id ?? "-"}</div>
@@ -25161,7 +25229,7 @@ setCustomerOrganizationName("");
                   <span>Market Category</span>
                   <select value={marketCategory} onChange={(e) => setMarketCategory(e.target.value)} className="rounded border border-border px-3 py-2" required>
                     <option value="">Select category</option>
-                    {marketCategoryOptions.map((option) => (
+                    {marketCategoryOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -25188,7 +25256,7 @@ setCustomerOrganizationName("");
                   <span>Impact Direction</span>
                   <select value={marketImpactDirection} onChange={(e) => setMarketImpactDirection(e.target.value)} className="rounded border border-border px-3 py-2" required>
                     <option value="">Select direction</option>
-                    {marketImpactDirectionOptions.map((option) => (
+                    {marketImpactDirectionOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -25197,7 +25265,7 @@ setCustomerOrganizationName("");
                   <span>Impact Level</span>
                   <select value={marketImpactLevel} onChange={(e) => setMarketImpactLevel(e.target.value)} className="rounded border border-border px-3 py-2" required>
                     <option value="">Select level</option>
-                    {marketImpactLevelOptions.map((option) => (
+                    {marketImpactLevelOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -25206,7 +25274,7 @@ setCustomerOrganizationName("");
                   <span>Confidence Level</span>
                   <select value={marketConfidenceLevel} onChange={(e) => setMarketConfidenceLevel(e.target.value)} className="rounded border border-border px-3 py-2" required>
                     <option value="">Select confidence</option>
-                    {marketConfidenceOptions.map((option) => (
+                    {marketConfidenceOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -25227,7 +25295,7 @@ setCustomerOrganizationName("");
                 <label className="flex flex-col gap-1 text-sm text-foreground/80">
                   <span>Status</span>
                   <select value={marketStatus} onChange={(e) => setMarketStatus(e.target.value)} className="rounded border border-border px-3 py-2">
-                    {marketIntelligenceStatusOptions.map((option) => (
+                    {marketIntelligenceStatusOptionsT.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -25323,13 +25391,13 @@ setCustomerOrganizationName("");
                         <div className="flex-1">
                           <div className="flex flex-wrap gap-2">
                             <span className="rounded bg-foreground px-2 py-1 text-xs font-medium text-white">
-                              {getMarketLabel(marketCategoryOptions, item.market_category)}
+                              {getMarketLabel(marketCategoryOptionsT, item.market_category)}
                             </span>
                             <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
-                              {advisory.urgency}
+                              {urgencyLabelByValue[advisory.urgency] ?? advisory.urgency}
                             </span>
                             <span className="rounded bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
-                              Risk {advisory.riskScore}
+                              {t('page.riskLabel')} {advisory.riskScore}
                             </span>
                             <span className="rounded bg-success/10 px-2 py-1 text-xs font-medium text-success">
                               Opportunity {advisory.opportunityScore}
@@ -25369,8 +25437,8 @@ setCustomerOrganizationName("");
                               <div className="mt-1 text-lg font-semibold text-foreground">{advisory.confidence}</div>
                             </div>
                             <div className="rounded border border-border bg-card p-3">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Urgency</div>
-                              <div className="mt-1 text-lg font-semibold text-foreground">{advisory.urgency}</div>
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.urgencyLabel')}</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">{urgencyLabelByValue[advisory.urgency] ?? advisory.urgency}</div>
                             </div>
                           </div>
                           <div className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -25437,10 +25505,10 @@ setCustomerOrganizationName("");
                           <div className="mt-3 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
                             <div>Source: {item.source_name || t('page.manualNote')}</div>
                             <div>Related product: {relatedProduct?.name ?? item.related_product_category ?? "-"}</div>
-                            <div>News date: {formatDate(item.news_date)}</div>
-                            <div>Created: {formatDateTime(item.created_at)}</div>
-                            <div>Status: {getMarketLabel(marketIntelligenceStatusOptions, item.status)}</div>
-                            <div>Impact: {getMarketLabel(marketImpactDirectionOptions, item.impact_direction)}</div>
+                            <div>{t('page.newsDateLabel')} {formatDate(item.news_date)}</div>
+                            <div>{t('page.createdLabel')} {formatDateTime(item.created_at)}</div>
+                            <div>{t('page.statusLabel')} {getMarketLabel(marketIntelligenceStatusOptionsT, item.status)}</div>
+                            <div>{t('page.impactLabel')} {getMarketLabel(marketImpactDirectionOptionsT, item.impact_direction)}</div>
                           </div>
                           {item.source_url && <div className="mt-1 break-all text-xs text-primary">{item.source_url}</div>}
                         </div>
@@ -25543,7 +25611,7 @@ setCustomerOrganizationName("");
             <div className="rounded border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">Current Duty Status</div>
               <div className={`mt-2 text-2xl font-semibold ${activeDutySession ? "text-success" : "text-foreground"}`}>
-                {activeDutySession ? "On Duty" : "Off Duty"}
+                {activeDutySession ? t('page.dutyOn') : t('page.dutyOff')}
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
                 {isTrackingLocation ? t('page.trackingActive') : t('page.trackingInactive')}
@@ -25673,7 +25741,7 @@ setCustomerOrganizationName("");
                               <span className={`rounded px-2 py-1 text-xs font-medium ${
                                 isOnDuty ? "bg-success/10 text-success" : "bg-muted text-foreground/80"
                               }`}>
-                                {isOnDuty ? "On Duty" : "Off Duty"}
+                                {isOnDuty ? t('page.dutyOn') : t('page.dutyOff')}
                               </span>
                             </td>
                             <td className="px-3 py-3">
@@ -26453,7 +26521,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   className="rounded border border-border px-3 py-2"
                 >
                   {taskStatuses.map((status) => (
-                    <option key={status} value={status}>{taskStatusLabels[status]}</option>
+                    <option key={status} value={status}>{taskStatusLabelMap[status] ?? status}</option>
                   ))}
                 </select>
               </label>
@@ -26664,7 +26732,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                                     ? "bg-destructive/10 text-destructive"
                                     : "bg-primary/10 text-primary"
                             }`}>
-                              {isOverdue ? t('sell.statusOverdue') : taskStatusLabels[task.status] ?? task.status}
+                              {isOverdue ? t('sell.statusOverdue') : taskStatusLabelMap[task.status] ?? task.status}
                             </span>
                           </td>
                           <td className="px-3 py-3">{dueDate ?? t('tasks.noDueDate')}</td>
