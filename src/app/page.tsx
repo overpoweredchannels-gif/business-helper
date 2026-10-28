@@ -4178,13 +4178,13 @@ setCustomerOrganizationName("");
     setCreditWarning(null);
 
     if (!selectedCustomerIdForSale) {
-      setSalesError("Please select a customer");
+      setSalesError(t('page.selectCustomer'));
       setSalesMessage(null);
       return;
     }
 
     if (invoiceLines.length === 0 || invoiceLines.some((line) => !line.product_id)) {
-      setSalesError("Please add at least one product line");
+      setSalesError(t('page.addProductLine'));
       setSalesMessage(null);
       return;
     }
@@ -4437,7 +4437,7 @@ setCustomerOrganizationName("");
         // constraint rejects a card draft: surface a clear explanation
         // instead of the raw constraint error. The draft is never
         // silently re-tendered to cash or credit.
-        const message = err instanceof Error ? err.message : "Failed to save sales invoice";
+        const message = err instanceof Error ? err.message : t('page.saveSalesInvoiceFailed');
         setSalesError(salesPaymentType === "card" && /payment_type/i.test(message) ? t('sell.cardNotEnabled') : message);
         console.error("Error creating sales invoice:", err);
       } finally {
@@ -4551,7 +4551,7 @@ setCustomerOrganizationName("");
       // Until the card database update runs, the atomic-sale RPC rejects
       // payment_type 'card' with "Invalid payment type": surface a clear
       // explanation instead. The sale is never silently re-tendered.
-      const message = err instanceof Error ? err.message : "Failed to save sales invoice";
+      const message = err instanceof Error ? err.message : t('page.saveSalesInvoiceFailed');
       setSalesError(salesPaymentType === "card" && /invalid payment type/i.test(message) ? t('sell.cardNotEnabled') : message);
       console.error("Error creating sales invoice:", err);
     } finally {
@@ -4561,13 +4561,13 @@ setCustomerOrganizationName("");
 
   const handleSaveCustomerPayment = async () => {
     if (!selectedCustomerPaymentId) {
-      setCustomerPaymentError("Please select a customer");
+      setCustomerPaymentError(t('page.selectCustomer'));
       setCustomerPaymentMessage(null);
       return;
     }
     const paymentAmount = Number(customerPaymentAmount);
     if (!customerPaymentAmount || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
-      setCustomerPaymentError("Please enter a valid amount");
+      setCustomerPaymentError(t('page.validAmount'));
       setCustomerPaymentMessage(null);
       return;
     }
@@ -4584,7 +4584,7 @@ setCustomerOrganizationName("");
       ({ allocationAmount }) => !Number.isFinite(allocationAmount) || allocationAmount < 0
     );
     if (invalidNegativeAllocation) {
-      setCustomerPaymentError("Allocation amounts must be zero or greater.");
+      setCustomerPaymentError(t('page.allocationNonNegative'));
       setCustomerPaymentMessage(null);
       return;
     }
@@ -4601,7 +4601,7 @@ setCustomerOrganizationName("");
       0
     );
     if (totalAllocationAmount > paymentAmount) {
-      setCustomerPaymentError("Total allocations cannot exceed the payment amount.");
+      setCustomerPaymentError(t('page.allocationExceeds'));
       setCustomerPaymentMessage(null);
       return;
     }
@@ -4675,8 +4675,8 @@ setCustomerOrganizationName("");
         entity_label: paymentCustomer?.customer_name ?? "Customer payment",
         description:
           allocationsToInsert.length > 0
-            ? `Created and allocated customer payment for ${paymentCustomer?.customer_name ?? "Unknown Customer"}`
-            : `Created customer payment for ${paymentCustomer?.customer_name ?? "Unknown Customer"}`,
+            ? `Created and allocated customer payment for ${paymentCustomer?.customer_name ?? t('sell.unknownCustomer')}`
+            : `Created customer payment for ${paymentCustomer?.customer_name ?? t('sell.unknownCustomer')}`,
         new_values: {
           customer_id: selectedCustomerPaymentId,
           amount: paymentAmount,
@@ -4685,7 +4685,7 @@ setCustomerOrganizationName("");
         },
       });
 
-      setCustomerPaymentMessage("Payment saved successfully");
+      setCustomerPaymentMessage(t('page.paymentSaved'));
       setSelectedCustomerPaymentId(null);
       setCustomerPaymentAmount("");
       setCustomerPaymentNotes("");
@@ -4699,7 +4699,7 @@ setCustomerOrganizationName("");
       // Until the card database update runs, the customer_payments check
       // constraint rejects method 'card': explain it instead of leaking
       // the raw constraint error. The payment is never re-tendered.
-      const paymentMessage = err instanceof Error ? err.message : "Failed to save payment";
+      const paymentMessage = err instanceof Error ? err.message : t('page.savePaymentFailed');
       setCustomerPaymentError(customerPaymentMethod === "card" && /payment_method/i.test(paymentMessage) ? t('payments.cardNotEnabled') : paymentMessage);
       console.error("Error saving customer payment:", err);
     } finally {
@@ -4713,13 +4713,13 @@ setCustomerOrganizationName("");
     }
 
     if (!selectedSupplierPaymentId) {
-      setSupplierPaymentError("Please select a supplier");
+      setSupplierPaymentError(t('page.selectSupplier'));
       setSupplierPaymentMessage(null);
       return;
     }
     const paymentAmount = Number(supplierPaymentAmount);
     if (!supplierPaymentAmount || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
-      setSupplierPaymentError("Please enter a valid amount");
+      setSupplierPaymentError(t('page.validAmount'));
       setSupplierPaymentMessage(null);
       return;
     }
@@ -4736,7 +4736,7 @@ setCustomerOrganizationName("");
       ({ allocationAmount }) => !Number.isFinite(allocationAmount) || allocationAmount < 0
     );
     if (invalidNegativeAllocation) {
-      setSupplierPaymentError("Allocation amounts must be zero or greater.");
+      setSupplierPaymentError(t('page.allocationNonNegative'));
       setSupplierPaymentMessage(null);
       return;
     }
@@ -4753,7 +4753,7 @@ setCustomerOrganizationName("");
       0
     );
     if (totalAllocationAmount > paymentAmount) {
-      setSupplierPaymentError("Total allocations cannot exceed the payment amount.");
+      setSupplierPaymentError(t('page.allocationExceeds'));
       setSupplierPaymentMessage(null);
       return;
     }
@@ -4827,8 +4827,8 @@ setCustomerOrganizationName("");
         entity_label: paymentSupplier?.supplier_name ?? "Supplier payment",
         description:
           allocationsToInsert.length > 0
-            ? `Created and allocated supplier payment for ${paymentSupplier?.supplier_name ?? "Unknown Supplier"}`
-            : `Created supplier payment for ${paymentSupplier?.supplier_name ?? "Unknown Supplier"}`,
+            ? `Created and allocated supplier payment for ${paymentSupplier?.supplier_name ?? t('page.unknownSupplier')}`
+            : `Created supplier payment for ${paymentSupplier?.supplier_name ?? t('page.unknownSupplier')}`,
         new_values: {
           supplier_id: selectedSupplierPaymentId,
           amount: paymentAmount,
@@ -4837,7 +4837,7 @@ setCustomerOrganizationName("");
         },
       });
 
-      setSupplierPaymentMessage("Payment saved successfully");
+      setSupplierPaymentMessage(t('page.paymentSaved'));
       setSelectedSupplierPaymentId(null);
       setSupplierPaymentAmount("");
       setSupplierPaymentNotes("");
@@ -4847,7 +4847,7 @@ setCustomerOrganizationName("");
       await fetchSupplierPayments(currentOrganizationId);
       await fetchSupplierPaymentAllocations(currentOrganizationId);
     } catch (err) {
-      setSupplierPaymentError(err instanceof Error ? err.message : "Failed to save payment");
+      setSupplierPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
       console.error("Error saving supplier payment:", err);
     } finally {
       setSupplierPaymentLoading(false);
@@ -7969,13 +7969,13 @@ setCustomerOrganizationName("");
     }
 
     if (!selectedSupplierId) {
-      setInvoiceError("Please select a supplier");
+      setInvoiceError(t('page.selectSupplier'));
       setInvoiceMessage(null);
       return;
     }
 
     if (invoiceLines.length === 0 || invoiceLines.some((line) => !line.product_id)) {
-      setInvoiceError("Please add at least one product line");
+      setInvoiceError(t('page.addProductLine'));
       setInvoiceMessage(null);
       return;
     }
@@ -8171,7 +8171,7 @@ setCustomerOrganizationName("");
         entity_type: "purchase_order",
         entity_id: poId,
         entity_label: poNumber,
-        description: `Created purchase order ${poNumber} for ${poSupplier?.supplier_name ?? "Unknown Supplier"}`,
+        description: `Created purchase order ${poNumber} for ${poSupplier?.supplier_name ?? t('page.unknownSupplier')}`,
         new_values: {
           supplier_id: poSupplierId,
           po_number: poNumber,
@@ -8573,7 +8573,7 @@ setCustomerOrganizationName("");
         entity_type: "purchase_return",
         entity_id: returnId,
         entity_label: returnNumber,
-        description: `Created purchase return ${returnNumber} for ${returnSupplier?.supplier_name ?? "Unknown Supplier"}`,
+        description: `Created purchase return ${returnNumber} for ${returnSupplier?.supplier_name ?? t('page.unknownSupplier')}`,
         new_values: {
           supplier_id: returnSupplierId,
           return_number: returnNumber,
@@ -8841,7 +8841,7 @@ setCustomerOrganizationName("");
         entity_type: "sales_order",
         entity_id: soId,
         entity_label: soNumber,
-        description: `${soEditingId ? "Updated" : "Created"} sales order ${soNumber} for ${soCustomer?.customer_name ?? "Unknown Customer"}`,
+        description: `${soEditingId ? "Updated" : "Created"} sales order ${soNumber} for ${soCustomer?.customer_name ?? t('sell.unknownCustomer')}`,
         new_values: {
           customer_id: soCustomerId,
           so_number: soNumber,
@@ -12176,7 +12176,7 @@ setCustomerOrganizationName("");
         const dueDate = getDateOnly(transaction.credit_due_date);
         const customer = customers.find((item) => item.id === transaction.customer_id);
         if (!dueDate || dueDate >= todayDateValue || remainingUnpaidAmount <= 0) return null;
-        const title = `Collect overdue payment from ${customer?.customer_name ?? "Unknown Customer"}`;
+        const title = `Collect overdue payment from ${customer?.customer_name ?? t('sell.unknownCustomer')}`;
         const relation = {
           customer_id: transaction.customer_id,
           sales_transaction_id: transaction.id,
@@ -13103,7 +13103,7 @@ setCustomerOrganizationName("");
         id: transaction.id,
         invoice_number: transaction.invoice_number,
         date: getDateOnly(transaction.sale_date ?? transaction.created_at),
-        customer: customer?.customer_name ?? "Unknown customer",
+        customer: customer?.customer_name ?? t('page.unknownCustomerLower'),
         payment_type: transaction.payment_type ?? "cash",
         total_amount: total,
         staff: createdBy ? getProfileLabel(createdBy) : "Not available",
@@ -13138,7 +13138,7 @@ setCustomerOrganizationName("");
 
     const customerPaymentsByCustomer = customerPaymentsInRange.reduce<Record<string, number>>((totals, payment) => {
       const customer = customers.find((item) => item.id === payment.customer_id);
-      const label = customer?.customer_name ?? "Unknown customer";
+      const label = customer?.customer_name ?? t('page.unknownCustomerLower');
       totals[label] = (totals[label] ?? 0) + safeNumber(payment.amount);
       return totals;
     }, {});
@@ -16674,7 +16674,7 @@ setCustomerOrganizationName("");
   }
   const myTopCustomers = [...customerTotals.entries()]
     .map(([customerId, total]) => ({
-      name: myCustomerById.get(customerId)?.customer_name ?? "Unknown customer",
+      name: myCustomerById.get(customerId)?.customer_name ?? t('page.unknownCustomerLower'),
       value: formatBooksMoney(total),
     }))
     .sort((a, b) => b.value.localeCompare(a.value, undefined, { numeric: true }))
@@ -16683,7 +16683,7 @@ setCustomerOrganizationName("");
   const myRecentSales = mySales.slice(0, 8).map((sale) => ({
     id: sale.id,
     invoiceNumber: sale.invoice_number,
-    customerName: myCustomerById.get(sale.customer_id)?.customer_name ?? "Unknown customer",
+    customerName: myCustomerById.get(sale.customer_id)?.customer_name ?? t('page.unknownCustomerLower'),
     total: formatBooksMoney(Number(sale.total_amount) || 0),
     date: formatDateTime(sale.created_at),
   }));
