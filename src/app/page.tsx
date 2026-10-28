@@ -2403,16 +2403,16 @@ setCustomerOrganizationName("");
     create_expense_draft: ["amount", "expense_type"],
   };
   const aiQuestionLabels: Record<string, string> = {
-    supplier_id: "Which supplier?",
-    customer_id: "Which customer?",
-    product_id: "Which product?",
-    quantity: "How many units/cartons?",
-    purchase_price: "What is the purchase price?",
-    selling_price: "What is the selling price?",
-    payment_type: "Is this cash or credit?",
-    title: "What task should be created?",
-    amount: "What is the expense amount?",
-    expense_type: "What is the expense type?",
+    supplier_id: t('page.aiQSupplier'),
+    customer_id: t('page.aiQCustomer'),
+    product_id: t('page.aiQProduct'),
+    quantity: t('page.aiQQuantity'),
+    purchase_price: t('page.aiQPurchasePrice'),
+    selling_price: t('page.aiQSellingPrice'),
+    payment_type: t('page.aiQPaymentType'),
+    title: t('page.aiQTitle'),
+    amount: t('page.aiQAmount'),
+    expense_type: t('page.aiQExpenseType'),
   };
   const aiConversationQuestionOrder: Record<string, string[]> = {
     create_purchase_draft: ["supplier_id", "product_id", "quantity", "purchase_price", "selling_price"],
@@ -2421,16 +2421,16 @@ setCustomerOrganizationName("");
     create_task: ["title"],
   };
   const aiConversationQuestionText: Record<string, string> = {
-    supplier_id: "Which supplier?",
-    customer_id: "Which customer?",
-    product_id: "Which product?",
-    quantity: "How many cartons/units?",
-    purchase_price: "What is the purchase price?",
-    selling_price: "What is the selling price?",
-    payment_type: "Is this cash or credit?",
-    amount: "What is the expense amount?",
-    expense_type: "What type of expense is this?",
-    title: "What task should be created?",
+    supplier_id: t('page.aiQSupplier'),
+    customer_id: t('page.aiQCustomer'),
+    product_id: t('page.aiQProduct'),
+    quantity: t('page.aiQQuantityCartons'),
+    purchase_price: t('page.aiQPurchasePrice'),
+    selling_price: t('page.aiQSellingPrice'),
+    payment_type: t('page.aiQPaymentType'),
+    amount: t('page.aiQAmount'),
+    expense_type: t('page.aiQExpenseTypeWhat'),
+    title: t('page.aiQTitle'),
   };
   const getNextMissingField = (actionType: string, missingFields: string[]) => {
     const preferredOrder = aiConversationQuestionOrder[actionType] ?? [];
@@ -2859,7 +2859,7 @@ setCustomerOrganizationName("");
       return existingMessages;
     }
 
-    const questionText = aiConversationQuestionText[field] ?? aiQuestionLabels[field] ?? `Please provide ${field}.`;
+    const questionText = aiConversationQuestionText[field] ?? aiQuestionLabels[field] ?? t('page.aiQProvide').replace('{field}', field);
     const insertedMessage = await addAiActionMessage({
       draftId: draft.id,
       role: "assistant",
@@ -12426,72 +12426,72 @@ setCustomerOrganizationName("");
   const deploymentEnvironmentChecks = [
     {
       key: "supabase_url",
-      label: "Supabase project URL configured",
+      label: t('page.diagSupabaseUrl'),
       status: currentUser ? "pass" : "info",
       detail: currentUser
-        ? "Configured locally if the app is running."
-        : "Configured locally if the app is running.",
+        ? t('page.configuredLocally')
+        : t('page.configuredLocally'),
     },
     {
       key: "supabase_anon_key",
-      label: "Supabase anon key configured",
+      label: t('page.diagSupabaseAnonKey'),
       status: currentUser ? "pass" : "info",
       detail: currentUser
-        ? "Configured locally if the app is running."
-        : "Configured locally if the app is running.",
+        ? t('page.configuredLocally')
+        : t('page.configuredLocally'),
     },
     {
       key: "organization_loaded",
-      label: "Organization loads successfully",
+      label: t('page.diagOrgLoads'),
       status: currentOrganizationId ? "pass" : "warning",
-      detail: currentOrganizationId ? "Organization ID is loaded." : "Login and profile loading required.",
+      detail: currentOrganizationId ? t('page.diagOrgIdLoaded') : t('page.diagLoginRequired'),
     },
     {
       key: "profile_loaded",
-      label: "Current user profile loads successfully",
+      label: t('page.diagProfileLoads'),
       status: currentProfile ? "pass" : "warning",
-      detail: currentProfile ? "Current profile is loaded." : "Current profile is not loaded.",
+      detail: currentProfile ? t('page.diagProfileLoaded') : t('page.diagProfileNotLoadedShort'),
     },
     {
       key: "business_settings",
-      label: "Business name, phone, and address added",
+      label: t('page.diagBusinessAdded'),
       status: businessSettingsComplete ? "pass" : "warning",
       detail: businessSettingsComplete
-        ? "Business branding data is present."
-        : "Add business name and at least phone or address.",
+        ? t('page.diagBrandingPresent')
+        : t('page.diagAddBusiness'),
     },
     {
       key: "rls_security",
-      label: "RLS security readiness completed",
+      label: t('page.diagRlsReady'),
       status: allSecurityChecksPassed || securityChecks.length > 0 ? "pass" : "warning",
       detail:
         allSecurityChecksPassed || securityChecks.length > 0
-          ? "Security readiness is being tracked."
-          : "Open Security Check and complete final testing.",
+          ? t('page.diagSecurityTracked')
+          : t('page.diagOpenSecurityCheck'),
     },
     {
       key: "staff_permissions",
-      label: "Staff roles and permissions available",
+      label: t('page.diagStaffPerms'),
       status: Array.isArray(staffPermissions) ? "pass" : "warning",
-      detail: "Staff permissions feature is available.",
+      detail: t('page.diagStaffPermsAvailable'),
     },
     {
       key: "print_export",
-      label: "Print invoices and CSV exports available",
+      label: t('page.diagPrintExport'),
       status: "pass",
-      detail: "Print and export tools are built into TradeOS.",
+      detail: t('page.diagPrintExportBuilt'),
     },
     {
       key: "production_build",
-      label: "Run npm.cmd run build before deployment",
+      label: t('page.diagBuildCmd'),
       status: "manual",
-      detail: "Manual check required before each deployment.",
+      detail: t('page.diagManualRequired'),
     },
     {
       key: "vercel_env",
-      label: "Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel",
+      label: t('page.diagVercelEnv'),
       status: "manual",
-      detail: "Add variables in Vercel without exposing secret values.",
+      detail: t('page.diagVercelNoSecrets'),
     },
   ];
   const deploymentPassedCount = deploymentEnvironmentChecks.filter((check) => check.status === "pass").length;
@@ -12503,7 +12503,7 @@ setCustomerOrganizationName("");
 
   const organizationDisplayName =
     (currentOrganization?.name ?? currentProfile?.organization_name ?? organizationName).trim() ||
-    "Organization";
+    t('page.organizationFallback');
   const businessPhone = String(currentOrganization?.phone ?? "").trim();
   const businessAddress = String(currentOrganization?.address ?? "").trim();
   const businessCity = String(currentOrganization?.city ?? "").trim();
@@ -14090,18 +14090,18 @@ setCustomerOrganizationName("");
     };
     if (aiVoiceLanguage === "roman_urdu") return romanUrduQuestions[field] ?? "Jawab dein.";
     const voiceQuestions: Record<string, string> = {
-      supplier_id: "Which supplier?",
-      customer_id: "Which customer?",
-      product_id: "Which product?",
-      quantity: "How many cartons or units?",
-      purchase_price: "What is the purchase price?",
-      selling_price: "What is the selling price?",
-      payment_type: "Is this cash or credit?",
-      amount: "What is the expense amount?",
-      expense_type: "What type of expense is this?",
-      title: "What task should I create?",
+      supplier_id: t('page.aiQSupplier'),
+      customer_id: t('page.aiQCustomer'),
+      product_id: t('page.aiQProduct'),
+      quantity: t('page.aiQQuantityCartonsOr'),
+      purchase_price: t('page.aiQPurchasePrice'),
+      selling_price: t('page.aiQSellingPrice'),
+      payment_type: t('page.aiQPaymentType'),
+      amount: t('page.aiQAmount'),
+      expense_type: t('page.aiQExpenseTypeWhat'),
+      title: t('page.aiQTitleVoice'),
     };
-    return voiceQuestions[field] ?? aiConversationQuestionText[field] ?? `Please provide ${field}.`;
+    return voiceQuestions[field] ?? aiConversationQuestionText[field] ?? t('page.aiQProvide').replace('{field}', field);
   };
 
   const getAiVoiceExecutionSuccessText = (actionType: string) => {
