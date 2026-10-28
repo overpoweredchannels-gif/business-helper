@@ -406,6 +406,11 @@ export default function Home() {
     Overdue: t('page.payStatusOverdue'),
     "Payment Pending": t('page.payStatusPending'),
   };
+  const paymentMethodLabelMap: Record<string, string> = {
+    cash: t('money.cash'),
+    bank: t('money.bank'),
+    card: t('money.card'),
+  };
   const expenseTypeLabelMap: Record<string, string> = {
     "Purchase Transport": t('page.expPurchaseTransport'),
     "Sales Delivery": t('page.expSalesDelivery'),
@@ -20942,7 +20947,7 @@ setCustomerOrganizationName("");
                         <div>{getDateOnly(historyItem.payment.payment_date ?? historyItem.payment.created_at) ?? "-"}</div>
                         {historyItem.payment.payment_method && (
                           <div className="mt-1 inline-block rounded bg-muted/40 px-2 py-0.5 text-xs capitalize text-muted-foreground">
-                            {String(historyItem.payment.payment_method).replace(/_/g, " ")}
+                            {paymentMethodLabelMap[String(historyItem.payment.payment_method)] ?? String(historyItem.payment.payment_method).replace(/_/g, " ")}
                           </div>
                         )}
                       </div>
