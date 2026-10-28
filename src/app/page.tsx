@@ -5809,7 +5809,7 @@ setCustomerOrganizationName("");
       if (!cancelled) { walkInCustomerId.current = result.customer.id; setCustomers(current => current.some(customer => customer.id === result.customer.id) ? current : [...current, result.customer]); setSelectedCustomerIdForSale(current => current ?? result.customer.id); }
     }).catch(error => { if (!cancelled) { setWalkInFailed(true); setSalesError(error.message); } }).finally(() => { if (!cancelled) setWalkInBusy(false); });
     return () => { cancelled = true; };
-  }, [quickSaleMode, currentOrganizationId, currentProfile?.id, walkInAttempt]);
+  }, [quickSaleMode, currentOrganizationId, currentProfile?.id, walkInAttempt, t]);
   // Sell mode persistence: reopening the Sell tab restores the surface the
   // user last worked on (Retail POS or the detailed invoice form) for this
   // organization + profile, instead of resetting to the detailed form on
@@ -24713,7 +24713,7 @@ setCustomerOrganizationName("");
               type="search"
               value={marketIntelligenceSearch}
               onChange={(e) => setMarketIntelligenceSearch(e.target.value)}
-              placeholder=t('page.searchAdvisory')
+              placeholder={t('page.searchAdvisory')}
               className="rounded border border-border px-3 py-2 text-sm"
             />
             <select value={marketIntelligenceRiskFilter} onChange={(e) => setMarketIntelligenceRiskFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
@@ -24887,7 +24887,7 @@ setCustomerOrganizationName("");
                     type="search"
                     value={marketImportQueueSearch}
                     onChange={(e) => setMarketImportQueueSearch(e.target.value)}
-                    placeholder=t('page.searchQueue')
+                    placeholder={t('page.searchQueue')}
                     className="rounded border border-border px-3 py-2 text-sm"
                   />
                   <select value={marketImportQueueStatusFilter} onChange={(e) => setMarketImportQueueStatusFilter(e.target.value)} className="rounded border border-border px-3 py-2 text-sm">
@@ -26188,7 +26188,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                         }
                         rows={2}
                         className="rounded border border-border px-3 py-2"
-                        placeholder=t('page.addNotesBeforeStatus')
+                        placeholder={t('page.addNotesBeforeStatus')}
                       />
                     </label>
                   </div>
