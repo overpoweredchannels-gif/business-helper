@@ -25,7 +25,22 @@ export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled,
   // (a second unit of the same product) still submits.
   const lastSubmitted = useRef<string | null>(null);
   
-  useEffect(() => { if (focusSignal > 0 && !disabled) input.current?.focus(); }, [focusSignal, disabled]);
+  // Focus only on a NEW focus request, never on a mere loading flip.
+  // The old effect re-ran whenever `disabled` changed, so any products /
+  // sales load completing after a scan yanked focus back into this box
+  // (without selecting the text) even though the scan had already routed
+  // focus to the new line's quantity — the digit typed next then appended
+  // to the scanned code instead of changing the quantity. Honoring each
+  // signal value once keeps the bump-while-disabled case working (the
+  // request is still honored when the box becomes enabled) while a plain
+  // loading completion with no new request no longer steals focus.
+  const honoredFocusSignal = useRef(0);
+  useEffect(() => {
+    if (focusSignal > honoredFocusSignal.current && !disabled) {
+      input.current?.focus();
+      honoredFocusSignal.current = focusSignal;
+    }
+  }, [focusSignal, disabled]);
   useEffect(() => {
     if (clearSignal > 0) {
       setLocalValue("");
