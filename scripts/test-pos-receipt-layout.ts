@@ -142,4 +142,16 @@ template40Discount.columns.labels.push({ key: "discount", label: "Disc", widthPc
 const html40DiscountCol = buildPrintableReceiptHtml(discountReceipt, template40Discount);
 assert.ok(html40DiscountCol.includes("2 \u00d7 Rs\u00a01.30 \u2212 Rs\u00a00.30 = Rs\u00a02.30"), "40 stacked detail shows the discount segment when the template has a discount column");
 
+// Field palette (2026-10-29): a template WITH a bonus column shows the bonus
+// segment/cell; the default template (no bonus column) never invents one.
+// This is the receipt half of the palette — discount is covered above.
+const bonusReceipt = { ...receipt, total: 2.6, lines: [{ name: "Orbit Menta", quantity: "2", unit: "Pcs", price: "1.30", discount: "0", bonus: "1" }] };
+const template40Bonus = cloneDefaultTemplate("retail_receipt");
+template40Bonus.receiptWidthMm = 40;
+template40Bonus.columns.labels.push({ key: "bonus", label: "Bonus", widthPct: 10 });
+const html40BonusCol = buildPrintableReceiptHtml(bonusReceipt, template40Bonus);
+assert.ok(html40BonusCol.includes("+ 1 Pcs"), "40 stacked detail shows the bonus segment when the template has a bonus column");
+const html40BonusDefault = buildPrintableReceiptHtml(bonusReceipt, template40);
+assert.ok(!html40BonusDefault.includes("+ 1 Pcs"), "40 stacked detail omits the bonus segment when the template has no bonus column");
+
 console.log("POS receipt layout tests passed: printable-width sizing (48/72mm), nowrap values, Spanish default chrome, custom chrome preserved, qty numeral + unit line.");

@@ -22,6 +22,44 @@ export interface PrintColumn {
   widthPct: number;
 }
 
+/**
+ * Every column key a document's renderer understands, for the customizer's
+ * field palette. The palette offers each key not already in the template's
+ * columns (so a removed column can always be added back), and the customizer
+ * never offers "product" for removal — a line without a product column is
+ * not a line. Labels here are the stored defaults (user-renamable in the
+ * customizer, like every other column label); widths are starting values
+ * the user can resize with the existing sliders.
+ *
+ * Renderer coverage, verified: sales_invoice columnValue + thermal detail
+ * understand product/quantity/price/discount/total; retail_receipt table
+ * values + stacked detail understand product/quantity/price/discount/
+ * bonus/total; load_form columnValue understands product/quantity/bonus/
+ * main_qty/subunit_qty. Note sales_invoice has no bonus line data, so no
+ * bonus key exists for it — its palette is exactly its removable columns.
+ */
+export const COLUMN_PALETTE: Record<PrintDocumentType, PrintColumn[]> = {
+  sales_invoice: [
+    { key: "quantity", label: "Quantity", widthPct: 18 },
+    { key: "price", label: "Rate", widthPct: 14 },
+    { key: "discount", label: "Disc", widthPct: 12 },
+    { key: "total", label: "Amount", widthPct: 16 },
+  ],
+  retail_receipt: [
+    { key: "quantity", label: "Qty", widthPct: 14 },
+    { key: "price", label: "Rate", widthPct: 18 },
+    { key: "discount", label: "Discount", widthPct: 14 },
+    { key: "bonus", label: "Bonus", widthPct: 14 },
+    { key: "total", label: "Amount", widthPct: 22 },
+  ],
+  load_form: [
+    { key: "quantity", label: "Quantity", widthPct: 32 },
+    { key: "bonus", label: "Bns", widthPct: 20 },
+    { key: "main_qty", label: "Main Qty", widthPct: 20 },
+    { key: "subunit_qty", label: "Subunit Qty", widthPct: 20 },
+  ],
+};
+
 export interface PrintTemplate {
   id: string;
   name: string;
