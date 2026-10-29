@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import {
+  COLUMN_PALETTE,
   PRINT_FONTS,
   getInvoicePaper,
   getInvoiceSheetWidthMm,
+  type PrintColumn,
   type PrintDocumentType,
   type PrintTemplate,
 } from "@/lib/print/print-template-types";
@@ -222,6 +224,21 @@ export default function TemplateCustomizer({
   const setColumnWidth = (index: number, widthPct: number) => {
     const labels = working.columns.labels.map((c, i) => (i === index ? { ...c, widthPct } : c));
     update({ columns: { ...working.columns, labels } });
+  };
+
+  // Field palette: add any renderer-understood column the template does not
+  // already have (e.g. Discount/Bonus on a receipt whose default has neither,
+  // Main/Subunit Qty on a load form), and remove any column except product.
+  // A removed column stays offered in the palette, so it can always be added
+  // back; the live preview updates immediately because it renders `working`.
+  const addColumn = (column: PrintColumn) => {
+    if (working.columns.labels.some((c) => c.key === column.key)) return;
+    update({ columns: { ...working.columns, labels: [...working.columns.labels, { ...column }] } });
+  };
+
+  const removeColumn = (index: number) => {
+    if (working.columns.labels[index]?.key === "product") return;
+    update({ columns: { ...working.columns, labels: working.columns.labels.filter((_, i) => i !== index) } });
   };
 
   const reorderHeaderSections = (newOrder: string[]) => {
@@ -618,9 +635,41 @@ export default function TemplateCustomizer({
                       />
                       <span className="w-7 text-right text-[10px] tabular-nums text-muted-foreground">{col.widthPct}%</span>
                     </div>
+                    {col.key !== "product" && (
+                      <button
+                        type="button"
+                        onClick={() => removeColumn(i)}
+                        aria-label={t('print.template.removeColumn')}
+                        className="rounded border border-border px-1.5 text-xs text-muted-foreground hover:bg-muted disabled:opacity-30"
+                      >
+                        ×
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
+              {(() => {
+                const present = new Set(working.columns.labels.map((c) => c.key));
+                const available = COLUMN_PALETTE[docType].filter((c) => !present.has(c.key));
+                if (available.length === 0) return null;
+                return (
+                  <div className="mt-2">
+                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">{t('print.template.addField')}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {available.map((c) => (
+                        <button
+                          key={c.key}
+                          type="button"
+                          onClick={() => addColumn(c)}
+                          className="min-h-11 rounded border border-border px-3 text-xs font-medium hover:bg-muted"
+                        >
+                          + {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Footnote */}

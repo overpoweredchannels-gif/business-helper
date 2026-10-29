@@ -59,6 +59,12 @@ function columnValue(key: string, line: LoadFormLine): string {
       return quantityLabel(line);
     case "bonus":
       return bonusLabel(line);
+    case "main_qty":
+      // Main units only, e.g. "5 Cotton" — the split half of quantityLabel,
+      // for users who want main and subunit quantities as separate columns.
+      return line.main_qty > 0 ? `${trim(line.main_qty)} ${line.unit_type ?? "Units"}` : "";
+    case "subunit_qty":
+      return line.subunit_qty > 0 ? `${trim(line.subunit_qty)} ${line.subunit_type ?? "Pcs"}` : "";
     default:
       return "";
   }

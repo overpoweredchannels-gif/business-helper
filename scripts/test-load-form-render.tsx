@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { cloneDefaultTemplate } from "../src/lib/print/default-templates";
 import {
+  COLUMN_PALETTE,
   getInvoicePaper,
   getInvoiceSheetWidthMm,
   normalizeInvoicePaper,
@@ -87,5 +88,31 @@ const sheetHtml = renderToStaticMarkup(
 );
 assert.ok(sheetHtml.includes('data-invoice-paper="a4"'), "a template without invoicePaper stays on A4");
 assert.ok(sheetHtml.includes(">PRODUCT NAME<"), "A4 load form keeps the classic table header");
+
+// Field palette (2026-10-29): every key the palette offers must be a key the
+// renderer understands, and the new load-form split columns must render the
+// main and subunit quantities as separate cells, not the combined label.
+assert.deepEqual(
+  COLUMN_PALETTE.load_form.map((c) => c.key),
+  ["quantity", "bonus", "main_qty", "subunit_qty"],
+);
+assert.deepEqual(
+  COLUMN_PALETTE.retail_receipt.map((c) => c.key),
+  ["quantity", "price", "discount", "bonus", "total"],
+);
+assert.ok(!COLUMN_PALETTE.sales_invoice.some((c) => c.key === "bonus"), "invoices have no bonus line data, so no bonus key");
+
+const splitTemplate = cloneDefaultTemplate("load_form");
+splitTemplate.columns.labels = [
+  { key: "product", label: "Product Name", widthPct: 40 },
+  { key: "main_qty", label: "Main Qty", widthPct: 30 },
+  { key: "subunit_qty", label: "Subunit Qty", widthPct: 30 },
+];
+const splitHtml = renderToStaticMarkup(
+  <LoadFormDocument summary={summary} template={splitTemplate} />,
+);
+assert.ok(splitHtml.includes("2 Cotton"), "split columns render the main quantity");
+assert.ok(splitHtml.includes("3 Boxes"), "split columns render the subunit quantity");
+assert.ok(!splitHtml.includes("2 Cotton + 3 Boxes"), "split columns never render the combined quantity label");
 
 console.log("test-load-form-render: all assertions passed");
