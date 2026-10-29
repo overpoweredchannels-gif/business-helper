@@ -8,7 +8,7 @@ import { SuggestionPopover, type SuggestionStatus, type SuggestionStatusNote } f
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { LanguageSwitcher } from "@/components/regional/LanguageSwitcher";
-import { DisplayCurrencySwitcher } from "@/components/regional/DisplayCurrencySwitcher";
+import { CurrencySwitcher } from "@/components/regional/CurrencySwitcher";
 
 export interface SearchSuggestion {
   id: string;
@@ -49,6 +49,8 @@ interface HeaderProps {
   notificationCount?: number;
   notifications?: Notification[];
   onNotificationClick?: (notification: Notification) => void;
+  /** Owner-only: the header currency switch converts the whole business. */
+  canSwitchCurrency?: boolean;
 }
 
 function suggestionIcon(type: SearchSuggestion["type"]) {
@@ -206,6 +208,7 @@ export function Header({
   notificationCount = 0,
   notifications = [],
   onNotificationClick,
+  canSwitchCurrency,
 }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -381,7 +384,7 @@ export function Header({
           <LanguageSwitcher />
 
           {/* Display currency dropdown (live-rate conversion; records stay in books currency) */}
-          <DisplayCurrencySwitcher />
+          <CurrencySwitcher canSwitch={canSwitchCurrency} />
 
           {/* Notifications */}
           <div

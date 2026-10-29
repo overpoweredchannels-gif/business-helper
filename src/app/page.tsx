@@ -329,19 +329,22 @@ async function authorizedFetch(input: string, init: RequestInit = {}): Promise<R
   return fetch(input, { ...init, headers });
 }
 
-// Dashboard overview amounts follow the header display currency (live rate)
-// when one is available; otherwise they stay in books currency. Module-level
-// (not a render-scope closure): a closure here tripped the React Compiler's
+// Dashboard overview amounts are books amounts. The display currency only
+// converts when a stale display cookie still differs from books (the
+// pre-snap window on organization load); once the snap runs, display
+// equals books and no conversion applies — converting books amounts a
+// second time would mislabel them. Module-level (not a render-scope
+// closure): a closure here tripped the React Compiler's
 // preserve-manual-memoization check on an unrelated memo. Transactional
 // surfaces (POS, invoices, receipts, ledgers) always use formatBooksMoney
 // directly and are unaffected by this helper.
 function formatDashboardMoney(displayCurrency: string, displayFxRate: number | null, value: unknown) {
-  return displayCurrency !== "PKR" && displayFxRate ? formatCurrency(value) : formatBooksMoney(value);
+  return displayCurrency !== getActiveBooksCurrency() && displayFxRate ? formatCurrency(value) : formatBooksMoney(value);
 }
 
 export default function Home() {
   const router = useRouter();
-  const { t, language, currency: displayCurrency, fxRate: displayFxRate } = useRegional();
+  const { t, language, currency: displayCurrency, fxRate: displayFxRate, setCurrency } = useRegional();
   // Auth-guard error lines, translated once per render and reused by the
   // 60+ handlers below (keeps the t() calls out of the handler bodies).
   const orgNotLoadedMessage = t('page.orgNotLoaded');
@@ -1729,6 +1732,13 @@ export default function Home() {
     setBooksCurrency(resolvedBooksCurrency);
     setBooksTargetCurrency(resolvedBooksCurrency);
     setActiveBooksCurrency(resolvedBooksCurrency);
+    // There is no separate display currency any more: a stale display
+    // cookie (from the display era, or another tab) must not keep
+    // converting books amounts through a PKR-based rate. Snap it to
+    // books; the provider effect then skips its live-rate fetch too.
+    if (displayCurrency !== resolvedBooksCurrency) {
+      setCurrency(resolvedBooksCurrency);
+    }
     // A completed currency switch reloads the page (every cached amount
     // on screen was denominated in the old currency); the flag left in
     // sessionStorage turns into the confirmation message here.
@@ -17251,6 +17261,7 @@ setCustomerOrganizationName("");
       dragSectionsToDashboard={activeSection === "dashboard" && homeWidgets.customizing}
         onSearchSubmit={handleGlobalSearchSubmit}
         onSearchChange={handleGlobalSearchChange}
+        canSwitchCurrency={currentProfile?.role === "owner"}
         searchScopeKey={searchScopeKey}
         // Restricted users get no productStatus: they must not see
         // product-source status, names, or the Products destination.

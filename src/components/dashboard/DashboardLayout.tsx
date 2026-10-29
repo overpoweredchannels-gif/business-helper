@@ -51,6 +51,8 @@ interface DashboardLayoutProps {
   onResetNavOrder?: () => void;
   /** Home dashboard edit mode: sidebar sections become draggable cards. */
   dragSectionsToDashboard?: boolean;
+  /** Owner-only: forwarded to the header currency switch. */
+  canSwitchCurrency?: boolean;
 }
 
 export function DashboardLayout({
@@ -81,6 +83,7 @@ customizeMode,
   onToggleNavHidden,
   onResetNavOrder,
   dragSectionsToDashboard,
+  canSwitchCurrency,
 }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMobileMenuOpen(false), []);
@@ -148,6 +151,7 @@ customizeMode,
           searchScopeKey={searchScopeKey}
           productStatus={productStatus}
           onViewAllProducts={onViewAllProducts}
+          canSwitchCurrency={canSwitchCurrency}
         />
         <main className="responsive-content min-w-0 flex-1 pb-24 lg:pb-8">
           {children}

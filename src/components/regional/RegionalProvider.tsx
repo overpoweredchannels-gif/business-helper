@@ -4,7 +4,7 @@ import {languages,direction,parseLanguageCookie,parseCurrencyCookie,localeFor,ty
 import {messages,type MessageKey} from '@/lib/regional/messages';
 import {regionalUi,type RegionalUiKey} from '@/lib/regional/ui-messages';
 import {regionalQaEnabled} from '@/lib/regional/qa';
-import {setActiveCurrency,setActiveFxRate} from '@/lib/tradeos/formatters';
+import {getActiveBooksCurrency,setActiveCurrency,setActiveFxRate} from '@/lib/tradeos/formatters';
 import {supabase} from '@/lib/supabase/client';
 
 type RegionalContext={language:Language;enabled:boolean;setLanguage:(language:Language)=>void;currency:Currency;setCurrency:(currency:Currency)=>void;fxRate:number|null;refreshFxRate:()=>void;t:(key:MessageKey)=>string;ui:(key:RegionalUiKey)=>string};
@@ -59,11 +59,14 @@ export function RegionalProvider({children,initialLanguage='en'}:{children:React
     // Clear first: while a new currency's live rate is loading (or fails),
     // no stale rate from the previous currency may label amounts.
     setFxRate(null);setActiveFxRate(null);
-    if(currency==='PKR'){return;}
+    // No conversion when the display currency IS the books currency:
+    // amounts are already stored in it, and a rate would double-convert.
+    if(currency===getActiveBooksCurrency()){return;}
     let cancelled=false;
     // A failed live rate must never leave amounts labelled in a currency
-    // with no rate — fall back to PKR rather than mislabelling them.
-    void fetchFxRate(currency).then(rate=>{if(cancelled)return;if(rate===null){setCurrency('PKR');return;}setFxRate(rate);setActiveFxRate(rate);});
+    // with no rate — fall back to the books currency rather than
+    // mislabelling them.
+    void fetchFxRate(currency).then(rate=>{if(cancelled)return;if(rate===null){setCurrency(getActiveBooksCurrency());return;}setFxRate(rate);setActiveFxRate(rate);});
     return ()=>{cancelled=true;};
   },[currency,fxRefreshTick,enabled]);
   const setLanguage=(next:Language)=>{
