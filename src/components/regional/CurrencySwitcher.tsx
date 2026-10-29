@@ -137,9 +137,23 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
       });
       const payload = (await response.json().catch(() => null)) as {
         ok?: boolean;
+        code?: string;
       } | null;
       if (!response.ok || !payload?.ok) {
-        setError(ui("header.currencySwitchError"));
+        // Name the cause instead of one generic line: the QA run proved
+        // a generic message hides a diagnosable failure (there, the
+        // missing books migration). The settings flow maps these same
+        // codes; the header must not swallow them.
+        const code = payload?.code ?? "";
+        setError(
+          code === "books.migrationMissing"
+            ? ui("header.currencySwitchMigration")
+            : code === "books.forbidden"
+              ? ui("header.currencySwitchForbidden")
+              : code === "books.invalidRate"
+                ? ui("header.currencySwitchRateError")
+                : ui("header.currencySwitchError"),
+        );
         return;
       }
       // Display follows books from here on, so the reload lands on the
