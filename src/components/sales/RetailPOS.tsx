@@ -36,7 +36,7 @@ const NO_SALE_REASON_KEYS: Record<NoSaleReasonCode, MessageKey> = {
   "other": "drawer.reasonOther",
 };
 
-export function RetailPOS({ scope, sale, products, customers, busy, owner, productNameFallback, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, clearSignal = 0, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect }: {
+export function RetailPOS({ scope, sale, products, customers, busy, owner, productNameFallback, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, clearSignal = 0, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect, onCustomizeReceipt }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; busy: boolean; owner: boolean;
   /** Names of products scanned/added while the products list was stale:
    * a line whose product is missing from `products` shows its scanned
@@ -74,6 +74,13 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
   /** Pair the direct-route printer (user gesture). Resolves false when
    * pairing was cancelled or is unavailable on this browser. */
   onDrawerConnect?: (route: "serial" | "usb") => Promise<boolean>;
+  /**
+   * Opens the receipt template customizer with a sample receipt, so the
+   * counter receipt can be set up before the first sale. Rendered only
+   * when provided; the saved template applies to the next sale's dialog.
+   * A plain button, so it never joins the Enter-key walk.
+   */
+  onCustomizeReceipt?: () => void;
 }) {
   const [held, setHeld] = useState<HeldSale[]>([]);
   const [templates, setTemplates] = useState<BasketTemplate[]>([]);
@@ -658,7 +665,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
       </div>}
       {owner && draftResult.amounts && Number(sale.discount) > 0 && <p className="mt-2 text-sm tabular-nums">{t("pos.discountBeforeTax").replace("{amount}", formatBooksMoney(draftResult.amounts.invoiceDiscount))}</p>}</div>
       {owner && sale.paymentType === "cash" && <div className="sm:min-w-52"><label className="block text-sm">{t("pos.cashReceived")}<input id="pos-cash-received" data-pos-cash-received aria-label={t("pos.cashReceived")} type="text" inputMode="decimal" value={cashReceived} placeholder={total === null ? t("pos.saleTotalUnavailable") : String(total)} onChange={event => onCashReceived(event.target.value)} onKeyDown={handleCashReceivedKeyDown} disabled={busy} className="mt-1 block min-h-11 w-full rounded border border-input bg-background px-3 tabular-nums sm:w-40" /></label><div className="mt-2 flex flex-wrap gap-2">{quickCashPresets.map(preset => <button key={preset.label} type="button" disabled={busy} className="min-h-11 rounded border px-2 text-xs disabled:opacity-40" onClick={() => onCashReceived(String(preset.value))}>{preset.label}</button>)}</div>{draftResult.issues.filter(issue => issue.field === "cash_received").map(issue => <p key={issue.message} className="mt-2 text-sm text-destructive" role="alert">{draftResult.cashSummary?.status === "cash-short" ? <>{t("pos.cashShortBy")}{" "}<span className="tabular-nums">{formatBooksMoney(draftResult.cashSummary.shortfall)}</span>.</> : issue.message}</p>)}{!draftResult.issues.some(issue => issue.field === "cash_received") && (cashReceived.trim() === "" ? <p className="mt-2 text-sm text-muted-foreground">{t("pos.cashBlankHint")}</p> : draftResult.cashSummary ? <p className="mt-2 text-sm">{t("pos.changeDueLabel")}{" "}<span className="tabular-nums">{formatBooksMoney(draftResult.cashSummary.change)}</span></p> : <p className="mt-2 text-sm text-muted-foreground">{t("pos.cashSummaryUnavailable")}</p>)}</div>}
-      <div className="flex flex-col gap-2 sm:flex-row"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">{t("pos.holdSale")}</button><button data-entry-add type="button" disabled={busy || !sale.lines.length || !sale.customerId || !draftResult.valid} onClick={onSave} className="min-h-12 w-full rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40 sm:w-auto">{busy ? t("pos.saving") : owner || staffDirectSale ? sale.paymentType === "credit" ? t("pos.saveCreditSale") : t("pos.payAndSave") : t("pos.sendForApproval")}</button></div>
+      <div className="flex flex-col gap-2 sm:flex-row"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">{t("pos.holdSale")}</button><button data-entry-add type="button" disabled={busy || !sale.lines.length || !sale.customerId || !draftResult.valid} onClick={onSave} className="min-h-12 w-full rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40 sm:w-auto">{busy ? t("pos.saving") : owner || staffDirectSale ? sale.paymentType === "credit" ? t("pos.saveCreditSale") : t("pos.payAndSave") : t("pos.sendForApproval")}</button>{onCustomizeReceipt && <button type="button" onClick={onCustomizeReceipt} className="min-h-12 rounded-lg border border-border px-5 font-semibold text-foreground/80 hover:bg-muted/40">{t("pos.customizeReceipt")}</button>}</div>
       </div>
       {saveHint && <p data-pos-save-hint role="status" className="text-sm text-muted-foreground">{saveHint}{walkInState === "failed" && onRetryWalkIn && <button type="button" onClick={onRetryWalkIn} className="ml-3 min-h-11 rounded border border-input px-3 font-medium text-foreground">{t("pos.retry")}</button>}</p>}
     </div>

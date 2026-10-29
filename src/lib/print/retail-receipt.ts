@@ -2,7 +2,7 @@ import { calculateSaleAmounts, calculateSaleLineTotal, roundMoney } from "@/lib/
 import { formatDate, formatBooksMoney } from "@/lib/tradeos/formatters";
 import { calendarDateOf } from "@/lib/regional/dates";
 import { DEFAULT_PRINT_TEMPLATES } from "./default-templates";
-import type { PrintColumn, PrintTemplate } from "./print-template-types";
+import { THERMAL_PRINTABLE_WIDTH_MM, type PrintColumn, type PrintTemplate } from "./print-template-types";
 
 export type ReceiptLine = {
   name: string;
@@ -107,25 +107,52 @@ export function getReceiptSummaryRows(receipt: Receipt, labels: ReceiptSummaryLa
   return rows;
 }
 
-/** Normalize any stored paper-width value. A stored 58 stays 58 (number or
- * string form); 80 stays 80; anything missing/unknown falls back to the
- * historical 80mm default. */
-export function normalizeReceiptWidthMm(value: unknown): 58 | 80 {
-  return value === 58 || value === "58" ? 58 : 80;
+/** Normalize any stored paper-width value. A stored 40 stays 40 and a
+ * stored 58 stays 58 (number or string form); anything missing/unknown
+ * falls back to the historical 80mm default. */
+export function normalizeReceiptWidthMm(value: unknown): 40 | 58 | 80 {
+  if (value === 40 || value === "40") return 40;
+  if (value === 58 || value === "58") return 58;
+  return 80;
 }
 
-export function getReceiptWidthMm(template: PrintTemplate): 58 | 80 {
+export function getReceiptWidthMm(template: PrintTemplate): 40 | 58 | 80 {
   return normalizeReceiptWidthMm(template.receiptWidthMm);
 }
 
-/** Printable width per paper size. Thermal printers cannot print to the
- * paper edge: a 58mm roll exposes ~48mm and an 80mm roll ~72mm. Layouts must
- * be sized to the printable width, never the nominal paper width, or the
- * rightmost (totals) column is clipped mid-digit by the printer. */
-export const RECEIPT_PRINTABLE_WIDTH_MM: Record<58 | 80, number> = { 58: 48, 80: 72 };
+/** Printable width per paper size (shared thermal margin rule). */
+export const RECEIPT_PRINTABLE_WIDTH_MM: Record<40 | 58 | 80, number> = THERMAL_PRINTABLE_WIDTH_MM;
 
 export function getReceiptPrintableWidthMm(template: PrintTemplate): number {
   return RECEIPT_PRINTABLE_WIDTH_MM[getReceiptWidthMm(template)];
+}
+
+/**
+ * Stacked line detail for the 40mm profile, shared by the on-screen
+ * preview and the printed sheet so the two can never disagree. A 32mm
+ * printable width cannot hold the table columns, so each line stacks: the
+ * name on its own row, then one detail row built only from the columns the
+ * template actually shows (quantity × rate, minus discount only when it is
+ * non-zero, equals amount). Amounts use a non-breaking space so a money
+ * token can wrap only between segments, never mid-number.
+ */
+export function receiptStackedDetail(line: ReceiptLineRow, columns: PrintColumn[]): string {
+  const keys = new Set(columns.map((column) => column.key));
+  const nbsp = (value: string) => value.replace(/ /g, " ");
+  const parts: string[] = [];
+  if (keys.has("quantity")) parts.push(line.quantity);
+  if (keys.has("price")) parts.push(nbsp(formatBooksMoney(Number(line.price))));
+  let detail = parts.join(" × ");
+  if (keys.has("discount") && Number(line.discount || 0) !== 0) {
+    detail += ` − ${nbsp(formatBooksMoney(Number(line.discount || 0)))}`;
+  }
+  if (keys.has("bonus") && line.bonus) {
+    detail += ` + ${line.bonus} ${line.unit}`;
+  }
+  if (keys.has("total")) {
+    detail += ` = ${nbsp(formatBooksMoney(line.amount))}`;
+  }
+  return detail;
 }
 
 /** The customer name seeded by POST /api/sales/walk-in. Receipts translate
@@ -238,15 +265,21 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
   const width = getReceiptWidthMm(template);
   const contentWidth = getReceiptPrintableWidthMm(template);
   const resolved = resolveReceiptChrome(template, chrome);
-  // The 58mm profile is tight: shave the items-table type one step so the
-  // columns keep air at printable width.
-  const rowSizePx = width === 58 ? Math.max(8, Math.round(template.columns.rowSizePx * 0.9)) : template.columns.rowSizePx;
-  const headerSizePx = width === 58 ? Math.max(8, Math.round(template.columns.headerSizePx * 0.9)) : template.columns.headerSizePx;
+  // Narrow profiles are tight: shave the items-table type so the columns
+  // keep air at printable width (58mm one step, 40mm a step further).
+  const shrink = width === 40 ? 0.85 : width === 58 ? 0.9 : 1;
+  const rowSizePx = Math.max(8, Math.round(template.columns.rowSizePx * shrink));
+  const headerSizePx = Math.max(8, Math.round(template.columns.headerSizePx * shrink));
   const lineRows = getReceiptLineRows(receipt);
   const summaryRows = getReceiptSummaryRows(receipt, labels);
   const columns = resolved.columns.map(column =>
     `<th${NUMERIC_COLUMN_KEYS.has(column.key) ? ` class="num"` : ""} style="width:${column.widthPct}%;font-size:${headerSizePx}px">${escapeHtml(column.label)}</th>`,
   ).join("");
+  // The 40mm profile cannot hold the table: each line stacks (name row,
+  // then the shared stacked detail row) instead of squeezing columns.
+  const stackedRows = width === 40 ? lineRows.map(line =>
+    `<div data-receipt-line="" style="border-top:1px solid ${template.page.rule};padding:1mm 0.5mm;font-size:${rowSizePx}px"><div>${escapeHtml(line.name)}${line.unit ? `<span class="line-unit">${escapeHtml(line.unit)}</span>` : ""}</div><div>${escapeHtml(receiptStackedDetail(line, resolved.columns))}</div></div>`,
+  ).join("") : "";
   const rows = lineRows.map(line => {
     const values: Record<string, string> = {
       quantity: line.quantity,
@@ -295,5 +328,5 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
     .grand-total{border-top:1px solid ${template.page.rule};padding-top:1mm;font-size:${template.footer.valueSizePx}px}
     .footer{border-top:1px solid ${template.page.rule};margin-top:2mm;padding-top:1mm;font-size:${template.footer.footnoteSizePx}px}
     @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style></head><body data-receipt-paper-width="${width}mm" data-receipt-content-width="${contentWidth}mm">${template.header.showOrgName && template.header.orgNamePosition === "top" ? orgName : ""}<h2>${escapeHtml(resolved.headingText)}</h2><p>${meta}</p><table><thead><tr>${columns}</tr></thead><tbody>${rows}</tbody></table><div class="summary">${summary}</div>${template.footer.showFootnote ? `<p class="footer">${escapeHtml(resolved.footnoteText)}</p>` : ""}${template.header.showOrgName && template.header.orgNamePosition === "bottom" ? orgName : ""}</body></html>`;
+  </style></head><body data-receipt-paper-width="${width}mm" data-receipt-content-width="${contentWidth}mm">${template.header.showOrgName && template.header.orgNamePosition === "top" ? orgName : ""}<h2>${escapeHtml(resolved.headingText)}</h2><p>${meta}</p>${width === 40 ? stackedRows : `<table><thead><tr>${columns}</tr></thead><tbody>${rows}</tbody></table>`}<div class="summary">${summary}</div>${template.footer.showFootnote ? `<p class="footer">${escapeHtml(resolved.footnoteText)}</p>` : ""}${template.header.showOrgName && template.header.orgNamePosition === "bottom" ? orgName : ""}</body></html>`;
 }

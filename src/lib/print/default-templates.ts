@@ -16,6 +16,7 @@ export const DEFAULT_PRINT_TEMPLATES: Record<PrintDocumentType, PrintTemplate> =
     description:
       "Classic distributor invoice: business name on top, salesman/customer/city on the left, date + invoice number on the right, product table with quantity + unit, discount column, and Grand Total / Tax / Net footer.",
     docType: "sales_invoice",
+    invoicePaper: "a4",
     fontFamily: "'Times New Roman', Times, serif",
 
     page: {
@@ -101,6 +102,7 @@ export const DEFAULT_PRINT_TEMPLATES: Record<PrintDocumentType, PrintTemplate> =
     description:
       "Classic distributor load form: white page, black serif text, brand-grouped products, quantity shown with its unit (Cotton / Boxes), bonus, and Value/Bonus/Net footer.",
     docType: "load_form",
+    invoicePaper: "a4",
     fontFamily: "'Times New Roman', Times, serif",
 
     page: {

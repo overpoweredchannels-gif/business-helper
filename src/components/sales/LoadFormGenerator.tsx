@@ -5,7 +5,7 @@ import { useRegional } from "@/components/regional/RegionalProvider";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { LoadFormDocument } from "@/lib/sales/load-form-render";
 import type { LoadFormSummary } from "@/lib/sales/load-form-service";
-import type { PrintTemplate } from "@/lib/print/print-template-types";
+import { getInvoicePaperWidthMm, getInvoiceSheetWidthMm, type PrintTemplate } from "@/lib/print/print-template-types";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 
@@ -475,7 +475,10 @@ export default function LoadFormGenerator() {
 
       {showPrint && summary && (
         <div className="load-form-print-root fixed inset-0 z-[100] overflow-y-auto bg-foreground/20 p-4">
-          <div className="mx-auto max-w-[210mm] rounded border border-border bg-white shadow-xl">
+          <div
+            className="mx-auto max-w-[297mm] rounded border border-border bg-white shadow-xl"
+            style={{ maxWidth: `${getInvoicePaperWidthMm(template) ?? getInvoiceSheetWidthMm(template) ?? 210}mm` }}
+          >
             <div className="mb-3 flex justify-between border-b border-border px-4 py-3 print:hidden">
               <button
                 onClick={() => setShowPrint(false)}
@@ -496,7 +499,11 @@ export default function LoadFormGenerator() {
             />
           </div>
           <style>{`
-            @page { size: A4; margin: 8mm; }
+            @page { size: ${(() => {
+              const thermal = getInvoicePaperWidthMm(template);
+              if (thermal !== null) return `${thermal}mm auto; margin: 0`;
+              return getInvoiceSheetWidthMm(template) === 297 ? "A3; margin: 8mm" : "A4; margin: 8mm";
+            })()}; }
             @media print {
               html, body { background: #fff !important; }
               body * { visibility: hidden; }

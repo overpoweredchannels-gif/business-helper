@@ -110,4 +110,28 @@ assert.ok(
 const emptyPreviewHtml = buildSalesInvoicePreviewRowsHtml([], ["No line items found", "-", "Rs 0", "Rs 0"]);
 assert.ok(emptyPreviewHtml.includes("No line items found"), "preview: empty invoice keeps its fallback row");
 
+
+// --- Thermal invoice paper (2026-10-29): stacked layout at true width. ---
+const thermalTemplate = cloneDefaultTemplate("sales_invoice");
+thermalTemplate.invoicePaper = 80;
+const thermalHtml = renderToStaticMarkup(<SalesInvoiceDocument doc={doc} template={thermalTemplate} />);
+assert.ok(thermalHtml.includes('data-invoice-paper="80mm"'), "thermal invoice marks its paper size");
+assert.ok(thermalHtml.includes("width:80mm"), "thermal invoice renders at the true paper width");
+assert.ok(thermalHtml.includes("data-thermal-line"), "thermal invoice stacks its lines");
+assert.ok(thermalHtml.includes("QA Widget"), "thermal invoice keeps the product name");
+assert.doesNotMatch(thermalHtml, />PRODUCT</, "thermal invoice drops the wide table header");
+const a4Template = cloneDefaultTemplate("sales_invoice");
+const a4Html = renderToStaticMarkup(<SalesInvoiceDocument doc={doc} template={a4Template} />);
+assert.ok(a4Html.includes('data-invoice-paper="a4"'), "a template without invoicePaper stays on A4");
+assert.ok(a4Html.includes(">PRODUCT<"), "A4 invoice keeps the classic table header");
+
+
+// --- A3 sheet paper (2026-10-29): same table, wider sheet. ---
+const a3InvoiceTemplate = cloneDefaultTemplate("sales_invoice");
+a3InvoiceTemplate.invoicePaper = "a3";
+const a3Html = renderToStaticMarkup(<SalesInvoiceDocument doc={doc} template={a3InvoiceTemplate} />);
+assert.ok(a3Html.includes('data-invoice-paper="a3"'), "A3 invoice marks its paper size");
+assert.ok(a3Html.includes(">PRODUCT<"), "A3 invoice keeps the classic table header");
+assert.doesNotMatch(a3Html, /data-thermal-line/, "A3 invoice does not stack its lines");
+
 console.log("test-sales-invoice-render: all assertions passed");

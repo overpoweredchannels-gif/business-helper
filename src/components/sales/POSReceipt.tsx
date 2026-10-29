@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
 import type { PrintTemplate } from "@/lib/print/print-template-types";
-import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptPrintableWidthMm, getReceiptSummaryRows, getReceiptWidthMm, resolveReceiptChrome, resolveReceiptCustomerName, type Receipt, type ReceiptChromeLabels, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
+import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptPrintableWidthMm, getReceiptSummaryRows, getReceiptWidthMm, receiptStackedDetail, resolveReceiptChrome, resolveReceiptCustomerName, type Receipt, type ReceiptChromeLabels, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
 import { loadReceiptTemplate } from "@/lib/print/receipt-template-loader";
 import { saveReceiptTemplate } from "@/lib/print/receipt-template-save";
 import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, type PrintRunToken } from "@/lib/print/print-run";
@@ -92,6 +92,15 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
     {template.header.showOrgName && template.header.orgNamePosition === "top" && orgName}
     <p className="font-semibold" style={{ fontSize: template.header.headingSizePx }}>{chrome.headingText}</p>
     <p className="mb-2" style={{ fontSize: template.header.metaSizePx }}>{meta.join(" · ")}</p>
+    {/* 40mm cannot hold the table: same stacked lines as the printed sheet. */}
+    {getReceiptWidthMm(template) === 40 ? (
+      <div>{lineRows.map((line, index) => (
+        <div key={`${line.name}-${index}`} className="border-t py-1 pr-1" style={{ borderColor: template.page.rule, fontSize: template.columns.rowSizePx }}>
+          <div>{line.name}{line.unit ? <span className="block" style={{ fontSize: Math.max(8, template.columns.rowSizePx - 1), opacity: 0.75 }}>{line.unit}</span> : null}</div>
+          <div>{receiptStackedDetail(line, chrome.columns)}</div>
+        </div>
+      ))}</div>
+    ) : (
     <table className="w-full table-fixed border-collapse text-left"><thead><tr>{chrome.columns.map(column =>
       <th key={column.key} className="border-y py-1 pr-1 align-top" style={{ width: `${column.widthPct}%`, borderColor: template.page.rule, fontSize: template.columns.headerSizePx }}>
         {template.columns.uppercaseHeaders ? column.label.toUpperCase() : column.label}
@@ -112,7 +121,7 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
             : values[column.key] ?? ""}
         </td>;
       })}
-    </tr>)}</tbody></table>
+    </tr>)}</tbody></table>)}
     <div className="mt-2 border-t pt-1" style={{ borderColor: template.page.rule, fontSize: template.footer.labelSizePx }}>
       {summaryRows.map(row => <div key={row.key} className={`flex flex-wrap justify-between gap-1 py-0.5 ${row.key === "total" ? "border-t pt-1 font-bold" : ""}`} style={row.key === "total" ? { borderColor: template.page.rule, fontSize: template.footer.valueSizePx } : undefined}>
         <span className="overflow-wrap-anywhere">{row.label}</span>
@@ -385,7 +394,7 @@ export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Re
   // which always settles within 8s: the old chain awaited authorizedFetch
   // with no timeout, so a stalled POST left savingWidth set — and this
   // select disabled — forever.
-  const changePaperWidth = useCallback(async (nextWidth: 58 | 80) => {
+  const changePaperWidth = useCallback(async (nextWidth: 40 | 58 | 80) => {
     if (!templateReady || savingWidth || getReceiptWidthMm(template) === nextWidth) return;
     const previous = template;
     const next = { ...template, receiptWidthMm: nextWidth };
@@ -432,9 +441,10 @@ export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Re
                 aria-label={t('receipt.paperWidthAria')}
                 value={getReceiptWidthMm(activeTemplate)}
                 disabled={!templateReady || savingWidth}
-                onChange={event => void changePaperWidth(event.target.value === "58" ? 58 : 80)}
+                onChange={event => void changePaperWidth(event.target.value === "40" ? 40 : event.target.value === "58" ? 58 : 80)}
                 className="min-h-11 min-w-11 rounded border px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
               >
+                <option value="40">40 mm</option>
                 <option value="58">58 mm</option>
                 <option value="80">80 mm</option>
               </select>
