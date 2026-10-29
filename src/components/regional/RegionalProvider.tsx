@@ -14,11 +14,11 @@ async function fetchFxRate(currency:Currency):Promise<number|null>{
     const {data}=await supabase.auth.getSession();
     const token=data.session?.access_token;
     if(!token)return null;
-    const response=await fetch(`/api/fx/rates?currency=${currency}`,{headers:{Authorization:`Bearer ${token}`}});
+    const response=await fetch(`/api/fx/live?currency=${currency}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!response.ok)return null;
-    const payload=await response.json() as {ok?:boolean;rate?:string|null};
-    if(!payload.ok||!payload.rate)return null;
-    const parsed=Number.parseFloat(payload.rate);
+    const payload=await response.json() as {ok?:boolean;rate?:string|number|null};
+    if(!payload.ok||payload.rate===null||payload.rate===undefined)return null;
+    const parsed=typeof payload.rate==='number'?payload.rate:Number.parseFloat(payload.rate);
     return Number.isFinite(parsed)&&parsed>0?parsed:null;
   }catch{return null;}
 }
@@ -56,9 +56,14 @@ export function RegionalProvider({children,initialLanguage='en'}:{children:React
   const refreshFxRate=()=>setFxRefreshTick(n=>n+1);
   useEffect(()=>{
     if(!enabled)return;
-    if(currency==='PKR'){setFxRate(null);setActiveFxRate(null);return;}
+    // Clear first: while a new currency's live rate is loading (or fails),
+    // no stale rate from the previous currency may label amounts.
+    setFxRate(null);setActiveFxRate(null);
+    if(currency==='PKR'){return;}
     let cancelled=false;
-    void fetchFxRate(currency).then(rate=>{if(cancelled)return;setFxRate(rate);setActiveFxRate(rate);});
+    // A failed live rate must never leave amounts labelled in a currency
+    // with no rate — fall back to PKR rather than mislabelling them.
+    void fetchFxRate(currency).then(rate=>{if(cancelled)return;if(rate===null){setCurrency('PKR');return;}setFxRate(rate);setActiveFxRate(rate);});
     return ()=>{cancelled=true;};
   },[currency,fxRefreshTick,enabled]);
   const setLanguage=(next:Language)=>{

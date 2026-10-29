@@ -124,6 +124,7 @@ import {
   downloadCsv,
   escapeHtml,
   formatBooksMoney,
+  formatCurrency,
   formatDate,
   formatDateTime,
   formatNumber,
@@ -328,9 +329,19 @@ async function authorizedFetch(input: string, init: RequestInit = {}): Promise<R
   return fetch(input, { ...init, headers });
 }
 
+// Dashboard overview amounts follow the header display currency (live rate)
+// when one is available; otherwise they stay in books currency. Module-level
+// (not a render-scope closure): a closure here tripped the React Compiler's
+// preserve-manual-memoization check on an unrelated memo. Transactional
+// surfaces (POS, invoices, receipts, ledgers) always use formatBooksMoney
+// directly and are unaffected by this helper.
+function formatDashboardMoney(displayCurrency: string, displayFxRate: number | null, value: unknown) {
+  return displayCurrency !== "PKR" && displayFxRate ? formatCurrency(value) : formatBooksMoney(value);
+}
+
 export default function Home() {
   const router = useRouter();
-  const { t, language } = useRegional();
+  const { t, language, currency: displayCurrency, fxRate: displayFxRate } = useRegional();
   // Auth-guard error lines, translated once per render and reused by the
   // 60+ handlers below (keeps the t() calls out of the handler bodies).
   const orgNotLoadedMessage = t('page.orgNotLoaded');
@@ -17477,15 +17488,15 @@ setCustomerOrganizationName("");
             onToggleCustomize={() => homeWidgets.setCustomizing((value) => !value)}
             droppedCards={droppedSectionCards}
             userName={currentProfile?.full_name ?? currentUser.email}
-            todaySales={{ value: formatBooksMoney(todaySalesAmount) }}
-            todayProfit={{ value: formatBooksMoney(todayProfitAmount) }}
-            inventoryValue={{ value: formatBooksMoney(inventoryValue) }}
-            outstandingReceivables={{ value: formatBooksMoney(totalReceivables) }}
-            outstandingPayables={{ value: formatBooksMoney(totalPayables) }}
+            todaySales={{ value: formatDashboardMoney(displayCurrency, displayFxRate, todaySalesAmount) }}
+            todayProfit={{ value: formatDashboardMoney(displayCurrency, displayFxRate, todayProfitAmount) }}
+            inventoryValue={{ value: formatDashboardMoney(displayCurrency, displayFxRate, inventoryValue) }}
+            outstandingReceivables={{ value: formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables) }}
+            outstandingPayables={{ value: formatDashboardMoney(displayCurrency, displayFxRate, totalPayables) }}
             lowStockAlerts={{ value: String(reorderRecommendationSummary.urgentReorderCount), count: reorderRecommendationSummary.urgentReorderCount }}
             healthScore={businessHealthScore.score}
             healthMetrics={[
-              { label: t('dashboard.cashFlow'), value: formatBooksMoney(totalReceivables - totalPayables), status: totalReceivables > totalPayables ? "good" as const : "warning" as const },
+              { label: t('dashboard.cashFlow'), value: formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables - totalPayables), status: totalReceivables > totalPayables ? "good" as const : "warning" as const },
               { label: t('dashboard.inventoryHealth'), value: t('dashboard.lowStockCount').replace('{count}', String(lowStockProducts.length)), status: lowStockProducts.length > 5 ? "critical" as const : lowStockProducts.length > 2 ? "warning" as const : "good" as const },
               { label: t('dashboard.profitMargin'), value: businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? `${((businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100).toFixed(1)}%` : "0%", status: "good" as const },
               { label: t('dashboard.stockHealth'), value: t('dashboard.outOfStockCount').replace('{count}', String(reorderRecommendationSummary.outOfStockCount)), status: reorderRecommendationSummary.outOfStockCount > 3 ? "critical" as const : "good" as const },
@@ -17595,7 +17606,7 @@ setCustomerOrganizationName("");
             })()}
             revenueData={businessIntelligenceAnalytics.monthlySales.slice(-6)}
             profitData={businessIntelligenceAnalytics.dailyTrends.slice(-14).map((d) => ({ label: d.date.slice(5), value: d.profit }))}
-            topCustomers={businessIntelligenceAnalytics.topCustomersBySales.slice(0, 5).map((c) => ({ name: c.customerName, value: formatBooksMoney(c.totalSales) }))}
+            topCustomers={businessIntelligenceAnalytics.topCustomersBySales.slice(0, 5).map((c) => ({ name: c.customerName, value: formatDashboardMoney(displayCurrency, displayFxRate, c.totalSales) }))}
             onViewAllActivity={() => handleSectionChange("activity-logs")}
             topProducts={topSellingProducts.slice(0, 5).map((p) => ({ name: p.productName, value: String(p.quantitySold) }))}
             onQuickAction={(label) => {

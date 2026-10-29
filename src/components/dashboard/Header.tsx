@@ -8,6 +8,7 @@ import { SuggestionPopover, type SuggestionStatus, type SuggestionStatusNote } f
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { LanguageSwitcher } from "@/components/regional/LanguageSwitcher";
+import { DisplayCurrencySwitcher } from "@/components/regional/DisplayCurrencySwitcher";
 import { CurrencySwitcher } from "@/components/regional/CurrencySwitcher";
 
 export interface SearchSuggestion {
@@ -385,6 +386,9 @@ export function Header({
 
           {/* Language Switcher */}
           <LanguageSwitcher />
+
+          {/* Display currency dropdown (live-rate conversion; records stay in books currency) */}
+          <DisplayCurrencySwitcher />
 
           {/* Books currency indicator (owner: shortcut to the
               Business Settings switch flow; otherwise read-only) */}
