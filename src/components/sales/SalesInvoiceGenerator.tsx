@@ -8,6 +8,7 @@ import { SalesInvoiceDocument } from "@/lib/sales/sales-invoice-render";
 import { getInvoicePaperWidthMm, getInvoiceSheetWidthMm, type PrintTemplate } from "@/lib/print/print-template-types";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
+import { POSReceiptPreview, type Receipt } from "@/components/sales/POSReceipt";
 
 interface Option {
   id: string;
@@ -52,6 +53,11 @@ export default function SalesInvoiceGenerator() {
   const [printTitle, setPrintTitle] = useState("");
   const [template, setTemplate] = useState<PrintTemplate>(() => cloneDefaultTemplate("sales_invoice"));
   const [showCustomizer, setShowCustomizer] = useState(false);
+  // Which document the Customize buttons edit: the wholesale invoice or the
+  // retail receipt. The switch lives here in the generator because this is
+  // the template hub — previously only the wholesale template was reachable
+  // from this screen, and the retail template only from the POS screen.
+  const [customizerDocType, setCustomizerDocType] = useState<"sales_invoice" | "retail_receipt">("sales_invoice");
   const [orgBranding, setOrgBranding] = useState<{ name?: string; address?: string; city?: string; phone?: string } | null>(null);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("default-sales-invoice");
@@ -223,6 +229,30 @@ export default function SalesInvoiceGenerator() {
             Customize
           </button>
         </label>
+        {/* Template switch: which document Customize edits — wholesale
+            invoice or retail receipt. Both open the same customizer; the
+            key below remounts it so it loads the switched document's
+            saved template instead of keeping the previous one. */}
+        <div role="group" aria-label={t('print.template.customizeDoc')} className="flex flex-wrap gap-1.5">
+          {([
+            { doc: "sales_invoice" as const, label: t('print.template.docSalesInvoice') },
+            { doc: "retail_receipt" as const, label: t('print.template.docRetailReceipt') },
+          ]).map((option) => (
+            <button
+              key={option.doc}
+              type="button"
+              aria-pressed={customizerDocType === option.doc}
+              onClick={() => setCustomizerDocType(option.doc)}
+              className={`min-h-11 rounded-lg border px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                customizerDocType === option.doc
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-foreground hover:bg-muted"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <div className="flex-1" />
         {orgBranding && (
           <span className="text-xs text-muted-foreground">
@@ -503,16 +533,25 @@ export default function SalesInvoiceGenerator() {
 
       {showCustomizer && (
         <TemplateCustomizer
-          docType="sales_invoice"
-          previewRenderer={(t) => (
-            <SalesInvoiceDocument
-              doc={previewDoc}
-              template={t}
-              rangeLabel={rangeLabel()}
-            />
-          )}
+          key={customizerDocType}
+          docType={customizerDocType}
+          previewRenderer={(t) =>
+            customizerDocType === "retail_receipt" ? (
+              <POSReceiptPreview receipt={sampleReceipt} template={t} />
+            ) : (
+              <SalesInvoiceDocument
+                doc={previewDoc}
+                template={t}
+                rangeLabel={rangeLabel()}
+              />
+            )
+          }
           onClose={() => setShowCustomizer(false)}
-          onSaved={(t) => setTemplate(t)}
+          onSaved={(t) => {
+            // Only the wholesale template feeds this screen's print view;
+            // a retail save must never overwrite it.
+            if (customizerDocType === "sales_invoice") setTemplate(t);
+          }}
           orgBranding={orgBranding}
         />
       )}
@@ -524,7 +563,30 @@ function fmt(n: number): string {
   return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 }
 
+// Sample receipt used as the live preview when the customizer switch is on
+// retail. Fixed sample data only — never a live clock call during render.
 // Sample invoice used as the live preview inside the customizer.
+const sampleReceipt: Receipt = {
+  scope: "sample",
+  business: "Your Business",
+  number: "S-100000",
+  date: "29-Oct-2026",
+  customer: "Walk-in customer",
+  lineSubtotal: 300,
+  lineDiscount: 0,
+  subtotal: 300,
+  invoiceDiscount: 0,
+  tax: 0,
+  taxRate: 0,
+  total: 300,
+  received: 500,
+  change: 200,
+  payment: "cash",
+  lines: [
+    { name: "Sample Product A", quantity: "2", unit: "Pcs", price: "100", discount: "0" },
+    { name: "Sample Product B", quantity: "1", unit: "Pcs", price: "100", discount: "0" },
+  ],
+};
 const previewDoc: SalesInvoiceDoc = {
   transaction_id: "preview",
   invoice_number: "S-100123",
