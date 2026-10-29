@@ -7,7 +7,7 @@
 import React from "react";
 import type { LoadFormSummary, LoadFormLine, LoadFormCustomerGroup, LoadFormBrandGroup } from "./load-form-service";
 import { getLoadFormTemplate } from "./load-form-template";
-import type { PrintTemplate } from "@/lib/print/print-template-types";
+import { getInvoicePaper, getInvoicePaperWidthMm, type PrintTemplate } from "@/lib/print/print-template-types";
 
 export interface LoadFormRenderProps {
   summary: LoadFormSummary;
@@ -88,6 +88,12 @@ export function LoadFormDocument({
   const salesman = t.salesman;
   const footer = t.footer;
 
+  // Thermal paper (40/58/80mm) renders the compact stacked layout at the
+  // true paper width; A3/A4 keep the classic full-width tables. Old saved
+  // templates have no invoicePaper and stay on A4.
+  const thermalWidthMm = getInvoicePaperWidthMm(t);
+  const thermal = thermalWidthMm !== null;
+
   const rule = `1px solid ${page.rule}`;
   const metaLine = [
     header.showSalesman &&
@@ -109,11 +115,16 @@ export function LoadFormDocument({
   return (
     <div
       className="load-form-doc"
+      data-invoice-paper={thermal ? `${thermalWidthMm}mm` : getInvoicePaper(t)}
       style={{
         fontFamily: t.fontFamily,
         background: page.background,
         color: page.ink,
-        width: "100%",
+        width: thermal ? `${thermalWidthMm}mm` : "100%",
+        maxWidth: "100%",
+        margin: thermal ? "0 auto" : undefined,
+        padding: thermal ? "2mm" : undefined,
+        boxSizing: "border-box",
       }}
     >
       {/* ------------------------------ Header ------------------------------ */}
@@ -128,7 +139,7 @@ export function LoadFormDocument({
         <div style={{ fontSize: header.headingSizePx, fontWeight: 700, marginTop: 4 }}>{header.headingText}</div>
 
         {metaLine.length > 0 && (
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: header.metaSizePx, marginTop: 6 }}>
+          <div style={{ display: "flex", flexDirection: thermal ? "column" : "row", justifyContent: "space-between", gap: 2, fontSize: header.metaSizePx, marginTop: 6 }}>
             {metaLine.map((m) => (
               <div key={m.label}>
                 <span style={{ fontWeight: 700 }}>{m.label}: </span>
@@ -161,6 +172,32 @@ export function LoadFormDocument({
               </div>
               <div style={{ borderBottom: rule, marginTop: 1 }} />
 
+              {thermal ? (
+                grp.lines.map((line, i) => {
+                  const keys = new Set(cols.labels.map((c) => c.key));
+                  const detail = [
+                    keys.has("quantity") ? quantityLabel(line) : "",
+                    keys.has("bonus") && bonusLabel(line) ? bonusLabel(line) : "",
+                  ].filter(Boolean).join(" · ");
+                  return (
+                    <div
+                      key={`${line.product_id}-${i}`}
+                      data-thermal-line=""
+                      style={{
+                        fontSize: cols.rowSizePx,
+                        paddingTop: t.spacing.rowPadYPx,
+                        paddingBottom: t.spacing.rowPadYPx,
+                        lineHeight: 1.25,
+                        fontWeight: t.boldBody ? 700 : undefined,
+                      }}
+                    >
+                      <span style={{ display: "block" }}>{line.product_name}</span>
+                      {detail && <span style={{ display: "block" }}>{detail}</span>}
+                    </div>
+                  );
+                })
+              ) : (
+              <>
               <div style={{ display: "flex", fontSize: cols.headerSizePx, fontWeight: 700, marginTop: 2 }}>
                 {cols.labels.map((c) => (
                   <span
@@ -200,8 +237,16 @@ export function LoadFormDocument({
                   ))}
                 </div>
               ))}
+              </>
+              )}
 
               {groups.showGroupTotal && (
+                thermal ? (
+                  <div style={{ fontSize: cols.rowSizePx, fontWeight: 700, borderTop: rule, marginTop: 2, paddingTop: 2 }}>
+                    <div>{groups.groupTotalLabel}</div>
+                    <div style={{ textAlign: "right" }}>{fmt(grp.total_value)}</div>
+                  </div>
+                ) : (
                 <div
                   style={{
                     display: "flex",
@@ -217,17 +262,25 @@ export function LoadFormDocument({
                     {fmt(grp.total_value)}
                   </span>
                 </div>
+                )
               )}
             </div>
           ))}
 
           {summary.groupBySalesman && salesman.showSalesmanTotal && (
+            thermal ? (
+              <div style={{ fontSize: salesman.sizePx, fontWeight: 700, marginTop: 4 }}>
+                <div>{salesman.salesmanTotalLabel}</div>
+                <div style={{ textAlign: "right" }}>{fmt(sm.total_value)}</div>
+              </div>
+            ) : (
             <div style={{ display: "flex", fontSize: salesman.sizePx, fontWeight: 700, marginTop: 4 }}>
               <span style={{ width: `${cols.labels[0]!.widthPct}%` }}>{salesman.salesmanTotalLabel}</span>
               <span style={{ width: `${100 - cols.labels[0]!.widthPct}%`, textAlign: "right" }}>
                 {fmt(sm.total_value)}
               </span>
             </div>
+            )
           )}
         </div>
       ))}
@@ -235,24 +288,25 @@ export function LoadFormDocument({
       {/* ----------------------------- Totals footer ------------------------- */}
       {footer.showTotals && (
         <div style={{ border: `1px solid ${page.rule}`, marginTop: 12, padding: "6px 8px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: footer.labelSizePx, fontWeight: 700 }}>
+          <div style={{ display: "flex", flexDirection: thermal ? "column" : "row", justifyContent: "space-between", fontSize: footer.labelSizePx, fontWeight: 700 }}>
             <span>
               {footer.totalLabel}
               {footer.valueSuffix}
             </span>
-            <span>{fmt(summary.grand_total)}</span>
+            <span style={thermal ? { textAlign: "right" } : undefined}>{fmt(summary.grand_total)}</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: footer.labelSizePx, fontWeight: 700 }}>
+          <div style={{ display: "flex", flexDirection: thermal ? "column" : "row", justifyContent: "space-between", fontSize: footer.labelSizePx, fontWeight: 700 }}>
             <span>
               {footer.bonusLabel}
               {footer.valueSuffix}
             </span>
-            <span>{fmt(summary.grand_bonus)}</span>
+            <span style={thermal ? { textAlign: "right" } : undefined}>{fmt(summary.grand_bonus)}</span>
           </div>
           <div style={{ borderTop: rule, marginTop: 2, paddingTop: 2 }}>
             <div
               style={{
                 display: "flex",
+                flexDirection: thermal ? "column" : "row",
                 justifyContent: "space-between",
                 fontSize: footer.valueSizePx,
                 fontWeight: 700,
@@ -262,7 +316,7 @@ export function LoadFormDocument({
                 {footer.netLabel}
                 {footer.valueSuffix}
               </span>
-              <span>{fmt(summary.grand_net)}</span>
+              <span style={thermal ? { textAlign: "right" } : undefined}>{fmt(summary.grand_net)}</span>
             </div>
           </div>
         </div>

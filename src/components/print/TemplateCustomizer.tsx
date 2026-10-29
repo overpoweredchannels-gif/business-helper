@@ -5,9 +5,12 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import {
   PRINT_FONTS,
+  getInvoicePaper,
+  getInvoiceSheetWidthMm,
   type PrintDocumentType,
   type PrintTemplate,
 } from "@/lib/print/print-template-types";
+import { normalizeReceiptWidthMm } from "@/lib/print/retail-receipt";
 import { ReferenceTemplateReview } from "./ReferenceTemplateReview";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
 
@@ -376,6 +379,14 @@ export default function TemplateCustomizer({
         </button>
       </div>
 
+      {/* Which document this template controls: the receipt dialog after
+          every sale uses the retail receipt template, never the sales
+          invoice template — the strip says so plainly so a customization
+          is never expected to change the wrong document. */}
+      <p className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+        {docType === "retail_receipt" ? t('print.template.controlsReceipt') : docType === "load_form" ? t('print.template.controlsLoadForm') : t('print.template.controlsInvoice')}
+      </p>
+
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[380px_1fr]">
         {/* ------------------------------ Controls ----------------------------- */}
         <div className="overflow-y-auto border-r border-border p-4">
@@ -383,17 +394,6 @@ export default function TemplateCustomizer({
           {error && <p className="mb-3 rounded border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p>}
 
         <div className="space-y-4">
-            {docType === "retail_receipt" && <label className="flex flex-col gap-1 text-sm text-foreground/80">
-              <span className="font-medium">{t('print.template.receiptWidth')}</span>
-              <select
-                value={working.receiptWidthMm === 58 ? "58" : "80"}
-                onChange={(event) => update({ receiptWidthMm: event.target.value === "58" ? 58 : 80 })}
-                className={inputCls + " min-h-11"}
-              >
-                <option value="58">58 mm</option>
-                <option value="80">80 mm</option>
-              </select>
-            </label>}
             <label className="flex flex-col gap-1 text-sm text-foreground/80">
               <span className="font-medium">{t('print.template.templateName')}</span>
               <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder={t('print.template.customTemplate')} />
@@ -638,7 +638,51 @@ export default function TemplateCustomizer({
 
         {/* ------------------------------ Preview ------------------------------ */}
         <div className="min-h-0 overflow-y-auto bg-muted/30 p-4 print:bg-white print:p-0">
-          <div className="mx-auto max-w-[210mm] rounded border border-border bg-white p-6 shadow-sm print:border-0 print:shadow-none print:p-0">
+          {/* Paper-size bar: the preview below renders at the true paper
+              width, so what the user sees is what the printer prints.
+              Receipts offer thermal rolls only; invoice and load-form
+              templates offer the full list (A3, A4, thermal). Replaces
+              the old small width dropdown in the controls panel. */}
+          {(() => {
+            const isReceipt = docType === "retail_receipt";
+            const options: Array<{ value: "a3" | "a4" | 40 | 58 | 80; label: string }> = isReceipt
+              ? [{ value: 40, label: "40 mm" }, { value: 58, label: "58 mm" }, { value: 80, label: "80 mm" }]
+              : [{ value: "a3", label: t('print.template.paperA3') }, { value: "a4", label: t('print.template.paperA4') }, { value: 40, label: "40 mm" }, { value: 58, label: "58 mm" }, { value: 80, label: "80 mm" }];
+            const selected = isReceipt ? normalizeReceiptWidthMm(working.receiptWidthMm) : getInvoicePaper(working);
+            return (
+              <div className="mx-auto mb-3 flex w-full max-w-[297mm] flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-foreground">{t('print.template.paperSize')}</span>
+                <div role="group" aria-label={t('print.template.paperSize')} className="flex flex-wrap gap-1.5">
+                  {options.map((option) => (
+                    <button
+                      key={String(option.value)}
+                      type="button"
+                      aria-pressed={selected === option.value}
+                      onClick={() => update(isReceipt ? { receiptWidthMm: option.value as 40 | 58 | 80 } : { invoicePaper: option.value })}
+                      className={`min-h-11 rounded-lg border px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        selected === option.value
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-card text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+          <div
+            className="mx-auto rounded border border-border bg-white p-6 shadow-sm print:border-0 print:shadow-none print:p-0"
+            style={(() => {
+              const widthMm = docType === "retail_receipt"
+                ? normalizeReceiptWidthMm(working.receiptWidthMm)
+                : getInvoicePaper(working) === "a3" || getInvoicePaper(working) === "a4"
+                  ? getInvoiceSheetWidthMm(working)
+                  : getInvoicePaper(working) as 40 | 58 | 80;
+              return widthMm !== null ? { width: `min(${widthMm}mm, 100%)` } : undefined;
+            })()}
+          >
             {previewRenderer(working)}
           </div>
         </div>

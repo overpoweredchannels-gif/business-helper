@@ -5,7 +5,7 @@
 // fetched here; the caller supplies everything.
 
 import React from "react";
-import type { PrintTemplate } from "@/lib/print/print-template-types";
+import { getInvoicePaper, getInvoicePaperWidthMm, type PrintTemplate } from "@/lib/print/print-template-types";
 import { formatSalesInvoiceQuantity, type SalesInvoiceDoc, type SalesInvoiceLine } from "./sales-invoice-service";
 
 export interface SalesInvoiceDocumentProps {
@@ -42,12 +42,41 @@ function columnValue(key: string, line: SalesInvoiceLine): string {
   }
 }
 
+/**
+ * Stacked line detail for a thermal invoice: the name rides on its own row
+ * (see the thermal branch below) and this is the second row, built only
+ * from the columns the template actually shows — quantity × rate, minus
+ * discount only when it is non-zero, equals amount. Money tokens use a
+ * non-breaking space so a value wraps only between segments, never
+ * mid-number.
+ */
+function thermalLineDetail(line: SalesInvoiceLine, columnKeys: Set<string>): string {
+  const nbsp = (value: string) => value.replace(/ /g, " ");
+  const parts: string[] = [];
+  if (columnKeys.has("quantity")) parts.push(formatSalesInvoiceQuantity(line.quantity));
+  if (columnKeys.has("price")) parts.push(nbsp(fmt(line.selling_price)));
+  let detail = parts.join(" × ");
+  if (columnKeys.has("discount") && line.discount > 0) {
+    detail += ` − ${nbsp(trim(line.discount))}`;
+  }
+  if (columnKeys.has("total")) {
+    detail += ` = ${nbsp(fmt(line.line_total))}`;
+  }
+  return detail;
+}
+
 export function SalesInvoiceDocument({ doc, template, rangeLabel = "" }: SalesInvoiceDocumentProps) {
   const t = template;
   const page = t.page;
   const header = t.header;
   const cols = t.columns;
   const footer = t.footer;
+
+  // Thermal paper (40/58/80mm) renders the compact stacked layout at the
+  // true paper width; A4 keeps the classic full-width table. Old saved
+  // templates have no invoicePaper and stay on A4.
+  const thermalWidthMm = getInvoicePaperWidthMm(t);
+  const thermal = thermalWidthMm !== null;
 
   const rule = `1px solid ${page.rule}`;
 
@@ -71,11 +100,16 @@ export function SalesInvoiceDocument({ doc, template, rangeLabel = "" }: SalesIn
   return (
     <div
       className="sales-invoice-doc"
+      data-invoice-paper={thermal ? `${thermalWidthMm}mm` : getInvoicePaper(t)}
       style={{
         fontFamily: t.fontFamily,
         background: page.background,
         color: page.ink,
-        width: "100%",
+        width: thermal ? `${thermalWidthMm}mm` : "100%",
+        maxWidth: "100%",
+        margin: thermal ? "0 auto" : undefined,
+        padding: thermal ? "2mm" : undefined,
+        boxSizing: "border-box",
       }}
     >
       {/* ------------------------------ Header ------------------------------ */}
@@ -93,6 +127,28 @@ export function SalesInvoiceDocument({ doc, template, rangeLabel = "" }: SalesIn
       </div>
 
       {/* ------------------------- Meta / party lines ------------------------ */}
+      {/* Thermal: one stacked column — two columns would squeeze to
+          unreadable widths on a 32–72mm printable strip. */}
+      {thermal ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+            fontSize: header.metaSizePx,
+            marginTop: 8,
+            borderBottom: rule,
+            paddingBottom: 4,
+          }}
+        >
+          {[...partyLines, ...rightLines].map((line, i) => (
+            <div key={i}>
+              <span style={{ fontWeight: 700 }}>{line.label}: </span>
+              <span>{line.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
       <div
         style={{
           display: "flex",
@@ -138,8 +194,40 @@ export function SalesInvoiceDocument({ doc, template, rangeLabel = "" }: SalesIn
           })}
         </div>
       </div>
+      )}
 
       {/* ------------------------------ Table ------------------------------- */}
+      {thermal ? (
+        doc.lines.length === 0 ? (
+          <div style={{ fontSize: cols.rowSizePx, paddingTop: 6, paddingBottom: 6, borderBottom: rule }}>
+            <span>No line items found</span>
+          </div>
+        ) : (
+          doc.lines.map((line, i) => (
+            <div
+              key={`${line.product_id}-${i}`}
+              data-thermal-line=""
+              style={{
+                fontSize: cols.rowSizePx,
+                paddingTop: t.spacing.rowPadYPx,
+                paddingBottom: t.spacing.rowPadYPx,
+                borderBottom: rule,
+                lineHeight: 1.25,
+                fontWeight: t.boldBody ? 700 : undefined,
+              }}
+            >
+              <span style={{ display: "block" }}>{line.product_name}</span>
+              <span style={{ display: "block", fontSize: Math.max(8, cols.rowSizePx - 1), opacity: 0.75 }}>
+                {line.unit_mode === "subunit" ? line.subunit_unit_label : line.main_unit_label}
+              </span>
+              <span style={{ display: "block" }}>
+                {thermalLineDetail(line, new Set(cols.labels.map((c) => c.key)))}
+              </span>
+            </div>
+          ))
+        )
+      ) : (
+      <>
       <div style={{ display: "flex", fontSize: cols.headerSizePx, fontWeight: 700, marginTop: 6 }}>
         {cols.labels.map((c) => (
           <span
@@ -206,11 +294,13 @@ export function SalesInvoiceDocument({ doc, template, rangeLabel = "" }: SalesIn
           </div>
         ))
       )}
+      </>
+      )}
 
       {/* ------------------------------ Totals ------------------------------ */}
       {footer.showTotals && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-          <div style={{ minWidth: "45%", maxWidth: "55%" }}>
+        <div style={{ display: "flex", justifyContent: thermal ? "stretch" : "flex-end", marginTop: 8 }}>
+          <div style={thermal ? { width: "100%" } : { minWidth: "45%", maxWidth: "55%" }}>
             <div
               style={{
                 display: "flex",

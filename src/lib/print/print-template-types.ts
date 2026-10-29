@@ -29,7 +29,15 @@ export interface PrintTemplate {
   docType: PrintDocumentType;
 
   /** Thermal receipt paper width. Ignored for non-receipt documents. */
-  receiptWidthMm?: 58 | 80;
+  receiptWidthMm?: 40 | 58 | 80;
+
+  /**
+   * Document paper for invoice and load-form templates: "a3" / "a4"
+   * sheets for big printers, or a thermal roll width. Ignored for
+   * receipts (they use receiptWidthMm) and other documents. Old saved
+   * templates have no value and render as "a4".
+   */
+  invoicePaper?: "a3" | "a4" | 40 | 58 | 80;
 
   /** Serif/sans family applied to the whole document. */
   fontFamily: string;
@@ -166,6 +174,52 @@ export const PRINT_FONTS: { id: string; name: string; family: string }[] = [
   { id: "tahoma", name: "Tahoma", family: "Tahoma, Verdana, sans-serif" },
   { id: "trebuchet", name: "Trebuchet MS", family: "'Trebuchet MS', 'Segoe UI', sans-serif" },
 ];
+
+/** Thermal paper widths and what a printer can actually print on each.
+ * Printers cannot print to the paper edge, so layouts must be sized to the
+ * printable width, never the nominal paper width, or the rightmost column
+ * is clipped mid-digit. A 40mm roll exposes ~32mm by the same margin rule
+ * as 58mm (~48mm) and 80mm (~72mm). */
+export const THERMAL_PRINTABLE_WIDTH_MM: Record<40 | 58 | 80, number> = { 40: 32, 58: 48, 80: 72 };
+
+export type InvoicePaper = "a3" | "a4" | 40 | 58 | 80;
+
+/** Normalize any stored invoice-paper value. "a3"/"a4" stay themselves; a
+ * thermal width stays itself (number or string form); anything
+ * missing/unknown falls back to the historical "a4" default, so old saved
+ * templates keep rendering exactly as before. */
+export function normalizeInvoicePaper(value: unknown): InvoicePaper {
+  if (value === "a3") return "a3";
+  if (value === "a4") return "a4";
+  if (value === 40 || value === "40") return 40;
+  if (value === 58 || value === "58") return 58;
+  if (value === 80 || value === "80") return 80;
+  return "a4";
+}
+
+export function getInvoicePaper(template: PrintTemplate): InvoicePaper {
+  return normalizeInvoicePaper(template.invoicePaper);
+}
+
+/** Thermal roll width for an invoice/load-form template, or null for a
+ * sheet layout (A3/A4). */
+export function getInvoicePaperWidthMm(template: PrintTemplate): 40 | 58 | 80 | null {
+  const paper = getInvoicePaper(template);
+  return paper === "a3" || paper === "a4" ? null : paper;
+}
+
+/** Sheet width for an invoice/load-form template (A3 297mm, A4 210mm),
+ * or null for a thermal roll layout. */
+export function getInvoiceSheetWidthMm(template: PrintTemplate): 210 | 297 | null {
+  const paper = getInvoicePaper(template);
+  return paper === "a3" ? 297 : paper === "a4" ? 210 : null;
+}
+
+/** Printable width for an invoice template, or null for the A4 layout. */
+export function getInvoicePrintableWidthMm(template: PrintTemplate): number | null {
+  const width = getInvoicePaperWidthMm(template);
+  return width === null ? null : THERMAL_PRINTABLE_WIDTH_MM[width];
+}
 
 export function fontFamilyById(id: string | null | undefined): string {
   const font = PRINT_FONTS.find((f) => f.id === id);

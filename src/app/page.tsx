@@ -12,7 +12,8 @@ import { ProductCatalogState, ProductCatalogErrorBanner } from "@/components/pro
 import { CustomerCatalogState, CustomerCatalogErrorBanner } from "@/components/customers/CustomerCatalogState";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
-import { POSReceipt, type Receipt } from "@/components/sales/POSReceipt";
+import { POSReceipt, POSReceiptPreview, type Receipt } from "@/components/sales/POSReceipt";
+import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 import { buildAtomicSaleReceipt } from "@/lib/print/retail-receipt";
 import { formatAvailableStock } from "@/lib/products/stock-display";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
@@ -5721,6 +5722,34 @@ setCustomerOrganizationName("");
   const [scannedProductNames, setScannedProductNames] = useState<Record<string, string>>({});
   const [quickSaleMode, setQuickSaleMode] = useState(false);
   const [lastPOSReceipt, setLastPOSReceipt] = useState<Receipt | null>(null);
+  // Pre-sale receipt setup: the POS screen's Customize receipt button opens
+  // the template customizer over a sample receipt (no sale needed). The
+  // saved template is picked up by the next sale's receipt dialog, which
+  // loads it fresh on open.
+  const [showPosReceiptCustomizer, setShowPosReceiptCustomizer] = useState(false);
+  const samplePosReceipt: Receipt = {
+    scope: "sample",
+    business: currentOrganization?.name ?? "Your Business",
+    number: "S-100000",
+    // Fixed sample date: template previews use static sample data, never a
+    // live clock call during render.
+    date: "29-Oct-2026",
+    customer: "Walk-in customer",
+    lineSubtotal: 300,
+    lineDiscount: 0,
+    subtotal: 300,
+    invoiceDiscount: 0,
+    tax: 0,
+    taxRate: 0,
+    total: 300,
+    received: 500,
+    change: 200,
+    payment: "cash",
+    lines: [
+      { name: "Sample Product A", quantity: "2", unit: "Pcs", price: "100", discount: "0" },
+      { name: "Sample Product B", quantity: "1", unit: "Pcs", price: "100", discount: "0" },
+    ],
+  };
   const saleSubmitLock = useRef(false);
   const walkInCustomerId = useRef<string | null>(null);
   const [walkInBusy, setWalkInBusy] = useState(false);
@@ -19143,7 +19172,7 @@ setCustomerOrganizationName("");
               products={activeProducts} productNameFallback={scannedProductNames} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus} clearSignal={saleBarcodeClearSignal}
               onScan={(code, options) => { const result = runSalesScan(code, options); return result.status === "not-found" ? null : String(result.product.id); }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setScannedProductNames(current => ({ ...current, [String(product.id)]: product.name })); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
-              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => { setQuickSaleMode(false); setSaleScanFocus(value => value + 1); }} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} />}
+              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => { setQuickSaleMode(false); setSaleScanFocus(value => value + 1); }} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} onCustomizeReceipt={() => setShowPosReceiptCustomizer(true)} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
             <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
@@ -19530,6 +19559,7 @@ setCustomerOrganizationName("");
 
             </div>
             {drawerNotice && <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"><span>{drawerNotice}</span><button type="button" onClick={() => setDrawerNotice("")} className="min-h-11 rounded border border-input bg-background px-3 font-medium">{t('common.close')}</button></div>}
+            {showPosReceiptCustomizer && <TemplateCustomizer docType="retail_receipt" previewRenderer={next => <POSReceiptPreview receipt={samplePosReceipt} template={next} />} onSaved={() => setShowPosReceiptCustomizer(false)} onClose={() => setShowPosReceiptCustomizer(false)} />}
             {lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} autoPrint onDone={() => {
               // Next-sale reset (2026-10-26): the printed receipt clears,
               // the barcode box erases, and focus returns to it, so the

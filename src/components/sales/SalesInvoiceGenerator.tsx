@@ -5,7 +5,7 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import type { SalesInvoiceDoc } from "@/lib/sales/sales-invoice-service";
 import { SalesInvoiceDocument } from "@/lib/sales/sales-invoice-render";
-import type { PrintTemplate } from "@/lib/print/print-template-types";
+import { getInvoicePaperWidthMm, getInvoiceSheetWidthMm, type PrintTemplate } from "@/lib/print/print-template-types";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 
@@ -445,7 +445,12 @@ export default function SalesInvoiceGenerator() {
 
       {showPrint && (
         <div className="fixed inset-0 z-[110] overflow-y-auto bg-foreground/20 p-4">
-          <div className="mx-auto max-w-[210mm] rounded border border-border bg-white shadow-xl">
+          {/* The sheet shows at its true width: thermal slip, A4, or A3.
+              The @page rule below switches with it. */}
+          <div
+            className="mx-auto max-w-[297mm] rounded border border-border bg-white shadow-xl"
+            style={{ maxWidth: `${getInvoicePaperWidthMm(template) ?? getInvoiceSheetWidthMm(template) ?? 210}mm` }}
+          >
             <div className="mb-3 flex justify-between border-b border-border px-4 py-3 print:hidden">
               <h2 className="text-lg font-semibold text-foreground">{printTitle}</h2>
               <div className="flex gap-2">
@@ -469,7 +474,11 @@ export default function SalesInvoiceGenerator() {
             </div>
           </div>
           <style>{`
-            @page { size: A4; margin: 8mm; }
+            @page { size: ${(() => {
+              const thermal = getInvoicePaperWidthMm(template);
+              if (thermal !== null) return `${thermal}mm auto; margin: 0`;
+              return getInvoiceSheetWidthMm(template) === 297 ? "A3; margin: 8mm" : "A4; margin: 8mm";
+            })()}; }
             @media print {
               html, body { background: #fff !important; }
               body * { visibility: hidden; }

@@ -118,4 +118,28 @@ const renamedHtml = buildPrintableReceiptHtml({ ...receipt, customer: "Cliente M
 assert.ok(renamedHtml.includes("Cliente Mostrador"), "renamed walk-in customer prints as stored");
 assert.ok(!renamedHtml.includes("Cliente ocasional"), "renamed walk-in customer is not force-localized");
 
+
+// --- 40mm profile (2026-10-29): normalize + printable width + stacked lines. ---
+assert.equal(normalizeReceiptWidthMm(40), 40);
+assert.equal(normalizeReceiptWidthMm("40"), 40);
+const template40 = cloneDefaultTemplate("retail_receipt");
+template40.receiptWidthMm = 40;
+assert.equal(getReceiptPrintableWidthMm(template40), 32);
+const html40 = buildPrintableReceiptHtml(receipt, template40);
+assert.match(html40, /@page\{size:40mm auto;margin:0\}/, "40 profile keeps the true 40mm page size");
+assert.match(html40, /body\{width:32mm;max-width:32mm;margin:0 auto/, "40 profile body is sized to the 32mm printable width");
+assert.doesNotMatch(html40, /<table>/, "40 profile must not render the table (it would clip)");
+assert.ok(html40.includes("data-receipt-line"), "40 profile renders stacked lines");
+assert.ok(html40.includes("1 \u00d7 Rs\u00a01.30 = Rs\u00a01.30"), "40 stacked detail composes qty x rate = amount with unbroken money tokens");
+const discountReceipt = { ...receipt, lines: [{ name: "Orbit Menta", quantity: "2", unit: "Pcs", price: "1.30", discount: "0.30" }] };
+// The default receipt template has no discount column, so the segment is
+// omitted there; a template WITH a discount column shows it.
+const html40Discount = buildPrintableReceiptHtml(discountReceipt, template40);
+assert.ok(html40Discount.includes("2 \u00d7 Rs\u00a01.30 = Rs\u00a02.30"), "40 stacked detail omits the discount segment when the template has no discount column");
+const template40Discount = cloneDefaultTemplate("retail_receipt");
+template40Discount.receiptWidthMm = 40;
+template40Discount.columns.labels.push({ key: "discount", label: "Disc", widthPct: 10 });
+const html40DiscountCol = buildPrintableReceiptHtml(discountReceipt, template40Discount);
+assert.ok(html40DiscountCol.includes("2 \u00d7 Rs\u00a01.30 \u2212 Rs\u00a00.30 = Rs\u00a02.30"), "40 stacked detail shows the discount segment when the template has a discount column");
+
 console.log("POS receipt layout tests passed: printable-width sizing (48/72mm), nowrap values, Spanish default chrome, custom chrome preserved, qty numeral + unit line.");
