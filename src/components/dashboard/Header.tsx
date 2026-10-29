@@ -9,7 +9,6 @@ import { useSuggestionPlacement } from "@/components/search/useSuggestionPlaceme
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { LanguageSwitcher } from "@/components/regional/LanguageSwitcher";
 import { DisplayCurrencySwitcher } from "@/components/regional/DisplayCurrencySwitcher";
-import { CurrencySwitcher } from "@/components/regional/CurrencySwitcher";
 
 export interface SearchSuggestion {
   id: string;
@@ -43,10 +42,6 @@ interface HeaderProps {
   productStatus?: SuggestionStatus;
   /** "See all results in Products" footer; omitted when the user may not open Products. */
   onViewAllProducts?: (query: string) => void;
-  /** Owner only: the header currency chip becomes a shortcut into the
-   * Business Settings books-currency switch flow. */
-  canChangeBooksCurrency?: boolean;
-  onOpenBooksSettings?: () => void;
   onToggleMobileMenu?: () => void;
   mobileMenuOpen?: boolean;
   onLogout?: () => void;
@@ -204,8 +199,6 @@ export function Header({
   searchScopeKey,
   productStatus,
   onViewAllProducts,
-  canChangeBooksCurrency,
-  onOpenBooksSettings,
   onToggleMobileMenu,
   mobileMenuOpen,
   onLogout,
@@ -389,10 +382,6 @@ export function Header({
 
           {/* Display currency dropdown (live-rate conversion; records stay in books currency) */}
           <DisplayCurrencySwitcher />
-
-          {/* Books currency indicator (owner: shortcut to the
-              Business Settings switch flow; otherwise read-only) */}
-          <CurrencySwitcher canChange={canChangeBooksCurrency} onOpenBooksSettings={onOpenBooksSettings} />
 
           {/* Notifications */}
           <div

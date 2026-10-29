@@ -51,9 +51,6 @@ interface DashboardLayoutProps {
   onResetNavOrder?: () => void;
   /** Home dashboard edit mode: sidebar sections become draggable cards. */
   dragSectionsToDashboard?: boolean;
-  /** Owner only: header currency chip links into the Business Settings
-   * books-currency switch flow instead of being a read-only display. */
-  canChangeBooksCurrency?: boolean;
 }
 
 export function DashboardLayout({
@@ -84,7 +81,6 @@ customizeMode,
   onToggleNavHidden,
   onResetNavOrder,
   dragSectionsToDashboard,
-  canChangeBooksCurrency,
 }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMobileMenuOpen(false), []);
@@ -152,8 +148,6 @@ customizeMode,
           searchScopeKey={searchScopeKey}
           productStatus={productStatus}
           onViewAllProducts={onViewAllProducts}
-          canChangeBooksCurrency={canChangeBooksCurrency}
-          onOpenBooksSettings={canChangeBooksCurrency ? () => onSectionChange("business-settings") : undefined}
         />
         <main className="responsive-content min-w-0 flex-1 pb-24 lg:pb-8">
           {children}

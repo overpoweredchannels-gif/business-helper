@@ -349,7 +349,6 @@ async function main() {
       "src/app/page.tsx",
       "src/components/sales/CustomerHistory.tsx",
       "src/components/import-export/HistoricalRecords.tsx",
-      "src/components/regional/CurrencySwitcher.tsx",
     ];
     const offenders: string[] = [];
     const walk = (dir: string) => {
