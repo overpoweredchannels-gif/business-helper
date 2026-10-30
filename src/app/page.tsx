@@ -138,7 +138,7 @@ import {
 } from "@/lib/tradeos/formatters";
 import { calendarDayOfRecord } from "@/lib/regional/dates";
 import { resolveBooksCurrency } from "@/lib/books/currency";
-import { currencies as booksCurrencyOptions, type Currency } from "@/lib/regional/settings";
+import { currencies as booksCurrencyOptions, parseCurrencyCookie, type Currency } from "@/lib/regional/settings";
 import type {
   AiActionDraft,
   AiActionMessage,
@@ -1736,7 +1736,13 @@ export default function Home() {
     // cookie (from the display era, or another tab) must not keep
     // converting books amounts through a PKR-based rate. Snap it to
     // books; the provider effect then skips its live-rate fetch too.
-    if (displayCurrency !== resolvedBooksCurrency) {
+    // Compare the LIVE cookie, not the closure's displayCurrency: the
+    // mount render's value can be the SSR snapshot ('PKR') while the
+    // real cookie is another currency, which made this snap silently
+    // skip on every load (proven 2026-10-30: a EUR cookie over PKR
+    // books never snapped back across many reloads).
+    const liveDisplayCurrency = parseCurrencyCookie(document.cookie);
+    if (liveDisplayCurrency !== resolvedBooksCurrency) {
       setCurrency(resolvedBooksCurrency);
     }
     // A completed currency switch reloads the page (every cached amount
