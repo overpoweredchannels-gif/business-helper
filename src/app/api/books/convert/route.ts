@@ -92,10 +92,21 @@ function normalizeTotals(raw: unknown): ControlTotals {
 }
 
 export async function POST(request: NextRequest) {
-  const permission = await requirePermission(request, 'administration');
+  // These two calls sit outside the conversion try/catch below, so a
+  // throw here used to surface as a codeless platform 500 — which the
+  // header could only render as its generic line. The 2026-10-30 QA
+  // runs proved that hiding a failure is worse than the failure, so
+  // every throw here now returns a coded books.* answer instead.
+  let permission: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    permission = await requirePermission(request, 'administration');
+  } catch (err) {
+    console.error('[books] permission check failed:', err);
+    return errorResponse('books.conversionFailed');
+  }
   if (!permission.allowed || !permission.actor?.organizationId) {
     return NextResponse.json(
-      { ok: false, error: permission.reason ?? 'Forbidden' },
+      { ok: false, error: permission.reason ?? 'Forbidden', code: 'books.forbidden' },
       { status: 403 },
     );
   }
@@ -118,7 +129,13 @@ export async function POST(request: NextRequest) {
   const rateText =
     typeof body.rate === 'string' ? body.rate : typeof body.rate === 'number' ? String(body.rate) : '';
 
-  const supabase = createSupabaseService();
+  let supabase: ReturnType<typeof createSupabaseService>;
+  try {
+    supabase = createSupabaseService();
+  } catch (err) {
+    console.error('[books] service client failed:', err);
+    return errorResponse('books.conversionFailed');
+  }
 
   const deps: BooksConversionDeps = {
     async loadState(organizationId) {
