@@ -10,6 +10,8 @@ import {
 import { supabase } from "@/lib/supabase/client";
 import { useCallback, useState } from "react";
 import { MobileNavigation } from "@/components/dashboard/MobileNavigation";
+import { MobileBottomNav } from "@/components/dashboard/MobileBottomNav";
+import { MoreHorizontal } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/manager", label: "Overview", icon: LayoutDashboard },
@@ -117,7 +119,7 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
         </div>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="p-2 rounded-lg text-foreground hover:bg-muted transition-colors"
+          className="min-h-11 min-w-11 flex items-center justify-center rounded-lg text-foreground hover:bg-muted transition-colors"
           aria-label="Open navigation menu"
           aria-expanded={mobileOpen}
         >
@@ -127,7 +129,17 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
 
       <MobileNavigation open={mobileOpen} onClose={closeMenu}>{content}</MobileNavigation>
 
-      <main className="responsive-content flex-1 lg:pt-0 pt-14 min-w-0 pb-20">
+      <MobileBottomNav
+        items={[
+          { label: "Overview", icon: <LayoutDashboard />, href: "/manager", active: pathname === "/manager" },
+          { label: "Team", icon: <Users />, href: "/manager/team", active: pathname.startsWith("/manager/team") },
+          { label: "Approvals", icon: <ClipboardList />, href: "/manager/drafts", active: pathname.startsWith("/manager/drafts"), primary: true },
+          { label: "Visits", icon: <MapPin />, href: "/manager/visits", active: pathname.startsWith("/manager/visits") },
+          { label: "More", icon: <MoreHorizontal />, onClick: () => setMobileOpen(true) },
+        ]}
+      />
+
+      <main className="responsive-content flex-1 lg:pt-0 pt-14 min-w-0 pb-24 lg:pb-20">
         <div className="p-4 md:p-6 max-w-6xl mx-auto">{children}</div>
       </main>
     </div>

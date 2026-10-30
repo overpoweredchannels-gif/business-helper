@@ -4,6 +4,8 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { FloatingAI } from "./FloatingAI";
 import { MobileNavigation } from "./MobileNavigation";
+import { MobileBottomNav } from "./MobileBottomNav";
+import { LayoutDashboard, ShoppingCart, PlusCircle, Package, MoreHorizontal } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
 
@@ -32,6 +34,8 @@ interface DashboardLayoutProps {
   onNotificationClick?: (notification: Notification) => void;
   onSearchSubmit?: (query: string) => void;
   onSearchChange?: (query: string) => Array<{ label: string; section?: string; type?: "product" | "customer" | "task" | "action" }>;
+  /** Bottom-nav centre action: the exact dashboard Quick Action "New Sale" (invoice tab + quick-sale mode). Falls back to the Sales section when unset. */
+  onNewSale?: () => void;
   customizeMode?: boolean;
   hiddenNavIds?: string[];
   canCustomize?: boolean;
@@ -69,6 +73,7 @@ customizeMode,
   onToggleNavHidden,
   onResetNavOrder,
   dragSectionsToDashboard,
+  onNewSale,
 }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMobileMenuOpen(false), []);
@@ -136,6 +141,16 @@ customizeMode,
           {children}
         </main>
       </div>
+
+      <MobileBottomNav
+        items={[
+          { label: "Dashboard", icon: <LayoutDashboard />, onClick: () => onSectionChange("dashboard"), active: activeSection === "dashboard" },
+          { label: "Sales", icon: <ShoppingCart />, onClick: () => onSectionChange("sales"), active: activeSection === "sales" },
+          { label: "New Sale", icon: <PlusCircle />, onClick: () => { if (onNewSale) onNewSale(); else onSectionChange("sales"); }, primary: true },
+          { label: "Inventory", icon: <Package />, onClick: () => onSectionChange("inventory"), active: activeSection === "inventory" },
+          { label: "More", icon: <MoreHorizontal />, onClick: () => setMobileMenuOpen(true) },
+        ]}
+      />
 
       <FloatingAI onVoice={onAiVoice} onChat={onAiChat} />
     </div>

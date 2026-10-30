@@ -15764,6 +15764,7 @@ setCustomerOrganizationName("");
         organizationName={organizationDisplayName}
         userName={currentProfile?.full_name ?? currentUser.email}
         onLogout={handleLogout}
+        onNewSale={() => { setSalesTab("invoice"); setQuickSaleMode(true); handleSectionChange("sales"); }}
         onOpenAiAssistant={() => handleSectionChange("ai-assistant")}
         onAiVoice={() => handleSectionChange("ai-voice-operator")}
         onAiChat={() => handleSectionChange("ai-assistant")}

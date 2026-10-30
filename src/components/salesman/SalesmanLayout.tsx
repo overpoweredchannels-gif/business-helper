@@ -8,7 +8,9 @@ import {
   BarChart3, MapPin, UserRound,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { MobileBottomNav } from "@/components/dashboard/MobileBottomNav";
+import { MoreHorizontal } from "lucide-react";
 import { MobileNavigation } from "@/components/dashboard/MobileNavigation";
 import { navigationItems } from "@/lib/tradeos/constants";
 import { hasSalesTool } from "@/lib/sales/access";
@@ -24,6 +26,15 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Bottom-nav active state for hash destinations (pathname alone cannot tell
+  // /salesman apart from /salesman#customers).
+  const [hash, setHash] = useState("");
+  useEffect(() => {
+    const update = () => setHash(window.location.hash);
+    update();
+    window.addEventListener("hashchange", update);
+    return () => window.removeEventListener("hashchange", update);
+  }, []);
   const closeMenu = useCallback(() => setMobileOpen(false), []);
 
   const handleLogout = async () => {
@@ -117,7 +128,7 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
         </div>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="p-2 rounded-lg text-foreground hover:bg-muted transition-colors"
+          className="min-h-11 min-w-11 flex items-center justify-center rounded-lg text-foreground hover:bg-muted transition-colors"
           aria-label="Open navigation menu"
           aria-expanded={mobileOpen}
         >
@@ -127,7 +138,19 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
 
       <MobileNavigation open={mobileOpen} onClose={closeMenu}>{content}</MobileNavigation>
 
-      <main className="responsive-content flex-1 lg:pt-0 pt-14 min-w-0 pb-20">
+      <MobileBottomNav
+        items={[
+          { label: "Home", icon: <LayoutDashboard />, href: "/salesman", active: pathname === "/salesman" && hash === "" },
+          { label: "Customers", icon: <Users />, href: "/salesman#customers", active: pathname === "/salesman" && hash === "#customers" },
+          ...(hasSalesTool({ granted_sections: grantedSections }, "invoice")
+            ? [{ label: "New Sale", icon: <PlusCircle />, href: "/#sales", primary: true }]
+            : [{ label: "My Sales", icon: <BarChart3 />, href: "/salesman/profile#my-sales", primary: true }]),
+          { label: "Routes", icon: <RouteIcon />, href: "/salesman/routes", active: pathname === "/salesman/routes" },
+          { label: "More", icon: <MoreHorizontal />, onClick: () => setMobileOpen(true) },
+        ]}
+      />
+
+      <main className="responsive-content flex-1 lg:pt-0 pt-14 min-w-0 pb-24 lg:pb-20">
         <div className="p-4 md:p-6 max-w-6xl mx-auto">{children}</div>
       </main>
     </div>
