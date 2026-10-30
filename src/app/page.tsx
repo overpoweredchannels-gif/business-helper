@@ -15974,7 +15974,7 @@ setCustomerOrganizationName("");
           </div>
         )}
         {activeSection === "dashboard" && isOwnerOrAdmin() && (
-          <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-5 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
             <section data-help-topic="setup and data import" className="rounded-xl border border-primary/30 bg-card p-5">
               <h2 className="text-lg font-semibold">Setup &amp; Data Import</h2>
               <p className="mt-1 text-sm text-muted-foreground">{setupStage === "complete" ? `Setup complete. This reminder retires itself after ${SETUP_BANNER_RETENTION_DAYS} days; you can still open Setup & Data Import from the sidebar.` : "Follow the setup guide, import your external records and review missing settings."}</p>
@@ -15985,7 +15985,7 @@ setCustomerOrganizationName("");
           </DashboardWidget>
         )}
         {activeSection === "dashboard" && canUseSalesTool("invoice") && (
-          <DashboardWidget id="quick-sale" hidden={homeWidgets.isHidden("quick-sale")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <DashboardWidget id="quick-sale" hidden={homeWidgets.isHidden("quick-sale")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-5 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
             <section data-help-topic="quick sale" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
               <h2 className="text-lg font-semibold">Quick sale</h2>
               <p className="mt-1 text-sm text-muted-foreground">Choose a customer, scan products, check quantity and price, then save. Staff sales go to the owner for approval.</p>
@@ -16028,7 +16028,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSection === "dashboard" && currentProfile?.role === "owner" && (
-          <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-5 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
             <section className="rounded-xl border border-primary/30 bg-card p-5">
               <h2 className="text-lg font-semibold">Export business records</h2>
               <p className="mt-1 text-sm text-muted-foreground">Choose any date range to review transactions, payments, stock movements and recorded activity, then save as PDF.</p>

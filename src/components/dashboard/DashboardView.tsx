@@ -252,8 +252,8 @@ export function DashboardView({
       {smartModules.length > 0 && !widgetHidden("smart-modules") && (
         <DashboardWidget id="smart-modules" customizing={customizingWidgets} onRemove={onRemoveWidget}>
           <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-foreground">Business Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <h2 className="text-base font-semibold text-foreground">Business Overview</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {smartModules.map((m) => (
                 <SmartModule key={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen}>
                   {m.children}
