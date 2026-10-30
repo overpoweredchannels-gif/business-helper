@@ -50,9 +50,17 @@ const STATUS_BY_CODE: Record<string, number> = {
 };
 
 function errorResponse(code: string, extra?: Record<string, unknown>) {
+  // The SQL guard names the offending column in the code
+  // ('books.unmappedColumn:customers.latitude'); the HTTP status comes
+  // from the BASE code, while the full code stays in the body so the
+  // caller can see which column tripped. Before this, a suffixed code
+  // missed the map and fell through to 500 — and the popup's exact
+  // match missed it too, which is why the 2026-10-30 QA runs showed a
+  // generic line for a fully diagnosed failure.
+  const baseCode = code.split(':')[0];
   return NextResponse.json(
     { ok: false, error: code, code, ...extra },
-    { status: STATUS_BY_CODE[code] ?? 500 },
+    { status: STATUS_BY_CODE[baseCode] ?? 500 },
   );
 }
 

@@ -135,25 +135,20 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
         },
         body: JSON.stringify({ toCurrency: target, rate: String(rate) }),
       });
-      // TEMPORARY QA DIAGNOSTIC (remove before any main deploy): read
-      // the raw reply text so an unmapped answer is shown verbatim
-      // instead of the generic line. The 2026-10-30 QA runs kept
-      // failing generic with a 500 whose body nobody could see; this
-      // fallback turns the popup itself into the instrument that
-      // reveals it. Mapped codes keep their named lines.
-      const rawText = await response.text();
-      let payload: { ok?: boolean; code?: string } | null = null;
-      try {
-        payload = JSON.parse(rawText) as { ok?: boolean; code?: string };
-      } catch {
-        payload = null;
-      }
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        code?: string;
+      } | null;
       if (!response.ok || !payload?.ok) {
         // Name the cause instead of one generic line: the 2026-10-30
         // QA runs proved a generic message hides a diagnosable failure.
+        // Match the BASE code: the SQL guard names the offending column
+        // in the code ('books.unmappedColumn:customers.latitude'), and
+        // an exact match missed it — that suffix is exactly why the
+        // diagnosed failure showed generic for so long.
         // sameCurrency cannot occur from this UI (picking the current
         // currency closes the popup), so it keeps the generic line.
-        const code = payload?.code ?? "";
+        const code = (payload?.code ?? "").split(":")[0];
         if (code === "books.migrationMissing") setError(ui("header.currencySwitchMigration"));
         else if (code === "books.forbidden") setError(ui("header.currencySwitchForbidden"));
         else if (code === "books.invalidRate") setError(ui("header.currencySwitchRateError"));
@@ -169,11 +164,7 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
           code === "books.currencyInvalid"
         )
           setError(ui("header.currencySwitchFailed"));
-        else if (code === "books.sameCurrency") setError(ui("header.currencySwitchError"));
-        else
-          setError(
-            `HTTP ${response.status} · ${(rawText || "(empty reply)").slice(0, 300)}`,
-          );
+        else setError(ui("header.currencySwitchError"));
         return;
       }
       // Display follows books from here on, so the reload lands on the
