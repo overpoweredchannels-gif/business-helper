@@ -58,7 +58,7 @@ export function SectionSummaryCard({ summary }: { summary: SectionSummary }) {
           {summary.metrics.map((metric) => (
             <div key={metric.label} className="rounded-lg bg-muted p-2.5">
               <p className={cn("text-lg font-semibold leading-tight", toneClass[metric.tone ?? "default"])}>{metric.value}</p>
-              <p className="text-[10px] text-light-text">{metric.label}</p>
+              <p className="text-[11px] text-light-text">{metric.label}</p>
             </div>
           ))}
         </div>
@@ -66,7 +66,7 @@ export function SectionSummaryCard({ summary }: { summary: SectionSummary }) {
 
       {summary.rows && summary.rows.length > 0 ? (
         <div className="mt-3">
-          {summary.rowsLabel && <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{summary.rowsLabel}</p>}
+          {summary.rowsLabel && <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{summary.rowsLabel}</p>}
           <div className="mt-1 divide-y divide-border">
             {summary.rows.map((row) => (
               <div key={`${row.label}-${row.value}`} className="flex items-center justify-between gap-3 py-1.5">

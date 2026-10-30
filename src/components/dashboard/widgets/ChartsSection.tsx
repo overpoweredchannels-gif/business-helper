@@ -22,7 +22,7 @@ function BarChart({ data, height = 120 }: BarChartProps) {
               opacity: 0.8,
             }}
           />
-          <span className="text-[10px] text-light-text truncate w-full text-center">{d.label}</span>
+          <span className="text-[11px] text-light-text truncate w-full text-center">{d.label}</span>
         </div>
       ))}
     </div>
@@ -41,7 +41,7 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
     <div className="flex items-center justify-between py-2 first:pt-0 last:pb-0">
       <div className="flex items-center gap-2.5 min-w-0">
         <span className={cn(
-          "size-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+          "size-5 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
           rank === 1 && "bg-warning/20 text-warning",
           rank === 2 && "bg-muted text-muted-foreground",
           rank === 3 && "bg-primary-light text-primary",

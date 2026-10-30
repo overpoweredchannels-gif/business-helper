@@ -150,7 +150,7 @@ export function Sidebar({
           <div className="min-w-0">
             <div className="font-brand font-bold text-base text-foreground truncate">AANKH</div>
             {organizationName && (
-              <div className="text-[10px] text-light-text truncate">{organizationName}</div>
+              <div className="text-[11px] text-light-text truncate">{organizationName}</div>
             )}
           </div>
         )}

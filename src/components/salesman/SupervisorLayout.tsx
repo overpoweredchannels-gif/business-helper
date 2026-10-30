@@ -43,7 +43,7 @@ export default function SupervisorLayout({ organizationName, userName, children 
         </div>
         <div className="min-w-0">
           <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
-          <div className="text-[10px] text-light-text truncate">{organizationName ?? "Supervisor"}</div>
+          <div className="text-[11px] text-light-text truncate">{organizationName ?? "Supervisor"}</div>
         </div>
       </div>
 
@@ -75,7 +75,7 @@ export default function SupervisorLayout({ organizationName, userName, children 
           </div>
           <div className="min-w-0">
             <div className="text-sm font-medium text-foreground truncate">{userName ?? "Supervisor"}</div>
-            <div className="text-[10px] text-light-text">Team Lead</div>
+            <div className="text-[11px] text-light-text">Team Lead</div>
           </div>
         </div>
         <button

@@ -106,7 +106,7 @@ export default function ManagerRoutesPage() {
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-foreground truncate">{route.name}</h3>
                       {!route.is_active && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">INACTIVE</span>
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">INACTIVE</span>
                       )}
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-body">
@@ -118,7 +118,7 @@ export default function ManagerRoutesPage() {
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="text-right">
                       <div className="text-2xl font-heading font-bold text-foreground">{route.completionRate}%</div>
-                      <div className="text-[10px] uppercase tracking-wide text-light-text">Completed</div>
+                      <div className="text-[11px] uppercase tracking-wide text-light-text">Completed</div>
                     </div>
                     <div className="w-36 h-2 rounded-full bg-muted overflow-hidden">
                       <div className={cn("h-full rounded-full transition-all", rateColor)} style={{ width: `${route.completionRate}%` }} />
@@ -163,7 +163,7 @@ function MiniStat({ label, value, tone }: { label: string; value: number; tone: 
   return (
     <div className="rounded-lg bg-muted/40 px-3 py-2">
       <div className={cn("text-lg font-semibold", tone)}>{value}</div>
-      <div className="text-[10px] uppercase tracking-wide text-light-text">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-light-text">{label}</div>
     </div>
   );
 }

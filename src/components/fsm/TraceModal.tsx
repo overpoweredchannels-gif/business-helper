@@ -336,7 +336,7 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
                     className="flex w-full items-start gap-3 rounded-xl border border-border p-3 text-left hover:bg-muted/40 transition-colors"
                   >
                     <span
-                      className={`mt-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      className={`mt-0.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                         isNewest ? "bg-success/15 text-success" : "bg-primary/10 text-primary"
                       }`}
                     >
@@ -349,7 +349,7 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
                           {place ?? (isResolving ? "Resolving place name..." : "Place name not available")}
                         </span>
                       </div>
-                      <div className="mt-0.5 font-mono text-[10px] text-light-text">
+                      <div className="mt-0.5 font-mono text-[11px] text-light-text">
                         {p.latitude.toFixed(5)}, {p.longitude.toFixed(5)}
                         {p.speed != null && p.speed > 1
                           ? ` · ${Math.round(p.speed * 3.6)} km/h`
@@ -357,7 +357,7 @@ export default function TraceModal({ employee, points, onClose }: TraceModalProp
                             ? " · stationary"
                             : moveInfo(movedMeters, gapMinutes)}
                       </div>
-                      <div className="mt-0.5 text-[10px] text-body">
+                      <div className="mt-0.5 text-[11px] text-body">
                         {new Date(p.captured_at).toLocaleString()}
                         {isNewest && p.captured_at
                           ? ` · ${Math.max(0, Math.round((Date.now() - new Date(p.captured_at).getTime()) / 60000))}m ago`

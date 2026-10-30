@@ -51,7 +51,7 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
         </div>
         <div className="min-w-0">
           <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
-          <div className="text-[10px] text-light-text truncate">Field Sales Admin</div>
+          <div className="text-[11px] text-light-text truncate">Field Sales Admin</div>
         </div>
       </div>
 
@@ -90,7 +90,7 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
           </div>
           <div className="min-w-0">
             <div className="text-sm font-medium text-foreground truncate">{userName ?? "Owner"}</div>
-            <div className="text-[10px] text-light-text">{organizationName ?? "Business"}</div>
+            <div className="text-[11px] text-light-text">{organizationName ?? "Business"}</div>
           </div>
         </div>
         <button

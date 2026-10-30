@@ -18460,7 +18460,7 @@ setCustomerOrganizationName("");
               >
                 Pending Approval
                 {salesOrders.filter((o) => o.status === "pending_approval").length > 0 && (
-                  <span className="absolute -top-2 -right-2 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-semibold text-white">
+                  <span className="absolute -top-2 -right-2 flex size-4 items-center justify-center rounded-full bg-destructive text-[11px] font-semibold text-white">
                     {salesOrders.filter((o) => o.status === "pending_approval").length}
                   </span>
                 )}
@@ -20910,7 +20910,7 @@ setCustomerOrganizationName("");
                       <div className="text-sm font-medium text-foreground">
                         {product.name}
                         {product.is_active === false && (
-                          <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Inactive</span>
+                          <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Inactive</span>
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground/80">Brand: {brand?.name ?? "None"}</div>
@@ -21455,7 +21455,7 @@ setCustomerOrganizationName("");
                         <div className="font-medium text-foreground">
                           {supplier.supplier_name}
                           {supplier.is_active === false && (
-                            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Archived</span>
+                            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Archived</span>
                           )}
                         </div>
                         <div>Contact: {supplier.contact_person ?? "None"}</div>
@@ -22381,7 +22381,7 @@ setCustomerOrganizationName("");
                                 </div>
                                 <span className="shrink-0 text-xs text-foreground/80">{pct}%</span>
                                 {isOverdue && (
-                                  <span className="shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                                  <span className="shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive">
                                     Overdue
                                   </span>
                                 )}

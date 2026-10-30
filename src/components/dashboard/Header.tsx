@@ -213,7 +213,7 @@ export function Header({
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground truncate">{n.title}</p>
                             {n.description && <p className="text-xs text-light-text mt-0.5 line-clamp-2">{n.description}</p>}
-                            {n.time && <p className="text-[10px] text-light-text/70 mt-0.5">{n.time}</p>}
+                            {n.time && <p className="text-[11px] text-light-text/70 mt-0.5">{n.time}</p>}
                           </div>
                         </button>
                       );
@@ -226,7 +226,7 @@ export function Header({
                     onNotificationClick?.({ id: "notifications-center", title: "View all notifications", section: "notifications" });
                     setNotifOpen(false);
                   }}
-                  className="w-full text-center rounded-lg px-3 py-2 text-xs font-medium text-primary hover:bg-muted transition-colors"
+                  className="w-full text-center rounded-lg px-3 py-2 min-h-11 text-xs font-medium text-primary hover:bg-muted transition-colors"
                 >
                   View all notifications
                 </button>
@@ -238,7 +238,7 @@ export function Header({
           <div className="relative">
             <button
               onClick={() => setProfileOpen(!profileOpen)}
-              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-foreground hover:bg-muted transition-colors"
+              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 min-h-11 text-sm text-foreground hover:bg-muted transition-colors"
             >
               <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center">
                 <User className="size-3.5 text-primary" />

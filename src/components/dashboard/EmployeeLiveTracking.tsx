@@ -406,7 +406,7 @@ export function EmployeeLiveTracking() {
             )}
             {lastLocation.accuracy != null && (
               <span
-                className={`ml-1 inline-block rounded px-1 py-0.5 text-[10px] font-semibold ${
+                className={`ml-1 inline-block rounded px-1 py-0.5 text-[11px] font-semibold ${
                   lastLocation.accuracy <= 100
                     ? "bg-success/10 text-success"
                     : "bg-warning/10 text-warning"

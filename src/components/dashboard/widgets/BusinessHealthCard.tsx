@@ -33,7 +33,7 @@ function CircularScore({ score }: { score: number }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-3xl font-bold font-heading" style={{ color }}>{score}</span>
-        <span className="text-[10px] text-light-text font-medium uppercase tracking-wider">Score</span>
+        <span className="text-[11px] text-light-text font-medium uppercase tracking-wider">Score</span>
       </div>
     </div>
   );

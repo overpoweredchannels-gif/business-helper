@@ -469,9 +469,9 @@ export default function TemplateCustomizer({
                     />
                     <span className="flex-1">{section.label}</span>
                     {section.enabled ? (
-                      <span className="text-[10px] text-green-600">Enabled</span>
+                      <span className="text-[11px] text-green-600">Enabled</span>
                     ) : (
-                      <span className="text-[10px] text-muted-foreground">Disabled</span>
+                      <span className="text-[11px] text-muted-foreground">Disabled</span>
                     )}
                   </div>
                 ))}
@@ -595,7 +595,7 @@ export default function TemplateCustomizer({
                       onChange={(e) => renameColumn(i, e.target.value)}
                       className="w-24 rounded border border-border bg-background px-1.5 py-1 text-xs"
                     />
-                    <span className="text-[10px] text-muted-foreground">{col.key}</span>
+                    <span className="text-[11px] text-muted-foreground">{col.key}</span>
                     <div className="flex flex-1 items-center gap-1">
                       <input
                         type="range"
@@ -605,7 +605,7 @@ export default function TemplateCustomizer({
                         onChange={(e) => setColumnWidth(i, Number(e.target.value))}
                         className="flex-1 accent-primary"
                       />
-                      <span className="w-7 text-right text-[10px] tabular-nums text-muted-foreground">{col.widthPct}%</span>
+                      <span className="w-7 text-right text-[11px] tabular-nums text-muted-foreground">{col.widthPct}%</span>
                     </div>
                   </div>
                 ))}

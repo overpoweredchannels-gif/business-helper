@@ -28,7 +28,7 @@ export function DashboardWidget({ id, label: labelProp, hidden = false, customiz
           onClick={() => onRemove?.(id)}
           aria-label={`Remove ${label} from the home dashboard`}
           title={`Remove ${label}`}
-          className="absolute right-2 top-2 z-30 inline-flex min-h-9 items-center gap-1 rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-destructive-foreground shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute right-2 top-2 z-30 inline-flex min-h-11 items-center gap-1 rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-destructive-foreground shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="size-3" />
           Remove

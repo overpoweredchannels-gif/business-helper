@@ -402,7 +402,7 @@ export default function VisitDetailPage() {
                 {visit.images.map((img, i) => (
                   <a key={i} href={img.url} target="_blank" rel="noopener noreferrer" className="group relative aspect-square rounded-lg overflow-hidden border border-border bg-muted">
                     <img src={img.url} alt={img.caption || "Visit photo"} className="size-full object-cover" loading="lazy" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <div className="absolute inset-0 bg-black/40 hover-reveal flex items-center justify-center transition-opacity">
                       <ImageIcon className="size-5 text-white" />
                     </div>
                   </a>

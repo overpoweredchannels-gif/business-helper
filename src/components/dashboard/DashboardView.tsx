@@ -138,25 +138,25 @@ export function DashboardView({
 
   const widgetHidden = (id: DashboardWidgetId) => hiddenWidgets.includes(id);
   // Each key number is its own card so the user can keep only what they watch daily.
-  const kpiCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
+  const kpiCards: Array<{ id: DashboardWidgetId; node: React.ReactNode; money?: boolean }> = [
     ...(todaySales ? [{
-      id: "kpi-today-sales" as DashboardWidgetId,
+      id: "kpi-today-sales" as DashboardWidgetId, money: true,
       node: <KPICard title="Today's Sales" value={todaySales.value} trend={todaySales.trend} icon={<TrendingUp className="size-4" />} sparklineData={todaySales.sparkline} onClick={() => onKPIClick?.("Today's Sales")} />,
     }] : []),
     ...(todayProfit ? [{
-      id: "kpi-today-profit" as DashboardWidgetId,
+      id: "kpi-today-profit" as DashboardWidgetId, money: true,
       node: <KPICard title="Today's Profit" value={todayProfit.value} trend={todayProfit.trend} icon={<TrendingDown className="size-4" />} sparklineData={todayProfit.sparkline} onClick={() => onKPIClick?.("Today's Profit")} />,
     }] : []),
     ...(inventoryValue ? [{
-      id: "kpi-inventory-value" as DashboardWidgetId,
+      id: "kpi-inventory-value" as DashboardWidgetId, money: true,
       node: <KPICard title="Inventory Value" value={safeInventoryValue} trend={inventoryValue.trend} icon={<Package className="size-4" />} onClick={() => onKPIClick?.("Inventory Value")} />,
     }] : []),
     ...(outstandingReceivables ? [{
-      id: "kpi-receivables" as DashboardWidgetId,
+      id: "kpi-receivables" as DashboardWidgetId, money: true,
       node: <KPICard title="Outstanding Receivables" value={safeReceivables} icon={<Users className="size-4" />} onClick={() => onKPIClick?.("Outstanding Receivables")} />,
     }] : []),
     ...(outstandingPayables ? [{
-      id: "kpi-payables" as DashboardWidgetId,
+      id: "kpi-payables" as DashboardWidgetId, money: true,
       node: <KPICard title="Outstanding Payables" value={safePayables} icon={<DollarSign className="size-4" />} onClick={() => onKPIClick?.("Outstanding Payables")} />,
     }] : []),
     ...(lowStockAlerts ? [{
@@ -214,9 +214,9 @@ export function DashboardView({
 
       {/* KPI Cards */}
       {kpiCards.length > 0 && (
-        <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", customizingWidgets ? "gap-6" : "gap-3 sm:gap-4")}>
+        <div className={cn("grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", customizingWidgets ? "gap-6" : "gap-3 sm:gap-4")}>
           {kpiCards.map((card) => (
-            <DashboardWidget key={card.id} id={card.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
+            <DashboardWidget key={card.id} id={card.id} customizing={customizingWidgets} onRemove={onRemoveWidget} className={card.money ? "col-span-2 sm:col-span-1" : undefined}>
               {card.node}
             </DashboardWidget>
           ))}
@@ -238,8 +238,8 @@ export function DashboardView({
 
       {/* Business Health + Quick Actions Row */}
       {(!widgetHidden("business-health") || !widgetHidden("quick-actions")) && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <DashboardWidget id="business-health" customizing={customizingWidgets} onRemove={onRemoveWidget} className={widgetHidden("quick-actions") ? "lg:col-span-3" : "lg:col-span-2"}>
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-4">
+          <DashboardWidget id="business-health" customizing={customizingWidgets} onRemove={onRemoveWidget} className={widgetHidden("quick-actions") ? "md:col-span-3 lg:col-span-3" : "md:col-span-2 lg:col-span-2"}>
             <BusinessHealthCard score={healthScore} metrics={healthMetrics} />
           </DashboardWidget>
           <DashboardWidget id="quick-actions" customizing={customizingWidgets} onRemove={onRemoveWidget}>
@@ -269,7 +269,7 @@ export function DashboardView({
         <DashboardWidget id="needs-attention" customizing={customizingWidgets} onRemove={onRemoveWidget}>
           <div className="rounded-xl border border-border bg-card p-5">
             <h3 className="text-sm font-semibold text-foreground mb-3">Needs Your Attention</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-3">
               {taskList.map((t) => (
                 <button
                   key={t.label}
@@ -280,7 +280,7 @@ export function DashboardView({
                   <t.icon className={cn("size-5", t.color)} />
                   <div>
                     <p className="text-lg font-semibold text-foreground">{t.value}</p>
-                    <p className="text-[10px] text-light-text">{t.label}</p>
+                    <p className="text-[11px] text-light-text">{t.label}</p>
                   </div>
                 </button>
               ))}
@@ -291,7 +291,7 @@ export function DashboardView({
 
       {/* Charts */}
       {chartCards.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
           {chartCards.map((chart) => (
             <DashboardWidget key={chart.id} id={chart.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
               {chart.node}
@@ -309,7 +309,7 @@ export function DashboardView({
 
       {/* Cards dropped here from the sidebar */}
       {droppedCards.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
           {droppedCards.map((card) => (
             <DashboardWidget key={card.id} id={card.id} label={card.label} customizing={customizingWidgets} onRemove={onRemoveWidget}>
               {card.node}

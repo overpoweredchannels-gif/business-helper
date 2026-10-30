@@ -129,7 +129,7 @@ export function StaffDashboardView({
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">My Sales by Product</h3>
-            <span className="text-[10px] text-light-text uppercase tracking-wider">Top {myTopProducts.length}</span>
+            <span className="text-[11px] text-light-text uppercase tracking-wider">Top {myTopProducts.length}</span>
           </div>
           {myTopProducts.length === 0 ? (
             <p className="text-sm text-light-text">No sales yet.</p>
@@ -151,7 +151,7 @@ export function StaffDashboardView({
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">My Sales by Customer</h3>
-            <span className="text-[10px] text-light-text uppercase tracking-wider">Top {myTopCustomers.length}</span>
+            <span className="text-[11px] text-light-text uppercase tracking-wider">Top {myTopCustomers.length}</span>
           </div>
           {myTopCustomers.length === 0 ? (
             <p className="text-sm text-light-text">No sales yet.</p>
@@ -172,7 +172,7 @@ export function StaffDashboardView({
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">My Recent Sales</h3>
-            <span className="text-[10px] text-light-text uppercase tracking-wider">{myRecentSales.length} invoices</span>
+            <span className="text-[11px] text-light-text uppercase tracking-wider">{myRecentSales.length} invoices</span>
           </div>
           {myRecentSales.length === 0 ? (
             <p className="text-sm text-light-text">No recent sales.</p>
@@ -184,7 +184,7 @@ export function StaffDashboardView({
                     <p className="text-foreground/90 truncate">
                       <span className="text-light-text">#{s.invoiceNumber}</span> · {s.customerName}
                     </p>
-                    <p className="text-[10px] text-light-text">{s.date}</p>
+                    <p className="text-[11px] text-light-text">{s.date}</p>
                   </div>
                   <span className="font-medium text-foreground shrink-0">{s.total}</span>
                 </div>
@@ -196,7 +196,7 @@ export function StaffDashboardView({
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">My Customers</h3>
-            <span className="text-[10px] text-light-text uppercase tracking-wider">{myCustomers.length} assigned</span>
+            <span className="text-[11px] text-light-text uppercase tracking-wider">{myCustomers.length} assigned</span>
           </div>
           {myCustomers.length === 0 ? (
             <p className="text-sm text-light-text">No assigned customers.</p>
@@ -206,7 +206,7 @@ export function StaffDashboardView({
                 <div key={c.id} className="flex items-center justify-between gap-3 text-sm">
                   <div className="min-w-0">
                     <p className="text-foreground/90 truncate">{c.name}</p>
-                    <p className="text-[10px] text-light-text truncate">
+                    <p className="text-[11px] text-light-text truncate">
                       {[c.phone, c.city].filter(Boolean).join(" · ") || "—"}
                     </p>
                   </div>
@@ -223,7 +223,7 @@ export function StaffDashboardView({
       <div className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-foreground">My Tasks</h3>
-          <span className="text-[10px] text-light-text uppercase tracking-wider">{myPendingTasks.length} pending</span>
+          <span className="text-[11px] text-light-text uppercase tracking-wider">{myPendingTasks.length} pending</span>
         </div>
         {myPendingTasks.length === 0 ? (
           <p className="text-sm text-light-text">No pending tasks.</p>
@@ -233,10 +233,10 @@ export function StaffDashboardView({
               <div key={t.id} className="flex items-center justify-between gap-3 text-sm">
                 <span className="text-foreground/90 truncate">{t.title}</span>
                 <span className="shrink-0 flex items-center gap-2">
-                  {t.dueDate ? <span className="text-[10px] text-light-text">Due {t.dueDate}</span> : null}
+                  {t.dueDate ? <span className="text-[11px] text-light-text">Due {t.dueDate}</span> : null}
                   <span
                     className={cn(
-                      "text-[10px] px-1.5 py-0.5 rounded-full",
+                      "text-[11px] px-1.5 py-0.5 rounded-full",
                       t.priority === "high"
                         ? "bg-destructive/10 text-destructive"
                         : t.priority === "low"

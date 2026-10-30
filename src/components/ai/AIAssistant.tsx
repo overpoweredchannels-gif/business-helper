@@ -49,7 +49,7 @@ function ChatBubble({ message, onRetry }: { message: ChatMessage; onRetry: () =>
 
       <div className={`group max-w-[85%] space-y-1 ${isUser ? "items-end" : "items-start"}`}>
         {!isUser && message.provider && (
-          <span className="text-[10px] text-muted-foreground/60 px-1">{message.provider}{message.model ? ` · ${message.model}` : ""}</span>
+          <span className="text-[11px] text-muted-foreground/60 px-1">{message.provider}{message.model ? ` · ${message.model}` : ""}</span>
         )}
 
         <div className={`rounded-2xl px-4 py-2.5 ${
@@ -192,7 +192,7 @@ export function AIAssistant({ onChat, brainAvailable }: AIAssistantProps) {
           <MessageSquare className="size-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">AI Assistant</h2>
           {isWaiting && (
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
               <span className="relative flex size-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/40"></span>
                 <span className="relative inline-flex size-2 rounded-full bg-primary"></span>
@@ -246,7 +246,7 @@ export function AIAssistant({ onChat, brainAvailable }: AIAssistantProps) {
             {isWaiting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
           </button>
         </div>
-        <p className="mt-1.5 text-[10px] text-muted-foreground/50 text-center">
+        <p className="mt-1.5 text-[11px] text-muted-foreground/50 text-center">
           Press Enter to send · Shift+Enter for new line
         </p>
       </div>

@@ -48,7 +48,7 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-foreground">{title}</span>
               {badge && (
-                <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", badgeStyles[badgeColor])}>
+                <span className={cn("text-[11px] font-medium px-1.5 py-0.5 rounded", badgeStyles[badgeColor])}>
                   {badge}
                 </span>
               )}

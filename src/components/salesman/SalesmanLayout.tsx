@@ -56,7 +56,7 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
         </div>
         <div className="min-w-0">
           <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
-          <div className="text-[10px] text-light-text truncate">{organizationName ?? "Field Team"}</div>
+          <div className="text-[11px] text-light-text truncate">{organizationName ?? "Field Team"}</div>
         </div>
       </div>
 
@@ -89,7 +89,7 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
           </div>
           <div className="min-w-0">
             <div className="text-sm font-medium text-foreground truncate">{userName ?? "Staff Member"}</div>
-            <div className="text-[10px] text-light-text">Field Sales</div>
+            <div className="text-[11px] text-light-text">Field Sales</div>
           </div>
         </div>
         <button

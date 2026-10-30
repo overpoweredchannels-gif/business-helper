@@ -13,19 +13,19 @@ export function FloatingAI({ onVoice, onChat }: FloatingAIProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+    <div className="fixed bottom-24 right-4 lg:bottom-6 lg:right-6 z-50 flex flex-col items-end gap-3">
       {open && (
         <div className="flex flex-col items-end gap-2 animate-slideUp">
           <button
             onClick={() => { onVoice?.(); setOpen(false); }}
-            className="flex items-center gap-2 rounded-full bg-card border border-border px-4 py-2.5 text-sm font-medium text-foreground shadow-lg hover:bg-muted transition-all hover:-translate-y-0.5"
+            className="flex items-center gap-2 rounded-full bg-card border border-border px-4 py-2.5 min-h-11 text-sm font-medium text-foreground shadow-lg hover:bg-muted transition-all hover:-translate-y-0.5"
           >
             <Mic className="size-4" />
             Voice Command
           </button>
           <button
             onClick={() => { onChat?.(); setOpen(false); }}
-            className="flex items-center gap-2 rounded-full bg-card border border-border px-4 py-2.5 text-sm font-medium text-foreground shadow-lg hover:bg-muted transition-all hover:-translate-y-0.5"
+            className="flex items-center gap-2 rounded-full bg-card border border-border px-4 py-2.5 min-h-11 text-sm font-medium text-foreground shadow-lg hover:bg-muted transition-all hover:-translate-y-0.5"
           >
             <MessageSquare className="size-4" />
             AI Chat

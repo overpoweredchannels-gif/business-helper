@@ -167,7 +167,7 @@ export default function NavigateModal({ employee, onClose }: NavigateModalProps)
               </span>
             </div>
             {ownerPos ? (
-              <span className="text-[10px] text-success font-medium uppercase tracking-wide">using your location</span>
+              <span className="text-[11px] text-success font-medium uppercase tracking-wide">using your location</span>
             ) : null}
           </div>
 
@@ -185,7 +185,7 @@ export default function NavigateModal({ employee, onClose }: NavigateModalProps)
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
             >
               <Navigation className="size-4" /> Start Turn-by-Turn Navigation
-              <span className="text-[10px] font-normal opacity-80">(opens Google Maps)</span>
+              <span className="text-[11px] font-normal opacity-80">(opens Google Maps)</span>
             </a>
           )}
 

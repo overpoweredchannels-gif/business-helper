@@ -89,7 +89,7 @@ function InviteContent() {
           tabIndex={-1}
           aria-readonly
         />
-        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
           Locked
         </span>
       </div>

@@ -262,7 +262,7 @@ export default function DraftsPage() {
                         <div className="text-foreground font-medium">{p.name}</div>
                         <div className="text-xs text-body">Stock: {p.current_stock}</div>
                       </div>
-                        <div className="text-right"><div className="text-sm font-semibold text-foreground">{fmt(recentPrices[String(p.id)] ?? p.default_selling_price)}</div>{recentPrices[String(p.id)] != null && <div className="text-[10px] text-primary">Last customer price</div>}</div>
+                        <div className="text-right"><div className="text-sm font-semibold text-foreground">{fmt(recentPrices[String(p.id)] ?? p.default_selling_price)}</div>{recentPrices[String(p.id)] != null && <div className="text-[11px] text-primary">Last customer price</div>}</div>
                     </button>
                   ))}
                 {products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
