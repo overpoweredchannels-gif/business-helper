@@ -124,7 +124,7 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) {
-        setError(ui("header.currencySwitchError"));
+        setError(ui("header.currencySwitchNotSent"));
         return;
       }
       const response = await fetch("/api/books/convert", {
@@ -173,7 +173,10 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
       setCurrency(target);
       window.location.reload();
     } catch {
-      setError(ui("header.currencySwitchError"));
+      // The request never left (network failure, aborted send): say so
+      // instead of the generic line, so a generic line afterwards means
+      // only a codeless platform response or a stale build.
+      setError(ui("header.currencySwitchNotSent"));
     } finally {
       setConverting(false);
     }
