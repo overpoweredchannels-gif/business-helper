@@ -140,10 +140,13 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
         code?: string;
       } | null;
       if (!response.ok || !payload?.ok) {
-        // Name the cause instead of one generic line: the QA run proved
-        // a generic message hides a diagnosable failure (there, the
-        // missing books migration). The settings flow maps these same
-        // codes; the header must not swallow them.
+        // Name the cause instead of one generic line: the 2026-10-30
+        // QA runs proved a generic message hides a diagnosable failure.
+        // Every code the convert route can return is mapped here, so a
+        // generic line now means only "no code reached the popup"
+        // (transport failure or a stale build), never a hidden cause.
+        // sameCurrency cannot occur from this UI (picking the current
+        // currency closes the popup), so it keeps the generic line.
         const code = payload?.code ?? "";
         setError(
           code === "books.migrationMissing"
@@ -152,7 +155,16 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
               ? ui("header.currencySwitchForbidden")
               : code === "books.invalidRate"
                 ? ui("header.currencySwitchRateError")
-                : ui("header.currencySwitchError"),
+                : code === "books.reconciliationFailed" ||
+                    code === "books.reconciliationMismatch"
+                  ? ui("header.currencySwitchReconciliation")
+                  : code === "books.unmappedColumn"
+                    ? ui("header.currencySwitchUnmapped")
+                    : code === "books.conversionFailed" ||
+                        code === "books.organizationNotFound" ||
+                        code === "books.currencyInvalid"
+                      ? ui("header.currencySwitchFailed")
+                      : ui("header.currencySwitchError"),
         );
         return;
       }
