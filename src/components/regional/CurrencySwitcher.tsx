@@ -148,7 +148,9 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
         // diagnosed failure showed generic for so long.
         // sameCurrency cannot occur from this UI (picking the current
         // currency closes the popup), so it keeps the generic line.
-        const code = (payload?.code ?? "").split(":")[0];
+        const fullCode = payload?.code ?? "";
+        const code = fullCode.split(":")[0];
+        const column = fullCode.split(":")[1];
         if (code === "books.migrationMissing") setError(ui("header.currencySwitchMigration"));
         else if (code === "books.forbidden") setError(ui("header.currencySwitchForbidden"));
         else if (code === "books.invalidRate") setError(ui("header.currencySwitchRateError"));
@@ -157,7 +159,16 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
           code === "books.reconciliationMismatch"
         )
           setError(ui("header.currencySwitchReconciliation"));
-        else if (code === "books.unmappedColumn") setError(ui("header.currencySwitchUnmapped"));
+        else if (code === "books.unmappedColumn")
+          // Name the column too: the 2026-10-30 QA runs showed the
+          // guard reveals one unknown column at a time, and the owner
+          // needs its name to report it. No new translation key: the
+          // column name is appended verbatim to the named line.
+          setError(
+            column
+              ? `${ui("header.currencySwitchUnmapped")} (${column})`
+              : ui("header.currencySwitchUnmapped"),
+          );
         else if (
           code === "books.conversionFailed" ||
           code === "books.organizationNotFound" ||
