@@ -83,7 +83,7 @@ function InviteContent() {
           <Icon className="size-4" />
         </div>
         <input
-          className="flex h-11 w-full cursor-not-allowed rounded-lg border border-input bg-muted/40 px-3.5 py-2.5 pl-10 text-sm text-foreground/70 opacity-80"
+          className="flex h-11 w-full cursor-not-allowed rounded-lg border border-input bg-muted/40 px-3.5 py-2.5 pl-10 text-base sm:text-sm text-foreground/70 opacity-80"
           value={value}
           readOnly
           tabIndex={-1}
@@ -169,7 +169,7 @@ function InviteContent() {
                   <Lock className="size-4" />
                 </div>
                 <input
-                  className="flex h-11 w-full rounded-lg border border-input bg-card px-3.5 py-2.5 pl-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-11 w-full rounded-lg border border-input bg-card px-3.5 py-2.5 pl-10 text-base sm:text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   placeholder="Enter the code from your invite"
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
@@ -235,8 +235,7 @@ function InviteContent() {
                     <button
                       type="button"
                       onClick={() => setShowPassword((s) => !s)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      tabIndex={-1}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 flex min-h-11 min-w-11 items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                       aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -261,8 +260,7 @@ function InviteContent() {
                     <button
                       type="button"
                       onClick={() => setShowConfirm((s) => !s)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      tabIndex={-1}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 flex min-h-11 min-w-11 items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                       aria-label={showConfirm ? "Hide password" : "Show password"}
                     >
                       {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}

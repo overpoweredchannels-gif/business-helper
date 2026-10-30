@@ -75,7 +75,7 @@ function Field({ label, icon, error, className, id, ...props }: {
         <input
           id={inputId}
           className={cn(
-            "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 text-sm text-foreground transition-all placeholder:text-muted-foreground/60",
+            "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 text-base sm:text-sm text-foreground transition-all placeholder:text-muted-foreground/60",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring",
             "disabled:cursor-not-allowed disabled:opacity-50",
             icon && "pl-10",
@@ -113,7 +113,7 @@ function PasswordField({ label, error, ...props }: {
           id={generatedId}
           type={show ? "text" : "password"}
           className={cn(
-            "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 pr-10 text-sm text-foreground transition-all placeholder:text-muted-foreground/60",
+            "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 pr-10 text-base sm:text-sm text-foreground transition-all placeholder:text-muted-foreground/60",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring",
             "disabled:cursor-not-allowed disabled:opacity-50",
             error && "border-destructive focus-visible:ring-destructive",
@@ -124,8 +124,7 @@ function PasswordField({ label, error, ...props }: {
         <button
           type="button"
           onClick={() => setShow(s => !s)}
-          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-          tabIndex={-1}
+          className="absolute right-1 top-1/2 -translate-y-1/2 flex min-h-11 min-w-11 items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
           aria-label={show ? "Hide password" : "Show password"}
         >
           {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -148,7 +147,7 @@ function Checkbox({ label, checked, onChange }: {
 }) {
   const id = React.useId();
   return (
-    <label htmlFor={id} className="flex items-center gap-2 cursor-pointer group">
+    <label htmlFor={id} className="flex min-h-11 items-center gap-2 cursor-pointer group">
       <div className={cn(
         "size-4 rounded border-2 flex items-center justify-center transition-colors shrink-0",
         checked ? "bg-primary border-primary" : "border-muted-foreground/40 group-hover:border-muted-foreground/60"
@@ -344,7 +343,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
             type="button"
             onClick={() => { setMethod(tab.key); setError(null); }}
             className={cn(
-              "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              "rounded-md px-3 py-2 min-h-11 text-sm font-medium transition-colors",
               method === tab.key
                 ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -393,7 +392,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
 
         <div className="flex items-center justify-between">
           <Checkbox label="Keep me signed in" checked={rememberMe} onChange={setRememberMe} />
-          <button type="button" onClick={() => onNavigate("forgot", { email })} className="text-sm text-primary hover:text-primary-hover transition-colors">
+          <button type="button" onClick={() => onNavigate("forgot", { email })} className="min-h-11 flex items-center text-sm text-primary hover:text-primary-hover transition-colors">
             Forgot password?
           </button>
         </div>
@@ -598,7 +597,7 @@ function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: A
         </Button>
       </div>
 
-      <button type="button" onClick={() => onNavigate("signin")} className="flex items-center justify-center gap-1.5 text-sm text-body hover:text-foreground transition-colors mt-6 mx-auto">
+      <button type="button" onClick={() => onNavigate("signin")} className="flex min-h-11 items-center justify-center gap-1.5 px-3 text-sm text-body hover:text-foreground transition-colors mt-6 mx-auto">
         <ArrowLeft className="size-4" />
         Back to sign in
       </button>

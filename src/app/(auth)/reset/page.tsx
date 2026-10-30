@@ -57,7 +57,7 @@ function ResetForm() {
   };
 
   const inputClass =
-    "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 text-base sm:text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-panel p-4">

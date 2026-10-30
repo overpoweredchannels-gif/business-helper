@@ -69,7 +69,7 @@ export default function OnboardingPage() {
                 placeholder="My Business"
                 value={businessName}
                 onChange={(e) => setBusinessName(e.target.value)}
-                className="flex h-11 w-full rounded-lg border border-input bg-card px-3.5 py-2.5 text-sm text-foreground transition-all placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring"
+                className="flex h-11 w-full rounded-lg border border-input bg-card px-3.5 py-2.5 text-base sm:text-sm text-foreground transition-all placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring"
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
