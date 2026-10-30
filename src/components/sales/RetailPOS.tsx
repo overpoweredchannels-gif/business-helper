@@ -75,7 +75,10 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
   useEffect(() => {
     if (focusQuantityFor === null) return;
     const frame = requestAnimationFrame(() => {
-      const field = document.querySelector<HTMLInputElement>(`[data-pos-quantity="${focusQuantityFor}"]`);
+      // The line exists twice in the DOM below lg (card) and at lg+ (table);
+      // display:none hides one of them, so focus the visible one.
+      const fields = document.querySelectorAll<HTMLInputElement>(`[data-pos-quantity="${focusQuantityFor}"]`);
+      const field = Array.from(fields).find((f) => f.offsetParent !== null) ?? fields[0];
       if (field) { field.focus(); field.select(); setFocusQuantityFor(null); }
     });
     return () => cancelAnimationFrame(frame);
@@ -153,7 +156,7 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
         <label className="block text-sm font-medium">Customer</label><ProductSearchSelect label="Customer" value={sale.customerId ?? ""} products={customers.map(c => ({ id: c.id, label: [c.customer_name, c.shop_name, c.phone].filter(Boolean).join(" — ") }))} onChange={onCustomer} />
       </div>
     </fieldset>
-    <div className="overflow-x-auto rounded-xl border bg-card"><table className="w-full min-w-[680px] text-sm"><thead className="bg-muted text-left"><tr>{["Product", "Unit", "Quantity", "Price", "Discount", "Total", ""].map((text, index) => <th key={index} className="p-3">{text}</th>)}</tr></thead>
+    <div className="hidden lg:block overflow-x-auto rounded-xl border bg-card"><table className="w-full min-w-[680px] text-sm"><thead className="bg-muted text-left"><tr>{["Product", "Unit", "Quantity", "Price", "Discount", "Total", ""].map((text, index) => <th key={index} className="p-3">{text}</th>)}</tr></thead>
       <tbody>{sale.lines.map((line, index) => { const product = products.find(p => String(p.id) === line.product_id); return <tr key={index} className="border-t">
         <td className="p-3 font-medium">{product?.name ?? "Product unavailable"}{Number(line.bonus) > 0 && <small className="block">+ {line.bonus} free</small>}</td>
         <td className="p-2"><select aria-label={`Unit for ${product?.name ?? index + 1}`} value={line.unit_mode ?? "main"} disabled={busy} onChange={event => onLine(index, "unit_mode", event.target.value)} className="min-h-11 rounded border bg-background px-2"><option value="main">{product?.unit_type || "Main"}</option>{Number(product?.units_per_pack) > 0 && <option value="subunit">{product?.subunit_type || "Piece"}</option>}</select></td>
@@ -161,7 +164,38 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
         <td className="p-3 font-medium">{money((Number(line.quantity) || 0) * (Number(line.selling_price) || 0) - (Number(line.discount) || 0))}</td>
         <td className="p-2"><button type="button" disabled={busy} aria-label={`Remove ${product?.name ?? "product"}`} onClick={() => onRemove(index)} className="min-h-11 rounded border border-destructive/40 px-3 text-destructive">Remove</button></td>
       </tr>; })}{!sale.lines.length && <tr><td colSpan={7} className="p-10 text-center text-muted-foreground">Ready for the next customer. Scan a product to begin.</td></tr>}</tbody></table></div>
-    <div className="sticky bottom-2 z-10 flex flex-wrap items-end justify-between gap-4 rounded-xl border border-primary/30 bg-card p-4 shadow-lg">
+    <div className="lg:hidden space-y-3">
+      {sale.lines.map((line, index) => { const product = products.find(p => String(p.id) === line.product_id); const lineTotal = (Number(line.quantity) || 0) * (Number(line.selling_price) || 0) - (Number(line.discount) || 0); const qty = Number(line.quantity) || 0; return (
+        <div key={index} className="rounded-xl border bg-card p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-base font-medium text-foreground">{product?.name ?? "Product unavailable"}</p>
+              {Number(line.bonus) > 0 && <p className="text-sm text-muted-foreground">+ {line.bonus} free</p>}
+            </div>
+            <p className="shrink-0 text-base font-semibold tabular-nums text-foreground">{money(lineTotal)}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-sm text-muted-foreground" htmlFor={`pos-unit-${index}`}>Unit</label>
+            <select id={`pos-unit-${index}`} aria-label={`Unit for ${product?.name ?? index + 1}`} value={line.unit_mode ?? "main"} disabled={busy} onChange={event => onLine(index, "unit_mode", event.target.value)} className="min-h-11 rounded border bg-background px-2 text-sm"><option value="main">{product?.unit_type || "Main"}</option>{Number(product?.units_per_pack) > 0 && <option value="subunit">{product?.subunit_type || "Piece"}</option>}</select>
+            <button type="button" disabled={busy} aria-label={`Remove ${product?.name ?? "product"}`} onClick={() => onRemove(index)} className="ml-auto min-h-11 rounded border border-destructive/40 px-3 text-sm text-destructive">Remove</button>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor={`pos-qty-${index}`}>Quantity</label>
+            <div className="flex items-stretch gap-2">
+              <button type="button" disabled={busy} aria-label={`Decrease quantity for ${product?.name ?? index + 1}`} onClick={() => onLine(index, "quantity", String(Math.max(0, qty - 1)))} className="min-h-11 min-w-11 rounded border bg-background text-xl font-medium">−</button>
+              <input id={`pos-qty-${index}`} data-pos-quantity={index} aria-label={`Quantity for ${product?.name ?? index + 1}`} type="number" min="0.000001" step="any" value={line.quantity} disabled={busy} onChange={event => onLine(index, "quantity", event.target.value)} className="min-h-11 min-w-0 flex-1 rounded border bg-background px-3 text-base tabular-nums" />
+              <button type="button" disabled={busy} aria-label={`Increase quantity for ${product?.name ?? index + 1}`} onClick={() => onLine(index, "quantity", String(qty + 1))} className="min-h-11 min-w-11 rounded border bg-background text-xl font-medium">+</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-sm font-medium">Price<input aria-label={`Price for ${product?.name ?? index + 1}`} type="number" min="0" step="any" value={line.selling_price} disabled={busy} onChange={event => onLine(index, "selling_price", event.target.value)} className="mt-1 block min-h-11 w-full rounded border bg-background px-3 text-base tabular-nums" /></label>
+            <label className="block text-sm font-medium">Discount<input aria-label={`Discount for ${product?.name ?? index + 1}`} type="number" min="0" step="any" value={line.discount} disabled={busy} onChange={event => onLine(index, "discount", event.target.value)} className="mt-1 block min-h-11 w-full rounded border bg-background px-3 text-base tabular-nums" /></label>
+          </div>
+        </div>
+      ); })}
+      {!sale.lines.length && <p className="rounded-xl border bg-card p-10 text-center text-sm text-muted-foreground">Ready for the next customer. Scan a product to begin.</p>}
+    </div>
+    <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)] lg:bottom-2 z-10 flex flex-wrap items-end justify-between gap-4 rounded-xl border border-primary/30 bg-card p-4 shadow-lg">
       <div><span className="text-sm text-muted-foreground">Total payable · {sale.paymentType}</span><div className="text-3xl font-bold">{money(total)}</div>{(Number(sale.discount) > 0 || Number(sale.tax) > 0) && <small>Includes invoice discount / tax from advanced options.</small>}</div>
       {owner && sale.paymentType === "cash" && <div><label className="block text-sm">Cash received<input aria-label="Cash received" type="number" min="0" step="0.01" value={received} placeholder={String(total)} onChange={event => { setReceived(event.target.value); onCashReceived?.(Number(event.target.value) || 0); }} disabled={busy} className="mt-1 block min-h-11 w-40 rounded border bg-background px-3" /></label><div className="mt-2 flex flex-wrap gap-2">{quickCashPresets.map(preset => <button key={preset.label} type="button" className="min-h-9 rounded border px-2 text-xs" onClick={() => { setReceived(String(preset.value)); onCashReceived?.(preset.value); }}>{preset.label}</button>)}</div><p className="mt-1 text-sm">Return to customer: {money(returnAmount)}</p><p className="mt-1 text-xs text-muted-foreground">Received {money(drawerSummary.received)} / total {money(drawerSummary.expected)}.</p></div>}
       <div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">Hold sale</button><button data-entry-add type="button" disabled={busy || !sale.lines.length || !sale.customerId || shortCash} onClick={onSave} className="min-h-12 rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40">{busy ? "Saving…" : owner ? sale.paymentType === "credit" ? "Save credit sale" : "Pay & Save" : "Send for approval"}</button></div>

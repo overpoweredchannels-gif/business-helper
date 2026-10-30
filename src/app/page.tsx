@@ -17183,7 +17183,8 @@ setCustomerOrganizationName("");
               {filteredReorderRecommendations.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No reorder recommendations match the current filters.</p>
               ) : (
-                <div className="overflow-x-auto">
+                <>
+                <div className="hidden lg:block overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
                     <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                       <tr>
@@ -17252,6 +17253,26 @@ setCustomerOrganizationName("");
                     </tbody>
                   </table>
                 </div>
+                <ul className="space-y-3 lg:hidden">
+                  {filteredReorderRecommendations.map((recommendation) => (
+                    <li key={recommendation.productId} className="rounded-xl border border-border bg-card p-4 space-y-2 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-base font-medium text-foreground">{recommendation.productName}</p>
+                          <p className="text-xs text-muted-foreground/80">{recommendation.brandName || "No brand"} · {recommendation.categoryName || "No category"}</p>
+                        </div>
+                        <span className={`shrink-0 inline-flex rounded px-2 py-1 text-xs font-medium ${recommendation.status === "Out of Stock" ? "bg-destructive/10 text-destructive" : recommendation.status === "Urgent Reorder" ? "bg-orange-100 text-orange-700" : recommendation.status === "Low Stock Soon" ? "bg-warning/10 text-warning" : "bg-success/10 text-success"}`}>{recommendation.status}</span>
+                      </div>
+                      <div className="flex justify-between"><span className="text-muted-foreground/80">Current stock</span><span className="tabular-nums">{recommendation.currentStock} {recommendation.unitType}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground/80">Reorder level</span><span className="tabular-nums">{recommendation.reorderLevel > 0 ? `${recommendation.reorderLevel} ${recommendation.unitType}` : "Set reorder level first"}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground/80">30-day sales</span><span className="tabular-nums">{recommendation.recentSalesQuantity} {recommendation.unitType}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground/80">Daily average</span><span className="tabular-nums">{recommendation.dailyAverageSales > 0 ? `${recommendation.dailyAverageSales.toFixed(2)} ${recommendation.unitType}/day` : "No recent sales"}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground/80">Days left</span><span className="tabular-nums">{recommendation.estimatedDaysLeft === null ? "No recent sales" : `${Math.max(0, recommendation.estimatedDaysLeft).toFixed(1)} days`}</span></div>
+                      <div className="flex justify-between font-medium"><span>Suggested reorder</span><span className="tabular-nums">{recommendation.reorderLevel > 0 ? `${recommendation.suggestedReorderQuantity} ${recommendation.unitType}` : "Set reorder level first"}</span></div>
+                    </li>
+                  ))}
+                </ul>
+                </>
               )}
             </div>
           </div>
@@ -17939,7 +17960,7 @@ setCustomerOrganizationName("");
                         <button
                           type="button"
                           onClick={() => handleRemoveSalesLine(index)}
-                          className="text-xs text-destructive hover:text-destructive/90"
+                          className="min-h-11 px-3 text-xs text-destructive hover:text-destructive/90"
                         >
                           Remove
                         </button>
@@ -17981,6 +18002,20 @@ setCustomerOrganizationName("");
                             onChange={(e) => handleSalesLineChange(index, "quantity", e.target.value)}
                             className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
                           />
+                          <span className="flex gap-2 lg:hidden">
+                            <button
+                              type="button"
+                              aria-label={`Decrease quantity for line ${index + 1}`}
+                              onClick={() => handleSalesLineChange(index, "quantity", String(Math.max(0, (Number(line.quantity) || 0) - 1)))}
+                              className="min-h-11 min-w-11 rounded border border-border text-xl font-medium"
+                            >−</button>
+                            <button
+                              type="button"
+                              aria-label={`Increase quantity for line ${index + 1}`}
+                              onClick={() => handleSalesLineChange(index, "quantity", String((Number(line.quantity) || 0) + 1))}
+                              className="min-h-11 min-w-11 rounded border border-border text-xl font-medium"
+                            >+</button>
+                          </span>
                         </label>
 
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -18056,7 +18091,7 @@ setCustomerOrganizationName("");
               type="button"
               onClick={() => handleCreateSalesInvoice()}
               disabled={salesInvoiceLoading}
-              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+              className="min-h-11 w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
               {salesInvoiceLoading ? "Saving..." : isOwnerOrAdmin() ? "Save Sales Invoice" : "Send for owner approval"}
             </button>
@@ -19099,7 +19134,8 @@ setCustomerOrganizationName("");
                 {dailyRows.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No sales in this period.</p>
                 ) : (
-                  <div className="overflow-x-auto rounded border border-border bg-card">
+                  <>
+                  <div className="hidden lg:block overflow-x-auto rounded border border-border bg-card">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground/80">
@@ -19117,6 +19153,15 @@ setCustomerOrganizationName("");
                       </tbody>
                     </table>
                   </div>
+                  <ul className="space-y-2 lg:hidden">
+                    {dailyRows.map(([day, total]) => (
+                      <li key={day} className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm">
+                        <span className="font-medium text-foreground">{day}</span>
+                        <span className="tabular-nums font-semibold">{pkrFormatter.format(total)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  </>
                 )}
               </div>
 
@@ -19125,7 +19170,8 @@ setCustomerOrganizationName("");
                 {productRows.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No product sales in this period.</p>
                 ) : (
-                  <div className="overflow-x-auto rounded border border-border bg-card">
+                  <>
+                  <div className="hidden lg:block overflow-x-auto rounded border border-border bg-card">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground/80">
@@ -19152,6 +19198,21 @@ setCustomerOrganizationName("");
                       </tbody>
                     </table>
                   </div>
+                  <ul className="space-y-3 lg:hidden">
+                    {productRows.map(([productId, totals]) => {
+                      const product = products.find((p) => String(p.id) === productId);
+                      return (
+                        <li key={productId} className="rounded-xl border border-border bg-card p-4 space-y-1 text-sm">
+                          <p className="text-base font-medium text-foreground">{product?.name ?? "Unknown Product"}</p>
+                          <div className="flex justify-between"><span className="text-muted-foreground/80">Quantity</span><span className="tabular-nums">{totals.quantity}</span></div>
+                          <div className="flex justify-between"><span className="text-muted-foreground/80">Revenue</span><span className="tabular-nums">{pkrFormatter.format(totals.revenue)}</span></div>
+                          <div className="flex justify-between"><span className="text-muted-foreground/80">Cost</span><span className="tabular-nums">{pkrFormatter.format(totals.cost)}</span></div>
+                          <div className="flex justify-between font-medium"><span>Profit</span><span className="tabular-nums">{pkrFormatter.format(totals.revenue - totals.cost)}</span></div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  </>
                 )}
               </div>
 
@@ -19160,7 +19221,8 @@ setCustomerOrganizationName("");
                 {customerRows.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No customer sales in this period.</p>
                 ) : (
-                  <div className="overflow-x-auto rounded border border-border bg-card">
+                  <>
+                  <div className="hidden lg:block overflow-x-auto rounded border border-border bg-card">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground/80">
@@ -19183,6 +19245,19 @@ setCustomerOrganizationName("");
                       </tbody>
                     </table>
                   </div>
+                  <ul className="space-y-2 lg:hidden">
+                    {customerRows.map(([customerId, totals]) => {
+                      const customer = customers.find((c) => c.id === customerId);
+                      return (
+                        <li key={customerId} className="rounded-xl border border-border bg-card p-4 space-y-1 text-sm">
+                          <p className="text-base font-medium text-foreground">{customer?.customer_name ?? "Unknown Customer"}</p>
+                          <div className="flex justify-between"><span className="text-muted-foreground/80">Invoices</span><span className="tabular-nums">{totals.invoices}</span></div>
+                          <div className="flex justify-between font-medium"><span>Sales</span><span className="tabular-nums">{pkrFormatter.format(totals.revenue)}</span></div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  </>
                 )}
               </div>
             </section>
