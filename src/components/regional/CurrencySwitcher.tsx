@@ -34,7 +34,13 @@ function formatSwitchRate(rate: number): string {
  * natively and need no control.
  */
 export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean; className?: string }) {
-  const { setCurrency, ui } = useRegional();
+  // `currency` is the provider's reactive value (cookie-backed, correct
+  // from the first render). The local booksCurrency state is only
+  // refreshed when the popup opens, so after a switch + reload it
+  // still showed the old currency until the popup was opened — the
+  // 2026-10-30 QA run showed a stale PKR label while EUR was already
+  // selected. The visible label therefore follows the provider value.
+  const { setCurrency, ui, currency } = useRegional();
   const [open, setOpen] = useState(false);
   const [booksCurrency, setBooksCurrency] = useState<Currency>(() => getActiveBooksCurrency());
   const [target, setTarget] = useState<Currency | null>(null);
@@ -133,7 +139,15 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ toCurrency: target, rate: String(rate) }),
+        // Send exactly six decimals: the convert route's parser
+        // rejects more, and the switch rate is a raw division
+        // (toQuote / fromQuote), so a return leg like EUR→PKR sends a
+        // long float (308.8326139…) while PKR→EUR sends the clean
+        // upstream quote (0.003238). That asymmetry is why the
+        // 2026-10-30 QA run switched to EUR fine but every switch back
+        // failed with the live-rate line. toFixed(6) is always
+        // parser-legal and far inside reconciliation tolerance.
+        body: JSON.stringify({ toCurrency: target, rate: rate.toFixed(6) }),
       });
       const payload = (await response.json().catch(() => null)) as {
         ok?: boolean;
@@ -205,7 +219,7 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
         data-currency-switch={booksCurrency}
       >
         <Coins className="h-4 w-4" />
-        <span>{booksCurrency}</span>
+        <span>{currency}</span>
       </button>
 
       {open && (
