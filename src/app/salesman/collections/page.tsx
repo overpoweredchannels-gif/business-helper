@@ -108,7 +108,7 @@ export default function CollectionsPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-5">
           <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">Pending approval</div>
           <div className="font-heading font-bold text-2xl text-warning">{fmt(pendingTotal)}</div>

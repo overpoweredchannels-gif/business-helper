@@ -27,7 +27,7 @@ export function MySalesPerformance() {
   return <><section className="rounded-xl border border-border bg-card p-4 sm:p-6">
     <h2 className="text-xl font-semibold">My Sales</h2>
     <p className="mb-4 text-sm text-muted-foreground">Your confirmed invoices only. Sales waiting for owner approval are not counted.</p>
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
       <label className="grid gap-1 text-sm">From date<input type="date" value={filters.from} onInput={e => update("from", e.currentTarget.value)} onChange={e => update("from", e.target.value)} className="min-w-0 rounded border p-2" /></label>
       <label className="grid gap-1 text-sm">To date<input type="date" value={filters.to} onInput={e => update("to", e.currentTarget.value)} onChange={e => update("to", e.target.value)} className="min-w-0 rounded border p-2" /></label>
       <label className="grid gap-1 text-sm">Customer<select value={filters.customer} onChange={e => update("customer", e.target.value)} className="min-w-0 rounded border p-2"><option value="">All my customers</option>{[...customers].filter(([id]) => id).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>

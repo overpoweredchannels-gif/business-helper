@@ -229,7 +229,7 @@ export default function SalesInvoiceGenerator() {
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
         <div className="rounded border border-border bg-muted/30 p-4">
           <h3 className="mb-2 text-sm font-medium text-foreground">Customers</h3>
           {customers.length === 0 ? (

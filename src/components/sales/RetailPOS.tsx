@@ -187,7 +187,7 @@ export function RetailPOS({ scope, sale, products, customers, total, busy, owner
               <button type="button" disabled={busy} aria-label={`Increase quantity for ${product?.name ?? index + 1}`} onClick={() => onLine(index, "quantity", String(qty + 1))} className="min-h-11 min-w-11 rounded border bg-background text-xl font-medium">+</button>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block text-sm font-medium">Price<input aria-label={`Price for ${product?.name ?? index + 1}`} type="number" min="0" step="any" value={line.selling_price} disabled={busy} onChange={event => onLine(index, "selling_price", event.target.value)} className="mt-1 block min-h-11 w-full rounded border bg-background px-3 text-base tabular-nums" /></label>
             <label className="block text-sm font-medium">Discount<input aria-label={`Discount for ${product?.name ?? index + 1}`} type="number" min="0" step="any" value={line.discount} disabled={busy} onChange={event => onLine(index, "discount", event.target.value)} className="mt-1 block min-h-11 w-full rounded border bg-background px-3 text-base tabular-nums" /></label>
           </div>

@@ -154,7 +154,7 @@ export default function ManagerPerformancePage() {
         <p className="text-sm text-body mt-1">Monthly rankings and achievement metrics for all field staff.</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         <StatCard icon={<TrendingUp className="size-5 text-primary" />} label="Total Sales" value={formatCurrency(performance.sales.total)} sublabel={`${performance.sales.count} orders`} />
         <StatCard icon={<Target className="size-5 text-warning" />} label="Collections" value={formatCurrency(performance.collections.amount)} sublabel={`${performance.collections.approved} approved`} />
         <StatCard icon={<MapPin className="size-5 text-info" />} label="Visits" value={`${performance.visits.completed}/${performance.visits.total}`} sublabel={`${performance.visits.missed} missed`} />

@@ -152,7 +152,7 @@ export default function EmployeeLedgerPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         <StatCard icon={<TrendingUp className="size-5 text-primary" />} label="Total Sales" value={formatCurrency(aggregates.sales.total)} sublabel={`${aggregates.sales.count} orders`} />
         <StatCard icon={<Target className="size-5 text-warning" />} label="This Month" value={formatCurrency(aggregates.sales.thisMonth)} />
         <StatCard icon={<Banknote className="size-5 text-success" />} label="Collections" value={formatCurrency(aggregates.collections.amount)} sublabel={`${aggregates.collections.approved} approved`} />
@@ -165,14 +165,14 @@ export default function EmployeeLedgerPage() {
         <AssignmentSummary icon={<Users className="size-5 text-primary" />} label="Customers assigned" value={`${assignment.customers.length} customer(s)`} detail="Direct assignments and customers on the assigned route." />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         <StatCard icon={<Calendar className="size-5 text-primary" />} label="Attendance Days" value={aggregates.attendance.days} sublabel={`${aggregates.attendance.present} present`} />
         <StatCard icon={<Clock className="size-5 text-warning" />} label="Late / Absent" value={`${aggregates.attendance.late} / ${aggregates.attendance.absent}`} sublabel={`${aggregates.attendance.leave} leave`} />
         <StatCard icon={<MessageSquareText className="size-5 text-success" />} label="Feedback" value={aggregates.feedback.total} sublabel={`${aggregates.feedback.open} open`} />
         <StatCard icon={<Award className="size-5 text-info" />} label="Total Hours" value={`${aggregates.attendance.totalHours}h`} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-5">
           <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2"><Target className="size-5 text-primary" /> Targets</h3>
           {aggregates.targets.length === 0 ? (
@@ -209,7 +209,7 @@ export default function EmployeeLedgerPage() {
         <ResetPasswordCard employeeId={employeeId} employeeName={employee.full_name} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <RecentPanel title="Recent Sales" icon={<TrendingUp className="size-4 text-primary" />} empty="No sales yet">
           {recent.sales.map((s) => (
             <div key={s.id} className="flex justify-between py-2 border-b border-border/40 last:border-0">
@@ -236,7 +236,7 @@ export default function EmployeeLedgerPage() {
         </RecentPanel>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
         <AnalyticsPanel title="Sales ranking by products" icon={<Package className="size-4 text-primary" />} rows={analytics.byProduct.slice(0, 10).map((row) => ({ id: row.product_id, name: row.name, detail: `${row.quantity} units`, value: formatCurrency(row.total) }))} />
         <AnalyticsPanel title="Sales by customer" icon={<Store className="size-4 text-primary" />} rows={analytics.byCustomer.slice(0, 10).map((row) => ({ id: row.customer_id, name: row.name, detail: `${row.count} invoice(s)`, value: formatCurrency(row.total) }))} />
       </div>
@@ -244,7 +244,7 @@ export default function EmployeeLedgerPage() {
       <div className="rounded-2xl border border-border bg-card p-5">
         <h3 className="font-semibold text-foreground mb-1 flex items-center gap-2"><Users className="size-5 text-primary" /> Assigned customers</h3>
         <p className="text-xs text-body mb-4">These are the customers available to this employee for draft sales.</p>
-        {assignment.customers.length === 0 ? <p className="text-sm text-body py-4 text-center">No customers assigned.</p> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{assignment.customers.map((customer) => <div key={customer.id} className="rounded-xl border border-border p-4"><div className="text-sm font-medium text-foreground">{customer.shop_name ?? customer.customer_name}</div>{customer.shop_name && <div className="text-xs text-body">{customer.customer_name}</div>}<div className="text-xs text-light-text mt-2">{[customer.area, customer.city].filter(Boolean).join(", ") || "No area"}</div>{customer.phone && <div className="text-xs text-light-text mt-1">{customer.phone}</div>}</div>)}</div>}
+        {assignment.customers.length === 0 ? <p className="text-sm text-body py-4 text-center">No customers assigned.</p> : <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">{assignment.customers.map((customer) => <div key={customer.id} className="rounded-xl border border-border p-4"><div className="text-sm font-medium text-foreground">{customer.shop_name ?? customer.customer_name}</div>{customer.shop_name && <div className="text-xs text-body">{customer.customer_name}</div>}<div className="text-xs text-light-text mt-2">{[customer.area, customer.city].filter(Boolean).join(", ") || "No area"}</div>{customer.phone && <div className="text-xs text-light-text mt-1">{customer.phone}</div>}</div>)}</div>}
       </div>
     </div>
   );

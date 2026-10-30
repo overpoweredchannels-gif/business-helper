@@ -107,21 +107,21 @@ export default function LeavePage() {
             <select
               value={leaveType}
               onChange={(e) => setLeaveType(e.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-2"
+              className="min-h-11 rounded-lg border border-border bg-background px-3 py-2"
             >
               {Object.entries(TYPE_LABEL).map(([v, l]) => (
                 <option key={v} value={v}>{l}</option>
               ))}
             </select>
           </label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm">
               <span className="text-body">Start Date</span>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2" />
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="min-h-11 rounded-lg border border-border bg-background px-3 py-2" />
             </label>
             <label className="grid gap-1.5 text-sm">
               <span className="text-body">End Date</span>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-lg border border-border bg-background px-3 py-2" />
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="min-h-11 rounded-lg border border-border bg-background px-3 py-2" />
             </label>
           </div>
         </div>

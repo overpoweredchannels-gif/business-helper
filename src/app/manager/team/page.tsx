@@ -65,7 +65,7 @@ export default function TeamPage() {
           <p className="text-sm text-body">No field staff yet. Invite staff from the main app.</p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
           {salesmen.map((e) => (
             <button
               key={e.id}

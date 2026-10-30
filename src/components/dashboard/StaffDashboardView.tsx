@@ -90,7 +90,7 @@ export function StaffDashboardView({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         <KPICard
           title="My Sales"
           value={String(mySalesCount)}
@@ -125,7 +125,7 @@ export function StaffDashboardView({
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">My Sales by Product</h3>
@@ -168,7 +168,7 @@ export function StaffDashboardView({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">My Recent Sales</h3>

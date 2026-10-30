@@ -16322,7 +16322,7 @@ setCustomerOrganizationName("");
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
             {[
               ["Total Sales", formatPKR(businessIntelligenceAnalytics.overview.totalSalesAmount)],
               ["Sales Invoices", businessIntelligenceAnalytics.overview.salesInvoiceCount],
@@ -16355,7 +16355,7 @@ setCustomerOrganizationName("");
           )}
 
           {(biMetricView === "overview" || biMetricView === "products") && (
-            <div className="mt-6 grid gap-4 xl:grid-cols-3">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
               <div className="rounded border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">Top Selling Products by Quantity</h3>
                 {businessIntelligenceAnalytics.topByQuantity.length === 0 ? (
@@ -16432,7 +16432,7 @@ setCustomerOrganizationName("");
           )}
 
           {(biMetricView === "overview" || biMetricView === "customers") && (
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-2">
               <div className="rounded border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">Top Customers by Sales</h3>
                 {businessIntelligenceAnalytics.topCustomersBySales.length === 0 ? (
@@ -16530,7 +16530,7 @@ setCustomerOrganizationName("");
           )}
 
           {(biMetricView === "overview" || biMetricView === "expenses") && (
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-2">
               <div className="rounded border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">Expense Categories</h3>
                 {businessIntelligenceAnalytics.expensesByType.length === 0 ? (
@@ -16614,7 +16614,7 @@ setCustomerOrganizationName("");
           )}
 
           {(biMetricView === "overview" || biMetricView === "trends") && (
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-2">
               <div className="rounded border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">Daily Sales Trend</h3>
                 {businessIntelligenceAnalytics.dailyTrends.length === 0 ? (
@@ -16667,7 +16667,7 @@ setCustomerOrganizationName("");
           )}
 
           {(biMetricView === "overview" || biMetricView === "seasonal") && (
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-2">
               <div className="rounded border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">Seasonal Movement</h3>
                 {!businessIntelligenceAnalytics.enoughSeasonalData && (
@@ -16704,7 +16704,7 @@ setCustomerOrganizationName("");
             </div>
           )}
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {[
               ["Best product", businessIntelligenceAnalytics.insights.bestProduct ? `${businessIntelligenceAnalytics.insights.bestProduct.productName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestProduct.salesValue)}` : "No sales signal yet"],
               ["Most profitable product", businessIntelligenceAnalytics.insights.bestProfitProduct ? `${businessIntelligenceAnalytics.insights.bestProfitProduct.productName} · ${formatPKR(businessIntelligenceAnalytics.insights.bestProfitProduct.grossProfit)}` : "No costed profit signal yet"],
@@ -16798,7 +16798,7 @@ setCustomerOrganizationName("");
             <p className="mt-3 text-sm text-destructive">{profitLossDateError}</p>
           )}
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <div className="rounded border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">Total Revenue</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
@@ -16878,7 +16878,7 @@ setCustomerOrganizationName("");
             </div>
           )}
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-2">
             <div className="rounded border border-border bg-card p-4 shadow-sm">
               <h3 className="mb-3 text-lg font-medium text-foreground">Expense Category Breakdown</h3>
               {expenseCategoryBreakdown.length === 0 ? (
@@ -17091,7 +17091,7 @@ setCustomerOrganizationName("");
 
           {inventoryTab === "dashboard" && (
           <div className="space-y-6">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
                 <div className="text-2xl font-semibold text-destructive">{inventorySummaryCounts.outOfStock}</div>
                 <div className="text-sm text-destructive/80">Out of Stock</div>
@@ -17374,7 +17374,7 @@ setCustomerOrganizationName("");
                   e.preventDefault();
                   handleAdjustStock();
                 }}
-                className="grid gap-3 lg:grid-cols-2"
+                className="grid gap-3 md:grid-cols-2 lg:grid-cols-2"
               >
                 <div className="flex flex-col gap-1">
                   <label className="text-sm text-foreground/80">Product *</label>
@@ -17393,13 +17393,13 @@ setCustomerOrganizationName("");
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
                     <label className="text-sm text-foreground/80">Direction *</label>
                     <select
                       value={adjustmentDirection}
                       onChange={(e) => setAdjustmentDirection(e.target.value as "in" | "out")}
-                      className="rounded border border-border px-3 py-2 text-sm"
+                      className="min-h-11 rounded border border-border px-3 py-2 text-sm"
                       disabled={adjustmentSubmitting}
                     >
                       <option value="in">Increase stock (+)</option>
@@ -17414,7 +17414,7 @@ setCustomerOrganizationName("");
                       step="any"
                       value={adjustmentQuantity}
                       onChange={(e) => setAdjustmentQuantity(e.target.value)}
-                      className="rounded border border-border px-3 py-2 text-sm"
+                      className="min-h-11 rounded border border-border px-3 py-2 text-sm"
                       disabled={adjustmentSubmitting}
                       placeholder="0"
                     />
@@ -17434,14 +17434,14 @@ setCustomerOrganizationName("");
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
                     <label className="text-sm text-foreground/80">Batch number (optional)</label>
                     <input
                       type="text"
                       value={adjustmentBatchNumber}
                       onChange={(e) => setAdjustmentBatchNumber(e.target.value)}
-                      className="rounded border border-border px-3 py-2 text-sm"
+                      className="min-h-11 rounded border border-border px-3 py-2 text-sm"
                       disabled={adjustmentSubmitting}
                       placeholder="e.g. LOT-2401"
                       maxLength={100}
@@ -17453,7 +17453,7 @@ setCustomerOrganizationName("");
                       type="date"
                       value={adjustmentExpiryDate}
                       onChange={(e) => setAdjustmentExpiryDate(e.target.value)}
-                      className="rounded border border-border px-3 py-2 text-sm"
+                      className="min-h-11 rounded border border-border px-3 py-2 text-sm"
                       disabled={adjustmentSubmitting}
                     />
                   </div>
@@ -17966,7 +17966,7 @@ setCustomerOrganizationName("");
                         </button>
                       </div>
 
-                      <div className="grid gap-2 sm:grid-cols-6">
+                      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={activeProducts.map(product => ({ id: String(product.id), label: [product.name, brands.find(brand => brand.id === product.brand_id)?.name, product.sku].filter(Boolean).join(" — ") }))} />
@@ -18111,7 +18111,7 @@ setCustomerOrganizationName("");
           <p className="mb-3 text-xs text-muted-foreground/80">
             Older unallocated customer payments are applied to the oldest credit invoices first.
           </p>
-          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <input
               type="text"
               value={salesHistorySearch}
@@ -18290,7 +18290,7 @@ setCustomerOrganizationName("");
                           Remove
                         </button>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-5">
+                      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -19101,7 +19101,7 @@ setCustomerOrganizationName("");
                 </select>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 <div className="rounded border border-border bg-card p-4">
                   <div className="text-xs text-muted-foreground/80">Gross Sales (excl. tax)</div>
                   <div className="mt-1 text-lg font-medium text-foreground">{pkrFormatter.format(netSales)}</div>
@@ -19409,7 +19409,7 @@ setCustomerOrganizationName("");
                 <div className="space-y-3">
                   {unpaidCreditInvoicesForSelectedPaymentCustomer.map((invoice) => (
                     <div key={invoice.transaction.id} className="rounded border border-border bg-muted/30 p-3">
-                      <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="grid gap-2 text-sm sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Invoice</div>
                           <div className="font-medium text-foreground">{invoice.transaction.invoice_number}</div>
@@ -19535,7 +19535,7 @@ setCustomerOrganizationName("");
                     key={historyItem.payment.id}
                     className="rounded border border-border bg-card p-3 text-sm text-foreground/80"
                   >
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Customer</div>
                         <div className="font-medium text-foreground">
@@ -19726,7 +19726,7 @@ setCustomerOrganizationName("");
                 <div className="space-y-3">
                   {unpaidPurchaseInvoicesForSelectedPaymentSupplier.map((invoice) => (
                     <div key={invoice.transaction.id} className="rounded border border-border bg-muted/30 p-3">
-                      <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="grid gap-2 text-sm sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Invoice</div>
                           <div className="font-medium text-foreground">{invoice.transaction.invoice_number}</div>
@@ -19801,7 +19801,7 @@ setCustomerOrganizationName("");
                     key={historyItem.payment.id}
                     className="rounded border border-border bg-card p-3 text-sm text-foreground/80"
                   >
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                    <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Supplier</div>
                         <div className="font-medium text-foreground">
@@ -19958,7 +19958,7 @@ setCustomerOrganizationName("");
             <p className="mt-4 text-sm text-muted-foreground">Select a supplier to view the ledger.</p>
           ) : (
             <div className="mt-4 space-y-4">
-              <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 text-sm sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 <div className="rounded border border-border bg-card p-3">
                   <div className="text-muted-foreground/80">Total Purchases</div>
                   <div className="font-medium text-foreground">
@@ -20681,7 +20681,7 @@ setCustomerOrganizationName("");
                 Close
               </button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
               <div>
                 <div className="text-xs text-muted-foreground/80">Name</div>
                 <div className="text-sm font-medium text-foreground">{productToView.name}</div>
@@ -21974,7 +21974,7 @@ setCustomerOrganizationName("");
 
                     <div className="mb-3 rounded border border-success/10 bg-success/5 p-3">
                       <h3 className="mb-2 text-sm font-medium text-success/90">Payment Summary</h3>
-                      <div className="grid gap-2 text-xs text-success/90 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="grid gap-2 text-xs text-success/90 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                         <div>
                           <div className="uppercase tracking-wide text-success">Purchase Total</div>
                           <div className="font-medium">{pkrFormatter.format(purchasePaymentTotal)}</div>
@@ -22042,7 +22042,7 @@ setCustomerOrganizationName("");
 
                     <div className="mb-3 rounded border border-primary/10 bg-primary/5 p-3">
                       <h3 className="mb-2 text-sm font-medium text-primary/90">Cost Summary</h3>
-                      <div className="grid gap-2 text-xs text-primary/90 sm:grid-cols-2 lg:grid-cols-5">
+                      <div className="grid gap-2 text-xs text-primary/90 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
                         <div>
                           <div className="uppercase tracking-wide text-primary">Purchase Value</div>
                           <div className="font-medium">{pkrFormatter.format(purchaseValue)}</div>
@@ -22243,7 +22243,7 @@ setCustomerOrganizationName("");
                           Remove
                         </button>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-5">
+                      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -22722,7 +22722,7 @@ setCustomerOrganizationName("");
                           Remove
                         </button>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-5">
+                      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <select
@@ -23106,7 +23106,7 @@ setCustomerOrganizationName("");
                       sidebar exactly like they do for the owner. Dashboard is always available.
                     </p>
                   </div>
-                  <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
                     {sectionPermissionGroups.map((group) => {
                       const checkedCount = group.sections.filter((section) =>
                         staffSectionDraft.includes(section.id)
@@ -23250,7 +23250,7 @@ setCustomerOrganizationName("");
                 <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.highRisk}</div>
               </div>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               <div className="rounded border border-success/20 bg-card p-3">
                 <div className="text-sm text-success">Active Items</div>
                 <div className="mt-1 text-2xl font-semibold text-success/90">{marketIntelligenceSummary.active}</div>
@@ -23287,7 +23287,7 @@ setCustomerOrganizationName("");
             ))}
           </div>
 
-          <div className="mt-4 grid gap-2 lg:grid-cols-6">
+          <div className="mt-4 grid gap-2 md:grid-cols-3 lg:grid-cols-6">
             <input
               type="search"
               value={marketIntelligenceSearch}
@@ -23514,7 +23514,7 @@ setCustomerOrganizationName("");
                               {item.raw_text.length > 220 ? `${item.raw_text.slice(0, 220)}...` : item.raw_text}
                             </p>
                           )}
-                          <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
+                          <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                             <div>Impact: {getMarketLabel(marketImpactLevelOptions, item.suggested_impact_level)}</div>
                             <div>Confidence: {getMarketLabel(marketConfidenceOptions, item.suggested_confidence_level)}</div>
                             <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, item.suggested_affected_area)}</div>
@@ -23642,7 +23642,7 @@ setCustomerOrganizationName("");
                             Reasoning: {analysis.ai_reasoning}
                           </div>
                         )}
-                        <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                           <div>Confidence: {getMarketLabel(marketConfidenceOptions, analysis.ai_confidence_level)}</div>
                           <div>Affected area: {getMarketLabel(marketAffectedAreaOptions, analysis.ai_affected_area)}</div>
                           <div>Reviewed: {formatDateTime(analysis.reviewed_at)}</div>
@@ -23924,7 +23924,7 @@ setCustomerOrganizationName("");
                               <p className="mt-1 text-sm text-foreground/80">{advisory.executiveSummary}</p>
                             </div>
                           )}
-                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                          <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-2">
                             <div className="rounded border border-border bg-card p-3">
                               <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Business Impact</div>
                               <p className="mt-1 text-sm text-foreground/80">{advisory.businessImpact}</p>
@@ -23934,7 +23934,7 @@ setCustomerOrganizationName("");
                               <p className="mt-1 text-sm text-foreground/80">{advisory.whyItMatters}</p>
                             </div>
                           </div>
-                          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                             <div className="rounded border border-border bg-card p-3">
                               <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Risk Score</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{advisory.riskScore}</div>
@@ -23952,7 +23952,7 @@ setCustomerOrganizationName("");
                               <div className="mt-1 text-lg font-semibold text-foreground">{advisory.urgency}</div>
                             </div>
                           </div>
-                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                          <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-2">
                             <div className="rounded border border-border bg-card p-3">
                               <div className="text-xs uppercase tracking-wide text-muted-foreground/80">Affected Business Areas</div>
                               <div className="mt-2 flex flex-wrap gap-2">
@@ -23973,7 +23973,7 @@ setCustomerOrganizationName("");
                               </div>
                             </div>
                           </div>
-                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                          <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-2">
                             <div className="rounded border border-destructive/10 bg-destructive/5 p-3">
                               <div className="text-xs uppercase tracking-wide text-destructive">Threat Detection</div>
                               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-destructive/90">
@@ -24013,7 +24013,7 @@ setCustomerOrganizationName("");
                           <div className="mt-3 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                             Future versions will combine Business Intelligence, Inventory, Sales, Purchases, Customer demand, and Supplier history to generate personalized recommendations.
                           </div>
-                          <div className="mt-3 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
+                          <div className="mt-3 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                             <div>Source: {item.source_name || "Manual note"}</div>
                             <div>Related product: {relatedProduct?.name ?? item.related_product_category ?? "-"}</div>
                             <div>News date: {formatDate(item.news_date)}</div>
@@ -24118,7 +24118,7 @@ setCustomerOrganizationName("");
             </p>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <div className="rounded border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">Current Duty Status</div>
               <div className={`mt-2 text-2xl font-semibold ${activeDutySession ? "text-success" : "text-foreground"}`}>
@@ -24384,7 +24384,7 @@ setCustomerOrganizationName("");
             </button>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             {mobileReadinessItems.map((item) => {
               const ready = item.status === "Ready";
               return (
@@ -24400,7 +24400,7 @@ setCustomerOrganizationName("");
             })}
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-2">
             <div className="rounded border border-border bg-card p-4">
               <h3 className="mb-3 text-lg font-medium text-foreground">Android Chrome</h3>
               <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground/80">
@@ -24433,7 +24433,7 @@ setCustomerOrganizationName("");
             <p className="mt-2 text-sm text-primary">
               AI voice input works best in supported mobile browsers. Full home-screen voice shortcut will be added later.
             </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
               {mobileRoadmapItems.map((item) => (
                 <div key={item} className="rounded border border-primary/20 bg-card px-3 py-2 text-sm text-primary">
                   {item}
@@ -24539,7 +24539,7 @@ setCustomerOrganizationName("");
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <div className="rounded border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">App Build Status</div>
               <div className="mt-2 text-lg font-semibold text-foreground">Manual build required</div>
@@ -24572,7 +24572,7 @@ setCustomerOrganizationName("");
 
           <div className="mt-5 rounded border border-border bg-card p-4">
             <h3 className="mb-3 text-lg font-medium text-foreground">Environment Checklist</h3>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-2">
               {deploymentEnvironmentChecks.map((check) => {
                 const statusClass =
                   check.status === "pass"
@@ -24599,7 +24599,7 @@ setCustomerOrganizationName("");
 
           <div className="mt-5 rounded border border-border bg-card p-4">
             <h3 className="mb-3 text-lg font-medium text-foreground">Deployment Commands</h3>
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <div>
                 <h4 className="mb-2 text-sm font-medium text-foreground">Build locally</h4>
                 <pre className="overflow-x-auto rounded bg-foreground p-3 text-xs text-background">{`taskkill /F /IM node.exe
@@ -24689,7 +24689,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
           {securityCheckMessage && <p className="mb-4 text-sm text-success">{securityCheckMessage}</p>}
           {securityCheckError && <p className="mb-4 whitespace-pre-wrap text-sm text-destructive">{securityCheckError}</p>}
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <div className="rounded border border-border bg-card p-3">
               <div className="text-sm text-muted-foreground/80">Total Checks</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{securityCheckSummary.total}</div>
@@ -24790,7 +24790,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "security-check" && (
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-2">
           <div className="rounded border border-border bg-card">
             <RoleManagement />
           </div>
@@ -24825,7 +24825,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             </button>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <div className="rounded border border-border bg-card p-3">
               <div className="text-sm text-muted-foreground/80">Total Logs</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.total}</div>
@@ -24846,7 +24846,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
 
           <div className="mt-5 rounded border border-border bg-card p-4">
             <h3 className="mb-3 text-lg font-medium text-foreground">Filters</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               <label className="flex flex-col gap-2 text-sm text-foreground/80 lg:col-span-2">
                 <span>Search</span>
                 <input
@@ -24955,7 +24955,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                               {isExpanded ? "Hide" : "Show"}
                             </button>
                             {isExpanded && (
-                              <div className="mt-3 grid min-w-[320px] gap-3 lg:grid-cols-2">
+                              <div className="mt-3 grid min-w-[320px] gap-3 md:grid-cols-2 lg:grid-cols-2">
                                 <div>
                                   <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">Old Values</div>
                                   <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-foreground p-3 text-xs text-background">
@@ -24988,7 +24988,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
 
           <div className="rounded border border-border bg-card p-4">
             <h3 className="mb-3 text-lg font-medium text-foreground">Create Task</h3>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>Title</span>
                 <input
@@ -25146,7 +25146,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             {taskSuggestions.length === 0 ? (
               <p className="text-sm text-warning/90">No suggestions right now.</p>
             ) : (
-              <div className="grid gap-3 lg:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-2">
                 {taskSuggestions.map((suggestion) => (
                   <div key={suggestion.key} className="rounded border border-warning/20 bg-card p-3 text-sm">
                     <div className="font-medium text-foreground">{suggestion.title}</div>

@@ -120,7 +120,7 @@ export default function SalesmanDashboard() {
         <Link href="/salesman/profile" className="text-sm text-primary hover:underline">View profile</Link>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         <Stat label="Total Sales" value={money(sales.total)} detail={`${sales.count} confirmed invoices`} icon={CircleDollarSign} />
         <Stat label="Today" value={money(sales.today)} detail="Sales created today" icon={ShoppingBag} />
         <Stat label="This Week" value={money(sales.thisWeek)} detail="Current calendar week" icon={BarChart3} />
@@ -133,7 +133,7 @@ export default function SalesmanDashboard() {
         <AssignmentCard icon={Users} title="Customers assigned" value={`${workspace.customers.length} customer(s)`} detail="Only these customers can be selected for a new sale." href="#customers" />
       </section>
 
-      <section id="sales" className="grid gap-6 lg:grid-cols-2 scroll-mt-20">
+      <section id="sales" className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 scroll-mt-20">
         <Panel title="Sales by date" icon={CalendarDays} action={<div className="flex rounded-lg border border-border p-0.5">{([7, 30] as const).map((range) => <button key={range} onClick={() => setDateRange(range)} className={`rounded-md px-2.5 py-1 text-xs ${dateRange === range ? "bg-primary text-primary-foreground" : "text-body"}`}>{range} days</button>)}</div>}>
           {visibleDates.length === 0 ? <Empty text="No confirmed sales yet." /> : <div className="grid gap-3">{visibleDates.map((row) => <div key={row.date} className="grid grid-cols-[74px_1fr_auto] items-center gap-3 text-xs"><span className="text-body">{shortDate(row.date)}</span><div className="h-2 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(3, row.total / maxDay * 100)}%` }} /></div><span className="font-medium text-foreground">{money(row.total)}</span></div>)}</div>}
         </Panel>
@@ -146,7 +146,7 @@ export default function SalesmanDashboard() {
 
       <section id="customers" className="rounded-2xl border border-border bg-card p-5 scroll-mt-20">
         <div className="flex items-center justify-between mb-4"><div><h2 className="font-semibold text-foreground">My assigned customers</h2><p className="text-xs text-body mt-0.5">Direct assignments and customers tagged on your assigned route.</p></div><Link href="/salesman/drafts?new=1" className="inline-flex items-center gap-1 text-xs font-medium text-primary">New Sale <ArrowUpRight className="size-3" /></Link></div>
-        {workspace.customers.length === 0 ? <Empty text="No customers assigned. Your manager must assign customers before you can create a sale." /> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{workspace.customers.map((customer) => <div key={customer.id} className="rounded-xl border border-border p-4"><div className="font-medium text-sm text-foreground">{customer.shop_name ?? customer.customer_name}</div>{customer.shop_name && <div className="text-xs text-body">{customer.customer_name}</div>}<div className="text-xs text-light-text mt-2">{[customer.area, customer.city].filter(Boolean).join(", ") || customer.address || "No address"}</div>{customer.phone && <div className="text-xs text-light-text mt-1">{customer.phone}</div>}<Link href={`/salesman/drafts?new=1&customer=${customer.id}`} className="mt-3 inline-flex items-center gap-1 text-xs text-primary">Create sale <ChevronRight className="size-3" /></Link></div>)}</div>}
+        {workspace.customers.length === 0 ? <Empty text="No customers assigned. Your manager must assign customers before you can create a sale." /> : <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">{workspace.customers.map((customer) => <div key={customer.id} className="rounded-xl border border-border p-4"><div className="font-medium text-sm text-foreground">{customer.shop_name ?? customer.customer_name}</div>{customer.shop_name && <div className="text-xs text-body">{customer.customer_name}</div>}<div className="text-xs text-light-text mt-2">{[customer.area, customer.city].filter(Boolean).join(", ") || customer.address || "No address"}</div>{customer.phone && <div className="text-xs text-light-text mt-1">{customer.phone}</div>}<Link href={`/salesman/drafts?new=1&customer=${customer.id}`} className="mt-3 inline-flex items-center gap-1 text-xs text-primary">Create sale <ChevronRight className="size-3" /></Link></div>)}</div>}
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">

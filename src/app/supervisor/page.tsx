@@ -105,7 +105,7 @@ export default function SupervisorOverviewPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
         <StatCard icon={<Users className="size-5 text-primary" />} label="Team Members" value={stats.total} />
         <StatCard icon={<CheckCircle2 className="size-5 text-success" />} label="Present Today" value={stats.presentToday} />
         <StatCard icon={<Clock className="size-5 text-info" />} label="On Duty" value={stats.onDutyToday} />

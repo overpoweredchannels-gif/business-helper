@@ -87,14 +87,14 @@ export default function ManagerOverview() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {stat("Pending draft approvals", pendingDrafts, "/manager/drafts", ClipboardList)}
         {stat("Pending collections", pendingCollections, "/manager/collections", Banknote)}
         {stat("Active visits", activeVisits, "/manager/visits", MapPin)}
         {stat("Open feedback", openFeedback, "/manager/feedback", MessageSquareText)}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-6">
         <Section title="Pending draft approvals" href="/manager/drafts">
           {pendingDrafts === 0 ? <Empty text="Nothing awaiting approval." /> : (
             <ul className="divide-y divide-border">
@@ -134,7 +134,7 @@ export default function ManagerOverview() {
         </Section>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-6">
         <Section title="Recent visits" href="/manager/visits">
           {visits.length === 0 ? <Empty text="No visits recorded yet." /> : (
             <ul className="divide-y divide-border">

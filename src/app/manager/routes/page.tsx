@@ -78,7 +78,7 @@ export default function ManagerRoutesPage() {
         <p className="text-sm text-body mt-1">Today's route execution and completion across all field routes.</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
         <StatCard icon={<RouteIcon className="size-5 text-primary" />} label="Active Routes" value={active.length} sublabel={`${routes.length} total`} />
         <StatCard icon={<Users className="size-5 text-info" />} label="Total Stops" value={totalStops} />
         <StatCard icon={<CheckCircle2 className="size-5 text-success" />} label="Visited" value={totalVisited} sublabel={`${overallCompletion}% done`} />
