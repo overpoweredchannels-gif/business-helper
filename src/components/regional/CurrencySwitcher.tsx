@@ -135,37 +135,45 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
         },
         body: JSON.stringify({ toCurrency: target, rate: String(rate) }),
       });
-      const payload = (await response.json().catch(() => null)) as {
-        ok?: boolean;
-        code?: string;
-      } | null;
+      // TEMPORARY QA DIAGNOSTIC (remove before any main deploy): read
+      // the raw reply text so an unmapped answer is shown verbatim
+      // instead of the generic line. The 2026-10-30 QA runs kept
+      // failing generic with a 500 whose body nobody could see; this
+      // fallback turns the popup itself into the instrument that
+      // reveals it. Mapped codes keep their named lines.
+      const rawText = await response.text();
+      let payload: { ok?: boolean; code?: string } | null = null;
+      try {
+        payload = JSON.parse(rawText) as { ok?: boolean; code?: string };
+      } catch {
+        payload = null;
+      }
       if (!response.ok || !payload?.ok) {
         // Name the cause instead of one generic line: the 2026-10-30
         // QA runs proved a generic message hides a diagnosable failure.
-        // Every code the convert route can return is mapped here, so a
-        // generic line now means only "no code reached the popup"
-        // (transport failure or a stale build), never a hidden cause.
         // sameCurrency cannot occur from this UI (picking the current
         // currency closes the popup), so it keeps the generic line.
         const code = payload?.code ?? "";
-        setError(
-          code === "books.migrationMissing"
-            ? ui("header.currencySwitchMigration")
-            : code === "books.forbidden"
-              ? ui("header.currencySwitchForbidden")
-              : code === "books.invalidRate"
-                ? ui("header.currencySwitchRateError")
-                : code === "books.reconciliationFailed" ||
-                    code === "books.reconciliationMismatch"
-                  ? ui("header.currencySwitchReconciliation")
-                  : code === "books.unmappedColumn"
-                    ? ui("header.currencySwitchUnmapped")
-                    : code === "books.conversionFailed" ||
-                        code === "books.organizationNotFound" ||
-                        code === "books.currencyInvalid"
-                      ? ui("header.currencySwitchFailed")
-                      : ui("header.currencySwitchError"),
-        );
+        if (code === "books.migrationMissing") setError(ui("header.currencySwitchMigration"));
+        else if (code === "books.forbidden") setError(ui("header.currencySwitchForbidden"));
+        else if (code === "books.invalidRate") setError(ui("header.currencySwitchRateError"));
+        else if (
+          code === "books.reconciliationFailed" ||
+          code === "books.reconciliationMismatch"
+        )
+          setError(ui("header.currencySwitchReconciliation"));
+        else if (code === "books.unmappedColumn") setError(ui("header.currencySwitchUnmapped"));
+        else if (
+          code === "books.conversionFailed" ||
+          code === "books.organizationNotFound" ||
+          code === "books.currencyInvalid"
+        )
+          setError(ui("header.currencySwitchFailed"));
+        else if (code === "books.sameCurrency") setError(ui("header.currencySwitchError"));
+        else
+          setError(
+            `HTTP ${response.status} · ${(rawText || "(empty reply)").slice(0, 300)}`,
+          );
         return;
       }
       // Display follows books from here on, so the reload lands on the
