@@ -6,10 +6,11 @@ import {
   Banknote, ArrowLeftRight, CreditCard, TrendingUp, Brain, Bot, BookOpen, Settings,
   CheckSquare, History, Shield, Lock, Clock, Sparkles, MessageSquare, Mic, Globe, Smartphone,
   ChevronLeft, ChevronRight, Eye, EyeOff, ArrowDown, ArrowUp, Pencil, RotateCcw, X, MapPin, Bell, Package, Rocket,
-  GripVertical, FileDown,
+  GripVertical, FileDown, HandCoins, NotebookPen, UserCog, Map, Route,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
+import { NAV_SECTION_GROUPS, navSectionGroupId } from "@/lib/tradeos/constants";
 import { DisplayZoomControl } from "./DisplayZoomControl";
 import { DASHBOARD_SECTION_DRAG_TYPE, isDashboardSectionCard } from "@/lib/dashboard/section-cards";
 
@@ -31,8 +32,8 @@ const navIconMap: Record<string, React.ComponentType<{ className?: string }>> = 
   "business-intelligence": Brain,
   "business-records": FileDown,
   "ai-analytics": Bot,
-  "customer-credit": BookOpen,
-  "supplier-ledger": BookOpen,
+  "customer-credit": HandCoins,
+  "supplier-ledger": NotebookPen,
   "business-settings": Settings,
   "task-manager": CheckSquare,
   "activity-logs": History,
@@ -46,9 +47,9 @@ const navIconMap: Record<string, React.ComponentType<{ className?: string }>> = 
   "market-intelligence": Globe,
   "mobile-app": Smartphone,
   "live-tracking": MapPin,
-  employees: Users,
-  territories: Globe,
-  routes: MapPin,
+  employees: UserCog,
+  territories: Map,
+  routes: Route,
   notifications: Bell,
 };
 
@@ -92,6 +93,14 @@ export function Sidebar({
   const hiddenSet = new Set(hiddenIds || []);
   const customizing = Boolean(customizeMode) && Boolean(canCustomize);
   const displayItems = customizing ? items : items.filter((item) => !hiddenSet.has(item.id));
+  // Step 4 groups: Dashboard on top with no heading, then groups in fixed
+  // order. Groups with no visible items render no heading. Collapsed mode
+  // hides headings entirely (icon-only rows, as before).
+  const topItems = displayItems.filter((item) => item.id === "dashboard");
+  const groupedItems = NAV_SECTION_GROUPS.map((group) => ({
+    ...group,
+    items: displayItems.filter((item) => navSectionGroupId(item.id) === group.id),
+  })).filter((group) => group.items.length > 0);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const dragPointerStart = useRef<number | null>(null);
@@ -112,7 +121,8 @@ export function Sidebar({
     const hit = document.elementFromPoint(e.clientX, e.clientY);
     const row = hit?.closest?.("[data-nav-id]") as HTMLElement | null;
     const id = row?.getAttribute("data-nav-id");
-    if (id && id !== dragId) setDropTargetId(id);
+    if (id && id !== dragId && navSectionGroupId(id as SectionId) === navSectionGroupId(dragId as SectionId)) setDropTargetId(id);
+    else if (id && id !== dragId) setDropTargetId(null);
   };
 
   const endDrag = (e: React.PointerEvent<HTMLElement>) => {
@@ -125,6 +135,115 @@ export function Sidebar({
     if (fromId && targetId && targetId !== fromId) {
       onDropItem?.(fromId, targetId);
     }
+  };
+
+  const renderNavRow = (item: { id: SectionId; label: string }, groupIndex: number, groupLength: number) => {
+    const Icon = navIconMap[item.id];
+    const isHidden = hiddenSet.has(item.id);
+    const isDragging = dragId === item.id;
+    const isDropTarget = dropTargetId === item.id;
+    return (
+      <div
+        key={item.id}
+        data-nav-id={item.id}
+        className={cn(
+          "flex items-center gap-0.5 rounded-lg",
+          customizing && "bg-muted/20",
+          customizing && isHidden && "opacity-60",
+          isDragging && "opacity-50 ring-2 ring-primary touch-none",
+          isDropTarget && "border-t-2 border-primary bg-primary/10",
+        )}
+        onPointerMove={moveDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        {customizing && (
+          <>
+            <button
+              type="button"
+              onPointerDown={(e) => startDrag(e, item.id)}
+              className={cn(
+                "shrink-0 cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing",
+                forceVisible ? "flex min-h-11 min-w-11 items-center justify-center" : "pl-1",
+              )}
+              title="Drag to reorder"
+              aria-label={`Drag to reorder ${item.label}`}
+            >
+              <GripVertical className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onMoveItem?.(item.id, "up")}
+              disabled={groupIndex === 0}
+              className={cn(
+                "shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30",
+                forceVisible && "flex min-h-11 min-w-11 items-center justify-center",
+              )}
+              title="Move up"
+              aria-label={`Move ${item.label} up`}
+            >
+              <ArrowUp className="size-3.5" />
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={() => onSectionChange(item.id)}
+          aria-current={activeSection === item.id ? "page" : undefined}
+          draggable={canDropOnDashboard(item.id)}
+          onDragStart={(event) => {
+            if (!canDropOnDashboard(item.id)) return;
+            event.dataTransfer.setData(DASHBOARD_SECTION_DRAG_TYPE, item.id);
+            event.dataTransfer.effectAllowed = "copy";
+          }}
+          className={cn(
+            "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            activeSection === item.id
+              ? "bg-primary text-primary-foreground font-medium"
+              : "text-foreground/70 hover:text-foreground hover:bg-muted",
+            canDropOnDashboard(item.id) && "cursor-grab active:cursor-grabbing",
+            isHidden && !customizing && "opacity-40",
+            collapsed && "justify-center px-0",
+            forceVisible && "min-h-11",
+          )}
+          title={canDropOnDashboard(item.id) ? `${item.label} - drag onto the home dashboard to add it as a card` : collapsed ? item.label : undefined}
+        >
+          {Icon && <Icon className="size-4.5 shrink-0" />}
+          {!collapsed && <span className="truncate">{item.label}</span>}
+        </button>
+        {customizing && (
+          <>
+            <button
+              type="button"
+              onClick={() => onMoveItem?.(item.id, "down")}
+              disabled={groupIndex === groupLength - 1}
+              className={cn(
+                "shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30",
+                forceVisible && "flex min-h-11 min-w-11 items-center justify-center",
+              )}
+              title="Move down"
+              aria-label={`Move ${item.label} down`}
+            >
+              <ArrowDown className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleHidden?.(item.id)}
+              className={cn(
+                "shrink-0 text-muted-foreground hover:text-foreground",
+                forceVisible ? "flex min-h-11 min-w-11 items-center justify-center" : "pr-2",
+                isHidden ? "text-success hover:text-success/80" : "hover:text-destructive",
+              )}
+              title={isHidden ? "Unhide section" : "Hide section"}
+              aria-label={isHidden ? `Show ${item.label}` : `Hide ${item.label}`}
+            >
+              {isHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            </button>
+          </>
+        )}
+      </div>
+    );
   };
 
   const canDropOnDashboard = (id: SectionId) => Boolean(dragToDashboard) && isDashboardSectionCard(id);
@@ -156,99 +275,17 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Navigation */}
+      {/* Navigation: Dashboard on top, then Step 4 groups (always expanded). */}
       <nav data-context-help-skip={customizing ? "" : undefined} className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {displayItems.map((item, index) => {
-          const Icon = navIconMap[item.id];
-          const isHidden = hiddenSet.has(item.id);
-          const isDragging = dragId === item.id;
-          const isDropTarget = dropTargetId === item.id;
-          return (
-            <div
-              key={item.id}
-              data-nav-id={item.id}
-              className={cn(
-                "flex items-center gap-0.5 rounded-lg",
-                customizing && "bg-muted/20",
-                isDragging && "opacity-50 ring-2 ring-primary touch-none",
-                isDropTarget && "border-t-2 border-primary",
-              )}
-              onPointerMove={moveDrag}
-              onPointerUp={endDrag}
-              onPointerCancel={endDrag}
-            >
-              {customizing && (
-                <>
-                  <button
-                    type="button"
-                    onPointerDown={(e) => startDrag(e, item.id)}
-                    className="shrink-0 cursor-grab touch-none pl-1 text-muted-foreground hover:text-foreground active:cursor-grabbing"
-                    title="Drag to reorder"
-                  >
-                    <GripVertical className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onMoveItem?.(item.id, "up")}
-                    disabled={index === 0}
-                    className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    title="Move up"
-                  >
-                    <ArrowUp className="size-3.5" />
-                  </button>
-                </>
-              )}
-              <button
-                type="button"
-                onClick={() => onSectionChange(item.id)}
-                draggable={canDropOnDashboard(item.id)}
-                onDragStart={(event) => {
-                  if (!canDropOnDashboard(item.id)) return;
-                  event.dataTransfer.setData(DASHBOARD_SECTION_DRAG_TYPE, item.id);
-                  event.dataTransfer.effectAllowed = "copy";
-                }}
-                className={cn(
-                  "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  activeSection === item.id
-                    ? "bg-primary text-primary-foreground font-medium"
-                    : "text-foreground/70 hover:text-foreground hover:bg-muted",
-                  canDropOnDashboard(item.id) && "cursor-grab active:cursor-grabbing",
-                  isHidden && !customizing && "opacity-40",
-                  collapsed && "justify-center px-0",
-                )}
-                title={canDropOnDashboard(item.id) ? `${item.label} - drag onto the home dashboard to add it as a card` : collapsed ? item.label : undefined}
-              >
-                {Icon && <Icon className="size-4.5 shrink-0" />}
-                {!collapsed && <span className="truncate">{item.label}</span>}
-              </button>
-              {customizing && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => onMoveItem?.(item.id, "down")}
-                    disabled={index === displayItems.length - 1}
-                    className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    title="Move down"
-                  >
-                    <ArrowDown className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onToggleHidden?.(item.id)}
-                    className={cn(
-                      "shrink-0 pr-2",
-                      isHidden ? "text-success hover:text-success/80" : "text-muted-foreground hover:text-destructive",
-                    )}
-                    title={isHidden ? "Unhide section" : "Hide section"}
-                  >
-                    {isHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        })}
+        {topItems.map((item) => renderNavRow(item, 0, 1))}
+        {groupedItems.map((group) => (
+          <div key={group.id}>
+            {!collapsed && (
+              <p className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</p>
+            )}
+            {group.items.map((item, groupIndex) => renderNavRow(item, groupIndex, group.items.length))}
+          </div>
+        ))}
         {customizing && displayItems.length === 0 && (
           <p className="px-3 py-2 text-xs text-light-text">No menu sections to show.</p>
         )}
@@ -259,7 +296,7 @@ export function Sidebar({
         {!collapsed && <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customize your workspace</p>}
         {customizing && (
           <div data-context-help-skip className="flex items-center justify-between rounded-lg px-3 py-2 text-xs text-light-text">
-            <span className="truncate">Drag with mouse / finger to reorder, arrows fine-tune, eye shows &amp; hides</span>
+            <span>Drag with mouse / finger to reorder, arrows fine-tune, eye shows &amp; hides</span>
             <div className="flex shrink-0 gap-1">
               <button
                 type="button"
@@ -285,7 +322,10 @@ export function Sidebar({
             type="button"
             onClick={() => { setCollapsed(false); onToggleCustomize?.(); }}
             aria-label="Reorder or hide menu sections"
-            className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-light-text hover:text-foreground hover:bg-muted transition-colors"
+            className={cn(
+              "w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-light-text hover:text-foreground hover:bg-muted transition-colors",
+              forceVisible && "min-h-11",
+            )}
           >
             <Pencil className="size-3.5" />
             {!collapsed && <span>Reorder / hide sections</span>}

@@ -39,6 +39,33 @@ export const navigationItems: Array<{ id: SectionId; label: string }> = [
   { id: "notifications", label: "Notifications" },
 ];
 
+// Owner sidebar groups (Step 4, approved 2026-10-31). Dashboard sits above
+// all groups with no heading. Every section appears exactly once; the helper
+// below falls back to "more" so a future section can never vanish from the menu.
+export const NAV_SECTION_GROUPS: Array<{ id: string; label: string; sections: SectionId[] }> = [
+  { id: "sell", label: "Sell", sections: ["sales"] },
+  { id: "stock", label: "Stock", sections: ["products", "brands", "categories", "inventory"] },
+  { id: "buy", label: "Buy", sections: ["purchases", "suppliers", "supplier-payments", "supplier-ledger"] },
+  { id: "customers", label: "Customers", sections: ["customers", "customer-payments", "customer-credit"] },
+  { id: "money", label: "Money", sections: ["expenses", "profit-loss", "business-intelligence", "business-records"] },
+  {
+    id: "more",
+    label: "More",
+    sections: [
+      "setup-import", "business-settings", "task-manager", "activity-logs",
+      "staff-permissions", "security-check", "deployment", "staff-duty",
+      "ai-assistant", "ai-business-query", "ai-voice-operator", "ai-analytics",
+      "market-intelligence", "live-tracking", "mobile-app",
+      "employees", "territories", "routes", "notifications",
+    ],
+  },
+];
+
+export function navSectionGroupId(sectionId: SectionId): string | null {
+  if (sectionId === "dashboard") return null;
+  return NAV_SECTION_GROUPS.find((g) => g.sections.includes(sectionId))?.id ?? "more";
+}
+
 // Which owner sidebar section maps to which legacy permission key (or is
 // owner/admin only). Grants in staff_permissions.granted_sections take
 // precedence; this map is the fallback for legacy boolean permission rows.

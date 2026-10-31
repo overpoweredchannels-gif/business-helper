@@ -68,6 +68,8 @@ import {
   mobileReadinessItems,
   mobileRoadmapItems,
   navigationItems,
+  NAV_SECTION_GROUPS,
+  navSectionGroupId,
   sectionPermissionGroups,
   sectionPermissionMap,
   staffRoles,
@@ -5482,6 +5484,8 @@ setCustomerOrganizationName("");
     if (idx < 0) return;
     const target = direction === "up" ? idx - 1 : idx + 1;
     if (target < 0 || target >= arr.length) return;
+    // Step 4: reorder stays inside the item's group; group boundaries are hard stops.
+    if (navSectionGroupId(arr[target] as SectionId) !== navSectionGroupId(id as SectionId)) return;
     arr.splice(idx, 1);
     arr.splice(target, 0, id);
     setNavOrder(arr);
@@ -5490,6 +5494,8 @@ setCustomerOrganizationName("");
 
   const handleNavDrop = (fromId: string, toId: string) => {
     if (fromId === toId) return;
+    // Step 4: a drop across groups is ignored, so headings can never lie.
+    if (navSectionGroupId(fromId as SectionId) !== navSectionGroupId(toId as SectionId)) return;
     const base = navigationItems.map((item) => item.id);
     const currentOrder = navOrder ?? base;
     const arr = [...currentOrder];
@@ -5518,11 +5524,23 @@ setCustomerOrganizationName("");
   };
   const visibleNavigationItems = navigationItems.filter((item) => canAccessSection(item.id));
   const navIdIndex = new Map(navOrder?.map((id, index) => [id, index]));
+  // Step 4: group-aware order. Dashboard first, then groups in fixed order;
+  // inside a group, the owner's saved order decides (a saved flat order
+  // migrates into groups without losing relative order). Items with no saved
+  // position append at the end of their group.
+  const navGroupOrder = (id: string): number => {
+    if (id === "dashboard") return -1;
+    const groupId = navSectionGroupId(id as SectionId);
+    const idx = NAV_SECTION_GROUPS.findIndex((g) => g.id === groupId);
+    return idx < 0 ? NAV_SECTION_GROUPS.length : idx;
+  };
   const orderedNavItems =
     navOrder && navOrder.length > 0
-      ? [...visibleNavigationItems].sort(
-          (a, b) => (navIdIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (navIdIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER)
-        )
+      ? [...visibleNavigationItems].sort((a, b) => {
+          const groupDiff = navGroupOrder(a.id) - navGroupOrder(b.id);
+          if (groupDiff !== 0) return groupDiff;
+          return (navIdIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (navIdIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER);
+        })
       : visibleNavigationItems;
   const activeSectionLabel =
     navigationItems.find((item) => item.id === activeSection)?.label ?? "Dashboard";

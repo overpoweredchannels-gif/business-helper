@@ -62,11 +62,15 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
   const content = (
     <aside className="flex flex-col bg-card border-r border-border transition-all duration-300 h-full w-64">
       <div className="border-b border-border flex items-center gap-3 px-5 py-5">
-        <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <span className="text-primary-foreground font-brand font-bold text-sm">T</span>
-        </div>
+        <img
+          src="/aankh-icon.svg"
+          alt="AANKH logo"
+          width={32}
+          height={32}
+          className="size-8 shrink-0 rounded-lg"
+        />
         <div className="min-w-0">
-          <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
+          <div className="font-brand font-bold text-base text-foreground truncate">AANKH</div>
           <div className="text-[11px] text-light-text truncate">{organizationName ?? "Field Team"}</div>
         </div>
       </div>
@@ -81,8 +85,9 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
+              aria-current={active ? "page" : undefined}
               className={cn(
-                "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150",
+                "w-full flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150",
                 active ? "bg-primary text-primary-foreground font-medium" : "text-foreground/70 hover:text-foreground hover:bg-muted",
               )}
             >
@@ -121,10 +126,14 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between bg-card border-b border-border px-4 h-14">
         <div className="flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-brand font-bold text-xs">T</span>
-          </div>
-          <span className="font-brand font-bold text-sm text-foreground">TradeOS</span>
+          <img
+            src="/aankh-icon.svg"
+            alt="AANKH logo"
+            width={28}
+            height={28}
+            className="size-7 shrink-0 rounded-lg"
+          />
+          <span className="font-brand font-bold text-sm text-foreground">AANKH</span>
         </div>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
