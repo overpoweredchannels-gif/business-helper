@@ -17736,7 +17736,7 @@ setCustomerOrganizationName("");
         {salesTab === "history" && canUseSalesTool("history") && !isOwnerOrAdmin() && <MySalesPerformance />}
         {((salesTab === "invoice" && canUseSalesTool("invoice")) || (salesTab === "history" && isOwnerOrAdmin())) && (
         <>
-        {salesTab === "invoice" && (<section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        {salesTab === "invoice" && (<section className="mt-8 rounded border border-border bg-muted/30 p-6">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">{quickSaleMode ? "Retail POS" : "Sales Invoice"}</h2>
             {canImportExport && (
@@ -17751,16 +17751,16 @@ setCustomerOrganizationName("");
               />
             )}
           </div>
-          <div className="space-y-4" {...entryNavigationHandlers}>
+          <div className="space-y-6" {...entryNavigationHandlers}>
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
               products={activeProducts} customers={activeCustomers} total={currentSalesInvoiceTotal} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} scanUnit={saleScanUnit} focusSignal={saleScanFocus}
               onScan={code => { try { const product = findBarcodeProduct(products, code); clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); return String(product.id); } catch (error) { setSalesError(error instanceof Error ? error.message : "Barcode not found."); return null; } }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSaleScanFocus(value => value + 1); } }}
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onAdvanced={() => setQuickSaleMode(false)} onRestore={restoreCounterSale} onClear={clearCounterSale} />}
-            <div className={quickSaleMode ? "hidden" : "space-y-4"}>
+            <div className={quickSaleMode ? "hidden" : "space-y-6"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">Open Retail POS</button>
-            <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
+            <section className="rounded-lg border border-primary/30 bg-card p-5" data-help-topic="barcode">
               <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? "Quick sale — barcode counter" : "Scan a product"}</h3>
               <label className="mb-3 block text-sm">Each scan adds one <select aria-label="Main unit or sub-unit per scan" value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">Sub-unit (piece, if configured)</option><option value="main">Main unit (box, carton, etc.)</option></select></label>
               <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} onScan={code => {
@@ -17789,7 +17789,7 @@ setCustomerOrganizationName("");
                   type="text"
                   value="Auto-generated on submit (S-xxxxxx)"
                   readOnly
-                  className="w-full rounded border border-border px-3 py-2 bg-muted text-muted-foreground"
+                  className="w-full rounded border border-input px-3 py-2 bg-muted text-muted-foreground"
                 />
                 <span className="text-xs text-muted-foreground/80">
                   TradeOS generates the system invoice number (S-xxxxxx) automatically.
@@ -17806,7 +17806,7 @@ setCustomerOrganizationName("");
                   onChange={(e) => handleSalesInvoiceDateChange(e.target.value)}
                   required
                   data-entry-skip
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
 
@@ -17815,7 +17815,7 @@ setCustomerOrganizationName("");
                 <select
                   value={salesPaymentType}
                   onChange={(e) => handleSalesPaymentTypeChange(e.target.value as "cash" | "credit")}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="cash">Cash</option>
                   <option value="credit">Credit</option>
@@ -17827,14 +17827,14 @@ setCustomerOrganizationName("");
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span className="flex items-center gap-2">
                   Invoice Discount (Optional)
-                  <span className="flex rounded border border-border overflow-hidden">
+                  <span className="flex rounded-lg border border-input overflow-hidden">
                     <button
                       type="button"
                       onClick={() => {
                         clearCreditOverrideState();
                         setSalesDiscountType("flat");
                       }}
-                      className={`px-2 py-0.5 text-xs ${salesDiscountType === "flat" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
+                      className={`min-h-11 px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${salesDiscountType === "flat" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
                     >
                       Flat
                     </button>
@@ -17844,7 +17844,7 @@ setCustomerOrganizationName("");
                         clearCreditOverrideState();
                         setSalesDiscountType("percent");
                       }}
-                      className={`px-2 py-0.5 text-xs ${salesDiscountType === "percent" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
+                      className={`min-h-11 px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${salesDiscountType === "percent" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
                     >
                       %
                     </button>
@@ -17860,7 +17860,7 @@ setCustomerOrganizationName("");
                   min="0"
                   max={salesDiscountType === "percent" ? "100" : undefined}
                   step="0.01"
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 <span className="text-xs text-muted-foreground/80">
                   {salesDiscountType === "percent"
@@ -17881,7 +17881,7 @@ setCustomerOrganizationName("");
                   min="0"
                   max="100"
                   step="0.01"
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 <span className="text-xs text-muted-foreground/80">
                   Tax is computed on the subtotal after discount (future-ready GST/VAT).
@@ -17891,7 +17891,7 @@ setCustomerOrganizationName("");
 
             {!isOwnerOrAdmin() && <p className="text-sm text-muted-foreground">Employee submissions support discounts on each product line. Invoice-level discount and tax are not available in the approval flow.</p>}
             {salesPaymentType === "credit" && selectedSalesCustomer && (
-              <div className="rounded border border-primary/10 bg-primary/5 p-4 text-sm text-primary/90">
+              <div className="rounded border border-primary/10 bg-primary/5 p-5 text-sm text-primary/90">
                 <h3 className="mb-2 text-base font-medium text-primary/90">Credit Summary</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>Customer credit policy: {creditPolicyLabels[selectedCustomerCreditPolicy] ?? "Cash Only"}</div>
@@ -17916,7 +17916,7 @@ setCustomerOrganizationName("");
             )}
 
             {creditOverrideConfirmation && salesPaymentType === "credit" && (
-              <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/80">
+              <div className="rounded border border-warning/20 bg-warning/5 p-5 text-sm text-warning/80">
                 <h3 className="mb-2 text-base font-medium">Owner Override Required</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>Current outstanding balance: {pkrFormatter.format(selectedCustomerOutstandingBalance)}</div>
@@ -17972,19 +17972,19 @@ setCustomerOrganizationName("");
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} data-invoice-line className="rounded border border-border bg-card p-3">
+                    <div key={index} data-invoice-line className="rounded border border-border bg-card p-5">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">Line {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveSalesLine(index)}
-                          className="min-h-11 px-3 text-xs text-destructive hover:text-destructive/90"
+                          className="min-h-11 px-3 text-xs text-destructive hover:text-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           Remove
                         </button>
                       </div>
 
-                      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+                      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>Product</span>
                           <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={activeProducts.map(product => ({ id: String(product.id), label: [product.name, brands.find(brand => brand.id === product.brand_id)?.name, product.sku].filter(Boolean).join(" — ") }))} />
@@ -17998,7 +17998,7 @@ setCustomerOrganizationName("");
                               handleSalesLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main")
                             }
                             disabled={!lineProduct || !hasSubunit(lineProduct)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded border border-input px-3 py-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="main">
                               {lineProduct ? unitLabelFor(lineProduct, "main") : "Main unit"}
@@ -18018,20 +18018,20 @@ setCustomerOrganizationName("");
                             required min="0.000001" step="any"
                             value={line.quantity}
                             onChange={(e) => handleSalesLineChange(index, "quantity", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="rounded border border-input px-3 py-2.5 tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
-                          <span className="flex gap-2 lg:hidden">
+                          <span className="flex gap-2">
                             <button
                               type="button"
                               aria-label={`Decrease quantity for line ${index + 1}`}
                               onClick={() => handleSalesLineChange(index, "quantity", String(Math.max(0, (Number(line.quantity) || 0) - 1)))}
-                              className="min-h-11 min-w-11 rounded border border-border text-xl font-medium"
+                              className="min-h-11 min-w-11 rounded border border-input text-xl font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >−</button>
                             <button
                               type="button"
                               aria-label={`Increase quantity for line ${index + 1}`}
                               onClick={() => handleSalesLineChange(index, "quantity", String((Number(line.quantity) || 0) + 1))}
-                              className="min-h-11 min-w-11 rounded border border-border text-xl font-medium"
+                              className="min-h-11 min-w-11 rounded border border-input text-xl font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >+</button>
                           </span>
                         </label>
@@ -18043,7 +18043,7 @@ setCustomerOrganizationName("");
                             required min="0" step="any"
                             value={line.selling_price}
                             onChange={(e) => handleSalesLineChange(index, "selling_price", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="rounded border border-input px-3 py-2.5 tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
 
@@ -18055,7 +18055,7 @@ setCustomerOrganizationName("");
                             onChange={(e) => handleSalesLineChange(index, "discount", e.target.value)}
                             min="0"
                             step="0.01"
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="rounded border border-input px-3 py-2.5 tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
 
@@ -18067,7 +18067,7 @@ setCustomerOrganizationName("");
                             onChange={(e) => handleSalesLineChange(index, "bonus", e.target.value)}
                             min="0"
                             step="0.01"
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="rounded border border-input px-3 py-2.5 tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                       </div>
@@ -18080,25 +18080,25 @@ setCustomerOrganizationName("");
               <button
                 type="button"
                 data-entry-add onClick={handleAddSalesLine}
-                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
+                className="mb-4 min-h-11 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 + Add Product Line
               </button>
             </div>
 
             {salesLines.length > 0 && (
-              <div className="rounded border border-border bg-card p-4 text-sm text-foreground/80">
-                <div className="flex justify-between"><span>Line Subtotal</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price), 0))}</span></div>
+              <div className="rounded border border-border bg-card p-6 text-sm text-foreground/80">
+                <div className="flex justify-between tabular-nums"><span>Line Subtotal</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price), 0))}</span></div>
                 {(salesLines.some((line) => Number(line.discount) > 0) || salesDiscountAmount.trim() !== "") && (
-                  <div className="flex justify-between"><span>Line Discounts</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + (Number(line.discount) || 0), 0))}</span></div>
+                  <div className="flex justify-between tabular-nums"><span>Line Discounts</span><span>{pkrFormatter.format(salesLines.reduce((sum, line) => sum + (Number(line.discount) || 0), 0))}</span></div>
                 )}
                 {salesDiscountAmount.trim() !== "" && (
-                  <div className="flex justify-between"><span>Invoice Discount{salesDiscountType === "percent" ? ` (${Number(salesDiscountAmount)}%)` : ""}</span><span>{pkrFormatter.format(salesDiscountType === "percent" ? (salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) * Number(salesDiscountAmount)) / 100 : (Number(salesDiscountAmount) || 0))}</span></div>
+                  <div className="flex justify-between tabular-nums"><span>Invoice Discount{salesDiscountType === "percent" ? ` (${Number(salesDiscountAmount)}%)` : ""}</span><span>{pkrFormatter.format(salesDiscountType === "percent" ? (salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) * Number(salesDiscountAmount)) / 100 : (Number(salesDiscountAmount) || 0))}</span></div>
                 )}
                 {salesTaxRate.trim() !== "" && Number(salesTaxRate) > 0 && (
-                  <div className="flex justify-between"><span>Tax ({Number(salesTaxRate)}%)</span><span>{pkrFormatter.format((Math.max(0, salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) - (salesDiscountType === "percent" ? (salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) * Number(salesDiscountAmount)) / 100 : (Number(salesDiscountAmount) || 0))) * Number(salesTaxRate)) / 100)}</span></div>
+                  <div className="flex justify-between tabular-nums"><span>Tax ({Number(salesTaxRate)}%)</span><span>{pkrFormatter.format((Math.max(0, salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) - (salesDiscountType === "percent" ? (salesLines.reduce((sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - (Number(line.discount) || 0), 0) * Number(salesDiscountAmount)) / 100 : (Number(salesDiscountAmount) || 0))) * Number(salesTaxRate)) / 100)}</span></div>
                 )}
-                <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium text-foreground">
+                <div className="mt-3 flex justify-between border-t-2 border-border pt-4 text-2xl font-semibold text-foreground">
                   <span>Invoice Total</span>
                   <span>{pkrFormatter.format(currentSalesInvoiceTotal)}</span>
                 </div>
@@ -18109,7 +18109,7 @@ setCustomerOrganizationName("");
               type="button"
               onClick={() => handleCreateSalesInvoice()}
               disabled={salesInvoiceLoading}
-              className="min-h-11 w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+              className="min-h-11 w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {salesInvoiceLoading ? "Saving..." : isOwnerOrAdmin() ? "Save Sales Invoice" : "Send for owner approval"}
             </button>
@@ -18129,33 +18129,33 @@ setCustomerOrganizationName("");
           <p className="mb-3 text-xs text-muted-foreground/80">
             Older unallocated customer payments are applied to the oldest credit invoices first.
           </p>
-          <div className="mb-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          <div className="mb-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <input
               type="text"
               value={salesHistorySearch}
               onChange={(e) => setSalesHistorySearch(e.target.value)}
               placeholder="Search by customer name or invoice number..."
-              className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              className="rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <input
               type="text"
               value={salesHistoryProductSearch}
               onChange={(e) => setSalesHistoryProductSearch(e.target.value)}
               placeholder="Search by product..."
-              className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              className="rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <input
               type="date"
               value={salesHistoryDateFrom}
               onChange={(e) => setSalesHistoryDateFrom(e.target.value)}
-              className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              className="rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Date from"
             />
             <input
               type="date"
               value={salesHistoryDateTo}
               onChange={(e) => setSalesHistoryDateTo(e.target.value)}
-              className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              className="rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Date to"
             />
           </div>
@@ -18183,7 +18183,7 @@ setCustomerOrganizationName("");
                         ? "Overdue"
                         : "Payment Pending";
                 return (
-                  <li key={tx.id} className="flex flex-col gap-1 rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
+                  <li key={tx.id} className="flex flex-col gap-1 rounded border border-border bg-card p-4 text-sm text-foreground/80">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="font-medium text-foreground">Invoice: {tx.invoice_number}</div>
                       <button

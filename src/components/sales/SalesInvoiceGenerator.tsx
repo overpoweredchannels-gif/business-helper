@@ -25,7 +25,7 @@ interface TemplateOption {
 }
 
 const inputCls =
-  "rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
+  "rounded border border-input bg-card px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export default function SalesInvoiceGenerator() {
   const [customers, setCustomers] = useState<Option[]>([]);
@@ -198,7 +198,7 @@ export default function SalesInvoiceGenerator() {
   return (
     <div className="space-y-4">
       {/* Template Selector Bar */}
-      <div className="flex flex-wrap items-center gap-3 rounded border border-border bg-muted/30 p-3">
+      <div className="flex flex-wrap items-center gap-3 rounded border border-border bg-muted/30 p-4">
         <label className="flex items-center gap-2 text-sm text-foreground/80">
           <span className="font-medium">Template:</span>
           <select
@@ -230,12 +230,12 @@ export default function SalesInvoiceGenerator() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded border border-border bg-muted/30 p-4">
+        <div className="rounded border border-border bg-muted/30 p-5">
           <h3 className="mb-2 text-sm font-medium text-foreground">Customers</h3>
           {customers.length === 0 ? (
             <p className="text-xs text-muted-foreground">Loading customers...</p>
           ) : (
-            <div className="max-h-44 space-y-1 overflow-y-auto">
+            <div className="max-h-56 space-y-1 overflow-y-auto">
               {customers.map((c) => (
                 <label key={c.id} className="flex items-center gap-2 text-sm text-foreground/80">
                   <input
@@ -251,12 +251,12 @@ export default function SalesInvoiceGenerator() {
           )}
         </div>
 
-        <div className="rounded border border-border bg-muted/30 p-4">
+        <div className="rounded border border-border bg-muted/30 p-5">
           <h3 className="mb-2 text-sm font-medium text-foreground">Salesmen</h3>
           {salesmen.length === 0 ? (
             <p className="text-xs text-muted-foreground">Loading salesmen...</p>
           ) : (
-            <div className="max-h-44 space-y-1 overflow-y-auto">
+            <div className="max-h-56 space-y-1 overflow-y-auto">
               {salesmen.map((s) => (
                 <label key={s.id} className="flex items-center gap-2 text-sm text-foreground/80">
                   <input
@@ -272,12 +272,12 @@ export default function SalesInvoiceGenerator() {
           )}
         </div>
 
-        <div className="rounded border border-border bg-muted/30 p-4">
+        <div className="rounded border border-border bg-muted/30 p-5">
           <h3 className="mb-2 text-sm font-medium text-foreground">Routes</h3>
           {routes.length === 0 ? (
             <p className="text-xs text-muted-foreground">Loading routes...</p>
           ) : (
-            <div className="max-h-44 space-y-1 overflow-y-auto">
+            <div className="max-h-56 space-y-1 overflow-y-auto">
               {routes.map((r) => (
                 <label key={r.id} className="flex items-center gap-2 text-sm text-foreground/80">
                   <input
@@ -293,12 +293,12 @@ export default function SalesInvoiceGenerator() {
           )}
         </div>
 
-        <div className="rounded border border-border bg-muted/30 p-4">
+        <div className="rounded border border-border bg-muted/30 p-5">
           <h3 className="mb-2 text-sm font-medium text-foreground">Areas</h3>
           {areas.length === 0 ? (
             <p className="text-xs text-muted-foreground">No areas found.</p>
           ) : (
-            <div className="max-h-44 space-y-1 overflow-y-auto">
+            <div className="max-h-56 space-y-1 overflow-y-auto">
               {areas.map((a) => (
                 <label key={a} className="flex items-center gap-2 text-sm text-foreground/80">
                   <input
@@ -314,12 +314,12 @@ export default function SalesInvoiceGenerator() {
           )}
         </div>
 
-        <div className="rounded border border-border bg-muted/30 p-4">
+        <div className="rounded border border-border bg-muted/30 p-5">
           <h3 className="mb-2 text-sm font-medium text-foreground">Cities</h3>
           {cities.length === 0 ? (
             <p className="text-xs text-muted-foreground">No cities found.</p>
           ) : (
-            <div className="max-h-44 space-y-1 overflow-y-auto">
+            <div className="max-h-56 space-y-1 overflow-y-auto">
               {cities.map((c) => (
                 <label key={c} className="flex items-center gap-2 text-sm text-foreground/80">
                   <input
@@ -335,7 +335,7 @@ export default function SalesInvoiceGenerator() {
           )}
         </div>
 
-        <div className="rounded border border-border bg-muted/30 p-4">
+        <div className="rounded border border-border bg-muted/30 p-5">
           <h3 className="mb-2 text-sm font-medium text-foreground">Period</h3>
           <div className="flex flex-wrap gap-2">
             {(["today", "last7", "last30"] as RangeKey[]).map((key) => (
