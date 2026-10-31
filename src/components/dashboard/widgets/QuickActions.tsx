@@ -26,15 +26,15 @@ interface QuickActionsProps {
 
 export function QuickActions({ actions = defaultActions, onAction }: QuickActionsProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <h3 className="text-sm font-semibold text-foreground mb-3">Quick Actions</h3>
-      <div className="grid grid-cols-3 gap-2.5">
+    <div className="h-full rounded-xl border border-border bg-card p-6 shadow-sm">
+      <h3 className="text-sm font-semibold text-foreground mb-4">Quick Actions</h3>
+      <div className="grid grid-cols-3 gap-3">
         {actions.map((a) => (
           <button
             key={a.label}
             onClick={() => onAction?.(a.label)}
             className={cn(
-              "flex flex-col items-center gap-1.5 rounded-lg py-3 px-2 text-xs font-medium transition-all duration-200",
+              "flex flex-col items-center gap-1.5 rounded-lg py-4 px-2 text-xs font-medium transition-all duration-200",
               "hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               a.primary
                 ? "bg-primary text-primary-foreground hover:bg-primary-hover shadow-sm hover:shadow-md"

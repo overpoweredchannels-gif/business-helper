@@ -23,19 +23,25 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
     danger: "bg-destructive/10 text-destructive",
   };
 
+  // Step 5: expand and navigate are SIBLING buttons, never nested — the old
+  // header was a <button> containing the "Open" <button>, invalid HTML.
+  // Behaviour is identical: expand toggles children (or navigates when there
+  // are none), Open always navigates.
   return (
-    <div className="rounded-xl border border-border bg-card transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.08)]">
-      <button
-        onClick={() => {
-          if (children) {
-            setExpanded(!expanded);
-          } else if (onOpen) {
-            onOpen();
-          }
-        }}
-        className="w-full flex items-center justify-between p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
-      >
-        <div className="flex items-center gap-3 min-w-0">
+    <div className="h-full rounded-xl border border-border bg-card shadow-sm transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.08)]">
+      <div className="flex items-center justify-between gap-2 p-5">
+        <button
+          type="button"
+          aria-expanded={children ? expanded : undefined}
+          onClick={() => {
+            if (children) {
+              setExpanded(!expanded);
+            } else if (onOpen) {
+              onOpen();
+            }
+          }}
+          className="flex flex-1 items-center gap-3 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
+        >
           {children && (
             <ChevronRight
               className={cn(
@@ -44,7 +50,7 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
               )}
             />
           )}
-          <div className="text-left min-w-0">
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-foreground">{title}</span>
               {badge && (
@@ -55,19 +61,20 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
             </div>
             <p className="text-xs text-light-text mt-0.5 truncate">{summary}</p>
           </div>
-        </div>
+        </button>
         {onOpen && (
           <button
-            onClick={(e) => { e.stopPropagation(); onOpen(); }}
-            className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary-hover transition-colors shrink-0 ml-3"
+            type="button"
+            onClick={onOpen}
+            className="flex min-h-11 items-center gap-1 px-2 text-xs font-medium text-primary hover:text-primary-hover transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
           >
             Open
             <ArrowUpRight className="size-3" />
           </button>
         )}
-      </button>
+      </div>
       {expanded && children && (
-        <div className="border-t border-border px-4 py-3 animate-slideUp">
+        <div className="border-t border-border px-5 py-4 animate-slideUp">
           {children}
         </div>
       )}

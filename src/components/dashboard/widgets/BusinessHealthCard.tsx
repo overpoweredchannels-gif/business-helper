@@ -41,11 +41,11 @@ function CircularScore({ score }: { score: number }) {
 
 export function BusinessHealthCard({ score, metrics }: BusinessHealthCardProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
-      <h3 className="text-sm font-semibold text-foreground mb-3">Business Health</h3>
+    <div className="h-full rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
+      <h3 className="text-sm font-semibold text-foreground mb-4">Business Health</h3>
       <div className="flex items-start gap-4">
         <CircularScore score={score} />
-        <div className="flex-1 grid gap-3">
+        <div className="flex-1 grid gap-4">
           {metrics.map((m) => (
             <div key={m.label} className="flex items-center justify-between">
               <span className="text-xs text-light-text">{m.label}</span>

@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { formatPKR } from "@/lib/tradeos/formatters";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 interface BarChartProps {
@@ -8,7 +9,7 @@ interface BarChartProps {
   height?: number;
 }
 
-function BarChart({ data, height = 120 }: BarChartProps) {
+function BarChart({ data, height = 144 }: BarChartProps) {
   const max = Math.max(...data.map((d) => d.value), 1);
   return (
     <div className="flex items-end gap-1.5" style={{ height }}>
@@ -64,23 +65,57 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
 type TrendPoint = { label: string; value: number };
 type RankedItem = { name: string; value: string; trend?: "up" | "down" | "flat" };
 
-const card = "rounded-xl border border-border bg-card p-5";
+const card = "h-full rounded-xl border border-border bg-card p-6 shadow-sm";
 
 // Each chart is its own card so the home dashboard can add or remove one at a time.
+// Step 5: period + period total + written zero state + a hidden data list
+// for screen readers. Totals are sums of the bars already displayed —
+// no new data, no new binding. Top cards already show their values as text,
+// so they need no hidden list.
+function TrendCardHeader({ title, period, total }: { title: string; period: string; total: number }) {
+  return (
+    <div className="mb-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        <span className="text-lg font-semibold tabular-nums text-foreground shrink-0">{formatPKR(total)}</span>
+      </div>
+      <p className="text-xs text-light-text mt-0.5">{period}</p>
+    </div>
+  );
+}
+
+function TrendCardBody({ data, emptyMessage }: { data: TrendPoint[]; emptyMessage: string }) {
+  if (data.every((d) => d.value === 0)) {
+    return <p className="flex h-[144px] items-center text-sm text-light-text">{emptyMessage}</p>;
+  }
+  return (
+    <>
+      <BarChart data={data} />
+      <ul className="sr-only">
+        {data.map((d) => (
+          <li key={d.label}>{d.label}: {formatPKR(d.value)}</li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 export function RevenueTrendCard({ data }: { data: TrendPoint[] }) {
+  const total = data.reduce((sum, d) => sum + d.value, 0);
   return (
     <div className={card}>
-      <h3 className="text-sm font-semibold text-foreground mb-3">Revenue Trend</h3>
-      <BarChart data={data} />
+      <TrendCardHeader title="Revenue Trend" period="Last 6 months" total={total} />
+      <TrendCardBody data={data} emptyMessage="No sales in this period" />
     </div>
   );
 }
 
 export function ProfitTrendCard({ data }: { data: TrendPoint[] }) {
+  const total = data.reduce((sum, d) => sum + d.value, 0);
   return (
     <div className={card}>
-      <h3 className="text-sm font-semibold text-foreground mb-3">Profit Trend</h3>
-      <BarChart data={data} />
+      <TrendCardHeader title="Profit Trend" period="Last 14 days" total={total} />
+      <TrendCardBody data={data} emptyMessage="No profit in this period" />
     </div>
   );
 }
@@ -88,7 +123,7 @@ export function ProfitTrendCard({ data }: { data: TrendPoint[] }) {
 export function TopProductsCard({ items }: { items: RankedItem[] }) {
   return (
     <div className={card}>
-      <h3 className="text-sm font-semibold text-foreground mb-3">Top Products</h3>
+      <h3 className="text-base font-semibold text-foreground mb-4">Top Products</h3>
       <div className="divide-y divide-border">
         {items.map((item, index) => (
           <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} trend={item.trend} />
@@ -101,7 +136,7 @@ export function TopProductsCard({ items }: { items: RankedItem[] }) {
 export function TopCustomersCard({ items }: { items: RankedItem[] }) {
   return (
     <div className={card}>
-      <h3 className="text-sm font-semibold text-foreground mb-3">Top Customers</h3>
+      <h3 className="text-base font-semibold text-foreground mb-4">Top Customers</h3>
       <div className="divide-y divide-border">
         {items.map((item, index) => (
           <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} trend={item.trend} />

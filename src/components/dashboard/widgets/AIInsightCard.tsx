@@ -15,7 +15,7 @@ export function AIInsightCard({ insight, confidence, action, onLearnMore, reason
   const confidenceColor =
     confidence >= 80 ? "text-success" : confidence >= 60 ? "text-warning" : "text-destructive";
   return (
-    <div className="rounded-xl border border-border bg-gradient-to-br from-primary-light/60 to-card p-5 transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
+    <div className="rounded-xl border border-border bg-gradient-to-br from-primary-light/60 to-card p-6 shadow-sm transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
       <div className="flex items-start gap-3">
         <div className="size-10 rounded-xl bg-primary flex items-center justify-center shrink-0 shadow-sm">
           <Lightbulb className="size-5 text-primary-foreground" />

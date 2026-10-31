@@ -52,17 +52,17 @@ export function KPICard({ title, value, trend, icon, sparklineData, onClick }: K
     <Component
       onClick={onClick}
       className={cn(
-        "group rounded-xl border border-border bg-card p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]",
+        "group rounded-xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         onClick && "cursor-pointer text-left w-full",
       )}
     >
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-4">
         <span className="text-xs font-medium text-light-text uppercase tracking-wider">{title}</span>
-        {icon && <div className="size-8 rounded-lg bg-primary-light flex items-center justify-center text-primary">{icon}</div>}
+        {icon && <div className="size-10 rounded-lg bg-primary-light flex items-center justify-center text-primary">{icon}</div>}
       </div>
       <div className="flex items-end justify-between">
         <div>
-          <div className="text-xl sm:text-2xl font-semibold tabular-nums text-foreground font-heading">{value}</div>
+          <div className="text-2xl font-semibold tabular-nums leading-tight text-foreground font-heading">{value}</div>
           {trend && (
             <div className={cn("flex items-center gap-1 mt-1 text-xs font-medium", isUp ? "text-success" : "text-destructive")}>
               {isUp ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}

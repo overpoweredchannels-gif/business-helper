@@ -185,11 +185,11 @@ export function DashboardView({
   ].filter((chart) => !widgetHidden(chart.id));
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 pb-8 pt-3 sm:px-6 sm:pt-4 lg:px-8 space-y-5">
+    <div className="mx-auto w-full max-w-7xl px-4 pb-10 pt-3 sm:px-6 sm:pt-4 lg:px-8 space-y-6">
       {/* Welcome Section */}
       <header className="flex flex-wrap items-start justify-between gap-2 sm:items-center sm:gap-3">
         <DashboardWidget id="greeting" customizing={customizingWidgets} onRemove={onRemoveWidget} className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold leading-tight text-foreground font-heading">
+          <h1 className="text-3xl font-bold leading-tight text-foreground font-heading">
             {greeting}, <span className="text-primary">{userName}</span>
           </h1>
           <p className="text-sm text-light-text mt-0.5">{dateStr}</p>
@@ -214,12 +214,49 @@ export function DashboardView({
 
       {/* KPI Cards */}
       {kpiCards.length > 0 && (
-        <div className={cn("grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", customizingWidgets ? "gap-6" : "gap-3 sm:gap-4")}>
+        <div className={cn("grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", customizingWidgets ? "gap-6" : "gap-4")}>
           {kpiCards.map((card) => (
             <DashboardWidget key={card.id} id={card.id} customizing={customizingWidgets} onRemove={onRemoveWidget} className={card.money ? "col-span-2 sm:col-span-1" : undefined}>
               {card.node}
             </DashboardWidget>
           ))}
+        </div>
+      )}
+
+      {/* Pending Tasks */}
+      {taskList.length > 0 && !widgetHidden("needs-attention") && (
+        <DashboardWidget id="needs-attention" customizing={customizingWidgets} onRemove={onRemoveWidget}>
+          <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <h3 className="text-sm font-semibold text-foreground mb-4">Needs Your Attention</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-4">
+              {taskList.map((t) => (
+                <button
+                  key={t.label}
+                  type="button"
+                  onClick={() => t.label === "Pending Approvals" && onKPIClick?.("Pending Approvals")}
+                  className={`flex items-center gap-2.5 p-4 rounded-lg bg-muted text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${t.label === "Pending Approvals" ? "cursor-pointer hover:bg-warning/10" : "cursor-default"}`}
+                >
+                  <t.icon className={cn("size-5", t.color)} />
+                  <div>
+                    <p className="text-xl font-semibold tabular-nums text-foreground">{t.value}</p>
+                    <p className="text-[11px] text-light-text">{t.label}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </DashboardWidget>
+      )}
+
+      {/* Business Health + Quick Actions Row */}
+      {(!widgetHidden("business-health") || !widgetHidden("quick-actions")) && (
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-4">
+          <DashboardWidget id="business-health" customizing={customizingWidgets} onRemove={onRemoveWidget} className={widgetHidden("quick-actions") ? "md:col-span-3 lg:col-span-3" : "md:col-span-2 lg:col-span-2"}>
+            <BusinessHealthCard score={healthScore} metrics={healthMetrics} />
+          </DashboardWidget>
+          <DashboardWidget id="quick-actions" customizing={customizingWidgets} onRemove={onRemoveWidget}>
+            <QuickActions onAction={onQuickAction} />
+          </DashboardWidget>
         </div>
       )}
 
@@ -236,53 +273,16 @@ export function DashboardView({
         </DashboardWidget>
       )}
 
-      {/* Business Health + Quick Actions Row */}
-      {(!widgetHidden("business-health") || !widgetHidden("quick-actions")) && (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-4">
-          <DashboardWidget id="business-health" customizing={customizingWidgets} onRemove={onRemoveWidget} className={widgetHidden("quick-actions") ? "md:col-span-3 lg:col-span-3" : "md:col-span-2 lg:col-span-2"}>
-            <BusinessHealthCard score={healthScore} metrics={healthMetrics} />
-          </DashboardWidget>
-          <DashboardWidget id="quick-actions" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-            <QuickActions onAction={onQuickAction} />
-          </DashboardWidget>
-        </div>
-      )}
-
       {/* Smart Modules */}
       {smartModules.length > 0 && !widgetHidden("smart-modules") && (
         <DashboardWidget id="smart-modules" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <div className="space-y-2">
-            <h2 className="text-base font-semibold text-foreground">Business Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold text-foreground">Business Overview</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {smartModules.map((m) => (
                 <SmartModule key={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen}>
                   {m.children}
                 </SmartModule>
-              ))}
-            </div>
-          </div>
-        </DashboardWidget>
-      )}
-
-      {/* Pending Tasks */}
-      {taskList.length > 0 && !widgetHidden("needs-attention") && (
-        <DashboardWidget id="needs-attention" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <div className="rounded-xl border border-border bg-card p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Needs Your Attention</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-3">
-              {taskList.map((t) => (
-                <button
-                  key={t.label}
-                  type="button"
-                  onClick={() => t.label === "Pending Approvals" && onKPIClick?.("Pending Approvals")}
-                  className={`flex items-center gap-2.5 p-3 rounded-lg bg-muted text-left ${t.label === "Pending Approvals" ? "cursor-pointer hover:bg-warning/10" : "cursor-default"}`}
-                >
-                  <t.icon className={cn("size-5", t.color)} />
-                  <div>
-                    <p className="text-lg font-semibold text-foreground">{t.value}</p>
-                    <p className="text-[11px] text-light-text">{t.label}</p>
-                  </div>
-                </button>
               ))}
             </div>
           </div>
