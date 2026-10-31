@@ -42,6 +42,7 @@ export default function TerritoriesManager() {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [editingTerritoryId, setEditingTerritoryId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [isOwner, setIsOwner] = useState(true);
   const [geoSelection, setGeoSelection] = useState<TerritoryGeoSelection | null>(null);
@@ -85,14 +86,15 @@ export default function TerritoriesManager() {
     load();
   }, [load]);
 
-  const create = async () => {
+  const saveTerritory = async () => {
     if (!name.trim()) {
       setMessage({ type: "error", text: t('fsm.territories.nameRequired') });
       return;
     }
     try {
-      const res = await authorizedFetch("/api/territories", {
-        method: "POST",
+      const isEditing = editingTerritoryId !== null;
+      const res = await authorizedFetch(isEditing ? `/api/territories/${editingTerritoryId}` : "/api/territories", {
+        method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
@@ -104,16 +106,65 @@ export default function TerritoriesManager() {
       });
       const data = await res.json();
       if (data.territory) {
-        setMessage({ type: "ok", text: `Territory "${name.trim()}" created.` });
+        // An edit never changes the row's creation date: the update route
+        // only writes name, description and geo fields.
+        setMessage({ type: "ok", text: isEditing ? t('fsm.territories.updatedOk') : `Territory "${name.trim()}" created.` });
         setName("");
         setDescription("");
         setGeoSelection(null);
         setUseGeoName(false);
+        setEditingTerritoryId(null);
         await load();
-        setExpandedTerritoryId(data.territory.id);
-        setSelectedCustomerIds([]);
+        if (!isEditing) {
+          setExpandedTerritoryId(data.territory.id);
+          setSelectedCustomerIds([]);
+        }
       } else {
-        setMessage({ type: "error", text: data.error || t('fsm.territories.createFailed') });
+        setMessage({ type: "error", text: data.error || (isEditing ? t('fsm.territories.updateFailed') : t('fsm.territories.createFailed')) });
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
+    }
+  };
+
+  const startEditTerritory = (territory: Territory) => {
+    setName(territory.name);
+    setDescription(territory.description ?? "");
+    setGeoSelection(
+      territory.center_lat != null && territory.center_lng != null
+        ? {
+            name: territory.name,
+            description: territory.description ?? "",
+            centerLat: territory.center_lat,
+            centerLng: territory.center_lng,
+            radiusKm: territory.radius_km ?? 3,
+          }
+        : null,
+    );
+    setUseGeoName(territory.center_lat != null && territory.center_lng != null);
+    setEditingTerritoryId(territory.id);
+    document.getElementById("territory-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const cancelEditTerritory = () => {
+    setName("");
+    setDescription("");
+    setGeoSelection(null);
+    setUseGeoName(false);
+    setEditingTerritoryId(null);
+  };
+
+  const handleDeleteTerritory = async (territory: Territory) => {
+    if (!window.confirm(t('fsm.territories.confirmDelete'))) return;
+    try {
+      const res = await authorizedFetch(`/api/territories/${territory.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        setMessage({ type: "ok", text: t('fsm.territories.deletedOk') });
+        if (expandedTerritoryId === territory.id) setExpandedTerritoryId(null);
+        await load();
+      } else {
+        setMessage({ type: "error", text: data.error || t('fsm.territories.deleteFailed') });
       }
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
@@ -194,6 +245,7 @@ export default function TerritoriesManager() {
 
       {isOwner && (
         <div
+          id="territory-form"
           style={{
             border: "1px solid #e5e7eb",
             borderRadius: "0.5rem",
@@ -214,9 +266,14 @@ export default function TerritoriesManager() {
             <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.territories.descriptionLabel')}</label>
             <input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-          <button style={{ ...buttonStyle, ...overlayInputCss }} onClick={create}>
-            {t('fsm.territories.addTerritory')}
+          <button style={{ ...buttonStyle, ...overlayInputCss }} onClick={saveTerritory}>
+            {editingTerritoryId ? t('fsm.territories.update') : t('fsm.territories.addTerritory')}
           </button>
+          {editingTerritoryId && (
+            <button style={{ ...buttonStyle, ...overlayInputCss, background: "#fff", color: "#111827", border: "1px solid #d1d5db" }} onClick={cancelEditTerritory}>
+              {t('fsm.territories.cancelEdit')}
+            </button>
+          )}
 
           <div style={{ gridColumn: "1 / -1" }}>
             <TerritoryMapPicker onSelect={handleGeoSelect} />
@@ -261,6 +318,16 @@ export default function TerritoriesManager() {
                 <div style={{ fontSize: "0.72rem", color: "#4b5563", marginTop: "0.2rem" }}>{t('fsm.territories.memberCount').replace('{count}', String(memberCount))}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              {isOwner && (
+                <>
+                  <button style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }} onClick={() => startEditTerritory(territory)}>
+                    {t('fsm.territories.edit')}
+                  </button>
+                  <button style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }} onClick={() => handleDeleteTerritory(territory)}>
+                    {t('fsm.territories.delete')}
+                  </button>
+                </>
+              )}
               <button style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", cursor: "pointer" }} onClick={() => openCustomers(territory.id)}>
                 {expandedTerritoryId === territory.id ? t('fsm.territories.closeCustomers') : t('fsm.territories.manageCustomers')}
               </button>

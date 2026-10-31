@@ -354,6 +354,25 @@ export default function RoutesManager() {
     }
   };
 
+  const handleDeleteRoute = async (routeId: string) => {
+    if (!window.confirm(t('fsm.routes.confirmDeleteRoute'))) return;
+    try {
+      // No body: the route DELETE handler treats a body without stop_id as
+      // a whole-route delete (stops first, then the route row).
+      const res = await authorizedFetch(`/api/routes/${routeId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (data.success) {
+        setMessage({ type: "ok", text: t('fsm.routes.routeDeleted') });
+        if (expandedRouteId === routeId) setExpandedRouteId(null);
+        await load();
+      } else {
+        setMessage({ type: "error", text: data.error || t('fsm.routes.routeDeleteFailed') });
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
+    }
+  };
+
   const moveStop = async (routeId: string, index: number, direction: -1 | 1) => {
     const target = index + direction;
     if (target < 0 || target >= stops.length) return;
@@ -658,6 +677,9 @@ export default function RoutesManager() {
                   </button>
                   <button style={smallButtonStyle} onClick={() => toggleRoute(route.id)}>
                     {expandedRouteId === route.id ? t('fsm.routes.closeStops') : t('fsm.routes.manageStops')}
+                  </button>
+                  <button style={smallButtonStyle} onClick={() => handleDeleteRoute(route.id)}>
+                    {t('fsm.routes.deleteRoute')}
                   </button>
                   <span
                     style={{

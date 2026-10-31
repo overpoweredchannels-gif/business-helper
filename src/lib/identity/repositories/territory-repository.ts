@@ -52,4 +52,13 @@ export class TerritoryRepository {
 
     return data as Territory;
   }
+
+  async delete(id: string): Promise<void> {
+    const supabase = createSupabaseService();
+    const { error } = await supabase.from("territories").delete().eq("id", id);
+
+    if (error) {
+      throw error;
+    }
+  }
 }

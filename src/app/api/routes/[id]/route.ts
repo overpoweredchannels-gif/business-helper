@@ -284,14 +284,39 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
   try {
     const stopId = (body.stop_id as string) ?? "";
-    if (!stopId) {
-      return NextResponse.json({ error: "Stop ID is required." }, { status: 400 });
+    if (stopId) {
+      await repository.removeStop(routeId, stopId);
+      const stops = await repository.listStops(routeId);
+      return NextResponse.json({ success: true, stops });
     }
-    await repository.removeStop(routeId, stopId);
-    const stops = await repository.listStops(routeId);
-    return NextResponse.json({ success: true, stops });
+    // No stop_id: delete the whole route. The route must belong to the
+    // caller's organization, and staff assigned to it are unassigned first.
+    const route = await repository.findById(routeId);
+    if (!route || route.organization_id !== permission.actor.organizationId) {
+      return NextResponse.json({ error: "Route not found." }, { status: 404 });
+    }
+    const supabase = createSupabaseService();
+    const employees = await supabase
+      .from("employees")
+      .update({ assigned_route_id: null })
+      .eq("organization_id", permission.actor.organizationId)
+      .eq("assigned_route_id", routeId)
+      .select("id");
+    if (employees.error) throw employees.error;
+    await repository.deleteRoute(routeId);
+    await logAuditEvent({
+      organizationId: permission.actor.organizationId,
+      actorProfileId: permission.actor.profileId,
+      actorEmail: permission.actor.email,
+      action: "route_deleted",
+      entityType: "route",
+      entityId: routeId,
+      description: `Deleted route ${route.name}. Unassigned ${employees.data?.length ?? 0} staff member(s).`,
+      success: true,
+    });
+    return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to delete stop";
+    const message = error instanceof Error ? error.message : "Failed to delete route";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

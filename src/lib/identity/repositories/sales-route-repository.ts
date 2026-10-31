@@ -128,6 +128,18 @@ export class SalesRouteRepository {
     }
   }
 
+  async deleteRoute(routeId: string): Promise<void> {
+    const supabase = createSupabaseService();
+    const stops = await supabase.from("sales_route_stops").delete().eq("route_id", routeId);
+    if (stops.error) {
+      throw stops.error;
+    }
+    const route = await supabase.from("sales_routes").delete().eq("id", routeId);
+    if (route.error) {
+      throw route.error;
+    }
+  }
+
   async reorderStops(routeId: string, orderedStopIds: string[]): Promise<{ success: boolean; error?: string }> {
     const supabase = createSupabaseService();
     const stops = await this.listStops(routeId);
