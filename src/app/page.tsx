@@ -4997,17 +4997,30 @@ setCustomerOrganizationName("");
     setExpenseLoading(true);
     setExpenseMessage(null);
 
-    const { data: expenseData, error } = await supabase.from("expenses").insert({
-      organization_id: currentOrganizationId,
+    const expenseValues = {
       expense_type: expenseType,
       amount,
       notes: expenseNotes.trim() || null,
-      expense_date: toDateInputValue(new Date()),
       supplier_id: selectedExpenseSupplierId || null,
       customer_id: selectedExpenseCustomerId || null,
       purchase_transaction_id: selectedExpensePurchaseId || null,
       sales_transaction_id: selectedExpenseSaleId || null,
-    }).select("id").single();
+    };
+
+    // Editing reuses this same form: the only difference is update vs insert.
+    // The expense date is set at creation and never overwritten by an edit.
+    const isEditing = editingExpenseId !== null;
+    const originalExpense = isEditing
+      ? expenses.find((expense) => expense.id === editingExpenseId)
+      : null;
+
+    const { data: expenseData, error } = isEditing
+      ? await supabase.from("expenses").update(expenseValues).eq("id", editingExpenseId).eq("organization_id", currentOrganizationId).select("id").single()
+      : await supabase.from("expenses").insert({
+          organization_id: currentOrganizationId,
+          ...expenseValues,
+          expense_date: toDateInputValue(new Date()),
+        }).select("id").single();
 
     if (error) {
       setExpenseMessage(t('page.expenseSaveErr').replace('{error}', JSON.stringify(error, null, 2)));
@@ -5017,7 +5030,12 @@ setCustomerOrganizationName("");
 
     let statusUpdateWarning: string | null = null;
 
-    if (selectedExpensePurchaseId) {
+    // A purchase is marked expenses_added only when the link is new: on edit
+    // with an unchanged link this would needlessly bump its reviewed time.
+    const purchaseLinkChanged =
+      !isEditing || originalExpense?.purchase_transaction_id !== selectedExpensePurchaseId;
+
+    if (selectedExpensePurchaseId && purchaseLinkChanged) {
       const { error: statusUpdateError } = await supabase
         .from("purchase_transactions")
         .update({
@@ -5037,30 +5055,26 @@ setCustomerOrganizationName("");
     }
 
     await fetchExpenses(currentOrganizationId);
-    if (selectedExpensePurchaseId && !statusUpdateWarning) {
+    if (selectedExpensePurchaseId && purchaseLinkChanged && !statusUpdateWarning) {
       await fetchPurchaseTransactions(currentOrganizationId);
     }
 
     await createAuditLog({
-      action: "created",
+      action: isEditing ? "updated" : "created",
       entity_type: "expense",
-      entity_id: expenseData?.id ?? null,
+      entity_id: expenseData?.id ?? editingExpenseId,
       entity_label: expenseType,
       description: selectedExpensePurchaseId
-        ? t('page.createdLinkedExpense').replace('{type}', expenseType)
-        : t('page.createdExpense').replace('{type}', expenseType),
-      new_values: {
-        expense_type: expenseType,
-        amount,
-        notes: expenseNotes.trim() || null,
-        supplier_id: selectedExpenseSupplierId || null,
-        customer_id: selectedExpenseCustomerId || null,
-        purchase_transaction_id: selectedExpensePurchaseId || null,
-        sales_transaction_id: selectedExpenseSaleId || null,
-      },
+        ? (isEditing
+            ? t('page.expenseUpdatedLinked').replace('{type}', expenseType)
+            : t('page.createdLinkedExpense').replace('{type}', expenseType))
+        : (isEditing
+            ? t('page.expenseUpdated').replace('{type}', expenseType)
+            : t('page.createdExpense').replace('{type}', expenseType)),
+      new_values: expenseValues,
     });
 
-    setExpenseMessage(statusUpdateWarning ?? t('page.expenseSavedOk'));
+    setExpenseMessage(statusUpdateWarning ?? (isEditing ? t('expenses.updatedOk') : t('page.expenseSavedOk')));
     setExpenseType("");
     setExpenseAmount("");
     setExpenseNotes("");
@@ -5068,6 +5082,60 @@ setCustomerOrganizationName("");
     setSelectedExpenseCustomerId("");
     setSelectedExpensePurchaseId("");
     setSelectedExpenseSaleId("");
+    setEditingExpenseId(null);
+    setExpenseLoading(false);
+  };
+
+  const startEditExpense = (expense: any) => {
+    setEditingExpenseId(expense.id);
+    setExpenseType(expense.expense_type ?? "");
+    setExpenseAmount(expense.amount != null ? String(expense.amount) : "");
+    setExpenseNotes(expense.notes ?? "");
+    setSelectedExpenseSupplierId(expense.supplier_id ?? "");
+    setSelectedExpenseCustomerId(expense.customer_id ?? "");
+    setSelectedExpensePurchaseId(expense.purchase_transaction_id ?? "");
+    setSelectedExpenseSaleId(expense.sales_transaction_id ?? "");
+    setExpenseMessage(null);
+    document.getElementById("expense-management")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const cancelEditExpense = () => {
+    setEditingExpenseId(null);
+    setExpenseType("");
+    setExpenseAmount("");
+    setExpenseNotes("");
+    setSelectedExpenseSupplierId("");
+    setSelectedExpenseCustomerId("");
+    setSelectedExpensePurchaseId("");
+    setSelectedExpenseSaleId("");
+    setExpenseMessage(null);
+  };
+
+  const handleDeleteExpense = async (expense: any) => {
+    if (!window.confirm(t('expenses.confirmDelete'))) return;
+    if (!requireOrganization("delete expense")) {
+      setExpenseMessage(orgNotLoadedErrorMessage);
+      return;
+    }
+    setExpenseLoading(true);
+    const { error } = await supabase.from("expenses").delete().eq("id", expense.id).eq("organization_id", currentOrganizationId);
+    if (error) {
+      setExpenseMessage(t('expenses.deleteErr').replace('{error}', JSON.stringify(error, null, 2)));
+      setExpenseLoading(false);
+      return;
+    }
+    if (editingExpenseId === expense.id) {
+      cancelEditExpense();
+    }
+    await fetchExpenses(currentOrganizationId);
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "expense",
+      entity_id: expense.id,
+      entity_label: expense.expense_type ?? "expense",
+      description: t('expenses.deletedOk'),
+    });
+    setExpenseMessage(t('expenses.deletedOk'));
     setExpenseLoading(false);
   };
 
@@ -5675,6 +5743,7 @@ setCustomerOrganizationName("");
   const [selectedExpenseSaleId, setSelectedExpenseSaleId] = useState("");
   const [expenseLoading, setExpenseLoading] = useState(false);
   const [expenseMessage, setExpenseMessage] = useState<string | null>(null);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
   const [fsmReloadKey, setFsmReloadKey] = useState(0);
 
@@ -21601,13 +21670,25 @@ setCustomerOrganizationName("");
               </label>
             </div>
 
-            <button
-              type="submit"
-              disabled={expenseLoading}
-              className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
-            >
-              {expenseLoading ? t('common.saving') : t('expenses.save')}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="submit"
+                disabled={expenseLoading}
+                className="min-h-11 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
+              >
+                {expenseLoading ? t('common.saving') : editingExpenseId ? t('expenses.update') : t('expenses.save')}
+              </button>
+              {editingExpenseId && (
+                <button
+                  type="button"
+                  onClick={cancelEditExpense}
+                  disabled={expenseLoading}
+                  className="min-h-11 rounded border border-input px-4 py-2 disabled:opacity-50"
+                >
+                  {t('expenses.cancelEdit')}
+                </button>
+              )}
+            </div>
 
             {expenseMessage && (
               <p
@@ -21663,6 +21744,22 @@ setCustomerOrganizationName("");
                         {expense.sales_transaction_id && (
                           <div>{t('expenses.salesInvoice')}: {salesTransaction?.invoice_number ?? t('sell.unknown')}</div>
                         )}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEditExpense(expense)}
+                          className="min-h-11 rounded border border-input px-3 py-2 text-xs font-medium"
+                        >
+                          {t('expenses.edit')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteExpense(expense)}
+                          className="min-h-11 rounded border border-input px-3 py-2 text-xs font-medium"
+                        >
+                          {t('expenses.delete')}
+                        </button>
                       </div>
                     </li>
                   );
