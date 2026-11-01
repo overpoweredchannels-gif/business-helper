@@ -15,7 +15,7 @@ interface AIInsightCardProps {
 export function AIInsightCard({ insight, confidence, action, onLearnMore, reason }: AIInsightCardProps) {
   const { t } = useRegional();
   const confidenceColor =
-    confidence >= 80 ? "text-success" : confidence >= 60 ? "text-warning" : "text-destructive";
+    confidence >= 80 ? "text-success" : confidence >= 60 ? "text-warning-text" : "text-destructive";
   return (
     <div className="rounded-xl border border-border bg-gradient-to-br from-accent/60 to-card p-6 shadow-[0_1px_2px_rgb(15_23_42/0.06),0_16px_32px_-16px_rgb(15_23_42/0.20)] transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
       <div className="flex items-start gap-3">

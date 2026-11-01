@@ -174,7 +174,7 @@ export default function ManagerPerformancePage() {
             <div key={p.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
               <div className="flex items-center gap-4">
                 <div className={cn("size-8 rounded-full flex items-center justify-center font-bold text-sm",
-                  index === 0 ? "bg-warning/20 text-warning" :
+                  index === 0 ? "bg-warning/20 text-warning-text" :
                   index === 1 ? "bg-muted text-muted-foreground" :
                   index === 2 ? "bg-primary-light text-primary" :
                   "bg-card text-foreground"
@@ -211,7 +211,7 @@ export default function ManagerPerformancePage() {
                   <div className={cn("font-bold",
                     p.metrics.performanceScore >= 80 ? "text-success" :
                     p.metrics.performanceScore >= 60 ? "text-primary" :
-                    "text-warning"
+                    "text-warning-text"
                   )}>{p.metrics.performanceScore}%</div>
                 </div>
               </div>

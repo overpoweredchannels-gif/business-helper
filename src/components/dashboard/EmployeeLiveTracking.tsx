@@ -420,7 +420,7 @@ export function EmployeeLiveTracking() {
                 className={`ml-1 inline-block rounded px-1 py-0.5 text-[10px] font-semibold ${
                   lastLocation.accuracy <= 100
                     ? "bg-success/10 text-success"
-                    : "bg-warning/10 text-warning"
+                    : "bg-warning/10 text-warning-text"
                 }`}
               >
                 ±{Math.round(lastLocation.accuracy)}m

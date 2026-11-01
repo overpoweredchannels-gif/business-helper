@@ -176,7 +176,7 @@ function Alert({ variant = "error", children }: { variant?: "error" | "success" 
       "flex items-start gap-2 rounded-lg p-3 text-sm",
       variant === "error" && "bg-destructive-bg text-destructive",
       variant === "success" && "bg-success/10 text-success",
-      variant === "warning" && "bg-warning/10 text-warning",
+      variant === "warning" && "bg-warning/10 text-warning-text",
     )}>
       <AlertCircle className="size-4 mt-0.5 shrink-0" />
       <span>{children}</span>

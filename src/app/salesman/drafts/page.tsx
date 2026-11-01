@@ -363,7 +363,7 @@ export default function DraftsPage() {
 
 function StatusBadge({ status, t }: { status: string; t: (key: MessageKey) => string }) {
   const styles: Record<string, string> = {
-    pending_approval: "bg-warning/10 text-warning",
+    pending_approval: "bg-warning/10 text-warning-text",
     approved: "bg-success/10 text-success",
     rejected: "bg-destructive/10 text-destructive",
     converted: "bg-primary/10 text-primary",

@@ -115,7 +115,7 @@ export default function CollectionsPage() {
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded-2xl border border-border bg-card p-5">
           <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">{t('salesman.collections.pendingApproval')}</div>
-          <div className="font-heading font-bold text-2xl text-warning">{fmt(pendingTotal)}</div>
+          <div className="font-heading font-bold text-2xl text-warning-text">{fmt(pendingTotal)}</div>
         </div>
         <div className="rounded-2xl border border-border bg-card p-5">
           <div className="text-xs font-medium text-light-text uppercase tracking-wide mb-1">{t('salesman.collections.approvedTotal')}</div>
@@ -257,7 +257,7 @@ export default function CollectionsPage() {
 function CollectionStatus({ status }: { status: string }) {
   const { t } = useRegional();
   const styles: Record<string, string> = {
-    pending: "bg-warning/10 text-warning",
+    pending: "bg-warning/10 text-warning-text",
     approved: "bg-success/10 text-success",
     rejected: "bg-destructive/10 text-destructive",
   };

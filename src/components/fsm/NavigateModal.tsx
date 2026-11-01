@@ -174,7 +174,7 @@ export default function NavigateModal({ employee, onClose }: NavigateModalProps)
           </div>
 
           {ownerError && (
-            <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+            <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-text">
               <AlertCircle className="size-3.5 mt-0.5 shrink-0" /> {ownerError} {t('fsm.routes.navEtaUnavailable')}
             </div>
           )}

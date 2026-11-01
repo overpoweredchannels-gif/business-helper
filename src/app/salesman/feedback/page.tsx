@@ -236,7 +236,7 @@ function TypeBadge({ type }: { type: string }) {
     complaint: "bg-destructive/10 text-destructive",
     feedback: "bg-primary/10 text-primary",
     note: "bg-muted text-muted-foreground",
-    request: "bg-warning/10 text-warning",
+    request: "bg-warning/10 text-warning-text",
   };
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium capitalize", colors[type] ?? "bg-muted text-muted-foreground")}>
@@ -247,7 +247,7 @@ function TypeBadge({ type }: { type: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    open: "bg-warning/10 text-warning",
+    open: "bg-warning/10 text-warning-text",
     in_progress: "bg-primary/10 text-primary",
     resolved: "bg-success/10 text-success",
     closed: "bg-muted text-muted-foreground",

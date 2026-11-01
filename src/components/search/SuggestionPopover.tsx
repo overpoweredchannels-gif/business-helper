@@ -141,7 +141,7 @@ export function SuggestionPopover({
             </p>
           )}
           {status === "error" && items.length > 0 && !statusNote && (
-            <p role="status" className="border-b border-border px-3 py-2 text-xs text-warning">
+            <p role="status" className="border-b border-border px-3 py-2 text-xs text-warning-text">
               {resolvedStaleText}
             </p>
           )}

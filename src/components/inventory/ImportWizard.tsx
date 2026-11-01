@@ -812,7 +812,7 @@ export default function ImportWizard({
               <span className="rounded bg-success/10 px-2 py-1 text-xs text-success">{t('inventory.import.previewNew').replace('{count}', String(preview.newCount))}</span>
               <span className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">{t('inventory.import.previewUpdate').replace('{count}', String(preview.updateCount))}</span>
               <span className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">{t('inventory.import.previewSkipped').replace('{count}', String(preview.skipCount))}</span>
-              <span className="rounded bg-warning/10 px-2 py-1 text-xs text-warning">{t('inventory.import.previewWarnings').replace('{count}', String(preview.warningCount))}</span>
+              <span className="rounded bg-warning/10 px-2 py-1 text-xs text-warning-text">{t('inventory.import.previewWarnings').replace('{count}', String(preview.warningCount))}</span>
               <span className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">{t('inventory.import.previewErrors').replace('{count}', String(preview.errorCount))}</span>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -868,7 +868,7 @@ export default function ImportWizard({
                                 : status === "update"
                                   ? "bg-primary/10 text-primary"
                                   : status === "warning"
-                                    ? "bg-warning/10 text-warning"
+                                    ? "bg-warning/10 text-warning-text"
                                     : "bg-success/10 text-success"
                           }`}
                         >
@@ -884,7 +884,7 @@ export default function ImportWizard({
                         {row.errors.length > 0 ? (
                           <span className="text-destructive">{row.errors.join(" ")}</span>
                         ) : row.warnings.length > 0 ? (
-                          <span className="text-warning">{row.warnings.join(" ")}</span>
+                          <span className="text-warning-text">{row.warnings.join(" ")}</span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}

@@ -117,7 +117,7 @@ function TypeBadge({ type }: { type: string }) {
     complaint: "bg-destructive/10 text-destructive",
     feedback: "bg-primary/10 text-primary",
     note: "bg-muted text-muted-foreground",
-    request: "bg-warning/10 text-warning",
+    request: "bg-warning/10 text-warning-text",
   };
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-[11px] font-medium capitalize", colors[type] ?? "bg-muted text-muted-foreground")}>
@@ -131,7 +131,7 @@ function PriorityBadge({ priority }: { priority: string }) {
   const priorityLabels: Record<string, string> = { high: t('salesman.feedback.priority.high'), medium: t('salesman.feedback.priority.medium'), low: t('salesman.feedback.priority.low') };
   const colors: Record<string, string> = {
     high: "bg-destructive/10 text-destructive",
-    medium: "bg-warning/10 text-warning",
+    medium: "bg-warning/10 text-warning-text",
     low: "bg-muted text-muted-foreground",
   };
   return (
@@ -145,7 +145,7 @@ function StatusBadge({ status }: { status: string }) {
   const { t } = useRegional();
   const statusLabels: Record<string, string> = { open: t('manager.feedback.filterOpen'), in_progress: t('manager.feedback.filterInProgress'), resolved: t('manager.feedback.filterResolved'), closed: t('manager.feedback.statusClosed') };
   const colors: Record<string, string> = {
-    open: "bg-warning/10 text-warning",
+    open: "bg-warning/10 text-warning-text",
     in_progress: "bg-primary/10 text-primary",
     resolved: "bg-success/10 text-success",
     closed: "bg-muted text-muted-foreground",

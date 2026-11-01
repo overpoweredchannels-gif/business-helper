@@ -236,7 +236,7 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
           <article key={row.id} className="rounded border border-border bg-card p-4">
             <div className="flex items-start justify-between gap-3">
               <p className="font-medium text-foreground">{row.customer_name}</p>
-              <p className={`font-medium tabular-nums ${outstanding > 0 ? "text-warning" : "text-success"}`}>{formatBooksMoney(outstanding)}</p>
+              <p className={`font-medium tabular-nums ${outstanding > 0 ? "text-warning-text" : "text-success"}`}>{formatBooksMoney(outstanding)}</p>
             </div>
             <p className="text-sm text-muted-foreground">{row.shop_name ?? row.organization_name ?? "—"}</p>
             <dl className="mt-2 space-y-1 text-sm text-muted-foreground">
@@ -252,7 +252,7 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
       <section className="hidden overflow-x-auto rounded border border-border bg-card p-5 lg:block">
       <h3 className="mb-3 font-medium">{t('history.profilesTitle')}</h3>
       <table className="w-full min-w-[820px] text-sm tabular-nums"><thead><tr className="border-b text-left text-muted-foreground"><th className="py-2 pr-3">{t('sell.customer')}</th><th>{t('customers.area')}</th><th>{t('history.colInvoices')}</th><th>{t('history.colTotalSales')}</th><th>{t('history.colRemaining')}</th><th>{t('history.colUnpaid')}</th><th>{t('history.colProfile')}</th></tr></thead><tbody>
-        {customerOverview.map(({ row, invoiceCount, totalSales, outstanding, unpaid }) => <tr key={row.id} className="border-b border-border/60"><td className="py-2 pr-3"><strong>{row.customer_name}</strong><div className="text-xs text-muted-foreground">{row.shop_name ?? row.organization_name ?? "—"}</div></td><td>{[row.area, row.city].filter(Boolean).join(", ") || "—"}</td><td>{invoiceCount}</td><td>{formatBooksMoney(totalSales)}</td><td className={outstanding > 0 ? "font-medium text-warning" : "text-success"}>{formatBooksMoney(outstanding)}</td><td>{unpaid}</td><td><button type="button" onClick={() => setSelectedId(row.id)} className="min-h-11 rounded border border-primary px-3 py-1 text-xs text-primary">{t('history.open')}</button></td></tr>)}
+        {customerOverview.map(({ row, invoiceCount, totalSales, outstanding, unpaid }) => <tr key={row.id} className="border-b border-border/60"><td className="py-2 pr-3"><strong>{row.customer_name}</strong><div className="text-xs text-muted-foreground">{row.shop_name ?? row.organization_name ?? "—"}</div></td><td>{[row.area, row.city].filter(Boolean).join(", ") || "—"}</td><td>{invoiceCount}</td><td>{formatBooksMoney(totalSales)}</td><td className={outstanding > 0 ? "font-medium text-warning-text" : "text-success"}>{formatBooksMoney(outstanding)}</td><td>{unpaid}</td><td><button type="button" onClick={() => setSelectedId(row.id)} className="min-h-11 rounded border border-primary px-3 py-1 text-xs text-primary">{t('history.open')}</button></td></tr>)}
       </tbody></table>
       {customerOverview.length === 0 && <p className="py-3 text-sm text-muted-foreground">{t('history.noProfilesMatch')}</p>}
     </section></>)}

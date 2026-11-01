@@ -16,7 +16,7 @@ interface Activity {
 const typeStyles = {
   sale: "bg-success/10 text-success",
   purchase: "bg-primary-light text-primary",
-  payment: "bg-warning/10 text-warning",
+  payment: "bg-warning/10 text-warning-text",
   stock: "bg-destructive/10 text-destructive",
   customer: "bg-accent text-accent-foreground",
   task: "bg-muted text-muted-foreground",

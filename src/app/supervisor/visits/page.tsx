@@ -74,7 +74,7 @@ export default function SupervisorVisitsPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label={t('supervisor.visits.totalVisits')} value={totalVisits} tone="text-foreground" />
         <StatCard label={t('salesman.visits.completed')} value={completed} tone="text-success" />
-        <StatCard label={t('supervisor.visits.inProgress')} value={inProgress} tone="text-warning" />
+        <StatCard label={t('supervisor.visits.inProgress')} value={inProgress} tone="text-warning-text" />
       </div>
 
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -90,7 +90,7 @@ export default function SupervisorVisitsPage() {
                   <div className="text-xs text-body capitalize">{m.designation ?? t('supervisor.att.staffFallback')}</div>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="px-2.5 py-1 rounded-full bg-warning/10 text-warning font-medium">
+                  <span className="px-2.5 py-1 rounded-full bg-warning/10 text-warning-text font-medium">
                     {t('supervisor.visits.inProgressLabel').replace('{count}', String(m.visits.inProgress))}
                   </span>
                   <span className="px-2.5 py-1 rounded-full bg-success/10 text-success font-medium">

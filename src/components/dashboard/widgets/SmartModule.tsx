@@ -26,7 +26,7 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
 
   const badgeStyles = {
     default: "bg-muted text-muted-foreground",
-    warning: "bg-warning/10 text-warning",
+    warning: "bg-warning/10 text-warning-text",
     success: "bg-success/10 text-success",
     danger: "bg-destructive/10 text-destructive",
   };

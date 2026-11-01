@@ -22,8 +22,10 @@ html { zoom: var(--app-zoom, 1); }
 /* Intelligence Palette override (LOCAL-ONLY branch design/global-visual-override, 2026-11-01, NOT on main):
    Base Sapphire #0F172A (foreground/panel, unchanged), Slate-Teal #4F6D7A (primary/hover/input/muted text),
    Electric Blue #3B82F6 (focus ring + secondary-strong only), Deep Amber #F59E0B (warning/accent-strong).
-   Contrast note: amber #F59E0B as text on white is ~2.6:1 (below 4.5:1) — warning text on light
-   surfaces will look lighter; warning-foreground is Base Sapphire for amber fills. For Umair's inspection.
+   Contrast note (RESOLVED 2026-11-01): bright amber #F59E0B as text on white is 2.15:1 —
+   readable warning text now uses --color-warning-text (#B45309, 5.02:1 on white; dark
+   #FBBF24, 8.76:1 on dark card). Bright #F59E0B remains only for icons, badge fills/borders,
+   and tinted fills. Warning-foreground stays Base Sapphire for amber fills.
    Aankh Step 1 (Umair-approved 2026-10-30): ui-ux-pro-max skill-blue palette.
    Token names unchanged; values only. Light input is #64748B, not the
    proposed #94A3B8, because the repo's AGENTS.md requires a 3:1 input
@@ -54,6 +56,7 @@ html { zoom: var(--app-zoom, 1); }
   --color-success: #35704F;
   --color-success-foreground: #FFFFFF;
   --color-warning: #F59E0B;
+  --color-warning-text: #B45309;
   --color-warning-foreground: #0F172A;
   --color-body: #334155;
   --color-light-text: #4F6D7A;
@@ -128,6 +131,7 @@ html { zoom: var(--app-zoom, 1); }
   --color-accent-strong: #F59E0B;
   --color-success: #7FBF98;
   --color-warning: #F59E0B;
+  --color-warning-text: #FBBF24;
   --color-body: #CBD5E1;
   --color-light-text: #94A3B8;
   --color-destructive-bg: #450A0A;

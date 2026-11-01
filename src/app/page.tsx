@@ -17594,7 +17594,7 @@ setCustomerOrganizationName("");
                         <span className="text-foreground/80 truncate">{item.productName}</span>
                         <span className={cn(
                           "shrink-0 font-medium",
-                          item.currentStock === 0 ? "text-destructive" : "text-warning",
+                          item.currentStock === 0 ? "text-destructive" : "text-warning-text",
                         )}>
                           {t('dashboard.inStockCount').replace('{count}', String(item.currentStock))}
                         </span>
@@ -17829,7 +17829,7 @@ setCustomerOrganizationName("");
           </div>
 
           {businessIntelligenceAnalytics.overview.unknownCostLines > 0 && (
-            <div className="mt-4 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning">
+            <div className="mt-4 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning-text">
               {t('bi.unknownCostWarning')}
             </div>
           )}
@@ -17899,8 +17899,8 @@ setCustomerOrganizationName("");
                   ))}
                   {businessIntelligenceAnalytics.lowStockProducts.slice(0, 5).map((product) => (
                     <div key={product.productId} className="rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm">
-                      <div className="font-medium text-warning/80">{product.productName}</div>
-                      <div className="text-warning">{t('bi.stockReorderLevel').replace('{stock}', String(product.currentStock)).replace('{level}', String(product.reorderLevel))}</div>
+                      <div className="font-medium text-warning-text/80">{product.productName}</div>
+                      <div className="text-warning-text">{t('bi.stockReorderLevel').replace('{stock}', String(product.currentStock)).replace('{level}', String(product.reorderLevel))}</div>
                     </div>
                   ))}
                   {businessIntelligenceAnalytics.outOfStockProducts.length === 0 && businessIntelligenceAnalytics.lowStockProducts.length === 0 && (
@@ -18061,7 +18061,7 @@ setCustomerOrganizationName("");
                 <div className="flex flex-col gap-0.5 sm:items-end">
                   <span className="text-sm text-muted-foreground">{t('bi.estimatedStockValue')}: {formatBooksMoney(businessIntelligenceAnalytics.inventoryStockValue)}</span>
                   {businessIntelligenceAnalytics.inventoryUnknownCost.productCount > 0 && (
-                    <span className="text-xs text-warning">{t('stock.unknownCost')}: {t('stock.unknownCostDetail').replace('{count}', String(businessIntelligenceAnalytics.inventoryUnknownCost.productCount)).replace('{units}', String(businessIntelligenceAnalytics.inventoryUnknownCost.units)).replace('{amount}', formatBooksMoney(businessIntelligenceAnalytics.inventoryUnknownCost.sellingEstimate))}</span>
+                    <span className="text-xs text-warning-text">{t('stock.unknownCost')}: {t('stock.unknownCostDetail').replace('{count}', String(businessIntelligenceAnalytics.inventoryUnknownCost.productCount)).replace('{units}', String(businessIntelligenceAnalytics.inventoryUnknownCost.units)).replace('{amount}', formatBooksMoney(businessIntelligenceAnalytics.inventoryUnknownCost.sellingEstimate))}</span>
                   )}
                 </div>
               </div>
@@ -18156,7 +18156,7 @@ setCustomerOrganizationName("");
               <div className="rounded border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.seasonalMovement')}</h3>
                 {!businessIntelligenceAnalytics.enoughSeasonalData && (
-                  <p className="mb-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning">
+                  <p className="mb-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning-text">
                     {t('bi.moreSeasonalData')}
                   </p>
                 )}
@@ -18349,7 +18349,7 @@ setCustomerOrganizationName("");
           </div>
 
           {costCoverage < 100 && (
-            <div className="mt-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/80">
+            <div className="mt-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning-text/80">
               <p className="font-medium">
                 {t('profit.missingCostWarning')}
               </p>
@@ -18416,7 +18416,7 @@ setCustomerOrganizationName("");
                           <td className="py-2 pr-3">
                             <div className="font-medium text-foreground">{product.productName}</div>
                             {product.hasUnknownCostLines && (
-                              <div className="text-xs text-warning">{t('profit.partialCostData')}</div>
+                              <div className="text-xs text-warning-text">{t('profit.partialCostData')}</div>
                             )}
                           </td>
                           <td className="py-2 pr-3 text-foreground/80">{product.quantitySold}</td>
@@ -18580,8 +18580,8 @@ setCustomerOrganizationName("");
                 <div className="text-sm text-destructive/80">{t('stock.outOfStock')}</div>
               </div>
               <div className="rounded border border-warning/20 bg-warning/5 p-5">
-                <div className="text-2xl font-semibold tabular-nums text-warning">{inventorySummaryCounts.urgentReorder}</div>
-                <div className="text-sm text-warning/80">{t('inventory.urgentReorder')}</div>
+                <div className="text-2xl font-semibold tabular-nums text-warning-text">{inventorySummaryCounts.urgentReorder}</div>
+                <div className="text-sm text-warning-text/80">{t('inventory.urgentReorder')}</div>
               </div>
               <div className="rounded border border-border bg-card p-5">
                 <div className="text-2xl font-semibold tabular-nums text-foreground">{inventorySummaryCounts.missingReorderLevel}</div>
@@ -18625,7 +18625,7 @@ setCustomerOrganizationName("");
                           snapshot.status === "out_of_stock"
                             ? "bg-destructive/10 text-destructive"
                             : snapshot.status === "urgent_reorder"
-                              ? "bg-warning/10 text-warning"
+                              ? "bg-warning/10 text-warning-text"
                               : "bg-muted/50 text-muted-foreground";
                         return (
                           <span className={`rounded px-2 py-1 text-xs font-semibold ${badgeClass}`}>{label}</span>
@@ -18721,7 +18721,7 @@ setCustomerOrganizationName("");
                                 recommendation.status === "Out of Stock"
                                   ? "bg-destructive/10 text-destructive"
                                   : recommendation.status === "Urgent Reorder"
-                                    ? "bg-warning/10 text-warning"
+                                    ? "bg-warning/10 text-warning-text"
                                     : recommendation.status === "Missing Reorder Level"
                                       ? "bg-muted/50 text-muted-foreground"
                                       : "bg-success/10 text-success"
@@ -18743,7 +18743,7 @@ setCustomerOrganizationName("");
           {inventoryTab === "adjustments" && (
           <div className="space-y-6">
             {!canManageInventory && (
-              <div className="rounded border border-warning/20 bg-warning/5 p-5 text-sm text-warning/90">
+              <div className="rounded border border-warning/20 bg-warning/5 p-5 text-sm text-warning-text/90">
                 {t('inventory.viewAccessWarning')}
               </div>
             )}
@@ -19202,7 +19202,7 @@ setCustomerOrganizationName("");
           {inventoryTab === "import" && (
           <div className="space-y-6">
             {!canManageInventory && (
-              <div className="rounded border border-warning/20 bg-warning/5 p-5 text-sm text-warning/90">
+              <div className="rounded border border-warning/20 bg-warning/5 p-5 text-sm text-warning-text/90">
                 {t('inventory.importViewAccessWarning')}
               </div>
             )}
@@ -19428,7 +19428,7 @@ setCustomerOrganizationName("");
             )}
 
             {creditOverrideConfirmation && salesPaymentType === "credit" && (
-              <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/80">
+              <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning-text/80">
                 <h3 className="mb-2 text-base font-medium">{t('sell.overrideRequired')}</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>{t('sell.outstandingBalance')}: {formatBooksMoney(selectedCustomerOutstandingBalance)}</div>
@@ -20097,7 +20097,7 @@ setCustomerOrganizationName("");
                           {order.status}
                         </span>
                         {order.payment_type && (
-                          <span className={`ml-1 rounded px-2 py-0.5 text-xs capitalize border ${order.payment_type === "cash" ? "border-success/30 text-success bg-success/5" : order.payment_type === "card" ? "border-primary/30 text-primary bg-primary/5" : "border-warning/30 text-warning bg-warning/5"}`}>
+                          <span className={`ml-1 rounded px-2 py-0.5 text-xs capitalize border ${order.payment_type === "cash" ? "border-success/30 text-success bg-success/5" : order.payment_type === "card" ? "border-primary/30 text-primary bg-primary/5" : "border-warning/30 text-warning-text bg-warning/5"}`}>
                             {order.payment_type === "cash" ? t('sell.paymentCash') : order.payment_type === "card" ? t('sell.paymentCard') : t('sell.paymentCredit')}
                           </span>
                         )}
@@ -20683,8 +20683,8 @@ setCustomerOrganizationName("");
                   <div className="mt-1 text-lg font-medium text-success">{formatBooksMoney(grossProfit)}</div>
                 </div>
                 <div className="rounded border border-warning/30 bg-warning/5 p-4">
-                  <div className="text-xs text-warning/80">{t('sell.outstandingReceivables')}</div>
-                  <div className="mt-1 text-lg font-medium text-warning">{formatBooksMoney(outstandingReceivables)}</div>
+                  <div className="text-xs text-warning-text/80">{t('sell.outstandingReceivables')}</div>
+                  <div className="mt-1 text-lg font-medium text-warning-text">{formatBooksMoney(outstandingReceivables)}</div>
                 </div>
               </div>
 
@@ -21022,7 +21022,7 @@ setCustomerOrganizationName("");
                               ? "bg-success/10 text-success"
                               : invoiceItem.status === "Overdue"
                                 ? "bg-destructive/10 text-destructive"
-                                : "bg-warning/10 text-warning"
+                                : "bg-warning/10 text-warning-text"
                           }`}
                         >
                           {payStatusLabelMap[invoiceItem.status] ?? invoiceItem.status}
@@ -21089,7 +21089,7 @@ setCustomerOrganizationName("");
                     )}
 
                     {historyItem.unallocatedAmount > 0 && (
-                      <p className="mt-2 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
+                      <p className="mt-2 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning-text">
                         {t('payments.unallocatedBalance')}
                       </p>
                     )}
@@ -21691,7 +21691,7 @@ setCustomerOrganizationName("");
                   expenseMessage.startsWith(t('page.errorPrefix'))
                     ? "text-destructive"
                     : expenseMessage.startsWith(t('page.expenseSavedButPrefix'))
-                      ? "text-warning"
+                      ? "text-warning-text"
                       : "text-success"
                 }`}
               >
@@ -22443,10 +22443,10 @@ setCustomerOrganizationName("");
                       {t('products.chipOutOfStock')}: <b className={outOfStockCount > 0 ? "text-destructive" : ""}>{outOfStockCount}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      {t('products.chipReorderNeeded')}: <b className={reorderNeededCount > 0 ? "text-warning" : ""}>{reorderNeededCount}</b>
+                      {t('products.chipReorderNeeded')}: <b className={reorderNeededCount > 0 ? "text-warning-text" : ""}>{reorderNeededCount}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">
-                      {t('inventory.missingReorderLevel')}: <b className={missingLevelCount > 0 ? "text-warning" : ""}>{missingLevelCount}</b>
+                      {t('inventory.missingReorderLevel')}: <b className={missingLevelCount > 0 ? "text-warning-text" : ""}>{missingLevelCount}</b>
                     </span>
                     <span className="rounded bg-card px-2 py-1 text-foreground/80">{t('stock.healthy')}: {rows.filter((r) => r.status === "Healthy").length}</span>
                   </div>
@@ -22475,7 +22475,7 @@ setCustomerOrganizationName("");
                                   className={
                                     r.status === "Out of Stock"
                                       ? "text-destructive"
-                                      : "text-warning"
+                                      : "text-warning-text"
                                   }
                                 >
                                   {r.status === "Out of Stock" ? t('stock.outOfStock') : r.status === "Reorder Needed" ? t('products.statusReorderNeeded') : r.status === "No Reorder Level" ? t('inventory.missingReorderLevel') : t('stock.healthy')}
@@ -22944,12 +22944,12 @@ setCustomerOrganizationName("");
                           })()}
                           <div className="flex flex-wrap gap-2 text-xs">
                             {customer.allow_over_limit && (
-                              <span className="rounded bg-warning/10 px-2 py-1 text-warning">
+                              <span className="rounded bg-warning/10 px-2 py-1 text-warning-text">
                                 {t('customers.aboveLimitAllowed')}
                               </span>
                             )}
                             {customer.allow_overdue_sales && (
-                              <span className="rounded bg-warning/10 px-2 py-1 text-warning">
+                              <span className="rounded bg-warning/10 px-2 py-1 text-warning-text">
                                 {t('customers.overdueAllowed')}
                               </span>
                             )}
@@ -23433,10 +23433,10 @@ setCustomerOrganizationName("");
           {invoiceError && <p className="mt-4 text-sm text-destructive">{invoiceError}</p>}
           {newPurchaseExpenseReminder && (
             <div className="mt-4 rounded border border-warning/20 bg-warning/5 p-4">
-              <p className="text-sm font-medium text-warning/80">
+              <p className="text-sm font-medium text-warning-text/80">
                 {t('buy.expenseReminderQuestion')}
               </p>
-              <p className="mt-1 text-xs text-warning">
+              <p className="mt-1 text-xs text-warning-text">
                 {t('buy.invoicePrefix')} {newPurchaseExpenseReminder.invoiceNumber}
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -23595,7 +23595,7 @@ setCustomerOrganizationName("");
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.expenseReview')}</div>
-                        <span className="inline-flex rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
+                        <span className="inline-flex rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning-text">
                           {expenseReviewLabel}
                         </span>
                       </div>
@@ -24852,7 +24852,7 @@ setCustomerOrganizationName("");
             >{t('page.jsxRefreshMarketData')}</button>
           </div>
 
-          <div className="mb-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
+          <div className="mb-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning-text/90">
             This is an owner-reviewed advisory dashboard. TradeOS does not fetch live news or scrape websites automatically.
             AI analysis can be wrong. Use it as advisory support, not automatic decision-making.
           </div>
@@ -24985,7 +24985,7 @@ setCustomerOrganizationName("");
                 </div>
               </div>
             </div>
-            <div className="mt-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning/90">
+            <div className="mt-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning-text/90">
               This queue is owner-controlled. TradeOS does not fetch websites, scrape pages, or save intelligence items automatically.
             </div>
 
@@ -25135,7 +25135,7 @@ setCustomerOrganizationName("");
                               </span>
                             )}
                             {item.suggested_impact_direction && (
-                              <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
+                              <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning-text">
                                 {getMarketLabel(marketImpactDirectionOptionsT, item.suggested_impact_direction)}
                               </span>
                             )}
@@ -25191,7 +25191,7 @@ setCustomerOrganizationName("");
                             type="button"
                             onClick={() => updateMarketImportQueueStatus(item, "pending")}
                             disabled={item.review_status === "pending" || item.review_status === "converted"}
-                            className="rounded border border-warning bg-card px-3 py-2 text-xs text-warning hover:bg-warning/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
+                            className="rounded border border-warning bg-card px-3 py-2 text-xs text-warning-text hover:bg-warning/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >{t('page.jsxReopenPending')}</button>
                           <button
                             type="button"
@@ -25231,7 +25231,7 @@ setCustomerOrganizationName("");
                 </div>
               </div>
             </div>
-            <div className="mt-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning/90">
+            <div className="mt-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning-text/90">
               AI analysis can be wrong. Use it as advisory support, not automatic decision-making.
             </div>
             <div className="mt-4 space-y-3">
@@ -25251,7 +25251,7 @@ setCustomerOrganizationName("");
                           <span className="rounded bg-card px-2 py-1 text-xs font-medium text-primary">
                             {getMarketLabel(marketCategoryOptionsT, analysis.ai_market_category)}
                           </span>
-                          <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
+                          <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning-text">
                             {getMarketLabel(marketImpactDirectionOptionsT, analysis.ai_impact_direction)}
                           </span>
                           <span className="rounded bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
@@ -25519,7 +25519,7 @@ setCustomerOrganizationName("");
                             <span className="rounded bg-foreground px-2 py-1 text-xs font-medium text-white">
                               {getMarketLabel(marketCategoryOptionsT, item.market_category)}
                             </span>
-                            <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning">
+                            <span className="rounded bg-warning/10 px-2 py-1 text-xs font-medium text-warning-text">
                               {urgencyLabelByValue[advisory.urgency] ?? advisory.urgency}
                             </span>
                             <span className="rounded bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
@@ -25651,7 +25651,7 @@ setCustomerOrganizationName("");
                             type="button"
                             onClick={() => updateMarketIntelligenceStatus(item, "watching")}
                             disabled={item.status === "watching"}
-                            className="rounded border border-warning bg-card px-3 py-2 text-xs text-warning hover:bg-warning/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
+                            className="rounded border border-warning bg-card px-3 py-2 text-xs text-warning-text hover:bg-warning/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
                           >{t('page.jsxMarkWatching')}</button>
                           <button
                             type="button"
@@ -25710,7 +25710,7 @@ setCustomerOrganizationName("");
             >{t('page.jsxRefreshDutyData')}</button>
           </div>
 
-          <div className="mb-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
+          <div className="mb-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning-text/90">
             Location tracking works while the app is open/active. True background tracking may require a native mobile app later.
           </div>
 
@@ -26179,7 +26179,7 @@ setCustomerOrganizationName("");
                       ? "bg-primary/10 text-primary"
                       : check.status === "info"
                         ? "bg-muted text-foreground"
-                        : "bg-warning/10 text-warning";
+                        : "bg-warning/10 text-warning-text";
                 return (
                   <div key={check.key} className="rounded border border-border bg-muted/30 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -26220,8 +26220,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             <p className="mt-3 text-xs text-muted-foreground/80">{t('page.jsxSecretNeverDisplayed')}</p>
           </div>
 
-          <div className="mt-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
-            <h3 className="mb-2 text-lg font-medium text-warning/80">{t('page.jsxBeforePublicLaunch')}</h3>
+          <div className="mt-5 rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning-text/90">
+            <h3 className="mb-2 text-lg font-medium text-warning-text/80">{t('page.jsxBeforePublicLaunch')}</h3>
             <ul className="list-disc space-y-1 pl-5">
               <li>{t('page.jsxDoNotExposeServiceKey')}</li>
               <li>{t('page.jsxConfirmRls')}</li>
@@ -26293,8 +26293,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               <div className="mt-1 text-2xl font-semibold text-success">{securityCheckSummary.passed}</div>
             </div>
             <div className="rounded border border-warning/20 bg-card p-3">
-              <div className="text-sm text-warning">{t('page.jsxPending')}</div>
-              <div className="mt-1 text-2xl font-semibold text-warning">{securityCheckSummary.pending}</div>
+              <div className="text-sm text-warning-text">{t('page.jsxPending')}</div>
+              <div className="mt-1 text-2xl font-semibold text-warning-text">{securityCheckSummary.pending}</div>
             </div>
             <div className="rounded border border-destructive/20 bg-card p-3">
               <div className="text-sm text-destructive">{t('page.jsxFailed')}</div>
@@ -26311,7 +26311,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                     ? "bg-success/10 text-success"
                     : check.status === "fail"
                       ? "bg-destructive/10 text-destructive/90"
-                      : "bg-warning/10 text-warning";
+                      : "bg-warning/10 text-warning-text";
                 return (
                   <div key={check.check_key} className="rounded border border-border bg-muted/30 p-3">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -26368,7 +26368,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
           <div className={`mt-5 rounded border p-4 text-sm ${
             allSecurityChecksPassed
               ? "border-success/20 bg-success/5 text-success/90"
-              : "border-warning/20 bg-warning/5 text-warning/90"
+              : "border-warning/20 bg-warning/5 text-warning-text/90"
           }`}>
             {allSecurityChecksPassed
               ? t('page.tradeosReadyDeploy')
@@ -26730,9 +26730,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
           </div>
 
           <div className="mt-6 rounded border border-warning/20 bg-warning/5 p-4">
-            <h3 className="mb-3 text-lg font-medium text-warning/80">{t('tasks.suggested')}</h3>
+            <h3 className="mb-3 text-lg font-medium text-warning-text/80">{t('tasks.suggested')}</h3>
             {taskSuggestions.length === 0 ? (
-              <p className="text-sm text-warning/90">{t('tasks.noSuggestions')}</p>
+              <p className="text-sm text-warning-text/90">{t('tasks.noSuggestions')}</p>
             ) : (
               <div className="grid gap-3 lg:grid-cols-2">
                 {taskSuggestions.map((suggestion) => (
@@ -27398,7 +27398,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   </div>
                   <div className="rounded border border-border bg-muted/30 p-3">
                     <div className="text-xs text-muted-foreground">{t('activity.payment')}</div>
-                    <div className={`mt-0.5 font-medium capitalize ${order.payment_type === "cash" ? "text-success" : order.payment_type === "card" ? "text-primary" : "text-warning"}`}>
+                    <div className={`mt-0.5 font-medium capitalize ${order.payment_type === "cash" ? "text-success" : order.payment_type === "card" ? "text-primary" : "text-warning-text"}`}>
                       {order.payment_type === "cash" ? t('sell.paymentCash') : order.payment_type === "card" ? t('sell.paymentCard') : `${t('sell.paymentCredit')}${order.credit_days ? ` (${order.credit_days}d)` : ""}`}
                     </div>
                   </div>

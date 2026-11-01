@@ -32,7 +32,7 @@ export interface SectionSummary {
 
 const toneClass: Record<NonNullable<SectionSummaryMetric["tone"]>, string> = {
   default: "text-foreground",
-  warning: "text-warning",
+  warning: "text-warning-text",
   danger: "text-destructive",
   success: "text-success",
 };

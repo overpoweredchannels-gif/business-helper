@@ -247,7 +247,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                         </div>
                       </>
                     ) : (
-                      emp.isOnDuty && <div className="text-xs text-warning mt-0.5">{emp.trackingError || t('fsm.tracking.noLocationData')}</div>
+                      emp.isOnDuty && <div className="text-xs text-warning-text mt-0.5">{emp.trackingError || t('fsm.tracking.noLocationData')}</div>
                     )}
                     {emp.scheduledEndAt && emp.isOnDuty && (
                       <div className="mt-0.5 text-[11px] text-light-text">

@@ -164,7 +164,7 @@ export default function CollectionsApprovalPage() {
 function CollectionStatus({ status }: { status: string }) {
   const { t } = useRegional();
   const styles: Record<string, string> = {
-    pending: "bg-warning/10 text-warning",
+    pending: "bg-warning/10 text-warning-text",
     approved: "bg-success/10 text-success",
     rejected: "bg-destructive/10 text-destructive",
   };

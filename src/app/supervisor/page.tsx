@@ -44,9 +44,9 @@ const ATT_KEYS: Record<string, 'supervisor.home.att.present' | 'supervisor.home.
 
 const ATT_TONE: Record<string, string> = {
   present: "text-success bg-success/10",
-  late: "text-warning bg-warning/10",
+  late: "text-warning-text bg-warning/10",
   absent: "text-destructive bg-destructive/10",
-  half_day: "text-warning bg-warning/10",
+  half_day: "text-warning-text bg-warning/10",
   leave: "text-info bg-info/10",
   holiday: "text-muted-foreground bg-muted",
   no_record: "text-muted-foreground bg-muted",

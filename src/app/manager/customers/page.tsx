@@ -287,7 +287,7 @@ export default function CustomersPage() {
                             className={cn(
                               "px-2 py-0.5 rounded-full text-[11px] font-medium capitalize",
                               c.priority === "high" ? "bg-destructive/10 text-destructive" :
-                              c.priority === "low" ? "bg-muted text-muted-foreground" : "bg-warning/10 text-warning",
+                              c.priority === "low" ? "bg-muted text-muted-foreground" : "bg-warning/10 text-warning-text",
                             )}
                           >
                             {priorityLabels[c.priority ?? "medium"] ?? c.priority ?? "medium"}

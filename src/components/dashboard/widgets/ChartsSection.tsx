@@ -43,7 +43,7 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
       <div className="flex items-center gap-2.5 min-w-0">
         <span className={cn(
           "size-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
-          rank === 1 && "bg-warning/20 text-warning",
+          rank === 1 && "bg-warning/20 text-warning-text",
           rank === 2 && "bg-muted text-muted-foreground",
           rank === 3 && "bg-primary-light text-primary",
           rank > 3 && "bg-muted text-muted-foreground",
