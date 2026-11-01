@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import ImportWizardV2 from "./ImportWizardV2";
 import ExportWizard from "./ExportWizard";
-import { getEntityExportConfig } from "@/lib/import-export/registry";
+import { getEntityConfig, getEntityExportConfig } from "@/lib/import-export/registry";
+import { buildEntityTemplateRow } from "@/lib/import-export/template";
+import { downloadCsv } from "@/lib/tradeos/formatters";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface ImportExportSectionProps {
@@ -29,6 +31,7 @@ export default function ImportExportSection({
   extraContext,
 }: ImportExportSectionProps) {
   const { t } = useRegional();
+  const importConfig = getEntityConfig(entityKey);
   const [open, setOpen] = useState<"import" | "export" | null>(null);
   const [busy, setBusy] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -45,6 +48,16 @@ export default function ImportExportSection({
         >
           {t('importexport.import')}
         </button>
+        {importConfig && importConfig.fields.length > 0 && (
+          <button
+            type="button"
+            onClick={() => downloadCsv(`tradeos-${entityKey}-template.csv`, [buildEntityTemplateRow(importConfig.fields)])}
+            className="min-h-11 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary"
+            title={t('importexport.templateTitle').replace('{entity}', entityLabel)}
+          >
+            {t('importexport.downloadTemplate')}
+          </button>
+        )}
         {getEntityExportConfig(entityKey) && <button
           type="button"
           onClick={() => setOpen("export")}
