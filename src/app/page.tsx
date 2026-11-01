@@ -12354,6 +12354,40 @@ setCustomerOrganizationName("");
     await fetchTasks(currentOrganizationId);
   };
 
+  const handleDeleteTask = async (taskId: string) => {
+    if (!window.confirm(t('tasks.confirmDeleteTask'))) return;
+    setTaskMessage(null);
+    setTaskError(null);
+
+    if (!requireOrganization("delete task")) {
+      setTaskError(orgNotLoadedMessage);
+      return;
+    }
+
+    const taskToDelete = tasks.find((task) => task.id === taskId);
+    const { error } = await supabase
+      .from("tasks")
+      .delete()
+      .eq("id", taskId)
+      .eq("organization_id", currentOrganizationId);
+
+    if (error) {
+      console.error("Supabase task delete error:", JSON.stringify(error, null, 2));
+      setTaskError(t('tasks.taskDeleteFailed'));
+      return;
+    }
+
+    await createAuditLog({
+      action: "deleted",
+      entity_type: "task",
+      entity_id: taskId,
+      entity_label: taskToDelete?.title ?? taskId,
+      description: t('tasks.taskDeleted'),
+    });
+    setTaskMessage(t('tasks.taskDeleted'));
+    await fetchTasks(currentOrganizationId);
+  };
+
   const taskMatchesRelation = (
     task: Task,
     relation: {
@@ -26894,6 +26928,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                                   {t('tasks.cancelTask')}
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTask(task.id)}
+                                className="rounded border border-destructive px-2 py-1 text-xs text-destructive hover:bg-destructive/5"
+                              >
+                                {t('tasks.deleteTask')}
+                              </button>
                             </div>
                           </td>
                         </tr>
