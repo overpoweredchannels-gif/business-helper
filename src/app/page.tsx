@@ -15,6 +15,7 @@ import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, POSReceiptPreview, type Receipt } from "@/components/sales/POSReceipt";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 import { buildAtomicSaleReceipt } from "@/lib/print/retail-receipt";
+import { fillWhatsAppTemplate, firstWhatsAppLink, parseWhatsAppNumber } from "@/lib/share/whatsapp";
 import { formatAvailableStock } from "@/lib/products/stock-display";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
@@ -4275,11 +4276,14 @@ setCustomerOrganizationName("");
           const transaction = recovered.result.transaction;
           const invoiceNumber = String(transaction.invoice_number ?? "");
           if (quickSaleMode) {
-            setLastPOSReceipt(buildAtomicSaleReceipt(recovered.result, {
+            const recoveredCustomer = customers.find((c) => String(c.id) === String(transaction.customer_id));
+          setLastPOSReceipt(buildAtomicSaleReceipt(recovered.result, {
               scope: pendingScope,
               business: currentOrganization?.name || "TradeOS",
               fallbackDate: salesInvoiceDate,
               fallbackPayment: salesPaymentType,
+              customerWhatsapp: recoveredCustomer?.whatsapp ?? null,
+              customerPhone: recoveredCustomer?.phone ?? null,
             }));
           }
           setSalesError(null);
@@ -4623,11 +4627,14 @@ setCustomerOrganizationName("");
       const invoiceNumber = String(transaction.invoice_number ?? "");
       // Instant print (2g): wholesale saves build a receipt exactly like
       // Retail POS — the dialog below auto-prints it on save.
+      const saleCustomer = customers.find((c) => String(c.id) === String(transaction.customer_id));
       setLastPOSReceipt(buildAtomicSaleReceipt(result, {
         scope,
         business: currentOrganization?.name || "TradeOS",
         fallbackDate: salesInvoiceDate,
         fallbackPayment: salesPaymentType,
+        customerWhatsapp: saleCustomer?.whatsapp ?? null,
+        customerPhone: saleCustomer?.phone ?? null,
       }));
       if (previousPendingConfirmed) {
         setSalesMessage(t('page.earlierSaleConfirmed').replace('{number}', invoiceNumber));
@@ -22971,6 +22978,14 @@ setCustomerOrganizationName("");
                           : policy === "limit_and_days"
                             ? t('customers.creditSummaryLimitTerms').replace('{amount}', creditLimitSummary).replace('{days}', String(creditDaysSummary))
                             : policyLabel;
+                    const outstanding = receivablesStats.find((r) => String(r.customerId) === String(customer.id))?.outstanding ?? 0;
+                    const remindText = fillWhatsAppTemplate(t('share.reminderText'), {
+                      customer: customer.customer_name,
+                      shop: currentOrganization?.name || "TradeOS",
+                      amount: formatBooksMoney(outstanding),
+                    });
+                    const remindLink = outstanding > 0 ? firstWhatsAppLink(customer.whatsapp, customer.phone, remindText) : null;
+                    const remindContactNotInternational = outstanding > 0 && !remindLink && Boolean(customer.whatsapp || customer.phone) && !parseWhatsAppNumber(customer.whatsapp) && !parseWhatsAppNumber(customer.phone);
 
                     return (
                       <li
@@ -22991,6 +23006,9 @@ setCustomerOrganizationName("");
                           <div>{t('customers.phonePrefix')} {customer.phone ?? t('common.none')}</div>
                           <div>{t('customers.cityPrefix')} {customer.city ?? t('common.none')}</div>
                           <div>{t('customers.creditPolicyPrefix')} {creditSummary}</div>
+                          {outstanding > 0 && (
+                            <div>{t('share.outstanding').replace('{amount}', formatBooksMoney(outstanding))}</div>
+                          )}
                           {(() => {
                             const customerTxIds = new Set(
                               salesTransactions
@@ -23086,7 +23104,20 @@ setCustomerOrganizationName("");
                               {t('products.archive')}
                             </button>
                           )}
+                          {remindLink && (
+                            <a
+                              href={remindLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded border border-success px-3 py-1 text-sm text-success transition hover:bg-success/5"
+                            >
+                              {t('share.remind')}
+                            </a>
+                          )}
                         </div>
+                        {remindContactNotInternational && (
+                          <div className="text-xs text-muted-foreground">{t('share.internationalHint')}</div>
+                        )}
                       </li>
                     );
                   })}

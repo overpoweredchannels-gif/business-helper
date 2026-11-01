@@ -19,6 +19,9 @@ export type Receipt = {
   number: string;
   date: string;
   customer: string;
+  /** Customer contact for WhatsApp sharing; print rendering ignores these. */
+  customerWhatsapp?: string | null;
+  customerPhone?: string | null;
   lineSubtotal: number;
   lineDiscount: number;
   subtotal: number;
@@ -212,7 +215,7 @@ export function resolveReceiptCustomerName(customer: string, chrome: ReceiptChro
 
 export function buildAtomicSaleReceipt(
   result: AtomicSaleReceiptResult,
-  details: { scope: string; business: string; fallbackDate: string; fallbackPayment: string },
+  details: { scope: string; business: string; fallbackDate: string; fallbackPayment: string; customerWhatsapp?: string | null; customerPhone?: string | null },
 ): Receipt {
   const transaction = result.transaction;
   const lines: ReceiptLine[] = result.items.map(item => ({
@@ -243,6 +246,8 @@ export function buildAtomicSaleReceipt(
     // raw-format behaviour.
     date: formatDate(calendarDateOf(transaction.sale_date ?? details.fallbackDate) ?? String(transaction.sale_date ?? details.fallbackDate)),
     customer: result.customer_name || "Customer",
+    customerWhatsapp: details.customerWhatsapp ?? null,
+    customerPhone: details.customerPhone ?? null,
     lineSubtotal: calculated.lineSubtotal,
     lineDiscount: calculated.lineDiscount,
     subtotal: calculated.subtotal,
