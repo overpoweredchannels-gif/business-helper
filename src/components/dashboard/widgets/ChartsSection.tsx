@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
@@ -98,6 +99,107 @@ export function TopProductsCard({ items }: { items: RankedItem[] }) {
           <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} trend={item.trend} />
         ))}
       </div>
+    </div>
+  );
+}
+
+export interface TrendLinePoint {
+  label: string;
+  value: number;
+}
+
+export interface TrendLineSeries {
+  name: string;
+  color: string;
+  fill?: boolean;
+  points: TrendLinePoint[];
+}
+
+// A real SVG line/area chart: the dashboard's BarChart and the BI section's
+// CSS bars show only relative widths. This one shows the actual shape over
+// time, with a zero line when a series goes negative and a native tooltip
+// (title) on every point. It takes no translated strings: names, labels and
+// money formatting all arrive as props, so it works under either regional
+// message system.
+export function TrendLineChart({ series, formatValue, height = 220 }: {
+  series: TrendLineSeries[];
+  formatValue: (value: number) => string;
+  height?: number;
+}) {
+  const width = 720;
+  const padTop = 16;
+  const padBottom = 30;
+  const padSide = 10;
+  const allValues = series.flatMap((s) => s.points.map((p) => p.value));
+  if (allValues.length === 0) return null;
+  const maxValue = Math.max(0, ...allValues);
+  const minValue = Math.min(0, ...allValues);
+  const span = maxValue - minValue || 1;
+  const xFor = (index: number, count: number) =>
+    count <= 1 ? width / 2 : padSide + (index / (count - 1)) * (width - padSide * 2);
+  const yFor = (value: number) =>
+    padTop + (1 - (value - minValue) / span) * (height - padTop - padBottom);
+  const longest = series.reduce((a, b) => (b.points.length > a.points.length ? b : a), series[0]);
+  const axisPoints = longest.points.length > 2
+    ? [longest.points[0], longest.points[Math.floor(longest.points.length / 2)], longest.points[longest.points.length - 1]]
+    : longest.points;
+  const axisStyle: CSSProperties = {
+    fill: "var(--color-muted-foreground)",
+    fontSize: 11,
+    fontVariantNumeric: "tabular-nums",
+  };
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap gap-4">
+        {series.map((s) => (
+          <span key={s.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="inline-block h-2 w-4 rounded-sm" style={{ backgroundColor: s.color }} />
+            {s.name}
+          </span>
+        ))}
+      </div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full"
+        role="img"
+        aria-label={series.map((s) => s.name).join(", ")}
+      >
+        {minValue < 0 && (
+          <line x1={padSide} x2={width - padSide} y1={yFor(0)} y2={yFor(0)} stroke="var(--color-muted-foreground)" strokeWidth={1} strokeDasharray="4 4" opacity={0.5} />
+        )}
+        <text x={padSide} y={padTop - 4} style={axisStyle}>{formatValue(maxValue)}</text>
+        {minValue < 0 && (
+          <text x={padSide} y={height - padBottom + 14} style={axisStyle}>{formatValue(minValue)}</text>
+        )}
+        {series.map((s) => {
+          const line = s.points.map((p, i) => `${i === 0 ? "M" : "L"}${xFor(i, s.points.length)},${yFor(p.value)}`).join(" ");
+          const area = s.points.length > 1
+            ? `${line} L${xFor(s.points.length - 1, s.points.length)},${yFor(0)} L${xFor(0, s.points.length)},${yFor(0)} Z`
+            : "";
+          return (
+            <g key={s.name}>
+              {s.fill && area && <path d={area} fill={s.color} opacity={0.12} />}
+              {s.points.length > 1 && <path d={line} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+              {s.points.map((p, i) => (
+                <circle key={`${p.label}-${i}`} cx={xFor(i, s.points.length)} cy={yFor(p.value)} r={3.5} fill={s.color}>
+                  <title>{`${p.label}: ${formatValue(p.value)}`}</title>
+                </circle>
+              ))}
+            </g>
+          );
+        })}
+        {axisPoints.map((p, i) => (
+          <text
+            key={`${p.label}-${i}`}
+            x={xFor(longest.points.indexOf(p), longest.points.length)}
+            y={height - 8}
+            textAnchor={i === 0 ? "start" : i === axisPoints.length - 1 ? "end" : "middle"}
+            style={axisStyle}
+          >
+            {p.label}
+          </text>
+        ))}
+      </svg>
     </div>
   );
 }

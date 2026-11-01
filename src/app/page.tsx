@@ -59,6 +59,7 @@ import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 import { selectWithColumnFallback } from "@/lib/supabase/select-with-column-fallback";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, SetupImportPrompt, type SectionSummary } from "@/components/dashboard";
+import { TrendLineChart } from "@/components/dashboard/widgets/ChartsSection";
 import { cn } from "@/lib/utils";
 import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
 import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerRetired, rememberSetupBannerRetired } from "@/lib/setup/setup-progress";
@@ -340,6 +341,25 @@ async function authorizedFetch(input: string, init: RequestInit = {}): Promise<R
 // directly and are unaffected by this helper.
 function formatDashboardMoney(displayCurrency: string, displayFxRate: number | null, value: unknown) {
   return displayCurrency !== getActiveBooksCurrency() && displayFxRate ? formatCurrency(value) : formatBooksMoney(value);
+}
+
+// Period comparison for one BI headline figure. Module-level with explicit
+// parameters (translated labels arrive as arguments) so no render-scope
+// closure feeds the compiler. `good` tells the caller how to colour the
+// line: for expenses, up is bad; for sales, profit and collections, up is
+// good. Returns null when there is nothing honest to show.
+function biComparison(
+  current: number,
+  previous: number | undefined,
+  goodWhenUp: boolean,
+  vsPreviousPeriodLabel: string,
+  vsPreviousNewLabel: string,
+): { text: string; good: boolean } | null {
+  if (previous === undefined) return null;
+  if (previous === 0) return current > 0 ? { text: vsPreviousNewLabel, good: goodWhenUp } : null;
+  const pct = ((current - previous) / Math.abs(previous)) * 100;
+  const arrow = pct > 0 ? "↑ " : pct < 0 ? "↓ " : "";
+  return { text: `${arrow}${Math.abs(pct).toFixed(1)}% ${vsPreviousPeriodLabel}`, good: pct === 0 ? true : (pct > 0) === goodWhenUp };
 }
 
 export default function Home() {
@@ -11062,10 +11082,44 @@ setCustomerOrganizationName("");
     return { start: toDateInputValue(lastThirtyDays), end: todayDateValue, label: t('bi.rangeLast30') };
   };
   const biResolvedDateRange = getBusinessIntelligenceDateRange();
-  const isInBiRange = (...dateValues: Array<unknown>) => {
+  const makeBiRangePredicate = (range: { start: string; end: string }) => (...dateValues: Array<unknown>) => {
     const timestamp = getUsableTimestamp(...dateValues);
     const dateOnly = getDateOnly(timestamp.value);
-    return isDateInRange(dateOnly, biResolvedDateRange.start, biResolvedDateRange.end);
+    return isDateInRange(dateOnly, range.start, range.end);
+  };
+  // The window immediately before the selected one, for period comparison.
+  // Same length as the current window; all_time has no previous window.
+  const getPreviousBiRange = (): { start: string; end: string } | null => {
+    const today = new Date();
+    const day = (offset: number) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - offset);
+      return toDateInputValue(d);
+    };
+    if (biDateRange === "today") return { start: day(1), end: day(1) };
+    if (biDateRange === "yesterday") return { start: day(2), end: day(2) };
+    if (biDateRange === "last_7_days") return { start: day(13), end: day(7) };
+    if (biDateRange === "last_30_days") return { start: day(59), end: day(30) };
+    if (biDateRange === "this_month") return getMonthRange(-1);
+    if (biDateRange === "last_month") return getMonthRange(-2);
+    if (biDateRange === "this_year") {
+      const prevYear = today.getFullYear() - 1;
+      return { start: `${prevYear}-01-01`, end: `${prevYear}-12-31` };
+    }
+    if (biDateRange === "custom") {
+      if (!biStartDate || !biEndDate) return null;
+      const startMs = new Date(`${biStartDate}T00:00:00`).getTime();
+      const endMs = new Date(`${biEndDate}T00:00:00`).getTime();
+      if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) return null;
+      const lengthDays = Math.round((endMs - startMs) / 86400000);
+      const prevEnd = addDaysToDateInputValue(biStartDate, -1);
+      if (!prevEnd) return null;
+      const prevStart = addDaysToDateInputValue(prevEnd, -lengthDays);
+      if (!prevStart) return null;
+      return { start: prevStart, end: prevEnd };
+    }
+    if (biDateRange === "all_time") return null;
+    return { start: day(59), end: day(30) };
   };
   const isCurrentOrganizationRecord = (record: any) =>
     !record?.organization_id || !currentOrganizationId || record.organization_id === currentOrganizationId;
@@ -11078,7 +11132,10 @@ setCustomerOrganizationName("");
   const addGroupedAmount = (groups: Record<string, number>, key: string, amount: number) => {
     groups[key] = (groups[key] ?? 0) + safeNumber(amount);
   };
-  const buildBusinessIntelligenceAnalytics = () => {
+  const buildBusinessIntelligenceAnalytics = (range: { start: string; end: string; label: string } = biResolvedDateRange) => {
+    // Shadow the outer predicate so the same builder, with the same filters,
+    // can run over the previous window for period comparison.
+    const isInBiRange = makeBiRangePredicate(range);
     const search = biSearch.trim().toLowerCase();
     const productById = products.reduce<Record<string, Product>>((lookup, product) => {
       lookup[String(product.id)] = product;
@@ -11513,7 +11570,7 @@ setCustomerOrganizationName("");
         : t('page.noHighImpactSignals');
 
     return {
-      range: biResolvedDateRange,
+      range,
       selectedSalesTransactions,
       selectedSalesItems,
       selectedPurchaseTransactions,
@@ -11593,6 +11650,10 @@ setCustomerOrganizationName("");
     };
   };
   const businessIntelligenceAnalytics = buildBusinessIntelligenceAnalytics();
+  const biPreviousRange = getPreviousBiRange();
+  const previousPeriodAnalytics = biPreviousRange
+    ? buildBusinessIntelligenceAnalytics({ ...biPreviousRange, label: "" })
+    : null;
   const biMetricViews = [
     { value: "overview", label: t('bi.viewOverview') },
     { value: "products", label: t('bi.viewProducts') },
@@ -17907,26 +17968,29 @@ setCustomerOrganizationName("");
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              [t('bi.totalSales'), formatBooksMoney(businessIntelligenceAnalytics.overview.totalSalesAmount)],
-              [t('bi.salesInvoices'), businessIntelligenceAnalytics.overview.salesInvoiceCount],
-              [t('bi.totalPurchases'), formatBooksMoney(businessIntelligenceAnalytics.overview.totalPurchasesAmount)],
-              [t('bi.purchaseInvoices'), businessIntelligenceAnalytics.overview.purchaseInvoiceCount],
-              [t('bi.collections'), formatBooksMoney(businessIntelligenceAnalytics.overview.customerCollectionsTotal)],
-              [t('bi.supplierPayments'), formatBooksMoney(businessIntelligenceAnalytics.overview.supplierPaymentsTotal)],
-              [t('bi.expenses'), formatBooksMoney(businessIntelligenceAnalytics.overview.expensesTotal)],
-              [t('bi.estimatedNetProfit'), formatBooksMoney(businessIntelligenceAnalytics.overview.estimatedNetProfit)],
-              [t('bi.estimatedGrossProfit'), formatBooksMoney(businessIntelligenceAnalytics.overview.estimatedGrossProfit)],
-              [t('bi.averageSaleValue'), formatBooksMoney(businessIntelligenceAnalytics.overview.averageSaleValue)],
-              [t('bi.activeCustomers'), businessIntelligenceAnalytics.overview.activeCustomerCount],
-              [t('bi.productsSold'), businessIntelligenceAnalytics.overview.productsSoldCount],
-              [t('bi.lowStock'), businessIntelligenceAnalytics.overview.lowStockCount],
-              [t('bi.outOfStock'), businessIntelligenceAnalytics.overview.outOfStockCount],
-              [t('bi.unknownCostLines'), businessIntelligenceAnalytics.overview.unknownCostLines],
-              [t('bi.unknownCostRevenue'), formatBooksMoney(businessIntelligenceAnalytics.overview.unknownCostRevenue)],
-            ].map(([label, value]) => (
-              <div key={String(label)} className="rounded border border-border bg-card p-4 shadow-sm">
-                <div className="text-sm text-muted-foreground/80">{label}</div>
-                <div className="mt-2 text-2xl font-semibold text-foreground">{value}</div>
+              { label: t('bi.totalSales'), value: formatBooksMoney(businessIntelligenceAnalytics.overview.totalSalesAmount), comparison: biComparison(businessIntelligenceAnalytics.overview.totalSalesAmount, previousPeriodAnalytics?.overview.totalSalesAmount, true, t('bi.vsPreviousPeriod'), t('bi.vsPreviousNew')) },
+              { label: t('bi.salesInvoices'), value: businessIntelligenceAnalytics.overview.salesInvoiceCount },
+              { label: t('bi.totalPurchases'), value: formatBooksMoney(businessIntelligenceAnalytics.overview.totalPurchasesAmount) },
+              { label: t('bi.purchaseInvoices'), value: businessIntelligenceAnalytics.overview.purchaseInvoiceCount },
+              { label: t('bi.collections'), value: formatBooksMoney(businessIntelligenceAnalytics.overview.customerCollectionsTotal), comparison: biComparison(businessIntelligenceAnalytics.overview.customerCollectionsTotal, previousPeriodAnalytics?.overview.customerCollectionsTotal, true, t('bi.vsPreviousPeriod'), t('bi.vsPreviousNew')) },
+              { label: t('bi.supplierPayments'), value: formatBooksMoney(businessIntelligenceAnalytics.overview.supplierPaymentsTotal) },
+              { label: t('bi.expenses'), value: formatBooksMoney(businessIntelligenceAnalytics.overview.expensesTotal), comparison: biComparison(businessIntelligenceAnalytics.overview.expensesTotal, previousPeriodAnalytics?.overview.expensesTotal, false, t('bi.vsPreviousPeriod'), t('bi.vsPreviousNew')) },
+              { label: t('bi.estimatedNetProfit'), value: formatBooksMoney(businessIntelligenceAnalytics.overview.estimatedNetProfit), comparison: biComparison(businessIntelligenceAnalytics.overview.estimatedNetProfit, previousPeriodAnalytics?.overview.estimatedNetProfit, true, t('bi.vsPreviousPeriod'), t('bi.vsPreviousNew')) },
+              { label: t('bi.estimatedGrossProfit'), value: formatBooksMoney(businessIntelligenceAnalytics.overview.estimatedGrossProfit) },
+              { label: t('bi.averageSaleValue'), value: formatBooksMoney(businessIntelligenceAnalytics.overview.averageSaleValue) },
+              { label: t('bi.activeCustomers'), value: businessIntelligenceAnalytics.overview.activeCustomerCount },
+              { label: t('bi.productsSold'), value: businessIntelligenceAnalytics.overview.productsSoldCount },
+              { label: t('bi.lowStock'), value: businessIntelligenceAnalytics.overview.lowStockCount },
+              { label: t('bi.outOfStock'), value: businessIntelligenceAnalytics.overview.outOfStockCount },
+              { label: t('bi.unknownCostLines'), value: businessIntelligenceAnalytics.overview.unknownCostLines },
+              { label: t('bi.unknownCostRevenue'), value: formatBooksMoney(businessIntelligenceAnalytics.overview.unknownCostRevenue) },
+            ].map((card) => (
+              <div key={card.label} className="rounded border border-border bg-card p-4 shadow-sm">
+                <div className="text-sm text-muted-foreground/80">{card.label}</div>
+                <div className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{card.value}</div>
+                {card.comparison && (
+                  <div className={`mt-1 text-xs tabular-nums ${card.comparison.good ? "text-success" : "text-destructive"}`}>{card.comparison.text}</div>
+                )}
               </div>
             ))}
           </div>
@@ -18208,48 +18272,25 @@ setCustomerOrganizationName("");
                 {businessIntelligenceAnalytics.dailyTrends.length === 0 ? (
                   <p className="text-sm text-muted-foreground">{t('bi.noTrendData')}</p>
                 ) : (
-                  <div className="space-y-3">
-                    {businessIntelligenceAnalytics.dailyTrends.slice(-14).map((day) => {
-                      const maxValue = Math.max(...businessIntelligenceAnalytics.dailyTrends.map((item) => item.sales), 0);
-                      return (
-                        <div key={day.date}>
-                          <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{formatDate(day.date)}</span>
-                            <span>{formatBooksMoney(day.sales)}</span>
-                          </div>
-                          <div className="h-2 rounded bg-muted">
-                            <div className="h-2 rounded bg-primary" style={{ width: getBiBarWidth(day.sales, maxValue) }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <TrendLineChart
+                    series={[{ name: t('bi.totalSales'), color: "var(--color-primary)", fill: true, points: businessIntelligenceAnalytics.dailyTrends.map((day) => ({ label: day.date.slice(5), value: day.sales })) }]}
+                    formatValue={formatBooksMoney}
+                  />
                 )}
               </div>
               <div className="rounded border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.dailyProfitExpenseTrend')}</h3>
-                <div className="space-y-3">
-                  {businessIntelligenceAnalytics.dailyTrends.slice(-14).map((day) => {
-                    const maxValue = Math.max(...businessIntelligenceAnalytics.dailyTrends.map((item) => Math.max(Math.abs(item.profit), item.expenses)), 0);
-                    return (
-                      <div key={day.date}>
-                        <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{formatDate(day.date)}</span>
-                          <span>{t('bi.profitWord')} {formatBooksMoney(day.profit)} · {t('bi.expenseWord')} {formatBooksMoney(day.expenses)}</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-1">
-                          <div className="h-2 rounded bg-muted">
-                            <div className="h-2 rounded bg-success" style={{ width: getBiBarWidth(Math.max(0, day.profit), maxValue) }} />
-                          </div>
-                          <div className="h-2 rounded bg-muted">
-                            <div className="h-2 rounded bg-destructive" style={{ width: getBiBarWidth(day.expenses, maxValue) }} />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {businessIntelligenceAnalytics.dailyTrends.length === 0 && <p className="text-sm text-muted-foreground">{t('bi.noProfitTrendData')}</p>}
-                </div>
+                {businessIntelligenceAnalytics.dailyTrends.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{t('bi.noProfitTrendData')}</p>
+                ) : (
+                  <TrendLineChart
+                    series={[
+                      { name: t('bi.profitWord'), color: "var(--color-success)", points: businessIntelligenceAnalytics.dailyTrends.map((day) => ({ label: day.date.slice(5), value: day.profit })) },
+                      { name: t('bi.expenseWord'), color: "var(--color-destructive)", points: businessIntelligenceAnalytics.dailyTrends.map((day) => ({ label: day.date.slice(5), value: day.expenses })) },
+                    ]}
+                    formatValue={formatBooksMoney}
+                  />
+                )}
               </div>
             </div>
           )}
