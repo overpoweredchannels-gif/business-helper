@@ -25,7 +25,7 @@ function CircularScore({ score }: { score: number }) {
   const offset = circ - (score / 100) * circ;
   const color = score >= 80 ? "#4CAF50" : score >= 60 ? "#F4A825" : "#D9534F";
   return (
-    <div className="relative size-28">
+    <div className="relative size-24">
       <svg className="size-full -rotate-90" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r={r} fill="none" stroke="var(--color-muted)" strokeWidth="6" />
         <circle
@@ -39,7 +39,7 @@ function CircularScore({ score }: { score: number }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-3xl font-bold font-heading" style={{ color }}>{score}</span>
-        <span className="text-[10px] text-light-text font-medium uppercase tracking-wider">{t('dashboard.score')}</span>
+        <span className="text-[11px] text-light-text font-medium uppercase tracking-wider">{t('dashboard.score')}</span>
       </div>
     </div>
   );
@@ -60,9 +60,9 @@ export function BusinessHealthCard({ score, metrics, readStatus = "successful-po
     );
   }
   return (
-    <div className="rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
-      <h3 className="text-sm font-semibold text-foreground mb-4">{t('dashboard.businessHealth')}</h3>
-      <div className="flex items-start gap-6">
+    <div className="rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
+      <h3 className="text-sm font-semibold text-foreground mb-3">{t('dashboard.businessHealth')}</h3>
+      <div className="flex items-start gap-4">
         <CircularScore score={score} />
         <div className="flex-1 grid gap-3">
           {metrics.map((m) => (

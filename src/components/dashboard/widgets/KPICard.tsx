@@ -60,17 +60,17 @@ export function KPICard({ title, value, readStatus = "successful-populated", las
     <Component
       onClick={readComplete ? onClick : undefined}
       className={cn(
-        "group rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]",
+        "group rounded-xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]",
         onClick && readComplete && "w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-4">
         <span className="text-xs font-medium text-light-text uppercase tracking-wider">{title}</span>
-        {icon && <div className="size-8 rounded-lg bg-primary-light flex items-center justify-center text-primary">{icon}</div>}
+        {icon && <div className="size-10 rounded-lg bg-primary-light flex items-center justify-center text-primary">{icon}</div>}
       </div>
       <div className="flex items-end justify-between">
         <div>
-          <div role="status" aria-live="polite" className="text-2xl font-semibold tabular-nums text-foreground font-heading"><bdi>{shownValue}</bdi></div>
+          <div role="status" aria-live="polite" className="text-2xl font-semibold tabular-nums leading-tight text-foreground font-heading"><bdi>{shownValue}</bdi></div>
           {readStatus === "failed" && lastSuccessfulAt && (
             <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(language === 'es' ? 'es-ES' : language === 'it' ? 'it-IT' : language === 'ur' ? 'ur-PK' : 'en-US')}</p>
           )}

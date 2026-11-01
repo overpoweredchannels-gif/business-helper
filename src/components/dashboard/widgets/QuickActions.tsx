@@ -32,9 +32,9 @@ interface QuickActionsProps {
 export function QuickActions({ actions = defaultActions, onAction }: QuickActionsProps) {
   const { t } = useRegional();
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <h3 className="text-sm font-semibold text-foreground mb-3">{t('quickaction.heading')}</h3>
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+      <h3 className="text-sm font-semibold text-foreground mb-4">{t('quickaction.heading')}</h3>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {actions.map((a) => (
           <button
             key={a.label}
@@ -42,7 +42,7 @@ export function QuickActions({ actions = defaultActions, onAction }: QuickAction
             data-help-id="dashboard-quick-actions"
             aria-label={a.labelKey ? t(a.labelKey) : a.label}
             className={cn(
-              "flex min-h-11 flex-col items-center gap-1.5 rounded-lg px-2 py-3 text-xs font-medium transition-all duration-200",
+              "flex min-h-11 flex-col items-center gap-1.5 rounded-lg px-2 py-4 text-xs font-medium transition-all duration-200",
               a.primary && "col-span-2 sm:col-span-1",
               "hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               a.primary

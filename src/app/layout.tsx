@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Libre_Baskerville } from "next/font/google";
 import "./globals.css";
 import AppHelp from "@/components/help/AppHelp";
+import { AppFooter } from "@/components/branding/AppFooter";
 import { RegionalProvider } from "@/components/regional/RegionalProvider";
 import { LANGUAGE_BOOTSTRAP_SCRIPT } from "@/lib/regional/settings";
 import { regionalQaEnabled } from "@/lib/regional/qa";
@@ -22,17 +23,17 @@ const libreBaskerville = Libre_Baskerville({
 });
 
 export const metadata: Metadata = {
-  title: "TradeOS",
-  description: "Business operating system for traders, wholesalers, and retailers",
+  title: "AANKH",
+  description: "The eye of your business — business management for traders, wholesalers, and retailers",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    title: "TradeOS",
+    title: "AANKH",
     statusBarStyle: "black-translucent",
   },
   icons: {
-    icon: "/tradeos-icon.svg",
-    apple: "/tradeos-icon.svg",
+    icon: "/aankh-icon.svg",
+    apple: "/aankh-icon.svg",
   },
 };
 
@@ -54,7 +55,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: DISPLAY_ZOOM_BOOTSTRAP_SCRIPT }} />
         {regionalQaEnabled() && <script dangerouslySetInnerHTML={{ __html: LANGUAGE_BOOTSTRAP_SCRIPT }} />}
       </head>
-      <body className="min-h-full flex flex-col"><RegionalProvider>{children}<AppHelp /></RegionalProvider></body>
+      <body className="min-h-full flex flex-col"><RegionalProvider>{children}<AppFooter /><AppHelp /></RegionalProvider></body>
     </html>
   );
 }

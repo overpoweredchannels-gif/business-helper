@@ -213,11 +213,11 @@ export function DashboardView({
   ].filter((chart) => !widgetHidden(chart.id));
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 pb-8 pt-3 sm:px-6 sm:pt-4 lg:px-8 space-y-5">
+    <div className="mx-auto w-full max-w-7xl px-4 pb-10 pt-3 sm:px-6 sm:pt-4 lg:px-8 space-y-6">
       {/* Welcome Section */}
       <header className="flex flex-wrap items-start justify-between gap-2 sm:items-center sm:gap-3">
         <DashboardWidget id="greeting" customizing={customizingWidgets} onRemove={onRemoveWidget} className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold leading-tight text-foreground font-heading">
+          <h1 className="text-3xl font-bold leading-tight text-foreground font-heading">
             {greeting}, <span className="text-primary"><bdi>{userName}</bdi></span>
           </h1>
           <p className="text-sm text-light-text mt-0.5">{dateStr}</p>

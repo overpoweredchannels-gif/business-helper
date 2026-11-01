@@ -39,7 +39,7 @@ interface RecentActivityProps {
 export function RecentActivity({ activities, onViewAll }: RecentActivityProps) {
   const { t } = useRegional();
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-foreground">{t('dashboard.recentActivity')}</h3>
         {onViewAll && (
