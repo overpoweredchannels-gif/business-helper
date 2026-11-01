@@ -9,6 +9,7 @@ import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptPrintableWidth
 import { loadReceiptTemplate } from "@/lib/print/receipt-template-loader";
 import { saveReceiptTemplate } from "@/lib/print/receipt-template-save";
 import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, type PrintRunToken } from "@/lib/print/print-run";
+import { fillWhatsAppTemplate, firstWhatsAppLink, parseWhatsAppNumber } from "@/lib/share/whatsapp";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
@@ -428,6 +429,14 @@ export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Re
   }, [savingWidth, template, templateReady, t]);
 
   const preview = useMemo(() => <POSReceiptPreview receipt={receipt} template={activeTemplate} />, [receipt, activeTemplate]);
+  const shareText = fillWhatsAppTemplate(t('share.invoiceText'), {
+    customer: receipt.customer,
+    number: receipt.number,
+    shop: receipt.business,
+    total: formatBooksMoney(receipt.total),
+  });
+  const shareLink = firstWhatsAppLink(receipt.customerWhatsapp, receipt.customerPhone, shareText);
+  const shareContactNotInternational = !shareLink && Boolean(receipt.customerWhatsapp || receipt.customerPhone) && !parseWhatsAppNumber(receipt.customerWhatsapp) && !parseWhatsAppNumber(receipt.customerPhone);
   return <>
     <button type="button" onClick={() => setOpen(true)} className="min-h-11 rounded-lg border border-primary px-4 font-medium text-primary">{t('receipt.openButton').replace('{number}', receipt.number)}</button>
     {error && !open && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
@@ -451,8 +460,14 @@ export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Re
             </label>
             <button type="button" onClick={() => setCustomizing(true)} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('receipt.editTemplate')}</button>
             <button type="button" onClick={() => void print()} disabled={!templateReady || printing} className="min-h-11 min-w-11 rounded bg-primary px-3 py-2 text-sm text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">{printing ? t('receipt.preparing') : t('receipt.printReceipt')}</button>
+            {shareLink && (
+              <a href={shareLink} target="_blank" rel="noreferrer" className="min-h-11 min-w-11 rounded border border-success px-3 py-2 text-sm text-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {t('share.whatsapp')}
+              </a>
+            )}
             <button type="button" onClick={dismissReceipt} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('common.close')}</button>
           </div>
+          {shareContactNotInternational && <p className="mb-2 text-xs text-muted-foreground">{t('share.internationalHint')}</p>}
           {!templateReady && <p role="status" className="mb-2 text-sm">{t('receipt.loadingTemplate')}</p>}
           {error && <p role="alert" className="mb-2 text-sm text-destructive">{error}</p>}
           {preview}
