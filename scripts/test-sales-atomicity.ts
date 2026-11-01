@@ -56,7 +56,10 @@ async function testAtomicSaleClientRetry() {
       },
     } as unknown as SupabaseClient;
 
-    await assert.rejects(createAtomicSale(client, "org:actor", input), /status could not be confirmed/);
+    // Offline-queue contract (2026-11-02): an uncertain attempt is QUEUED
+    // for the caller to show a provisional receipt, not thrown.
+    const firstAttempt = await createAtomicSale(client, "org:actor", input);
+    assert.ok("queued" in firstAttempt, "An uncertain attempt is queued instead of thrown");
     assert.ok(values.size > 0, "Uncertain attempt stays in local storage");
     await createAtomicSale(client, "org:actor", input);
     assert.equal(requestIds[0], requestIds[1], "Retry keeps the same request identifier");
@@ -533,7 +536,13 @@ async function main() {
     } as unknown as SupabaseClient;
     try {
       installWindow();
-      await assert.rejects(createAtomicSale(recoveryClient, `${org}:${owner}`, recoveryInput), /status could not be confirmed/);
+      // Offline-queue contract (2026-11-02): an unconfirmed sale is QUEUED
+      // for the caller to show a provisional receipt, not thrown. The safety
+      // properties below are unchanged: the attempt survives, and recovery
+      // confirms it without another sale RPC.
+      const firstAttempt = await createAtomicSale(recoveryClient, `${org}:${owner}`, recoveryInput);
+      assert.ok("queued" in firstAttempt, "An unconfirmed sale is queued instead of thrown");
+      assert.equal(firstAttempt.attempt.requestId, recoveryRequestId);
       const pendingAfterReload = readPendingAtomicSale(`${org}:${owner}`);
       assert.equal(pendingAfterReload?.requestId, recoveryRequestId);
       assert.equal(Number((await db.query<{ current_stock: string }>("select current_stock from products where id=$1", [cashProduct])).rows[0].current_stock), 0, "The first request consumed the last stock unit");

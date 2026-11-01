@@ -1,4 +1,5 @@
 import { calculateSaleAmounts, calculateSaleLineTotal, roundMoney } from "@/lib/sales/sale-amounts";
+import type { AtomicSaleInput } from "@/lib/sales/atomic-sale-client";
 import { formatDate, formatBooksMoney } from "@/lib/tradeos/formatters";
 import { calendarDateOf } from "@/lib/regional/dates";
 import { DEFAULT_PRINT_TEMPLATES } from "./default-templates";
@@ -258,6 +259,62 @@ export function buildAtomicSaleReceipt(
     received: Number(transaction.cash_received ?? 0),
     change: Number(transaction.change_due ?? 0),
     payment: String(transaction.payment_type ?? details.fallbackPayment),
+    lines,
+  };
+}
+
+/** Local receipt for a sale that is queued offline: same money maths as the
+ * server receipt (calculateSaleAmounts), but the number is a "Pending sync"
+ * label, never an invented server invoice number. After the sale syncs, its
+ * real invoice number appears in the sales history; this copy is
+ * provisional. Customer/product names come from on-hand state. */
+export function buildOfflineSaleReceipt(
+  input: AtomicSaleInput,
+  details: {
+    scope: string;
+    business: string;
+    pendingLabel: string;
+    customerName: string;
+    customerWhatsapp?: string | null;
+    customerPhone?: string | null;
+    productById: (id: string) => { name: string; unit_type: string | null; subunit_type?: string | null } | undefined;
+  },
+): Receipt {
+  const lines: ReceiptLine[] = input.lines.map(line => {
+    const product = details.productById(line.product_id);
+    return {
+      name: product?.name ?? "Product",
+      quantity: String(line.quantity),
+      unit: line.unit_mode === "subunit" ? (product?.subunit_type ?? "Pcs") : (product?.unit_type ?? "Units"),
+      price: String(line.selling_price),
+      discount: String(line.discount),
+      bonus: String(line.bonus),
+    };
+  });
+  const calculated = calculateSaleAmounts(
+    input.lines.map(line => ({ quantity: line.quantity, sellingPrice: line.selling_price, discount: line.discount })),
+    { invoiceDiscount: input.invoice_discount, invoiceDiscountType: input.invoice_discount_type, taxRate: input.tax_rate },
+  );
+  return {
+    scope: details.scope,
+    business: details.business,
+    number: details.pendingLabel,
+    date: formatDate(calendarDateOf(input.sale_date) ?? input.sale_date),
+    customer: details.customerName,
+    customerWhatsapp: details.customerWhatsapp ?? null,
+    customerPhone: details.customerPhone ?? null,
+    lineSubtotal: calculated.lineSubtotal,
+    lineDiscount: calculated.lineDiscount,
+    subtotal: calculated.subtotal,
+    invoiceDiscount: calculated.invoiceDiscount,
+    tax: calculated.tax,
+    taxRate: input.tax_rate,
+    total: calculated.total,
+    received: input.cash_received ?? 0,
+    change: input.payment_type === "cash" && input.cash_received != null
+      ? Math.max(0, input.cash_received - calculated.total)
+      : 0,
+    payment: input.payment_type,
     lines,
   };
 }
