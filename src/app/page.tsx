@@ -21128,9 +21128,9 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "supplier-payments" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('buy.supplierPayments')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('buy.supplierPayments')}</h2>
             <div className="flex flex-wrap gap-2">
               {canImportExport && (
                 <ImportExportSection
@@ -21146,7 +21146,7 @@ setCustomerOrganizationName("");
               <button
                 type="button"
                 onClick={handleExportSupplierBalancesCsv}
-                className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
+                className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
               >
                 {t('buy.exportBalancesCsv')}
               </button>
@@ -21156,7 +21156,7 @@ setCustomerOrganizationName("");
              <select
                value={selectedSupplierPaymentId ?? ""}
                onChange={(e) => handleSupplierPaymentSupplierChange(e.target.value)}
-               className="rounded border border-border px-2 py-2"
+               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              >
                <option value="">{t('buy.selectSupplier')}</option>
                {activeSuppliers.map((s) => (
@@ -21169,20 +21169,20 @@ setCustomerOrganizationName("");
                value={supplierPaymentAmount}
                onChange={(e) => handleSupplierPaymentAmountChange(e.target.value)}
                placeholder={t('money.amount')}
-               className="rounded border border-border px-2 py-2"
+               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              />
 
              <input
                type="date"
                value={supplierPaymentDate}
                onChange={(e) => setSupplierPaymentDate(e.target.value)}
-               className="rounded border border-border px-2 py-2"
+               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              />
 
              <select
                value={supplierPaymentMethod}
                onChange={(e) => setSupplierPaymentMethod(e.target.value as "cash" | "bank")}
-               className="rounded border border-border px-2 py-2"
+               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              >
                <option value="cash">{t('money.cash')}</option>
                <option value="bank">{t('money.bank')}</option>
@@ -21194,17 +21194,17 @@ setCustomerOrganizationName("");
              value={supplierPaymentNotes}
              onChange={(e) => setSupplierPaymentNotes(e.target.value)}
              placeholder={t('buy.notesOptionalPlaceholder')}
-             className="w-full sm:col-span-4 rounded border border-border px-2 py-2"
+             className="w-full sm:col-span-4 min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
            />
 
           {selectedSupplierPaymentId && (
-            <div className="mt-4 rounded border border-border bg-card p-4">
+            <div className="mt-4 rounded border border-border bg-card p-5">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-lg font-medium text-foreground">{t('buy.allocateTitle')}</h3>
+                <h3 className="text-lg font-semibold text-foreground">{t('buy.allocateTitle')}</h3>
                 <button
                   type="button"
                   onClick={handleAutoAllocateSupplierPayment}
-                  className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
+                  className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
                 >
                   {t('buy.autoAllocate')}
                 </button>
@@ -21213,23 +21213,20 @@ setCustomerOrganizationName("");
                 {t('buy.allocateHint')}
               </p>
 
-              <div className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
-                <div className="rounded border border-border bg-muted/30 p-3">
+              <div className="mb-4 grid gap-4 text-sm sm:grid-cols-3">
+                <div className="rounded border border-border bg-muted/30 p-4">
                   <div className="text-muted-foreground/80">{t('buy.paymentAmount')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(Number.isFinite(supplierPaymentAmountValue) ? supplierPaymentAmountValue : 0)}
+                  <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(Number.isFinite(supplierPaymentAmountValue) ? supplierPaymentAmountValue : 0)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-muted/30 p-3">
+                <div className="rounded border border-border bg-muted/30 p-4">
                   <div className="text-muted-foreground/80">{t('buy.totalAllocated')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(supplierPaymentAllocationTotal)}
+                  <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(supplierPaymentAllocationTotal)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-muted/30 p-3">
+                <div className="rounded border border-border bg-muted/30 p-4">
                   <div className="text-muted-foreground/80">{t('buy.unallocatedAmount')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(supplierPaymentUnallocatedAmount)}
+                  <div className="font-semibold tabular-nums text-foreground">{formatBooksMoney(supplierPaymentUnallocatedAmount)}
                   </div>
                 </div>
               </div>
@@ -21239,8 +21236,8 @@ setCustomerOrganizationName("");
               ) : (
                 <div className="space-y-3">
                   {unpaidPurchaseInvoicesForSelectedPaymentSupplier.map((invoice) => (
-                    <div key={invoice.transaction.id} className="rounded border border-border bg-muted/30 p-3">
-                      <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <div key={invoice.transaction.id} className="rounded border border-border bg-muted/30 p-4">
+                      <div className="grid gap-4 text-sm tabular-nums sm:grid-cols-2 lg:grid-cols-4">
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.invoiceLabel')}</div>
                           <div className="font-medium text-foreground">{invoice.transaction.invoice_number}</div>
@@ -21280,7 +21277,7 @@ setCustomerOrganizationName("");
                             onChange={(e) =>
                               handleSupplierPaymentAllocationChange(invoice.transaction.id, e.target.value)
                             }
-                            className="rounded border border-border px-2 py-1"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                       </div>
@@ -21296,7 +21293,7 @@ setCustomerOrganizationName("");
               type="button"
               onClick={handleSaveSupplierPayment}
               disabled={supplierPaymentLoading}
-              className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
+              className="min-h-11 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
               {supplierPaymentLoading ? t('sell.saving') : t('buy.saveSupplierPayment')}
             </button>
@@ -21305,7 +21302,7 @@ setCustomerOrganizationName("");
           </div>
 
           <div className="mt-6 border-t border-border pt-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">{t('buy.supplierPaymentHistory')}</h3>
+            <h3 className="mb-3 text-lg font-semibold text-foreground">{t('buy.supplierPaymentHistory')}</h3>
             {supplierPaymentHistory.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('buy.noSupplierPayments')}</p>
             ) : (
@@ -21313,9 +21310,9 @@ setCustomerOrganizationName("");
                 {supplierPaymentHistory.map((historyItem) => (
                   <li
                     key={historyItem.payment.id}
-                    className="rounded border border-border bg-card p-3 text-sm text-foreground/80"
+                    className="rounded border border-border bg-card p-4 text-sm text-foreground/80"
                   >
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                    <div className="grid gap-4 text-sm tabular-nums sm:grid-cols-2 lg:grid-cols-5">
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.supplier')}</div>
                         <div className="font-medium text-foreground">
@@ -21351,7 +21348,7 @@ setCustomerOrganizationName("");
                     )}
 
                     {historyItem.allocations.length > 0 && (
-                      <div className="mt-3 rounded border border-border bg-muted/30 p-3">
+                      <div className="mt-3 rounded border border-border bg-muted/30 p-4">
                         <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
                           {t('buy.allocations')}
                         </div>
@@ -21379,14 +21376,14 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "supplier-ledger" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('buy.supplierLedger')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('buy.supplierLedger')}</h2>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleExportSupplierBalancesCsv}
-                className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
+                className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
               >
                 {t('buy.exportBalancesCsv')}
               </button>
@@ -21394,7 +21391,7 @@ setCustomerOrganizationName("");
                 type="button"
                 onClick={handlePrintSupplierLedger}
                 disabled={!selectedSupplierLedgerId}
-                className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
+                className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
               >
                 {t('buy.printSupplierLedger')}
               </button>
@@ -21410,7 +21407,7 @@ setCustomerOrganizationName("");
               <select
                 value={selectedSupplierLedgerId}
                 onChange={(e) => setSelectedSupplierLedgerId(e.target.value)}
-                className="rounded border border-border px-2 py-2"
+                className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="">{t('buy.selectSupplier')}</option>
                 {suppliers.map((supplier) => (
@@ -21425,7 +21422,7 @@ setCustomerOrganizationName("");
                 type="date"
                 value={supplierLedgerStartDate}
                 onChange={(e) => handleSupplierLedgerStartDateChange(e.target.value)}
-                className="rounded border border-border px-2 py-2"
+                className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
 
@@ -21435,7 +21432,7 @@ setCustomerOrganizationName("");
                 type="date"
                 value={supplierLedgerEndDate}
                 onChange={(e) => handleSupplierLedgerEndDateChange(e.target.value)}
-                className="rounded border border-border px-2 py-2"
+                className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
           </div>
@@ -21444,21 +21441,21 @@ setCustomerOrganizationName("");
             <button
               type="button"
               onClick={() => applySupplierLedgerMonthRange(0)}
-              className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
+              className="min-h-11 rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
             >
               {t('buy.thisMonth')}
             </button>
             <button
               type="button"
               onClick={() => applySupplierLedgerMonthRange(-1)}
-              className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
+              className="min-h-11 rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
             >
               {t('buy.lastMonth')}
             </button>
             <button
               type="button"
               onClick={applySupplierLedgerAllTime}
-              className="rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
+              className="min-h-11 rounded border border-border px-3 py-2 text-sm text-foreground/80 hover:bg-card"
             >
               {t('buy.allTime')}
             </button>
@@ -21472,41 +21469,63 @@ setCustomerOrganizationName("");
             <p className="mt-4 text-sm text-muted-foreground">{t('buy.selectSupplierToView')}</p>
           ) : (
             <div className="mt-4 space-y-4">
-              <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
-                <div className="rounded border border-border bg-card p-3">
+              <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
+                <div className="rounded border border-border bg-card p-4">
                   <div className="text-muted-foreground/80">{t('buy.totalPurchases')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(supplierLedgerTotalPurchases)}
+                  <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(supplierLedgerTotalPurchases)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-card p-3">
+                <div className="rounded border border-border bg-card p-4">
                   <div className="text-muted-foreground/80">{t('buy.totalPayments')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(supplierLedgerTotalPayments)}
+                  <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(supplierLedgerTotalPayments)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-card p-3">
+                <div className="rounded border border-border bg-card p-4">
                   <div className="text-muted-foreground/80">{t('buy.totalReturns')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(supplierLedgerTotalReturns)}
+                  <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(supplierLedgerTotalReturns)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-card p-3">
+                <div className="rounded border border-border bg-card p-4">
                   <div className="text-muted-foreground/80">{t('buy.currentLedgerBalance')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(supplierLedgerCurrentBalance)}
+                  <div className="font-semibold tabular-nums text-foreground">{formatBooksMoney(supplierLedgerCurrentBalance)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-card p-3">
+                <div className="rounded border border-border bg-card p-4">
                   <div className="text-muted-foreground/80">{t('buy.unallocatedPayments')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(supplierLedgerUnallocatedPayments)}
+                  <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(supplierLedgerUnallocatedPayments)}
                   </div>
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded border border-border bg-card">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <div className="space-y-3 lg:hidden">
+                <article className="rounded border border-border bg-card p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-medium text-foreground">{t('inventory.openingBalance')}</p>
+                    <p className="font-medium tabular-nums text-foreground">{formatBooksMoney(0)}</p>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">{t('buy.openingBalanceNote')}</p>
+                  <dl className="mt-2 space-y-1 text-sm text-muted-foreground">
+                    <div className="flex justify-between gap-3"><dt>{t('buy.debit')}</dt><dd className="tabular-nums text-foreground/80">{formatBooksMoney(0)}</dd></div>
+                    <div className="flex justify-between gap-3"><dt>{t('buy.credit')}</dt><dd className="tabular-nums text-foreground/80">{formatBooksMoney(0)}</dd></div>
+                  </dl>
+                </article>
+                {supplierLedgerEntries.map((entry) => (
+                  <article key={entry.id} className="rounded border border-border bg-card p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-medium text-foreground">{entry.reference}</p>
+                      <p className="font-medium tabular-nums text-foreground">{formatBooksMoney(entry.runningBalance)}</p>
+                    </div>
+                    <dl className="mt-2 space-y-1 text-sm text-muted-foreground">
+                      <div className="flex justify-between gap-3"><dt>{t('sell.dateLabel')}</dt><dd className="text-foreground/80">{entry.date ?? "-"}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('sell.notesLabel')}</dt><dd className="text-foreground/80">{entry.notes || "-"}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('buy.debit')}</dt><dd className="tabular-nums text-foreground/80">{formatBooksMoney(entry.debit)}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('buy.credit')}</dt><dd className="tabular-nums text-foreground/80">{formatBooksMoney(entry.credit)}</dd></div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto rounded border border-border bg-card lg:block">
+                <table className="min-w-full divide-y divide-border text-sm tabular-nums">
                   <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                     <tr>
                       <th className="px-3 py-2">{t('sell.dateLabel')}</th>
@@ -21517,7 +21536,7 @@ setCustomerOrganizationName("");
                       <th className="px-3 py-2">{t('buy.runningBalance')}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-border">
                     <tr>
                       <td className="px-3 py-2">-</td>
                       <td className="px-3 py-2 font-medium text-foreground">{t('inventory.openingBalance')}</td>
@@ -21770,21 +21789,21 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "supplier-ledger" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.payablesDashboard')}</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+          <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.payablesDashboard')}</h2>
           {suppliers.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('buy.noSuppliers')}</p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {payablesStats.map((p) => (
-                <li key={p.supplierId} className="flex items-center justify-between rounded border border-border bg-card px-3 py-2">
+                <li key={p.supplierId} className="flex items-center justify-between rounded border border-border bg-card p-4">
                   <div>
                     <div className="font-medium text-foreground">{p.supplierName}</div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-foreground/80">
+                  <div className="flex items-center gap-4 text-sm text-foreground/80 tabular-nums">
                     <div>{t('buy.totalPurchases')}: {p.totalPurchases}</div>
                     <div>{t('buy.paymentsWord')}: {p.paymentsMade}</div>
-                    <div>{t('buy.remainingPayable')}: {p.remainingPayable}</div>
+                    <div className="font-semibold tabular-nums text-foreground">{t('buy.remainingPayable')}: {p.remainingPayable}</div>
                   </div>
                 </li>
               ))}
@@ -23016,12 +23035,12 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "suppliers" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+          <h2 className="mb-4 text-2xl font-semibold text-foreground">
             {supplierEditingId ? t('suppliers.editSupplier') : t('suppliers.management')}
           </h2>
           <details className="mb-5 rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium">{t('suppliers.viewImportedHistory')}</summary><div className="mt-3"><HistoricalRecords organizationId={currentOrganizationId} partyType="supplier" /></div></details>
-          <div className="space-y-4">
+          <div className="space-y-6">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>{t('suppliers.supplierName')}</span>
               <input
@@ -23029,7 +23048,7 @@ setCustomerOrganizationName("");
                 value={supplierName}
                 onChange={(e) => setSupplierName(e.target.value)}
                 required
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
 
@@ -23040,7 +23059,7 @@ setCustomerOrganizationName("");
                   type="text"
                   value={contactPerson}
                   onChange={(e) => setContactPerson(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
 
@@ -23050,7 +23069,7 @@ setCustomerOrganizationName("");
                   type="text"
                   value={supplierPhone}
                   onChange={(e) => setSupplierPhone(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
             </div>
@@ -23062,7 +23081,7 @@ setCustomerOrganizationName("");
                   type="text"
                   value={supplierWhatsapp}
                   onChange={(e) => setSupplierWhatsapp(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
 
@@ -23072,7 +23091,7 @@ setCustomerOrganizationName("");
                   type="text"
                   value={supplierCity}
                   onChange={(e) => setSupplierCity(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
             </div>
@@ -23082,7 +23101,7 @@ setCustomerOrganizationName("");
               <textarea
                 value={supplierNotes}
                 onChange={(e) => setSupplierNotes(e.target.value)}
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 rows={3}
               />
             </label>
@@ -23092,7 +23111,7 @@ setCustomerOrganizationName("");
                 type="button"
                 onClick={handleSaveSupplier}
                 disabled={suppliersLoading}
-                className="flex-1 rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
+                className="min-h-11 flex-1 rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
               >
                 {supplierEditingId ? t('suppliers.updateSupplier') : t('suppliers.saveSupplier')}
               </button>
@@ -23101,7 +23120,7 @@ setCustomerOrganizationName("");
                   type="button"
                   onClick={handleCancelSupplierEdit}
                   disabled={suppliersLoading}
-                  className="rounded border border-border px-4 py-2 text-foreground/80 transition hover:bg-muted/30"
+                  className="min-h-11 rounded border border-border px-4 py-2 text-foreground/80 transition hover:bg-muted/30"
                 >
                   {t('common.cancel')}
                 </button>
@@ -23120,28 +23139,28 @@ setCustomerOrganizationName("");
                 value={supplierSearch}
                 onChange={(e) => setSupplierSearch(e.target.value)}
                 placeholder={t('suppliers.searchPlaceholder')}
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
 
             <div>
-              <h3 className="mb-3 text-lg font-medium text-foreground">{t('suppliers.existingSuppliers')}</h3>
+              <h3 className="mb-3 text-lg font-semibold text-foreground">{t('suppliers.existingSuppliers')}</h3>
               {suppliersLoading ? (
                 <p className="text-sm text-muted-foreground">{t('suppliers.loadingSuppliers')}</p>
               ) : filteredSuppliers.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t('suppliers.noSuppliersFound')}</p>
               ) : (
-                <ul className="space-y-2">
+                <ul className="space-y-3">
                   {filteredSuppliers.map((supplier) => (
                     <li
                       key={supplier.id}
-                      className="flex flex-col gap-2 rounded border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-2 rounded border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="space-y-1 text-sm text-foreground/80">
                         <div className="font-medium text-foreground">
                           {supplier.supplier_name}
                           {supplier.is_active === false && (
-                            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{t('common.archived')}</span>
+                            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{t('common.archived')}</span>
                           )}
                         </div>
                         <div>{t('suppliers.contactPrefix')} {supplier.contact_person ?? t('common.none')}</div>
@@ -23152,14 +23171,14 @@ setCustomerOrganizationName("");
                         <button
                           type="button"
                           onClick={() => handleEditSupplier(supplier)}
-                          className="rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
+                          className="min-h-11 rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
                         >
                           {t('common.edit')}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleArchiveSupplier(supplier.id)}
-                          className={`rounded px-3 py-1 text-sm text-white transition hover:opacity-90 ${
+                          className={`min-h-11 rounded px-3 py-1 text-sm text-white transition hover:opacity-90 ${
                             supplier.is_active === false
                               ? "bg-primary"
                               : "bg-destructive"
@@ -23183,7 +23202,7 @@ setCustomerOrganizationName("");
           <button
             type="button"
             onClick={() => setPurchaseTab("invoice")}
-            className={`rounded px-4 py-2 text-sm font-medium ${
+            className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
               purchaseTab === "invoice"
                 ? "bg-primary text-white"
                 : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
@@ -23194,7 +23213,7 @@ setCustomerOrganizationName("");
           <button
             type="button"
             onClick={() => setPurchaseTab("orders")}
-            className={`rounded px-4 py-2 text-sm font-medium ${
+            className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
               purchaseTab === "orders"
                 ? "bg-primary text-white"
                 : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
@@ -23205,7 +23224,7 @@ setCustomerOrganizationName("");
           <button
             type="button"
             onClick={() => setPurchaseTab("returns")}
-            className={`rounded px-4 py-2 text-sm font-medium ${
+            className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
               purchaseTab === "returns"
                 ? "bg-primary text-white"
                 : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
@@ -23217,9 +23236,9 @@ setCustomerOrganizationName("");
 
         {purchaseTab === "invoice" && (
         <>
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('buy.tabInvoice')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('buy.tabInvoice')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="purchases"
@@ -23232,14 +23251,14 @@ setCustomerOrganizationName("");
               />
             )}
           </div>
-          <div className="space-y-4" {...entryNavigationHandlers}>
+          <div className="space-y-6" {...entryNavigationHandlers}>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('buy.supplier')}</span>
                 <select
                   value={selectedSupplierId ?? ""}
                   onChange={(e) => setSelectedSupplierId(e.target.value === "" ? null : e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="">{t('buy.selectSupplier')}</option>
                   {activeSuppliers.map((supplier) => (
@@ -23257,7 +23276,7 @@ setCustomerOrganizationName("");
                   value={supplierInvoiceNumber}
                   onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
                   placeholder={t('buy.supplierInvoicePlaceholder')}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 <span className="text-xs text-muted-foreground/80">
                   {t('buy.invoiceNumberNote')}
@@ -23266,7 +23285,7 @@ setCustomerOrganizationName("");
             </div>
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productLines')}</h3>
+              <h3 className="mb-3 text-lg font-semibold text-foreground">{t('sell.productLines')}</h3>
               <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {purchaseLines.length === 0 ? (
@@ -23278,19 +23297,19 @@ setCustomerOrganizationName("");
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} data-invoice-line className="rounded border border-border bg-card p-3">
+                    <div key={index} data-invoice-line className="rounded border border-border bg-card p-4 tabular-nums">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => handleRemovePurchaseLine(index)}
-                          className="text-xs text-destructive hover:text-destructive/90"
+                          className="min-h-11 px-2 text-xs text-destructive hover:text-destructive/90"
                         >
                           {t('sell.remove')}
                         </button>
                       </div>
 
-                      <div className="grid gap-2 sm:grid-cols-4">
+                      <div className="grid gap-4 text-sm tabular-nums sm:grid-cols-4">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.product')}</span>
                           <select
@@ -23299,7 +23318,7 @@ setCustomerOrganizationName("");
                             onChange={(e) =>
                               handlePurchaseLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)
                             }
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <option value="">{t('sell.selectProduct')}</option>
                             {activeProducts.map((product) => (
@@ -23318,7 +23337,7 @@ setCustomerOrganizationName("");
                               handlePurchaseLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main")
                             }
                             disabled={!lineProduct || !hasSubunit(lineProduct)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="main">
                               {lineProduct ? unitLabelFor(lineProduct, "main") : t('sell.mainUnit')}
@@ -23338,7 +23357,7 @@ setCustomerOrganizationName("");
                             required min="0.000001" step="any"
                             value={line.quantity}
                             onChange={(e) => handlePurchaseLineChange(index, "quantity", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
 
@@ -23349,7 +23368,7 @@ setCustomerOrganizationName("");
                             required min="0" step="any"
                             value={line.purchase_price}
                             onChange={(e) => handlePurchaseLineChange(index, "purchase_price", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                       </div>
@@ -23361,7 +23380,7 @@ setCustomerOrganizationName("");
                             type="number"
                             value={line.selling_price}
                             onChange={(e) => handlePurchaseLineChange(index, "selling_price", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
 
@@ -23371,7 +23390,7 @@ setCustomerOrganizationName("");
                             type="text"
                             value={line.batch_number}
                             onChange={(e) => handlePurchaseLineChange(index, "batch_number", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
 
@@ -23381,7 +23400,7 @@ setCustomerOrganizationName("");
                             type="date"
                             value={line.expiry_date}
                             onChange={(e) => handlePurchaseLineChange(index, "expiry_date", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                       </div>
@@ -23394,7 +23413,7 @@ setCustomerOrganizationName("");
               <button
                 type="button"
                 data-entry-add onClick={handleAddPurchaseLine}
-                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
+                className="mb-4 min-h-11 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
                 {t('sell.addProductLine')}
               </button>
@@ -23404,7 +23423,7 @@ setCustomerOrganizationName("");
               type="button"
               onClick={handleCreatePurchaseInvoice}
               disabled={invoiceLoading}
-              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+              className="w-full min-h-11 rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
               {invoiceLoading ? t('buy.creating') : t('buy.saveInvoice')}
             </button>
@@ -23429,7 +23448,7 @@ setCustomerOrganizationName("");
                       newPurchaseExpenseReminder.supplierId
                     )
                   }
-                  className="rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90"
+                  className="min-h-11 rounded bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90"
                 >
                   {t('buy.addPurchaseExpense')}
                 </button>
@@ -23441,7 +23460,7 @@ setCustomerOrganizationName("");
                       "no_additional_expense"
                     )
                   }
-                  className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
+                  className="min-h-11 rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                 >
                   {t('buy.noAdditionalExpense')}
                 </button>
@@ -23450,7 +23469,7 @@ setCustomerOrganizationName("");
                   onClick={() =>
                     updatePurchaseExpenseStatus(newPurchaseExpenseReminder.id, "review_later")
                   }
-                  className="rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
+                  className="min-h-11 rounded border border-border bg-card px-3 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                 >
                   {t('buy.reviewLater')}
                 </button>
@@ -23462,8 +23481,8 @@ setCustomerOrganizationName("");
           )}
         </section>
 
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.history')}</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+          <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.history')}</h2>
           {purchaseLoading ? (
             <p className="text-sm text-muted-foreground">{t('buy.loadingHistory')}</p>
           ) : purchaseTransactions.length === 0 ? (
@@ -23559,9 +23578,9 @@ setCustomerOrganizationName("");
                 return (
                   <li
                     key={transaction.id}
-                    className="rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80"
+                    className="rounded border border-border bg-card p-4 tabular-nums text-sm text-foreground/80"
                   >
-                    <div className="mb-3 grid gap-2 sm:grid-cols-4">
+                    <div className="mb-3 grid gap-4 text-sm tabular-nums sm:grid-cols-4">
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.invoiceLabel')}</div>
                         <div className="font-medium text-foreground">{transaction.invoice_number}</div>
@@ -23582,20 +23601,20 @@ setCustomerOrganizationName("");
                       </div>
                     </div>
 
-                    <div className="mb-3 rounded border border-success/10 bg-success/5 p-3">
+                    <div className="mb-3 rounded border border-success/10 bg-success/5 p-4">
                       <h3 className="mb-2 text-sm font-medium text-success/90">{t('buy.paymentSummary')}</h3>
                       <div className="grid gap-2 text-xs text-success/90 sm:grid-cols-2 lg:grid-cols-4">
                         <div>
                           <div className="uppercase tracking-wide text-success">{t('buy.purchaseTotal')}</div>
-                          <div className="font-medium">{formatBooksMoney(purchasePaymentTotal)}</div>
+                          <div className="font-medium tabular-nums">{formatBooksMoney(purchasePaymentTotal)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-success">{t('buy.paidAmount')}</div>
-                          <div className="font-medium">{formatBooksMoney(purchasePaidAmount)}</div>
+                          <div className="font-medium tabular-nums">{formatBooksMoney(purchasePaidAmount)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-success">{t('buy.remainingPayable')}</div>
-                          <div className="font-medium">{formatBooksMoney(Math.max(0, purchaseRemainingPayable))}</div>
+                          <div className="font-medium tabular-nums">{formatBooksMoney(Math.max(0, purchaseRemainingPayable))}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-success">{t('buy.paymentStatus')}</div>
@@ -23617,14 +23636,14 @@ setCustomerOrganizationName("");
                           <button
                             type="button"
                             onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
-                            className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
+                            className="min-h-11 rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                           >
                             {t('buy.addPurchaseExpense')}
                           </button>
                           <button
                             type="button"
                             onClick={() => updatePurchaseExpenseStatus(transaction.id, "no_additional_expense")}
-                            className="rounded border border-border px-3 py-2 text-xs text-foreground/80 hover:bg-muted/30"
+                            className="min-h-11 rounded border border-border px-3 py-2 text-xs text-foreground/80 hover:bg-muted/30"
                           >
                             {t('buy.noAdditionalExpense')}
                           </button>
@@ -23634,7 +23653,7 @@ setCustomerOrganizationName("");
                         <button
                           type="button"
                           onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
-                          className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
+                          className="min-h-11 rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                         >
                           {t('buy.addAnotherExpense')}
                         </button>
@@ -23643,27 +23662,27 @@ setCustomerOrganizationName("");
                         <button
                           type="button"
                           onClick={() => handleAddPurchaseExpense(transaction.id, transaction.supplier_id)}
-                          className="rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
+                          className="min-h-11 rounded bg-primary px-3 py-2 text-xs text-white hover:bg-primary/90"
                         >
                           {t('buy.addExpense')}
                         </button>
                       )}
                     </div>
 
-                    <div className="mb-3 rounded border border-primary/10 bg-primary/5 p-3">
+                    <div className="mb-3 rounded border border-primary/10 bg-primary/5 p-4">
                       <h3 className="mb-2 text-sm font-medium text-primary/90">{t('buy.costSummary')}</h3>
-                      <div className="grid gap-2 text-xs text-primary/90 sm:grid-cols-2 lg:grid-cols-5">
+                      <div className="grid gap-4 text-xs tabular-nums text-primary/90 sm:grid-cols-2 lg:grid-cols-5">
                         <div>
                           <div className="uppercase tracking-wide text-primary">{t('buy.purchaseValue')}</div>
-                          <div className="font-medium">{formatBooksMoney(purchaseValue)}</div>
+                          <div className="font-medium tabular-nums">{formatBooksMoney(purchaseValue)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-primary">{t('buy.linkedExpenses')}</div>
-                          <div className="font-medium">{formatBooksMoney(linkedExpenseTotal)}</div>
+                          <div className="font-medium tabular-nums">{formatBooksMoney(linkedExpenseTotal)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-primary">{t('buy.landedInvoiceCost')}</div>
-                          <div className="font-medium">{formatBooksMoney(landedInvoiceCost)}</div>
+                          <div className="font-semibold tabular-nums">{formatBooksMoney(landedInvoiceCost)}</div>
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-primary">{t('buy.totalPurchasedQuantity')}</div>
@@ -23680,7 +23699,7 @@ setCustomerOrganizationName("");
                       </div>
                     </div>
 
-                    <div className="mb-3 rounded border border-border bg-muted/30 p-3">
+                    <div className="mb-3 rounded border border-border bg-muted/30 p-4">
                       <h3 className="mb-2 text-sm font-medium text-foreground">{t('buy.linkedPurchaseExpenses')}</h3>
                       {linkedPurchaseExpenses.length === 0 ? (
                         <p className="text-xs text-muted-foreground/80">{t('buy.noLinkedExpenses')}</p>
@@ -23713,7 +23732,7 @@ setCustomerOrganizationName("");
                     </div>
 
                     {lineItems.length === 0 ? (
-                      <div className="rounded border border-border bg-muted/30 p-3 text-xs text-muted-foreground/80">
+                      <div className="rounded border border-border bg-muted/30 p-4 text-xs text-muted-foreground/80">
                         {t('buy.noLinesRecorded')}
                       </div>
                     ) : (
@@ -23724,7 +23743,7 @@ setCustomerOrganizationName("");
                           return (
                             <div
                               key={item.id ?? index}
-                              className="rounded border border-border bg-muted/30 p-3"
+                              className="rounded border border-border bg-muted/30 p-4"
                             >
                               <div className="grid gap-2 sm:grid-cols-2">
                                 <div>
@@ -23778,16 +23797,16 @@ setCustomerOrganizationName("");
 
         {purchaseTab === "orders" && (
         <>
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.createOrder')}</h2>
-          <div className="space-y-4">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+          <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.createOrder')}</h2>
+          <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('buy.supplier')}</span>
                 <select
                   value={poSupplierId}
                   onChange={(e) => setPoSupplierId(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="">{t('buy.selectSupplier')}</option>
                   {activeSuppliers.map((supplier) => (
@@ -23804,7 +23823,7 @@ setCustomerOrganizationName("");
                   type="date"
                   value={poOrderDate}
                   onChange={(e) => setPoOrderDate(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
 
@@ -23814,7 +23833,7 @@ setCustomerOrganizationName("");
                   type="date"
                   value={poExpectedDate}
                   onChange={(e) => setPoExpectedDate(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
             </div>
@@ -23825,12 +23844,12 @@ setCustomerOrganizationName("");
                 value={poNotes}
                 onChange={(e) => setPoNotes(e.target.value)}
                 rows={2}
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productLines')}</h3>
+              <h3 className="mb-3 text-lg font-semibold text-foreground">{t('sell.productLines')}</h3>
               <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {poLines.length === 0 ? (
@@ -23842,13 +23861,13 @@ setCustomerOrganizationName("");
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} className="rounded border border-border bg-card p-3">
+                    <div key={index} className="rounded border border-border bg-card p-4 tabular-nums">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => handleRemovePoLine(index)}
-                          className="text-xs text-destructive hover:text-destructive/90"
+                          className="min-h-11 px-2 text-xs text-destructive hover:text-destructive/90"
                         >
                           {t('sell.remove')}
                         </button>
@@ -23861,7 +23880,7 @@ setCustomerOrganizationName("");
                             onChange={(e) =>
                               handlePoLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)
                             }
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <option value="">{t('sell.selectProduct')}</option>
                             {activeProducts.map((product) => (
@@ -23879,7 +23898,7 @@ setCustomerOrganizationName("");
                               handlePoLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main")
                             }
                             disabled={!lineProduct || !hasSubunit(lineProduct)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="main">
                               {lineProduct ? unitLabelFor(lineProduct, "main") : t('sell.mainUnit')}
@@ -23898,7 +23917,7 @@ setCustomerOrganizationName("");
                             min="0"
                             value={line.quantity}
                             onChange={(e) => handlePoLineChange(index, "quantity", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -23908,7 +23927,7 @@ setCustomerOrganizationName("");
                             min="0"
                             value={line.purchase_price}
                             onChange={(e) => handlePoLineChange(index, "purchase_price", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -23917,7 +23936,7 @@ setCustomerOrganizationName("");
                             type="text"
                             value={line.batch_number}
                             onChange={(e) => handlePoLineChange(index, "batch_number", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                       </div>
@@ -23930,7 +23949,7 @@ setCustomerOrganizationName("");
               <button
                 type="button"
                 onClick={handleAddPoLine}
-                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
+                className="mb-4 min-h-11 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
                 {t('sell.addProductLine')}
               </button>
@@ -23940,7 +23959,7 @@ setCustomerOrganizationName("");
               type="button"
               onClick={handleCreatePurchaseOrder}
               disabled={poLoading}
-              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+              className="w-full min-h-11 rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
               {poLoading ? t('buy.creating') : t('buy.saveOrder')}
             </button>
@@ -23950,8 +23969,8 @@ setCustomerOrganizationName("");
           {poError && <p className="mt-4 text-sm text-destructive">{poError}</p>}
         </section>
 
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.tabOrders')}</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+          <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.tabOrders')}</h2>
           {purchaseOrdersLoading ? (
             <p className="text-sm text-muted-foreground">{t('buy.loadingOrders')}</p>
           ) : purchaseOrders.length === 0 ? (
@@ -24010,7 +24029,7 @@ setCustomerOrganizationName("");
                   0
                 );
                 return (
-                  <li key={po.id} className="rounded border border-border bg-card p-4">
+                  <li key={po.id} className="rounded border border-border bg-card p-4 tabular-nums">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -24078,7 +24097,7 @@ setCustomerOrganizationName("");
                                 </div>
                                 <span className="shrink-0 text-xs text-foreground/80">{pct}%</span>
                                 {isOverdue && (
-                                  <span className="shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                                  <span className="shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive">
                                     {t('sell.statusOverdue')}
                                   </span>
                                 )}
@@ -24153,8 +24172,8 @@ setCustomerOrganizationName("");
           const po = purchaseOrders.find((item) => item.id === receivePoId);
           const supplier = suppliers.find((s) => s.id === po?.supplier_id);
           return (
-            <section id="purchase-order-receive" className="mt-8 rounded border border-success/20 bg-success/5 p-5">
-              <h2 className="mb-1 text-lg font-medium text-foreground">
+            <section id="purchase-order-receive" className="mt-8 rounded border border-success/20 bg-success/5 p-6">
+              <h2 className="mb-1 text-lg font-semibold text-foreground">
                 {t('buy.receiveOrderTitle')} {po?.po_number ?? ""}
               </h2>
               <p className="mb-4 text-sm text-muted-foreground">
@@ -24172,7 +24191,7 @@ setCustomerOrganizationName("");
                     const product = products.find((p) => String(p.id) === String(line.productId));
                     const remaining = Math.max(line.quantityOrdered - line.quantityReceived, 0);
                     return (
-                      <div key={line.itemId} className="rounded border border-border bg-card p-3">
+                      <div key={line.itemId} className="rounded border border-border bg-card p-4 tabular-nums">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                           <span className="text-sm font-medium text-foreground">{product?.name ?? t('sell.unknownProduct')}</span>
                           <span className="text-xs text-muted-foreground/80">
@@ -24183,7 +24202,7 @@ setCustomerOrganizationName("");
                               .replace('{remaining}', String(remaining))}
                           </span>
                         </div>
-                        <div className="grid gap-2 sm:grid-cols-4">
+                        <div className="grid gap-4 text-sm tabular-nums sm:grid-cols-4">
                           <label className="flex flex-col gap-1 text-xs text-foreground/80">
                             <span>{t('buy.receiveQuantity')} ({product ? unitLabelFor(product, line.unitMode) : t('sell.units')})</span>
                             <input
@@ -24192,7 +24211,7 @@ setCustomerOrganizationName("");
                               max={remaining}
                               value={line.receiveQuantity}
                               onChange={(e) => handleReceiveLineChange(line.itemId, "receiveQuantity", e.target.value)}
-                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                              className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             />
                           </label>
                           <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -24202,7 +24221,7 @@ setCustomerOrganizationName("");
                               min="0"
                               value={line.unitPrice}
                               onChange={(e) => handleReceiveLineChange(line.itemId, "unitPrice", e.target.value)}
-                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                              className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             />
                           </label>
                           <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -24211,7 +24230,7 @@ setCustomerOrganizationName("");
                               type="text"
                               value={line.batchNumber}
                               onChange={(e) => handleReceiveLineChange(line.itemId, "batchNumber", e.target.value)}
-                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                              className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             />
                           </label>
                           <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -24220,7 +24239,7 @@ setCustomerOrganizationName("");
                               type="date"
                               value={line.expiryDate}
                               onChange={(e) => handleReceiveLineChange(line.itemId, "expiryDate", e.target.value)}
-                              className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                              className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             />
                           </label>
                         </div>
@@ -24235,7 +24254,7 @@ setCustomerOrganizationName("");
                   type="button"
                   onClick={handleConfirmReceive}
                   disabled={receiveLoading}
-                  className="rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+                  className="min-h-11 rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
                 >
                   {receiveLoading ? t('buy.receiving') : t('buy.confirmReceive')}
                 </button>
@@ -24248,7 +24267,7 @@ setCustomerOrganizationName("");
                     setReceiveError(null);
                   }}
                   disabled={receiveLoading}
-                  className="rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30"
+                  className="min-h-11 rounded border border-border px-4 py-2 text-foreground/80 hover:bg-muted/30"
                 >
                   {t('common.close')}
                 </button>
@@ -24261,19 +24280,19 @@ setCustomerOrganizationName("");
 
         {purchaseTab === "returns" && (
         <>
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.createReturn')}</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+          <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.createReturn')}</h2>
           <p className="mb-4 text-sm text-muted-foreground">
             {t('buy.returnIntro')}
           </p>
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('buy.supplier')}</span>
                 <select
                   value={returnSupplierId}
                   onChange={(e) => setReturnSupplierId(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="">{t('buy.selectSupplier')}</option>
                   {activeSuppliers.map((supplier) => (
@@ -24290,7 +24309,7 @@ setCustomerOrganizationName("");
                   type="date"
                   value={returnDate}
                   onChange={(e) => setReturnDate(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
 
@@ -24299,7 +24318,7 @@ setCustomerOrganizationName("");
                 <select
                   value={returnPurchaseTransactionId}
                   onChange={(e) => handlePurchaseReturnInvoiceChange(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="">{t('common.none')}</option>
                   {purchaseTransactions.map((transaction) => (
@@ -24317,12 +24336,12 @@ setCustomerOrganizationName("");
                 value={returnReason}
                 onChange={(e) => setReturnReason(e.target.value)}
                 rows={2}
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
 
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productLines')}</h3>
+              <h3 className="mb-3 text-lg font-semibold text-foreground">{t('sell.productLines')}</h3>
               <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {returnLines.length === 0 ? (
@@ -24334,13 +24353,13 @@ setCustomerOrganizationName("");
                       ? products.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} className="rounded border border-border bg-card p-3">
+                    <div key={index} className="rounded border border-border bg-card p-4 tabular-nums">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveReturnLine(index)}
-                          className="text-xs text-destructive hover:text-destructive/90"
+                          className="min-h-11 px-2 text-xs text-destructive hover:text-destructive/90"
                         >
                           {t('sell.remove')}
                         </button>
@@ -24353,7 +24372,7 @@ setCustomerOrganizationName("");
                             onChange={(e) =>
                               handleReturnLineChange(index, "product_id", e.target.value === "" ? null : e.target.value)
                             }
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <option value="">{t('sell.selectProduct')}</option>
                             {activeProducts.map((product) => (
@@ -24369,7 +24388,7 @@ setCustomerOrganizationName("");
                             value={line.unit_mode ?? "main"}
                             onChange={(e) => handleReturnLineChange(index, "unit_mode", e.target.value === "subunit" ? "subunit" : "main")}
                             disabled={!lineProduct || !hasSubunit(lineProduct)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="main">
                               {lineProduct ? unitLabelFor(lineProduct, "main") : t('sell.mainUnit')}
@@ -24388,7 +24407,7 @@ setCustomerOrganizationName("");
                             min="0"
                             value={line.quantity}
                             onChange={(e) => handleReturnLineChange(index, "quantity", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -24398,7 +24417,7 @@ setCustomerOrganizationName("");
                             min="0"
                             value={line.purchase_price}
                             onChange={(e) => handleReturnLineChange(index, "purchase_price", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
@@ -24407,7 +24426,7 @@ setCustomerOrganizationName("");
                             type="text"
                             value={line.batch_number}
                             onChange={(e) => handleReturnLineChange(index, "batch_number", e.target.value)}
-                            className="rounded border border-border px-2 py-1 focus:border-ring focus:outline-none"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                       </div>
@@ -24420,7 +24439,7 @@ setCustomerOrganizationName("");
               <button
                 type="button"
                 onClick={handleAddReturnLine}
-                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
+                className="mb-4 min-h-11 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
                 {t('sell.addProductLine')}
               </button>
@@ -24430,7 +24449,7 @@ setCustomerOrganizationName("");
               type="button"
               onClick={handleCreatePurchaseReturn}
               disabled={returnLoading}
-              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+              className="w-full min-h-11 rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
               {returnLoading ? t('sell.saving') : t('buy.saveReturn')}
             </button>
@@ -24440,8 +24459,8 @@ setCustomerOrganizationName("");
           {returnError && <p className="mt-4 text-sm text-destructive">{returnError}</p>}
         </section>
 
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
-          <h2 className="mb-4 text-xl font-medium text-foreground">{t('buy.returnHistory')}</h2>
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+          <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.returnHistory')}</h2>
           {purchaseReturnsLoading ? (
             <p className="text-sm text-muted-foreground">{t('buy.loadingReturns')}</p>
           ) : purchaseReturns.length === 0 ? (
@@ -24474,7 +24493,7 @@ setCustomerOrganizationName("");
                   0
                 );
                 return (
-                  <li key={purchaseReturn.id} className="rounded border border-border bg-card p-4">
+                  <li key={purchaseReturn.id} className="rounded border border-border bg-card p-4 tabular-nums">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
