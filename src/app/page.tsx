@@ -18508,10 +18508,10 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "inventory" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">{t('stock.inventory')}</h2>
+              <h2 className="text-2xl font-semibold text-foreground">{t('stock.inventory')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('inventory.subtitle')}
               </p>
@@ -18519,7 +18519,7 @@ setCustomerOrganizationName("");
             <button
               type="button"
               onClick={handleExportInventoryCsv}
-              className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
+              className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
             >
               {t('inventory.exportCsv')}
             </button>
@@ -18529,7 +18529,7 @@ setCustomerOrganizationName("");
             <button
               type="button"
               onClick={() => setInventoryTab("dashboard")}
-              className={`rounded px-4 py-2 text-sm font-medium ${
+              className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
                 inventoryTab === "dashboard"
                   ? "bg-primary text-white"
                   : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
@@ -18540,7 +18540,7 @@ setCustomerOrganizationName("");
             <button
               type="button"
               onClick={() => setInventoryTab("adjustments")}
-              className={`rounded px-4 py-2 text-sm font-medium ${
+              className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
                 inventoryTab === "adjustments"
                   ? "bg-primary text-white"
                   : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
@@ -18551,7 +18551,7 @@ setCustomerOrganizationName("");
             <button
               type="button"
               onClick={() => setInventoryTab("ledger")}
-              className={`rounded px-4 py-2 text-sm font-medium ${
+              className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
                 inventoryTab === "ledger"
                   ? "bg-primary text-white"
                   : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
@@ -18562,7 +18562,7 @@ setCustomerOrganizationName("");
             <button
               type="button"
               onClick={() => setInventoryTab("import")}
-              className={`rounded px-4 py-2 text-sm font-medium ${
+              className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
                 inventoryTab === "import"
                   ? "bg-primary text-white"
                   : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
@@ -18574,21 +18574,21 @@ setCustomerOrganizationName("");
 
           {inventoryTab === "dashboard" && (
           <div className="space-y-6">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-destructive/20 bg-destructive/5 p-4">
-                <div className="text-2xl font-semibold text-destructive">{inventorySummaryCounts.outOfStock}</div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded border border-destructive/20 bg-destructive/5 p-5">
+                <div className="text-2xl font-semibold tabular-nums text-destructive">{inventorySummaryCounts.outOfStock}</div>
                 <div className="text-sm text-destructive/80">{t('stock.outOfStock')}</div>
               </div>
-              <div className="rounded border border-orange-200 bg-orange-50 p-4">
-                <div className="text-2xl font-semibold text-orange-700">{inventorySummaryCounts.urgentReorder}</div>
-                <div className="text-sm text-orange-700/80">{t('inventory.urgentReorder')}</div>
+              <div className="rounded border border-warning/20 bg-warning/5 p-5">
+                <div className="text-2xl font-semibold tabular-nums text-warning">{inventorySummaryCounts.urgentReorder}</div>
+                <div className="text-sm text-warning/80">{t('inventory.urgentReorder')}</div>
               </div>
-              <div className="rounded border border-border bg-card p-4">
-                <div className="text-2xl font-semibold text-foreground">{inventorySummaryCounts.missingReorderLevel}</div>
+              <div className="rounded border border-border bg-card p-5">
+                <div className="text-2xl font-semibold tabular-nums text-foreground">{inventorySummaryCounts.missingReorderLevel}</div>
                 <div className="text-sm text-muted-foreground">{t('inventory.missingReorderLevel')}</div>
               </div>
-              <div className="rounded border border-success/20 bg-success/5 p-4">
-                <div className="text-2xl font-semibold text-success">{inventorySummaryCounts.healthy}</div>
+              <div className="rounded border border-success/20 bg-success/5 p-5">
+                <div className="text-2xl font-semibold tabular-nums text-success">{inventorySummaryCounts.healthy}</div>
                 <div className="text-sm text-success/80">{t('stock.healthy')}</div>
               </div>
             </div>
@@ -18600,13 +18600,13 @@ setCustomerOrganizationName("");
                 {inventoryStats.map((s) => (
                   <li
                     key={s.productId}
-                    className="flex items-center justify-between rounded border border-border bg-card px-3 py-2"
+                    className="flex items-center justify-between rounded border border-border bg-card p-4"
                   >
                     <div>
                       <div className="font-medium text-foreground">{s.productName}</div>
                       <div className="text-xs text-muted-foreground">{t('inventory.defaultPrice')}: {s.defaultSellingPrice ?? "-"}</div>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-foreground/80">
+                    <div className="flex items-center gap-4 text-sm text-foreground/80 tabular-nums">
                       <div>{t('inventory.purchased')}: {s.purchasedQty}</div>
                       <div>{t('inventory.sold')}: {s.soldQty}</div>
                       <div>{t('products.stock')}: {s.currentStock}</div>
@@ -18625,7 +18625,7 @@ setCustomerOrganizationName("");
                           snapshot.status === "out_of_stock"
                             ? "bg-destructive/10 text-destructive"
                             : snapshot.status === "urgent_reorder"
-                              ? "bg-orange-100 text-orange-700"
+                              ? "bg-warning/10 text-warning"
                               : "bg-muted/50 text-muted-foreground";
                         return (
                           <span className={`rounded px-2 py-1 text-xs font-semibold ${badgeClass}`}>{label}</span>
@@ -18637,14 +18637,14 @@ setCustomerOrganizationName("");
               </ul>
             )}
 
-            <div className="rounded border border-border bg-card p-4">
+            <div className="rounded border border-border bg-card p-5">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <h3 className="text-lg font-medium text-foreground">{t('inventory.reorderTitle')}</h3>
-                <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
+                <h3 className="text-lg font-semibold text-foreground">{t('inventory.reorderTitle')}</h3>
+                <div className="grid gap-4 sm:grid-cols-2 lg:w-[520px]">
                   <select
                     value={reorderRecommendationFilter}
                     onChange={(e) => setReorderRecommendationFilter(e.target.value)}
-                    className="rounded border border-border px-3 py-2 text-sm"
+                    className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <option value="all">{t('inventory.filterAll')}</option>
                     <option value="Out of Stock">{t('stock.outOfStock')}</option>
@@ -18658,7 +18658,7 @@ setCustomerOrganizationName("");
                     value={reorderRecommendationSearch}
                     onChange={(e) => setReorderRecommendationSearch(e.target.value)}
                     placeholder={t('inventory.reorderSearchPlaceholder')}
-                    className="rounded border border-border px-3 py-2 text-sm"
+                    className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
               </div>
@@ -18666,8 +18666,8 @@ setCustomerOrganizationName("");
               {filteredReorderRecommendations.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t('inventory.noRecommendations')}</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <div className="hidden overflow-x-auto lg:block">
+                  <table className="min-w-full divide-y divide-border text-sm tabular-nums">
                     <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                       <tr>
                         <th className="px-3 py-2">{t('sell.product')}</th>
@@ -18680,7 +18680,7 @@ setCustomerOrganizationName("");
                         <th className="px-3 py-2">{t('sell.statusLabel')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-border">
                       {filteredReorderRecommendations.map((recommendation) => (
                         <tr key={recommendation.productId}>
                           <td className="px-3 py-3">
@@ -18721,7 +18721,7 @@ setCustomerOrganizationName("");
                                 recommendation.status === "Out of Stock"
                                   ? "bg-destructive/10 text-destructive"
                                   : recommendation.status === "Urgent Reorder"
-                                    ? "bg-orange-100 text-orange-700"
+                                    ? "bg-warning/10 text-warning"
                                     : recommendation.status === "Missing Reorder Level"
                                       ? "bg-muted/50 text-muted-foreground"
                                       : "bg-success/10 text-success"
@@ -18743,13 +18743,13 @@ setCustomerOrganizationName("");
           {inventoryTab === "adjustments" && (
           <div className="space-y-6">
             {!canManageInventory && (
-              <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
+              <div className="rounded border border-warning/20 bg-warning/5 p-5 text-sm text-warning/90">
                 {t('inventory.viewAccessWarning')}
               </div>
             )}
 
-            <div className="rounded border border-border bg-card p-4">
-              <h3 className="mb-1 text-lg font-medium text-foreground">{t('inventory.bulkTitle')}</h3>
+            <div className="rounded border border-border bg-card p-5">
+              <h3 className="mb-1 text-lg font-semibold text-foreground">{t('inventory.bulkTitle')}</h3>
               <p className="mb-3 text-sm text-muted-foreground">
                 {t('inventory.bulkHintStart')} <code className="rounded bg-muted px-1">{t('page.jsxBulkNameTabQty')}</code> {t('inventory.bulkHintOr')}
                 <code className="rounded bg-muted px-1">{t('page.jsxBulkNameQty')}</code>{t('inventory.bulkHintEnd')}
@@ -18762,7 +18762,7 @@ setCustomerOrganizationName("");
                 onChange={(e) => setBulkStockText(e.target.value)}
                 rows={6}
                 placeholder={"Pepsi 500ml\t200\nColgate Toothpaste 100g, 50\nMineral Water 1.5L 120"}
-                className="w-full rounded border border-border px-3 py-2 text-sm font-mono focus:border-ring focus:outline-none"
+                className="w-full min-h-11 rounded border border-input px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 disabled={bulkStockSubmitting}
               />
               <div className="mt-3 flex flex-wrap gap-2">
@@ -18770,7 +18770,7 @@ setCustomerOrganizationName("");
                   type="button"
                   onClick={handleBulkStockParse}
                   disabled={bulkStockSubmitting}
-                  className="rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5 disabled:opacity-40"
+                  className="min-h-11 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5 disabled:opacity-40"
                 >
                   {t('inventory.previewLines')}
                 </button>
@@ -18778,7 +18778,7 @@ setCustomerOrganizationName("");
                   type="button"
                   onClick={handleBulkAddStock}
                   disabled={bulkStockSubmitting || bulkStockLines.filter((line) => line.matched && safeNumber(line.qty) > 0).length === 0}
-                  className="rounded bg-primary px-4 py-2 text-sm text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
+                  className="min-h-11 rounded bg-primary px-4 py-2 text-sm text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
                 >
                   {bulkStockSubmitting ? t('inventory.adding') : `${t('inventory.addStock')} (${bulkStockLines.filter((line) => line.matched && safeNumber(line.qty) > 0).length} ${t('inventory.linesWord')})`}
                 </button>
@@ -18786,7 +18786,7 @@ setCustomerOrganizationName("");
 
               {bulkStockLines.length > 0 && (
                 <div className="mt-4 overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm tabular-nums">
                     <thead>
                       <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                         <th className="py-2 pr-3 font-medium">{t('sell.product')}</th>
@@ -18819,8 +18819,8 @@ setCustomerOrganizationName("");
               )}
             </div>
 
-            <div className="rounded border border-border bg-card p-4">
-              <h3 className="mb-1 text-lg font-medium text-foreground">{t('inventory.recordAdjustmentTitle')}</h3>
+            <div className="rounded border border-border bg-card p-5">
+              <h3 className="mb-1 text-lg font-semibold text-foreground">{t('inventory.recordAdjustmentTitle')}</h3>
               <p className="mb-4 text-sm text-muted-foreground">
                 {t('inventory.adjustmentHint')}
               </p>
@@ -18833,14 +18833,14 @@ setCustomerOrganizationName("");
                   e.preventDefault();
                   handleAdjustStock();
                 }}
-                className="grid gap-3 lg:grid-cols-2"
+                className="grid gap-4 lg:grid-cols-2"
               >
                 <div className="flex flex-col gap-1">
                   <label className="text-sm text-foreground/80">{t('sell.product')} *</label>
                   <select
                     value={adjustmentProductId}
                     onChange={(e) => setAdjustmentProductId(e.target.value)}
-                    className="rounded border border-border px-3 py-2 text-sm"
+                    className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     disabled={adjustmentSubmitting}
                   >
                     <option value="">{t('inventory.selectProduct')}</option>
@@ -18852,13 +18852,13 @@ setCustomerOrganizationName("");
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1">
                     <label className="text-sm text-foreground/80">{t('inventory.direction')} *</label>
                     <select
                       value={adjustmentDirection}
                       onChange={(e) => setAdjustmentDirection(e.target.value as "in" | "out")}
-                      className="rounded border border-border px-3 py-2 text-sm"
+                      className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       disabled={adjustmentSubmitting}
                     >
                       <option value="in">{t('inventory.increaseStock')}</option>
@@ -18873,7 +18873,7 @@ setCustomerOrganizationName("");
                       step="any"
                       value={adjustmentQuantity}
                       onChange={(e) => setAdjustmentQuantity(e.target.value)}
-                      className="rounded border border-border px-3 py-2 text-sm"
+                      className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       disabled={adjustmentSubmitting}
                       placeholder="0"
                     />
@@ -18886,21 +18886,21 @@ setCustomerOrganizationName("");
                     type="text"
                     value={adjustmentReason}
                     onChange={(e) => setAdjustmentReason(e.target.value)}
-                    className="rounded border border-border px-3 py-2 text-sm"
+                    className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     disabled={adjustmentSubmitting}
                     placeholder={t('inventory.reasonPlaceholder')}
                     maxLength={500}
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1">
                     <label className="text-sm text-foreground/80">{t('inventory.batchOptional')}</label>
                     <input
                       type="text"
                       value={adjustmentBatchNumber}
                       onChange={(e) => setAdjustmentBatchNumber(e.target.value)}
-                      className="rounded border border-border px-3 py-2 text-sm"
+                      className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       disabled={adjustmentSubmitting}
                       placeholder="e.g. LOT-2401"
                       maxLength={100}
@@ -18912,7 +18912,7 @@ setCustomerOrganizationName("");
                       type="date"
                       value={adjustmentExpiryDate}
                       onChange={(e) => setAdjustmentExpiryDate(e.target.value)}
-                      className="rounded border border-border px-3 py-2 text-sm"
+                      className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       disabled={adjustmentSubmitting}
                     />
                   </div>
@@ -18931,14 +18931,14 @@ setCustomerOrganizationName("");
                       setAdjustmentMessage(null);
                       setAdjustmentError(null);
                     }}
-                    className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
+                    className="min-h-11 rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
                   >
                     {t('inventory.reset')}
                   </button>
                   <button
                     type="submit"
                     disabled={adjustmentSubmitting || !canManageInventory}
-                    className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-h-11 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {adjustmentSubmitting ? t('inventory.adjusting') : t('inventory.recordAdjustment')}
                   </button>
@@ -18946,13 +18946,30 @@ setCustomerOrganizationName("");
               </form>
             </div>
 
-            <div className="rounded border border-border bg-card p-4">
-              <h3 className="mb-3 text-lg font-medium text-foreground">{t('inventory.recentAdjustments')}</h3>
+            <div className="rounded border border-border bg-card p-5">
+              <h3 className="mb-3 text-lg font-semibold text-foreground">{t('inventory.recentAdjustments')}</h3>
               {recentAdjustments.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t('inventory.noAdjustments')}</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <>
+                              <div className="space-y-3 lg:hidden">
+                {recentAdjustments.map((transaction) => (
+                  <article key={transaction.id} className="rounded border border-border bg-card p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-medium text-foreground">{productNameById.get(String(transaction.product_id)) ?? `${t('sell.product')} ${transaction.product_id}`}</p>
+                      <p className={`font-medium tabular-nums ${Number(transaction.quantity_delta) > 0 ? "text-success" : "text-destructive"}`}>{formatMovementChange(Number(transaction.quantity_delta))}</p>
+                    </div>
+                    <dl className="mt-2 space-y-1 text-sm text-muted-foreground">
+                      <div className="flex justify-between gap-3"><dt>{t('money.date')}</dt><dd className="text-foreground/80">{formatDateTime(transaction.created_at)}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.reason')}</dt><dd className="text-foreground/80">{transaction.reason ?? "-"}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.batch')}</dt><dd className="text-foreground/80">{transaction.batch_number ?? "-"}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.expiry')}</dt><dd className="text-foreground/80">{transaction.expiry_date ?? "-"}</dd></div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+                  <div className="hidden overflow-x-auto lg:block">
+                  <table className="min-w-full divide-y divide-border text-sm tabular-nums">
                     <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                       <tr>
                         <th className="px-3 py-2">{t('money.date')}</th>
@@ -18963,7 +18980,7 @@ setCustomerOrganizationName("");
                         <th className="px-3 py-2">{t('inventory.expiry')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-border">
                       {recentAdjustments.map((transaction) => (
                         <tr key={transaction.id}>
                           <td className="px-3 py-3">{formatDateTime(transaction.created_at)}</td>
@@ -18985,6 +19002,7 @@ setCustomerOrganizationName("");
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </div>
           </div>
@@ -18992,19 +19010,19 @@ setCustomerOrganizationName("");
 
           {inventoryTab === "ledger" && (
           <div className="space-y-6">
-            <div className="rounded border border-border bg-card p-4">
+            <div className="rounded border border-border bg-card p-5">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h3 className="text-lg font-medium text-foreground">{t('inventory.ledgerTab')}</h3>
+                  <h3 className="text-lg font-semibold text-foreground">{t('inventory.ledgerTab')}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {t('inventory.ledgerSubtitle')}
                   </p>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-3 lg:w-[640px]">
+                <div className="grid gap-4 sm:grid-cols-3 lg:w-[640px]">
                   <select
                     value={ledgerMovementFilter}
                     onChange={(e) => setLedgerMovementFilter(e.target.value)}
-                    className="rounded border border-border px-3 py-2 text-sm"
+                    className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <option value="all">{t('inventory.allMovements')}</option>
                     <option value="purchase_in">{t('inventory.purchaseReceipts')}</option>
@@ -19017,7 +19035,7 @@ setCustomerOrganizationName("");
                   <select
                     value={ledgerProductFilter}
                     onChange={(e) => setLedgerProductFilter(e.target.value)}
-                    className="rounded border border-border px-3 py-2 text-sm"
+                    className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <option value="all">{t('inventory.allProducts')}</option>
                     {products.map((product) => (
@@ -19031,7 +19049,7 @@ setCustomerOrganizationName("");
                     value={ledgerSearch}
                     onChange={(e) => setLedgerSearch(e.target.value)}
                     placeholder={t('inventory.ledgerSearchPlaceholder')}
-                    className="rounded border border-border px-3 py-2 text-sm"
+                    className="min-h-11 rounded border border-input px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
               </div>
@@ -19050,8 +19068,35 @@ setCustomerOrganizationName("");
                       {formatMovementChange(ledgerQuery.openingBalances.get(String(ledgerProductFilter)) ?? 0)}
                     </p>
                   )}
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 text-sm">
+                                <div className="space-y-3 lg:hidden">
+                {ledgerQuery.rows.map((transaction) => (
+                  <article key={transaction.id} className="rounded border border-border bg-card p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-medium text-foreground">{productNameById.get(String(transaction.product_id)) ?? `${t('sell.product')} ${transaction.product_id}`}</p>
+                      <p className={`font-medium tabular-nums ${Number(transaction.quantity_delta) > 0 ? "text-success" : "text-destructive"}`}>{formatMovementChange(Number(transaction.quantity_delta))}</p>
+                    </div>
+                    <dl className="mt-2 space-y-1 text-sm text-muted-foreground">
+                      <div className="flex justify-between gap-3"><dt>{t('money.date')}</dt><dd className="text-foreground/80">{formatDateTime(transaction.created_at)}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.movement')}</dt><dd className="text-foreground/80">{movementLabel(transaction.movement_type)}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.batch')}</dt><dd className="text-foreground/80">{transaction.batch_number ?? "-"}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.expiry')}</dt><dd className="text-foreground/80">{transaction.expiry_date ?? "-"}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.reasonReference')}</dt><dd className="text-foreground/80">{(() => {if (transaction.reference_type === "purchase_transaction") {
+                                  const label = invoiceNumbersByReferenceId.get(transaction.reference_id ?? "");
+                                  return label || t('inventory.purchaseFallback');
+                                }
+                                if (transaction.reference_type === "sales_transaction") {
+                                  const label = invoiceNumbersByReferenceId.get(transaction.reference_id ?? "");
+                                  return label || t('inventory.saleFallback');
+                                }
+                                return transaction.reason ?? "-";
+                              })()}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.balance')}</dt><dd className="font-medium tabular-nums text-foreground">{formatMovementChange(transaction.runningBalance)}</dd></div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+                  <div className="hidden overflow-x-auto lg:block">
+                    <table className="min-w-full divide-y divide-border text-sm tabular-nums">
                       <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                         <tr>
                           <th className="px-3 py-2">{t('money.date')}</th>
@@ -19064,7 +19109,7 @@ setCustomerOrganizationName("");
                           <th className="px-3 py-2">{t('inventory.balance')}</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-200">
+                      <tbody className="divide-y divide-border">
                         {ledgerQuery.rows.map((transaction) => (
                           <tr key={transaction.id}>
                             <td className="px-3 py-3">{formatDateTime(transaction.created_at)}</td>
@@ -19105,13 +19150,28 @@ setCustomerOrganizationName("");
             </div>
 
             {selectedLedgerProductBatches.length > 0 && (
-              <div className="rounded border border-border bg-card p-4">
-                <h3 className="mb-1 text-lg font-medium text-foreground">{t('inventory.batchAvailability')}</h3>
+              <div className="rounded border border-border bg-card p-5">
+                <h3 className="mb-1 text-lg font-semibold text-foreground">{t('inventory.batchAvailability')}</h3>
                 <p className="mb-3 text-sm text-muted-foreground">
                   {t('inventory.batchAvailabilityHint')}
                 </p>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                              <div className="space-y-3 lg:hidden">
+                {selectedLedgerProductBatches.map((batch) => (
+                  <article key={batch.batchNumber} className="rounded border border-border bg-card p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-medium text-foreground">{batch.batchNumber}</p>
+                      <p className="font-medium tabular-nums text-foreground">{formatMovementChange(batch.balance)}</p>
+                    </div>
+                    <dl className="mt-2 space-y-1 text-sm text-muted-foreground">
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.expiry')}</dt><dd className="text-foreground/80">{batch.expiryDate ?? "-"}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.received')}</dt><dd className="tabular-nums text-foreground/80">{formatMovementChange(batch.received)}</dd></div>
+                      <div className="flex justify-between gap-3"><dt>{t('inventory.issued')}</dt><dd className="tabular-nums text-foreground/80">{formatMovementChange(-batch.issued)}</dd></div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+<div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-border text-sm tabular-nums">
                     <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground/80">
                       <tr>
                         <th className="px-3 py-2">{t('inventory.batch')}</th>
@@ -19121,7 +19181,7 @@ setCustomerOrganizationName("");
                         <th className="px-3 py-2">{t('inventory.balance')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-border">
                       {selectedLedgerProductBatches.map((batch) => (
                         <tr key={batch.batchNumber}>
                           <td className="px-3 py-3">{batch.batchNumber}</td>
@@ -19142,7 +19202,7 @@ setCustomerOrganizationName("");
           {inventoryTab === "import" && (
           <div className="space-y-6">
             {!canManageInventory && (
-              <div className="rounded border border-warning/20 bg-warning/5 p-4 text-sm text-warning/90">
+              <div className="rounded border border-warning/20 bg-warning/5 p-5 text-sm text-warning/90">
                 {t('inventory.importViewAccessWarning')}
               </div>
             )}
