@@ -14,14 +14,14 @@ import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigati
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
 import { POSReceipt, POSReceiptPreview, type Receipt } from "@/components/sales/POSReceipt";
 import TemplateCustomizer from "@/components/print/TemplateCustomizer";
-import { buildAtomicSaleReceipt } from "@/lib/print/retail-receipt";
+import { SEEDED_WALK_IN_CUSTOMER_NAME, buildAtomicSaleReceipt, buildOfflineSaleReceipt } from "@/lib/print/retail-receipt";
 import { fillWhatsAppTemplate, firstWhatsAppLink, parseWhatsAppNumber } from "@/lib/share/whatsapp";
 import { formatAvailableStock } from "@/lib/products/stock-display";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
 import { calculateSaleLineDiscountAmount, hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
-import { createAtomicSale, readPendingAtomicSale, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
+import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
@@ -4276,7 +4276,11 @@ setCustomerOrganizationName("");
           fetchCustomerPaymentAllocations();
           return;
         }
-        setSalesError(t('page.saleChangedElsewhere'));
+        if (readPendingSalesQueue(pendingScope).length > 0) {
+          setSalesError(t('offline.stillWaiting'));
+        } else {
+          setSalesError(t('page.saleChangedElsewhere'));
+        }
         setSalesMessage(null);
         return;
       } catch (err) {
@@ -4602,7 +4606,48 @@ setCustomerOrganizationName("");
         })),
       };
       const scope = `${currentOrganizationId}:${currentProfile.id}`;
-      const { result, previousPendingConfirmed } = await createAtomicSale(supabase, scope, input);
+      const saved = await createAtomicSale(supabase, scope, input);
+      if ("queued" in saved) {
+        // Offline (or still unconfirmed): the basket is safe in the queue.
+        // Show a provisional receipt, clear the form like a confirmed save,
+        // and let the queue sync it when the connection returns. No drawer
+        // kick here: the drawer opens for live cash sales only.
+        const queuedCustomer = customers.find((c) => String(c.id) === String(input.customer_id));
+        setLastPOSReceipt(buildOfflineSaleReceipt(input, {
+          scope,
+          business: currentOrganization?.name || "TradeOS",
+          pendingLabel: t('offline.pendingLabel'),
+          customerName: queuedCustomer?.customer_name ?? SEEDED_WALK_IN_CUSTOMER_NAME,
+          customerWhatsapp: queuedCustomer?.whatsapp ?? null,
+          customerPhone: queuedCustomer?.phone ?? null,
+          productById: (id) => products.find((p) => String(p.id) === id),
+        }));
+        if (saved.confirmedCount > 0) {
+          fetchSalesTransactions();
+          fetchSalesItems();
+          fetchProducts();
+          fetchCustomerPayments();
+          fetchCustomerPaymentAllocations();
+        }
+        setSalesMessage(
+          t('offline.savedOffline')
+            + (saved.confirmedCount > 0 ? " " + t('offline.syncedCount').replace('{count}', String(saved.confirmedCount)) : "")
+            + (saved.rejectedMessages.length > 0 ? " " + saved.rejectedMessages.join(" ") : ""),
+        );
+        if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
+        setSaleScanFocus(value => value + 1);
+        setSalesInvoiceNumber("");
+        setSalesInvoiceDate(toDateInputValue(new Date()));
+        setSalesPaymentType("cash");
+        setPosCashReceived("");
+        setSalesDiscountAmount("");
+        setSalesDiscountType("flat");
+        setSalesTaxRate("");
+        clearCreditOverrideState();
+        setSalesLines([]);
+        return;
+      }
+      const { result, previousPendingConfirmed } = saved;
       const transaction = result.transaction;
       const invoiceNumber = String(transaction.invoice_number ?? "");
       // Instant print (2g): wholesale saves build a receipt exactly like
@@ -5756,6 +5801,46 @@ setCustomerOrganizationName("");
   const [scannedProductNames, setScannedProductNames] = useState<Record<string, string>>({});
   const [quickSaleMode, setQuickSaleMode] = useState(false);
   const [lastPOSReceipt, setLastPOSReceipt] = useState<Receipt | null>(null);
+  const [pendingSalesCount, setPendingSalesCount] = useState(0);
+  const [pendingSalesNotices, setPendingSalesNotices] = useState<string[]>([]);
+  const [pendingSyncing, setPendingSyncing] = useState(false);
+  const [pendingSyncNote, setPendingSyncNote] = useState<string | null>(null);
+  const [pendingSyncError, setPendingSyncError] = useState<string | null>(null);
+
+  const refreshPendingSales = useCallback(() => {
+    if (!currentOrganizationId || !currentProfile?.id) return;
+    const scope = `${currentOrganizationId}:${currentProfile.id}`;
+    setPendingSalesCount(readPendingSalesQueue(scope).length);
+    setPendingSalesNotices(readQueueNotices(scope));
+  }, [currentOrganizationId, currentProfile?.id]);
+
+  useEffect(() => {
+    if (!currentOrganizationId || !currentProfile?.id) return;
+    const scope = `${currentOrganizationId}:${currentProfile.id}`;
+    const drainAndRefresh = () => {
+      void drainPendingSalesQueue(supabase, scope).then((drained) => {
+        if (drained.confirmedCount > 0) {
+          fetchSalesTransactions();
+          fetchSalesItems();
+          fetchProducts();
+          fetchCustomerPayments();
+          fetchCustomerPaymentAllocations();
+        }
+        refreshPendingSales();
+      }).catch(() => refreshPendingSales());
+    };
+    refreshPendingSales();
+    // Drain on mount too: a sale queued before a reload syncs itself.
+    if (readPendingSalesQueue(scope).length > 0) drainAndRefresh();
+    const handleQueueChanged = () => refreshPendingSales();
+    window.addEventListener(QUEUE_CHANGED_EVENT, handleQueueChanged);
+    window.addEventListener("online", drainAndRefresh);
+    return () => {
+      window.removeEventListener(QUEUE_CHANGED_EVENT, handleQueueChanged);
+      window.removeEventListener("online", drainAndRefresh);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshPendingSales, currentOrganizationId, currentProfile?.id]);
   // Pre-sale receipt setup: the POS screen's Customize receipt button opens
   // the template customizer over a sample receipt (no sale needed). The
   // saved template is picked up by the next sale's receipt dialog, which
@@ -19664,6 +19749,60 @@ setCustomerOrganizationName("");
             }} />}
             {salesMessage && <p className="mt-4 text-sm text-success">{salesMessage}</p>}
             {salesError && <p className="mt-4 text-sm text-destructive">{salesError}</p>}
+            {(pendingSalesCount > 0 || pendingSalesNotices.length > 0) && (
+              <div role="status" className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                {pendingSalesCount > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span>{t('offline.waiting').replace('{count}', String(pendingSalesCount))}</span>
+                    <button
+                      type="button"
+                      disabled={pendingSyncing}
+                      onClick={() => {
+                        if (!currentOrganizationId || !currentProfile?.id) return;
+                        const scope = `${currentOrganizationId}:${currentProfile.id}`;
+                        setPendingSyncing(true);
+                        setPendingSyncNote(null);
+                        setPendingSyncError(null);
+                        void drainPendingSalesQueue(supabase, scope).then((drained) => {
+                          if (drained.confirmedCount > 0) {
+                            fetchSalesTransactions();
+                            fetchSalesItems();
+                            fetchProducts();
+                            fetchCustomerPayments();
+                            fetchCustomerPaymentAllocations();
+                          }
+                          if (drained.remaining > 0) setPendingSyncError(t('offline.syncFailed'));
+                          else if (drained.confirmedCount > 0) setPendingSyncNote(t('offline.syncedAll'));
+                          refreshPendingSales();
+                        }).catch(() => {
+                          setPendingSyncError(t('offline.syncFailed'));
+                          refreshPendingSales();
+                        }).finally(() => setPendingSyncing(false));
+                      }}
+                      className="min-h-11 rounded border border-input bg-background px-3 font-medium disabled:opacity-60"
+                    >
+                      {pendingSyncing ? t('offline.syncing') : t('offline.syncNow')}
+                    </button>
+                  </div>
+                )}
+                {pendingSyncNote && <p className="mt-2 text-success">{pendingSyncNote}</p>}
+                {pendingSyncError && <p className="mt-2 text-destructive">{pendingSyncError}</p>}
+                {pendingSalesNotices.map((notice, index) => (
+                  <p key={index} className="mt-2 text-destructive">{notice}</p>
+                ))}
+                {pendingSalesNotices.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (currentOrganizationId && currentProfile?.id) clearQueueNotices(`${currentOrganizationId}:${currentProfile.id}`);
+                    }}
+                    className="mt-2 min-h-11 rounded border border-input bg-background px-3 font-medium"
+                  >
+                    {t('common.close')}
+                  </button>
+                )}
+              </div>
+            )}
             {!isOwnerOrAdmin() && <MyPendingSales key={salesMessage ?? "pending"} />}
           </div>
         </section>
