@@ -20805,9 +20805,9 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "customer-payments" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('payments.title')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('payments.title')}</h2>
             <div className="flex flex-wrap gap-2">
               {canImportExport && (
                 <ImportExportSection
@@ -20823,7 +20823,7 @@ setCustomerOrganizationName("");
               <button
                 type="button"
                 onClick={handleExportCustomerBalancesCsv}
-                className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
+                className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
               >
                 {t('payments.exportBalancesCsv')}
               </button>
@@ -20831,7 +20831,7 @@ setCustomerOrganizationName("");
                 type="button"
                 onClick={() => handlePrintCustomerStatement(selectedCustomerPaymentId)}
                 disabled={!selectedCustomerPaymentId}
-                className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
+                className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
               >
                 {t('payments.printStatement')}
               </button>
@@ -20841,7 +20841,7 @@ setCustomerOrganizationName("");
              <select
                value={selectedCustomerPaymentId ?? ""}
                onChange={(e) => handleCustomerPaymentCustomerChange(e.target.value)}
-               className="rounded border border-border px-2 py-2"
+               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              >
                <option value="">{t('payments.selectCustomer')}</option>
                {customers.map((c) => (
@@ -20854,20 +20854,20 @@ setCustomerOrganizationName("");
                value={customerPaymentAmount}
                onChange={(e) => handleCustomerPaymentAmountChange(e.target.value)}
                placeholder={t('money.amount')}
-               className="rounded border border-border px-2 py-2"
+               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              />
 
              <input
                type="date"
                value={customerPaymentDate}
                onChange={(e) => setCustomerPaymentDate(e.target.value)}
-               className="rounded border border-border px-2 py-2"
+               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              />
 
              <select
                value={customerPaymentMethod}
                onChange={(e) => setCustomerPaymentMethod(e.target.value as "cash" | "bank" | "card")}
-               className="rounded border border-border px-2 py-2"
+               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              >
                <option value="cash">{t('money.cash')}</option>
                <option value="bank">{t('money.bank')}</option>
@@ -20880,17 +20880,17 @@ setCustomerOrganizationName("");
              value={customerPaymentNotes}
              onChange={(e) => setCustomerPaymentNotes(e.target.value)}
              placeholder={t('payments.notesOptional')}
-             className="w-full sm:col-span-4 rounded border border-border px-2 py-2"
+             className="w-full sm:col-span-4 min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
            />
 
           {selectedCustomerPaymentId && (
-            <div className="mt-4 rounded border border-border bg-card p-4">
+            <div className="mt-4 rounded border border-border bg-card p-5">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-lg font-medium text-foreground">{t('payments.allocateTitle')}</h3>
+                <h3 className="text-lg font-semibold text-foreground">{t('payments.allocateTitle')}</h3>
                 <button
                   type="button"
                   onClick={handleAutoAllocateCustomerPayment}
-                  className="rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
+                  className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5"
                 >
                   {t('payments.autoAllocate')}
                 </button>
@@ -20899,23 +20899,20 @@ setCustomerOrganizationName("");
                 {t('payments.allocateHint')}
               </p>
 
-              <div className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
-                <div className="rounded border border-border bg-muted/30 p-3">
+              <div className="mb-4 grid gap-4 text-sm sm:grid-cols-3">
+                <div className="rounded border border-border bg-muted/30 p-4">
                   <div className="text-muted-foreground/80">{t('payments.paymentAmount')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(Number.isFinite(customerPaymentAmountValue) ? customerPaymentAmountValue : 0)}
+                  <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(Number.isFinite(customerPaymentAmountValue) ? customerPaymentAmountValue : 0)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-muted/30 p-3">
+                <div className="rounded border border-border bg-muted/30 p-4">
                   <div className="text-muted-foreground/80">{t('payments.totalAllocated')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(customerPaymentAllocationTotal)}
+                  <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(customerPaymentAllocationTotal)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-muted/30 p-3">
+                <div className="rounded border border-border bg-muted/30 p-4">
                   <div className="text-muted-foreground/80">{t('payments.unallocatedAmount')}</div>
-                  <div className="font-medium text-foreground">
-                    {formatBooksMoney(customerPaymentUnallocatedAmount)}
+                  <div className="font-semibold tabular-nums text-foreground">{formatBooksMoney(customerPaymentUnallocatedAmount)}
                   </div>
                 </div>
               </div>
@@ -20925,8 +20922,8 @@ setCustomerOrganizationName("");
               ) : (
                 <div className="space-y-3">
                   {unpaidCreditInvoicesForSelectedPaymentCustomer.map((invoice) => (
-                    <div key={invoice.transaction.id} className="rounded border border-border bg-muted/30 p-3">
-                      <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <div key={invoice.transaction.id} className="rounded border border-border bg-muted/30 p-4">
+                      <div className="grid gap-4 text-sm tabular-nums sm:grid-cols-2 lg:grid-cols-4">
                         <div>
                           <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.invoiceLabel')}</div>
                           <div className="font-medium text-foreground">{invoice.transaction.invoice_number}</div>
@@ -20970,7 +20967,7 @@ setCustomerOrganizationName("");
                             onChange={(e) =>
                               handleCustomerPaymentAllocationChange(invoice.transaction.id, e.target.value)
                             }
-                            className="rounded border border-border px-2 py-1"
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
                       </div>
@@ -20986,7 +20983,7 @@ setCustomerOrganizationName("");
               type="button"
               onClick={handleSaveCustomerPayment}
               disabled={customerPaymentLoading}
-              className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
+              className="min-h-11 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
               {customerPaymentLoading ? t('common.saving') : t('payments.save')}
             </button>
@@ -20995,16 +20992,16 @@ setCustomerOrganizationName("");
           </div>
 
           <div className="mt-6 border-t border-border pt-4">
-            <h3 className="mb-3 text-lg font-medium text-foreground">{t('payments.history')}</h3>
+            <h3 className="mb-3 text-lg font-semibold text-foreground">{t('payments.history')}</h3>
             <input
               type="text"
               value={customerPaymentSearch}
               onChange={(e) => setCustomerPaymentSearch(e.target.value)}
               placeholder={t('sell.searchHistory')}
-              className="mb-3 w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+              className="mb-3 min-h-11 w-full rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             {customerPaymentSearch.trim() !== "" && customerInvoicesByCustomerForSearch.length > 0 && (
-              <div className="mb-4 rounded border border-border bg-card p-3">
+              <div className="mb-4 rounded border border-border bg-card p-4">
                 <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
                   {t('payments.invoiceHistoryForCustomer')}
                 </div>
@@ -21031,7 +21028,7 @@ setCustomerOrganizationName("");
                           {payStatusLabelMap[invoiceItem.status] ?? invoiceItem.status}
                         </span>
                         {invoiceItem.remainingUnpaidAmount > 0 && (
-                          <span>{t('payments.remaining')}: {formatBooksMoney(invoiceItem.remainingUnpaidAmount)}</span>
+                          <span className="tabular-nums">{t('payments.remaining')}: {formatBooksMoney(invoiceItem.remainingUnpaidAmount)}</span>
                         )}
                       </span>
                     </li>
@@ -21050,9 +21047,9 @@ setCustomerOrganizationName("");
                 {filteredCustomerPaymentHistory.map((historyItem) => (
                   <li
                     key={historyItem.payment.id}
-                    className="rounded border border-border bg-card p-3 text-sm text-foreground/80"
+                    className="rounded border border-border bg-card p-4 text-sm text-foreground/80"
                   >
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-4 text-sm tabular-nums sm:grid-cols-2 lg:grid-cols-4">
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('sell.customer')}</div>
                         <div className="font-medium text-foreground">
@@ -21103,7 +21100,7 @@ setCustomerOrganizationName("");
                     )}
 
                     {historyItem.allocations.length > 0 && (
-                      <div className="mt-3 rounded border border-border bg-muted/30 p-3">
+                      <div className="mt-3 rounded border border-border bg-muted/30 p-4">
                         <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
                           {t('payments.allocations')}
                         </div>
@@ -21734,9 +21731,9 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "customer-credit" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('credit.title')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('credit.title')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="customer_credit"
@@ -21752,18 +21749,18 @@ setCustomerOrganizationName("");
           {customers.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('credit.noCustomers')}</p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {receivablesStats.map((r) => (
-                <li key={r.customerId} className="flex items-center justify-between rounded border border-border bg-card px-3 py-2">
+                <li key={r.customerId} className="flex items-center justify-between rounded border border-border bg-card p-4">
                   <div>
                     <div className="font-medium text-foreground">{r.customerName}</div>
                     <div className="text-xs text-muted-foreground">{r.shopName ?? ""}</div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-foreground/80">
+                  <div className="flex items-center gap-4 text-sm text-foreground/80 tabular-nums">
                     <div>{t('credit.creditSales')}: {r.totalSales}</div>
                     <div>{t('credit.paymentsApplied')}: {r.paymentsReceived}</div>
                     <div>{t('credit.returns')}: {r.returnsCredited}</div>
-                    <div>{t('credit.outstanding')}: {r.outstanding}</div>
+                    <div className="font-semibold tabular-nums text-foreground">{t('credit.outstanding')}: {r.outstanding}</div>
                   </div>
                 </li>
               ))}
@@ -22630,10 +22627,10 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "customers" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
           {currentProfile?.role === "owner" && <SetupReview entity="customers" onSaved={() => { void fetchCustomers(); }} />}
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">
+            <h2 className="text-2xl font-semibold text-foreground">
               {customerEditingId ? t('customers.editCustomer') : t('customers.management')}
             </h2>
             {canImportExport && (
@@ -22650,13 +22647,13 @@ setCustomerOrganizationName("");
           </div>
           <div className="mb-5 flex gap-2 border-b border-border pb-3">
             <button type="button" onClick={() => setCustomerWorkspaceTab("management")}
-              className={cn("rounded px-3 py-2 text-sm", customerWorkspaceTab === "management" ? "bg-primary text-white" : "border border-border bg-card text-foreground/80")}>{t('customers.management')}</button>
+              className={cn("min-h-11 rounded px-3 py-2 text-sm", customerWorkspaceTab === "management" ? "bg-primary text-white" : "border border-border bg-card text-foreground/80")}>{t('customers.management')}</button>
             <button type="button" onClick={() => setCustomerWorkspaceTab("history")}
-              className={cn("rounded px-3 py-2 text-sm", customerWorkspaceTab === "history" ? "bg-primary text-white" : "border border-border bg-card text-foreground/80")}>{t('customers.tabHistory')}</button>
+              className={cn("min-h-11 rounded px-3 py-2 text-sm", customerWorkspaceTab === "history" ? "bg-primary text-white" : "border border-border bg-card text-foreground/80")}>{t('customers.tabHistory')}</button>
           </div>
           {customerWorkspaceTab === "management" ? (
           <>
-          <div className="space-y-4">
+          <div className="space-y-6">
             {customerEditingId && (
               <p className="rounded border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary/90">
                 {t('customers.editingNotice')}
@@ -22669,24 +22666,24 @@ setCustomerOrganizationName("");
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 required
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.shopName')}</span><input type="text" value={shopName} onChange={(e) => setShopName(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.organizationName')}</span><input type="text" value={customerOrganizationName} onChange={(e) => setCustomerOrganizationName(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.contactPerson')}</span><input type="text" value={customerContactPerson} onChange={(e) => setCustomerContactPerson(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.phone')}</span><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.whatsapp')}</span><input type="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.city')}</span><input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.shopName')}</span><input type="text" value={shopName} onChange={(e) => setShopName(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.organizationName')}</span><input type="text" value={customerOrganizationName} onChange={(e) => setCustomerOrganizationName(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.contactPerson')}</span><input type="text" value={customerContactPerson} onChange={(e) => setCustomerContactPerson(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.phone')}</span><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.whatsapp')}</span><input type="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.city')}</span><input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('customers.area')}</span>
                 <input
                   type="text"
                   value={area}
                   onChange={(e) => setArea(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
 
@@ -22697,14 +22694,14 @@ setCustomerOrganizationName("");
                   list="customer-type-options"
                   value={customerType}
                   onChange={(e) => setCustomerType(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 <datalist id="customer-type-options"><option value="Retailer" /><option value="Wholesaler" /><option value="Distributor" /><option value="Institutional" /></datalist>
               </label>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.completeAddress')}</span><textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.shippingAddress')}</span><textarea value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} rows={3} placeholder={t('customers.shippingAddressPlaceholder')} className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.completeAddress')}</span><textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.shippingAddress')}</span><textarea value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} rows={3} placeholder={t('customers.shippingAddressPlaceholder')} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
@@ -22712,7 +22709,7 @@ setCustomerOrganizationName("");
                 <select
                   value={creditPolicy}
                   onChange={(e) => handleCreditPolicyChange(e.target.value)}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="cash_only">{t('customers.creditCashOnlyOption')}</option>
                   <option value="limit_only">{t('customers.policyLimitOnly')}</option>
@@ -22735,7 +22732,7 @@ setCustomerOrganizationName("");
                       min="0"
                       step="0.01"
                       required
-                      className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                      className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </label>
                 )}
@@ -22750,7 +22747,7 @@ setCustomerOrganizationName("");
                       min="0"
                       step="1"
                       required
-                      className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                      className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </label>
                 )}
@@ -22791,7 +22788,7 @@ setCustomerOrganizationName("");
                 type="text"
                 value={customerNotes}
                 onChange={(e) => setCustomerNotes(e.target.value)}
-                className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
 
@@ -22845,7 +22842,7 @@ setCustomerOrganizationName("");
                 </div>
               )}
               {(customersReadStatus === "successful-populated" || customersReadStatus === "failed") && filteredCustomers.length > 0 ? (
-                <ul className="space-y-2">
+                <ul className="space-y-3">
                   {filteredCustomers.map((customer) => {
                     const policy = customer.credit_policy ?? "cash_only";
                     const policyLabel = ({ cash_only: t('customers.policyCashOnly'), limit_only: t('customers.policyLimitOnly'), days_only: t('customers.policyDaysOnly'), limit_and_days: t('customers.policyLimitAndDays'), unrestricted: t('customers.policyUnrestricted') } as Record<string, string>)[policy] ?? t('customers.policyCashOnly');
@@ -22863,7 +22860,7 @@ setCustomerOrganizationName("");
                     return (
                       <li
                         key={customer.id}
-                        className="flex flex-col gap-2 rounded border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                        className="flex flex-col gap-2 rounded border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="space-y-1 text-sm text-foreground/80">
                           <div className="font-medium text-foreground">
@@ -22878,7 +22875,7 @@ setCustomerOrganizationName("");
                           <div>{t('customers.typePrefix')} {customer.customer_type ?? t('common.none')}</div>
                           <div>{t('customers.phonePrefix')} {customer.phone ?? t('common.none')}</div>
                           <div>{t('customers.cityPrefix')} {customer.city ?? t('common.none')}</div>
-                          <div>{t('customers.creditPolicyPrefix')} {creditSummary}</div>
+                          <div className="tabular-nums">{t('customers.creditPolicyPrefix')} {creditSummary}</div>
                           {(() => {
                             const customerTxIds = new Set(
                               salesTransactions
@@ -22946,14 +22943,14 @@ setCustomerOrganizationName("");
                           <button
                             type="button"
                             onClick={() => handleStartCustomerEdit(customer.id)}
-                            className="rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
+                            className="min-h-11 rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
                           >
                             {t('common.edit')}
                           </button>
                           <button
                             type="button"
                             onClick={() => setViewCustomerHistoryId(customer.id)}
-                            className="rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
+                            className="min-h-11 rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
                           >
                             {t('customers.history')}
                           </button>
@@ -22961,7 +22958,7 @@ setCustomerOrganizationName("");
                             <button
                               type="button"
                               onClick={() => handleRestoreCustomer(customer.id)}
-                              className="rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
+                              className="min-h-11 rounded border border-primary px-3 py-1 text-sm text-primary transition hover:bg-primary/5"
                             >
                               {t('common.restore')}
                             </button>
@@ -22969,7 +22966,7 @@ setCustomerOrganizationName("");
                             <button
                               type="button"
                               onClick={() => handleArchiveCustomer(customer.id)}
-                              className="rounded border border-destructive px-3 py-1 text-sm text-destructive transition hover:bg-destructive/5"
+                              className="min-h-11 rounded border border-destructive px-3 py-1 text-sm text-destructive transition hover:bg-destructive/5"
                             >
                               {t('products.archive')}
                             </button>
@@ -22999,13 +22996,13 @@ setCustomerOrganizationName("");
 
         {viewCustomerHistoryId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="relative w-full max-w-5xl max-h-[90vh] overflow-auto rounded-lg border border-border bg-background p-4 shadow-xl">
+            <div className="relative w-full max-w-5xl max-h-[90vh] overflow-auto rounded-lg border border-border bg-background p-5 shadow-xl">
               <div className="mb-4 flex items-center justify-between border-b border-border pb-3">
                 <h2 className="text-lg font-semibold text-foreground">{t('customers.tabHistory')}</h2>
                 <button
                   type="button"
                   onClick={() => setViewCustomerHistoryId(null)}
-                  className="rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted/30"
+                  className="min-h-11 rounded border border-border px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted/30"
                 >
                   {t('common.close')}
                 </button>
