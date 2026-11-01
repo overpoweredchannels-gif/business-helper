@@ -213,7 +213,7 @@ export function DashboardView({
   ].filter((chart) => !widgetHidden(chart.id));
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 pb-10 pt-3 sm:px-6 sm:pt-4 lg:px-8 space-y-6">
+    <div className="w-full max-w-none px-4 pb-10 pt-3 sm:px-6 sm:pt-4 lg:px-6 space-y-6">
       {/* Welcome Section */}
       <header className="flex flex-wrap items-start justify-between gap-2 sm:items-center sm:gap-3">
         <DashboardWidget id="greeting" customizing={customizingWidgets} onRemove={onRemoveWidget} className="min-w-0 flex-1">
@@ -263,6 +263,39 @@ export function DashboardView({
         </section>
       )}
 
+      {/* Intelligence Cockpit grid: main column + rail */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
+      <div className="min-w-0 space-y-4 lg:col-span-8">
+      {/* Charts */}
+      {chartCards.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {chartCards.map((chart) => (
+            <DashboardWidget key={chart.id} id={chart.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
+              {chart.node}
+            </DashboardWidget>
+          ))}
+        </div>
+      )}
+
+      {/* Recent Activity */}
+      {recentActivities.length > 0 && (
+        <DashboardWidget id="recent-activity" customizing={customizingWidgets} onRemove={onRemoveWidget}>
+          <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} />
+        </DashboardWidget>
+      )}
+
+      {/* Cards dropped here from the sidebar */}
+      {droppedCards.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {droppedCards.map((card) => (
+            <DashboardWidget key={card.id} id={card.id} label={card.label} customizing={customizingWidgets} onRemove={onRemoveWidget}>
+              {card.node}
+            </DashboardWidget>
+          ))}
+        </div>
+      )}
+      </div>
+      <div className="min-w-0 space-y-4 lg:col-span-4">
       {/* AI Insight */}
       {aiInsight && (
         <DashboardWidget id="ai-insight" customizing={customizingWidgets} onRemove={onRemoveWidget}>
@@ -279,13 +312,13 @@ export function DashboardView({
       {/* Pending Tasks */}
       {(taskList.length > 0 || allAlertReadsReady) && !widgetHidden("needs-attention") && (
         <DashboardWidget id="needs-attention" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <div className="rounded-xl border border-border bg-card p-5">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgb(15_23_42/0.06),0_16px_32px_-16px_rgb(15_23_42/0.20)]">
             <h2 className="text-sm font-semibold text-foreground mb-1">{t('dashboard.needsAttention')}</h2>
             <p className="mb-3 text-xs text-muted-foreground">{t('dashboard.needsAttentionHint')}</p>
             {taskList.length === 0 ? (
               <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{t('dashboard.noAlerts')}</p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {taskList.map((task) => {
                   const stateLabel = task.status === "failed" ? t('dashboard.unavailable') : task.status === "loading" ? ui('loading') : task.status === "not-loaded" ? t('dashboard.notLoaded') : String(task.value);
                   const TaskIcon = task.icon;
@@ -320,6 +353,8 @@ export function DashboardView({
         <BusinessHealthCard score={healthScore} metrics={healthMetrics} readStatus={effectiveHealthReadStatus} lastSuccessfulAt={healthLastSuccessfulAt ?? metricLastSuccessfulAt?.["business-health"]} onRetry={onRetryFailedReads} />
       </DashboardWidget>}
 
+      </div>
+      </div>
       {/* Smart Modules */}
       {smartModules.length > 0 && !widgetHidden("smart-modules") && (
         <DashboardWidget id="smart-modules" customizing={customizingWidgets} onRemove={onRemoveWidget}>
@@ -334,35 +369,6 @@ export function DashboardView({
             </div>
           </div>
         </DashboardWidget>
-      )}
-
-      {/* Charts */}
-      {chartCards.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {chartCards.map((chart) => (
-            <DashboardWidget key={chart.id} id={chart.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
-              {chart.node}
-            </DashboardWidget>
-          ))}
-        </div>
-      )}
-
-      {/* Recent Activity */}
-      {recentActivities.length > 0 && (
-        <DashboardWidget id="recent-activity" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} />
-        </DashboardWidget>
-      )}
-
-      {/* Cards dropped here from the sidebar */}
-      {droppedCards.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {droppedCards.map((card) => (
-            <DashboardWidget key={card.id} id={card.id} label={card.label} customizing={customizingWidgets} onRemove={onRemoveWidget}>
-              {card.node}
-            </DashboardWidget>
-          ))}
-        </div>
       )}
     </div>
   );

@@ -19,7 +19,12 @@ html { zoom: var(--app-zoom, 1); }
   background: var(--color-card, #fff); color: inherit;
 }
 
-/* Aankh Step 1 (Umair-approved 2026-10-30): ui-ux-pro-max skill-blue palette.
+/* Intelligence Palette override (LOCAL-ONLY branch design/global-visual-override, 2026-11-01, NOT on main):
+   Base Sapphire #0F172A (foreground/panel, unchanged), Slate-Teal #4F6D7A (primary/hover/input/muted text),
+   Electric Blue #3B82F6 (focus ring + secondary-strong only), Deep Amber #F59E0B (warning/accent-strong).
+   Contrast note: amber #F59E0B as text on white is ~2.6:1 (below 4.5:1) — warning text on light
+   surfaces will look lighter; warning-foreground is Base Sapphire for amber fills. For Umair's inspection.
+   Aankh Step 1 (Umair-approved 2026-10-30): ui-ux-pro-max skill-blue palette.
    Token names unchanged; values only. Light input is #64748B, not the
    proposed #94A3B8, because the repo's AGENTS.md requires a 3:1 input
    boundary and #94A3B8 on white is only 2.56:1 (#64748B is 4.76:1).
@@ -29,33 +34,33 @@ html { zoom: var(--app-zoom, 1); }
   --color-foreground: #0F172A;
   --color-card: #FFFFFF;
   --color-card-foreground: #0F172A;
-  --color-primary: #1E40AF;
+  --color-primary: #4F6D7A;
   --color-primary-foreground: #FFFFFF;
-  --color-primary-hover: #1E3A8A;
+  --color-primary-hover: #3D5560;
   --color-primary-on-dark: #93C5FD;
-  --color-primary-light: #DBEAFE;
-  --color-secondary: #DBEAFE;
-  --color-secondary-foreground: #1E40AF;
+  --color-primary-light: #E6EDEF;
+  --color-secondary: #E6EDEF;
+  --color-secondary-foreground: #4F6D7A;
   --color-secondary-strong: #3B82F6;
   --color-muted: #E9EEF6;
-  --color-muted-foreground: #475569;
+  --color-muted-foreground: #4F6D7A;
   --color-muted-light: #E2E8F0;
   --color-accent: #FEF3C7;
   --color-accent-foreground: #92400E;
-  --color-accent-strong: #D97706;
+  --color-accent-strong: #F59E0B;
   --color-destructive: #DC2626;
   --color-destructive-foreground: #FFFFFF;
   --color-destructive-bg: #FEF2F2;
   --color-success: #35704F;
   --color-success-foreground: #FFFFFF;
-  --color-warning: #8A5C27;
-  --color-warning-foreground: #FFFFFF;
+  --color-warning: #F59E0B;
+  --color-warning-foreground: #0F172A;
   --color-body: #334155;
-  --color-light-text: #475569;
+  --color-light-text: #4F6D7A;
   --color-panel: #0F172A;
   --color-border: #E2E8F0;
-  --color-input: #64748B;
-  --color-ring: #1E40AF;
+  --color-input: #4F6D7A;
+  --color-ring: #3B82F6;
   --font-ui: var(--font-plus-jakarta);
   --font-heading: var(--font-plus-jakarta);
   --font-brand: var(--font-libre-baskerville);
@@ -120,9 +125,9 @@ html { zoom: var(--app-zoom, 1); }
   --color-muted-foreground: #94A3B8;
   --color-accent: #451A03;
   --color-accent-foreground: #FDE68A;
-  --color-accent-strong: #FBBF24;
+  --color-accent-strong: #F59E0B;
   --color-success: #7FBF98;
-  --color-warning: #E0B070;
+  --color-warning: #F59E0B;
   --color-body: #CBD5E1;
   --color-light-text: #94A3B8;
   --color-destructive-bg: #450A0A;
