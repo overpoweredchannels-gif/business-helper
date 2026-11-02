@@ -197,14 +197,20 @@ async function processQueueLocked(
   scope: string,
   newInput: AtomicSaleInput | null,
   isRecovery: boolean,
+  // True ONLY when the caller re-saves a basket restored from the queue
+  // (mount restore). A fresh entry is always a new sale, even when it is
+  // identical to the waiting head — content equality alone cannot tell a
+  // retry from a second identical sale (2026-11-02 production report: two
+  // identical offline sales queued as one, the second silently lost).
+  isRetry = false,
 ): Promise<QueueOutcome> {
   let queue = readPendingSalesQueue(scope);
   const preExistingIds = new Set(queue.map(item => item.requestId));
   let own: PendingSale | null = null;
   let ownPreExisting = false;
   if (newInput) {
-    if (queue.length > 0 && inputsEqual(queue[0].input, newInput)) {
-      // The form still holds the oldest waiting basket: this is its retry,
+    if (isRetry && queue.length > 0 && inputsEqual(queue[0].input, newInput)) {
+      // The restored basket is being re-saved: this is the head's retry,
       // never a second sale.
       own = queue[0];
       ownPreExisting = true;
@@ -282,8 +288,9 @@ export async function createAtomicSale(
   supabase: SupabaseClient,
   scope: string,
   input: AtomicSaleInput,
+  opts?: { isRetry?: boolean },
 ): Promise<CreateAtomicSaleResult> {
-  const outcome = await runSerialized(scope, () => processQueueLocked(supabase, scope, input, false));
+  const outcome = await runSerialized(scope, () => processQueueLocked(supabase, scope, input, false, opts?.isRetry ?? false));
   if (outcome.ownResult) return outcome.ownResult;
   if (outcome.ownQueued) {
     return {

@@ -4609,7 +4609,11 @@ setCustomerOrganizationName("");
         })),
       };
       const scope = `${currentOrganizationId}:${currentProfile.id}`;
-      const saved = await createAtomicSale(supabase, scope, input);
+      // Only the first save after a mount restore may retry the waiting
+      // basket; every other save is a new sale, even if identical.
+      const isRestoredRetry = restoredPendingSaleRef.current;
+      restoredPendingSaleRef.current = false;
+      const saved = await createAtomicSale(supabase, scope, input, { isRetry: isRestoredRetry });
       if ("queued" in saved) {
         // Offline (or still unconfirmed): the basket is safe in the queue.
         // Show a provisional receipt, clear the form like a confirmed save,
@@ -5806,6 +5810,10 @@ setCustomerOrganizationName("");
   const [lastPOSReceipt, setLastPOSReceipt] = useState<Receipt | null>(null);
   const [pendingSalesCount, setPendingSalesCount] = useState(0);
   const [pendingSalesNotices, setPendingSalesNotices] = useState<string[]>([]);
+  // True only while the form holds a basket restored from the queue (mount
+  // restore). The save handler reads and clears it, so only the first save
+  // after a restore can count as that basket's retry.
+  const restoredPendingSaleRef = useRef(false);
   const [pendingSyncing, setPendingSyncing] = useState(false);
   const [pendingSyncNote, setPendingSyncNote] = useState<string | null>(null);
   const [pendingSyncError, setPendingSyncError] = useState<string | null>(null);
@@ -6151,6 +6159,7 @@ setCustomerOrganizationName("");
         bonus: String(line.bonus),
         unit_mode: line.unit_mode,
       })));
+      restoredPendingSaleRef.current = true;
       setSalesError(t('page.savedSaleWaiting'));
     } catch (error) {
       console.error("Could not restore pending sale:", error);
