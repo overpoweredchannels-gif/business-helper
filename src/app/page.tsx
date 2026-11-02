@@ -19319,7 +19319,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "sales" && (
-        <>
+        <div className="workspace-flow">
         <div className="mb-5 flex flex-wrap gap-2">
           {salesTools.filter(tool => canUseSalesTool(tool.id)).map(tool => <button key={tool.id} type="button" onClick={() => setSalesTab(tool.id)} className={`rounded px-4 py-2 text-sm font-medium ${salesTab === tool.id ? "bg-primary text-white" : "border border-border bg-card"}`}>{({ invoice: t('sell.tabCreateInvoice'), history: t('sell.tabLedger'), orders: t('sell.tabOrders'), returns: t('sell.tabReturns'), report: t('sell.tabReport'), loadform: t('sell.tabLoadForm'), invoices: t('sell.tabInvoiceGenerator') } as Record<string, string>)[tool.id] ?? tool.label}</button>)}
         </div>
@@ -20947,7 +20947,7 @@ setCustomerOrganizationName("");
           <SalesInvoiceGenerator />
         </section>
         )}
-        </>
+        </div>
         )}
 
         {activeSectionAllowed && activeSection === "customer-payments" && (
@@ -22079,7 +22079,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "products" && (
-        <>
+        <div className="workspace-flow">
         {currentProfile?.role === "owner" && <SetupReview entity="products" onSaved={() => { void fetchProducts(); }} />}
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-xl font-medium text-foreground">
@@ -22112,7 +22112,7 @@ setCustomerOrganizationName("");
         {message && <p className="mb-4 text-sm text-success">{message}</p>}
         {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
 
-        <form onSubmit={handleSubmit} className="space-y-4" onKeyDown={handleProductFormKeyDown}>
+        <form onSubmit={handleSubmit} className="workspace-form space-y-4" onKeyDown={handleProductFormKeyDown}>
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground/80">
               {t('products.name')}
@@ -22788,7 +22788,7 @@ setCustomerOrganizationName("");
             />
           )}
         </section>
-        </>
+        </div>
         )}
 
         {activeSectionAllowed && activeSection === "customers" && (
@@ -23367,7 +23367,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "purchases" && (
-        <>
+        <div className="workspace-flow">
         <div className="mb-5 flex flex-wrap gap-2">
           <button
             type="button"
@@ -24720,7 +24720,7 @@ setCustomerOrganizationName("");
         </section>
         </>
         )}
-        </>)}
+        </div>)}
         {activeSectionAllowed && activeSection === "staff-permissions" && (
         <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
