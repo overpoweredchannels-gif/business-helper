@@ -61,7 +61,8 @@ async function testAtomicSaleClientRetry() {
     const firstAttempt = await createAtomicSale(client, "org:actor", input);
     assert.ok("queued" in firstAttempt, "An uncertain attempt is queued instead of thrown");
     assert.ok(values.size > 0, "Uncertain attempt stays in local storage");
-    await createAtomicSale(client, "org:actor", input);
+    // A re-save marked as a restored retry reuses the waiting attempt.
+    await createAtomicSale(client, "org:actor", input, { isRetry: true });
     assert.equal(requestIds[0], requestIds[1], "Retry keeps the same request identifier");
     assert.equal(values.size, 0, "Confirmed sale clears the pending request");
   } finally {
@@ -72,8 +73,9 @@ async function testAtomicSaleClientRetry() {
 
 /** Offline queue order (2026-11-02): while the network is down, two sales
  * queue in order with positions 1 and 2; when it returns, the drain
- * confirms them oldest-first and empties the queue. A retry of the oldest
- * waiting basket while still offline is its retry, never a third sale. */
+ * confirms them oldest-first and empties the queue. A re-save marked as a
+ * restored retry of the oldest waiting basket is its retry, never a third
+ * sale. */
 async function testOfflineQueueOrder() {
   const values = new Map<string, string>();
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -110,7 +112,7 @@ async function testOfflineQueueOrder() {
     assert.equal(second.position, 2);
     assert.equal(readPendingSalesQueue("org:actor").length, 2);
 
-    const retry = await createAtomicSale(client, "org:actor", base(cashProduct));
+    const retry = await createAtomicSale(client, "org:actor", base(cashProduct), { isRetry: true });
     assert.ok("queued" in retry, "Retry of the oldest waiting basket stays queued");
     assert.equal(retry.position, 1, "Retry does not become a third queued sale");
     assert.equal(readPendingSalesQueue("org:actor").length, 2);
@@ -120,6 +122,60 @@ async function testOfflineQueueOrder() {
     assert.equal(drained.confirmedCount, 2);
     assert.equal(drained.remaining, 0);
     assert.deepEqual(submitted, [first.attempt.requestId, second.attempt.requestId], "Drain confirms oldest-first, in queue order");
+    assert.equal(readPendingSalesQueue("org:actor").length, 0);
+  } finally {
+    if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+}
+
+/** Regression (2026-11-02 production report): two IDENTICAL offline sales
+ * entered fresh are two queued sales, not one. Only a save marked as a
+ * restored retry may collapse into the waiting head. */
+async function testOfflineIdenticalFreshSaleQueues() {
+  const values = new Map<string, string>();
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+  } } });
+  try {
+    const input: AtomicSaleInput = {
+      customer_id: cashCustomer, sale_date: "2026-09-26", payment_type: "cash",
+      invoice_discount: 0, invoice_discount_type: "flat", tax_rate: 0, cash_received: 10,
+      credit_override_confirmed: false,
+      lines: [{ product_id: cashProduct, quantity: 1, selling_price: 10, discount: 0, bonus: 0, unit_mode: "main" }],
+    };
+    let online = false;
+    const submitted: string[] = [];
+    const client = {
+      rpc: async (name: string, args: Record<string, unknown>) => {
+        if (!online) throw new Error("simulated network down");
+        if (name === "create_sales_invoice_atomic") {
+          submitted.push(String(args.p_request_id));
+          return { data: { transaction: { id: `sale-${submitted.length}`, invoice_number: `S-1000${submitted.length}` }, customer_name: "Cash Customer", items: [], replayed: false }, error: null };
+        }
+        return { data: { status: "unknown" }, error: null };
+      },
+    } as unknown as SupabaseClient;
+
+    const first = await createAtomicSale(client, "org:actor", input);
+    assert.ok("queued" in first, "First identical offline sale is queued");
+    assert.equal(first.position, 1);
+    // Same basket again, entered fresh (no restored-retry mark): a second
+    // sale, never a collapse into the first.
+    const second = await createAtomicSale(client, "org:actor", input);
+    assert.ok("queued" in second, "Second identical offline sale is queued");
+    assert.equal(second.position, 2);
+    assert.equal(readPendingSalesQueue("org:actor").length, 2);
+    assert.notEqual(first.attempt.requestId, second.attempt.requestId, "Fresh identical sales carry distinct request identifiers");
+
+    online = true;
+    const drained = await drainPendingSalesQueue(client, "org:actor");
+    assert.equal(drained.confirmedCount, 2);
+    assert.equal(drained.remaining, 0);
+    assert.deepEqual(submitted, [first.attempt.requestId, second.attempt.requestId], "Drain confirms both identical sales, oldest-first");
     assert.equal(readPendingSalesQueue("org:actor").length, 0);
   } finally {
     if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
@@ -635,6 +691,7 @@ async function main() {
     await db.exec("reset role");
     await testAtomicSaleClientRetry();
     await testOfflineQueueOrder();
+    await testOfflineIdenticalFreshSaleQueues();
     console.log("Atomic sales PostgreSQL tests passed: cash/credit, tender/change, stock conversions, discounts/tax, rollback, idempotency, authorization, tenant scope, and stock limits.");
   } finally {
     await db.close();
