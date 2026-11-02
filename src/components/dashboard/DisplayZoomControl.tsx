@@ -52,14 +52,14 @@ export function DisplayZoomControl({ collapsed = false }: { collapsed?: boolean 
         data-help-id="sidebar-zoom"
         aria-expanded={open}
         aria-label={navigationText('Screen zoom',language)}
-        className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-light-text hover:text-foreground hover:bg-muted transition-colors"
+        className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-panel-foreground/70 hover:text-panel-foreground hover:bg-panel-foreground/10 transition-colors"
       >
         <ZoomIn className="size-3.5" />
         {!collapsed && <span>{navigationText('Screen zoom',language)}</span>}
-        {!collapsed && <span className="ml-auto text-muted-foreground">{formatDisplayZoom(applied)}</span>}
+        {!collapsed && <span className="ml-auto text-panel-foreground/70">{formatDisplayZoom(applied)}</span>}
       </button>
       {open && (
-        <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+        <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-foreground">
           <label className="block text-xs font-medium" htmlFor="display-zoom-ratio">{navigationText('Suggested zoom ratio',language)}</label>
           <select
             id="display-zoom-ratio"

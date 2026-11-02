@@ -188,7 +188,7 @@ function InviteContent() {
                 type="button"
                 disabled={loadingInfo}
                 onClick={() => loadInvite(code)}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/5 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/5 text-sm font-medium text-primary-on-dark hover:bg-primary/10 disabled:opacity-50"
               >
                 {loadingInfo ? <Loader2 className="size-4 animate-spin" /> : null}
                 {loadingInfo ? t('auth.invite.checking') : t('auth.invite.checkInvitation')}

@@ -32,7 +32,7 @@ interface QuickActionsProps {
 export function QuickActions({ actions = defaultActions, onAction }: QuickActionsProps) {
   const { t } = useRegional();
   return (
-    <div className="rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(15_23_42/0.06),0_16px_32px_-16px_rgb(15_23_42/0.20)]">
+    <div className="rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)]">
       <h3 className="text-sm font-semibold text-foreground mb-4">{t('quickaction.heading')}</h3>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {actions.map((a) => (

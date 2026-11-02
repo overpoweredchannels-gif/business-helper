@@ -65,7 +65,7 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
 type TrendPoint = { label: string; value: number };
 type RankedItem = { name: string; value: string; trend?: "up" | "down" | "flat" };
 
-const card = "rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(15_23_42/0.06),0_16px_32px_-16px_rgb(15_23_42/0.20)] h-full";
+const card = "rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)] h-full";
 
 // Each chart is its own card so the home dashboard can add or remove one at a time.
 export function RevenueTrendCard({ data }: { data: TrendPoint[] }) {

@@ -213,7 +213,7 @@ export function DashboardView({
   ].filter((chart) => !widgetHidden(chart.id));
 
   return (
-    <div className="w-full max-w-none px-4 pb-10 pt-3 sm:px-6 sm:pt-4 lg:px-6 space-y-6">
+    <div className="w-full max-w-none px-4 pb-10 pt-4 space-y-6">
       {/* Welcome Section */}
       <header className="flex flex-wrap items-start justify-between gap-2 sm:items-center sm:gap-3">
         <DashboardWidget id="greeting" customizing={customizingWidgets} onRemove={onRemoveWidget} className="min-w-0 flex-1">
@@ -312,7 +312,7 @@ export function DashboardView({
       {/* Pending Tasks */}
       {(taskList.length > 0 || allAlertReadsReady) && !widgetHidden("needs-attention") && (
         <DashboardWidget id="needs-attention" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <div className="rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgb(15_23_42/0.06),0_16px_32px_-16px_rgb(15_23_42/0.20)]">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)]">
             <h2 className="text-sm font-semibold text-foreground mb-1">{t('dashboard.needsAttention')}</h2>
             <p className="mb-3 text-xs text-muted-foreground">{t('dashboard.needsAttentionHint')}</p>
             {taskList.length === 0 ? (

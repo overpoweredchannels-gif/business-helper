@@ -60,7 +60,7 @@ export function BusinessHealthCard({ score, metrics, readStatus = "successful-po
     );
   }
   return (
-    <div className="rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(15_23_42/0.06),0_16px_32px_-16px_rgb(15_23_42/0.20)] transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
+    <div className="rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)] transition-all duration-200 hover:shadow-[0_4px_16px_rgba(35,20,12,0.1)]">
       <h3 className="text-sm font-semibold text-foreground mb-3">{t('dashboard.businessHealth')}</h3>
       <div className="flex items-start gap-4">
         <CircularScore score={score} />
