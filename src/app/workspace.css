@@ -1,0 +1,13 @@
+/* The same panel rhythm applies to every owner workflow, including money,
+   stock, people, reports and settings. Nested cards keep their content sizing. */
+.workspace-section { width: calc(100% - 2rem); max-width: 1376px; margin: 1.25rem auto; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: .75rem; background: var(--color-card); min-width: 0; }
+.workspace-section > h2 { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border); font-size: 1.25rem; font-weight: 600; letter-spacing: -.025em; line-height: 1.4; }
+.workspace-panel { min-width: 0; box-shadow: none; }
+.workspace-flow { width: calc(100% - 2rem); max-width: 1376px; margin: 1.25rem auto; min-width: 0; }
+.workspace-flow > .workspace-section { width: 100%; margin-inline: 0; }
+.workspace-form { padding: 1.25rem; border: 1px solid var(--color-border); border-radius: .75rem; background: var(--color-card); }
+:is(.workspace-section, .workspace-form) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea) { border-color: var(--color-input); border-radius: .5rem; }
+.workspace-section :where(thead th) { padding-block: .75rem; font-weight: 600; }
+.workspace-section :where(tbody td) { padding-block: .875rem; }
+@media (min-width: 640px) { .workspace-section, .workspace-flow { width: calc(100% - 3rem); } .workspace-section, .workspace-form { padding: 1.5rem; } .workspace-flow > .workspace-section { width: 100%; } }
+@media (max-width: 374px) { .aankh-action { flex-direction: column; align-items: flex-start; gap: .5rem; } }

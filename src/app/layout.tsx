@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Libre_Baskerville } from "next/font/google";
 import "./globals.css";
+import "./workspace.css";
 import AppHelp from "@/components/help/AppHelp";
 import { AppFooter } from "@/components/branding/AppFooter";
 import { RegionalProvider } from "@/components/regional/RegionalProvider";
