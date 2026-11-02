@@ -169,7 +169,7 @@ export function DashboardView({
   const kpiCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
     ...(todaySales ? [{
       id: "kpi-today-sales" as DashboardWidgetId,
-      node: <KPICard title={t('kpi.todaySales')} value={todaySales.value} readStatus={getMetricStatus("today-sales")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-sales"]} onRetry={onRetryFailedReads} trend={todaySales.trend} icon={<TrendingUp className="size-4" />} sparklineData={todaySales.sparkline} onClick={() => onKPIClick?.("Today's Sales")} />,
+      node: <KPICard tone="accent" title={t('kpi.todaySales')} value={todaySales.value} readStatus={getMetricStatus("today-sales")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-sales"]} onRetry={onRetryFailedReads} trend={todaySales.trend} icon={<TrendingUp className="size-4" />} sparklineData={todaySales.sparkline} onClick={() => onKPIClick?.("Today's Sales")} />,
     }] : []),
     ...(todayProfit ? [{
       id: "kpi-today-profit" as DashboardWidgetId,
@@ -189,7 +189,7 @@ export function DashboardView({
     }] : []),
     ...(lowStockAlerts ? [{
       id: "kpi-low-stock" as DashboardWidgetId,
-      node: <KPICard title={t('kpi.lowStock')} value={safeLowStock} readStatus={getMetricStatus("low-stock")} lastSuccessfulAt={metricLastSuccessfulAt?.["low-stock"]} onRetry={onRetryFailedReads} icon={<AlertTriangle className="size-4" />} onClick={() => onKPIClick?.("Low Stock Alerts")} />,
+      node: <KPICard tone="warning" title={t('kpi.lowStock')} value={safeLowStock} readStatus={getMetricStatus("low-stock")} lastSuccessfulAt={metricLastSuccessfulAt?.["low-stock"]} onRetry={onRetryFailedReads} icon={<AlertTriangle className="size-4" />} onClick={() => onKPIClick?.("Low Stock Alerts")} />,
     }] : []),
     ...(!isReadSuccessful(getMetricStatus("pending-approvals")) || pendingApprovals > 0 ? [{
       id: "kpi-approvals" as DashboardWidgetId,
@@ -265,10 +265,10 @@ export function DashboardView({
 
       {/* Intelligence Cockpit grid: main column + rail */}
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
-      <div className="min-w-0 space-y-4 lg:col-span-8">
+      <div className={cn("min-w-0 space-y-4 lg:col-span-8", chartCards.length === 0 && recentActivities.length === 0 && droppedCards.length === 0 && "hidden")}>
       {/* Charts */}
       {chartCards.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className={cn("grid grid-cols-1 gap-3 sm:gap-4", chartCards.length > 1 && "sm:grid-cols-2")}>
           {chartCards.map((chart) => (
             <DashboardWidget key={chart.id} id={chart.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
               {chart.node}
@@ -286,7 +286,7 @@ export function DashboardView({
 
       {/* Cards dropped here from the sidebar */}
       {droppedCards.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
           {droppedCards.map((card) => (
             <DashboardWidget key={card.id} id={card.id} label={card.label} customizing={customizingWidgets} onRemove={onRemoveWidget}>
               {card.node}
@@ -295,7 +295,7 @@ export function DashboardView({
         </div>
       )}
       </div>
-      <div className="min-w-0 space-y-4 lg:col-span-4">
+      <div className={cn("min-w-0 space-y-4", chartCards.length === 0 && recentActivities.length === 0 && droppedCards.length === 0 ? "lg:col-span-12" : "lg:col-span-4")}>
       {/* AI Insight */}
       {aiInsight && (
         <DashboardWidget id="ai-insight" customizing={customizingWidgets} onRemove={onRemoveWidget}>
@@ -312,7 +312,7 @@ export function DashboardView({
       {/* Pending Tasks */}
       {(taskList.length > 0 || allAlertReadsReady) && !widgetHidden("needs-attention") && (
         <DashboardWidget id="needs-attention" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <div className="rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)]">
+          <div className="aankh-card rounded-xl border border-border bg-card p-5">
             <h2 className="text-sm font-semibold text-foreground mb-1">{t('dashboard.needsAttention')}</h2>
             <p className="mb-3 text-xs text-muted-foreground">{t('dashboard.needsAttentionHint')}</p>
             {taskList.length === 0 ? (
@@ -360,9 +360,9 @@ export function DashboardView({
         <DashboardWidget id="smart-modules" customizing={customizingWidgets} onRemove={onRemoveWidget}>
           <div className="space-y-2">
             <h2 className="text-sm font-semibold text-foreground">{t('dashboard.businessOverview')}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 sm:gap-4">
               {smartModules.map((m) => (
-                <SmartModule key={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen} readStatus={m.readStatus} lastSuccessfulAt={m.lastSuccessfulAt}>
+                <SmartModule key={m.id} sectionId={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen} readStatus={m.readStatus} lastSuccessfulAt={m.lastSuccessfulAt}>
                   {m.children}
                 </SmartModule>
               ))}

@@ -23,7 +23,7 @@ html { zoom: var(--app-zoom, 1); }
 @theme inline {
   /* Warm paper and terracotta retain Aankh's earthy identity. Color is
      strongest on actions; surrounding surfaces stay quiet. */
-  --color-background: #f7f5f0;
+  --color-background: #f6f5f1;
   --color-foreground: #2d2926;
   --color-card: #ffffff;
   --color-card-foreground: #2d2926;
@@ -52,7 +52,15 @@ html { zoom: var(--app-zoom, 1); }
   --color-warning-foreground: #ffffff;
   --color-body: #4a4540;
   --color-light-text: #6c665d;
-  --color-panel: #1e1712;
+  --color-panel: #26221e;
+  --color-nav-surface: #312b25;
+  --color-nav-muted: #c4b9ac;
+  --color-nav-border: #51473d;
+  --color-nav-input: #8c8173;
+  --color-nav-active: #f0dfcd;
+  --color-nav-active-foreground: #713d27;
+  --color-success-light: #edf3ee;
+  --color-warning-light: #f7f0e4;
   --color-border: #e5dfd5;
   --color-input: #898178;
   --color-ring: #a44a2b;
@@ -135,6 +143,14 @@ html { zoom: var(--app-zoom, 1); }
   --color-destructive: #f0a49a;
   --color-destructive-foreground: #171411;
   --color-panel: #171411;
+  --color-nav-surface: #302922;
+  --color-nav-muted: #c4b9ac;
+  --color-nav-border: #51473d;
+  --color-nav-input: #8c8173;
+  --color-nav-active: #f0dfcd;
+  --color-nav-active-foreground: #713d27;
+  --color-success-light: #20352a;
+  --color-warning-light: #382d20;
   --color-border: #42382f;
   --color-input: #96897b;
   --color-ring: #f0b79a;
@@ -151,7 +167,11 @@ body {
   box-shadow: 0 1px 2px color-mix(in srgb, var(--color-panel) 4%, transparent);
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
-.aankh-metric { border-top: 2px solid var(--color-primary-light); }
+.aankh-metric { position: relative; overflow: hidden; }
+.aankh-metric[data-tone="accent"] { background: var(--color-primary-light); border-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-border)); }
+.aankh-metric[data-tone="accent"] .aankh-metric-icon { background: var(--color-card); color: var(--color-primary); }
+.aankh-metric[data-tone="warning"] .aankh-metric-icon { background: var(--color-warning-light); color: var(--color-warning-text); }
+.aankh-metric[data-tone="success"] .aankh-metric-icon { background: var(--color-success-light); color: var(--color-success); }
 .aankh-action { transition: background-color 180ms ease, transform 180ms ease; }
 .aankh-action:active { transform: scale(.98); }
 .responsive-content :where(button, a, input, select, textarea) {
@@ -163,6 +183,29 @@ body {
 .responsive-content :where(thead) { background: var(--color-muted); }
 .responsive-content :where(tbody tr) { transition: background-color 150ms ease; }
 .responsive-content :where(tbody tr:hover) { background-color: var(--color-primary-light); }
+
+/* Task navigation uses its own palette so light-surface tokens never land on dark. */
+.aankh-sidebar { scrollbar-color: var(--color-nav-border) var(--color-panel); scrollbar-width: thin; }
+.aankh-sidebar nav { scrollbar-color: var(--color-nav-border) var(--color-panel); scrollbar-width: thin; }
+.aankh-nav-group summary::-webkit-details-marker { display: none; }
+.aankh-nav-chevron { transition: transform 180ms ease; }
+.aankh-nav-group[open] > summary { color: var(--color-panel-foreground); background: var(--color-nav-surface); }
+.aankh-nav-group[open] .aankh-nav-chevron { transform: rotate(180deg); }
+.aankh-nav-item { position: relative; }
+.aankh-nav-item[aria-current="page"]::before { content: ""; position: absolute; inset-inline-start: 0; top: 30%; bottom: 30%; width: 3px; background: var(--color-primary); border-radius: 2px; }
+.aankh-sidebar [data-workspace-help-slot] :where(button) { min-height: 44px; border: 1px solid var(--color-nav-border); background: var(--color-nav-surface); color: var(--color-panel-foreground); font-size: .8125rem; font-weight: 500; }
+.aankh-sidebar [data-workspace-help-slot] :where(label) { min-height: 44px; color: var(--color-nav-muted); }
+
+/* The same panel rhythm applies to every owner workflow, including money,
+   stock, people, reports and settings. Nested cards keep their content sizing. */
+.workspace-section { width: calc(100% - 2rem); max-width: 1376px; margin: 1.25rem auto; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: .75rem; background: var(--color-card); min-width: 0; }
+.workspace-section > h2 { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border); font-size: 1.25rem; font-weight: 600; letter-spacing: -.025em; line-height: 1.4; }
+.workspace-panel { min-width: 0; box-shadow: none; }
+.workspace-section :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea) { border-color: var(--color-input); border-radius: .5rem; }
+.workspace-section :where(thead th) { padding-block: .75rem; font-weight: 600; }
+.workspace-section :where(tbody td) { padding-block: .875rem; }
+@media (min-width: 640px) { .workspace-section { width: calc(100% - 3rem); padding: 1.5rem; } }
+@media (max-width: 374px) { .aankh-action { flex-direction: column; align-items: flex-start; gap: .5rem; } }
 
 /* A small CSS object adds dimensional character without a canvas or runtime. */
 .aankh-object { position: relative; width: 2rem; height: 2rem; perspective: 160px; }
@@ -187,6 +230,8 @@ body {
   .aankh-dashboard > section { animation-delay: 60ms; }
   .aankh-object { animation: object-enter 700ms ease-out both; }
   .aankh-chart-bar { transform-box: fill-box; transform-origin: center bottom; animation: chart-enter 500ms ease-out both; }
+  .workspace-section { animation: workspace-enter 280ms ease-out; }
+  .aankh-nav-group[open] > div { animation: workspace-enter 180ms ease-out; }
 }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   button.aankh-metric:hover, .aankh-card:focus-within {
@@ -227,7 +272,8 @@ body {
   width: 44px;
   height: 44px;
   border-radius: .75rem;
-  background: var(--color-card);
+  background: var(--color-nav-surface);
+  color: var(--color-panel-foreground);
 }
 .responsive-content :where(.grid, .flex) > :where(div, section, article, form) { min-width: 0; }
 .responsive-content :where(img, video, canvas, iframe) { max-width: 100%; }

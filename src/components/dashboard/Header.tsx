@@ -34,6 +34,7 @@ interface Notification {
 interface HeaderProps {
   userName?: string;
   organizationName?: string;
+  sectionLabel?: string;
   onSearchSubmit?: (query: string, prefill?: string, recordId?: string) => void;
   onSearchChange?: (query: string) => SearchSuggestion[];
   /** Remounts the search boxes on account/organization change, clearing old-scope state. */
@@ -196,6 +197,7 @@ function HeaderSearchBox({
 export function Header({
   userName,
   organizationName,
+  sectionLabel,
   onSearchSubmit,
   onSearchChange,
   searchScopeKey,
@@ -338,10 +340,11 @@ export function Header({
         </div>
 
         {/* Business name */}
-        <div className="hidden lg:flex items-center gap-2">
+        <div className="hidden lg:flex min-w-0 items-center gap-3">
           {organizationName && (
-            <span className="text-sm font-medium text-foreground">{organizationName}</span>
+            <span className="max-w-48 truncate text-xs font-medium text-muted-foreground">{organizationName}</span>
           )}
+          {sectionLabel && <><span aria-hidden="true" className="text-muted-light">/</span><span className="truncate text-sm font-semibold text-foreground">{sectionLabel}</span></>}
         </div>
 
         {/* Right: Search, AI, Notifications, Profile */}

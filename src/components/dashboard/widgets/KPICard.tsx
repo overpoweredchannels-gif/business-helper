@@ -48,9 +48,10 @@ interface KPICardProps {
   sparklineData?: number[];
   format?: "number" | "currency";
   onClick?: () => void;
+  tone?: "default" | "accent" | "success" | "warning";
 }
 
-export function KPICard({ title, value, readStatus = "successful-populated", lastSuccessfulAt, onRetry, trend, icon, sparklineData, onClick }: KPICardProps) {
+export function KPICard({ title, value, readStatus = "successful-populated", lastSuccessfulAt, onRetry, trend, icon, sparklineData, onClick, tone = "default" }: KPICardProps) {
   const { t, ui, language } = useRegional();
   const isUp = (trend?.value ?? 0) >= 0;
   const readComplete = readStatus === "successful-empty" || readStatus === "successful-populated";
@@ -59,18 +60,19 @@ export function KPICard({ title, value, readStatus = "successful-populated", las
   return (
     <Component
       onClick={readComplete ? onClick : undefined}
+      data-tone={tone}
       className={cn(
-        "aankh-card aankh-metric group h-full min-w-0 rounded-xl border border-border bg-card p-4 sm:p-5",
+        "aankh-card aankh-metric group h-full min-h-32 min-w-0 rounded-xl border border-border bg-card p-4 sm:p-5",
         onClick && readComplete && "w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
-      <div className="mb-5 flex items-start justify-between gap-2">
-        <span className="text-xs font-medium leading-relaxed text-light-text">{title}</span>
-        {icon && <div aria-hidden="true" className="shrink-0 text-primary">{icon}</div>}
+      <div className="mb-4 flex min-h-9 items-start justify-between gap-3">
+        <span className="pt-1 text-xs font-medium leading-relaxed text-body">{title}</span>
+        {icon && <div aria-hidden="true" className="aankh-metric-icon flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">{icon}</div>}
       </div>
       <div className="flex items-end justify-between">
-        <div>
-          <div role="status" aria-live="polite" className="break-words text-xl sm:text-2xl font-semibold tracking-tight tabular-nums leading-tight text-foreground font-heading"><bdi>{shownValue}</bdi></div>
+        <div className="min-w-0">
+          <div role="status" aria-live="polite" className="break-words text-2xl sm:text-[28px] font-semibold tracking-tight tabular-nums leading-tight text-foreground font-heading"><bdi>{shownValue}</bdi></div>
           {readStatus === "failed" && lastSuccessfulAt && (
             <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(language === 'es' ? 'es-ES' : language === 'it' ? 'it-IT' : language === 'ur' ? 'ur-PK' : 'en-US')}</p>
           )}

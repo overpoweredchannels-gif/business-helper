@@ -139,6 +139,7 @@ customizeMode,
         <Header
           userName={userName}
           organizationName={organizationName}
+          sectionLabel={localizedNavigation.find(item => item.id === activeSection)?.label}
           onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
           mobileMenuOpen={mobileMenuOpen}
           onLogout={onLogout}

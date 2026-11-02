@@ -36,13 +36,13 @@ export function DashboardQuickSaleWidget({
       onRemove={onRemove}
       className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8"
     >
-      <section data-help-topic="quick sale" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
-        <h2 className="text-lg font-semibold">{t('dashboard.quickSaleTitle')}</h2>
+      <section data-help-topic="quick sale" className="aankh-card rounded-xl border border-border bg-card p-5">
+        <h2 className="text-base font-semibold">{t('dashboard.quickSaleTitle')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.quickSaleHint')}</p>
         <div className="mt-3">
           <button
             type="button"
-            className="min-h-11 rounded-lg bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground"
+            className="aankh-action min-h-11 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => {
               onSetQuickSaleMode(true);
               onSetSalesTab("invoice");

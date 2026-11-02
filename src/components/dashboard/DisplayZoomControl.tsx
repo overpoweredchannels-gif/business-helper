@@ -52,7 +52,7 @@ export function DisplayZoomControl({ collapsed = false }: { collapsed?: boolean 
         data-help-id="sidebar-zoom"
         aria-expanded={open}
         aria-label={navigationText('Screen zoom',language)}
-        className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-panel-foreground/70 hover:text-panel-foreground hover:bg-panel-foreground/10 transition-colors"
+        className="min-h-11 w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-nav-muted hover:text-panel-foreground hover:bg-nav-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark"
       >
         <ZoomIn className="size-3.5" />
         {!collapsed && <span>{navigationText('Screen zoom',language)}</span>}

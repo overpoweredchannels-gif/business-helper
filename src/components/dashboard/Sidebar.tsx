@@ -1,13 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard, Tag, FolderTree, Users, Truck, ShoppingCart, Receipt, Warehouse,
-  Banknote, ArrowLeftRight, CreditCard, TrendingUp, Brain, Bot, BookOpen, Settings,
-  CheckSquare, History, Shield, Lock, Clock, Sparkles, MessageSquare, Mic, Globe, Smartphone,
-  ChevronLeft, ChevronRight, Eye, EyeOff, ArrowDown, ArrowUp, Pencil, RotateCcw, X, MapPin, Bell, Package, Rocket,
-  GripVertical, FileDown,
-} from "lucide-react";
+import { FolderTree, Users, ShoppingCart, Receipt, Banknote, Package, ChevronLeft, ChevronRight, Eye, EyeOff, ArrowDown, ArrowUp, Pencil, RotateCcw, X, GripVertical, Search, ChevronDown, MoreHorizontal } from "lucide-react";
+import { navIconMap } from "./navigation-icons";
 import { useRef, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
 import { DisplayZoomControl } from "./DisplayZoomControl";
@@ -16,43 +11,9 @@ import { groupNavigationItems } from "@/lib/dashboard/navigation-groups";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { navigationText } from "@/lib/regional/navigation";
 
-const navIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  dashboard: LayoutDashboard,
-  "setup-import": BookOpen,
-  products: Package,
-  brands: Tag,
-  categories: FolderTree,
-  customers: Users,
-  suppliers: Truck,
-  purchases: ShoppingCart,
-  sales: Receipt,
-  inventory: Warehouse,
-  "customer-payments": Banknote,
-  "supplier-payments": ArrowLeftRight,
-  expenses: CreditCard,
-  "profit-loss": TrendingUp,
-  "business-intelligence": Brain,
-  "business-records": FileDown,
-  "ai-analytics": Bot,
-  "customer-credit": BookOpen,
-  "supplier-ledger": BookOpen,
-  "business-settings": Settings,
-  "task-manager": CheckSquare,
-  "activity-logs": History,
-  "staff-permissions": Shield,
-  "security-check": Lock,
-  "deployment": Rocket,
-  "staff-duty": Clock,
-  "ai-assistant": Sparkles,
-  "ai-business-query": MessageSquare,
-  "ai-voice-operator": Mic,
-  "market-intelligence": Globe,
-  "mobile-app": Smartphone,
-  "live-tracking": MapPin,
-  employees: Users,
-  territories: Globe,
-  routes: MapPin,
-  notifications: Bell,
+const groupIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  Sell: Receipt, Stock: Package, Buy: ShoppingCart, Customers: Users,
+  Money: Banknote, More: MoreHorizontal,
 };
 
 interface SidebarProps {
@@ -157,7 +118,7 @@ export function Sidebar({
                   <button
                     type="button"
                     onPointerDown={(e) => startDrag(e, item.id)}
-                    className="shrink-0 cursor-grab touch-none pl-1 text-panel-foreground/70 hover:text-panel-foreground active:cursor-grabbing"
+                    className="min-h-11 min-w-11 shrink-0 cursor-grab touch-none rounded-md text-nav-muted hover:text-panel-foreground active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark"
                     title={navigationText('Drag to reorder',language)}
                   >
                     <GripVertical className="size-3.5" />
@@ -166,7 +127,7 @@ export function Sidebar({
                     type="button"
                     onClick={() => onMoveItem?.(item.id, "up")}
                     disabled={index === 0}
-                    className="shrink-0 text-panel-foreground/70 hover:text-panel-foreground disabled:opacity-30"
+                    className="min-h-11 min-w-11 shrink-0 rounded-md text-nav-muted hover:text-panel-foreground disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark"
                     title={navigationText('Move up',language)}
                   >
                     <ArrowUp className="size-3.5" />
@@ -185,11 +146,11 @@ export function Sidebar({
                   event.dataTransfer.effectAllowed = "copy";
                 }}
                 className={cn(
-                  "min-h-11 w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "aankh-nav-item min-h-11 w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark",
                   activeSection === item.id
-                    ? "bg-primary text-primary-foreground font-medium"
-                    : "text-panel-foreground/70 hover:text-panel-foreground hover:bg-panel-foreground/10",
+                    ? "bg-nav-active text-nav-active-foreground font-semibold"
+                    : "text-nav-muted hover:text-panel-foreground hover:bg-nav-surface",
                   canDropOnDashboard(item.id) && "cursor-grab active:cursor-grabbing",
                   isHidden && !customizing && "opacity-40",
                   collapsed && "justify-center px-0",
@@ -205,7 +166,7 @@ export function Sidebar({
                     type="button"
                     onClick={() => onMoveItem?.(item.id, "down")}
                     disabled={index === displayItems.length - 1}
-                    className="shrink-0 text-panel-foreground/70 hover:text-panel-foreground disabled:opacity-30"
+                    className="min-h-11 min-w-11 shrink-0 rounded-md text-nav-muted hover:text-panel-foreground disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark"
                     title={navigationText('Move down',language)}
                   >
                     <ArrowDown className="size-3.5" />
@@ -214,7 +175,7 @@ export function Sidebar({
                     type="button"
                     onClick={() => onToggleHidden?.(item.id)}
                     className={cn(
-                      "shrink-0 pr-2",
+                      "min-h-11 min-w-11 shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark",
                       isHidden ? "text-success hover:text-success/80" : "text-panel-foreground/70 hover:text-destructive",
                     )}
                     title={isHidden ? navigationText('Unhide section',language) : navigationText('Hide section',language)}
@@ -232,22 +193,28 @@ export function Sidebar({
     .filter(group => group.items.length > 0);
 
   return (
-    <aside className={cn(forceVisible ? "flex" : "hidden lg:flex", "shrink-0 flex-col bg-panel border-e border-border text-panel-foreground transition-all duration-300 h-dvh sticky top-0", collapsed ? "w-[68px]" : "w-64")}>
-      <div className={cn("border-b border-border flex items-center gap-3 px-5", collapsed ? "justify-center py-4" : "py-5")}>
+    <aside className={cn(forceVisible ? "flex" : "hidden lg:flex", "aankh-sidebar shrink-0 flex-col bg-panel border-e border-nav-border text-panel-foreground transition-[width] duration-200 h-dvh sticky top-0", collapsed ? "w-[72px]" : "w-[248px]")}>
+      <div className={cn("border-b border-nav-border flex min-h-20 items-center gap-3 px-5", collapsed ? "justify-center py-4" : "py-5")}>
         <img src="/aankh-app-eye.png" alt="Aankh logo" width={32} height={32} className="size-8 shrink-0 rounded-lg" />
         {!collapsed && <div className="min-w-0"><div className="font-brand font-bold text-base text-panel-foreground truncate">Aankh</div>{organizationName && <div className="text-[11px] text-panel-foreground/70 truncate">{organizationName}</div>}</div>}
       </div>
-      {!collapsed && !customizing && <div data-context-help-skip className="p-3">
-        <label className="text-xs font-medium text-panel-foreground">{navigationText('Find a page',language)}
-          <input type="search" value={menuSearch} onChange={event => setMenuSearch(event.target.value)} placeholder={navigationText('Search menu',language)} className="mt-1 min-h-11 w-full rounded-lg border border-input bg-background px-3 text-base text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+      {!collapsed && !customizing && <div data-context-help-skip className="px-3 pb-3 pt-4">
+        <label className="relative block">
+          <span className="sr-only">{navigationText('Find a page',language)}</span>
+          <Search aria-hidden="true" className="pointer-events-none absolute start-3 top-3.5 size-4 text-nav-muted" />
+          <input type="search" value={menuSearch} onChange={event => setMenuSearch(event.target.value)} placeholder={navigationText('Search menu',language)} className="min-h-11 w-full rounded-lg border border-nav-input bg-nav-surface ps-9 pe-3 text-sm text-panel-foreground placeholder:text-nav-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark" />
         </label>
       </div>}
-      <nav aria-label={navigationText('Main navigation',language)} data-context-help-skip={customizing ? "" : undefined} className="flex-1 overflow-y-auto p-2 space-y-0.5">
+      <nav aria-label={navigationText('Main navigation',language)} data-context-help-skip={customizing ? "" : undefined} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 space-y-1">
         {customizing || collapsed ? displayItems.map(renderItem) : groups.map(group => group.label === "Home"
           ? group.items.map(renderItem)
-          : <details key={`${group.label}:${query ? "search" : "browse"}`} open={Boolean(query) || group.items.some(item => item.id === activeSection)} className="rounded-lg">
-            <summary data-context-help-skip className="min-h-11 cursor-pointer rounded-lg px-3 py-3 text-sm font-semibold text-panel-foreground hover:bg-panel-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{navigationText(group.label,language)}</summary>
-            <div className="ms-3 space-y-0.5 border-s border-border ps-1">{group.items.map(renderItem)}</div>
+          : <details key={`${group.label}:${query ? "search" : "browse"}`} open={Boolean(query) || group.items.some(item => item.id === activeSection)} className="aankh-nav-group rounded-lg">
+            <summary data-context-help-skip className="flex min-h-12 cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-nav-muted hover:bg-nav-surface hover:text-panel-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark">
+              {(() => { const GroupIcon = groupIcons[group.label] ?? FolderTree; return <GroupIcon aria-hidden="true" className="size-[18px] shrink-0" />; })()}
+              <span className="flex-1">{navigationText(group.label,language)}</span>
+              <ChevronDown aria-hidden="true" className="aankh-nav-chevron size-3.5 shrink-0" />
+            </summary>
+            <div className="ms-5 mt-1 space-y-1 border-s border-nav-border ps-2">{group.items.map(renderItem)}</div>
           </details>)}
         {!customizing && !collapsed && groups.length === 0 && <p role="status" className="px-3 py-2 text-sm text-panel-foreground/70">{navigationText('No matching pages. Try another name.',language)}</p>}
         {customizing && displayItems.length === 0 && (
@@ -256,8 +223,8 @@ export function Sidebar({
       </nav>
 
       {/* Footer: customize + collapse */}
-      <div className="border-t border-border p-2 space-y-1">
-        {!collapsed && <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-panel-foreground/70">{navigationText('Customize your workspace',language)}</p>}
+      <div className="border-t border-nav-border p-3 space-y-1">
+        {!collapsed && <p className="px-2 py-2 text-[11px] font-medium text-nav-muted">{navigationText('Customize your workspace',language)}</p>}
         {customizing && (
           <div data-context-help-skip className="flex items-center justify-between rounded-lg px-3 py-2 text-xs text-panel-foreground/70">
             <span>{navigationText('Reorder pages within their task groups. Use the eye to show or hide a page.',language)}</span>
@@ -265,7 +232,7 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={onResetOrder}
-                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded p-1.5 text-panel-foreground/70 hover:text-panel-foreground hover:bg-panel-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:min-w-8"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded p-1.5 text-panel-foreground/70 hover:text-panel-foreground hover:bg-panel-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark sm:min-h-8 sm:min-w-8"
                 title={navigationText('Reset to default order',language)}
               >
                 <RotateCcw className="size-3.5" />
@@ -273,7 +240,7 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={onToggleCustomize}
-                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded p-1.5 text-primary-on-dark hover:bg-panel-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8 sm:min-w-8"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded p-1.5 text-primary-on-dark hover:bg-panel-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark sm:min-h-8 sm:min-w-8"
                 title={navigationText('Done customizing',language)}
               >
                 <X className="size-3.5" />
@@ -287,7 +254,7 @@ export function Sidebar({
             onClick={() => { setCollapsed(false); onToggleCustomize?.(); }}
             data-help-id="sidebar-customize"
             aria-label={navigationText('Reorder or hide menu sections',language)}
-            className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-panel-foreground/70 hover:text-panel-foreground hover:bg-panel-foreground/10 transition-colors"
+            className="min-h-11 w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-nav-muted hover:text-panel-foreground hover:bg-nav-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark"
           >
             <Pencil className="size-3.5" />
             {!collapsed && <span>{navigationText('Reorder / hide sections',language)}</span>}
@@ -300,7 +267,7 @@ export function Sidebar({
           type="button"
           onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? navigationText('Expand sidebar',language) : navigationText('Collapse sidebar',language)}
-          className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs text-panel-foreground/70 hover:text-panel-foreground hover:bg-panel-foreground/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-h-11 w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs text-nav-muted hover:text-panel-foreground hover:bg-nav-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark"
         >
           {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
           {!collapsed && !forceVisible && <span>{navigationText('Collapse',language)}</span>}

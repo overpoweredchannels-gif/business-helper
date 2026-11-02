@@ -44,7 +44,7 @@ const toneClass: Record<NonNullable<SectionSummaryMetric["tone"]>, string> = {
 export function SectionSummaryCard({ summary }: { summary: SectionSummary }) {
   const { t } = useRegional();
   return (
-    <section className="rounded-xl border border-border bg-card p-5">
+    <section className="aankh-card h-full rounded-xl border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-foreground">{summary.title}</h2>
@@ -53,7 +53,7 @@ export function SectionSummaryCard({ summary }: { summary: SectionSummary }) {
         <button
           type="button"
           onClick={summary.onOpen}
-          className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg border border-input px-3 py-2 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           {t('common.open')}
           <ArrowRight className="size-3" />
@@ -61,12 +61,12 @@ export function SectionSummaryCard({ summary }: { summary: SectionSummary }) {
       </div>
 
       {summary.metrics.length > 0 && (
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 min-[375px]:grid-cols-2 sm:grid-cols-3">
           {summary.metrics.map((metric) => (
-            <div key={metric.label} className="rounded-lg bg-muted p-2.5">
-              <p role={metric.readStatus && !dashboardReadStatusLabel(metric.readStatus) ? undefined : "status"} aria-live="polite" className={cn("text-lg font-semibold leading-tight", metric.readStatus && dashboardReadStatusLabel(metric.readStatus) ? "text-muted-foreground" : toneClass[metric.tone ?? "default"])}>{metric.readStatus ? dashboardReadStatusLabel(metric.readStatus) ?? metric.value : metric.value}</p>
-              {metric.readStatus === "failed" && metric.lastSuccessfulAt && <p className="mt-1 text-[10px] text-muted-foreground">Last successful update: {new Date(metric.lastSuccessfulAt).toLocaleString()}</p>}
-              <p className="text-[10px] text-light-text">{metric.label}</p>
+            <div key={metric.label} className="rounded-lg bg-muted p-3">
+              <p role={metric.readStatus && !dashboardReadStatusLabel(metric.readStatus) ? undefined : "status"} aria-live="polite" className={cn("text-xl font-semibold tabular-nums leading-tight", metric.readStatus && dashboardReadStatusLabel(metric.readStatus) ? "text-muted-foreground" : toneClass[metric.tone ?? "default"])}>{metric.readStatus ? dashboardReadStatusLabel(metric.readStatus) ?? metric.value : metric.value}</p>
+              {metric.readStatus === "failed" && metric.lastSuccessfulAt && <p className="mt-1 text-[11px] text-muted-foreground">Last successful update: {new Date(metric.lastSuccessfulAt).toLocaleString()}</p>}
+              <p className="text-[11px] text-light-text">{metric.label}</p>
             </div>
           ))}
         </div>
@@ -79,7 +79,7 @@ export function SectionSummaryCard({ summary }: { summary: SectionSummary }) {
         </div>
       ) : summary.rows && summary.rows.length > 0 ? (
         <div className="mt-3">
-          {summary.rowsLabel && <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{summary.rowsLabel}</p>}
+          {summary.rowsLabel && <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{summary.rowsLabel}</p>}
           <div className="mt-1 divide-y divide-border">
             {summary.rows.map((row) => (
               <div key={`${row.label}-${row.value}`} className="flex items-center justify-between gap-3 py-1.5">

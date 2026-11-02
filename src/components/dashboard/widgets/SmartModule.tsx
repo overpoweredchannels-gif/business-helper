@@ -1,12 +1,14 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { ChevronRight, ArrowUpRight } from "lucide-react";
+import { ChevronRight, ArrowUpRight, Layers } from "lucide-react";
 import { useState } from "react";
 import { dashboardReadStatusLabel, type DashboardReadStatus } from "@/lib/dashboard/data-read-state";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { navIconMap } from "../navigation-icons";
 
 interface SmartModuleProps {
+  sectionId?: string;
   title: string;
   summary: string;
   onOpen?: () => void;
@@ -17,9 +19,10 @@ interface SmartModuleProps {
   lastSuccessfulAt?: string;
 }
 
-export function SmartModule({ title, summary, onOpen, children, badge, badgeColor = "default", readStatus = "successful-populated", lastSuccessfulAt }: SmartModuleProps) {
+export function SmartModule({ sectionId, title, summary, onOpen, children, badge, badgeColor = "default", readStatus = "successful-populated", lastSuccessfulAt }: SmartModuleProps) {
   const { t } = useRegional();
   const [expanded, setExpanded] = useState(false);
+  const Icon = (sectionId && navIconMap[sectionId]) || Layers;
   const readComplete = readStatus === "successful-empty" || readStatus === "successful-populated";
   const visibleChildren = readComplete ? children : undefined;
   const readLabel = dashboardReadStatusLabel(readStatus);
@@ -32,8 +35,8 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
   };
 
   return (
-    <div className="aankh-card rounded-xl border border-border bg-card transition-all duration-200">
-      <div className="flex items-center justify-between gap-2 p-4">
+    <div className="aankh-card h-full rounded-xl border border-border bg-card transition-all duration-200">
+      <div className="flex min-h-24 items-center justify-between gap-3 p-4 sm:p-5">
         <button
           type="button"
           aria-expanded={visibleChildren ? expanded : undefined}
@@ -46,6 +49,7 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
           }}
           className="flex flex-1 items-center gap-3 min-w-0 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
+          <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-light text-primary"><Icon className="size-5" /></span>
           {visibleChildren && (
             <ChevronRight
               className={cn(
@@ -63,7 +67,7 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
                 </span>
               )}
             </div>
-            <p className="text-xs text-light-text mt-0.5 truncate">{readLabel ?? summary}</p>
+            <p className="text-xs leading-relaxed text-light-text mt-1">{readLabel ?? summary}</p>
             {readStatus === "failed" && lastSuccessfulAt && <p className="text-[11px] text-muted-foreground">{t('dashboard.lastSuccessfulUpdate')}: {new Date(lastSuccessfulAt).toLocaleString()}</p>}
           </div>
         </button>
@@ -71,7 +75,7 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
           <button
             type="button"
             onClick={onOpen}
-            className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-medium text-primary hover:text-primary-hover transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-medium text-primary hover:bg-primary-light hover:text-primary-hover transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {t('common.open')}
             <ArrowUpRight className="size-3" />

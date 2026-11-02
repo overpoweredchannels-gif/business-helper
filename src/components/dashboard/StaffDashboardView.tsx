@@ -79,7 +79,7 @@ export function StaffDashboardView({
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="aankh-dashboard max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold text-foreground font-heading">
@@ -92,7 +92,7 @@ export function StaffDashboardView({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 min-[375px]:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <KPICard
           title={t('dashboard.staff.mySales')}
           value={String(mySalesCount)}
@@ -128,10 +128,10 @@ export function StaffDashboardView({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="rounded-xl border border-border bg-card p-5">
+        <div className="aankh-card rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">{t('dashboard.staff.salesByProduct')}</h3>
-            <span className="text-[10px] text-light-text uppercase tracking-wider">Top {myTopProducts.length}</span>
+            <span className="text-[11px] text-light-text uppercase tracking-wider">Top {myTopProducts.length}</span>
           </div>
           {myTopProducts.length === 0 ? (
             <p className="text-sm text-light-text">{t('dashboard.staff.noSalesYet')}</p>
@@ -150,10 +150,10 @@ export function StaffDashboardView({
           )}
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-5">
+        <div className="aankh-card rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">{t('dashboard.staff.salesByCustomer')}</h3>
-            <span className="text-[10px] text-light-text uppercase tracking-wider">Top {myTopCustomers.length}</span>
+            <span className="text-[11px] text-light-text uppercase tracking-wider">Top {myTopCustomers.length}</span>
           </div>
           {myTopCustomers.length === 0 ? (
             <p className="text-sm text-light-text">{t('dashboard.staff.noSalesYet')}</p>
@@ -171,10 +171,10 @@ export function StaffDashboardView({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="rounded-xl border border-border bg-card p-5">
+        <div className="aankh-card rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">{t('dashboard.staff.recentSales')}</h3>
-            <span className="text-[10px] text-light-text uppercase tracking-wider">{myRecentSales.length} invoices</span>
+            <span className="text-[11px] text-light-text uppercase tracking-wider">{myRecentSales.length} invoices</span>
           </div>
           {myRecentSales.length === 0 ? (
             <p className="text-sm text-light-text">{t('dashboard.staff.noRecentSales')}</p>
@@ -186,7 +186,7 @@ export function StaffDashboardView({
                     <p className="text-foreground/90 truncate">
                       <span className="text-light-text">#{s.invoiceNumber}</span> · {s.customerName}
                     </p>
-                    <p className="text-[10px] text-light-text">{s.date}</p>
+                    <p className="text-[11px] text-light-text">{s.date}</p>
                   </div>
                   <span className="font-medium text-foreground shrink-0">{s.total}</span>
                 </div>
@@ -195,10 +195,10 @@ export function StaffDashboardView({
           )}
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-5">
+        <div className="aankh-card rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">{t('dashboard.staff.myCustomers')}</h3>
-            <span className="text-[10px] text-light-text uppercase tracking-wider">{myCustomers.length} assigned</span>
+            <span className="text-[11px] text-light-text uppercase tracking-wider">{myCustomers.length} assigned</span>
           </div>
           {myCustomers.length === 0 ? (
             <p className="text-sm text-light-text">{t('dashboard.staff.noAssignedCustomers')}</p>
@@ -208,7 +208,7 @@ export function StaffDashboardView({
                 <div key={c.id} className="flex items-center justify-between gap-3 text-sm">
                   <div className="min-w-0">
                     <p className="text-foreground/90 truncate">{c.name}</p>
-                    <p className="text-[10px] text-light-text truncate">
+                    <p className="text-[11px] text-light-text truncate">
                       {[c.phone, c.city].filter(Boolean).join(" · ") || "—"}
                     </p>
                   </div>
@@ -222,10 +222,10 @@ export function StaffDashboardView({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="aankh-card rounded-xl border border-border bg-card p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-foreground">{t('dashboard.staff.myTasks')}</h3>
-          <span className="text-[10px] text-light-text uppercase tracking-wider">{myPendingTasks.length} pending</span>
+          <span className="text-[11px] text-light-text uppercase tracking-wider">{myPendingTasks.length} pending</span>
         </div>
         {myPendingTasks.length === 0 ? (
           <p className="text-sm text-light-text">{t('dashboard.staff.noPendingTasks')}</p>
@@ -235,10 +235,10 @@ export function StaffDashboardView({
               <div key={t.id} className="flex items-center justify-between gap-3 text-sm">
                 <span className="text-foreground/90 truncate">{t.title}</span>
                 <span className="shrink-0 flex items-center gap-2">
-                  {t.dueDate ? <span className="text-[10px] text-light-text">Due {t.dueDate}</span> : null}
+                  {t.dueDate ? <span className="text-[11px] text-light-text">Due {t.dueDate}</span> : null}
                   <span
                     className={cn(
-                      "text-[10px] px-1.5 py-0.5 rounded-full",
+                      "text-[11px] px-1.5 py-0.5 rounded-full",
                       t.priority === "high"
                         ? "bg-destructive/10 text-destructive"
                         : t.priority === "low"

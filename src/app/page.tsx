@@ -17750,7 +17750,7 @@ setCustomerOrganizationName("");
         {activeSection === "dashboard" && !staffDashboardData.isStaff && businessRecordsExportWidget}
 
         {activeSectionAllowed && activeSection === "business-intelligence" && (
-        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h2 className="text-xl font-medium text-foreground">{t('bi.title')}</h2>
@@ -17913,7 +17913,7 @@ setCustomerOrganizationName("");
               [t('bi.unknownCostLines'), businessIntelligenceAnalytics.overview.unknownCostLines],
               [t('bi.unknownCostRevenue'), formatBooksMoney(businessIntelligenceAnalytics.overview.unknownCostRevenue)],
             ].map(([label, value]) => (
-              <div key={String(label)} className="rounded border border-border bg-card p-4 shadow-sm">
+              <div key={String(label)} className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
                 <div className="text-sm text-muted-foreground/80">{label}</div>
                 <div className="mt-2 text-2xl font-semibold text-foreground">{value}</div>
               </div>
@@ -17928,7 +17928,7 @@ setCustomerOrganizationName("");
 
           {(biMetricView === "overview" || biMetricView === "products") && (
             <div className="mt-6 grid gap-4 xl:grid-cols-3">
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.topSellingByQuantity')}</h3>
                 {businessIntelligenceAnalytics.topByQuantity.length === 0 ? (
                   <p className="text-sm text-muted-foreground">{t('bi.noProductSales')}</p>
@@ -17952,7 +17952,7 @@ setCustomerOrganizationName("");
                 )}
               </div>
 
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.mostProfitable')}</h3>
                 {businessIntelligenceAnalytics.mostProfitable.length === 0 ? (
                   <p className="text-sm text-muted-foreground">{t('bi.noCostedProfit')}</p>
@@ -17980,7 +17980,7 @@ setCustomerOrganizationName("");
                 )}
               </div>
 
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.stockWatch')}</h3>
                 <div className="space-y-3">
                   {businessIntelligenceAnalytics.outOfStockProducts.slice(0, 5).map((product) => (
@@ -18005,7 +18005,7 @@ setCustomerOrganizationName("");
 
           {(biMetricView === "overview" || biMetricView === "customers") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.topCustomersBySales')}</h3>
                 {businessIntelligenceAnalytics.topCustomersBySales.length === 0 ? (
                   <p className="text-sm text-muted-foreground">{t('bi.noCustomerSales')}</p>
@@ -18028,7 +18028,7 @@ setCustomerOrganizationName("");
                   </div>
                 )}
               </div>
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.customerCreditSignals')}</h3>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
@@ -18103,7 +18103,7 @@ setCustomerOrganizationName("");
 
           {(biMetricView === "overview" || biMetricView === "expenses") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.expenseCategories')}</h3>
                 {businessIntelligenceAnalytics.expensesByType.length === 0 ? (
                   <p className="text-sm text-muted-foreground">{t('bi.noExpenses')}</p>
@@ -18126,7 +18126,7 @@ setCustomerOrganizationName("");
                   </div>
                 )}
               </div>
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.expenseSplit')}</h3>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded border border-border bg-muted/30 p-3">
@@ -18192,7 +18192,7 @@ setCustomerOrganizationName("");
 
           {(biMetricView === "overview" || biMetricView === "trends") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.dailySalesTrend')}</h3>
                 {businessIntelligenceAnalytics.dailyTrends.length === 0 ? (
                   <p className="text-sm text-muted-foreground">{t('bi.noTrendData')}</p>
@@ -18215,7 +18215,7 @@ setCustomerOrganizationName("");
                   </div>
                 )}
               </div>
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.dailyProfitExpenseTrend')}</h3>
                 <div className="space-y-3">
                   {businessIntelligenceAnalytics.dailyTrends.slice(-14).map((day) => {
@@ -18245,7 +18245,7 @@ setCustomerOrganizationName("");
 
           {(biMetricView === "overview" || biMetricView === "seasonal") && (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.seasonalMovement')}</h3>
                 {!businessIntelligenceAnalytics.enoughSeasonalData && (
                   <p className="mb-3 rounded border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning-text">
@@ -18258,7 +18258,7 @@ setCustomerOrganizationName("");
                   <div>{t('bi.strongestProductMonth')}: <span className="font-medium text-foreground">{businessIntelligenceAnalytics.strongestProductMonth ? `${businessIntelligenceAnalytics.strongestProductMonth.productName} ${t('bi.inMonth')} ${businessIntelligenceAnalytics.strongestProductMonth.month}` : t('bi.notEnoughData')}</span></div>
                 </div>
               </div>
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.monthlySales')}</h3>
                 <div className="space-y-3">
                   {businessIntelligenceAnalytics.monthlySales.map((month) => {
@@ -18292,7 +18292,7 @@ setCustomerOrganizationName("");
               [t('bi.insightMarketSignal'), businessIntelligenceAnalytics.insights.marketSignalNote],
               [t('bi.insightAiNote'), t('bi.aiNoteBody')],
             ].map(([title, body]) => (
-              <div key={String(title)} className="rounded border border-border bg-card p-4">
+              <div key={String(title)} className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <div className="text-sm font-medium text-foreground">{title}</div>
                 <p className="mt-2 text-sm text-muted-foreground">{body}</p>
               </div>
@@ -18302,7 +18302,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "business-records" && (
-        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <h2 className="text-xl font-medium text-foreground">{t('records.title')}</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             {t('records.sectionHint')}
@@ -18312,7 +18312,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "profit-loss" && (
-        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">{t('profit.title')}</h2>
             <button
@@ -18375,49 +18375,49 @@ setCustomerOrganizationName("");
           )}
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.totalRevenue')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {formatBooksMoney(profitLossTotals.totalRevenue)}
               </div>
             </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.knownCogs')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {formatBooksMoney(profitLossTotals.knownCostOfGoodsSold)}
               </div>
             </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.grossProfitCosted')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {formatBooksMoney(grossProfitOnCostedSales)}
               </div>
             </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.purchaseLinkedExpenses')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {formatBooksMoney(purchaseLinkedExpenses)}
               </div>
             </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.operatingExpenses')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {formatBooksMoney(operatingExpenses)}
               </div>
             </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.totalRecordedExpenses')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {formatBooksMoney(totalRecordedExpenses)}
               </div>
             </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{netProfitLabel}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {formatBooksMoney(mvpNetProfit)}
               </div>
             </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.costCoverage')}</div>
               <div className="mt-2 text-xl font-semibold text-foreground">
                 {costCoverage.toFixed(2)}%
@@ -18426,15 +18426,15 @@ setCustomerOrganizationName("");
           </div>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.salesInvoicesInPeriod')}</div>
               <div className="mt-2 text-2xl font-semibold text-foreground">{salesTransactionsInPeriod.length}</div>
             </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.salesLinesInPeriod')}</div>
               <div className="mt-2 text-2xl font-semibold text-foreground">{salesItemsInPeriod.length}</div>
             </div>
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground/80">{t('profit.expenseEntriesInPeriod')}</div>
               <div className="mt-2 text-2xl font-semibold text-foreground">{expensesInPeriod.length}</div>
             </div>
@@ -18455,7 +18455,7 @@ setCustomerOrganizationName("");
           )}
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <h3 className="mb-3 text-lg font-medium text-foreground">{t('profit.expenseCategoryBreakdown')}</h3>
               {expenseCategoryBreakdown.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t('profit.noExpensesInPeriod')}</p>
@@ -18485,7 +18485,7 @@ setCustomerOrganizationName("");
               )}
             </div>
 
-            <div className="rounded border border-border bg-card p-4 shadow-sm">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
               <h3 className="mb-3 text-lg font-medium text-foreground">{t('profit.topProductProfitability')}</h3>
               {productProfitability.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t('profit.noCostedSales')}</p>
@@ -18532,7 +18532,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "brands" && (
-        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">{t('brands.title')}</h2>
             {canImportExport && (
@@ -18600,7 +18600,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "inventory" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-2xl font-semibold text-foreground">{t('stock.inventory')}</h2>
@@ -19046,7 +19046,7 @@ setCustomerOrganizationName("");
                 <>
                               <div className="space-y-3 lg:hidden">
                 {recentAdjustments.map((transaction) => (
-                  <article key={transaction.id} className="rounded border border-border bg-card p-4">
+                  <article key={transaction.id} className="workspace-panel rounded-xl border border-border bg-card p-4">
                     <div className="flex items-start justify-between gap-3">
                       <p className="font-medium text-foreground">{productNameById.get(String(transaction.product_id)) ?? `${t('sell.product')} ${transaction.product_id}`}</p>
                       <p className={`font-medium tabular-nums ${Number(transaction.quantity_delta) > 0 ? "text-success" : "text-destructive"}`}>{formatMovementChange(Number(transaction.quantity_delta))}</p>
@@ -19162,7 +19162,7 @@ setCustomerOrganizationName("");
                   )}
                                 <div className="space-y-3 lg:hidden">
                 {ledgerQuery.rows.map((transaction) => (
-                  <article key={transaction.id} className="rounded border border-border bg-card p-4">
+                  <article key={transaction.id} className="workspace-panel rounded-xl border border-border bg-card p-4">
                     <div className="flex items-start justify-between gap-3">
                       <p className="font-medium text-foreground">{productNameById.get(String(transaction.product_id)) ?? `${t('sell.product')} ${transaction.product_id}`}</p>
                       <p className={`font-medium tabular-nums ${Number(transaction.quantity_delta) > 0 ? "text-success" : "text-destructive"}`}>{formatMovementChange(Number(transaction.quantity_delta))}</p>
@@ -19249,7 +19249,7 @@ setCustomerOrganizationName("");
                 </p>
                               <div className="space-y-3 lg:hidden">
                 {selectedLedgerProductBatches.map((batch) => (
-                  <article key={batch.batchNumber} className="rounded border border-border bg-card p-4">
+                  <article key={batch.batchNumber} className="workspace-panel rounded-xl border border-border bg-card p-4">
                     <div className="flex items-start justify-between gap-3">
                       <p className="font-medium text-foreground">{batch.batchNumber}</p>
                       <p className="font-medium tabular-nums text-foreground">{formatMovementChange(batch.balance)}</p>
@@ -19327,7 +19327,7 @@ setCustomerOrganizationName("");
         {salesTab === "history" && canUseSalesTool("history") && !isOwnerOrAdmin() && <MySalesPerformance />}
         {((salesTab === "invoice" && canUseSalesTool("invoice")) || (salesTab === "history" && isOwnerOrAdmin())) && (
         <>
-        {salesTab === "invoice" && (<section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        {salesTab === "invoice" && (<section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">{quickSaleMode ? t('sell.retailPos') : t('sell.salesInvoice')}</h2>
             {canImportExport && (
@@ -19706,7 +19706,7 @@ setCustomerOrganizationName("");
             </div>
 
             {salesLines.length > 0 && (
-              <div className="rounded border border-border bg-card p-4 text-sm text-foreground/80">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4 text-sm text-foreground/80">
                 {currentSaleDraft.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received").map(issue => <p key={issue.field + issue.message} className="mb-2 text-destructive" role="alert">{issue.message}</p>)}
                 {!currentSaleAmounts && <p className="mb-2 text-destructive" role="status">{t('sell.totalsUnavailable')}</p>}
                 <div className="flex justify-between"><span>{t('sell.lineSubtotal')}</span><span>{currentSaleAmounts ? formatBooksMoney(currentSaleAmounts.lineSubtotal) : t('sell.unavailable')}</span></div>
@@ -19809,7 +19809,7 @@ setCustomerOrganizationName("");
 
         )}
         {isOwnerOrAdmin() && (!quickSaleMode || salesTab === "history") && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.salesHistory')}</h2>
           <p className="mb-3 text-xs text-muted-foreground/80">
             {t('sell.unallocatedNote')}
@@ -19918,7 +19918,7 @@ setCustomerOrganizationName("");
 
         {salesTab === "orders" && canUseSalesTool("orders") && (
         <>
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">
             {soEditingId ? t('sell.editSalesOrder') : t('sell.newSalesOrder')}
           </h2>
@@ -20173,7 +20173,7 @@ setCustomerOrganizationName("");
           </div>
         </section>
 
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">{t('sell.salesOrderHistory')}</h2>
             <div className="flex items-center gap-2">
@@ -20364,7 +20364,7 @@ setCustomerOrganizationName("");
 
         {salesTab === "returns" && canUseSalesTool("returns") && (
         <>
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.salesReturn')}</h2>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -20610,7 +20610,7 @@ setCustomerOrganizationName("");
           </div>
         </section>
 
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.salesReturnHistory')}</h2>
           {salesReturnsLoading ? (
             <p className="text-sm text-muted-foreground">{t('sell.loadingReturns')}</p>
@@ -20791,7 +20791,7 @@ setCustomerOrganizationName("");
 
           return (
             <>
-            <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+            <section className="workspace-section">
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-xl font-medium text-foreground">{t('sell.tabReport')}</h2>
                 <select
@@ -20807,20 +20807,20 @@ setCustomerOrganizationName("");
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded border border-border bg-card p-4">
+                <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="text-xs text-muted-foreground/80">{t('sell.grossSales')}</div>
                   <div className="mt-1 text-lg font-medium text-foreground">{formatBooksMoney(netSales)}</div>
                   <div className="text-xs text-muted-foreground/80">{t('sell.invoicesCount').replace('{count}', String(rangeTransactions.length))}</div>
                 </div>
-                <div className="rounded border border-border bg-card p-4">
+                <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="text-xs text-muted-foreground/80">{t('sell.discountsGiven')}</div>
                   <div className="mt-1 text-lg font-medium text-foreground">{formatBooksMoney(totalDiscounts)}</div>
                 </div>
-                <div className="rounded border border-border bg-card p-4">
+                <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="text-xs text-muted-foreground/80">{t('sell.taxCollected')}</div>
                   <div className="mt-1 text-lg font-medium text-foreground">{formatBooksMoney(totalTax)}</div>
                 </div>
-                <div className="rounded border border-border bg-card p-4">
+                <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="text-xs text-muted-foreground/80">{t('sell.cogs')}</div>
                   <div className="mt-1 text-lg font-medium text-foreground">{formatBooksMoney(cogs)}</div>
                 </div>
@@ -20930,7 +20930,7 @@ setCustomerOrganizationName("");
           );
         })()}
         {salesTab === "loadform" && canUseSalesTool("loadform") && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.loadFormSummary')}</h2>
           <p className="mb-4 text-sm text-muted-foreground">
             {t('sell.loadFormHint')}
@@ -20939,7 +20939,7 @@ setCustomerOrganizationName("");
         </section>
         )}
         {salesTab === "invoices" && canUseSalesTool("invoices") && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.invoiceGeneratorTitle')}</h2>
           <p className="mb-4 text-sm text-muted-foreground">
             {t('sell.invoiceGeneratorHint')}
@@ -20951,7 +20951,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "customer-payments" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">{t('payments.title')}</h2>
             <div className="flex flex-wrap gap-2">
@@ -21193,7 +21193,7 @@ setCustomerOrganizationName("");
                 {filteredCustomerPaymentHistory.map((historyItem) => (
                   <li
                     key={historyItem.payment.id}
-                    className="rounded border border-border bg-card p-4 text-sm text-foreground/80"
+                    className="workspace-panel rounded-xl border border-border bg-card p-4 text-sm text-foreground/80"
                   >
                     <div className="grid gap-4 text-sm tabular-nums sm:grid-cols-2 lg:grid-cols-4">
                       <div>
@@ -21274,7 +21274,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "supplier-payments" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">{t('buy.supplierPayments')}</h2>
             <div className="flex flex-wrap gap-2">
@@ -21456,7 +21456,7 @@ setCustomerOrganizationName("");
                 {supplierPaymentHistory.map((historyItem) => (
                   <li
                     key={historyItem.payment.id}
-                    className="rounded border border-border bg-card p-4 text-sm text-foreground/80"
+                    className="workspace-panel rounded-xl border border-border bg-card p-4 text-sm text-foreground/80"
                   >
                     <div className="grid gap-4 text-sm tabular-nums sm:grid-cols-2 lg:grid-cols-5">
                       <div>
@@ -21522,7 +21522,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "supplier-ledger" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">{t('buy.supplierLedger')}</h2>
             <div className="flex flex-wrap gap-2">
@@ -21616,27 +21616,27 @@ setCustomerOrganizationName("");
           ) : (
             <div className="mt-4 space-y-4">
               <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
-                <div className="rounded border border-border bg-card p-4">
+                <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="text-muted-foreground/80">{t('buy.totalPurchases')}</div>
                   <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(supplierLedgerTotalPurchases)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-card p-4">
+                <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="text-muted-foreground/80">{t('buy.totalPayments')}</div>
                   <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(supplierLedgerTotalPayments)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-card p-4">
+                <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="text-muted-foreground/80">{t('buy.totalReturns')}</div>
                   <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(supplierLedgerTotalReturns)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-card p-4">
+                <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="text-muted-foreground/80">{t('buy.currentLedgerBalance')}</div>
                   <div className="font-semibold tabular-nums text-foreground">{formatBooksMoney(supplierLedgerCurrentBalance)}
                   </div>
                 </div>
-                <div className="rounded border border-border bg-card p-4">
+                <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="text-muted-foreground/80">{t('buy.unallocatedPayments')}</div>
                   <div className="font-medium tabular-nums text-foreground">{formatBooksMoney(supplierLedgerUnallocatedPayments)}
                   </div>
@@ -21644,7 +21644,7 @@ setCustomerOrganizationName("");
               </div>
 
               <div className="space-y-3 lg:hidden">
-                <article className="rounded border border-border bg-card p-4">
+                <article className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-medium text-foreground">{t('inventory.openingBalance')}</p>
                     <p className="font-medium tabular-nums text-foreground">{formatBooksMoney(0)}</p>
@@ -21656,7 +21656,7 @@ setCustomerOrganizationName("");
                   </dl>
                 </article>
                 {supplierLedgerEntries.map((entry) => (
-                  <article key={entry.id} className="rounded border border-border bg-card p-4">
+                  <article key={entry.id} className="workspace-panel rounded-xl border border-border bg-card p-4">
                     <div className="flex items-start justify-between gap-3">
                       <p className="font-medium text-foreground">{entry.reference}</p>
                       <p className="font-medium tabular-nums text-foreground">{formatBooksMoney(entry.runningBalance)}</p>
@@ -21720,7 +21720,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "expenses" && (
-        <section id="expense-management" className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section id="expense-management" className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('expenses.title')}</h2>
           <form onSubmit={saveExpense} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -21896,7 +21896,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "customer-credit" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">{t('credit.title')}</h2>
             {canImportExport && (
@@ -21935,7 +21935,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "supplier-ledger" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.payablesDashboard')}</h2>
           {suppliers.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('buy.noSuppliers')}</p>
@@ -21959,7 +21959,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "categories" && (
-        <section className="mb-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">{t('categories.title')}</h2>
             {canImportExport && (
@@ -22398,7 +22398,7 @@ setCustomerOrganizationName("");
         </form>
 
         {productToView && (
-          <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+          <section className="workspace-section">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-medium text-foreground">{t('products.detailsTitle')}</h2>
               <button
@@ -22519,7 +22519,7 @@ setCustomerOrganizationName("");
           </section>
         )}
 
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           {(() => {
             const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
             const now = Date.now();
@@ -22672,7 +22672,7 @@ setCustomerOrganizationName("");
           })()}
         </section>
 
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 ref={productsListHeadingRef} tabIndex={-1} className="text-xl font-medium text-foreground">{t('products.existingTitle')}</h2>
             <div className="flex items-center gap-2">
@@ -22792,7 +22792,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "customers" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           {currentProfile?.role === "owner" && <SetupReview entity="customers" onSaved={() => { void fetchCustomers(); }} />}
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">
@@ -23205,7 +23205,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "suppliers" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <h2 className="mb-4 text-2xl font-semibold text-foreground">
             {supplierEditingId ? t('suppliers.editSupplier') : t('suppliers.management')}
           </h2>
@@ -23406,7 +23406,7 @@ setCustomerOrganizationName("");
 
         {purchaseTab === "invoice" && (
         <>
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">{t('buy.tabInvoice')}</h2>
             {canImportExport && (
@@ -23467,7 +23467,7 @@ setCustomerOrganizationName("");
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} data-invoice-line className="rounded border border-border bg-card p-4 tabular-nums">
+                    <div key={index} data-invoice-line className="workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
@@ -23651,7 +23651,7 @@ setCustomerOrganizationName("");
           )}
         </section>
 
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.history')}</h2>
           {purchaseLoading ? (
             <p className="text-sm text-muted-foreground">{t('buy.loadingHistory')}</p>
@@ -23748,7 +23748,7 @@ setCustomerOrganizationName("");
                 return (
                   <li
                     key={transaction.id}
-                    className="rounded border border-border bg-card p-4 tabular-nums text-sm text-foreground/80"
+                    className="workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums text-sm text-foreground/80"
                   >
                     <div className="mb-3 grid gap-4 text-sm tabular-nums sm:grid-cols-4">
                       <div>
@@ -23967,7 +23967,7 @@ setCustomerOrganizationName("");
 
         {purchaseTab === "orders" && (
         <>
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.createOrder')}</h2>
           <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
@@ -24031,7 +24031,7 @@ setCustomerOrganizationName("");
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} className="rounded border border-border bg-card p-4 tabular-nums">
+                    <div key={index} className="workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
@@ -24139,7 +24139,7 @@ setCustomerOrganizationName("");
           {poError && <p className="mt-4 text-sm text-destructive">{poError}</p>}
         </section>
 
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.tabOrders')}</h2>
           {purchaseOrdersLoading ? (
             <p className="text-sm text-muted-foreground">{t('buy.loadingOrders')}</p>
@@ -24199,7 +24199,7 @@ setCustomerOrganizationName("");
                   0
                 );
                 return (
-                  <li key={po.id} className="rounded border border-border bg-card p-4 tabular-nums">
+                  <li key={po.id} className="workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -24361,7 +24361,7 @@ setCustomerOrganizationName("");
                     const product = products.find((p) => String(p.id) === String(line.productId));
                     const remaining = Math.max(line.quantityOrdered - line.quantityReceived, 0);
                     return (
-                      <div key={line.itemId} className="rounded border border-border bg-card p-4 tabular-nums">
+                      <div key={line.itemId} className="workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                           <span className="text-sm font-medium text-foreground">{product?.name ?? t('sell.unknownProduct')}</span>
                           <span className="text-xs text-muted-foreground/80">
@@ -24450,7 +24450,7 @@ setCustomerOrganizationName("");
 
         {purchaseTab === "returns" && (
         <>
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.createReturn')}</h2>
           <p className="mb-4 text-sm text-muted-foreground">
             {t('buy.returnIntro')}
@@ -24523,7 +24523,7 @@ setCustomerOrganizationName("");
                       ? products.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} className="rounded border border-border bg-card p-4 tabular-nums">
+                    <div key={index} className="workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
@@ -24629,7 +24629,7 @@ setCustomerOrganizationName("");
           {returnError && <p className="mt-4 text-sm text-destructive">{returnError}</p>}
         </section>
 
-        <section className="mt-8 rounded border border-border bg-muted/30 p-6">
+        <section className="workspace-section">
           <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.returnHistory')}</h2>
           {purchaseReturnsLoading ? (
             <p className="text-sm text-muted-foreground">{t('buy.loadingReturns')}</p>
@@ -24663,7 +24663,7 @@ setCustomerOrganizationName("");
                   0
                 );
                 return (
-                  <li key={purchaseReturn.id} className="rounded border border-border bg-card p-4 tabular-nums">
+                  <li key={purchaseReturn.id} className="workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -24722,7 +24722,7 @@ setCustomerOrganizationName("");
         )}
         </>)}
         {activeSectionAllowed && activeSection === "staff-permissions" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-medium text-foreground">{t('staff.title')}</h2>
@@ -24764,7 +24764,7 @@ setCustomerOrganizationName("");
           {staffPermissionMessage && <p className="mb-4 text-sm text-success">{staffPermissionMessage}</p>}
           {staffPermissionError && <p className="mb-4 whitespace-pre-wrap text-sm text-destructive">{staffPermissionError}</p>}
 
-          <div className="rounded border border-border bg-card p-4">
+          <div className="workspace-panel rounded-xl border border-border bg-card p-4">
             <h3 className="mb-3 text-lg font-medium text-foreground">{t('staff.profiles')}</h3>
             {staffProfiles.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('staff.noneFound')}</p>
@@ -25002,7 +25002,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "market-intelligence" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-medium text-foreground">{t('mi.title')}</h2>
@@ -25292,7 +25292,7 @@ setCustomerOrganizationName("");
                   <p className="rounded border border-border bg-card px-3 py-3 text-sm text-muted-foreground">{t('page.jsxNoQueueMatch')}</p>
                 ) : (
                   filteredMarketImportQueueItems.map((item) => (
-                    <div key={item.id} className="rounded border border-border bg-card p-4">
+                    <div key={item.id} className="workspace-panel rounded-xl border border-border bg-card p-4">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <div className="flex flex-wrap gap-2">
@@ -25491,7 +25491,7 @@ setCustomerOrganizationName("");
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-[2fr_1fr]">
-            <form id="market-intelligence-item-form" onSubmit={createMarketIntelligenceItem} className="rounded border border-border bg-card p-4">
+            <form id="market-intelligence-item-form" onSubmit={createMarketIntelligenceItem} className="workspace-panel rounded-xl border border-border bg-card p-4">
               <h3 className="text-lg font-medium text-foreground">{t('page.jsxAddIntelligenceItem')}</h3>
               {selectedAiAnalysisId && (
                 <p className="mt-2 rounded border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
@@ -25611,7 +25611,7 @@ setCustomerOrganizationName("");
             </form>
 
             <div className="space-y-5">
-              <form onSubmit={createMarketNewsSource} className="rounded border border-border bg-card p-4">
+              <form onSubmit={createMarketNewsSource} className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="text-lg font-medium text-foreground">{t('page.jsxAddNewsSource')}</h3>
                 <div className="mt-4 space-y-3">
                   <label className="flex flex-col gap-1 text-sm text-foreground/80">
@@ -25638,7 +25638,7 @@ setCustomerOrganizationName("");
                 <button type="submit" className="mt-4 rounded bg-foreground px-4 py-2 text-sm text-white hover:bg-foreground/80">{t('page.jsxSaveNewsSource')}</button>
               </form>
 
-              <div className="rounded border border-border bg-card p-4">
+              <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="text-lg font-medium text-foreground">{t('page.jsxNewsSources')}</h3>
                 <div className="mt-3 space-y-2">
                   {marketNewsSources.length === 0 ? (
@@ -25862,7 +25862,7 @@ setCustomerOrganizationName("");
 
 
         {activeSectionAllowed && activeSection === "staff-duty" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-medium text-foreground">{t('sections.staffDuty')}</h2>
@@ -25896,7 +25896,7 @@ setCustomerOrganizationName("");
           )}
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <div className="rounded border border-border bg-card p-4">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">{t('page.jsxCurrentDutyStatus')}</div>
               <div className={`mt-2 text-2xl font-semibold ${activeDutySession ? "text-success" : "text-foreground"}`}>
                 {activeDutySession ? t('page.dutyOn') : t('page.dutyOff')}
@@ -25926,7 +25926,7 @@ setCustomerOrganizationName("");
               </div>
             </div>
 
-            <div className="rounded border border-border bg-card p-4">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">{t('page.jsxLastLocationUpdate')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
                 {latestOwnLocation ? formatDateTime(latestOwnLocation.captured_at) : t('page.noLocationYet')}
@@ -26138,7 +26138,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "mobile-app" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-medium text-foreground">{t('sections.mobileApp')}</h2>
@@ -26157,7 +26157,7 @@ setCustomerOrganizationName("");
             {mobileReadinessItems.map((item) => {
               const ready = item.status === "Ready";
               return (
-                <div key={item.label} className="rounded border border-border bg-card p-4">
+                <div key={item.label} className="workspace-panel rounded-xl border border-border bg-card p-4">
                   <div className="text-sm font-medium text-foreground">{item.label}</div>
                   <span className={`mt-3 inline-flex rounded px-2 py-1 text-xs font-medium ${
                     ready ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
@@ -26170,7 +26170,7 @@ setCustomerOrganizationName("");
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            <div className="rounded border border-border bg-card p-4">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4">
               <h3 className="mb-3 text-lg font-medium text-foreground">Android Chrome</h3>
               <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground/80">
                 <li>{t('page.jsxOpenTradeosChrome')}</li>
@@ -26180,7 +26180,7 @@ setCustomerOrganizationName("");
               </ol>
             </div>
 
-            <div className="rounded border border-border bg-card p-4">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4">
               <h3 className="mb-3 text-lg font-medium text-foreground">iPhone Safari</h3>
               <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground/80">
                 <li>{t('page.jsxOpenTradeosSafari')}</li>
@@ -26214,7 +26214,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "employees" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">{t('sections.employees')}</h2>
             {canImportExport && (
@@ -26234,7 +26234,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "territories" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">{t('sections.territories')}</h2>
             {canImportExport && (
@@ -26254,7 +26254,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "routes" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-medium text-foreground">{t('sections.routes')}</h2>
             {canImportExport && (
@@ -26274,7 +26274,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "notifications" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <NotificationCenter
             onReviewDraft={() => {
               handleSectionChange("sales");
@@ -26287,7 +26287,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "live-tracking" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-5">
             <h2 className="text-xl font-medium text-foreground">{t('sections.liveTracking')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -26299,7 +26299,7 @@ setCustomerOrganizationName("");
         )}
 
         {activeSectionAllowed && activeSection === "deployment" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-5">
             <h2 className="text-xl font-medium text-foreground">{t('sections.deployment')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -26308,12 +26308,12 @@ setCustomerOrganizationName("");
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded border border-border bg-card p-4">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">{t('page.jsxAppBuildStatus')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">{t('page.jsxManualBuildRequired')}</div>
               <p className="mt-1 text-xs text-muted-foreground/80">{t('page.jsxRunLocalBuild')}</p>
             </div>
-            <div className="rounded border border-border bg-card p-4">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">{t('page.jsxEnvironmentStatus')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
                 {deploymentWarningCount === 0 ? t('page.readyLocally') : t('page.needsReview')}
@@ -26322,14 +26322,14 @@ setCustomerOrganizationName("");
                 {deploymentPassedCount} passing, {deploymentManualCount} manual.
               </p>
             </div>
-            <div className="rounded border border-border bg-card p-4">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">{t('page.jsxSecurityStatus')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
                 {allSecurityChecksPassed ? t('page.securityPassed') : t('page.finalChecksPending')}
               </div>
               <p className="mt-1 text-xs text-muted-foreground/80">{t('page.jsxUseSecurityBeforeLaunch')}</p>
             </div>
-            <div className="rounded border border-border bg-card p-4">
+            <div className="workspace-panel rounded-xl border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">{t('page.jsxBusinessSetupStatus')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">
                 {businessSettingsComplete ? t('page.bizDetailsReady') : t('page.bizDetailsNeeded')}
@@ -26430,7 +26430,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "security-check" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-medium text-foreground">{t('sections.securityCheck')}</h2>
@@ -26568,7 +26568,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "activity-logs" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-medium text-foreground">{t('logs.title')}</h2>
@@ -26741,10 +26741,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "task-manager" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('tasks.title')}</h2>
 
-          <div className="rounded border border-border bg-card p-4">
+          <div className="workspace-panel rounded-xl border border-border bg-card p-4">
             <h3 className="mb-3 text-lg font-medium text-foreground">{t('tasks.create')}</h3>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
@@ -27057,7 +27057,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "business-settings" && (
-        <section className="mt-8 rounded border border-border bg-muted/30 p-5">
+        <section className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('settings.title')}</h2>
           <RegionalSettingsPanel key={searchScopeKey} request={authorizedFetch} canEdit={currentProfile?.role === 'owner' && currentProfile?.is_active === true} />
           {currentProfile?.role === 'owner' && currentProfile?.is_active === true && <FxRatesPanel />}
