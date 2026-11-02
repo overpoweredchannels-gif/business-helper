@@ -60,7 +60,7 @@ export function KPICard({ title, value, readStatus = "successful-populated", las
     <Component
       onClick={readComplete ? onClick : undefined}
       className={cn(
-        "group rounded-xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]",
+        "group rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(35,20,12,0.1)]",
         onClick && readComplete && "w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >

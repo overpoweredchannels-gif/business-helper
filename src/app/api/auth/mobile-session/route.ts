@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     refresh_token: refreshToken,
   });
   if (sessionError) {
-    return NextResponse.json({ ok: false, error: "The TradeOS web session could not be opened." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "The Aankh web session could not be opened." }, { status: 401 });
   }
 
   response.headers.set("Cache-Control", "no-store");

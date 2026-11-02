@@ -20,7 +20,7 @@ export function PreparedFileReview({ headers, rows, mapping, fields, entity }: {
       // Explicit string cells preserve leading zeroes and do not create formulas.
       const sheet = XLSX.utils.aoa_to_sheet([data.keys, ...data.rows]);
       sheet["!cols"] = data.keys.map(key => ({ wch: Math.min(36, Math.max(18, key.length + 3)) }));
-      XLSX.utils.book_append_sheet(workbook, sheet, "TradeOS Import");
+      XLSX.utils.book_append_sheet(workbook, sheet, "Aankh Import");
       const bytes = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const link = document.createElement("a"); link.href = url; link.download = `tradeos-${entity}-${data.incompleteRows ? "needs-review" : "prepared"}.xlsx`;

@@ -26,13 +26,13 @@ export function SmartModule({ title, summary, onOpen, children, badge, badgeColo
 
   const badgeStyles = {
     default: "bg-muted text-muted-foreground",
-    warning: "bg-warning/10 text-warning",
+    warning: "bg-warning/10 text-warning-text",
     success: "bg-success/10 text-success",
     danger: "bg-destructive/10 text-destructive",
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.08)]">
+    <div className="rounded-xl border border-border bg-card shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)] transition-all duration-200 hover:shadow-[0_4px_16px_rgba(35,20,12,0.08)]">
       <div className="flex items-center justify-between gap-2 p-4">
         <button
           type="button"

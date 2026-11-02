@@ -605,7 +605,7 @@ const previewDoc: SalesInvoiceDoc = {
   customer_phone: null,
   salesman_id: "preview-salesman",
   salesman_name: "Mohammad Aslam",
-  org_name: "TradeOS Distributors",
+  org_name: "Aankh Distributors",
   org_address: "Main Bazaar, Faisalabad",
   org_phone: "0300-1234567",
   lines: [

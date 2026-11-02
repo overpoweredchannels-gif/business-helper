@@ -243,7 +243,7 @@ export function StaffDashboardView({
                         ? "bg-destructive/10 text-destructive"
                         : t.priority === "low"
                           ? "bg-muted text-light-text"
-                          : "bg-warning/10 text-warning",
+                          : "bg-warning/10 text-warning-text",
                     )}
                   >
                     {t.priority}

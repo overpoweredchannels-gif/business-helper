@@ -33,7 +33,7 @@ import { checkActionPermission, verifyIdentity } from "../identity/permissions";
 import type { PermissionContext } from "../identity/permissions";
 import { logAuditEvent } from "../identity/audit";
 
-const CLASSIFICATION_PROMPT = `You are a TradeOS AI assistant that classifies user intent and extracts business entities.
+const CLASSIFICATION_PROMPT = `You are a Aankh AI assistant that classifies user intent and extracts business entities.
 Analyze the user's message and return a JSON object.
 The user may write in English, Urdu, or Roman Urdu (or a mix).
 
@@ -112,7 +112,7 @@ For casual messages, greetings, or unclear intents, return "unknown".
 For confirmation responses, return "confirm".
 For cancellation, return "cancel".`;
 
-const FIELD_EXTRACTION_PROMPT = `You are a TradeOS AI assistant. Extract the specific field value from the user's response.
+const FIELD_EXTRACTION_PROMPT = `You are a Aankh AI assistant. Extract the specific field value from the user's response.
 The user may write in English, Urdu, or Roman Urdu.
 
 Current field being asked: {field_label}
@@ -175,7 +175,7 @@ export class ConversationRuntime {
       this.resetSession(context);
       return {
         response:
-          "Sorry, I couldn't verify your identity. Please sign in to your TradeOS account first, then ask me again.",
+          "Sorry, I couldn't verify your identity. Please sign in to your Aankh account first, then ask me again.",
         state: "idle",
         actionType: null,
       };
@@ -457,7 +457,7 @@ export class ConversationRuntime {
     const result = await callAiProviderRouter({
       task: "business_chat",
       prompt: [
-        `You are the AI assistant for a Pakistani retail/wholesale business called TradeOS.`,
+        `You are the AI assistant for a Pakistani retail/wholesale business called Aankh.`,
         `Answer the user's question concisely using the business context below.`,
         `If the user greets you, greet back and ask how you can help.`,
         `Use PKR currency formatting.`,

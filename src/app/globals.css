@@ -19,43 +19,56 @@ html { zoom: var(--app-zoom, 1); }
   background: var(--color-card, #fff); color: inherit;
 }
 
-/* Aankh Step 1 (Umair-approved 2026-10-30): ui-ux-pro-max skill-blue palette.
-   Token names unchanged; values only. Light input is #64748B, not the
-   proposed #94A3B8, because the repo's AGENTS.md requires a 3:1 input
-   boundary and #94A3B8 on white is only 2.56:1 (#64748B is 4.76:1).
-   Dark input stays #94A3B8 (5.71:1 on the dark card). */
+/* PeopleOS pivot (LOCAL-ONLY branch design/global-visual-override, 2026-11-02, NOT on main):
+   Replaces the 2026-11-01 Intelligence Palette with Umair's exact colours + PeopleOS language:
+   Dutch White #FCEEC9 (page canvas), Licorice #23140C (text, panel, dark sidebar),
+   Rojo #E4281F (primary buttons/active, ring), Xanthous #FFBE54 (accents, warning fills),
+   Khaki #D0BA98 (secondary fills, decorative borders), Dark Red #91040C (primary hover, headers).
+   Computed ratios (not estimates): Licorice on Dutch White 15.48:1; white on Rojo 4.54:1;
+   Rojo on white card / primary-light 4.54:1; Licorice on Khaki 9.48:1; Licorice on Xanthous
+   10.83:1; Dark Red on Dutch White 8.18:1; warning-text #92400E on Dutch White 6.15:1
+   (supersedes #B45309, which fell to 4.36:1 on the darker Dutch White canvas).
+   Derived shades (no new hues): muted #FFFBEB (near-white warm wash), muted-foreground /
+   light-text #6B5844 (Licorice tint), input #9A7F57 (deepened Khaki, 3.28:1+ vs canvas/card/muted).
+   DISCLOSED EXCEPTIONS: Rojo text on its own 10% tint (bg-primary/10 pills) is 3.89:1 and
+   Rojo text directly on Dutch White is 3.94:1 — both below 4.5:1, so text-primary must sit on
+   white cards / primary-light, never bare on the canvas; the pill fix (dark-red pill text)
+   is ready if strict compliance is wanted. Dark block mirrors in palette hues only;
+   dark mode remains disabled (no toggle). Token names unchanged; values only. */
 @theme inline {
-  --color-background: #F8FAFC;
-  --color-foreground: #0F172A;
+  --color-background: #FCEEC9;
+  --color-foreground: #23140C;
   --color-card: #FFFFFF;
-  --color-card-foreground: #0F172A;
-  --color-primary: #1E40AF;
+  --color-card-foreground: #23140C;
+  --color-primary: #E4281F;
   --color-primary-foreground: #FFFFFF;
-  --color-primary-hover: #1E3A8A;
-  --color-primary-on-dark: #93C5FD;
-  --color-primary-light: #DBEAFE;
-  --color-secondary: #DBEAFE;
-  --color-secondary-foreground: #1E40AF;
-  --color-secondary-strong: #3B82F6;
-  --color-muted: #E9EEF6;
-  --color-muted-foreground: #475569;
-  --color-muted-light: #E2E8F0;
-  --color-accent: #FEF3C7;
-  --color-accent-foreground: #92400E;
-  --color-accent-strong: #D97706;
+  --color-primary-hover: #91040C;
+  --color-primary-on-dark: #FFBE54;
+  --color-primary-light: #FFFFFF;
+  --color-secondary: #D0BA98;
+  --color-secondary-foreground: #23140C;
+  --color-secondary-strong: #E4281F;
+  --color-muted: #FFFBEB;
+  --color-muted-foreground: #6B5844;
+  --color-muted-light: #D0BA98;
+  --color-accent: #FFBE54;
+  --color-accent-foreground: #23140C;
+  --color-accent-strong: #E4281F;
   --color-destructive: #DC2626;
   --color-destructive-foreground: #FFFFFF;
   --color-destructive-bg: #FEF2F2;
   --color-success: #35704F;
   --color-success-foreground: #FFFFFF;
-  --color-warning: #8A5C27;
-  --color-warning-foreground: #FFFFFF;
-  --color-body: #334155;
-  --color-light-text: #475569;
-  --color-panel: #0F172A;
-  --color-border: #E2E8F0;
-  --color-input: #64748B;
-  --color-ring: #1E40AF;
+  --color-warning: #FFBE54;
+  --color-warning-text: #92400E;
+  --color-warning-foreground: #23140C;
+  --color-body: #23140C;
+  --color-light-text: #6B5844;
+  --color-panel: #23140C;
+  --color-panel-foreground: #FCEEC9;
+  --color-border: #D0BA98;
+  --color-input: #9A7F57;
+  --color-ring: #E4281F;
   --font-ui: var(--font-plus-jakarta);
   --font-heading: var(--font-plus-jakarta);
   --font-brand: var(--font-libre-baskerville);
@@ -105,29 +118,32 @@ html { zoom: var(--app-zoom, 1); }
 }
 
 .dark {
-  --color-background: #0F172A;
-  --color-foreground: #F8FAFC;
-  --color-card: #1E293B;
-  --color-card-foreground: #F8FAFC;
-  --color-primary: #60A5FA;
-  --color-primary-foreground: #0F172A;
-  --color-primary-hover: #93C5FD;
-  --color-primary-light: #1E3A8A;
-  --color-secondary: #1E3A8A;
-  --color-secondary-foreground: #BFDBFE;
-  --color-secondary-strong: #60A5FA;
-  --color-muted: #1E293B;
-  --color-muted-foreground: #94A3B8;
-  --color-accent: #451A03;
-  --color-accent-foreground: #FDE68A;
-  --color-accent-strong: #FBBF24;
+  --color-background: #23140C;
+  --color-foreground: #FCEEC9;
+  --color-card: #23140C;
+  --color-card-foreground: #FCEEC9;
+  --color-panel: #23140C;
+  --color-panel-foreground: #FCEEC9;
+  --color-primary: #E4281F;
+  --color-primary-foreground: #FFFFFF;
+  --color-primary-hover: #FFBE54;
+  --color-primary-light: #91040C;
+  --color-secondary: #D0BA98;
+  --color-secondary-foreground: #23140C;
+  --color-secondary-strong: #FFBE54;
+  --color-muted: #23140C;
+  --color-muted-foreground: #D0BA98;
+  --color-accent: #91040C;
+  --color-accent-foreground: #FCEEC9;
+  --color-accent-strong: #FFBE54;
   --color-success: #7FBF98;
-  --color-warning: #E0B070;
-  --color-body: #CBD5E1;
-  --color-light-text: #94A3B8;
+  --color-warning: #FFBE54;
+  --color-warning-text: #FFBE54;
+  --color-body: #FCEEC9;
+  --color-light-text: #D0BA98;
   --color-destructive-bg: #450A0A;
-  --color-border: #334155;
-  --color-input: #94A3B8;
+  --color-border: #D0BA98;
+  --color-input: #D0BA98;
 }
 
 body {

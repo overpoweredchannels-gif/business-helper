@@ -163,7 +163,7 @@ export default function ManagerOverview() {
                     <div className="text-sm font-medium text-foreground">{f.title || f.type}</div>
                     <div className="text-xs text-body capitalize">{f.type}</div>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full bg-warning/10 text-warning text-[11px] font-medium">{t('common.open')}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-warning/10 text-warning-text text-[11px] font-medium">{t('common.open')}</span>
                 </li>
               ))}
             </ul>

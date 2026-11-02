@@ -15,12 +15,12 @@ interface AIInsightCardProps {
 export function AIInsightCard({ insight, confidence, action, onLearnMore, reason }: AIInsightCardProps) {
   const { t } = useRegional();
   const confidenceColor =
-    confidence >= 80 ? "text-success" : confidence >= 60 ? "text-warning" : "text-destructive";
+    confidence >= 80 ? "text-success" : confidence >= 60 ? "text-warning-text" : "text-destructive";
   return (
-    <div className="rounded-xl border border-border bg-gradient-to-br from-primary-light/60 to-card p-6 shadow-sm transition-all duration-200 hover:shadow-[0_4px_16px_rgba(45,41,38,0.1)]">
+    <div className="rounded-xl border border-border bg-gradient-to-br from-accent/60 to-card p-6 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)] transition-all duration-200 hover:shadow-[0_4px_16px_rgba(35,20,12,0.1)]">
       <div className="flex items-start gap-3">
-        <div className="size-10 rounded-xl bg-primary flex items-center justify-center shrink-0 shadow-sm">
-          <Lightbulb className="size-5 text-primary-foreground" />
+        <div className="size-10 rounded-xl bg-warning flex items-center justify-center shrink-0 shadow-sm">
+          <Lightbulb className="size-5 text-warning-foreground" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">

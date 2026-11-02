@@ -82,7 +82,7 @@ export async function reportProductionError(input: ProductionErrorInput): Promis
   if (process.env.NODE_ENV !== "production" && process.env.TRADEOS_ALERTS_IN_DEVELOPMENT !== "true") return;
   if (!shouldSendAlert(event)) return;
 
-  const summary = `[TradeOS ${event.environment}] ${event.source} error: ${event.message}`;
+  const summary = `[Aankh ${event.environment}] ${event.source} error: ${event.message}`;
   try {
     const response = await fetch(webhookUrl, {
       method: "POST",

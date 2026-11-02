@@ -130,7 +130,7 @@ export default function ManagerRoutesPage() {
 
                 <div className="mt-4 grid grid-cols-3 gap-3">
                   <MiniStat label={t('manager.routes.visited')} value={route.visited} tone="text-success" />
-                  <MiniStat label={t('salesman.collections.status.pending')} value={route.pending} tone="text-warning" />
+                  <MiniStat label={t('salesman.collections.status.pending')} value={route.pending} tone="text-warning-text" />
                   <MiniStat label={t('manager.routes.skippedMissed')} value={route.skipped} tone="text-destructive" />
                 </div>
 

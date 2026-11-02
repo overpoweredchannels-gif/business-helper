@@ -6,7 +6,7 @@ const FOOTER_LINKS = [
 ] as const;
 
 /**
- * Global AANKH footer. Rendered once in the root layout, so it appears on
+ * Global Aankh footer. Rendered once in the root layout, so it appears on
  * every route (login, signup, owner app, manager, salesman, supervisor).
  * It is hidden in print so it never lands on invoices or receipts.
  */
@@ -16,16 +16,12 @@ export function AppFooter() {
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6">
         <div className="flex flex-wrap items-center gap-3">
           <img
-            src="/aankh-icon.svg"
-            alt="AANKH logo"
-            width={36}
-            height={36}
-            className="size-9 shrink-0 rounded-lg"
+            src="/aankh-horizontal.png"
+            alt="Aankh logo"
+            width={160}
+            height={64}
+            className="h-10 w-auto shrink-0"
           />
-          <div className="min-w-0">
-            <p className="font-brand text-base font-bold text-foreground">AANKH</p>
-            <p className="text-sm text-body">The eye of your business</p>
-          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

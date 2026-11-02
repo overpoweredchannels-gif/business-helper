@@ -24,7 +24,7 @@ export default function GlobalError({
       <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", background: "#f8fafc", color: "#0f172a" }}>
         <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
           <section style={{ width: "100%", maxWidth: 520, border: "1px solid #e2e8f0", borderRadius: 16, background: "white", padding: 32, boxShadow: "0 20px 45px rgba(15, 23, 42, 0.08)" }}>
-            <div style={{ fontWeight: 800, color: "#2563eb", marginBottom: 20 }}>TradeOS</div>
+            <div style={{ fontWeight: 800, color: "var(--color-primary)", marginBottom: 20 }}>Aankh</div>
             <h1 style={{ margin: 0, fontSize: 24 }}>Something went wrong</h1>
             <p style={{ color: "#475569", lineHeight: 1.6 }}>
               The issue has been recorded. Try loading this screen again; your saved business data has not been changed.

@@ -5,7 +5,7 @@ import type { GuideTopic } from './guide';
 const localized: Record<Exclude<Language, 'en'>, GuideTopic[]> = {
   es: [
     {
-      title: "Bienvenido a TradeOS",
+      title: "Bienvenido a Aankh",
       description: "Gestiona productos, inventario, compras, ventas, pagos y tu equipo en un solo espacio de trabajo. Las pantallas disponibles dependen de los permisos del propietario.",
       steps: [
         "Comienza con la configuración del negocio, las marcas y las categorías.",
@@ -36,10 +36,10 @@ const localized: Record<Exclude<Language, 'en'>, GuideTopic[]> = {
     },
     {
       title: "Código de barras y venta rápida",
-      description: "Usa un escáner de códigos de barras USB/Bluetooth en modo teclado. Escribe el código de barras en el campo de escaneo activo; en este modo no se necesita ningún emparejamiento especial dentro de TradeOS.",
+      description: "Usa un escáner de códigos de barras USB/Bluetooth en modo teclado. Escribe el código de barras en el campo de escaneo activo; en este modo no se necesita ningún emparejamiento especial dentro de Aankh.",
       steps: [
         "En Productos, haz clic en Listo para escanear, escanea el código de barras, completa los datos restantes y guarda. Conserva los ceros iniciales del código de barras.",
-        "Elige Retail POS / Crear una venta desde el panel principal. TradeOS prepara un cliente Sin cita para tu negocio; elige otro cliente cuando sea necesario.",
+        "Elige Retail POS / Crear una venta desde el panel principal. Aankh prepara un cliente Sin cita para tu negocio; elige otro cliente cuando sea necesario.",
         "Elige si cada escaneo añade una unidad principal o una subunidad. Escanea para añadir el producto guardado correspondiente. Escanear de nuevo aumenta su cantidad.",
         "Ajusta la cantidad/precio según sea necesario. Haz clic en Listo para escanear después de editar otro campo. Los códigos de barras desconocidos o duplicados deben corregirse.",
         "Revisa y elige Pagar y guardar. Las ventas de los empleados aún requieren la aprobación del propietario. Pausar venta mantiene una cesta sin terminar en este navegador sin contabilizarla. Después de guardar, abre el recibo para imprimirlo. Usa Factura completa para opciones avanzadas.",
@@ -68,7 +68,7 @@ const localized: Record<Exclude<Language, 'en'>, GuideTopic[]> = {
     },
     {
       title: "Inventario e importaciones",
-      description: "El inventario muestra las existencias y sus movimientos. Las asignaciones de importación indican a TradeOS qué significa cada columna externa.",
+      description: "El inventario muestra las existencias y sus movimientos. Las asignaciones de importación indican a Aankh qué significa cada columna externa.",
       steps: [
         "Elige una entidad y sube su archivo. Reutiliza una asignación guardada para el mismo formato de archivo.",
         "Asigna las cantidades por su significado, no por el nombre de la columna de origen. Revisa con cuidado las existencias iniciales y las unidades.",
@@ -133,7 +133,7 @@ const localized: Record<Exclude<Language, 'en'>, GuideTopic[]> = {
   ],
   it: [
     {
-      title: "Benvenuto in TradeOS",
+      title: "Benvenuto in Aankh",
       description: "Gestisci prodotti, magazzino, acquisti, vendite, pagamenti e il tuo team in un unico spazio di lavoro. Le schermate disponibili dipendono dai permessi del proprietario.",
       steps: [
         "Inizia dalle impostazioni aziendali, dai marchi e dalle categorie.",
@@ -164,10 +164,10 @@ const localized: Record<Exclude<Language, 'en'>, GuideTopic[]> = {
     },
     {
       title: "Codice a barre e vendita rapida",
-      description: "Usa uno scanner di codici a barre USB/Bluetooth in modalità tastiera. Digita il codice a barre nel campo di scansione attivo; per questa modalità non serve alcun abbinamento speciale del dispositivo all'interno di TradeOS.",
+      description: "Usa uno scanner di codici a barre USB/Bluetooth in modalità tastiera. Digita il codice a barre nel campo di scansione attivo; per questa modalità non serve alcun abbinamento speciale del dispositivo all'interno di Aankh.",
       steps: [
         "In Prodotti, clicca su Pronto a scansionare, scansiona il codice a barre, completa i dati rimanenti e salva. Mantieni gli zeri iniziali del codice a barre.",
-        "Scegli Retail POS / Crea una vendita dalla dashboard. TradeOS prepara un cliente Walk-in per la tua attività; scegli un altro cliente quando serve.",
+        "Scegli Retail POS / Crea una vendita dalla dashboard. Aankh prepara un cliente Walk-in per la tua attività; scegli un altro cliente quando serve.",
         "Scegli se ogni scansione aggiunge un'unità principale o una sotto-unità. Scansiona per aggiungere il prodotto salvato corrispondente. Scansionare di nuovo aumenta la sua quantità.",
         "Regola quantità/prezzo se necessario. Clicca su Pronto a scansionare dopo aver modificato un altro campo. I codici a barre sconosciuti o duplicati devono essere corretti.",
         "Rivedi e scegli Paga e salva. Le vendite dei dipendenti richiedono comunque l'approvazione del proprietario. Sospendi vendita conserva un carrello incompleto su questo browser senza registrarlo. Dopo il salvataggio, apri la ricevuta per stamparla. Usa Fattura completa per le opzioni avanzate.",
@@ -196,7 +196,7 @@ const localized: Record<Exclude<Language, 'en'>, GuideTopic[]> = {
     },
     {
       title: "Magazzino e importazioni",
-      description: "Il magazzino mostra le scorte e i loro movimenti. Le mappature di importazione indicano a TradeOS cosa significa ogni colonna esterna.",
+      description: "Il magazzino mostra le scorte e i loro movimenti. Le mappature di importazione indicano a Aankh cosa significa ogni colonna esterna.",
       steps: [
         "Scegli un'entità e carica il suo file. Riutilizza una mappatura salvata per lo stesso formato di file.",
         "Mappa le quantità in base al significato, non al nome della colonna di origine. Rivedi con attenzione le giacenze iniziali e le unità.",
@@ -261,7 +261,7 @@ const localized: Record<Exclude<Language, 'en'>, GuideTopic[]> = {
   ],
   ur: [
     {
-      title: "TradeOS میں خوش آمدید",
+      title: "Aankh میں خوش آمدید",
       description: "مصنوعات، اسٹاک، خریداری، فروخت، ادائیگیوں اور اپنی ٹیم کا انتظام ایک ہی ورک اسپیس میں کریں۔ دستیاب اسکرینیں مالک کی اجازتوں پر منحصر ہیں۔",
       steps: [
         "کاروباری ترتیبات، برانڈز اور زمروں سے شروع کریں۔",
@@ -292,10 +292,10 @@ const localized: Record<Exclude<Language, 'en'>, GuideTopic[]> = {
     },
     {
       title: "بارکوڈ اور فوری فروخت",
-      description: "کی بورڈ موڈ میں USB/Bluetooth بارکوڈ اسکینر استعمال کریں۔ یہ فعال اسکین فیلڈ میں بارکوڈ ٹائپ کرتا ہے؛ اس موڈ کے لیے TradeOS کے اندر کسی خاص ڈیوائس پیئرنگ کی ضرورت نہیں۔",
+      description: "کی بورڈ موڈ میں USB/Bluetooth بارکوڈ اسکینر استعمال کریں۔ یہ فعال اسکین فیلڈ میں بارکوڈ ٹائپ کرتا ہے؛ اس موڈ کے لیے Aankh کے اندر کسی خاص ڈیوائس پیئرنگ کی ضرورت نہیں۔",
       steps: [
         "مصنوعات میں، اسکین کے لیے تیار پر کلک کریں، بارکوڈ اسکین کریں، باقی تفصیلات پُر کریں اور محفوظ کریں۔ بارکوڈ کے شروع کے صفر برقرار رکھیں۔",
-        "ڈیش بورڈ سے Retail POS / فروخت بنائیں منتخب کریں۔ TradeOS آپ کے کاروبار کے لیے واک اِن گاہک تیار کرتا ہے؛ ضرورت ہو تو کوئی اور گاہک منتخب کریں۔",
+        "ڈیش بورڈ سے Retail POS / فروخت بنائیں منتخب کریں۔ Aankh آپ کے کاروبار کے لیے واک اِن گاہک تیار کرتا ہے؛ ضرورت ہو تو کوئی اور گاہک منتخب کریں۔",
         "منتخب کریں کہ ہر اسکین ایک مرکزی اکائی شامل کرے یا ایک ذیلی اکائی۔ مماثل محفوظ مصنوعات شامل کرنے کے لیے اسکین کریں۔ دوبارہ اسکین کرنے سے اس کی مقدار بڑھتی ہے۔",
         "ضرورت کے مطابق مقدار/قیمت ایڈجسٹ کریں۔ کوئی اور فیلڈ ایڈٹ کرنے کے بعد اسکین کے لیے تیار پر کلک کریں۔ نامعلوم یا ڈپلیکیٹ بارکوڈز درست کرنا ضروری ہیں۔",
         "جائزہ لیں اور ادا کریں اور محفوظ کریں منتخب کریں۔ ملازمین کی فروخت کے لیے اب بھی مالک کی منظوری ضروری ہے۔ فروخت روکیں اس براؤزر میں نامکمل ٹوکری کو پوسٹ کیے بغیر رکھتی ہے۔ محفوظ کرنے کے بعد، پرنٹ کرنے کے لیے رسید کھولیں۔ اعلیٰ درجے کے اختیارات کے لیے مکمل انوائس استعمال کریں۔",
@@ -324,7 +324,7 @@ const localized: Record<Exclude<Language, 'en'>, GuideTopic[]> = {
     },
     {
       title: "انوینٹری اور امپورٹس",
-      description: "انوینٹری اسٹاک اور اس کی حرکات دکھاتی ہے۔ امپورٹ میپنگز TradeOS کو بتاتی ہیں کہ ہر بیرونی کالم کا کیا مطلب ہے۔",
+      description: "انوینٹری اسٹاک اور اس کی حرکات دکھاتی ہے۔ امپورٹ میپنگز Aankh کو بتاتی ہیں کہ ہر بیرونی کالم کا کیا مطلب ہے۔",
       steps: [
         "ایک انٹیٹی منتخب کریں اور اس کی فائل اپ لوڈ کریں۔ اسی فائل فارمیٹ کے لیے محفوظ میپنگ دوبارہ استعمال کریں۔",
         "مقداریں ماخذ کالم کے نام سے نہیں بلکہ معنی سے میپ کریں۔ ابتدائی اسٹاک اور اکائیوں کا احتیاط سے جائزہ لیں۔",

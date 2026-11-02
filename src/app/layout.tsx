@@ -23,22 +23,22 @@ const libreBaskerville = Libre_Baskerville({
 });
 
 export const metadata: Metadata = {
-  title: "AANKH",
+  title: "Aankh",
   description: "The eye of your business — business management for traders, wholesalers, and retailers",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    title: "AANKH",
+    title: "Aankh",
     statusBarStyle: "black-translucent",
   },
   icons: {
-    icon: "/aankh-icon.svg",
-    apple: "/aankh-icon.svg",
+    icon: "/aankh-app-eye.png",
+    apple: "/aankh-apple-touch-icon.png",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#c15f3c",
+  themeColor: "#23140C",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

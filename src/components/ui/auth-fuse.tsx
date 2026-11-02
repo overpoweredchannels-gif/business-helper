@@ -176,7 +176,7 @@ function Alert({ variant = "error", children }: { variant?: "error" | "success" 
       "flex items-start gap-2 rounded-lg p-3 text-sm",
       variant === "error" && "bg-destructive-bg text-destructive",
       variant === "success" && "bg-success/10 text-success",
-      variant === "warning" && "bg-warning/10 text-warning",
+      variant === "warning" && "bg-warning/10 text-warning-text",
     )}>
       <AlertCircle className="size-4 mt-0.5 shrink-0" />
       <span>{children}</span>
@@ -203,10 +203,8 @@ function LeftPanel() {
     <div className="hidden lg:flex w-[45%] min-h-screen bg-panel p-10 xl:p-14 flex-col justify-between">
       <div>
         <div className="flex items-center gap-2.5 mb-10">
-          <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-brand font-bold text-lg">T</span>
-          </div>
-          <span className="font-brand font-bold text-xl text-white/90">TradeOS</span>
+          <img src="/aankh-app-eye.png" alt="Aankh logo" width={36} height={36} className="size-9 shrink-0 rounded-xl" />
+          <span className="font-brand font-bold text-xl text-white/90">Aankh</span>
         </div>
 
         <h2 className="font-heading font-bold text-3xl xl:text-4xl text-white leading-tight mb-4">
@@ -764,10 +762,8 @@ export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
         <div className="w-full max-w-[420px]">
           <div className="lg:hidden text-center mb-8 animate-fadeIn">
             <div className="inline-flex items-center gap-2">
-              <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-brand font-bold text-lg">T</span>
-              </div>
-              <span className="font-brand font-bold text-xl text-foreground">TradeOS</span>
+              <img src="/aankh-app-eye.png" alt="Aankh logo" width={36} height={36} className="size-9 shrink-0 rounded-xl" />
+              <span className="font-brand font-bold text-xl text-foreground">Aankh</span>
             </div>
           </div>
 

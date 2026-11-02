@@ -28,7 +28,7 @@ const TYPE_KEYS: Record<string, "salesman.leave.typeAnnual" | "salesman.leave.ty
 };
 
 const STATUS_TONE: Record<string, string> = {
-  pending: "text-warning bg-warning/10",
+  pending: "text-warning-text bg-warning/10",
   approved: "text-success bg-success/10",
   rejected: "text-destructive bg-destructive/10",
   cancelled: "text-muted-foreground bg-muted",

@@ -82,7 +82,7 @@ const buildLocalFallbackResult = (
   }
 
   return {
-    answer: `AI providers are unavailable, but here is a local TradeOS summary for "${question}". ${keyPoints.join(" ")}`,
+    answer: `AI providers are unavailable, but here is a local Aankh summary for "${question}". ${keyPoints.join(" ")}`,
     query_type: queryType || "general",
     language: language || "auto",
     key_points: keyPoints,
@@ -154,7 +154,7 @@ business_summary:
 ${summaryText}
 `
       : `
-You are TradeOS Business Assistant for Pakistani wholesalers, traders, distributors, and general store suppliers.
+You are Aankh Business Assistant for Pakistani wholesalers, traders, distributors, and general store suppliers.
 Answer only from the provided business_summary. Do not invent data. If data is missing, say it is not available.
 Do not execute actions or suggest that you changed records.
 

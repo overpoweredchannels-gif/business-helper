@@ -659,7 +659,7 @@ function ImportWizardContent({
               <span className="rounded bg-success/10 px-2 py-1 text-xs text-success">{t('wiz.statNew').replace('{count}', String(preview.stats.newCount))}</span>
               <span className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">{t('wiz.statUpdate').replace('{count}', String(preview.stats.updateCount))}</span>
               <span className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">{t('wiz.statSkipped').replace('{count}', String(preview.stats.skipCount))}</span>
-              <span className="rounded bg-warning/10 px-2 py-1 text-xs text-warning">{t('wiz.statWarnings').replace('{count}', String(preview.stats.warningCount))}</span>
+              <span className="rounded bg-warning/10 px-2 py-1 text-xs text-warning-text">{t('wiz.statWarnings').replace('{count}', String(preview.stats.warningCount))}</span>
               <span className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">{t('wiz.statErrors').replace('{count}', String(preview.stats.errorCount))}</span>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -704,7 +704,7 @@ function ImportWizardContent({
                           status === "error" ? "bg-destructive/10 text-destructive" :
                           status === "skipped" ? "bg-muted text-muted-foreground" :
                           status === "update" ? "bg-primary/10 text-primary" :
-                          status === "warning" ? "bg-warning/10 text-warning" :
+                          status === "warning" ? "bg-warning/10 text-warning-text" :
                           "bg-success/10 text-success"
                         }`}>{t(STATUS_LABEL_KEY[status])}</span>
                       </td>
@@ -712,7 +712,7 @@ function ImportWizardContent({
                         <td key={field} className="px-3 py-2">{formatCellValue(row.values[field])}</td>
                       ))}
                       <td className="px-3 py-2 text-xs">
-                        {row.errors.length > 0 ? <span className="text-destructive">{row.errors.join(" ")}</span> : row.warnings.length > 0 ? <span className="text-warning">{row.warnings.join(" ")}</span> : <span className="text-muted-foreground">-</span>}
+                        {row.errors.length > 0 ? <span className="text-destructive">{row.errors.join(" ")}</span> : row.warnings.length > 0 ? <span className="text-warning-text">{row.warnings.join(" ")}</span> : <span className="text-muted-foreground">-</span>}
                       </td>
                     </tr>
                   );

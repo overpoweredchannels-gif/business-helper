@@ -134,6 +134,6 @@ export async function POST(request: NextRequest) {
       email: invitation.email,
       role: invitation.role,
     },
-    message: `Welcome to TradeOS, ${displayName}! You can now sign in with your email and password.`,
+    message: `Welcome to Aankh, ${displayName}! You can now sign in with your email and password.`,
   });
 }

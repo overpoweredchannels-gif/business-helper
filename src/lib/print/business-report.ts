@@ -26,7 +26,7 @@ export const defaultBusinessReportLabels: BusinessReportLabels = {
   printButton: "Print / Save as PDF",
   choosePdf: "Choose “Save as PDF” in the print destination.",
   businessRecords: "Business records",
-  heading: "TradeOS business records",
+  heading: "Aankh business records",
   rangeSeparator: "to",
   rangeSummary: "{from} through {to} inclusive · Pakistan time · Generated {generated}",
   disclaimer: "Transactions use their business dates; activity and new records use their recorded timestamps. Viewing a dashboard is not logged unless an activity event exists. This report does not delete records and is not a database backup.",

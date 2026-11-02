@@ -43,7 +43,7 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
       <div className="flex items-center gap-2.5 min-w-0">
         <span className={cn(
           "size-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
-          rank === 1 && "bg-warning/20 text-warning",
+          rank === 1 && "bg-warning/20 text-warning-text",
           rank === 2 && "bg-muted text-muted-foreground",
           rank === 3 && "bg-primary-light text-primary",
           rank > 3 && "bg-muted text-muted-foreground",
@@ -53,7 +53,7 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
         <span className="text-sm text-foreground truncate"><bdi>{name}</bdi></span>
       </div>
       <div className="flex items-center gap-1.5 shrink-0 ml-3">
-        <span className="text-sm font-semibold text-foreground"><bdi>{value}</bdi></span>
+        <span className="text-sm font-semibold tabular-nums text-foreground"><bdi>{value}</bdi></span>
         {trend === "up" && <TrendingUp className="size-3 text-success" />}
         {trend === "down" && <TrendingDown className="size-3 text-destructive" />}
         {trend === "flat" && <Minus className="size-3 text-light-text" />}
@@ -65,7 +65,7 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
 type TrendPoint = { label: string; value: number };
 type RankedItem = { name: string; value: string; trend?: "up" | "down" | "flat" };
 
-const card = "rounded-xl border border-border bg-card p-6 shadow-sm h-full";
+const card = "rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)] h-full";
 
 // Each chart is its own card so the home dashboard can add or remove one at a time.
 export function RevenueTrendCard({ data }: { data: TrendPoint[] }) {

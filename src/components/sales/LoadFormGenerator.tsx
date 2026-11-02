@@ -579,7 +579,7 @@ function fmt(n: number): string {
 
 // Sample summary used as the live preview inside the customizer.
 const previewSummary: LoadFormSummary = {
-  org_name: "TradeOS Distributors",
+  org_name: "Aankh Distributors",
   org_address: "Main Bazaar, Faisalabad",
   org_phone: "0300-1234567",
   groupBy: "brand",

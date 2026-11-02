@@ -7,7 +7,7 @@ import { useRegional } from "@/components/regional/RegionalProvider";
 import { Bell, CheckCircle2, X } from "lucide-react";
 
 const CATEGORY_STYLES: Record<string, string> = {
-  draft_sale: "bg-warning/10 text-warning border-warning/30",
+  draft_sale: "bg-warning/10 text-warning-text border-warning/30",
   approval: "bg-primary/10 text-primary border-primary/30",
   target: "bg-violet-500/10 text-violet-500 border-violet-500/30",
   route: "bg-success/10 text-success border-success/30",

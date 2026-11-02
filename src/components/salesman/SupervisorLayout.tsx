@@ -40,11 +40,9 @@ export default function SupervisorLayout({ organizationName, userName, children 
   const content = (
     <aside className="flex flex-col bg-card border-e border-border transition-all duration-300 h-full w-64">
       <div className="border-b border-border flex items-center gap-3 px-5 py-5">
-        <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <span className="text-primary-foreground font-brand font-bold text-sm">T</span>
-        </div>
+        <img src="/aankh-app-eye.png" alt="Aankh logo" width={32} height={32} className="size-8 shrink-0 rounded-lg" />
         <div className="min-w-0">
-          <div className="font-brand font-bold text-base text-foreground truncate">TradeOS</div>
+          <div className="font-brand font-bold text-base text-foreground truncate">Aankh</div>
           <div className="text-[10px] text-light-text truncate">{organizationName ?? ui('supervisor.roleFallback')}</div>
         </div>
       </div>

@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       p_start_latitude: body.latitude ?? null,
       p_start_longitude: body.longitude ?? null,
       p_start_accuracy: null,
-      p_device_name: "TradeOS web attendance",
+      p_device_name: "Aankh web attendance",
     });
     if (error) {
       const status = /already ended|after today|non-working day/i.test(error.message) ? 409 : 400;

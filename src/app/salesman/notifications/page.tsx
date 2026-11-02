@@ -8,14 +8,14 @@ import { useRegional } from "@/components/regional/RegionalProvider";
 import type { MessageKey } from "@/lib/regional/messages";
 
 const CATEGORY_COLORS: Record<string, string> = {
-  draft_sale: "bg-warning/10 text-warning",
+  draft_sale: "bg-warning/10 text-warning-text",
   approval: "bg-primary/10 text-primary",
   target: "bg-secondary text-primary",
   route: "bg-success/10 text-success",
   duty: "bg-muted text-muted-foreground",
   off_route: "bg-destructive/10 text-destructive",
   missed_customer: "bg-destructive/10 text-destructive",
-  inventory: "bg-warning/10 text-warning",
+  inventory: "bg-warning/10 text-warning-text",
   attendance: "bg-primary/10 text-primary",
   leave: "bg-destructive/10 text-destructive",
   collection: "bg-success/10 text-success",

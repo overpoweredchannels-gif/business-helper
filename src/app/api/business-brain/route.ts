@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       .join("\n");
 
     const prompt = [
-      `You are the AI assistant for the business "${body.organizationName || "TradeOS"}" running inside TradeOS — a Pakistani retail/wholesale ERP system.`,
+      `You are the AI assistant for the business "${body.organizationName || "Aankh"}" running inside Aankh — a Pakistani retail/wholesale ERP system.`,
       ``,
       `Your role: Answer business questions using ONLY the Business Memory context below.`,
       `You have NO access to live data — everything you know is in the context.`,

@@ -183,8 +183,8 @@ function StatusBadge({ status, t }: { status: string; t: (key: MessageKey) => st
   const colors: Record<string, string> = {
     present: "bg-success/10 text-success",
     absent: "bg-destructive/10 text-destructive",
-    late: "bg-warning/10 text-warning",
-    half_day: "bg-warning/10 text-warning",
+    late: "bg-warning/10 text-warning-text",
+    half_day: "bg-warning/10 text-warning-text",
     leave: "bg-muted text-muted-foreground",
     holiday: "bg-muted text-muted-foreground",
   };

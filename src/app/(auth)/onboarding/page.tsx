@@ -48,10 +48,8 @@ export default function OnboardingPage() {
       <div className="w-full max-w-[420px]">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
-            <div className="size-9 rounded-xl bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-brand font-bold text-lg">T</span>
-            </div>
-            <span className="font-brand font-bold text-xl text-foreground">TradeOS</span>
+            <img src="/aankh-app-eye.png" alt="Aankh logo" width={36} height={36} className="size-9 shrink-0 rounded-xl" />
+            <span className="font-brand font-bold text-xl text-foreground">Aankh</span>
           </div>
         </div>
         <div className="bg-card rounded-[18px] border border-border p-6 sm:p-8 shadow-[0_2px_12px_rgba(45,41,38,0.08)]">
