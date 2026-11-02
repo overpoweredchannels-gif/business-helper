@@ -319,8 +319,8 @@ export function Header({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border">
-      <div className="flex items-center justify-between h-14 px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 bg-card border-b border-border">
+      <div className="flex min-h-16 flex-wrap items-center justify-between gap-y-2 px-3 py-2 sm:px-6 lg:px-8">
         {/* Mobile menu + Logo */}
         <div className="flex min-w-0 items-center gap-1 sm:gap-3 lg:hidden">
           <button

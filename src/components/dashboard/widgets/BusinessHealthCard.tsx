@@ -23,9 +23,9 @@ function CircularScore({ score }: { score: number }) {
   const r = 44;
   const circ = 2 * Math.PI * r;
   const offset = circ - (score / 100) * circ;
-  const color = score >= 80 ? "#4CAF50" : score >= 60 ? "#F4A825" : "#D9534F";
+  const color = score >= 80 ? "var(--color-success)" : score >= 60 ? "var(--color-warning-text)" : "var(--color-destructive)";
   return (
-    <div className="relative size-24">
+    <div className="relative size-24 shrink-0">
       <svg className="size-full -rotate-90" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r={r} fill="none" stroke="var(--color-muted)" strokeWidth="6" />
         <circle
@@ -51,7 +51,7 @@ export function BusinessHealthCard({ score, metrics, readStatus = "successful-po
   if (readStatus !== "successful-empty" && readStatus !== "successful-populated") {
     const message = readStatus === "loading" ? t('dashboard.healthLoading') : readStatus === "not-loaded" ? t('dashboard.healthNotLoaded') : t('dashboard.healthUnavailable');
     return (
-      <div role="status" aria-live="polite" className="rounded-xl border border-border bg-card p-5">
+      <div role="status" aria-live="polite" className="aankh-card rounded-xl border border-border bg-card p-5">
         <h3 className="mb-2 text-sm font-semibold text-foreground">{t('dashboard.businessHealth')}</h3>
         <p className="text-sm text-muted-foreground">{message}</p>
         {readStatus === "failed" && lastSuccessfulAt && <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(dateLocale)}</p>}
@@ -60,9 +60,9 @@ export function BusinessHealthCard({ score, metrics, readStatus = "successful-po
     );
   }
   return (
-    <div className="rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)] transition-all duration-200 hover:shadow-[0_4px_16px_rgba(35,20,12,0.1)]">
+    <div className="aankh-card rounded-xl border border-border bg-card p-6 transition-all duration-200">
       <h3 className="text-sm font-semibold text-foreground mb-3">{t('dashboard.businessHealth')}</h3>
-      <div className="flex items-start gap-4">
+      <div className="flex flex-col items-start gap-4 sm:flex-row">
         <CircularScore score={score} />
         <div className="flex-1 grid gap-3">
           {metrics.map((m) => (

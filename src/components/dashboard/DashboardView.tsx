@@ -213,12 +213,12 @@ export function DashboardView({
   ].filter((chart) => !widgetHidden(chart.id));
 
   return (
-    <div className="w-full max-w-none px-4 pb-10 pt-4 space-y-6">
+    <div className="aankh-dashboard mx-auto w-full max-w-[1440px] px-4 pb-8 pt-5 space-y-5 sm:px-6 lg:px-8">
       {/* Welcome Section */}
       <header className="flex flex-wrap items-start justify-between gap-2 sm:items-center sm:gap-3">
         <DashboardWidget id="greeting" customizing={customizingWidgets} onRemove={onRemoveWidget} className="min-w-0 flex-1">
-          <h1 className="text-3xl font-bold leading-tight text-foreground font-heading">
-            {greeting}, <span className="text-primary"><bdi>{userName}</bdi></span>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-foreground font-heading">
+            {greeting}, <span><bdi>{userName}</bdi></span>
           </h1>
           <p className="text-sm text-light-text mt-0.5">{dateStr}</p>
         </DashboardWidget>
@@ -253,7 +253,7 @@ export function DashboardView({
               {t('dashboard.todayBalancesHint')}
             </p>
           </div>
-          <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", customizingWidgets ? "gap-6" : "gap-3 sm:gap-4")}>
+          <div className={cn("grid grid-cols-1 min-[375px]:grid-cols-2 md:grid-cols-3", customizingWidgets ? "gap-6" : "gap-3 sm:gap-4")}>
             {kpiCards.map((card) => (
               <DashboardWidget key={card.id} id={card.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
                 {card.node}

@@ -19,62 +19,49 @@ html { zoom: var(--app-zoom, 1); }
   background: var(--color-card, #fff); color: inherit;
 }
 
-/* PeopleOS pivot (LOCAL-ONLY branch design/global-visual-override, 2026-11-02, NOT on main):
-   Replaces the 2026-11-01 Intelligence Palette with Umair's exact colours + PeopleOS language:
-   Dutch White #FCEEC9 (page canvas), Licorice #23140C (text, panel, dark sidebar),
-   Rojo #E4281F (primary buttons/active, ring), Xanthous #FFBE54 (accents, warning fills),
-   Khaki #D0BA98 (secondary fills, decorative borders), Dark Red #91040C (primary hover, headers).
-   Computed ratios (not estimates): Licorice on Dutch White 15.48:1; white on Rojo 4.54:1;
-   Rojo on white card / primary-light 4.54:1; Licorice on Khaki 9.48:1; Licorice on Xanthous
-   10.83:1; Dark Red on Dutch White 8.18:1; warning-text #92400E on Dutch White 6.15:1
-   (supersedes #B45309, which fell to 4.36:1 on the darker Dutch White canvas).
-   Derived shades (no new hues): muted #FFFBEB (near-white warm wash), muted-foreground /
-   light-text #6B5844 (Licorice tint), input #9A7F57 (deepened Khaki, 3.28:1+ vs canvas/card/muted).
-   DISCLOSED EXCEPTIONS: Rojo text on its own 10% tint (bg-primary/10 pills) is 3.89:1 and
-   Rojo text directly on Dutch White is 3.94:1 — both below 4.5:1, so text-primary must sit on
-   white cards / primary-light, never bare on the canvas; the pill fix (dark-red pill text)
-   is ready if strict compliance is wanted. Dark block mirrors in palette hues only;
-   dark mode remains disabled (no toggle). Token names unchanged; values only. */
+/* Aankh: warm paper, terracotta actions and licorice navigation. */
 @theme inline {
-  --color-background: #FCEEC9;
-  --color-foreground: #23140C;
-  --color-card: #FFFFFF;
-  --color-card-foreground: #23140C;
-  --color-primary: #E4281F;
-  --color-primary-foreground: #FFFFFF;
-  --color-primary-hover: #91040C;
-  --color-primary-on-dark: #FFBE54;
-  --color-primary-light: #FFFFFF;
-  --color-secondary: #D0BA98;
-  --color-secondary-foreground: #23140C;
-  --color-secondary-strong: #E4281F;
-  --color-muted: #FFFBEB;
-  --color-muted-foreground: #6B5844;
-  --color-muted-light: #D0BA98;
-  --color-accent: #FFBE54;
-  --color-accent-foreground: #23140C;
-  --color-accent-strong: #E4281F;
-  --color-destructive: #DC2626;
-  --color-destructive-foreground: #FFFFFF;
-  --color-destructive-bg: #FEF2F2;
-  --color-success: #35704F;
-  --color-success-foreground: #FFFFFF;
-  --color-warning: #FFBE54;
-  --color-warning-text: #92400E;
-  --color-warning-foreground: #23140C;
-  --color-body: #23140C;
-  --color-light-text: #6B5844;
-  --color-panel: #23140C;
-  --color-panel-foreground: #FCEEC9;
-  --color-border: #D0BA98;
-  --color-input: #9A7F57;
-  --color-ring: #E4281F;
+  /* Warm paper and terracotta retain Aankh's earthy identity. Color is
+     strongest on actions; surrounding surfaces stay quiet. */
+  --color-background: #f7f5f0;
+  --color-foreground: #2d2926;
+  --color-card: #ffffff;
+  --color-card-foreground: #2d2926;
+  --color-primary: #a44a2b;
+  --color-primary-foreground: #ffffff;
+  --color-primary-hover: #934026;
+  --color-primary-on-dark: #e8a98c;
+  --color-primary-light: #f5ece7;
+  --color-secondary: #f0e7df;
+  --color-secondary-foreground: #7a3a22;
+  --color-muted: #eeebe5;
+  --color-muted-foreground: #6c665d;
+  --color-muted-light: #dcd7cf;
+  --color-accent: #f2ece3;
+  --color-accent-foreground: #7a3a22;
+  --color-destructive: #b03a2e;
+  --color-destructive-foreground: #ffffff;
+  --color-destructive-bg: #fdf3f2;
+  --color-success: #35704f;
+  --color-success-foreground: #ffffff;
+  --color-warning-text: #8a5c27;
+  --color-panel-foreground: #f7f5f0;
+  --color-secondary-strong: #a44a2b;
+  --color-accent-strong: #a44a2b;
+  --color-warning: #8a5c27;
+  --color-warning-foreground: #ffffff;
+  --color-body: #4a4540;
+  --color-light-text: #6c665d;
+  --color-panel: #1e1712;
+  --color-border: #e5dfd5;
+  --color-input: #898178;
+  --color-ring: #a44a2b;
   --font-ui: var(--font-plus-jakarta);
   --font-heading: var(--font-plus-jakarta);
   --font-brand: var(--font-libre-baskerville);
   --font-mono: ui-monospace, monospace;
   --text-small: 0.8125rem;
-  --radius: 0.75rem;
+  --radius: 1rem;
 }
 
 @keyframes fadeIn {
@@ -118,38 +105,95 @@ html { zoom: var(--app-zoom, 1); }
 }
 
 .dark {
-  --color-background: #23140C;
-  --color-foreground: #FCEEC9;
-  --color-card: #23140C;
-  --color-card-foreground: #FCEEC9;
-  --color-panel: #23140C;
-  --color-panel-foreground: #FCEEC9;
-  --color-primary: #E4281F;
-  --color-primary-foreground: #FFFFFF;
-  --color-primary-hover: #FFBE54;
-  --color-primary-light: #91040C;
-  --color-secondary: #D0BA98;
-  --color-secondary-foreground: #23140C;
-  --color-secondary-strong: #FFBE54;
-  --color-muted: #23140C;
-  --color-muted-foreground: #D0BA98;
-  --color-accent: #91040C;
-  --color-accent-foreground: #FCEEC9;
-  --color-accent-strong: #FFBE54;
-  --color-success: #7FBF98;
-  --color-warning: #FFBE54;
-  --color-warning-text: #FFBE54;
-  --color-body: #FCEEC9;
-  --color-light-text: #D0BA98;
-  --color-destructive-bg: #450A0A;
-  --color-border: #D0BA98;
-  --color-input: #D0BA98;
+  --color-background: #171411;
+  --color-foreground: #f7f5f0;
+  --color-card: #211c18;
+  --color-card-foreground: #f7f5f0;
+  --color-primary: #f0b79a;
+  --color-primary-foreground: #2d1a12;
+  --color-primary-hover: #e0a488;
+  --color-primary-on-dark: #f0b79a;
+  --color-primary-light: #3a241c;
+  --color-secondary: #382c24;
+  --color-secondary-foreground: #e8d5cb;
+  --color-muted: #302922;
+  --color-muted-foreground: #b0aaa0;
+  --color-muted-light: #51473c;
+  --color-accent: #342b22;
+  --color-accent-foreground: #e8d5cb;
+  --color-success: #7fbf98;
+  --color-warning-text: #e0b070;
+  --color-panel-foreground: #f7f5f0;
+  --color-secondary-strong: #f0b79a;
+  --color-accent-strong: #f0b79a;
+  --color-warning: #e0b070;
+  --color-success-foreground: #171411;
+  --color-warning-foreground: #171411;
+  --color-body: #cfc9c1;
+  --color-light-text: #b0aaa0;
+  --color-destructive-bg: #3a201d;
+  --color-destructive: #f0a49a;
+  --color-destructive-foreground: #171411;
+  --color-panel: #171411;
+  --color-border: #42382f;
+  --color-input: #96897b;
+  --color-ring: #f0b79a;
 }
 
 body {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-ui);
+}
+
+/* Shared workspace surfaces: quiet depth, with movement reserved for feedback. */
+.aankh-card {
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-panel) 4%, transparent);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+.aankh-metric { border-top: 2px solid var(--color-primary-light); }
+.aankh-action { transition: background-color 180ms ease, transform 180ms ease; }
+.aankh-action:active { transform: scale(.98); }
+.responsive-content :where(button, a, input, select, textarea) {
+  scroll-margin-top: 6rem;
+}
+.responsive-content :where(button, input, select, textarea) {
+  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+.responsive-content :where(thead) { background: var(--color-muted); }
+.responsive-content :where(tbody tr) { transition: background-color 150ms ease; }
+.responsive-content :where(tbody tr:hover) { background-color: var(--color-primary-light); }
+
+/* A small CSS object adds dimensional character without a canvas or runtime. */
+.aankh-object { position: relative; width: 2rem; height: 2rem; perspective: 160px; }
+.aankh-object span { position: absolute; inset: .5rem; border: 1px solid var(--color-primary); backface-visibility: hidden; }
+.aankh-object span:nth-child(1) { background: var(--color-primary-light); transform: rotateX(-25deg) rotateY(35deg) translateZ(8px); }
+.aankh-object span:nth-child(2) { background: var(--color-secondary); transform: rotateX(-25deg) rotateY(125deg) translateZ(8px); }
+.aankh-object span:nth-child(3) { background: var(--color-accent); transform: rotateX(65deg) rotateZ(-35deg) translateZ(8px); }
+@keyframes workspace-enter {
+  from { transform: translateY(8px); }
+  to { transform: translateY(0); }
+}
+@keyframes object-enter {
+  from { transform: rotateY(-35deg) translateY(4px); }
+  to { transform: rotateY(0) translateY(0); }
+}
+@keyframes chart-enter {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .aankh-dashboard > :where(header, section, [data-dashboard-widget]) { animation: workspace-enter 360ms ease-out both; }
+  .aankh-dashboard > section { animation-delay: 60ms; }
+  .aankh-object { animation: object-enter 700ms ease-out both; }
+  .aankh-chart-bar { transform-box: fill-box; transform-origin: center bottom; animation: chart-enter 500ms ease-out both; }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  button.aankh-metric:hover, .aankh-card:focus-within {
+    border-color: var(--color-input);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-panel) 5%, transparent);
+  }
+  button.aankh-metric:hover { transform: translateY(-2px); }
 }
 
 .mobile-navigation {

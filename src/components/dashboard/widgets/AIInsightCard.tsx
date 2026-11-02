@@ -17,7 +17,7 @@ export function AIInsightCard({ insight, confidence, action, onLearnMore, reason
   const confidenceColor =
     confidence >= 80 ? "text-success" : confidence >= 60 ? "text-warning-text" : "text-destructive";
   return (
-    <div className="rounded-xl border border-border bg-gradient-to-br from-accent/60 to-card p-6 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)] transition-all duration-200 hover:shadow-[0_4px_16px_rgba(35,20,12,0.1)]">
+    <div className="aankh-card rounded-xl border border-border bg-primary-light p-5 transition-all duration-200">
       <div className="flex items-start gap-3">
         <div className="size-10 rounded-xl bg-warning flex items-center justify-center shrink-0 shadow-sm">
           <Lightbulb className="size-5 text-warning-foreground" />
@@ -29,7 +29,7 @@ export function AIInsightCard({ insight, confidence, action, onLearnMore, reason
           </div>
           <p className="text-sm text-foreground font-medium leading-relaxed">{insight}</p>
           {reason && <p className="text-xs text-light-text mt-1.5 leading-relaxed">{reason}</p>}
-          <div className="flex items-center gap-4 mt-3">
+          <div className="flex flex-wrap items-center gap-3 mt-3">
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-light-text">{t('dashboard.aiConfidence')}</span>
               <span className={cn("text-xs font-semibold", confidenceColor)}>{confidence}%</span>
@@ -37,7 +37,7 @@ export function AIInsightCard({ insight, confidence, action, onLearnMore, reason
             {action && (
               <button
                 onClick={onLearnMore}
-                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary-hover transition-colors"
+                className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring text-xs font-medium text-primary hover:text-primary-hover transition-colors"
               >
                 {action}
                 <ArrowRight className="size-3" />

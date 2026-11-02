@@ -11,21 +11,23 @@ interface BarChartProps {
 
 function BarChart({ data, height = 144 }: BarChartProps) {
   const max = Math.max(...data.map((d) => d.value), 1);
+  const width = Math.max(data.length, 1) * 48;
+  const plotHeight = height - 24;
   return (
-    <div className="flex items-end gap-1.5" style={{ height }}>
-      {data.map((d) => (
-        <div key={d.label} className="flex-1 flex flex-col items-center gap-1">
-          <div
-            className="w-full rounded-t-sm transition-all duration-500"
-            style={{
-              height: `${(d.value / max) * 100}%`,
-              backgroundColor: d.color || "var(--color-primary)",
-              opacity: 0.8,
-            }}
-          />
-          <span className="text-[11px] text-light-text truncate w-full text-center">{d.label}</span>
-        </div>
-      ))}
+    <div>
+    <svg viewBox={`0 0 ${width} ${plotHeight}`} height={plotHeight} preserveAspectRatio="none" className="w-full" role="img">
+      <title>{data.map(d => `${d.label}: ${d.value}`).join('; ')}</title>
+      {data.map((d, index) => {
+        const barHeight = Math.max(0, d.value / max) * plotHeight;
+        return <g key={d.label}>
+          <rect x={index * 48 + 8} y={0} width={32} height={plotHeight} rx={3} fill="var(--color-muted)" />
+          <rect className="aankh-chart-bar" x={index * 48 + 8} y={plotHeight - barHeight} width={32} height={barHeight} rx={3} fill={d.color || 'var(--color-primary)'} />
+        </g>;
+      })}
+    </svg>
+    <div aria-hidden="true" className="mt-2 flex gap-2">
+      {data.map(d => <span key={d.label} title={d.label} className="min-w-0 flex-1 truncate text-center text-[11px] text-light-text">{d.label}</span>)}
+    </div>
     </div>
   );
 }
@@ -65,7 +67,7 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
 type TrendPoint = { label: string; value: number };
 type RankedItem = { name: string; value: string; trend?: "up" | "down" | "flat" };
 
-const card = "rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)] h-full";
+const card = "aankh-card rounded-xl border border-border bg-card p-6 h-full";
 
 // Each chart is its own card so the home dashboard can add or remove one at a time.
 export function RevenueTrendCard({ data }: { data: TrendPoint[] }) {

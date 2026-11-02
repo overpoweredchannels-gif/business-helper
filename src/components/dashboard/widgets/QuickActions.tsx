@@ -32,9 +32,9 @@ interface QuickActionsProps {
 export function QuickActions({ actions = defaultActions, onAction }: QuickActionsProps) {
   const { t } = useRegional();
   return (
-    <div className="rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(35_20_12/0.07),0_16px_32px_-16px_rgb(35_20_12/0.22)]">
-      <h3 className="text-sm font-semibold text-foreground mb-4">{t('quickaction.heading')}</h3>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="aankh-card rounded-xl border border-border bg-card p-4 sm:p-5">
+      <div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-semibold text-foreground">{t('quickaction.heading')}</h3><div aria-hidden="true" className="aankh-object"><span /><span /><span /></div></div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {actions.map((a) => (
           <button
             key={a.label}
@@ -42,15 +42,14 @@ export function QuickActions({ actions = defaultActions, onAction }: QuickAction
             data-help-id="dashboard-quick-actions"
             aria-label={a.labelKey ? t(a.labelKey) : a.label}
             className={cn(
-              "flex min-h-11 flex-col items-center gap-1.5 rounded-lg px-2 py-4 text-xs font-medium transition-all duration-200",
-              a.primary && "col-span-2 sm:col-span-1",
-              "hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "aankh-action flex min-h-14 items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               a.primary
-                ? "bg-primary text-primary-foreground hover:bg-primary-hover shadow-sm hover:shadow-md"
-                : "border border-border bg-background text-foreground hover:bg-muted",
+                ? "bg-primary text-primary-foreground hover:bg-primary-hover"
+                : "border border-input bg-card text-foreground hover:bg-muted",
             )}
           >
-            {a.icon}
+            <span aria-hidden="true" className="shrink-0">{a.icon}</span>
             <span>{a.labelKey ? t(a.labelKey) : a.label}</span>
           </button>
         ))}
