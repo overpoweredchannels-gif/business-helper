@@ -18941,6 +18941,7 @@ setCustomerOrganizationName("");
                   handleAdjustStock();
                 }}
                 className="grid gap-4 lg:grid-cols-2"
+                {...entryNavigationHandlers}
               >
                 <div className="flex flex-col gap-1">
                   <label className="text-sm text-foreground/80">{t('sell.product')} *</label>
@@ -19044,6 +19045,7 @@ setCustomerOrganizationName("");
                   </button>
                   <button
                     type="submit"
+                    data-entry-add
                     disabled={adjustmentSubmitting || !canManageInventory}
                     className="min-h-11 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -21738,7 +21740,7 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "expenses" && (
         <section id="expense-management" className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('expenses.title')}</h2>
-          <form onSubmit={saveExpense} className="space-y-4">
+          <form onSubmit={saveExpense} className="space-y-4" {...entryNavigationHandlers}>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('expenses.type')}</span>
@@ -21775,6 +21777,12 @@ setCustomerOrganizationName("");
                 value={expenseNotes}
                 onChange={(e) => setExpenseNotes(e.target.value)}
                 rows={3}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.preventDefault();
+                    focusNextEntryField(e.currentTarget);
+                  }
+                }}
                 className="rounded border border-border px-2 py-2"
               />
             </label>
@@ -21841,6 +21849,7 @@ setCustomerOrganizationName("");
 
             <button
               type="submit"
+              data-entry-add
               disabled={expenseLoading}
               className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
             >
@@ -22032,6 +22041,7 @@ setCustomerOrganizationName("");
 
             <button
               type="button"
+              data-entry-add
               onClick={handleAddCategory}
               disabled={categoriesLoading}
               className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
