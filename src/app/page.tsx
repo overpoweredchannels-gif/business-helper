@@ -1,6 +1,7 @@
 "use client";
 
-import { entryNavigationHandlers } from "@/components/invoices/entry-navigation";
+import { entryNavigationHandlers, focusNextEntryField } from "@/components/invoices/entry-navigation";
+import { PhoneWithCode } from "@/components/customers/PhoneWithCode";
 import { initKeyboardModality, wasLastInputKeyboard } from "@/lib/keyboard-modality";
 import { RegionalSettingsPanel } from "@/components/regional/RegionalSettingsPanel";
 import { FxRatesPanel } from "@/components/regional/FxRatesPanel";
@@ -22838,7 +22839,7 @@ setCustomerOrganizationName("");
           </div>
           {customerWorkspaceTab === "management" ? (
           <>
-          <div className="space-y-6">
+          <div className="space-y-6" {...entryNavigationHandlers}>
             {customerEditingId && (
               <p className="rounded border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary/90">
                 {t('customers.editingNotice')}
@@ -22859,8 +22860,8 @@ setCustomerOrganizationName("");
               <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.shopName')}</span><input type="text" value={shopName} onChange={(e) => setShopName(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
               <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.organizationName')}</span><input type="text" value={customerOrganizationName} onChange={(e) => setCustomerOrganizationName(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
               <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.contactPerson')}</span><input type="text" value={customerContactPerson} onChange={(e) => setCustomerContactPerson(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.phone')}</span><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.whatsapp')}</span><input type="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
+              <PhoneWithCode label={t('customers.phone')} value={phone} onChange={setPhone} />
+              <PhoneWithCode label={t('customers.whatsapp')} value={whatsapp} onChange={setWhatsapp} />
               <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.city')}</span><input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('customers.area')}</span>
@@ -22885,8 +22886,18 @@ setCustomerOrganizationName("");
               </label>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.completeAddress')}</span><textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
-              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.shippingAddress')}</span><textarea value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} rows={3} placeholder={t('customers.shippingAddressPlaceholder')} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.completeAddress')}</span><textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={3} onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                  e.preventDefault();
+                  focusNextEntryField(e.currentTarget);
+                }
+              }} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
+              <label className="flex flex-col gap-2 text-sm text-foreground/80"><span>{t('customers.shippingAddress')}</span><textarea value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} rows={3} placeholder={t('customers.shippingAddressPlaceholder')} onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.metaKey && !e.altKey) {
+                  e.preventDefault();
+                  focusNextEntryField(e.currentTarget);
+                }
+              }} className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
@@ -22979,6 +22990,7 @@ setCustomerOrganizationName("");
 
             <button
               type="button"
+              data-entry-add
               onClick={handleAddCustomer}
               disabled={customersLoading}
               className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"

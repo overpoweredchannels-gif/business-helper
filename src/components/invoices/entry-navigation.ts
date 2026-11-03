@@ -23,7 +23,7 @@ function advance(root: HTMLElement, target: Field, backwards = false) {
   }
   if (!backwards) root.querySelector<HTMLButtonElement>("button[data-entry-add]")?.click();
 }
-export function focusNextEntryField(target: HTMLInputElement) {
+export function focusNextEntryField(target: HTMLInputElement | HTMLTextAreaElement) {
   const root = target.closest<HTMLElement>("[data-entry-navigation], [data-invoice-line]");
   if (root) advance(root, target);
 }
