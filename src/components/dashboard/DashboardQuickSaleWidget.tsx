@@ -6,6 +6,7 @@ import type { DashboardWidgetId } from "@/lib/preferences/dashboard-widgets";
 
 interface DashboardQuickSaleWidgetProps {
   canUseInvoice: boolean;
+  bare?: boolean;
   hidden: boolean;
   customizing: boolean;
   onRemove: (id: DashboardWidgetId) => void;
@@ -17,6 +18,7 @@ interface DashboardQuickSaleWidgetProps {
 
 export function DashboardQuickSaleWidget({
   canUseInvoice,
+  bare = false,
   hidden,
   customizing,
   onRemove,
@@ -28,15 +30,7 @@ export function DashboardQuickSaleWidget({
   const { t } = useRegional();
   if (!canUseInvoice) return null;
 
-  return (
-    <DashboardWidget
-      id="quick-sale"
-      hidden={hidden}
-      customizing={customizing}
-      onRemove={onRemove}
-      className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8"
-    >
-      <section data-help-topic="quick sale" className="aankh-card rounded-xl border border-border bg-card p-5">
+  const content = (<section data-help-topic="quick sale" className="aankh-card rounded-xl border border-border bg-card p-5">
         <h2 className="text-base font-semibold">{t('dashboard.quickSaleTitle')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.quickSaleHint')}</p>
         <div className="mt-3">
@@ -53,7 +47,17 @@ export function DashboardQuickSaleWidget({
             {t('dashboard.quickSaleAction')}
           </button>
         </div>
-      </section>
+      </section>);
+  if (bare) return content;
+  return (
+    <DashboardWidget
+      id="quick-sale"
+      hidden={hidden}
+      customizing={customizing}
+      onRemove={onRemove}
+      className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8"
+    >
+      {content}
     </DashboardWidget>
   );
 }

@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { FolderTree, Users, ShoppingCart, Receipt, Banknote, Package, ChevronLeft, ChevronRight, Eye, EyeOff, ArrowDown, ArrowUp, Pencil, RotateCcw, X, GripVertical, Search, ChevronDown, MoreHorizontal } from "lucide-react";
 import { navIconMap } from "./navigation-icons";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { SectionId } from "@/lib/tradeos/types";
 import { DisplayZoomControl } from "./DisplayZoomControl";
 import { DASHBOARD_SECTION_DRAG_TYPE, isDashboardSectionCard } from "@/lib/dashboard/section-cards";
@@ -53,6 +53,7 @@ export function Sidebar({
   dragToDashboard,
 }: SidebarProps) {
   const {language}=useRegional();
+  const navigationGroupName = useId();
   const [collapsed, setCollapsed] = useState(false);
   const [menuSearch, setMenuSearch] = useState("");
   const hiddenSet = new Set(hiddenIds || []);
@@ -194,9 +195,8 @@ export function Sidebar({
 
   return (
     <aside className={cn(forceVisible ? "flex" : "hidden lg:flex", "aankh-sidebar shrink-0 flex-col bg-panel border-e border-nav-border text-panel-foreground transition-[width] duration-200 h-dvh sticky top-0", collapsed ? "w-[72px]" : "w-[248px]")}>
-      <div className={cn("border-b border-nav-border flex min-h-20 items-center gap-3 px-5", collapsed ? "justify-center py-4" : "py-5")}>
-        <img src="/aankh-app-eye.png" alt="Aankh logo" width={32} height={32} className="size-8 shrink-0 rounded-lg" />
-        {!collapsed && <div className="min-w-0"><div className="font-brand font-bold text-base text-panel-foreground truncate">Aankh</div>{organizationName && <div className="text-[11px] text-panel-foreground/70 truncate">{organizationName}</div>}</div>}
+      <div className="flex min-h-16 items-center border-b border-nav-border px-5">
+        {collapsed ? <FolderTree aria-hidden="true" className="mx-auto size-5 text-nav-muted" /> : <div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-widest text-nav-muted">{navigationText('Main navigation',language)}</p><p className="mt-1 truncate text-sm font-medium">{organizationName || 'Aankh'}</p></div>}
       </div>
       {!collapsed && !customizing && <div data-context-help-skip className="px-3 pb-3 pt-4">
         <label className="relative block">
@@ -208,8 +208,8 @@ export function Sidebar({
       <nav aria-label={navigationText('Main navigation',language)} data-context-help-skip={customizing ? "" : undefined} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 space-y-1">
         {customizing || collapsed ? displayItems.map(renderItem) : groups.map(group => group.label === "Home"
           ? group.items.map(renderItem)
-          : <details key={`${group.label}:${query ? "search" : "browse"}`} open={Boolean(query) || group.items.some(item => item.id === activeSection)} className="aankh-nav-group rounded-lg">
-            <summary data-context-help-skip className="flex min-h-12 cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-nav-muted hover:bg-nav-surface hover:text-panel-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark">
+          : <details name={query ? undefined : navigationGroupName} key={`${group.label}:${query ? "search" : "browse"}`} open={Boolean(query) || group.items.some(item => item.id === activeSection)} className="aankh-nav-group rounded-lg">
+            <summary data-context-help-skip className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-nav-muted hover:bg-nav-surface hover:text-panel-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark">
               {(() => { const GroupIcon = groupIcons[group.label] ?? FolderTree; return <GroupIcon aria-hidden="true" className="size-[18px] shrink-0" />; })()}
               <span className="flex-1">{navigationText(group.label,language)}</span>
               <ChevronDown aria-hidden="true" className="aankh-nav-chevron size-3.5 shrink-0" />
@@ -224,7 +224,9 @@ export function Sidebar({
 
       {/* Footer: customize + collapse */}
       <div className="border-t border-nav-border p-3 space-y-1">
-        {!collapsed && <p className="px-2 py-2 text-[11px] font-medium text-nav-muted">{navigationText('Customize your workspace',language)}</p>}
+        <details open={customizing} className="sidebar-utilities">
+          <summary aria-label={navigationText('Customize your workspace',language)} className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg px-3 text-sm text-panel-foreground hover:bg-nav-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark"><Pencil className="size-4 shrink-0" />{!collapsed && <span className="flex-1 text-xs">{navigationText('Customize your workspace',language)}</span>}<ChevronDown className="size-3" /></summary>
+          <div className="mt-2 max-h-[40dvh] space-y-1 overflow-y-auto rounded-lg bg-nav-surface p-1">
         {customizing && (
           <div data-context-help-skip className="flex items-center justify-between rounded-lg px-3 py-2 text-xs text-panel-foreground/70">
             <span>{navigationText('Reorder pages within their task groups. Use the eye to show or hide a page.',language)}</span>
@@ -262,6 +264,8 @@ export function Sidebar({
         )}
         <DisplayZoomControl collapsed={collapsed} />
         <div data-workspace-help-slot data-workspace-help-compact={collapsed ? "" : undefined} className="space-y-2 px-1 py-2" />
+          </div>
+        </details>
         {!disableCollapse && (
         <button
           type="button"

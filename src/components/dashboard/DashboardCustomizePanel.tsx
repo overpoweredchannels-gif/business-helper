@@ -30,7 +30,6 @@ export function DashboardCustomizePanel({ removed, onShow, onReset, availableSec
         <button
           type="button"
           onClick={onReset}
-          disabled={removed.length === 0}
           className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50"
         >
           <RotateCcw className="size-3.5" />

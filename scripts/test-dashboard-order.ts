@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { DEFAULT_DASHBOARD_ORDER, normalizeDashboardOrder, moveDashboardWidget, readDashboardOrder, saveDashboardOrder } from "../src/lib/preferences/dashboard-order";
+
+const store = new Map<string, string>();
+Object.defineProperty(globalThis, "localStorage", { value: { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => store.set(key, value) }, configurable: true });
+assert.deepEqual(normalizeDashboardOrder(null), DEFAULT_DASHBOARD_ORDER);
+const sanitized = normalizeDashboardOrder(["quick-sale", "unknown", "quick-sale", "section:products"]);
+assert.equal(sanitized[0], "quick-sale");
+assert.ok(!sanitized.includes("unknown" as never));
+assert.equal(sanitized.filter(id => id === "quick-sale").length, 1);
+assert.ok(sanitized.includes("section:products"));
+const reordered = moveDashboardWidget(["kpi-today-sales", "kpi-today-profit", "quick-sale"], "quick-sale", "up", ["kpi-today-sales", "quick-sale"]);
+assert.deepEqual(reordered.slice(0, 3), ["quick-sale", "kpi-today-profit", "kpi-today-sales"], "hidden cards keep their position when visible neighbors swap");
+assert.deepEqual(moveDashboardWidget(reordered, "quick-sale", "up", ["quick-sale", "kpi-today-sales"]), reordered, "moving the first item up is a no-op");
+saveDashboardOrder("owner-a", reordered);
+assert.deepEqual(readDashboardOrder("owner-a"), reordered);
+assert.deepEqual(readDashboardOrder("owner-b"), DEFAULT_DASHBOARD_ORDER, "layout storage is scoped to the profile");
+saveDashboardOrder("owner-a", DEFAULT_DASHBOARD_ORDER);
+assert.deepEqual(readDashboardOrder("owner-a"), DEFAULT_DASHBOARD_ORDER, "reset restores the default order");
+console.log("Dashboard order passed: sanitization, visible-neighbor moves, hidden-card stability, persistence, profile isolation and reset.");

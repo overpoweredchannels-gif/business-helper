@@ -60,6 +60,8 @@ import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 import { selectWithColumnFallback } from "@/lib/supabase/select-with-column-fallback";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, SetupImportPrompt, type SectionSummary } from "@/components/dashboard";
+import { RecordHistoryPanel } from "@/components/sales/RecordHistoryPanel";
+import { useDashboardOrder } from "@/lib/preferences/use-dashboard-order";
 import { cn } from "@/lib/utils";
 import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
 import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerRetired, rememberSetupBannerRetired } from "@/lib/setup/setup-progress";
@@ -487,6 +489,7 @@ export default function Home() {
   // ranked list. Cleared when the query is edited or the scope changes.
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [productEditorOpen, setProductEditorOpen] = useState(false);
   const [productToView, setProductToView] = useState<Product | null>(null);
   const [productSku, setProductSku] = useState("");
   const [productBarcode, setProductBarcode] = useState("");
@@ -6403,6 +6406,7 @@ setCustomerOrganizationName("");
 
   const setupStage = useSetupCompletion(currentOrganizationId, currentUser?.id);
   const homeWidgets = useDashboardWidgets(currentProfile?.id ?? currentUser?.id);
+  const homeOrder = useDashboardOrder(currentProfile?.id ?? currentUser?.id);
   const [sectionCardDragOver, setSectionCardDragOver] = useState(false);
   const hideHomeWidget = homeWidgets.hide;
   useEffect(() => {
@@ -17283,12 +17287,11 @@ setCustomerOrganizationName("");
   }));
 
   const setupImportWidget = isOwnerOrAdmin() ? (
-    <DashboardWidget id="setup-import" hidden={homeWidgets.isHidden("setup-import")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
       <SetupImportPrompt complete={setupStage === "complete"} retentionDays={SETUP_BANNER_RETENTION_DAYS} onOpen={() => handleSectionChange("setup-import")} />
-    </DashboardWidget>
   ) : null;
   const quickSaleWidget = (
     <DashboardQuickSaleWidget
+      bare
       canUseInvoice={canUseSalesTool("invoice")}
       hidden={homeWidgets.isHidden("quick-sale")}
       customizing={homeWidgets.customizing}
@@ -17300,13 +17303,11 @@ setCustomerOrganizationName("");
     />
   );
   const businessRecordsExportWidget = currentProfile?.role === "owner" ? (
-    <DashboardWidget id="business-records-export" hidden={homeWidgets.isHidden("business-records-export")} customizing={homeWidgets.customizing} onRemove={homeWidgets.removeWidget} className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-      <section className="rounded-xl border border-primary/30 bg-card p-5">
+      <section className="aankh-card h-full rounded-xl border border-border bg-card p-5">
         <h2 className="text-lg font-semibold">{t('records.title')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('records.widgetHint')}</p>
-        <BusinessRecordsExport />
+        <details className="mt-3"><summary className="workspace-button-secondary w-fit cursor-pointer">{t('records.title')}</summary><div className="mt-4"><BusinessRecordsExport /></div></details>
       </section>
-    </DashboardWidget>
   ) : null;
 
   // Dashboard global search wiring.
@@ -17528,7 +17529,7 @@ setCustomerOrganizationName("");
             <DashboardCustomizePanel
               removed={homeWidgets.removed}
               onShow={homeWidgets.show}
-              onReset={homeWidgets.reset}
+              onReset={() => { homeWidgets.reset(); homeOrder.reset(); }}
               availableSections={homeWidgets.available}
               onAddSection={homeWidgets.addSection}
             />
@@ -17550,7 +17551,7 @@ setCustomerOrganizationName("");
             </div>
           </div>
         )}
-        {activeSection === "dashboard" && setupStage === "active" && setupImportWidget}
+        {activeSection === "dashboard" && staffDashboardData.isStaff && setupStage === "active" && !homeWidgets.isHidden("setup-import") && <div className="workspace-flow">{setupImportWidget}</div>}
         {activeSection === "dashboard" && staffDashboardData.isStaff && (
           <StaffDashboardView
             userName={currentProfile?.full_name ?? currentUser.email}
@@ -17591,6 +17592,12 @@ setCustomerOrganizationName("");
             healthReadStatus={healthReadStatus}
             healthLastSuccessfulAt={healthLastSuccessfulAt}
             hiddenWidgets={homeWidgets.hidden}
+            widgetOrder={homeOrder.order}
+            onMoveWidget={homeOrder.move}
+            setupContent={setupImportWidget}
+            quickSaleContent={canUseSalesTool("invoice") ? quickSaleWidget : undefined}
+            exportContent={businessRecordsExportWidget}
+            onQuickSale={canUseSalesTool("invoice") ? () => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); } : undefined}
             customizingWidgets={homeWidgets.customizing}
             onRemoveWidget={homeWidgets.removeWidget}
             onToggleCustomize={() => homeWidgets.setCustomizing((value) => !value)}
@@ -17720,7 +17727,7 @@ setCustomerOrganizationName("");
             onQuickAction={(label) => {
               if (label === "New Sale") { setSalesTab("invoice"); setQuickSaleMode(true); handleSectionChange("sales"); }
               else if (label === "New Purchase") handleSectionChange("purchases");
-              else if (label === "Add Product") handleSectionChange("products");
+              else if (label === "Add Product") { setProductEditorOpen(true); handleSectionChange("products"); }
               else if (label === "Record Payment") handleSectionChange("customer-payments");
               else if (label === "Add Customer") handleSectionChange("customers");
               else if (label === "View Inventory") handleSectionChange("inventory");
@@ -17745,9 +17752,7 @@ setCustomerOrganizationName("");
             }}
           />
         )}
-        {activeSection === "dashboard" && !staffDashboardData.isStaff && setupStage !== "active" && setupImportWidget}
-        {activeSection === "dashboard" && quickSaleWidget}
-        {activeSection === "dashboard" && !staffDashboardData.isStaff && businessRecordsExportWidget}
+        {activeSection === "dashboard" && staffDashboardData.isStaff && !homeWidgets.isHidden("quick-sale") && <div className="workspace-flow">{quickSaleWidget}</div>}
 
         {activeSectionAllowed && activeSection === "business-intelligence" && (
         <section className="workspace-section">
@@ -18617,7 +18622,7 @@ setCustomerOrganizationName("");
             </button>
           </div>
 
-          <div className="mb-5 flex flex-wrap gap-2">
+          <div className="workspace-tabs">
             <button
               type="button"
               onClick={() => setInventoryTab("dashboard")}
@@ -19320,7 +19325,7 @@ setCustomerOrganizationName("");
 
         {activeSectionAllowed && activeSection === "sales" && (
         <div className="workspace-flow">
-        <div className="mb-5 flex flex-wrap gap-2">
+        <div className="workspace-tabs">
           {salesTools.filter(tool => canUseSalesTool(tool.id)).map(tool => <button key={tool.id} type="button" onClick={() => setSalesTab(tool.id)} className={`rounded px-4 py-2 text-sm font-medium ${salesTab === tool.id ? "bg-primary text-white" : "border border-border bg-card"}`}>{({ invoice: t('sell.tabCreateInvoice'), history: t('sell.tabLedger'), orders: t('sell.tabOrders'), returns: t('sell.tabReturns'), report: t('sell.tabReport'), loadform: t('sell.tabLoadForm'), invoices: t('sell.tabInvoiceGenerator') } as Record<string, string>)[tool.id] ?? tool.label}</button>)}
         </div>
         {!canUseSalesTool(salesTab) && <p className="text-sm text-muted-foreground">{t('sell.selectPermittedOption')}</p>}
@@ -19354,7 +19359,7 @@ setCustomerOrganizationName("");
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => { setQuickSaleMode(false); setSaleScanFocus(value => value + 1); }} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} onCustomizeReceipt={() => setShowPosReceiptCustomizer(true)} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
-            <section className="rounded-lg border border-primary/30 bg-card p-4" data-help-topic="barcode">
+            <section className="scanner-panel" data-help-topic="barcode">
               <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? t('sell.quickSaleBarcode') : t('sell.scanProduct')}</h3>
               <label className="mb-3 block text-sm">{t('sell.eachScanAddsOne')} <select aria-label={t('sell.scanUnitAria')} data-entry-skip value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">{t('sell.scanSubUnit')}</option><option value="main">{t('sell.scanMainUnit')}</option></select></label>
               <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} afterScan={() => { if (detailScanCustomerFocusRef.current) saleCustomerInputRef.current?.focus(); }} onScan={code => {
@@ -19809,12 +19814,9 @@ setCustomerOrganizationName("");
 
         )}
         {isOwnerOrAdmin() && (!quickSaleMode || salesTab === "history") && (
-        <section className="workspace-section">
-          <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.salesHistory')}</h2>
-          <p className="mb-3 text-xs text-muted-foreground/80">
-            {t('sell.unallocatedNote')}
-          </p>
-          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+<RecordHistoryPanel key={`${searchScopeKey}:${salesTab}`} title={t('sell.salesHistory')} count={filteredSalesTransactions.length} defaultOpen={salesTab === "history"} filterKey={`${salesHistorySearch}|${salesHistoryProductSearch}|${salesHistoryDateFrom}|${salesHistoryDateTo}`} filters={
+<><p className="mb-3 text-xs text-muted-foreground">{t('sell.unallocatedNote')}</p>
+<div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <input
               type="text"
               value={salesHistorySearch}
@@ -19844,7 +19846,10 @@ setCustomerOrganizationName("");
               aria-label={t('sell.dateTo')}
             />
           </div>
-          {salesLoading ? (
+</>
+}>
+{(start, end) => <>
+{salesLoading ? (
             <p className="text-sm text-muted-foreground">{t('sell.loadingHistory')}</p>
           ) : salesTransactions.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('sell.noInvoicesFound')}</p>
@@ -19852,7 +19857,7 @@ setCustomerOrganizationName("");
             <p className="text-sm text-muted-foreground">{t('sell.noInvoicesMatch')}</p>
           ) : (
             <ul className="space-y-2">
-              {filteredSalesTransactions.map((tx) => {
+              {filteredSalesTransactions.slice(start, end).map((tx) => {
                 const customer = customers.find((c) => c.id === tx.customer_id);
                 const date = new Date(tx.created_at).toLocaleDateString();
                 const paymentType = tx.payment_type ?? "cash";
@@ -19870,7 +19875,7 @@ setCustomerOrganizationName("");
                         ? t('sell.statusOverdue')
                         : t('sell.statusPaymentPending');
                 return (
-                  <li key={tx.id} className="flex flex-col gap-1 rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
+                  <li key={tx.id} className="rounded-lg border border-border bg-card text-sm"><details className="invoice-record"><summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 p-4"><div className="min-w-0"><span className="block font-semibold text-foreground">{tx.invoice_number}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{customer?.customer_name ?? t('sell.unknown')} · {date}</span></div><span className="shrink-0 font-semibold tabular-nums">{formatBooksMoney(Number(tx.total_amount || 0))}</span></summary><div className="grid gap-2 border-t border-border p-4 text-body sm:grid-cols-2">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="font-medium text-foreground">{t('sell.invoiceLabel')}: {tx.invoice_number}</div>
                       <button
@@ -19906,12 +19911,13 @@ setCustomerOrganizationName("");
                     {tx.credit_days_snapshot != null && (
                       <div>{t('sell.creditDaysSnapshot')}: {tx.credit_days_snapshot}</div>
                     )}
-                  </li>
+                  </div></details></li>
                 );
               })}
             </ul>
           )}
-        </section>
+</>}
+</RecordHistoryPanel>
         )}
         </>
         )}
@@ -22112,7 +22118,8 @@ setCustomerOrganizationName("");
         {message && <p className="mb-4 text-sm text-success">{message}</p>}
         {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
 
-        <form onSubmit={handleSubmit} className="workspace-form space-y-4" onKeyDown={handleProductFormKeyDown}>
+<details className="workspace-form" open={Boolean(editingProductId) || productEditorOpen} onToggle={event => setProductEditorOpen(event.currentTarget.open)}><summary className="cursor-pointer text-sm font-semibold text-primary">{editingProductId ? t('products.editProduct') : t('stock.addProduct')}</summary>
+<form onSubmit={handleSubmit} className="mt-5 space-y-4" onKeyDown={handleProductFormKeyDown}>
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground/80">
               {t('products.name')}
@@ -22396,6 +22403,7 @@ setCustomerOrganizationName("");
             {loading ? t('products.saving') : editingProductId ? t('products.updateProduct') : t('products.saveProduct')}
           </button>
         </form>
+</details>
 
         {productToView && (
           <section className="workspace-section">
@@ -22519,7 +22527,7 @@ setCustomerOrganizationName("");
           </section>
         )}
 
-        <section className="workspace-section">
+<section className="workspace-section"><details><summary className="cursor-pointer text-sm font-semibold">{t('products.insightsTitle')}</summary><div className="mt-4">
           {(() => {
             const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
             const now = Date.now();
@@ -22670,11 +22678,11 @@ setCustomerOrganizationName("");
               </>
             );
           })()}
-        </section>
+        </div></details></section>
 
-        <section className="workspace-section">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 ref={productsListHeadingRef} tabIndex={-1} className="text-xl font-medium text-foreground">{t('products.existingTitle')}</h2>
+<RecordHistoryPanel key={`catalog:${searchScopeKey}`} title={t('products.existingTitle')} openLabel={t('products.existingTitle')} count={filteredProducts.length} defaultOpen filterKey={productSearch} filters={
+<div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 ref={productsListHeadingRef} tabIndex={-1} className="sr-only focus:not-sr-only">{t('products.existingTitle')}</h2>
             <div className="flex items-center gap-2">
               <SearchSuggestField
                 key={searchScopeKey}
@@ -22708,7 +22716,9 @@ setCustomerOrganizationName("");
               )}
             </div>
           </div>
-          {(productsReadStatus === "successful-populated" || productsReadStatus === "failed") && filteredProducts.length > 0 ? (
+}>
+{(start, end) => <>
+{(productsReadStatus === "successful-populated" || productsReadStatus === "failed") && filteredProducts.length > 0 ? (
             <>
               {productsReadStatus === "failed" && (
                 <div className="mb-3">
@@ -22716,7 +22726,7 @@ setCustomerOrganizationName("");
                 </div>
               )}
               <ul className="space-y-2">
-              {filteredProducts.map((product) => {
+              {filteredProducts.slice(start, end).map((product) => {
                 const brand = brands.find((b) => b.id === product.brand_id);
                 const category = categories.find((c) => c.id === product.category_id);
                 return (
@@ -22787,7 +22797,8 @@ setCustomerOrganizationName("");
               onRetry={retryProductsLoad}
             />
           )}
-        </section>
+</>}
+</RecordHistoryPanel>
         </div>
         )}
 
@@ -23368,7 +23379,7 @@ setCustomerOrganizationName("");
 
         {activeSectionAllowed && activeSection === "purchases" && (
         <div className="workspace-flow">
-        <div className="mb-5 flex flex-wrap gap-2">
+        <div className="workspace-tabs">
           <button
             type="button"
             onClick={() => setPurchaseTab("invoice")}

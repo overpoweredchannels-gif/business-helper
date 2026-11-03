@@ -72,7 +72,7 @@ export function KPICard({ title, value, readStatus = "successful-populated", las
       </div>
       <div className="flex items-end justify-between">
         <div className="min-w-0">
-          <div role="status" aria-live="polite" className="break-words text-2xl sm:text-[28px] font-semibold tracking-tight tabular-nums leading-tight text-foreground font-heading"><bdi>{shownValue}</bdi></div>
+          <div role="status" aria-live="polite" className="break-words text-xl sm:text-[28px] font-semibold tracking-tight tabular-nums leading-tight text-foreground font-heading"><bdi key={shownValue} className="metric-value">{shownValue}</bdi></div>
           {readStatus === "failed" && lastSuccessfulAt && (
             <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(language === 'es' ? 'es-ES' : language === 'it' ? 'it-IT' : language === 'ur' ? 'ur-PK' : 'en-US')}</p>
           )}

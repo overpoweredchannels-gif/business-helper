@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Clock, ArrowRight } from "lucide-react";
+import { ArrowRight, Receipt, ShoppingCart, Banknote, Package, UserPlus, CheckSquare } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import type { MessageKey } from "@/lib/regional/messages";
 
@@ -21,6 +21,8 @@ const typeStyles = {
   customer: "bg-accent text-accent-foreground",
   task: "bg-muted text-muted-foreground",
 };
+
+const activityIcons = { sale: Receipt, purchase: ShoppingCart, payment: Banknote, stock: Package, customer: UserPlus, task: CheckSquare };
 
 const typeLabels: Record<string, MessageKey> = {
   sale: "activity.sale",
@@ -43,35 +45,22 @@ export function RecentActivity({ activities, onViewAll }: RecentActivityProps) {
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-foreground">{t('dashboard.recentActivity')}</h3>
         {onViewAll && (
-          <button onClick={onViewAll} className="flex min-h-6 items-center gap-1 -mr-1.5 rounded px-1.5 text-xs font-medium text-primary hover:text-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button onClick={onViewAll} className="flex min-h-11 items-center gap-1 -mr-1.5 rounded px-1.5 text-xs font-medium text-primary hover:text-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {t('dashboard.viewAll')}
             <ArrowRight className="size-3" />
           </button>
         )}
       </div>
-      <div className="relative pl-6 space-y-4">
-        <div className="absolute left-2.5 top-1 bottom-1 w-px bg-border" />
-        {activities.map((a) => (
-          <div key={a.id} className="relative">
-            <div className="absolute -left-[13.5px] top-1.5 size-2 rounded-full border-2 border-background bg-card" />
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className={cn("text-[11px] font-medium px-1.5 py-0.5 rounded", typeStyles[a.type])}>
-                    {t(typeLabels[a.type])}
-                  </span>
-                  <span className="text-xs text-light-text flex items-center gap-1">
-                    <Clock className="size-3" />
-                    {a.time}
-                  </span>
-                </div>
-                <p className="text-sm text-foreground mt-1"><bdi>{a.description}</bdi></p>
-              </div>
-              {a.amount && <span className="text-sm font-semibold tabular-nums text-foreground shrink-0"><bdi>{a.amount}</bdi></span>}
-            </div>
-          </div>
-        ))}
-      </div>
+      <ul className="divide-y divide-border">
+        {activities.slice(0, 5).map(a => {
+          const Icon = activityIcons[a.type];
+          return <li key={a.id} className="flex min-h-16 items-center gap-3 py-3">
+            <span aria-hidden="true" className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", typeStyles[a.type])}><Icon className="size-4" /></span>
+            <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-foreground"><bdi>{a.description}</bdi></p><p className="mt-1 text-[11px] text-muted-foreground">{t(typeLabels[a.type])} · {a.time}</p></div>
+            {a.amount && <span className="shrink-0 text-sm font-semibold tabular-nums"><bdi>{a.amount}</bdi></span>}
+          </li>;
+        })}
+      </ul>
     </div>
   );
 }

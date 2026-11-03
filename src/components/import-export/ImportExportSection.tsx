@@ -8,6 +8,7 @@ import { getEntityConfig, getEntityExportConfig } from "@/lib/import-export/regi
 import { buildEntityTemplateRow } from "@/lib/import-export/template";
 import { downloadCsv } from "@/lib/tradeos/formatters";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { Upload, Download, FileDown } from "lucide-react";
 
 interface ImportExportSectionProps {
   entityKey: string;
@@ -39,14 +40,14 @@ export default function ImportExportSection({
 
   return (
     <>
-      <div className="flex shrink-0 gap-2">
+      <div className="import-export-toolbar">
         <button
           type="button"
           onClick={() => setOpen("import")}
           className="min-h-11 rounded-lg border border-primary bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary"
           title={t('importexport.importFromTitle').replace('{entity}', entityLabel)}
         >
-          {t('importexport.import')}
+          <Upload aria-hidden="true" className="size-4" />{t('importexport.import')}
         </button>
         {importConfig && importConfig.fields.length > 0 && (
           <button
@@ -55,7 +56,7 @@ export default function ImportExportSection({
             className="min-h-11 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary"
             title={t('importexport.templateTitle').replace('{entity}', entityLabel)}
           >
-            {t('importexport.downloadTemplate')}
+            <FileDown aria-hidden="true" className="size-4" />{t('importexport.downloadTemplate')}
           </button>
         )}
         {getEntityExportConfig(entityKey) && <button
@@ -64,7 +65,7 @@ export default function ImportExportSection({
           className="min-h-11 rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary"
           title={t('importexport.exportToTitle').replace('{entity}', entityLabel)}
         >
-          {t('importexport.export')}
+          <Download aria-hidden="true" className="size-4" />{t('importexport.export')}
         </button>}
       </div>
 

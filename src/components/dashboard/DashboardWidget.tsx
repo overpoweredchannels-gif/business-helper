@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { X, ArrowUp, ArrowDown } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { cn } from "@/lib/utils";
 import { dashboardWidgetDefinition, type DashboardWidgetId } from "@/lib/preferences/dashboard-widgets";
@@ -9,13 +9,16 @@ import { dashboardWidgetDefinition, type DashboardWidgetId } from "@/lib/prefere
  * Wraps one home-dashboard card. In edit mode the card can be removed without
  * touching the underlying data; the sidebar keeps the same information reachable.
  */
-export function DashboardWidget({ id, label: labelProp, hidden = false, customizing = false, onRemove, className, children }: {
+export function DashboardWidget({ id, label: labelProp, hidden = false, customizing = false, onRemove, onMove, moveUpDisabled, moveDownDisabled, className, children }: {
   id: DashboardWidgetId;
   /** Shown on the remove control; defaults to the registered card name. */
   label?: string;
   hidden?: boolean;
   customizing?: boolean;
   onRemove?: (id: DashboardWidgetId) => void;
+  onMove?: (direction: "up" | "down") => void;
+  moveUpDisabled?: boolean;
+  moveDownDisabled?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -24,7 +27,13 @@ export function DashboardWidget({ id, label: labelProp, hidden = false, customiz
   const label = labelProp ?? dashboardWidgetDefinition(id)?.label ?? "this card";
   return (
     <div data-dashboard-widget={id} className={cn("relative", customizing && "rounded-xl ring-2 ring-primary/40", className)}>
-      {customizing && (
+      {customizing && onMove && <div className="relative z-10 flex items-center gap-1 rounded-t-xl border-b border-border bg-card p-2">
+        <span className="min-w-0 flex-1 truncate px-2 text-xs font-medium">{label}</span>
+        <button type="button" aria-label={`Move ${label} up`} disabled={moveUpDisabled} onClick={() => onMove("up")} className="workspace-icon-button"><ArrowUp className="size-4" /></button>
+        <button type="button" aria-label={`Move ${label} down`} disabled={moveDownDisabled} onClick={() => onMove("down")} className="workspace-icon-button"><ArrowDown className="size-4" /></button>
+        <button type="button" aria-label={t('dashboard.widget.removeAria').replace('{label}', label)} onClick={() => onRemove?.(id)} className="workspace-icon-button text-destructive"><X className="size-4" /></button>
+      </div>}
+      {customizing && !onMove && (
         <button
           type="button"
           onClick={() => onRemove?.(id)}

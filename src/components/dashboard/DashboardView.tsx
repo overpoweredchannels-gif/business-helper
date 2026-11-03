@@ -14,6 +14,7 @@ import {
 } from "./widgets";
 import { TrendingUp, TrendingDown, DollarSign, Package, Users, Receipt, AlertTriangle, Pencil, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DEFAULT_DASHBOARD_ORDER } from "@/lib/preferences/dashboard-order";
 import { DashboardWidget } from "./DashboardWidget";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import type { DashboardWidgetId } from "@/lib/preferences/dashboard-widgets";
@@ -33,6 +34,11 @@ interface SmartModuleConfig {
 
 interface DashboardViewProps {
   userName: string;
+  setupContent?: React.ReactNode;
+  quickSaleContent?: React.ReactNode;
+  exportContent?: React.ReactNode;
+  widgetOrder?: DashboardWidgetId[];
+  onMoveWidget?: (id: DashboardWidgetId, direction: "up" | "down", visible: DashboardWidgetId[]) => void;
   metricReadStates?: DashboardMetricStates;
   metricLastSuccessfulAt?: Partial<Record<DashboardMetricKey, string>>;
   onRetryFailedReads?: () => void;
@@ -75,6 +81,7 @@ interface DashboardViewProps {
   topProducts?: Array<{ name: string; value: string; trend?: "up" | "down" | "flat" }>;
   topCustomers?: Array<{ name: string; value: string; trend?: "up" | "down" | "flat" }>;
   onQuickAction?: (label: string) => void;
+  onQuickSale?: () => void;
   onKPIClick?: (title: string) => void;
   onViewAllActivity?: () => void;
   /** Which home-dashboard cards the user has removed (see DashboardCustomizeBar). */
@@ -89,6 +96,11 @@ interface DashboardViewProps {
 
 export function DashboardView({
   userName,
+  setupContent,
+  quickSaleContent,
+  exportContent,
+  widgetOrder = DEFAULT_DASHBOARD_ORDER,
+  onMoveWidget,
   metricReadStates,
   metricLastSuccessfulAt,
   onRetryFailedReads,
@@ -118,6 +130,7 @@ export function DashboardView({
   topProducts,
   topCustomers,
   onQuickAction,
+  onQuickSale,
   onKPIClick,
   onViewAllActivity,
   hiddenWidgets = [],
@@ -212,107 +225,18 @@ export function DashboardView({
     ...(topCustomers && topCustomers.length > 0 ? [{ id: "chart-top-customers" as DashboardWidgetId, node: <TopCustomersCard items={topCustomers} /> }] : []),
   ].filter((chart) => !widgetHidden(chart.id));
 
-  return (
-    <div className="aankh-dashboard mx-auto w-full max-w-[1440px] px-4 pb-8 pt-5 space-y-5 sm:px-6 lg:px-8">
-      {/* Welcome Section */}
-      <header className="flex flex-wrap items-start justify-between gap-2 sm:items-center sm:gap-3">
-        <DashboardWidget id="greeting" customizing={customizingWidgets} onRemove={onRemoveWidget} className="min-w-0 flex-1">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-foreground font-heading">
-            {greeting}, <span><bdi>{userName}</bdi></span>
-          </h1>
-          <p className="text-sm text-light-text mt-0.5">{dateStr}</p>
-        </DashboardWidget>
-        {onToggleCustomize && (
-          <button
-            type="button"
-            onClick={onToggleCustomize}
-            aria-pressed={customizingWidgets}
-            className={cn(
-              "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              customizingWidgets
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card text-foreground hover:bg-muted",
-            )}
-          >
-            {customizingWidgets ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
-            {customizingWidgets ? t('dashboard.done') : t('dashboard.editHome')}
-          </button>
-        )}
-      </header>
 
-      {!widgetHidden("quick-actions") && <DashboardWidget id="quick-actions" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-        <QuickActions onAction={onQuickAction} />
-      </DashboardWidget>}
-
-      {/* KPI Cards */}
-      {kpiCards.length > 0 && (
-        <section aria-labelledby="dashboard-today-heading" className="space-y-3">
-          <div>
-            <h2 id="dashboard-today-heading" className="text-sm font-semibold text-foreground">{t('dashboard.todayBalances')}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t('dashboard.todayBalancesHint')}
-            </p>
-          </div>
-          <div className={cn("grid grid-cols-1 min-[375px]:grid-cols-2 md:grid-cols-3", customizingWidgets ? "gap-6" : "gap-3 sm:gap-4")}>
-            {kpiCards.map((card) => (
-              <DashboardWidget key={card.id} id={card.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
-                {card.node}
-              </DashboardWidget>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Intelligence Cockpit grid: main column + rail */}
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
-      <div className={cn("min-w-0 space-y-4 lg:col-span-8", chartCards.length === 0 && recentActivities.length === 0 && droppedCards.length === 0 && "hidden")}>
-      {/* Charts */}
-      {chartCards.length > 0 && (
-        <div className={cn("grid grid-cols-1 gap-3 sm:gap-4", chartCards.length > 1 && "sm:grid-cols-2")}>
-          {chartCards.map((chart) => (
-            <DashboardWidget key={chart.id} id={chart.id} customizing={customizingWidgets} onRemove={onRemoveWidget}>
-              {chart.node}
-            </DashboardWidget>
-          ))}
-        </div>
-      )}
-
-      {/* Recent Activity */}
-      {recentActivities.length > 0 && (
-        <DashboardWidget id="recent-activity" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} />
-        </DashboardWidget>
-      )}
-
-      {/* Cards dropped here from the sidebar */}
-      {droppedCards.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-          {droppedCards.map((card) => (
-            <DashboardWidget key={card.id} id={card.id} label={card.label} customizing={customizingWidgets} onRemove={onRemoveWidget}>
-              {card.node}
-            </DashboardWidget>
-          ))}
-        </div>
-      )}
-      </div>
-      <div className={cn("min-w-0 space-y-4", chartCards.length === 0 && recentActivities.length === 0 && droppedCards.length === 0 ? "lg:col-span-12" : "lg:col-span-4")}>
-      {/* AI Insight */}
-      {aiInsight && (
-        <DashboardWidget id="ai-insight" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <AIInsightCard
-            insight={aiInsight.insight}
-            confidence={aiInsight.confidence}
-            action={aiInsight.action}
-            reason={aiInsight.reason}
-            onLearnMore={aiInsight.onLearnMore}
-          />
-        </DashboardWidget>
-      )}
-
-      {/* Pending Tasks */}
-      {(taskList.length > 0 || allAlertReadsReady) && !widgetHidden("needs-attention") && (
-        <DashboardWidget id="needs-attention" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <div className="aankh-card rounded-xl border border-border bg-card p-5">
+  type Card = { id: DashboardWidgetId; node: React.ReactNode; width: "full" | "half" | "metric"; label?: string };
+  const cards: Card[] = [
+    ...(setupContent ? [{ id: "setup-import" as const, node: setupContent, width: "full" as const }] : []),
+    ...(quickSaleContent ? [{ id: "quick-sale" as const, node: quickSaleContent, width: "half" as const }] : []),
+    ...(exportContent ? [{ id: "business-records-export" as const, node: exportContent, width: "half" as const }] : []),
+    { id: "quick-actions", node: <QuickActions onAction={onQuickAction} />, width: "full" },
+    ...kpiCards.map(card => ({ ...card, width: "metric" as const })),
+    ...chartCards.map(card => ({ ...card, width: "half" as const })),
+    ...(recentActivities.length ? [{ id: "recent-activity" as const, node: <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} />, width: "half" as const }] : []),
+    ...(aiInsight ? [{ id: "ai-insight" as const, node: <AIInsightCard {...aiInsight} />, width: "half" as const }] : []),
+    ...((taskList.length > 0 || allAlertReadsReady) ? [{ id: "needs-attention" as const, node: (<div className="aankh-card rounded-xl border border-border bg-card p-5">
             <h2 className="text-sm font-semibold text-foreground mb-1">{t('dashboard.needsAttention')}</h2>
             <p className="mb-3 text-xs text-muted-foreground">{t('dashboard.needsAttentionHint')}</p>
             {taskList.length === 0 ? (
@@ -345,31 +269,60 @@ export function DashboardView({
                 })}
               </div>
             )}
-          </div>
-        </DashboardWidget>
-      )}
-
-      {!widgetHidden("business-health") && <DashboardWidget id="business-health" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-        <BusinessHealthCard score={healthScore} metrics={healthMetrics} readStatus={effectiveHealthReadStatus} lastSuccessfulAt={healthLastSuccessfulAt ?? metricLastSuccessfulAt?.["business-health"]} onRetry={onRetryFailedReads} />
-      </DashboardWidget>}
-
-      </div>
-      </div>
-      {/* Smart Modules */}
-      {smartModules.length > 0 && !widgetHidden("smart-modules") && (
-        <DashboardWidget id="smart-modules" customizing={customizingWidgets} onRemove={onRemoveWidget}>
-          <div className="space-y-2">
+          </div>), width: "half" as const }] : []),
+    { id: "business-health", node: <BusinessHealthCard score={healthScore} metrics={healthMetrics} readStatus={effectiveHealthReadStatus} lastSuccessfulAt={healthLastSuccessfulAt ?? metricLastSuccessfulAt?.["business-health"]} onRetry={onRetryFailedReads} />, width: "half" },
+    ...(smartModules.length ? [{ id: "smart-modules" as const, node: (<div className="space-y-2">
             <h2 className="text-sm font-semibold text-foreground">{t('dashboard.businessOverview')}</h2>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 sm:gap-4">
+            <div className="overview-grid">
               {smartModules.map((m) => (
                 <SmartModule key={m.id} sectionId={m.id} title={m.title} summary={m.summary} badge={m.badge} badgeColor={m.badgeColor} onOpen={m.onOpen} readStatus={m.readStatus} lastSuccessfulAt={m.lastSuccessfulAt}>
                   {m.children}
                 </SmartModule>
               ))}
             </div>
-          </div>
+          </div>), width: "full" as const }] : []),
+    ...droppedCards.map(card => ({ ...card, width: "half" as const })),
+  ];
+  const orderedCards = cards.filter(card => !widgetHidden(card.id)).toSorted((a, b) => {
+    const rank = (id: DashboardWidgetId) => { const index = widgetOrder.indexOf(id); return index < 0 ? widgetOrder.length : index; };
+    return rank(a.id) - rank(b.id);
+  });
+  const visibleIds = orderedCards.map(card => card.id);
+
+  return (
+    <div className="aankh-dashboard mx-auto w-full max-w-[1440px] space-y-5 px-4 pb-8 pt-5 sm:px-6 lg:px-8">
+      <header className="flex flex-wrap items-start justify-between gap-2 sm:items-center sm:gap-3">
+        <DashboardWidget id="greeting" customizing={customizingWidgets} onRemove={onRemoveWidget} className="min-w-0 flex-1 basis-full sm:basis-auto">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight text-foreground font-heading">
+            {greeting}, <span><bdi>{userName}</bdi></span>
+          </h1>
+          <p className="text-sm text-light-text mt-0.5">{dateStr}</p>
         </DashboardWidget>
-      )}
+        {onQuickSale && <button type="button" onClick={onQuickSale} className="aankh-action inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Receipt className="size-4" />{t('dashboard.quickSaleTitle')}</button>}
+        {onToggleCustomize && (
+          <button
+            type="button"
+            onClick={onToggleCustomize}
+            aria-pressed={customizingWidgets}
+            className={cn(
+              "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              customizingWidgets
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-card text-foreground hover:bg-muted",
+            )}
+          >
+            {customizingWidgets ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
+            {customizingWidgets ? t('dashboard.done') : t('dashboard.editHome')}
+          </button>
+        )}
+      </header>
+      <h2 id="dashboard-today-heading" className="sr-only">{t('dashboard.todayBalances')}</h2>
+      <div className="dashboard-grid">
+        {orderedCards.map((card, index) => <DashboardWidget key={card.id} id={card.id} label={card.label} customizing={customizingWidgets} onRemove={onRemoveWidget}
+          onMove={onMoveWidget ? direction => onMoveWidget(card.id, direction, visibleIds) : undefined}
+          moveUpDisabled={index === 0} moveDownDisabled={index === orderedCards.length - 1}
+          className={`dashboard-cell dashboard-cell-${card.width}`}>{card.node}</DashboardWidget>)}
+      </div>
     </div>
   );
 }

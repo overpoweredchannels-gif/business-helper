@@ -35,8 +35,8 @@ export function SmartModule({ sectionId, title, summary, onOpen, children, badge
   };
 
   return (
-    <div className="aankh-card h-full rounded-xl border border-border bg-card transition-all duration-200">
-      <div className="flex min-h-24 items-center justify-between gap-3 p-4 sm:p-5">
+    <div className="smart-module aankh-card relative h-full rounded-xl border border-border bg-card transition-all duration-200">
+      <div className="flex min-h-36 flex-col items-stretch justify-between gap-2 p-4">
         <button
           type="button"
           aria-expanded={visibleChildren ? expanded : undefined}
@@ -47,13 +47,13 @@ export function SmartModule({ sectionId, title, summary, onOpen, children, badge
               onOpen();
             }
           }}
-          className="flex flex-1 items-center gap-3 min-w-0 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="relative flex min-h-14 flex-1 items-start gap-3 min-w-0 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-light text-primary"><Icon className="size-5" /></span>
           {visibleChildren && (
             <ChevronRight
               className={cn(
-                "size-4 text-light-text transition-transform duration-200 shrink-0",
+                "absolute end-0 top-0 size-3 text-light-text transition-transform duration-200 shrink-0",
                 expanded && "rotate-90",
               )}
             />
@@ -75,7 +75,7 @@ export function SmartModule({ sectionId, title, summary, onOpen, children, badge
           <button
             type="button"
             onClick={onOpen}
-            className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-medium text-primary hover:bg-primary-light hover:text-primary-hover transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-11 items-center gap-2 self-start rounded-lg px-2 text-xs font-semibold text-primary hover:bg-primary-light hover:text-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {t('common.open')}
             <ArrowUpRight className="size-3" />

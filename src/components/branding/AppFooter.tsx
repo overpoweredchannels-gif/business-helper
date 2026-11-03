@@ -13,29 +13,9 @@ const FOOTER_LINKS = [
 export function AppFooter() {
   return (
     <footer className="border-t border-border bg-card print:hidden">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <img
-            src="/aankh-horizontal.png"
-            alt="Aankh logo"
-            width={160}
-            height={64}
-            className="h-10 w-auto shrink-0"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <img
-            src="/oppresso-monogram.png"
-            alt="OPPRESSO logo"
-            width={28}
-            height={28}
-            className="size-7 shrink-0 rounded-md"
-          />
-          <p className="text-sm text-body">A product by OPPRESSO</p>
-        </div>
-
-        <nav aria-label="OPPRESSO contact links" className="flex flex-wrap items-center gap-x-1 gap-y-2">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col items-center justify-between gap-2 px-4 py-3 sm:flex-row sm:px-6">
+        <div className="flex items-center gap-2"><img src="/aankh-app-eye.png" alt="Aankh" width={24} height={24} className="size-6" /><p className="text-xs text-muted-foreground">Aankh <span aria-hidden="true">·</span> A product by <a href="https://oppresso.site/" target="_blank" rel="noreferrer" className="font-semibold text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring">OPPRESSO</a></p></div>
+        <nav aria-label="OPPRESSO contact links" className="flex flex-wrap items-center justify-center gap-1">
           {FOOTER_LINKS.map((link, index) => (
             <span key={link.label} className="flex items-center">
               {index > 0 && <span aria-hidden="true" className="mx-1 text-muted-foreground">·</span>}
@@ -44,7 +24,7 @@ export function AppFooter() {
                 {...(link.href.startsWith("http")
                   ? { target: "_blank", rel: "noreferrer" }
                   : {})}
-                className="inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex min-h-11 items-center rounded-lg px-2 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {link.label}
               </a>
@@ -52,7 +32,7 @@ export function AppFooter() {
           ))}
         </nav>
 
-        <p className="text-xs text-light-text">© 2026 OPPRESSO. All rights reserved.</p>
+        <p className="text-[11px] text-light-text">© 2026 OPPRESSO</p>
       </div>
     </footer>
   );

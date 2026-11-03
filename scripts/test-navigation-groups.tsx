@@ -17,5 +17,5 @@ assert.match(html, /aria-current="page"/);
 assert.doesNotMatch(html, /data-nav-id="customer-payments"|data-nav-id="business-settings"/, "hidden and ungranted pages stay out of navigation");
 const editing = render(true);
 assert.match(editing, /data-nav-id="customer-payments"/, "customization can restore a hidden permitted page");
-assert.doesNotMatch(editing, /<details|data-nav-id="business-settings"/, "customization keeps the original permitted flat list");
+assert.doesNotMatch(editing, /class="aankh-nav-group|data-nav-id="business-settings"/, "customization keeps the permitted flat list; workspace utilities may still expand");
 console.log("Navigation groups passed: destination coverage, permissions boundary, saved ordering, hidden pages, active page and customization.");

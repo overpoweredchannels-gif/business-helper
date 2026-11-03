@@ -121,7 +121,7 @@ function HeaderSearchBox({
 
   return (
     <div ref={anchorRef} className={cn("relative min-w-0", className)}>
-      <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5 text-sm text-muted-foreground transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-ring">
+      <div className="flex min-h-11 items-center gap-2 rounded-xl border border-input bg-background px-3 py-2 text-sm text-muted-foreground transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-ring">
         <Search className="size-4 shrink-0" />
         <input
           type="text"
@@ -322,7 +322,7 @@ export function Header({
 
   return (
     <header className="sticky top-0 z-30 bg-card border-b border-border">
-      <div className="flex min-h-16 flex-wrap items-center justify-between gap-y-2 px-3 py-2 sm:px-6 lg:px-8">
+      <div className="flex min-h-16 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 sm:px-6 lg:px-8">
         {/* Mobile menu + Logo */}
         <div className="flex min-w-0 items-center gap-1 sm:gap-3 lg:hidden">
           <button
@@ -339,17 +339,9 @@ export function Header({
           </div>
         </div>
 
-        {/* Business name */}
-        <div className="hidden lg:flex min-w-0 items-center gap-3">
-          {organizationName && (
-            <span className="max-w-48 truncate text-xs font-medium text-muted-foreground">{organizationName}</span>
-          )}
-          {sectionLabel && <><span aria-hidden="true" className="text-muted-light">/</span><span className="truncate text-sm font-semibold text-foreground">{sectionLabel}</span></>}
-        </div>
+        {/* Brand and organization identity */}
+        <div className="hidden shrink-0 items-center gap-3 lg:flex"><img src="/aankh-app-eye.png" alt="Aankh" width={36} height={36} className="size-9" /><div><p className="font-brand text-lg font-bold leading-tight">Aankh</p><p className="mt-1 max-w-40 truncate text-[11px] text-muted-foreground">{organizationName}</p></div>{sectionLabel && <span className="ms-2 border-s border-border ps-4 text-sm font-medium text-body">{sectionLabel}</span>}</div>
 
-        {/* Right: Search, AI, Notifications, Profile */}
-        <div className="flex items-center gap-1">
-          {/* Search */}
           <HeaderSearchBox
             key={`desktop:${searchScopeKey ?? "default"}`}
             idPrefix="header-search-desktop"
@@ -360,12 +352,16 @@ export function Header({
             onSubmitQuery={handleSubmitQuery}
             productStatus={productStatus}
             onViewAllProducts={onViewAllProducts}
-            className="hidden w-48 sm:block lg:w-64"
+            className="hidden min-w-0 max-w-xl flex-1 lg:block"
           />
+        {/* Right: Search, AI, Notifications, Profile */}
+        <div className="flex items-center gap-1">
+          {/* Search */}
+
           <button
             onClick={() => setSearchOpen(!searchOpen)}
             aria-label={ui('header.searchLabel')}
-            className="sm:hidden size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
+            className="lg:hidden size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
           >
             {searchOpen ? <X className="size-4" /> : <Search className="size-4" />}
           </button>
@@ -374,7 +370,7 @@ export function Header({
           <button
             onClick={onOpenAiAssistant}
             data-help-id="header-ai"
-            className="size-11 shrink-0 flex items-center justify-center rounded-lg text-primary hover:bg-primary-light transition-colors"
+            className="hidden size-11 shrink-0 items-center justify-center rounded-lg text-primary sm:flex hover:bg-primary-light transition-colors"
             title={ui('header.aiAssistant')}
             aria-label={ui('header.aiAssistant')}
           >
@@ -382,10 +378,10 @@ export function Header({
           </button>
 
           {/* Language Switcher */}
-          <LanguageSwitcher />
+          <div className="hidden xl:block"><LanguageSwitcher /></div>
 
           {/* Display currency dropdown (live-rate conversion; records stay in books currency) */}
-          <CurrencySwitcher canSwitch={canSwitchCurrency} />
+          <div className="hidden xl:block"><CurrencySwitcher canSwitch={canSwitchCurrency} /></div>
 
           {/* Notifications */}
           <div
@@ -465,18 +461,19 @@ export function Header({
               ref={profileTriggerRef}
               onClick={() => setProfileOpen(!profileOpen)}
               data-help-id="header-profile"
-              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-foreground hover:bg-muted transition-colors"
+              aria-expanded={profileOpen}
+              className="flex min-h-11 items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center">
                 <User className="size-3.5 text-primary" />
               </div>
-              <span className="hidden sm:inline text-sm font-medium max-w-[120px] truncate"><bdi>{userName || ui('header.userFallback')}</bdi></span>
+              <span className="hidden xl:inline text-sm font-medium max-w-[160px] truncate"><bdi>{userName || ui('header.userFallback')}</bdi></span>
             </button>
             {profileOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
                 <div
-                  className="absolute end-0 top-full mt-1 z-50 w-48 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn"
+                  className="absolute end-0 top-full mt-1 z-50 w-72 rounded-xl border border-border bg-card shadow-lg p-1 animate-scaleIn"
                 >
                   <div className="px-3 py-2 border-b border-border mb-1">
                     <p className="text-sm font-medium text-foreground truncate"><bdi>{userName || ui('header.userFallback')}</bdi></p>
@@ -484,6 +481,7 @@ export function Header({
                       <p className="text-[11px] text-light-text truncate"><bdi>{organizationName}</bdi></p>
                     )}
                   </div>
+                  <div className="flex flex-wrap gap-2 border-b border-border p-3 xl:hidden"><LanguageSwitcher /><CurrencySwitcher canSwitch={canSwitchCurrency} /></div>
                   <button
                     onClick={onLogout}
                     className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive hover:bg-destructive/5 transition-colors"
@@ -498,7 +496,7 @@ export function Header({
         </div>
       </div>
       {searchOpen && (
-        <div className="sm:hidden border-t border-border bg-card px-4 py-3 animate-slideUp">
+        <div className="lg:hidden border-t border-border bg-card px-4 py-3 animate-slideUp">
           <HeaderSearchBox
             key={`mobile:${searchScopeKey ?? "default"}`}
             idPrefix="header-search-mobile"

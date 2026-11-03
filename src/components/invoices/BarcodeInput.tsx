@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled, autoFocus = false, label, focusSignal = 0, clearSignal = 0, afterScan, compact = false }: { value?: string; onChange?: (value: string) => void; onScan: (value: string) => unknown; /** Optional exact-match gate for the scanner auto-detect timer: when
@@ -12,6 +12,7 @@ export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled,
   clearSignal?: number; /** Runs after every accepted or duplicate scan (not after a rejected code), so a keyboard-walk parent can advance focus past the barcode box — whose own Enter handler stops propagation and would otherwise swallow the walk. Callers that don't pass it are unaffected. */
   afterScan?: () => void; compact?: boolean }) {
   const { t } = useRegional();
+  const fieldId = useId();
   const displayLabel = label ?? t('barcode.scanBarcode');
   const [localValue, setLocalValue] = useState(""); const input = useRef<HTMLInputElement>(null);
   const text = value ?? localValue;
@@ -104,9 +105,13 @@ export function BarcodeInput({ value, onChange, onScan, canAutoSubmit, disabled,
     if (value === undefined) input.current?.select();
     afterScan?.();
   };
-  return <div className="space-y-2" data-help-topic="barcode">
-    <label className="block text-sm font-medium">{displayLabel}<input ref={input} value={text} autoFocus={autoFocus} disabled={disabled} type="text" autoComplete="off" spellCheck={false} maxLength={200} placeholder={t('barcode.placeholder')} onChange={event => change(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); scan(); } }} className="mt-1 w-full rounded border border-input bg-background px-3 py-2 focus:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>
-    <div className="flex flex-wrap gap-3"><button type="button" disabled={disabled || !text.trim()} onClick={scan} className="rounded border px-3 py-1">{t('barcode.useBarcode')}</button><button type="button" disabled={disabled} onClick={() => input.current?.focus()} className="underline">{t('barcode.readyToScan')}</button></div>
-    {!compact && <p className="text-xs text-muted-foreground">{t('barcode.helpText')}</p>}
+  return <div className="space-y-3" data-help-topic="barcode">
+    <label htmlFor={fieldId} className="block text-sm font-semibold">{displayLabel}</label>
+    <div className="flex flex-col gap-2 sm:flex-row">
+      <input id={fieldId} ref={input} value={text} autoFocus={autoFocus} disabled={disabled} type="text" autoComplete="off" spellCheck={false} maxLength={200} placeholder={t('barcode.placeholder')} onChange={event => change(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); scan(); } }} className="min-h-11 min-w-0 flex-1 rounded-lg border border-input bg-card px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+      <button type="button" disabled={disabled || !text.trim()} onClick={scan} className="workspace-button-secondary disabled:opacity-40">{t('barcode.useBarcode')}</button>
+      <button type="button" disabled={disabled} onClick={() => input.current?.focus()} className="workspace-button-secondary">{t('barcode.readyToScan')}</button>
+    </div>
+    {!compact && <details className="text-xs text-muted-foreground"><summary className="min-h-8 cursor-pointer py-1 font-medium">{t('barcode.guidance')}</summary><p className="max-w-3xl py-2 leading-relaxed">{t('barcode.helpText')}</p></details>}
   </div>;
 }

@@ -2423,6 +2423,7 @@ const en = {
   'sell.saveInvoice': 'Save Sales Invoice',
   'sell.sendForApproval': 'Send for owner approval',
   'sell.salesHistory': 'Sales History',
+  'sell.viewHistory': 'View history',
   'sell.searchHistory': 'Search by customer name or invoice number...',
   'sell.addReturnLine': '+ Add Return Line',
   'sell.all': 'All',
@@ -3522,6 +3523,7 @@ const en = {
   'account.organization': 'Organization',
   // Shared components: dashboard widgets, records export, barcode input, setup review, import/export, draft review, customer history
   'barcode.helpText': 'Use a USB/Bluetooth scanner in keyboard mode. Press Enter after scanning, or scan quickly and pause — the system will auto-detect. Click Ready to scan after editing another field. Scanning never saves the invoice.',
+  'barcode.guidance': 'Scanner guidance',
   'barcode.placeholder': 'Scan here or type the barcode',
   'barcode.readyToScan': 'Ready to scan',
   'barcode.scanBarcode': 'Scan barcode',
@@ -4265,6 +4267,7 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'sell.saveInvoice': 'Guardar factura de venta',
     'sell.sendForApproval': 'Enviar para aprobación del propietario',
     'sell.salesHistory': 'Historial de ventas',
+    'sell.viewHistory': 'Ver historial',
     'sell.searchHistory': 'Buscar por cliente o número de factura...',
     'sell.addReturnLine': '+ Añadir línea de devolución',
     'sell.all': 'Todos',
@@ -7690,6 +7693,7 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'account.organization': 'Organización',
     // Shared components: dashboard widgets, records export, barcode input, setup review, import/export, draft review, customer history
     'barcode.helpText': 'Usa un escáner USB/Bluetooth en modo teclado. Pulsa Intro después de escanear, o escanea rápido y haz una pausa: el sistema lo detectará automáticamente. Haz clic en Listo para escanear después de editar otro campo. El escaneo nunca guarda la factura.',
+    'barcode.guidance': 'Guía del escáner',
     'barcode.placeholder': 'Escanea aquí o escribe el código de barras',
     'barcode.readyToScan': 'Listo para escanear',
     'barcode.scanBarcode': 'Escanear código de barras',
@@ -8429,6 +8433,7 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'sell.saveInvoice': 'Salva fattura di vendita',
     'sell.sendForApproval': 'Invia per approvazione',
     'sell.salesHistory': 'Storico vendite',
+    'sell.viewHistory': 'Visualizza storico',
     'sell.searchHistory': 'Cerca per cliente o numero fattura...',
     'sell.addReturnLine': '+ Aggiungi riga reso',
     'sell.all': 'Tutti',
@@ -11854,6 +11859,7 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'account.organization': 'Organizzazione',
     // Shared components: dashboard widgets, records export, barcode input, setup review, import/export, draft review, customer history
     'barcode.helpText': 'Usa uno scanner USB/Bluetooth in modalità tastiera. Premi Invio dopo la scansione, oppure scansiona rapidamente e fai una pausa: il sistema lo rileverà automaticamente. Fai clic su Pronto per la scansione dopo aver modificato un altro campo. La scansione non salva mai la fattura.',
+    'barcode.guidance': 'Guida allo scanner',
     'barcode.placeholder': 'Scansiona qui o digita il codice a barre',
     'barcode.readyToScan': 'Pronto per la scansione',
     'barcode.scanBarcode': 'Scansiona codice a barre',
@@ -14913,6 +14919,7 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'sell.saveInvoice': 'فروخت انوائس محفوظ کریں',
     'sell.sendForApproval': 'مالک کی منظوری کے لیے بھیجیں',
     'sell.salesHistory': 'فروخت کی تاریخ',
+    'sell.viewHistory': 'تاریخ دیکھیں',
     'sell.searchHistory': 'گاہک کے نام یا انوائس نمبر سے تلاش کریں...',
     'sell.addReturnLine': '+ واپسی لائن شامل کریں',
     'sell.all': 'تمام',
@@ -16018,6 +16025,7 @@ export const messages: Record<Language, Record<MessageKey, string>> = {
     'account.organization': 'تنظیم',
     // Shared components: dashboard widgets, records export, barcode input, setup review, import/export, draft review, customer history
     'barcode.helpText': 'کی بورڈ موڈ میں USB/Bluetooth اسکینر استعمال کریں۔ اسکین کے بعد Enter دبائیں، یا تیزی سے اسکین کر کے رکیں — سسٹم خود شناخت کر لے گا۔ کسی اور فیلڈ میں تبدیلی کے بعد اسکین کے لیے تیار پر کلک کریں۔ اسکین کرنے سے انوائس کبھی محفوظ نہیں ہوتی۔',
+    'barcode.guidance': 'اسکینر کی رہنمائی',
     'barcode.placeholder': 'یہاں اسکین کریں یا بارکوڈ لکھیں',
     'barcode.readyToScan': 'اسکین کے لیے تیار',
     'barcode.scanBarcode': 'بارکوڈ اسکین کریں',
