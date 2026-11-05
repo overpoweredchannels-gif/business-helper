@@ -34,6 +34,8 @@ interface SmartModuleConfig {
 
 interface DashboardViewProps {
   userName: string;
+  /** Display currency code (e.g. PKR) shown on KPI definition lines. */
+  currencyCode?: string;
   setupContent?: React.ReactNode;
   quickSaleContent?: React.ReactNode;
   exportContent?: React.ReactNode;
@@ -96,6 +98,7 @@ interface DashboardViewProps {
 
 export function DashboardView({
   userName,
+  currencyCode,
   setupContent,
   quickSaleContent,
   exportContent,
@@ -157,6 +160,9 @@ export function DashboardView({
   const safeLowStock = lowStockAlerts?.count?.toString() ?? "0";
 
   const getMetricStatus = (metric: DashboardMetricKey): DashboardReadStatus => metricReadStates?.[metric] ?? "successful-populated";
+  // KPI definition line: period + source, with the display currency when the
+  // caller supplies it. t() has no interpolation, so compose the string here.
+  const definitionFor = (key: Parameters<typeof t>[0]) => currencyCode ? `${t(key)} · ${currencyCode}` : t(key);
   const isReadSuccessful = (status: DashboardReadStatus) => status === "successful-empty" || status === "successful-populated";
   const effectiveHealthReadStatus = healthReadStatus ?? getMetricStatus("business-health");
   // `key` is the stable English routing string passed to onKPIClick (page.tsx matches
@@ -182,27 +188,27 @@ export function DashboardView({
   const kpiCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
     ...(todaySales ? [{
       id: "kpi-today-sales" as DashboardWidgetId,
-      node: <KPICard tone="accent" title={t('kpi.todaySales')} value={todaySales.value} readStatus={getMetricStatus("today-sales")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-sales"]} onRetry={onRetryFailedReads} trend={todaySales.trend} icon={<TrendingUp className="size-4" />} sparklineData={todaySales.sparkline} onClick={() => onKPIClick?.("Today's Sales")} />,
+      node: <KPICard tone="accent" title={t('kpi.todaySales')} value={todaySales.value} readStatus={getMetricStatus("today-sales")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-sales"]} onRetry={onRetryFailedReads} trend={todaySales.trend} icon={<TrendingUp className="size-4" />} sparklineData={todaySales.sparkline} definition={definitionFor('kpi.definitionTodaySales')} onClick={() => onKPIClick?.("Today's Sales")} />,
     }] : []),
     ...(todayProfit ? [{
       id: "kpi-today-profit" as DashboardWidgetId,
-      node: <KPICard title={t('kpi.todayProfit')} value={todayProfit.value} readStatus={getMetricStatus("today-profit")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-profit"]} onRetry={onRetryFailedReads} trend={todayProfit.trend} icon={<TrendingDown className="size-4" />} sparklineData={todayProfit.sparkline} onClick={() => onKPIClick?.("Today's Profit")} />,
+      node: <KPICard title={t('kpi.todayProfit')} value={todayProfit.value} readStatus={getMetricStatus("today-profit")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-profit"]} onRetry={onRetryFailedReads} trend={todayProfit.trend} icon={<TrendingDown className="size-4" />} sparklineData={todayProfit.sparkline} definition={definitionFor('kpi.definitionTodayProfit')} onClick={() => onKPIClick?.("Today's Profit")} />,
     }] : []),
     ...(inventoryValue ? [{
       id: "kpi-inventory-value" as DashboardWidgetId,
-      node: <KPICard title={t('kpi.inventoryValue')} value={safeInventoryValue} readStatus={getMetricStatus("inventory-value")} lastSuccessfulAt={metricLastSuccessfulAt?.["inventory-value"]} onRetry={onRetryFailedReads} trend={inventoryValue.trend} icon={<Package className="size-4" />} onClick={() => onKPIClick?.("Inventory Value")} />,
+      node: <KPICard title={t('kpi.inventoryValue')} value={safeInventoryValue} readStatus={getMetricStatus("inventory-value")} lastSuccessfulAt={metricLastSuccessfulAt?.["inventory-value"]} onRetry={onRetryFailedReads} trend={inventoryValue.trend} icon={<Package className="size-4" />} definition={definitionFor('kpi.definitionInventoryValue')} onClick={() => onKPIClick?.("Inventory Value")} />,
     }] : []),
     ...(outstandingReceivables ? [{
       id: "kpi-receivables" as DashboardWidgetId,
-      node: <KPICard title={t('kpi.receivables')} value={safeReceivables} readStatus={getMetricStatus("receivables")} lastSuccessfulAt={metricLastSuccessfulAt?.receivables} onRetry={onRetryFailedReads} icon={<Users className="size-4" />} onClick={() => onKPIClick?.("Outstanding Receivables")} />,
+      node: <KPICard title={t('kpi.receivables')} value={safeReceivables} readStatus={getMetricStatus("receivables")} lastSuccessfulAt={metricLastSuccessfulAt?.receivables} onRetry={onRetryFailedReads} icon={<Users className="size-4" />} definition={definitionFor('kpi.definitionReceivables')} onClick={() => onKPIClick?.("Outstanding Receivables")} />,
     }] : []),
     ...(outstandingPayables ? [{
       id: "kpi-payables" as DashboardWidgetId,
-      node: <KPICard title={t('kpi.payables')} value={safePayables} readStatus={getMetricStatus("payables")} lastSuccessfulAt={metricLastSuccessfulAt?.payables} onRetry={onRetryFailedReads} icon={<DollarSign className="size-4" />} onClick={() => onKPIClick?.("Outstanding Payables")} />,
+      node: <KPICard title={t('kpi.payables')} value={safePayables} readStatus={getMetricStatus("payables")} lastSuccessfulAt={metricLastSuccessfulAt?.payables} onRetry={onRetryFailedReads} icon={<DollarSign className="size-4" />} definition={definitionFor('kpi.definitionPayables')} onClick={() => onKPIClick?.("Outstanding Payables")} />,
     }] : []),
     ...(lowStockAlerts ? [{
       id: "kpi-low-stock" as DashboardWidgetId,
-      node: <KPICard tone="warning" title={t('kpi.lowStock')} value={safeLowStock} readStatus={getMetricStatus("low-stock")} lastSuccessfulAt={metricLastSuccessfulAt?.["low-stock"]} onRetry={onRetryFailedReads} icon={<AlertTriangle className="size-4" />} onClick={() => onKPIClick?.("Low Stock Alerts")} />,
+      node: <KPICard tone="warning" title={t('kpi.lowStock')} value={safeLowStock} readStatus={getMetricStatus("low-stock")} lastSuccessfulAt={metricLastSuccessfulAt?.["low-stock"]} onRetry={onRetryFailedReads} icon={<AlertTriangle className="size-4" />} definition={definitionFor('kpi.definitionLowStock')} onClick={() => onKPIClick?.("Low Stock Alerts")} />,
     }] : []),
     ...(!isReadSuccessful(getMetricStatus("pending-approvals")) || pendingApprovals > 0 ? [{
       id: "kpi-approvals" as DashboardWidgetId,

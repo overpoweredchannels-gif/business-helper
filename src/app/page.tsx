@@ -17596,6 +17596,7 @@ setCustomerOrganizationName("");
 
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
+            currencyCode={displayCurrency}
             metricReadStates={dashboardMetricReadStates}
             metricLastSuccessfulAt={dashboardMetricLastSuccessfulAt}
             onRetryFailedReads={retryFailedDashboardReads}

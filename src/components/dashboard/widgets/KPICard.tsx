@@ -49,9 +49,10 @@ interface KPICardProps {
   format?: "number" | "currency";
   onClick?: () => void;
   tone?: "default" | "accent" | "success" | "warning";
+  definition?: string;
 }
 
-export function KPICard({ title, value, readStatus = "successful-populated", lastSuccessfulAt, onRetry, trend, icon, sparklineData, onClick, tone = "default" }: KPICardProps) {
+export function KPICard({ title, value, readStatus = "successful-populated", lastSuccessfulAt, onRetry, trend, icon, sparklineData, onClick, tone = "default", definition }: KPICardProps) {
   const { t, ui, language } = useRegional();
   const isUp = (trend?.value ?? 0) >= 0;
   const readComplete = readStatus === "successful-empty" || readStatus === "successful-populated";
@@ -73,6 +74,9 @@ export function KPICard({ title, value, readStatus = "successful-populated", las
       <div className="flex items-end justify-between">
         <div className="min-w-0">
           <div role="status" aria-live="polite" className="break-words text-xl sm:text-[28px] font-semibold tracking-tight tabular-nums leading-tight text-foreground font-heading"><bdi key={shownValue} className="metric-value">{shownValue}</bdi></div>
+          {readComplete && definition && (
+            <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{definition}</p>
+          )}
           {readStatus === "failed" && lastSuccessfulAt && (
             <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(language === 'es' ? 'es-ES' : language === 'it' ? 'it-IT' : language === 'ur' ? 'ur-PK' : 'en-US')}</p>
           )}

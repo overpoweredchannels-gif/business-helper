@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DashboardView } from "../../src/components/dashboard/DashboardView";
 import {
@@ -71,6 +71,17 @@ function Fixture() {
     await oldRead;
   };
 
+  // Fixture-only autoload for screenshot runs (quiet-ledger-shots.cjs).
+  // No query param = unchanged behaviour (the existing Playwright runner
+  // clicks the buttons itself). ?autoload=success loads all sources;
+  // ?autoload=failure loads with the sales-items source failing.
+  const autoload = new URLSearchParams(location.search).get("autoload");
+  useEffect(() => {
+    if (autoload === "success") void loadAll();
+    else if (autoload === "failure") void loadAll("sales-items");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return <main className="responsive-content space-y-4 p-4">
     <div className="flex flex-wrap gap-2">
       <button type="button" className="min-h-11 rounded bg-primary px-3 text-primary-foreground" onClick={() => void loadAll()}>Load successful data</button>
@@ -87,6 +98,7 @@ function Fixture() {
     <p data-testid="retry-count">Retry count: {retryCount}</p>
     <DashboardView
       userName="Synthetic Owner"
+      currencyCode="PKR"
       metricReadStates={metrics}
       metricLastSuccessfulAt={lastSuccessfulAt}
       onRetryFailedReads={() => void retryFailed()}

@@ -16,14 +16,18 @@ const waitForText = async (page, selector, text) => page.waitForFunction(
 
 (async () => {
   const root = path.resolve(__dirname, '..');
-  const bundle = await build({ entryPoints: [path.join(__dirname, 'fixtures/dashboard-data-states.tsx')], bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"development"' } });
+  const bundle = await build({ entryPoints: [path.join(__dirname, 'fixtures/dashboard-data-states.tsx')], bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"development"' }, banner: { js: 'window.process=window.process||{env:{NODE_ENV:"development",NEXT_PUBLIC_SUPABASE_URL:"http://127.0.0.1:1",NEXT_PUBLIC_SUPABASE_ANON_KEY:"dummy-test-key"}};' } });
   const css = await postcss([tailwind({ base: root })]).process(fs.readFileSync(path.join(root, 'src/app/globals.css'), 'utf8'), { from: path.join(root, 'src/app/globals.css') });
+  // The real app also loads workspace.css (dashboard grid, rhythm, phone
+  // targets). Without it the fixture renders every card full-width.
+  const workspaceCss = await postcss([tailwind({ base: root })]).process(fs.readFileSync(path.join(root, 'src/app/workspace.css'), 'utf8'), { from: path.join(root, 'src/app/workspace.css') });
   const output = path.join(__dirname, 'test-results/dashboard-data-states');
   fs.mkdirSync(output, { recursive: true });
   const server = http.createServer((req, res) => {
     if (req.url.startsWith('/bundle.js')) { res.setHeader('Content-Type', 'text/javascript'); res.end(bundle.outputFiles[0].text); }
     else if (req.url === '/styles.css') { res.setHeader('Content-Type', 'text/css'); res.end(css.css); }
-    else { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"></head><body><div id="root"></div><script src="/bundle.js"></script></body></html>'); }
+    else if (req.url === '/workspace.css') { res.setHeader('Content-Type', 'text/css'); res.end(workspaceCss.css); }
+    else { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/workspace.css"></head><body><div id="root"></div><script src="/bundle.js"></script></body></html>'); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   let browser;

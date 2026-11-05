@@ -1,11 +1,17 @@
 import { DASHBOARD_WIDGETS, type DashboardWidgetId } from "./dashboard-widgets";
 import { dashboardSectionFromWidgetId } from "@/lib/dashboard/section-cards";
 
+// Quiet Ledger default order: exceptions first, then the money KPIs, then
+// the sale entry point and the rest. Setup/import and charts are demoted, not
+// removed. Saved per-user orders in localStorage still win over this default.
 const preferredOrder: DashboardWidgetId[] = [
-  "setup-import", "quick-actions",
+  "needs-attention",
   "kpi-today-sales", "kpi-today-profit", "kpi-inventory-value", "kpi-receivables", "kpi-payables", "kpi-low-stock",
-  "quick-sale", "business-records-export", "needs-attention", "chart-revenue", "chart-profit", "chart-top-products", "chart-top-customers",
-  "recent-activity", "ai-insight", "business-health", "smart-modules",
+  "kpi-approvals", "kpi-orders-today", "kpi-customers-today",
+  "quick-sale", "quick-actions", "recent-activity", "business-health", "ai-insight",
+  "setup-import", "business-records-export",
+  "chart-revenue", "chart-profit", "chart-top-products", "chart-top-customers",
+  "smart-modules",
   ...DASHBOARD_WIDGETS.map(widget => widget.id),
 ];
 export const DEFAULT_DASHBOARD_ORDER = [...new Set(preferredOrder)];

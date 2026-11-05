@@ -19,57 +19,59 @@ html { zoom: var(--app-zoom, 1); }
   background: var(--color-card, #fff); color: inherit;
 }
 
-/* Aankh: warm paper, terracotta actions and licorice navigation. */
+/* Aankh Quiet Ledger: neutral canvas, white flat cards, navy text,
+   restrained blue actions, light navigation. */
 @theme inline {
-  /* Warm paper and terracotta retain Aankh's earthy identity. Color is
-     strongest on actions; surrounding surfaces stay quiet. */
-  --color-background: #f6f5f1;
-  --color-foreground: #2d2926;
-  --color-card: #ffffff;
-  --color-card-foreground: #2d2926;
-  --color-primary: #a44a2b;
-  --color-primary-foreground: #ffffff;
-  --color-primary-hover: #934026;
-  --color-primary-on-dark: #e8a98c;
-  --color-primary-light: #f5ece7;
-  --color-secondary: #f0e7df;
-  --color-secondary-foreground: #7a3a22;
-  --color-muted: #eeebe5;
-  --color-muted-foreground: #6c665d;
-  --color-muted-light: #dcd7cf;
-  --color-accent: #f2ece3;
-  --color-accent-foreground: #7a3a22;
-  --color-destructive: #b03a2e;
-  --color-destructive-foreground: #ffffff;
-  --color-destructive-bg: #fdf3f2;
-  --color-success: #35704f;
-  --color-success-foreground: #ffffff;
-  --color-warning-text: #8a5c27;
-  --color-panel-foreground: #f7f5f0;
-  --color-secondary-strong: #a44a2b;
-  --color-accent-strong: #a44a2b;
-  --color-warning: #8a5c27;
-  --color-warning-foreground: #ffffff;
-  --color-body: #4a4540;
-  --color-light-text: #6c665d;
-  --color-panel: #26221e;
-  --color-nav-surface: #312b25;
-  --color-nav-muted: #c4b9ac;
-  --color-nav-border: #51473d;
-  --color-nav-input: #8c8173;
-  --color-nav-active: #f0dfcd;
-  --color-nav-active-foreground: #713d27;
-  --color-success-light: #edf3ee;
-  --color-warning-light: #f7f0e4;
-  --color-border: #e5dfd5;
-  --color-input: #898178;
-  --color-ring: #a44a2b;
+  /* Quiet Ledger tokens. Text meets 4.5:1 on card/canvas; UI boundaries
+     meet 3:1. See quiet-ledger-visual-release.md for the computed ratios. */
+  --color-background: #F4F6F8;
+  --color-foreground: #172B4D;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #172B4D;
+  --color-primary: #2457A6;
+  --color-primary-foreground: #FFFFFF;
+  --color-primary-hover: #1E4C94;
+  --color-primary-on-dark: #2457A6;
+  --color-primary-light: #EAF0F8;
+  --color-secondary: #F0F4F9;
+  --color-secondary-foreground: #172B4D;
+  --color-muted: #F0F4F9;
+  --color-muted-foreground: #4D5E73;
+  --color-muted-light: #E4E9EF;
+  --color-accent: #EAF0F8;
+  --color-accent-foreground: #2457A6;
+  --color-destructive: #C1272D;
+  --color-destructive-foreground: #FFFFFF;
+  --color-destructive-bg: #FDECEC;
+  --color-success: #1F7A4D;
+  --color-success-foreground: #FFFFFF;
+  --color-warning-text: #7A5200;
+  --color-panel-foreground: #172B4D;
+  --color-secondary-strong: #2457A6;
+  --color-accent-strong: #2457A6;
+  --color-warning: #7A5200;
+  --color-warning-foreground: #FFFFFF;
+  --color-body: #3D4A5C;
+  --color-light-text: #5B6B80;
+  --color-panel: #FFFFFF;
+  --color-nav-surface: #F0F4F9;
+  --color-nav-muted: #4D5E73;
+  --color-nav-border: #D8DEE6;
+  --color-nav-input: #7A8AA0;
+  --color-nav-active: #EAF0F8;
+  --color-nav-active-foreground: #2457A6;
+  --color-success-light: #E7F3EC;
+  --color-warning-light: #FFF3D6;
+  --color-border: #D8DEE6;
+  --color-input: #7A8AA0;
+  --color-ring: #2457A6;
   --font-ui: var(--font-plus-jakarta);
   --font-heading: var(--font-plus-jakarta);
   --font-brand: var(--font-libre-baskerville);
   --font-mono: ui-monospace, monospace;
   --text-small: 0.8125rem;
   --radius: 1rem;
+  --radius-xl: 0.625rem;
 }
 
 @keyframes fadeIn {
@@ -113,47 +115,47 @@ html { zoom: var(--app-zoom, 1); }
 }
 
 .dark {
-  --color-background: #171411;
-  --color-foreground: #f7f5f0;
-  --color-card: #211c18;
-  --color-card-foreground: #f7f5f0;
-  --color-primary: #f0b79a;
-  --color-primary-foreground: #2d1a12;
-  --color-primary-hover: #e0a488;
-  --color-primary-on-dark: #f0b79a;
-  --color-primary-light: #3a241c;
-  --color-secondary: #382c24;
-  --color-secondary-foreground: #e8d5cb;
-  --color-muted: #302922;
-  --color-muted-foreground: #b0aaa0;
-  --color-muted-light: #51473c;
-  --color-accent: #342b22;
-  --color-accent-foreground: #e8d5cb;
-  --color-success: #7fbf98;
-  --color-warning-text: #e0b070;
-  --color-panel-foreground: #f7f5f0;
-  --color-secondary-strong: #f0b79a;
-  --color-accent-strong: #f0b79a;
-  --color-warning: #e0b070;
-  --color-success-foreground: #171411;
-  --color-warning-foreground: #171411;
-  --color-body: #cfc9c1;
-  --color-light-text: #b0aaa0;
-  --color-destructive-bg: #3a201d;
-  --color-destructive: #f0a49a;
-  --color-destructive-foreground: #171411;
-  --color-panel: #171411;
-  --color-nav-surface: #302922;
-  --color-nav-muted: #c4b9ac;
-  --color-nav-border: #51473d;
-  --color-nav-input: #8c8173;
-  --color-nav-active: #f0dfcd;
-  --color-nav-active-foreground: #713d27;
-  --color-success-light: #20352a;
-  --color-warning-light: #382d20;
-  --color-border: #42382f;
-  --color-input: #96897b;
-  --color-ring: #f0b79a;
+  --color-background: #0E1626;
+  --color-foreground: #E8EEF6;
+  --color-card: #16233A;
+  --color-card-foreground: #E8EEF6;
+  --color-primary: #6E9BDB;
+  --color-primary-foreground: #0E1626;
+  --color-primary-hover: #8FB4E3;
+  --color-primary-on-dark: #8FB4E3;
+  --color-primary-light: #1B2F4D;
+  --color-secondary: #1E2E47;
+  --color-secondary-foreground: #C7D3E4;
+  --color-muted: #1E2E47;
+  --color-muted-foreground: #A9B8CC;
+  --color-muted-light: #2A3B57;
+  --color-accent: #1B2F4D;
+  --color-accent-foreground: #8FB4E3;
+  --color-success: #7FBF98;
+  --color-warning-text: #E0B070;
+  --color-panel-foreground: #E8EEF6;
+  --color-secondary-strong: #8FB4E3;
+  --color-accent-strong: #8FB4E3;
+  --color-warning: #E0B070;
+  --color-success-foreground: #0E1626;
+  --color-warning-foreground: #0E1626;
+  --color-body: #C7D3E4;
+  --color-light-text: #A9B8CC;
+  --color-destructive-bg: #3A201D;
+  --color-destructive: #F0A49A;
+  --color-destructive-foreground: #0E1626;
+  --color-panel: #0E1626;
+  --color-nav-surface: #1E2E47;
+  --color-nav-muted: #A9B8CC;
+  --color-nav-border: #2A3B57;
+  --color-nav-input: #6E7F94;
+  --color-nav-active: #1B2F4D;
+  --color-nav-active-foreground: #8FB4E3;
+  --color-success-light: #1E3A2C;
+  --color-warning-light: #3A2F1A;
+  --color-border: #2A3B57;
+  --color-input: #6E7F94;
+  --color-ring: #8FB4E3;
 }
 
 body {
@@ -162,10 +164,10 @@ body {
   font-family: var(--font-ui);
 }
 
-/* Shared workspace surfaces: quiet depth, with movement reserved for feedback. */
+/* Shared workspace surfaces: flat bordered cards (Surface A); elevation is
+   reserved for overlays. */
 .aankh-card {
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-panel) 4%, transparent);
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  transition: border-color 180ms ease, transform 180ms ease;
 }
 .aankh-metric { position: relative; overflow: hidden; }
 .aankh-metric[data-tone="accent"] { background: var(--color-primary-light); border-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-border)); }
@@ -226,7 +228,6 @@ body {
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   button.aankh-metric:hover, .aankh-card:focus-within {
     border-color: var(--color-input);
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-panel) 5%, transparent);
   }
   button.aankh-metric:hover { transform: translateY(-2px); }
 }
@@ -295,5 +296,5 @@ input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
   -webkit-box-shadow: 0 0 0 30px white inset !important;
-  -webkit-text-fill-color: #2d2926 !important;
+  -webkit-text-fill-color: #172B4D !important;
 }
