@@ -31,6 +31,7 @@ import { addBarcodeLine, addScannedLine } from "@/lib/invoices/barcode";
 import { createScanSubmitter, hasExactBarcodeMatch, isBarcodeShaped, type ScanSubmitter } from "@/lib/invoices/scan-submit";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
 import { createPurchase } from "@/lib/purchases/client";
+import { createPaymentAttemptKey, isUncertainPaymentError, submitPaymentAtomic } from "@/lib/payments/submit-payment";
 import { computePurchaseReturnValueByReturnId, computeReturnedValueByPurchaseTransaction, netPurchaseInvoiceAllocation } from "@/lib/purchases/returns-offset";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent as ReactChangeEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -4737,6 +4738,9 @@ setCustomerOrganizationName("");
   };
 
   const handleSaveCustomerPayment = async () => {
+    if (customerPaymentLoading) {
+      return;
+    }
     if (!selectedCustomerPaymentId) {
       setCustomerPaymentError(t('page.selectCustomer'));
       setCustomerPaymentMessage(null);
@@ -4794,73 +4798,28 @@ setCustomerOrganizationName("");
         return;
       }
 
-      const { data: paymentData, error } = await supabase
-        .from("customer_payments")
-        .insert({
-        customer_id: selectedCustomerPaymentId,
-          amount: paymentAmount,
+      if (!customerPaymentAttemptKeyRef.current) {
+        customerPaymentAttemptKeyRef.current = createPaymentAttemptKey();
+      }
+      // One atomic RPC call replaces the three separate inserts: the
+      // payment, its allocations, the balance change and the audit row
+      // commit or roll back together, and the attempt key makes a retry
+      // replay instead of duplicating.
+      await submitPaymentAtomic(supabase, {
+        kind: "customer",
+        partyId: selectedCustomerPaymentId,
+        amount: paymentAmount,
+        paymentDate: customerPaymentDate || null,
+        paymentMethod: customerPaymentMethod,
         notes: customerPaymentNotes || null,
-        organization_id: currentOrganizationId,
-        payment_date: customerPaymentDate || null,
-        payment_method: customerPaymentMethod,
-        })
-        .select("id")
-        .single();
-
-      if (error) throw error;
-
-      const insertedPaymentId = paymentData?.id;
-      if (!insertedPaymentId) {
-        throw new Error(t('page.paymentNoId'));
-      }
-
-      const allocationsToInsert = allocationRows
-        .filter((row) => row.allocationAmount > 0)
-        .map((row) => ({
-          organization_id: currentOrganizationId,
-          customer_payment_id: insertedPaymentId,
-          sales_transaction_id: row.invoice.transaction.id,
-          amount: row.allocationAmount,
-        }));
-
-      if (allocationsToInsert.length > 0) {
-        const { error: allocationError } = await supabase
-          .from("customer_payment_allocations")
-          .insert(allocationsToInsert);
-
-        if (allocationError) {
-          console.error(
-            "Supabase customer payment allocation insert error:",
-            JSON.stringify(allocationError, null, 2)
-          );
-          setCustomerPaymentMessage(null);
-          setCustomerPaymentError(
-            t('page.paymentAllocFailed')
-          );
-          await fetchCustomerPayments(currentOrganizationId);
-          await fetchCustomerPaymentAllocations(currentOrganizationId);
-          setCustomerPaymentLoading(false);
-          return;
-        }
-      }
-
-      const paymentCustomer = customers.find((customer) => customer.id === selectedCustomerPaymentId);
-      await createAuditLog({
-        action: allocationsToInsert.length > 0 ? "allocated" : "created",
-        entity_type: "customer_payment",
-        entity_id: insertedPaymentId,
-        entity_label: paymentCustomer?.customer_name ?? "Customer payment",
-        description:
-          allocationsToInsert.length > 0
-            ? t('page.createdAllocCustomerPayment').replace('{customer}', paymentCustomer?.customer_name ?? t('sell.unknownCustomer'))
-            : t('page.createdCustomerPayment').replace('{customer}', paymentCustomer?.customer_name ?? t('sell.unknownCustomer')),
-        new_values: {
-          customer_id: selectedCustomerPaymentId,
-          amount: paymentAmount,
-          notes: customerPaymentNotes || null,
-          allocations: allocationsToInsert,
-        },
-      });
+        allocations: allocationRows
+          .filter((row) => row.allocationAmount > 0)
+          .map((row) => ({
+            invoice_id: row.invoice.transaction.id,
+            amount: row.allocationAmount,
+          })),
+      }, customerPaymentAttemptKeyRef.current);
+      customerPaymentAttemptKeyRef.current = null;
 
       setCustomerPaymentMessage(t('page.paymentSaved'));
       setSelectedCustomerPaymentId(null);
@@ -4872,10 +4831,16 @@ setCustomerOrganizationName("");
       await fetchCustomerPayments(currentOrganizationId);
       await fetchCustomerPaymentAllocations(currentOrganizationId);
       await fetchSalesTransactions(currentOrganizationId);
+      await fetchAuditLogs(currentOrganizationId);
     } catch (err) {
-      // Until the card database update runs, the customer_payments check
-      // constraint rejects method 'card': explain it instead of leaking
-      // the raw constraint error. The payment is never re-tendered.
+      // A lost response leaves the outcome unknown: keep the attempt key
+      // so the next save replays the committed payment. A definitive RPC
+      // rejection wrote nothing, so the next save is a fresh attempt.
+      if (!isUncertainPaymentError(err)) {
+        customerPaymentAttemptKeyRef.current = null;
+      }
+      // Until the card database update runs, the payment function rejects
+      // method 'card': explain it instead of leaking the raw error.
       const paymentMessage = err instanceof Error ? err.message : t('page.savePaymentFailed');
       setCustomerPaymentError(customerPaymentMethod === "card" && /payment_method/i.test(paymentMessage) ? t('payments.cardNotEnabled') : paymentMessage);
       console.error("Error saving customer payment:", err);
@@ -4946,73 +4911,28 @@ setCustomerOrganizationName("");
         return;
       }
 
-      const { data: paymentData, error } = await supabase
-        .from("supplier_payments")
-        .insert({
-          supplier_id: selectedSupplierPaymentId,
-          amount: paymentAmount,
-          notes: supplierPaymentNotes || null,
-          organization_id: currentOrganizationId,
-          payment_date: supplierPaymentDate || null,
-          payment_method: supplierPaymentMethod,
-        })
-        .select("id")
-        .single();
-
-      if (error) throw error;
-
-      const insertedSupplierPaymentId = paymentData?.id;
-      if (!insertedSupplierPaymentId) {
-        throw new Error(t('page.supplierPaymentNoId'));
+      if (!supplierPaymentAttemptKeyRef.current) {
+        supplierPaymentAttemptKeyRef.current = createPaymentAttemptKey();
       }
-
-      const allocationsToInsert = allocationRows
-        .filter((row) => row.allocationAmount > 0)
-        .map((row) => ({
-          organization_id: currentOrganizationId,
-          supplier_payment_id: insertedSupplierPaymentId,
-          purchase_transaction_id: row.invoice.transaction.id,
-          amount: row.allocationAmount,
-        }));
-
-      if (allocationsToInsert.length > 0) {
-        const { error: allocationError } = await supabase
-          .from("supplier_payment_allocations")
-          .insert(allocationsToInsert);
-
-        if (allocationError) {
-          console.error(
-            "Supabase supplier payment allocation insert error:",
-            JSON.stringify(allocationError, null, 2)
-          );
-          setSupplierPaymentMessage(null);
-          setSupplierPaymentError(
-            t('page.supplierPaymentAllocFailed')
-          );
-          await fetchSupplierPayments(currentOrganizationId);
-          await fetchSupplierPaymentAllocations(currentOrganizationId);
-          setSupplierPaymentLoading(false);
-          return;
-        }
-      }
-
-      const paymentSupplier = suppliers.find((supplier) => supplier.id === selectedSupplierPaymentId);
-      await createAuditLog({
-        action: allocationsToInsert.length > 0 ? "allocated" : "created",
-        entity_type: "supplier_payment",
-        entity_id: insertedSupplierPaymentId,
-        entity_label: paymentSupplier?.supplier_name ?? "Supplier payment",
-        description:
-          allocationsToInsert.length > 0
-            ? t('page.createdAllocSupplierPayment').replace('{supplier}', paymentSupplier?.supplier_name ?? t('page.unknownSupplier'))
-            : t('page.createdSupplierPayment').replace('{supplier}', paymentSupplier?.supplier_name ?? t('page.unknownSupplier')),
-        new_values: {
-          supplier_id: selectedSupplierPaymentId,
-          amount: paymentAmount,
-          notes: supplierPaymentNotes || null,
-          allocations: allocationsToInsert,
-        },
-      });
+      // One atomic RPC call replaces the three separate inserts: the
+      // payment, its allocations, the balance change and the audit row
+      // commit or roll back together, and the attempt key makes a retry
+      // replay instead of duplicating.
+      await submitPaymentAtomic(supabase, {
+        kind: "supplier",
+        partyId: selectedSupplierPaymentId,
+        amount: paymentAmount,
+        paymentDate: supplierPaymentDate || null,
+        paymentMethod: supplierPaymentMethod,
+        notes: supplierPaymentNotes || null,
+        allocations: allocationRows
+          .filter((row) => row.allocationAmount > 0)
+          .map((row) => ({
+            invoice_id: row.invoice.transaction.id,
+            amount: row.allocationAmount,
+          })),
+      }, supplierPaymentAttemptKeyRef.current);
+      supplierPaymentAttemptKeyRef.current = null;
 
       setSupplierPaymentMessage(t('page.paymentSaved'));
       setSelectedSupplierPaymentId(null);
@@ -5023,7 +4943,14 @@ setCustomerOrganizationName("");
       setSupplierPaymentAllocationsByInvoice({});
       await fetchSupplierPayments(currentOrganizationId);
       await fetchSupplierPaymentAllocations(currentOrganizationId);
+      await fetchAuditLogs(currentOrganizationId);
     } catch (err) {
+      // A lost response leaves the outcome unknown: keep the attempt key
+      // so the next save replays the committed payment. A definitive RPC
+      // rejection wrote nothing, so the next save is a fresh attempt.
+      if (!isUncertainPaymentError(err)) {
+        supplierPaymentAttemptKeyRef.current = null;
+      }
       setSupplierPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
       console.error("Error saving supplier payment:", err);
     } finally {
@@ -5746,6 +5673,11 @@ setCustomerOrganizationName("");
   const [customerPaymentLoading, setCustomerPaymentLoading] = useState(false);
   const [customerPaymentMessage, setCustomerPaymentMessage] = useState<string | null>(null);
   const [customerPaymentError, setCustomerPaymentError] = useState<string | null>(null);
+  // Attempt key for the in-flight customer payment: generated once per save
+  // attempt, kept while the outcome is uncertain (lost response) so a retry
+  // replays instead of duplicating, cleared on success or a definitive
+  // rejection so the next save is a fresh attempt.
+  const customerPaymentAttemptKeyRef = useRef<string | null>(null);
   const [customerPaymentAllocationsByInvoice, setCustomerPaymentAllocationsByInvoice] =
     useState<Record<string, string>>({});
 
@@ -5757,6 +5689,8 @@ setCustomerOrganizationName("");
   const [supplierPaymentLoading, setSupplierPaymentLoading] = useState(false);
   const [supplierPaymentMessage, setSupplierPaymentMessage] = useState<string | null>(null);
   const [supplierPaymentError, setSupplierPaymentError] = useState<string | null>(null);
+  // Same attempt-key contract as the customer payment form.
+  const supplierPaymentAttemptKeyRef = useRef<string | null>(null);
   const [supplierPaymentAllocationsByInvoice, setSupplierPaymentAllocationsByInvoice] =
     useState<Record<string, string>>({});
   const currentMonthRange = getMonthRange();
@@ -21004,50 +20938,65 @@ setCustomerOrganizationName("");
             </div>
           </div>
 <div className="grid gap-4 sm:grid-cols-4">
-             <select
-               value={selectedCustomerPaymentId ?? ""}
-               onChange={(e) => handleCustomerPaymentCustomerChange(e.target.value)}
-               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-             >
-               <option value="">{t('payments.selectCustomer')}</option>
-               {customers.map((c) => (
-                 <option key={c.id} value={c.id}>{c.customer_name}</option>
-               ))}
-             </select>
+             <label className="flex flex-col gap-1 text-xs text-foreground/80">
+               <span>{t('payments.selectCustomer')}</span>
+               <select
+                 value={selectedCustomerPaymentId ?? ""}
+                 onChange={(e) => handleCustomerPaymentCustomerChange(e.target.value)}
+                 className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               >
+                 <option value="">{t('payments.selectCustomer')}</option>
+                 {customers.map((c) => (
+                   <option key={c.id} value={c.id}>{c.customer_name}</option>
+                 ))}
+               </select>
+             </label>
 
-             <input
-               type="number"
-               value={customerPaymentAmount}
-               onChange={(e) => handleCustomerPaymentAmountChange(e.target.value)}
-               placeholder={t('money.amount')}
-               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-             />
+             <label className="flex flex-col gap-1 text-xs text-foreground/80">
+               <span>{t('money.amount')}</span>
+               <input
+                 type="number"
+                 value={customerPaymentAmount}
+                 onChange={(e) => handleCustomerPaymentAmountChange(e.target.value)}
+                 placeholder={t('money.amount')}
+                 className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               />
+             </label>
 
-             <input
-               type="date"
-               value={customerPaymentDate}
-               onChange={(e) => setCustomerPaymentDate(e.target.value)}
-               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-             />
+             <label className="flex flex-col gap-1 text-xs text-foreground/80">
+               <span>{t('payments.paymentDate')}</span>
+               <input
+                 type="date"
+                 value={customerPaymentDate}
+                 onChange={(e) => setCustomerPaymentDate(e.target.value)}
+                 className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               />
+             </label>
 
-             <select
-               value={customerPaymentMethod}
-               onChange={(e) => setCustomerPaymentMethod(e.target.value as "cash" | "bank" | "card")}
-               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-             >
-               <option value="cash">{t('money.cash')}</option>
-               <option value="bank">{t('money.bank')}</option>
-               <option value="card">{t('money.card')}</option>
-             </select>
+             <label className="flex flex-col gap-1 text-xs text-foreground/80">
+               <span>{t('payments.paymentMethod')}</span>
+               <select
+                 value={customerPaymentMethod}
+                 onChange={(e) => setCustomerPaymentMethod(e.target.value as "cash" | "bank" | "card")}
+                 className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               >
+                 <option value="cash">{t('money.cash')}</option>
+                 <option value="bank">{t('money.bank')}</option>
+                 <option value="card">{t('money.card')}</option>
+               </select>
+             </label>
            </div>
 
-           <input
-             type="text"
-             value={customerPaymentNotes}
-             onChange={(e) => setCustomerPaymentNotes(e.target.value)}
-             placeholder={t('payments.notesOptional')}
-             className="w-full sm:col-span-4 min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-           />
+           <label className="flex w-full flex-col gap-1 text-xs text-foreground/80 sm:col-span-4">
+             <span>{t('payments.notesOptional')}</span>
+             <input
+               type="text"
+               value={customerPaymentNotes}
+               onChange={(e) => setCustomerPaymentNotes(e.target.value)}
+               placeholder={t('payments.notesOptional')}
+               className="min-h-11 w-full rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+             />
+           </label>
 
           {selectedCustomerPaymentId && (
             <div className="mt-4 rounded border border-border bg-card p-5">
@@ -21319,49 +21268,64 @@ setCustomerOrganizationName("");
             </div>
           </div>
 <div className="grid gap-4 sm:grid-cols-4">
-             <select
-               value={selectedSupplierPaymentId ?? ""}
-               onChange={(e) => handleSupplierPaymentSupplierChange(e.target.value)}
-               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-             >
-               <option value="">{t('buy.selectSupplier')}</option>
-               {activeSuppliers.map((s) => (
-                 <option key={s.id} value={s.id}>{s.supplier_name}</option>
-               ))}
-             </select>
+             <label className="flex flex-col gap-1 text-xs text-foreground/80">
+               <span>{t('buy.selectSupplier')}</span>
+               <select
+                 value={selectedSupplierPaymentId ?? ""}
+                 onChange={(e) => handleSupplierPaymentSupplierChange(e.target.value)}
+                 className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               >
+                 <option value="">{t('buy.selectSupplier')}</option>
+                 {activeSuppliers.map((s) => (
+                   <option key={s.id} value={s.id}>{s.supplier_name}</option>
+                 ))}
+               </select>
+             </label>
 
-             <input
-               type="number"
-               value={supplierPaymentAmount}
-               onChange={(e) => handleSupplierPaymentAmountChange(e.target.value)}
-               placeholder={t('money.amount')}
-               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-             />
+             <label className="flex flex-col gap-1 text-xs text-foreground/80">
+               <span>{t('money.amount')}</span>
+               <input
+                 type="number"
+                 value={supplierPaymentAmount}
+                 onChange={(e) => handleSupplierPaymentAmountChange(e.target.value)}
+                 placeholder={t('money.amount')}
+                 className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               />
+             </label>
 
-             <input
-               type="date"
-               value={supplierPaymentDate}
-               onChange={(e) => setSupplierPaymentDate(e.target.value)}
-               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-             />
+             <label className="flex flex-col gap-1 text-xs text-foreground/80">
+               <span>{t('buy.paymentDate')}</span>
+               <input
+                 type="date"
+                 value={supplierPaymentDate}
+                 onChange={(e) => setSupplierPaymentDate(e.target.value)}
+                 className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               />
+             </label>
 
-             <select
-               value={supplierPaymentMethod}
-               onChange={(e) => setSupplierPaymentMethod(e.target.value as "cash" | "bank")}
-               className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-             >
-               <option value="cash">{t('money.cash')}</option>
-               <option value="bank">{t('money.bank')}</option>
-             </select>
+             <label className="flex flex-col gap-1 text-xs text-foreground/80">
+               <span>{t('payments.paymentMethod')}</span>
+               <select
+                 value={supplierPaymentMethod}
+                 onChange={(e) => setSupplierPaymentMethod(e.target.value as "cash" | "bank")}
+                 className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               >
+                 <option value="cash">{t('money.cash')}</option>
+                 <option value="bank">{t('money.bank')}</option>
+               </select>
+             </label>
            </div>
 
-           <input
-             type="text"
-             value={supplierPaymentNotes}
-             onChange={(e) => setSupplierPaymentNotes(e.target.value)}
-             placeholder={t('buy.notesOptionalPlaceholder')}
-             className="w-full sm:col-span-4 min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-           />
+           <label className="flex w-full flex-col gap-1 text-xs text-foreground/80 sm:col-span-4">
+             <span>{t('buy.notesOptionalPlaceholder')}</span>
+             <input
+               type="text"
+               value={supplierPaymentNotes}
+               onChange={(e) => setSupplierPaymentNotes(e.target.value)}
+               placeholder={t('buy.notesOptionalPlaceholder')}
+               className="min-h-11 w-full rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+             />
+           </label>
 
           {selectedSupplierPaymentId && (
             <div className="mt-4 rounded border border-border bg-card p-5">
