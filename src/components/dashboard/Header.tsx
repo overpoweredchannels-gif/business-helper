@@ -45,6 +45,8 @@ interface HeaderProps {
   onViewAllProducts?: (query: string) => void;
   onToggleMobileMenu?: () => void;
   mobileMenuOpen?: boolean;
+  /** Brand link: returns to the dashboard (H1). */
+  onGoHome?: () => void;
   onLogout?: () => void;
   onOpenAiAssistant?: () => void;
   notificationCount?: number;
@@ -205,6 +207,7 @@ export function Header({
   onViewAllProducts,
   onToggleMobileMenu,
   mobileMenuOpen,
+  onGoHome,
   onLogout,
   onOpenAiAssistant,
   notificationCount = 0,
@@ -329,18 +332,35 @@ export function Header({
             onClick={onToggleMobileMenu}
             aria-label={ui('header.openNav')}
             aria-expanded={mobileMenuOpen}
-            className="size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
+            className="size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
-          <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onGoHome}
+            className="flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
             <img src="/aankh-app-eye.png" alt="Aankh logo" width={28} height={28} className="size-7 shrink-0 rounded-md" />
             <span className="font-brand font-bold text-sm text-foreground hidden min-[375px]:inline">Aankh</span>
-          </div>
+          </button>
         </div>
 
         {/* Brand and organization identity */}
-        <div className="hidden shrink-0 items-center gap-3 lg:flex"><img src="/aankh-app-eye.png" alt="Aankh" width={36} height={36} className="size-9" /><div><p className="font-brand text-lg font-bold leading-tight">Aankh</p><p className="mt-1 max-w-40 truncate text-[11px] text-muted-foreground">{organizationName}</p></div>{sectionLabel && <span className="ms-2 border-s border-border ps-4 text-sm font-medium text-body">{sectionLabel}</span>}</div>
+        <div className="hidden shrink-0 items-center gap-3 lg:flex">
+          <button
+            type="button"
+            onClick={onGoHome}
+            className="flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <img src="/aankh-app-eye.png" alt="Aankh" width={36} height={36} className="size-9" />
+            <span className="text-left">
+              <span className="block font-brand text-lg font-bold leading-tight">Aankh</span>
+              <span className="mt-1 block max-w-40 truncate text-[11px] text-muted-foreground">{organizationName}</span>
+            </span>
+          </button>
+          {sectionLabel && <span className="ms-2 border-s border-border ps-4 text-sm font-medium text-body">{sectionLabel}</span>}
+        </div>
 
           <HeaderSearchBox
             key={`desktop:${searchScopeKey ?? "default"}`}
@@ -361,7 +381,7 @@ export function Header({
           <button
             onClick={() => setSearchOpen(!searchOpen)}
             aria-label={ui('header.searchLabel')}
-            className="lg:hidden size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
+            className="lg:hidden size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {searchOpen ? <X className="size-4" /> : <Search className="size-4" />}
           </button>
@@ -370,7 +390,7 @@ export function Header({
           <button
             onClick={onOpenAiAssistant}
             data-help-id="header-ai"
-            className="hidden size-11 shrink-0 items-center justify-center rounded-lg text-primary sm:flex hover:bg-primary-light transition-colors"
+            className="hidden size-11 shrink-0 items-center justify-center rounded-lg text-primary sm:flex hover:bg-primary-light transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             title={ui('header.aiAssistant')}
             aria-label={ui('header.aiAssistant')}
           >
@@ -394,7 +414,7 @@ export function Header({
               onClick={() => setNotifOpen(!notifOpen)}
               data-help-id="header-notifications"
               aria-label={ui('header.notifications')}
-              className="relative size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
+              className="relative size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <Bell className="size-4.5" />
               {notificationCount > 0 && (
@@ -462,7 +482,7 @@ export function Header({
               onClick={() => setProfileOpen(!profileOpen)}
               data-help-id="header-profile"
               aria-expanded={profileOpen}
-              className="flex min-h-11 items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex min-h-11 items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center">
                 <User className="size-3.5 text-primary" />

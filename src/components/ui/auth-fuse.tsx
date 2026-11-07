@@ -204,13 +204,13 @@ function LeftPanel() {
       <div>
         <div className="flex items-center gap-2.5 mb-10">
           <img src="/aankh-app-eye.png" alt="Aankh logo" width={36} height={36} className="size-9 shrink-0 rounded-xl" />
-          <span className="font-brand font-bold text-xl text-white/90">Aankh</span>
+          <span className="font-brand font-bold text-xl text-foreground">Aankh</span>
         </div>
 
-        <h2 className="font-heading font-bold text-3xl xl:text-4xl text-white leading-tight mb-4">
+        <h2 className="font-heading font-bold text-3xl xl:text-4xl text-foreground leading-tight mb-4">
           Business Operating System
         </h2>
-        <p className="text-white/60 text-base leading-relaxed max-w-md">
+        <p className="text-body text-base leading-relaxed max-w-md">
           Streamline your wholesale and retail operations with real-time analytics, 
           smart inventory management, and enterprise-grade security.
         </p>
@@ -223,30 +223,30 @@ function LeftPanel() {
           ].map((item, i) => (
             <div
               key={item.title}
-              className="flex items-start gap-3.5 p-4 rounded-xl bg-white/5 border border-white/10 animate-fadeIn"
+              className="flex items-start gap-3.5 p-4 rounded-xl bg-muted border border-border animate-fadeIn"
               style={{ animationDelay: `${200 + i * 100}ms` }}
             >
               <div className="size-9 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
-                <item.icon className="size-4.5 text-primary-on-dark" />
+                <item.icon className="size-4.5 text-primary" />
               </div>
               <div>
-                <p className="font-medium text-sm text-white/90">{item.title}</p>
-                <p className="text-xs text-white/50 mt-0.5">{item.desc}</p>
+                <p className="font-medium text-sm text-foreground">{item.title}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="flex items-center gap-6 pt-8 border-t border-white/10">
+      <div className="flex items-center gap-6 pt-8 border-t border-border">
         {[
           { value: "10K+", label: t('auth.statBusinesses') },
           { value: "99.9%", label: t('auth.statUptime') },
           { value: "24/7", label: t('auth.statSupport') },
         ].map((stat) => (
           <div key={stat.label}>
-            <p className="font-heading font-bold text-lg text-white">{stat.value}</p>
-            <p className="text-xs text-white/50">{stat.label}</p>
+            <p className="font-heading font-bold text-lg text-foreground">{stat.value}</p>
+            <p className="text-xs text-muted-foreground">{stat.label}</p>
           </div>
         ))}
       </div>
@@ -769,7 +769,7 @@ export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
 
           <div
             key={view}
-            className="bg-card rounded-[18px] border border-border p-6 sm:p-8 shadow-[0_2px_12px_rgba(45,41,38,0.08)]"
+            className="bg-card rounded-[18px] border border-border p-6 sm:p-8 shadow-overlay"
           >
             {view === "signin" && <SignInForm onNavigate={handleNavigate} />}
             {view === "signup" && <SignUpForm onNavigate={handleNavigate} />}

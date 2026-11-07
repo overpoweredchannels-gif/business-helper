@@ -72,6 +72,9 @@ html { zoom: var(--app-zoom, 1); }
   --text-small: 0.8125rem;
   --radius: 1rem;
   --radius-xl: 0.625rem;
+  /* Overlay elevation (Quiet Ledger spec D2): the only shadow in the system,
+     used on popovers, menus and the auth card. Cards stay flat. */
+  --shadow-overlay: 0 1px 2px rgba(23,43,77,0.06), 0 8px 24px rgba(23,43,77,0.10);
 }
 
 @keyframes fadeIn {

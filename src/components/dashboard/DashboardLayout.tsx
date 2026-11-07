@@ -142,6 +142,7 @@ customizeMode,
           sectionLabel={localizedNavigation.find(item => item.id === activeSection)?.label}
           onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
           mobileMenuOpen={mobileMenuOpen}
+          onGoHome={() => onSectionChange("dashboard")}
           onLogout={onLogout}
           onOpenAiAssistant={onOpenAiAssistant}
           notificationCount={notificationCount}

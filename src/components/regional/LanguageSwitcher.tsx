@@ -34,7 +34,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-input bg-background text-sm font-medium text-foreground hover:bg-muted transition-colors min-h-[44px]"
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-input bg-background text-sm font-medium text-foreground hover:bg-muted transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         aria-label={ui('header.selectLanguage')}
         aria-expanded={open}
       >
@@ -53,7 +53,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
                 setOpen(false);
               }}
               className={cn(
-                "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-muted transition-colors min-h-[44px]",
+                "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-muted transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                 language === lang.code && "bg-primary/10 text-primary font-medium"
               )}
             >

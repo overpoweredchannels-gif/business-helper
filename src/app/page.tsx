@@ -17386,7 +17386,8 @@ setCustomerOrganizationName("");
         }
         notificationCount={
           aiAlerts.filter((a) => a.status === "active" || a.status === "new").length +
-          realNotifications.filter((n) => !n.is_read).length
+          realNotifications.filter((n) => !n.is_read).length +
+          (lowStockProducts.length > 0 ? 1 : 0)
         }
         notifications={[
           ...realNotifications.filter((n) => !n.is_read).slice(0, 5).map((n) => ({

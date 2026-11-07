@@ -34,6 +34,8 @@ export function FloatingAI({ onVoice, onChat }: FloatingAIProps) {
       )}
       <button
         onClick={() => setOpen(!open)}
+        aria-label="AI assistant"
+        aria-expanded={open}
         className={cn(
           "size-14 rounded-full flex items-center justify-center shadow-lg transition-all duration-200",
           "hover:scale-105 active:scale-95",
