@@ -136,7 +136,8 @@ returns boolean language sql stable security definer set search_path = public, p
         select 1 from public.role_definitions r
         where r.organization_id = p_org and r.id = p.role
           and r.is_built_in is distinct from true
-          and 'payments_manage' = any(coalesce(r.permissions, '{}'::text[]))
+          and jsonb_typeof(coalesce(r.permissions, '[]'::jsonb)) = 'array'
+          and coalesce(r.permissions, '[]'::jsonb) ? 'payments_manage'
       )
     )
   );

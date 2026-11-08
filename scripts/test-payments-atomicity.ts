@@ -66,7 +66,7 @@ async function main() {
       create table organizations(id uuid primary key);
       create table profiles(id uuid primary key, organization_id uuid not null, role text not null, is_active boolean default true);
       create table staff_permissions(profile_id uuid not null, organization_id uuid not null, granted_sections text[] default '{}', can_manage_payments boolean default false, can_create_sales boolean default false, primary key(profile_id, organization_id));
-      create table role_definitions(id text not null, organization_id uuid not null, name text, description text, permissions text[] default '{}', is_built_in boolean default false, created_at timestamptz default now(), primary key(organization_id, id));
+      create table role_definitions(id text not null, organization_id uuid not null, name text, description text, permissions jsonb not null default '[]'::jsonb, is_built_in boolean default false, created_at timestamptz default now(), primary key(organization_id, id));
       create table customers(id uuid primary key, organization_id uuid not null, customer_name text not null, is_active boolean default true, outstanding_balance numeric(14,2) not null default 0, updated_at timestamptz default now());
       create table suppliers(id uuid primary key, organization_id uuid not null, supplier_name text not null, is_active boolean default true, outstanding_balance numeric(14,2) not null default 0, updated_at timestamptz default now());
       create table sales_transactions(
@@ -132,7 +132,7 @@ async function main() {
         ('${staffPayments}','${org}','{}',true,false),
         ('${staffSections}','${org}',array['supplier-payments'],false,false);
       insert into role_definitions(id,organization_id,name,permissions,is_built_in) values
-        ('custom-payments','${org}','Payments Clerk',array['payments_manage'],false);
+        ('custom-payments','${org}','Payments Clerk','["payments_manage"]'::jsonb,false);
       insert into customers values
         ('${creditCustomer}','${org}','Credit Customer',true,100,now()),
         ('${cashCustomer}','${org}','Cash Customer',true,0,now()),
@@ -252,6 +252,55 @@ async function main() {
     assert.equal(sectionOk.replayed, false);
     const customOk = await create(key(3), "customer", cashCustomer, 5, [], staffCustomRole);
     assert.equal(customOk.replayed, false);
+
+    // T13 (permissions JSON shape matrix): the guarded predicate must grant
+    // only when permissions is a JSON array containing 'payments_manage'.
+    // A bare "?" without the jsonb_typeof guard would grant on an object
+    // whose key exists even when its value is false.
+    const matrixCases: Array<{ label: string; value: unknown; ok: boolean }> = [
+      { label: "array with permission", value: ["payments_manage"], ok: true },
+      { label: "array with permission among others", value: ["sales_view", "payments_manage"], ok: true },
+      { label: "empty array", value: [], ok: false },
+      { label: "array without permission", value: ["sales_view"], ok: false },
+      { label: "object with false value", value: { payments_manage: false }, ok: false },
+      { label: "object with true value", value: { payments_manage: true }, ok: false },
+      { label: "empty object", value: {}, ok: false },
+      { label: "bare string", value: "payments_manage", ok: false },
+      { label: "number", value: 42, ok: false },
+      { label: "boolean", value: true, ok: false },
+      { label: "json null", value: null, ok: false },
+      { label: "duplicated permission", value: ["payments_manage", "payments_manage"], ok: true },
+      { label: "case-variant", value: ["Payments_Manage"], ok: false },
+      { label: "non-string element plus permission", value: [42, "payments_manage"], ok: true },
+    ];
+    const matrixBefore = await snapshot();
+    let matrixOk = 0;
+    for (let i = 0; i < matrixCases.length; i++) {
+      const c = matrixCases[i];
+      const roleId = `matrix-${i}`;
+      const actorId = `21000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+      await db.query(
+        "insert into role_definitions(id,organization_id,name,permissions,is_built_in) values ($1,$2,$3,$4::jsonb,false)",
+        [roleId, org, `Matrix ${i}`, JSON.stringify(c.value)],
+      );
+      await db.query("insert into profiles values ($1,$2,$3,true)", [actorId, org, roleId]);
+      if (c.ok) {
+        const res = await create(key(100 + i), "customer", cashCustomer, 5, [], actorId);
+        assert.equal(res.replayed, false, `matrix case ${i} (${c.label}) should succeed`);
+        matrixOk++;
+      } else {
+        await assert.rejects(
+          create(key(100 + i), "customer", cashCustomer, 5, [], actorId),
+          /Payments permission/,
+          `matrix case ${i} (${c.label}) should be denied`,
+        );
+      }
+    }
+    const matrixAfter = await snapshot();
+    assert.equal(matrixOk, 4, "exactly 4 matrix cases should succeed");
+    assert.equal(matrixAfter.customer_payments, matrixBefore.customer_payments + 4, "matrix success payments recorded");
+    assert.equal(matrixAfter.audits, matrixBefore.audits + 4, "matrix success audits recorded");
+    assert.equal(matrixAfter.customer_balance, matrixBefore.customer_balance, "matrix payments do not move the floored balance");
 
     // T1 unauthorized: no actor, and an employee with no payment grant.
     await assert.rejects(create(key(10), "customer", cashCustomer, 5, [], null as unknown as string), /Authenticated actor|Payments permission/);
