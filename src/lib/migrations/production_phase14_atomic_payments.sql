@@ -142,7 +142,7 @@ returns boolean language sql stable security definer set search_path = public, p
     )
   );
 $$;
-revoke all on function public.payments_tool_allowed(uuid) from public;
+revoke all on function public.payments_tool_allowed(uuid) from public, anon;
 grant execute on function public.payments_tool_allowed(uuid) to authenticated, service_role;
 
 -- Internal response builder; only the two authenticated RPCs below call it.
