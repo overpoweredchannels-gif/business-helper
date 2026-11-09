@@ -34,6 +34,7 @@ import { createPurchase } from "@/lib/purchases/client";
 import {
   correctOutstandingBalance,
   createPaymentAttemptKey,
+  editPaymentAtomic,
   isUncertainPaymentError,
   reconcileOutstandingBalances,
   submitPaymentAtomic,
@@ -4813,25 +4814,43 @@ setCustomerOrganizationName("");
       // One atomic RPC call replaces the three separate inserts: the
       // payment, its allocations, the balance change and the audit row
       // commit or roll back together, and the attempt key makes a retry
-      // replay instead of duplicating.
-      await submitPaymentAtomic(supabase, {
-        kind: "customer",
-        partyId: selectedCustomerPaymentId,
-        amount: paymentAmount,
-        paymentDate: customerPaymentDate || null,
-        paymentMethod: customerPaymentMethod,
-        reference: customerPaymentReference.trim() || null,
-        notes: customerPaymentNotes || null,
-        allocations: allocationRows
-          .filter((row) => row.allocationAmount > 0)
-          .map((row) => ({
-            invoice_id: row.invoice.transaction.id,
-            amount: row.allocationAmount,
-          })),
-      }, customerPaymentAttemptKeyRef.current);
+      // replay instead of duplicating. In edit mode the same call goes
+      // through edit_payment_atomic and keeps the payment id.
+      const isEditingCustomerPayment = editingPayment?.kind === "customer";
+      const customerAllocationsPayload = allocationRows
+        .filter((row) => row.allocationAmount > 0)
+        .map((row) => ({
+          invoice_id: row.invoice.transaction.id,
+          amount: row.allocationAmount,
+        }));
+      if (isEditingCustomerPayment && editingPayment) {
+        await editPaymentAtomic(supabase, {
+          kind: "customer",
+          paymentId: editingPayment.id,
+          partyId: selectedCustomerPaymentId,
+          amount: paymentAmount,
+          paymentDate: customerPaymentDate || null,
+          paymentMethod: customerPaymentMethod,
+          reference: customerPaymentReference.trim() || null,
+          notes: customerPaymentNotes || null,
+          allocations: customerAllocationsPayload,
+        }, customerPaymentAttemptKeyRef.current);
+      } else {
+        await submitPaymentAtomic(supabase, {
+          kind: "customer",
+          partyId: selectedCustomerPaymentId,
+          amount: paymentAmount,
+          paymentDate: customerPaymentDate || null,
+          paymentMethod: customerPaymentMethod,
+          reference: customerPaymentReference.trim() || null,
+          notes: customerPaymentNotes || null,
+          allocations: customerAllocationsPayload,
+        }, customerPaymentAttemptKeyRef.current);
+      }
       customerPaymentAttemptKeyRef.current = null;
 
-      setCustomerPaymentMessage(t('page.paymentSaved'));
+      setCustomerPaymentMessage(isEditingCustomerPayment ? t('payments.paymentUpdated') : t('page.paymentSaved'));
+      if (isEditingCustomerPayment) setEditingPayment(null);
       setSelectedCustomerPaymentId(null);
       setCustomerPaymentAmount("");
       setCustomerPaymentNotes("");
@@ -4925,25 +4944,43 @@ setCustomerOrganizationName("");
       // One atomic RPC call replaces the three separate inserts: the
       // payment, its allocations, the balance change and the audit row
       // commit or roll back together, and the attempt key makes a retry
-      // replay instead of duplicating.
-      await submitPaymentAtomic(supabase, {
-        kind: "supplier",
-        partyId: selectedSupplierPaymentId,
-        amount: paymentAmount,
-        paymentDate: supplierPaymentDate || null,
-        paymentMethod: supplierPaymentMethod,
-        reference: supplierPaymentReference.trim() || null,
-        notes: supplierPaymentNotes || null,
-        allocations: allocationRows
-          .filter((row) => row.allocationAmount > 0)
-          .map((row) => ({
-            invoice_id: row.invoice.transaction.id,
-            amount: row.allocationAmount,
-          })),
-      }, supplierPaymentAttemptKeyRef.current);
+      // replay instead of duplicating. In edit mode the same call goes
+      // through edit_payment_atomic and keeps the payment id.
+      const isEditingSupplierPayment = editingPayment?.kind === "supplier";
+      const supplierAllocationsPayload = allocationRows
+        .filter((row) => row.allocationAmount > 0)
+        .map((row) => ({
+          invoice_id: row.invoice.transaction.id,
+          amount: row.allocationAmount,
+        }));
+      if (isEditingSupplierPayment && editingPayment) {
+        await editPaymentAtomic(supabase, {
+          kind: "supplier",
+          paymentId: editingPayment.id,
+          partyId: selectedSupplierPaymentId,
+          amount: paymentAmount,
+          paymentDate: supplierPaymentDate || null,
+          paymentMethod: supplierPaymentMethod,
+          reference: supplierPaymentReference.trim() || null,
+          notes: supplierPaymentNotes || null,
+          allocations: supplierAllocationsPayload,
+        }, supplierPaymentAttemptKeyRef.current);
+      } else {
+        await submitPaymentAtomic(supabase, {
+          kind: "supplier",
+          partyId: selectedSupplierPaymentId,
+          amount: paymentAmount,
+          paymentDate: supplierPaymentDate || null,
+          paymentMethod: supplierPaymentMethod,
+          reference: supplierPaymentReference.trim() || null,
+          notes: supplierPaymentNotes || null,
+          allocations: supplierAllocationsPayload,
+        }, supplierPaymentAttemptKeyRef.current);
+      }
       supplierPaymentAttemptKeyRef.current = null;
 
-      setSupplierPaymentMessage(t('page.paymentSaved'));
+      setSupplierPaymentMessage(isEditingSupplierPayment ? t('payments.paymentUpdated') : t('page.paymentSaved'));
+      if (isEditingSupplierPayment) setEditingPayment(null);
       setSelectedSupplierPaymentId(null);
       setSupplierPaymentAmount("");
       setSupplierPaymentNotes("");
@@ -4966,6 +5003,111 @@ setCustomerOrganizationName("");
     } finally {
       setSupplierPaymentLoading(false);
     }
+  };
+
+  // Edit flows: the payment form doubles as the edit form — prefill it from
+  // the history row, save through edit_payment_atomic (same payment id),
+  // cancel restores the blank create form. Allocations are set directly
+  // (never via the party/amount handlers, which reset them to {}).
+  const resetCustomerPaymentForm = () => {
+    setSelectedCustomerPaymentId(null);
+    setCustomerPaymentAmount("");
+    setCustomerPaymentNotes("");
+    setCustomerPaymentReference("");
+    setCustomerPaymentDate(toDateInputValue(new Date()));
+    setCustomerPaymentMethod("cash");
+    setCustomerPaymentAllocationsByInvoice({});
+    customerPaymentAttemptKeyRef.current = null;
+  };
+
+  const resetSupplierPaymentForm = () => {
+    setSelectedSupplierPaymentId(null);
+    setSupplierPaymentAmount("");
+    setSupplierPaymentNotes("");
+    setSupplierPaymentReference("");
+    setSupplierPaymentDate(toDateInputValue(new Date()));
+    setSupplierPaymentMethod("cash");
+    setSupplierPaymentAllocationsByInvoice({});
+    supplierPaymentAttemptKeyRef.current = null;
+  };
+
+  const scrollPaymentFormIntoView = () => {
+    document.getElementById("tradeos-main-content")?.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleEditCustomerPayment = (historyItem: (typeof customerPaymentHistory)[number]) => {
+    const payment = historyItem.payment;
+    const allocations: Record<string, string> = {};
+    const originalAllocations: Record<string, number> = {};
+    historyItem.allocations.forEach((allocationItem) => {
+      const txId = String(allocationItem.transaction?.id ?? allocationItem.allocation.sales_transaction_id ?? "");
+      if (!txId) return;
+      allocations[txId] = String(allocationItem.amount);
+      originalAllocations[txId] = allocationItem.amount;
+    });
+    // Starting an edit on this kind abandons the other kind's prefilled
+    // form, so its Save can never create a duplicate from stale values.
+    resetSupplierPaymentForm();
+    setSelectedCustomerPaymentId(payment.customer_id);
+    setCustomerPaymentAmount(String(payment.amount ?? ""));
+    setCustomerPaymentDate(getDateOnly(payment.payment_date) ?? toDateInputValue(new Date()));
+    setCustomerPaymentMethod(
+      ["cash", "bank", "card", "other"].includes(String(payment.payment_method))
+        ? payment.payment_method
+        : "cash"
+    );
+    setCustomerPaymentReference(payment.reference ?? "");
+    setCustomerPaymentNotes(payment.notes ?? "");
+    setCustomerPaymentAllocationsByInvoice(allocations);
+    customerPaymentAttemptKeyRef.current = null;
+    setEditingPayment({ kind: "customer", id: String(payment.id), allocations: originalAllocations });
+    setCustomerPaymentMessage(null);
+    setCustomerPaymentError(null);
+    scrollPaymentFormIntoView();
+  };
+
+  const handleCancelCustomerPaymentEdit = () => {
+    setEditingPayment(null);
+    resetCustomerPaymentForm();
+    setCustomerPaymentMessage(null);
+    setCustomerPaymentError(null);
+  };
+
+  const handleEditSupplierPayment = (historyItem: (typeof supplierPaymentHistory)[number]) => {
+    const payment = historyItem.payment;
+    const allocations: Record<string, string> = {};
+    const originalAllocations: Record<string, number> = {};
+    historyItem.allocations.forEach((allocationItem) => {
+      const txId = String(allocationItem.transaction?.id ?? allocationItem.allocation.purchase_transaction_id ?? "");
+      if (!txId) return;
+      allocations[txId] = String(allocationItem.amount);
+      originalAllocations[txId] = allocationItem.amount;
+    });
+    resetCustomerPaymentForm();
+    setSelectedSupplierPaymentId(payment.supplier_id);
+    setSupplierPaymentAmount(String(payment.amount ?? ""));
+    setSupplierPaymentDate(getDateOnly(payment.payment_date) ?? toDateInputValue(new Date()));
+    setSupplierPaymentMethod(
+      ["cash", "bank", "card", "other"].includes(String(payment.payment_method))
+        ? payment.payment_method
+        : "cash"
+    );
+    setSupplierPaymentReference(payment.reference ?? "");
+    setSupplierPaymentNotes(payment.notes ?? "");
+    setSupplierPaymentAllocationsByInvoice(allocations);
+    supplierPaymentAttemptKeyRef.current = null;
+    setEditingPayment({ kind: "supplier", id: String(payment.id), allocations: originalAllocations });
+    setSupplierPaymentMessage(null);
+    setSupplierPaymentError(null);
+    scrollPaymentFormIntoView();
+  };
+
+  const handleCancelSupplierPaymentEdit = () => {
+    setEditingPayment(null);
+    resetSupplierPaymentForm();
+    setSupplierPaymentMessage(null);
+    setSupplierPaymentError(null);
   };
 
   const handleVoidPayment = async (kind: "customer" | "supplier", paymentId: string) => {
@@ -5800,6 +5942,16 @@ setCustomerOrganizationName("");
   // payment sections: voiding is one RPC call per payment, and the
   // reconciliation list is fetched on demand per kind.
   const [voidingPaymentId, setVoidingPaymentId] = useState<string | null>(null);
+  // Payment being edited in the section form (same payment id, same form):
+  // `allocations` are the payment's STORED allocations keyed by invoice id.
+  // The edit panel must keep headroom for them — the edit RPC self-excludes
+  // the payment's own allocations, so the UI headroom adds them back to the
+  // invoice remaining (see the unpaid-invoice derivations below).
+  const [editingPayment, setEditingPayment] = useState<{
+    kind: "customer" | "supplier";
+    id: string;
+    allocations: Record<string, number>;
+  } | null>(null);
   const [customerReconcileRows, setCustomerReconcileRows] = useState<ReconcileRow[]>([]);
   const [supplierReconcileRows, setSupplierReconcileRows] = useState<ReconcileRow[]>([]);
   const [customerReconcileChecked, setCustomerReconcileChecked] = useState(false);
@@ -7102,7 +7254,7 @@ setCustomerOrganizationName("");
       async () => {
         const { data, error } = await supabase
           .from("customer_payments")
-          .select("id, customer_id, amount, notes, created_at, payment_date, payment_method, reference, voided_at, void_reason")
+          .select("id, customer_id, amount, notes, created_at, payment_date, payment_method, reference, voided_at, void_reason, edited_at")
           .eq("organization_id", orgId)
           .order("id", { ascending: true });
         if (error) throw error;
@@ -7150,7 +7302,7 @@ setCustomerOrganizationName("");
       async () => {
         const { data, error } = await supabase
           .from("supplier_payments")
-          .select("id, supplier_id, amount, notes, payment_date, created_at, payment_method, reference, voided_at, void_reason")
+          .select("id, supplier_id, amount, notes, payment_date, created_at, payment_method, reference, voided_at, void_reason, edited_at")
           .eq("organization_id", orgId)
           .order("id", { ascending: true });
         if (error) throw error;
@@ -9894,7 +10046,16 @@ setCustomerOrganizationName("");
       const explicitAllocatedAmount = allocation?.explicitAllocatedAmount ?? 0;
       const fallbackAllocatedAmount = allocation?.fallbackAllocatedAmount ?? 0;
       const allocatedAmount = allocation?.allocatedAmount ?? explicitAllocatedAmount;
-      const remainingUnpaidAmount = Math.max(0, allocation?.remainingUnpaidAmount ?? 0);
+      // While editing, the invoice's remaining must include this payment's
+      // own allocation: the stored remaining already subtracts it, but the
+      // edit RPC excludes the payment's own allocations when it re-checks,
+      // so the edit headroom is remaining + own allocation. Without this,
+      // an invoice this payment alone paid off would vanish from the panel
+      // and its allocation would be silently dropped on save.
+      const ownAllocation = editingPayment?.kind === "customer"
+        ? (editingPayment.allocations[transaction.id] ?? 0)
+        : 0;
+      const remainingUnpaidAmount = Math.max(0, (allocation?.remainingUnpaidAmount ?? 0) + ownAllocation);
       const creditDueDate = getDateOnly(transaction.credit_due_date);
       const status =
         remainingUnpaidAmount <= 0
@@ -10560,7 +10721,12 @@ setCustomerOrganizationName("");
       const explicitAllocatedAmount = allocation?.explicitAllocatedAmount ?? 0;
       const fallbackAllocatedAmount = allocation?.fallbackAllocatedAmount ?? 0;
       const allocatedAmount = allocation?.paidAmount ?? explicitAllocatedAmount;
-      const remainingPayableAmount = Math.max(0, allocation?.remainingPayableAmount ?? 0);
+      // Same edit headroom as the customer list: remaining + this payment's
+      // own allocation, matching the edit RPC's self-exclusion.
+      const ownAllocation = editingPayment?.kind === "supplier"
+        ? (editingPayment.allocations[transaction.id] ?? 0)
+        : 0;
+      const remainingPayableAmount = Math.max(0, (allocation?.remainingPayableAmount ?? 0) + ownAllocation);
       return {
         transaction,
         supplier: suppliers.find((supplier) => supplier.id === transaction.supplier_id),
@@ -21232,15 +21398,27 @@ setCustomerOrganizationName("");
           )}
 
           <div className="mt-3">
-            <button
-              data-entry-add
-              type="button"
-              onClick={handleSaveCustomerPayment}
-              disabled={customerPaymentLoading}
-              className="min-h-11 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
-            >
-              {customerPaymentLoading ? t('common.saving') : t('payments.save')}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                data-entry-add
+                type="button"
+                onClick={handleSaveCustomerPayment}
+                disabled={customerPaymentLoading}
+                className="min-h-11 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
+              >
+                {customerPaymentLoading ? t('common.saving') : editingPayment?.kind === "customer" ? t('payments.editPayment') : t('payments.save')}
+              </button>
+              {editingPayment?.kind === "customer" && (
+                <button
+                  type="button"
+                  onClick={handleCancelCustomerPaymentEdit}
+                  disabled={customerPaymentLoading}
+                  className="min-h-11 rounded border border-primary px-4 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {t('payments.cancelEdit')}
+                </button>
+              )}
+            </div>
             {customerPaymentMessage && <p className="mt-2 text-sm text-success">{customerPaymentMessage}</p>}
             {customerPaymentError && <p className="mt-2 text-sm text-destructive">{customerPaymentError}</p>}
           </div>
@@ -21347,19 +21525,34 @@ setCustomerOrganizationName("");
                     {historyItem.payment.notes && (
                       <p className="mt-2 text-sm text-muted-foreground">{t('sell.notesLabel')}: {historyItem.payment.notes}</p>
                     )}
+                    {historyItem.payment.edited_at && (
+                      <span className="mt-2 inline-block rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                        {t('payments.updated')} {getDateOnly(historyItem.payment.edited_at) ?? ""}
+                      </span>
+                    )}
                     {historyItem.payment.voided_at ? (
                       <span className="mt-2 inline-block rounded bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
                         {t('payments.voided')}
                       </span>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleVoidPayment("customer", historyItem.payment.id)}
-                        disabled={voidingPaymentId === historyItem.payment.id}
-                        className="mt-2 min-h-11 rounded border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {t('payments.voidPayment')}
-                      </button>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditCustomerPayment(historyItem)}
+                          disabled={customerPaymentLoading || voidingPaymentId === historyItem.payment.id}
+                          className="min-h-11 rounded border border-primary/40 px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {t('payments.editPayment')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleVoidPayment("customer", historyItem.payment.id)}
+                          disabled={voidingPaymentId === historyItem.payment.id}
+                          className="min-h-11 rounded border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {t('payments.voidPayment')}
+                        </button>
+                      </div>
                     )}
 
                     {historyItem.unallocatedAmount > 0 && (
@@ -21632,15 +21825,27 @@ setCustomerOrganizationName("");
           )}
 
           <div className="mt-3">
-            <button
-              data-entry-add
-              type="button"
-              onClick={handleSaveSupplierPayment}
-              disabled={supplierPaymentLoading}
-              className="min-h-11 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
-            >
-              {supplierPaymentLoading ? t('sell.saving') : t('buy.saveSupplierPayment')}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                data-entry-add
+                type="button"
+                onClick={handleSaveSupplierPayment}
+                disabled={supplierPaymentLoading}
+                className="min-h-11 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
+              >
+                {supplierPaymentLoading ? t('sell.saving') : editingPayment?.kind === "supplier" ? t('payments.editPayment') : t('buy.saveSupplierPayment')}
+              </button>
+              {editingPayment?.kind === "supplier" && (
+                <button
+                  type="button"
+                  onClick={handleCancelSupplierPaymentEdit}
+                  disabled={supplierPaymentLoading}
+                  className="min-h-11 rounded border border-primary px-4 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {t('payments.cancelEdit')}
+                </button>
+              )}
+            </div>
             {supplierPaymentMessage && <p className="mt-2 text-sm text-success">{supplierPaymentMessage}</p>}
             {supplierPaymentError && <p className="mt-2 text-sm text-destructive">{supplierPaymentError}</p>}
           </div>
@@ -21695,19 +21900,34 @@ setCustomerOrganizationName("");
                     {historyItem.payment.notes && (
                       <p className="mt-2 text-sm text-muted-foreground">{t('buy.notesPrefix')} {historyItem.payment.notes}</p>
                     )}
+                    {historyItem.payment.edited_at && (
+                      <span className="mt-2 inline-block rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                        {t('payments.updated')} {getDateOnly(historyItem.payment.edited_at) ?? ""}
+                      </span>
+                    )}
                     {historyItem.payment.voided_at ? (
                       <span className="mt-2 inline-block rounded bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
                         {t('payments.voided')}
                       </span>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleVoidPayment("supplier", historyItem.payment.id)}
-                        disabled={voidingPaymentId === historyItem.payment.id}
-                        className="mt-2 min-h-11 rounded border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {t('payments.voidPayment')}
-                      </button>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditSupplierPayment(historyItem)}
+                          disabled={supplierPaymentLoading || voidingPaymentId === historyItem.payment.id}
+                          className="min-h-11 rounded border border-primary/40 px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {t('payments.editPayment')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleVoidPayment("supplier", historyItem.payment.id)}
+                          disabled={voidingPaymentId === historyItem.payment.id}
+                          className="min-h-11 rounded border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {t('payments.voidPayment')}
+                        </button>
+                      </div>
                     )}
 
                     {historyItem.allocationExceedsPayment && (

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/identity/authorization";
 import { getDraftSaleService } from "@/lib/sales/services/draft-sale-service";
+import { createSupabaseUserClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -30,7 +31,13 @@ export async function POST(request: NextRequest, context: DraftContext) {
   const service = getDraftSaleService();
 
   if (action === "approve") {
-    const result = await service.approveDraft(permission.actor, draftId);
+    // The payment step of approval runs through create_payment_atomic, which
+    // resolves the caller via auth.uid() — thread the approver's own client
+    // in. Without a bearer token the approval fails closed in the service.
+    const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
+    const token = authorization?.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : null;
+    const userClient = token ? createSupabaseUserClient(token) : undefined;
+    const result = await service.approveDraft(permission.actor, draftId, userClient ? { userClient } : undefined);
     if (!result.ok) {
       return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
     }

@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   correctOutstandingBalance,
+  editPaymentAtomic,
   getPaymentRequestStatus,
   isUncertainPaymentError,
   reconcileOutstandingBalances,
   submitPaymentAtomic,
   voidPaymentAtomic,
+  type EditPaymentInput,
   type PaymentSubmitInput,
   type PaymentSubmitResult,
   type ReconcileRow,
@@ -96,6 +98,43 @@ async function main() {
       voidPaymentAtomic(client, { kind: "customer", paymentId: result.payment_id, reason: "Wrong amount" }, "key-void-err"),
       /already voided/
     );
+  }
+
+  // Edit: one RPC call per edit attempt key, same payment id back, and
+  // the full new field set travels to the RPC.
+  {
+    const editInput: EditPaymentInput = {
+      kind: "customer",
+      paymentId: result.payment_id,
+      partyId: input.partyId,
+      amount: 30,
+      paymentDate: "2026-11-09",
+      paymentMethod: "card",
+      reference: "4321",
+      notes: "Corrected amount",
+      allocations: [{ invoice_id: "60000000-0000-4000-8000-000000000001", amount: 20 }],
+    };
+    const edited = { ...result, amount: 30, allocated_amount: 20, unapplied_amount: 10 };
+    const { client, calls } = mockClient(async (call) => {
+      if (call.args.p_request_key === "key-edit-err") return { data: null, error: { message: "Payments edit permission is required" } };
+      return { data: edited, error: null };
+    });
+    const [first, second] = await Promise.all([
+      editPaymentAtomic(client, editInput, "key-edit"),
+      editPaymentAtomic(client, editInput, "key-edit"),
+    ]);
+    assert.equal(calls.length, 1, "Double-click issues one edit RPC call");
+    assert.equal(calls[0].name, "edit_payment_atomic");
+    assert.equal(calls[0].args.p_request_key, "key-edit");
+    assert.equal(calls[0].args.p_payment_id, result.payment_id);
+    assert.equal(calls[0].args.p_party_id, input.partyId);
+    assert.equal(calls[0].args.p_amount, 30);
+    assert.equal(calls[0].args.p_payment_method, "card");
+    assert.equal(calls[0].args.p_reference, "4321");
+    assert.deepEqual(calls[0].args.p_allocations, editInput.allocations);
+    assert.equal(first.payment_id, result.payment_id);
+    assert.equal(second.payment_id, result.payment_id);
+    await assert.rejects(editPaymentAtomic(client, editInput, "key-edit-err"), /Payments edit permission/);
   }
 
   // Reconcile: a plain RPC call returning the drift rows.

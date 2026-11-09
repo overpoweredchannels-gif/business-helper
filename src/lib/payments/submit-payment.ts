@@ -39,6 +39,16 @@ export interface PaymentSubmitResult {
   replayed: boolean;
 }
 
+export interface EditPaymentResult {
+  payment_id: string;
+  kind: PaymentKind;
+  party_id: string;
+  amount: number;
+  allocated_amount: number;
+  unapplied_amount: number;
+  replayed: boolean;
+}
+
 export interface VoidPaymentResult {
   payment_id: string;
   kind: PaymentKind;
@@ -110,6 +120,65 @@ export async function submitPaymentAtomic(
     return await promise;
   } finally {
     if (inFlight.get(requestKey) === promise) inFlight.delete(requestKey);
+  }
+}
+
+export interface EditPaymentInput {
+  kind: PaymentKind;
+  paymentId: string;
+  partyId: string;
+  amount: number;
+  paymentDate: string | null;
+  paymentMethod: string;
+  notes: string | null;
+  allocations: PaymentAllocationInput[];
+  /** Optional reference: cheque no., card last 4 digits, or bank ref. */
+  reference: string | null;
+}
+
+// One in-flight edit per attempt key, same contract as the payment submit.
+const inFlightEdits = new Map<string, Promise<EditPaymentResult>>();
+
+/**
+ * Edit one saved payment through the atomic RPC: the payment row, its
+ * allocations, the stored outstanding balance(s) and the audit row land
+ * in a single transaction, and the payment keeps its id (history shows
+ * it as Updated via edited_at). A retry with the same key replays.
+ */
+export async function editPaymentAtomic(
+  client: SupabaseClient,
+  input: EditPaymentInput,
+  requestKey: string,
+): Promise<EditPaymentResult> {
+  const existing = inFlightEdits.get(requestKey);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<EditPaymentResult> => {
+    const { data, error } = await client.rpc("edit_payment_atomic", {
+      p_request_key: requestKey,
+      p_kind: input.kind,
+      p_payment_id: input.paymentId,
+      p_party_id: input.partyId,
+      p_amount: input.amount,
+      p_payment_date: input.paymentDate,
+      p_payment_method: input.paymentMethod,
+      p_notes: input.notes,
+      p_allocations: input.allocations,
+      p_reference: input.reference,
+    });
+    if (error) throw new Error(error.message || "Payment could not be edited. Please retry.");
+    const result = data as EditPaymentResult | null;
+    if (!result || typeof result.payment_id !== "string" || result.payment_id === "") {
+      throw new Error("Payment could not be edited. Please retry.");
+    }
+    return result;
+  })();
+
+  inFlightEdits.set(requestKey, promise);
+  try {
+    return await promise;
+  } finally {
+    if (inFlightEdits.get(requestKey) === promise) inFlightEdits.delete(requestKey);
   }
 }
 

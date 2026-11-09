@@ -10,6 +10,8 @@ const employee = "20000000-0000-4000-8000-000000000003";
 const staffPayments = "20000000-0000-4000-8000-000000000004";
 const staffSections = "20000000-0000-4000-8000-000000000005";
 const staffCustomRole = "20000000-0000-4000-8000-000000000006";
+const staffViewOnly = "20000000-0000-4000-8000-000000000008";
+const staffSupEdit = "20000000-0000-4000-8000-000000000009";
 const otherOwner = "20000000-0000-4000-8000-000000000007";
 const creditCustomer = "30000000-0000-4000-8000-000000000001";
 const cashCustomer = "30000000-0000-4000-8000-000000000002";
@@ -226,6 +228,41 @@ async function main() {
       union all select 'correct_outstanding_balance_atomic' from pg_proc where proname = 'correct_outstanding_balance_atomic'`);
     assert.equal(objects15.rows.length, 20, `Phase 15 creates all 20 objects, got ${objects15.rows.map((r) => r.name).join(", ")}`);
 
+    // Phase 17 + 18, loaded twice each: re-runnable like 14/15.
+    await db.exec(readFileSync("src/lib/migrations/production_phase17_edit_kindscope.sql", "utf8"));
+    await db.exec(readFileSync("src/lib/migrations/production_phase17_edit_kindscope.sql", "utf8"));
+    await db.exec(readFileSync("src/lib/migrations/production_phase18_revoke_direct_payment_writes.sql", "utf8"));
+    await db.exec(readFileSync("src/lib/migrations/production_phase18_revoke_direct_payment_writes.sql", "utf8"));
+
+    const objects17 = await db.query<{ name: string }>(`
+      select 'can_create_customer_payments' name from information_schema.columns where table_name = 'staff_permissions' and column_name = 'can_create_customer_payments'
+      union all select 'can_edit_customer_payments' from information_schema.columns where table_name = 'staff_permissions' and column_name = 'can_edit_customer_payments'
+      union all select 'can_void_customer_payments' from information_schema.columns where table_name = 'staff_permissions' and column_name = 'can_void_customer_payments'
+      union all select 'can_create_supplier_payments' from information_schema.columns where table_name = 'staff_permissions' and column_name = 'can_create_supplier_payments'
+      union all select 'can_edit_supplier_payments' from information_schema.columns where table_name = 'staff_permissions' and column_name = 'can_edit_supplier_payments'
+      union all select 'can_void_supplier_payments' from information_schema.columns where table_name = 'staff_permissions' and column_name = 'can_void_supplier_payments'
+      union all select 'customer edited_at column' from information_schema.columns where table_name = 'customer_payments' and column_name = 'edited_at'
+      union all select 'supplier edited_at column' from information_schema.columns where table_name = 'supplier_payments' and column_name = 'edited_at'
+      union all select 'customer edit_request_key column' from information_schema.columns where table_name = 'customer_payments' and column_name = 'edit_request_key'
+      union all select 'supplier edit_request_key column' from information_schema.columns where table_name = 'supplier_payments' and column_name = 'edit_request_key'
+      union all select 'customer edit_request_fingerprint column' from information_schema.columns where table_name = 'customer_payments' and column_name = 'edit_request_fingerprint'
+      union all select 'supplier edit_request_fingerprint column' from information_schema.columns where table_name = 'supplier_payments' and column_name = 'edit_request_fingerprint'
+      union all select 'customer edit key index' from pg_indexes where indexname = 'customer_payments_org_edit_key_uidx'
+      union all select 'supplier edit key index' from pg_indexes where indexname = 'supplier_payments_org_edit_key_uidx'
+      union all select 'payments_tool_allowed_for' from pg_proc where proname = 'payments_tool_allowed_for'
+      union all select 'edit_payment_atomic' from pg_proc where proname = 'edit_payment_atomic'`);
+    assert.equal(objects17.rows.length, 16, `Phase 17 creates all 16 objects, got ${objects17.rows.map((r) => r.name).join(", ")}`);
+    assert.equal((await db.query<{ n: number }>("select count(*)::int n from pg_proc where proname = 'payments_tool_allowed'")).rows[0].n, 0, "The 1-arg gate is dropped by phase 17");
+
+    // Kind-scope actors, inserted AFTER the phase-17 backfill so their
+    // booleans stay as the owner set them (the backfill would set them
+    // from the sections if they existed at load time).
+    await db.query("insert into profiles values ($1,$2,'staff',true), ($3,$2,'staff',true)", [staffViewOnly, org, staffSupEdit]);
+    await db.query(
+      "insert into staff_permissions(profile_id, organization_id, granted_sections, can_manage_payments, can_create_sales, can_create_customer_payments, can_edit_customer_payments, can_void_customer_payments, can_create_supplier_payments, can_edit_supplier_payments, can_void_supplier_payments) values ($1,$2,array['customer-payments'],false,false,false,false,false,false,false,false), ($3,$2,array['supplier-payments'],false,false,false,false,false,false,true,false)",
+      [staffViewOnly, org, staffSupEdit],
+    );
+
     const setActor = (actor: string | null, orgId: string | null = org) =>
       db.query("select set_config('request.jwt.claim.sub',$1,false), set_config('request.jwt.claims',$2,false)",
         [actor ?? "", orgId ? JSON.stringify({ app_metadata: { organization_id: orgId } }) : "{}"]);
@@ -283,6 +320,34 @@ async function main() {
         [requestKey, kind, partyId, reason],
       )).rows[0].result;
     };
+    const edit = async (
+      requestKey: string,
+      kind: "customer" | "supplier",
+      paymentId: string,
+      partyId: string,
+      amount: number | null,
+      allocations: Array<{ invoice_id: string; amount: number }> = [],
+      actor = owner,
+      method = "cash",
+      reference: string | null = null,
+      notes: string | null = null,
+    ) => {
+      await setActor(actor);
+      return (await db.query<{ result: PaymentResult }>(
+        "select public.edit_payment_atomic($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10) as result",
+        [requestKey, kind, paymentId, partyId, amount, "2026-11-09", method, notes, JSON.stringify(allocations), reference],
+      )).rows[0].result;
+    };
+    // Exact balance expectation for an edit, from the create-audit
+    // previous balance: restore = stored + min(old, previous); the new
+    // stored balance is max(0, restore - new amount).
+    const editExpect = (storedNow: number, oldAmount: number, newAmount: number, previous: number) =>
+      Math.max(0, storedNow + Math.min(oldAmount, previous) - newAmount);
+    const createPrevious = async (paymentId: string) =>
+      Number((await db.query<{ v: string }>(
+        "select (new_values->>'previous_outstanding_balance')::text v from audit_logs where entity_id=$1 and action in ('allocated','created') order by created_at desc limit 1",
+        [paymentId],
+      )).rows[0].v);
     const status = async (requestKey: string, kind: "customer" | "supplier", actor = owner) => {
       await setActor(actor);
       return (await db.query<{ result: { status: string; result?: PaymentResult } }>(
@@ -474,7 +539,7 @@ async function main() {
     // T14 card payments + reference (phase 15): card is a valid method and
     // the reference is stored; cheque is recorded as method 'other'.
     state = await snapshot();
-    const cardPaid = await create(key(80), "customer", creditCustomer, 20, [{ invoice_id: inv1, amount: 10 }], owner, "card", "1234");
+    const cardPaid = await create(key(80), "customer", creditCustomer, 20, [{ invoice_id: inv2, amount: 5 }, { invoice_id: inv3, amount: 5 }], owner, "card", "1234");
     assert.equal(cardPaid.replayed, false);
     const cardRow = (await db.query<{ payment_method: string; reference: string }>("select payment_method, reference from customer_payments where id=$1", [cardPaid.payment_id])).rows[0];
     assert.equal(cardRow.payment_method, "card", "Card payment stores method 'card'");
@@ -516,6 +581,28 @@ async function main() {
     await setActor(owner);
     await assert.rejects(voidPayment(key(96), "customer", foreign.payment_id, owner, "Wrong org"), /unavailable in this organization/);
 
+    // T15b void restore fix (phase 17): voiding the FIRST of two payments
+    // must restore only that payment's amount — the old formula restored
+    // the create-audit previous balance outright, erasing the second
+    // payment (over-restore). The exact restore is current stored +
+    // least(amount, previous). Drift invariant: the void undoes exactly
+    // the voided payment's own drift effect (a second, still-active
+    // payment keeps its own).
+    const driftAt = async () => (await snapshot()).customer_balance - (await derived("customer", creditCustomer));
+    const drift0 = await driftAt();
+    const firstPay = await create(key(165), "customer", creditCustomer, 20, [], owner);
+    const drift1 = await driftAt();
+    const secondPay = await create(key(166), "customer", creditCustomer, 10, [], owner);
+    const prevA = await createPrevious(firstPay.payment_id);
+    const storedBeforeVoid = (await snapshot()).customer_balance;
+    const drift2 = await driftAt();
+    const voidFirst = await voidPayment(key(167), "customer", firstPay.payment_id, owner, "First payment voided");
+    assert.equal(Number(voidFirst.restored_balance), storedBeforeVoid + Math.min(20, prevA), "Voiding the first payment restores only its 20 (second payment stays)");
+    assert.equal(voidFirst.restored_from, "recorded");
+    assert.equal((await snapshot()).customer_balance, storedBeforeVoid + Math.min(20, prevA), "Stored balance after voiding the first of two is exact");
+    const drift3 = await driftAt();
+    assert.equal(drift3 - drift2, -(drift1 - drift0), "Void undoes exactly the voided payment's own drift effect");
+
     // T16 reconcile + correct (phase 15): drift is reported, never
     // silently repaired; correction is explicit, audited, idempotent.
     await db.query("update customers set outstanding_balance = 200 where id=$1", [creditCustomer]);
@@ -541,6 +628,78 @@ async function main() {
     assert.equal(supplierCorrected.corrected, true);
     assert.equal((await reconcile("supplier")).find((r) => r.party_id === supplier), undefined);
 
+    // T17 edit (phase 17): one transaction, same payment id, delta
+    // balance move, allocations replaced, replay per edit key.
+    // (FIFO headroom at this point, after the legacy 15 pool, the inv1
+    // return of 10 and the earlier tests: inv1 remaining 0, inv2
+    // remaining 20, inv3 remaining 25 — allocations sized to fit.)
+    const createBeforeEdit = await snapshot();
+    const editBase = await create(key(150), "customer", creditCustomer, 50,
+      [{ invoice_id: inv2, amount: 10 }, { invoice_id: inv3, amount: 10 }]);
+    const prevEdit = await createPrevious(editBase.payment_id);
+    assert.equal(prevEdit, createBeforeEdit.customer_balance, "Create-audit previous is the stored balance before the payment");
+    const editBefore = await snapshot();
+    const edited = await edit(key(151), "customer", editBase.payment_id, creditCustomer, 30,
+      [{ invoice_id: inv2, amount: 5 }, { invoice_id: inv3, amount: 5 }], owner, "card", "4321");
+    assert.equal(edited.replayed, false);
+    assert.equal(edited.payment_id, editBase.payment_id, "Edit keeps the same payment id");
+    assert.equal((await snapshot()).customer_balance, editExpect(editBefore.customer_balance, 50, 30, prevEdit), "Edit moves the stored balance by the exact delta (50 -> 30)");
+    const editedRow = (await db.query<{ amount: string; payment_method: string; reference: string; edited_at: string | null }>("select amount, payment_method, reference, edited_at from customer_payments where id=$1", [editBase.payment_id])).rows[0];
+    assert.equal(Number(editedRow.amount), 30, "Edited amount stored");
+    assert.equal(editedRow.payment_method, "card", "Edited method stored");
+    assert.equal(editedRow.reference, "4321", "Edited reference stored");
+    assert.ok(editedRow.edited_at, "edited_at marks the payment Updated");
+    assert.equal((await db.query<{ n: number }>("select count(*)::int n from customer_payment_allocations where customer_payment_id=$1", [editBase.payment_id])).rows[0].n, 2, "Old allocations are replaced, not added to");
+    assert.equal((await db.query<{ action: string }>("select action from audit_logs where entity_id=$1 and action='edited' order by created_at desc limit 1", [editBase.payment_id])).rows[0].action, "edited", "Edit writes an audit row with old/new values");
+    // Replay: same key + same body replays; same key + different body fails.
+    const editReplay = await edit(key(151), "customer", editBase.payment_id, creditCustomer, 30,
+      [{ invoice_id: inv2, amount: 5 }, { invoice_id: inv3, amount: 5 }], owner, "card", "4321");
+    assert.equal(editReplay.replayed, true, "Same edit key replays");
+    await assert.rejects(edit(key(151), "customer", editBase.payment_id, creditCustomer, 31,
+      [{ invoice_id: inv2, amount: 5 }, { invoice_id: inv3, amount: 5 }], owner, "card", "4321"), /different edit/);
+    // A second edit with a fresh key applies on top of the first.
+    const edit1Stored = (await snapshot()).customer_balance;
+    const edited2 = await edit(key(152), "customer", editBase.payment_id, creditCustomer, 40,
+      [{ invoice_id: inv2, amount: 10 }, { invoice_id: inv3, amount: 10 }], owner, "cash", null);
+    assert.equal(edited2.replayed, false);
+    assert.equal((await snapshot()).customer_balance, editExpect(edit1Stored, 30, 40, prevEdit), "Second edit moves the balance by its own delta (30 -> 40)");
+    // Over-remaining allocation is rejected and writes nothing.
+    const failBefore = await snapshot();
+    await assert.rejects(edit(key(158), "customer", editBase.payment_id, creditCustomer, 100,
+      [{ invoice_id: inv1, amount: 76 }], owner), /remaining balance/);
+    assert.deepEqual(await snapshot(), failBefore, "Failed edits write nothing");
+
+    // Party change: the payment moves to another customer; the old party
+    // is restored by the exact restore and the new party is decremented.
+    const partyBefore = await snapshot();
+    const moved = await edit(key(153), "customer", editBase.payment_id, cashCustomer, 40,
+      [], owner, "cash", null);
+    assert.equal(moved.party_id, cashCustomer, "Edit can move the payment to another party");
+    assert.equal((await snapshot()).customer_balance, partyBefore.customer_balance + Math.min(40, prevEdit), "Old party is restored by the exact restore on a party move");
+    assert.equal((await db.query<{ customer_id: string }>("select customer_id from customer_payments where id=$1", [editBase.payment_id])).rows[0].customer_id, cashCustomer, "Payment row carries the new party");
+    // Edit guards: employee denied; voided payment uneditable; allocation
+    // over the remaining balance rejected; nothing written on failure.
+    await assert.rejects(edit(key(154), "customer", editBase.payment_id, cashCustomer, 40, [], employee), /Payments edit permission/);
+    const voidForEdit = await create(key(155), "customer", creditCustomer, 5, [], owner);
+    await voidPayment(key(156), "customer", voidForEdit.payment_id, owner, "Void before edit test");
+    await assert.rejects(edit(key(157), "customer", voidForEdit.payment_id, creditCustomer, 6, [], owner), /cannot be edited/);
+
+    // T18 kind-scoping (phase 17): supplier-section staff cannot touch
+    // customer payments; view-only staff can read the reconciliation but
+    // cannot create; edit-only staff can edit but cannot create or void.
+    await assert.rejects(create(key(180), "customer", cashCustomer, 5, [], staffSections), /Payments permission/, "Supplier-section staff cannot create a customer payment");
+    await assert.rejects(create(key(181), "customer", cashCustomer, 5, [], staffViewOnly), /Payments permission/, "View-only staff cannot create");
+    const viewRows = await reconcile("customer", staffViewOnly);
+    assert.ok(Array.isArray(viewRows), "View-only staff can read the reconciliation");
+    const supPay = await create(key(182), "supplier", supplier, 10, [], staffSections);
+    assert.equal(supPay.replayed, false, "Supplier-section staff (backfilled) can still create supplier payments");
+    await assert.rejects(create(key(183), "supplier", supplier, 5, [], staffSupEdit), /Payments permission/, "Edit-only staff cannot create");
+    const supEdited = await edit(key(184), "supplier", supPay.payment_id, supplier, 8, [], staffSupEdit);
+    assert.equal(supEdited.payment_id, supPay.payment_id, "Edit-only staff can edit their kind");
+    await assert.rejects(voidPayment(key(185), "supplier", supPay.payment_id, staffSupEdit, "No void grant"), /Payments permission/, "Edit-only staff cannot void");
+    const customSup = await create(key(186), "supplier", supplier, 5, [], staffCustomRole);
+    assert.equal(customSup.replayed, false, "Custom role granting payments_manage keeps full access on both kinds");
+
     // Status function: unknown key, confirmed key, cross-org (no leak),
     // and another actor in the same org (rejected).
     assert.deepEqual(await status(key(99), "customer"), { status: "unknown" });
@@ -551,22 +710,43 @@ async function main() {
     assert.deepEqual(crossOrg, { status: "unknown" }, "A foreign org sees nothing for another org's key");
     await assert.rejects(status(key(51), "customer", owner2), /another actor/);
 
-    // RLS proof (isolated DB, not a mock): as the authenticated role with
-    // org-1 claims, direct table access is org-scoped — a foreign-org
-    // insert is rejected and a foreign-org row is invisible.
+    // T19 revoke (phase 18): as the authenticated role, direct writes
+    // to the payment tables are denied by the grant revoke (the RLS
+    // policies are still there, but the permission error fires first).
+    // SELECT still works: reads are untouched.
     await setActor(owner, org);
     await db.exec("set role authenticated");
     await assert.rejects(
+      db.query("insert into supplier_payments(organization_id,supplier_id,amount,payment_method) values($1,$2,1,'cash')", [org, supplier]),
+      /permission denied/,
+      "Same-org direct insert is denied after the revoke",
+    );
+    await assert.rejects(
+      db.query("insert into customer_payments(organization_id,customer_id,amount,payment_method) values($1,$2,1,'cash')", [org, cashCustomer]),
+      /permission denied/,
+    );
+    await assert.rejects(
+      db.query("update supplier_payments set amount = 2 where organization_id=$1 and supplier_id=$2", [org, supplier]),
+      /permission denied/,
+      "Same-org direct update is denied after the revoke",
+    );
+    await assert.rejects(
+      db.query("delete from supplier_payments where organization_id=$1 and supplier_id=$2", [org, supplier]),
+      /permission denied/,
+      "Same-org direct delete is denied after the revoke",
+    );
+    await assert.rejects(
       db.query("insert into supplier_payments(organization_id,supplier_id,amount,payment_method) values($1,$2,1,'cash')", [otherOrg, otherOrgSupplier]),
-      /row-level security|violates/,
+      /permission denied/,
+      "Foreign-org direct insert is denied by the grant before RLS is even evaluated",
     );
     const visible = await db.query<{ n: number }>("select count(*)::int n from supplier_payments where organization_id=$1", [otherOrg]);
     assert.equal(visible.rows[0].n, 0, "Foreign-org rows are invisible to the authenticated role");
-    await db.query("insert into supplier_payments(organization_id,supplier_id,amount,payment_method) values($1,$2,1,'cash')", [org, supplier]);
-    await db.query("delete from supplier_payments where organization_id=$1 and amount=1 and payment_method='cash'", [org]);
+    const ownVisible = await db.query<{ n: number }>("select count(*)::int n from supplier_payments where organization_id=$1", [org]);
+    assert.ok(ownVisible.rows[0].n >= 0, "Same-org SELECT still works after the revoke");
     await db.exec("reset role");
 
-    console.log("Atomic payment PostgreSQL tests passed: authorization, tenant scope, validation, remaining-balance rules, idempotency, replay, rollback, status, and supplier RLS.");
+    console.log("Atomic payment PostgreSQL tests passed: authorization, tenant scope, validation, remaining-balance rules, idempotency, replay, rollback, status, supplier RLS, edit, kind-scoping, and the direct-write revoke.");
   } finally {
     await db.close();
   }
