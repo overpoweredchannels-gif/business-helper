@@ -31,15 +31,24 @@
 --     oldest-first); then inserts the payment, its allocations, decrements
 --     the stored outstanding_balance by the full payment amount (floored
 --     at 0, the collections-path rule), and writes the audit row — all in
---     one transaction. A stable request key + advisory lock + md5
+--     one transaction. The audit row also records the stored balance BEFORE
+--     the payment (previous_outstanding_balance) so a later void can
+--     restore it exactly. A stable request key + advisory lock + md5
 --     fingerprint make retries replay instead of duplicating; reusing a
---     key with different content is rejected.
+--     key with different content is rejected. The method list is
+--     cash/bank/card/other (card enabled by phase 15's CHECK widening);
+--     a payment reference (cheque no., card last 4 digits, bank ref) is
+--     stored when the caller supplies one.
 --   * get_payment_request_status: confirms a request key after a lost
 --     response without re-posting.
 --
--- What this file does NOT do: widen the payment_method check to 'card'
--- (separate card migration); change sales, purchases, returns, or the
--- collections approval flow; change any existing row.
+-- What this file does NOT do: change sales, purchases, returns, or the
+-- collections approval flow; change any existing row. The payment_method
+-- CHECK widening, the void columns/RPC, the reconciliation RPCs and the
+-- card sales-tender change live in phase 15 / phase 16, which must be
+-- applied together with this file, in order (phase 14, then 15, then 16):
+-- this file's remaining-balance derivation already excludes voided
+-- payments, and the voided_at column is created by phase 15.
 --
 -- PRE-CHECK (run before applying, read-only): confirm no existing rows
 -- would violate the new CHECKs, otherwise the migration stops there:
@@ -185,7 +194,8 @@ create or replace function public.create_payment_atomic(
   p_payment_date date default null,
   p_payment_method text default 'cash',
   p_notes text default null,
-  p_allocations jsonb default '[]'::jsonb
+  p_allocations jsonb default '[]'::jsonb,
+  p_reference text default null
 )
 returns jsonb
 language plpgsql
@@ -196,6 +206,7 @@ declare
   v_actor uuid := auth.uid();
   v_org uuid;
   v_party_name text;
+  v_previous_balance numeric;
   v_payment_id uuid;
   v_fingerprint text;
   v_existing_id uuid;
@@ -236,7 +247,7 @@ begin
     or p_amount <= 0 or p_amount <> round(p_amount, 2) then
     raise exception 'Payment amount must be a positive amount with at most two decimals' using errcode = '22023';
   end if;
-  if p_payment_method not in ('cash', 'bank', 'other') then
+  if p_payment_method not in ('cash', 'bank', 'card', 'other') then
     raise exception 'Invalid payment_method' using errcode = '22023';
   end if;
   if jsonb_typeof(p_allocations) is distinct from 'array' then
@@ -249,7 +260,7 @@ begin
   v_fingerprint := md5(jsonb_build_object(
     'kind', p_kind, 'party_id', p_party_id, 'amount', p_amount,
     'payment_date', p_payment_date, 'method', p_payment_method,
-    'notes', p_notes, 'allocations', p_allocations
+    'notes', p_notes, 'allocations', p_allocations, 'reference', p_reference
   )::text);
   perform pg_advisory_xact_lock(hashtextextended(v_org::text || ':' || p_kind || ':' || p_request_key::text, 0));
   if p_kind = 'customer' then
@@ -275,14 +286,18 @@ begin
 
   -- Lock the party row: same-business check + serializes concurrent
   -- payments for the same party (balance updates cannot be lost).
+  -- The stored balance BEFORE this payment is captured so a later void
+  -- can restore it exactly.
   if p_kind = 'customer' then
-    select customer_name into v_party_name from public.customers
+    select customer_name, coalesce(outstanding_balance, 0)
+      into v_party_name, v_previous_balance from public.customers
     where id = p_party_id and organization_id = v_org
       and is_active is distinct from false
     for update;
     if not found then raise exception 'Customer is unavailable in this organization' using errcode = '22023'; end if;
   else
-    select supplier_name into v_party_name from public.suppliers
+    select supplier_name, coalesce(outstanding_balance, 0)
+      into v_party_name, v_previous_balance from public.suppliers
     where id = p_party_id and organization_id = v_org
       and is_active is distinct from false
     for update;
@@ -328,13 +343,16 @@ begin
   -- returns offset first, explicit allocations second, the unallocated
   -- payment pool FIFO oldest-first. The pool is computed BEFORE this
   -- payment is inserted, so the new payment never funds itself.
+  -- Voided payments (phase 15) are excluded from the pool and from the
+  -- explicit allocations: a voided payment covers nothing.
   if p_kind = 'customer' then
     select greatest(
       coalesce((select sum(cp.amount) from public.customer_payments cp
-        where cp.organization_id = v_org and cp.customer_id = p_party_id), 0)
+        where cp.organization_id = v_org and cp.customer_id = p_party_id and cp.voided_at is null), 0)
       - coalesce((select sum(a.amount) from public.customer_payment_allocations a
         join public.sales_transactions st on st.id = a.sales_transaction_id
-        where a.organization_id = v_org and st.organization_id = v_org and st.customer_id = p_party_id), 0),
+        where a.organization_id = v_org and st.organization_id = v_org and st.customer_id = p_party_id
+          and not exists (select 1 from public.customer_payments cp2 where cp2.id = a.customer_payment_id and cp2.voided_at is not null)), 0),
       0
     ) into v_pool;
 
@@ -363,7 +381,8 @@ begin
         and sr.status <> 'cancelled';
       select coalesce(sum(a.amount), 0) into v_explicit
       from public.customer_payment_allocations a
-      where a.organization_id = v_org and a.sales_transaction_id = v_invoice.id;
+      where a.organization_id = v_org and a.sales_transaction_id = v_invoice.id
+        and not exists (select 1 from public.customer_payments cp2 where cp2.id = a.customer_payment_id and cp2.voided_at is not null);
       v_remaining_after := greatest(0, v_invoice_total - v_returned - v_explicit);
       v_fallback := least(v_pool, v_remaining_after);
       v_remaining := v_remaining_after - v_fallback;
@@ -378,10 +397,11 @@ begin
   else
     select greatest(
       coalesce((select sum(sp.amount) from public.supplier_payments sp
-        where sp.organization_id = v_org and sp.supplier_id = p_party_id), 0)
+        where sp.organization_id = v_org and sp.supplier_id = p_party_id and sp.voided_at is null), 0)
       - coalesce((select sum(a.amount) from public.supplier_payment_allocations a
         join public.purchase_transactions pt on pt.id = a.purchase_transaction_id
-        where a.organization_id = v_org and pt.organization_id = v_org and pt.supplier_id = p_party_id), 0),
+        where a.organization_id = v_org and pt.organization_id = v_org and pt.supplier_id = p_party_id
+          and not exists (select 1 from public.supplier_payments sp2 where sp2.id = a.supplier_payment_id and sp2.voided_at is not null)), 0),
       0
     ) into v_pool;
 
@@ -405,7 +425,8 @@ begin
         and pr.status <> 'cancelled';
       select coalesce(sum(a.amount), 0) into v_explicit
       from public.supplier_payment_allocations a
-      where a.organization_id = v_org and a.purchase_transaction_id = v_invoice.id;
+      where a.organization_id = v_org and a.purchase_transaction_id = v_invoice.id
+        and not exists (select 1 from public.supplier_payments sp2 where sp2.id = a.supplier_payment_id and sp2.voided_at is not null);
       v_remaining_after := greatest(0, v_invoice_total - v_returned - v_explicit);
       v_fallback := least(v_pool, v_remaining_after);
       v_remaining := v_remaining_after - v_fallback;
@@ -422,18 +443,18 @@ begin
   if p_kind = 'customer' then
     insert into public.customer_payments (
       organization_id, customer_id, amount, payment_date, payment_method, notes,
-      request_key, request_fingerprint, created_by_profile_id
+      request_key, request_fingerprint, created_by_profile_id, reference
     ) values (
       v_org, p_party_id, p_amount, p_payment_date, p_payment_method, p_notes,
-      p_request_key, v_fingerprint, v_actor
+      p_request_key, v_fingerprint, v_actor, nullif(p_reference, '')
     ) returning id into v_payment_id;
   else
     insert into public.supplier_payments (
       organization_id, supplier_id, amount, payment_date, payment_method, notes,
-      request_key, request_fingerprint, created_by_profile_id
+      request_key, request_fingerprint, created_by_profile_id, reference
     ) values (
       v_org, p_party_id, p_amount, p_payment_date, p_payment_method, p_notes,
-      p_request_key, v_fingerprint, v_actor
+      p_request_key, v_fingerprint, v_actor, nullif(p_reference, '')
     ) returning id into v_payment_id;
   end if;
 
@@ -474,7 +495,8 @@ begin
         else 'Created customer payment for ' || v_party_name end,
       jsonb_build_object('customer_id', p_party_id, 'amount', p_amount,
         'payment_method', p_payment_method, 'payment_date', p_payment_date,
-        'notes', p_notes, 'allocations', p_allocations, 'request_key', p_request_key)
+        'notes', p_notes, 'allocations', p_allocations, 'request_key', p_request_key,
+        'reference', p_reference, 'previous_outstanding_balance', v_previous_balance)
     );
   else
     update public.suppliers
@@ -492,7 +514,8 @@ begin
         else 'Created supplier payment for ' || v_party_name end,
       jsonb_build_object('supplier_id', p_party_id, 'amount', p_amount,
         'payment_method', p_payment_method, 'payment_date', p_payment_date,
-        'notes', p_notes, 'allocations', p_allocations, 'request_key', p_request_key)
+        'notes', p_notes, 'allocations', p_allocations, 'request_key', p_request_key,
+        'reference', p_reference, 'previous_outstanding_balance', v_previous_balance)
     );
   end if;
 
@@ -542,9 +565,9 @@ end;
 $$;
 
 revoke all on function public.payment_atomic_result(text,uuid,boolean) from public, anon, authenticated;
-revoke all on function public.create_payment_atomic(uuid,text,uuid,numeric,date,text,text,jsonb) from public, anon;
+revoke all on function public.create_payment_atomic(uuid,text,uuid,numeric,date,text,text,jsonb,text) from public, anon;
 revoke all on function public.get_payment_request_status(uuid,text) from public, anon;
-grant execute on function public.create_payment_atomic(uuid,text,uuid,numeric,date,text,text,jsonb) to authenticated;
+grant execute on function public.create_payment_atomic(uuid,text,uuid,numeric,date,text,text,jsonb,text) to authenticated;
 grant execute on function public.get_payment_request_status(uuid,text) to authenticated;
 
 notify pgrst, 'reload schema';

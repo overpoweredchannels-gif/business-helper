@@ -172,9 +172,11 @@ async function main() {
         values('${org}','${supplier}',10,current_date,'cash','legacy unallocated payment');
     `);
 
-    // The real migration, loaded twice: the file must be re-runnable.
+    // The real migrations, loaded twice each: the files must be re-runnable.
     await db.exec(readFileSync("src/lib/migrations/production_phase14_atomic_payments.sql", "utf8"));
     await db.exec(readFileSync("src/lib/migrations/production_phase14_atomic_payments.sql", "utf8"));
+    await db.exec(readFileSync("src/lib/migrations/production_phase15_card_void_reconcile.sql", "utf8"));
+    await db.exec(readFileSync("src/lib/migrations/production_phase15_card_void_reconcile.sql", "utf8"));
 
     const objects = await db.query<{ name: string; kind: string }>(`
       select 'request_key column' name, 'column' kind from information_schema.columns
@@ -201,6 +203,29 @@ async function main() {
         where proname = 'payments_tool_allowed'`);
     assert.equal(objects.rows.length, 11, `Migration creates all 11 objects, got ${objects.rows.map((r) => r.name).join(", ")}`);
 
+    const objects15 = await db.query<{ name: string }>(`
+      select 'customer method check' name from pg_constraint where conname = 'customer_payments_payment_method_check'
+      union all select 'supplier method check' from pg_constraint where conname = 'supplier_payments_payment_method_check'
+      union all select 'customer reference column' from information_schema.columns where table_name = 'customer_payments' and column_name = 'reference'
+      union all select 'supplier reference column' from information_schema.columns where table_name = 'supplier_payments' and column_name = 'reference'
+      union all select 'customer voided_at column' from information_schema.columns where table_name = 'customer_payments' and column_name = 'voided_at'
+      union all select 'supplier voided_at column' from information_schema.columns where table_name = 'supplier_payments' and column_name = 'voided_at'
+      union all select 'customer voided_by column' from information_schema.columns where table_name = 'customer_payments' and column_name = 'voided_by_profile_id'
+      union all select 'supplier voided_by column' from information_schema.columns where table_name = 'supplier_payments' and column_name = 'voided_by_profile_id'
+      union all select 'customer void_reason column' from information_schema.columns where table_name = 'customer_payments' and column_name = 'void_reason'
+      union all select 'supplier void_reason column' from information_schema.columns where table_name = 'supplier_payments' and column_name = 'void_reason'
+      union all select 'customer void_request_key column' from information_schema.columns where table_name = 'customer_payments' and column_name = 'void_request_key'
+      union all select 'supplier void_request_key column' from information_schema.columns where table_name = 'supplier_payments' and column_name = 'void_request_key'
+      union all select 'customer void_request_fingerprint column' from information_schema.columns where table_name = 'customer_payments' and column_name = 'void_request_fingerprint'
+      union all select 'supplier void_request_fingerprint column' from information_schema.columns where table_name = 'supplier_payments' and column_name = 'void_request_fingerprint'
+      union all select 'customer void key index' from pg_indexes where indexname = 'customer_payments_org_void_key_uidx'
+      union all select 'supplier void key index' from pg_indexes where indexname = 'supplier_payments_org_void_key_uidx'
+      union all select 'payment_derived_outstanding' from pg_proc where proname = 'payment_derived_outstanding'
+      union all select 'void_payment_atomic' from pg_proc where proname = 'void_payment_atomic'
+      union all select 'reconcile_outstanding_balances' from pg_proc where proname = 'reconcile_outstanding_balances'
+      union all select 'correct_outstanding_balance_atomic' from pg_proc where proname = 'correct_outstanding_balance_atomic'`);
+    assert.equal(objects15.rows.length, 20, `Phase 15 creates all 20 objects, got ${objects15.rows.map((r) => r.name).join(", ")}`);
+
     const setActor = (actor: string | null, orgId: string | null = org) =>
       db.query("select set_config('request.jwt.claim.sub',$1,false), set_config('request.jwt.claims',$2,false)",
         [actor ?? "", orgId ? JSON.stringify({ app_metadata: { organization_id: orgId } }) : "{}"]);
@@ -212,11 +237,50 @@ async function main() {
       allocations: Array<{ invoice_id: string; amount: number }> = [],
       actor = owner,
       method = "cash",
+      reference: string | null = null,
     ) => {
       await setActor(actor);
       return (await db.query<{ result: PaymentResult }>(
-        "select public.create_payment_atomic($1,$2,$3,$4,$5,$6,$7,$8::jsonb) as result",
-        [requestKey, kind, partyId, amount, null, method, null, JSON.stringify(allocations)],
+        "select public.create_payment_atomic($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9) as result",
+        [requestKey, kind, partyId, amount, null, method, null, JSON.stringify(allocations), reference],
+      )).rows[0].result;
+    };
+    const voidPayment = async (
+      requestKey: string,
+      kind: "customer" | "supplier",
+      paymentId: string,
+      actor = owner,
+      reason: string | null = null,
+    ) => {
+      await setActor(actor);
+      return (await db.query<{ result: { payment_id: string; kind: string; voided: boolean; replayed: boolean; restored_balance: string; restored_from: string } }>(
+        "select public.void_payment_atomic($1,$2,$3,$4) as result",
+        [requestKey, kind, paymentId, reason],
+      )).rows[0].result;
+    };
+    const derived = async (kind: "customer" | "supplier", partyId: string, actor = owner) => {
+      await setActor(actor);
+      return Number((await db.query<{ v: string }>(
+        "select public.payment_derived_outstanding($1,$2) as v", [kind, partyId],
+      )).rows[0].v);
+    };
+    const reconcile = async (kind: "customer" | "supplier", actor = owner) => {
+      await setActor(actor);
+      return (await db.query<{ party_id: string; party_name: string; stored_balance: string; derived_balance: string; drift: string }>(
+        "select * from public.reconcile_outstanding_balances($1)", [kind],
+      )).rows.map((r) => ({ ...r, stored_balance: Number(r.stored_balance), derived_balance: Number(r.derived_balance), drift: Number(r.drift) }));
+    };
+    const correct = async (
+      requestKey: string,
+      kind: "customer" | "supplier",
+      partyId: string,
+      actor = owner,
+      reason: string | null = null,
+    ) => {
+      await setActor(actor);
+      return (await db.query<{ result: { party_id: string; kind: string; corrected: boolean; replayed: boolean; stored_before: string; stored_after: string; derived: string } }>(
+        "select public.correct_outstanding_balance_atomic($1,$2,$3,$4) as result",
+        [requestKey, kind, partyId, reason],
       )).rows[0].result;
     };
     const status = async (requestKey: string, kind: "customer" | "supplier", actor = owner) => {
@@ -324,7 +388,6 @@ async function main() {
       { label: "zero amount", run: () => create(key(21), "customer", cashCustomer, 0), pattern: /positive amount/ },
       { label: "negative amount", run: () => create(key(22), "customer", cashCustomer, -5), pattern: /positive amount/ },
       { label: "three-decimal amount", run: () => create(key(23), "customer", cashCustomer, 10.005), pattern: /two decimals/ },
-      { label: "card method", run: () => create(key(24), "customer", cashCustomer, 5, [], owner, "card"), pattern: /Invalid payment_method/ },
       { label: "bad method", run: () => create(key(25), "customer", cashCustomer, 5, [], owner, "cheque"), pattern: /Invalid payment_method/ },
       { label: "negative allocation", run: () => create(key(26), "customer", creditCustomer, 10, [{ invoice_id: inv1, amount: -1 }]), pattern: /Invalid payment allocation/ },
       { label: "allocation over remaining", run: () => create(key(27), "customer", creditCustomer, 100, [{ invoice_id: inv1, amount: 76 }]), pattern: /remaining balance/ },
@@ -407,6 +470,76 @@ async function main() {
     const second = await create(key(71), "customer", cashCustomer, 10);
     assert.notEqual(first.payment_id, second.payment_id);
     assert.equal((await snapshot()).customer_payments, state.customer_payments + 2, "Identical details under different keys are two payments");
+
+    // T14 card payments + reference (phase 15): card is a valid method and
+    // the reference is stored; cheque is recorded as method 'other'.
+    state = await snapshot();
+    const cardPaid = await create(key(80), "customer", creditCustomer, 20, [{ invoice_id: inv1, amount: 10 }], owner, "card", "1234");
+    assert.equal(cardPaid.replayed, false);
+    const cardRow = (await db.query<{ payment_method: string; reference: string }>("select payment_method, reference from customer_payments where id=$1", [cardPaid.payment_id])).rows[0];
+    assert.equal(cardRow.payment_method, "card", "Card payment stores method 'card'");
+    assert.equal(cardRow.reference, "1234", "Card payment stores the reference (last 4 digits)");
+    assert.equal((await snapshot()).customer_balance, state.customer_balance - 20, "Card payment falls the stored balance by the full amount");
+    const chequePaid = await create(key(81), "customer", cashCustomer, 7, [], owner, "other", "CHQ-99");
+    const chequeRow = (await db.query<{ payment_method: string; reference: string }>("select payment_method, reference from customer_payments where id=$1", [chequePaid.payment_id])).rows[0];
+    assert.equal(chequeRow.payment_method, "other", "Cheque is recorded as method 'other'");
+    assert.equal(chequeRow.reference, "CHQ-99", "Cheque number is stored as the reference");
+
+    // T15 void (phase 15): voiding restores the balance and frees the
+    // allocation; the rows stay (marked voided, not deleted).
+    const beforeVoid = await snapshot();
+    const toVoid = await create(key(90), "customer", creditCustomer, 10, [{ invoice_id: inv2, amount: 5 }]);
+    assert.equal(Number(toVoid.allocated_amount), 5);
+    const afterCreate = await snapshot();
+    const voided = await voidPayment(key(91), "customer", toVoid.payment_id, owner, "Wrong amount");
+    assert.equal(voided.voided, true);
+    assert.equal(voided.replayed, false);
+    assert.equal(Number(voided.restored_balance), beforeVoid.customer_balance, "Void restores the balance recorded before the payment");
+    assert.equal(voided.restored_from, "recorded");
+    const afterVoid = await snapshot();
+    assert.equal(afterVoid.customer_balance, beforeVoid.customer_balance, "Void returns the stored balance to the pre-payment value");
+    assert.equal(afterVoid.customer_payments, afterCreate.customer_payments, "Void keeps the payment row (marked voided, not deleted)");
+    assert.equal(afterVoid.customer_allocations, afterCreate.customer_allocations, "Void keeps the allocation rows (excluded by the void check, not deleted)");
+    // The voided allocation no longer counts: the same amount can be
+    // allocated again on the same invoice.
+    const reallocated = await create(key(92), "customer", creditCustomer, 5, [{ invoice_id: inv2, amount: 5 }]);
+    assert.equal(Number(reallocated.allocated_amount), 5, "Voided allocation frees the invoice remaining");
+    const voidReplay = await voidPayment(key(91), "customer", toVoid.payment_id, owner, "Wrong amount");
+    assert.equal(voidReplay.replayed, true, "Same void key replays");
+    await assert.rejects(voidPayment(key(93), "customer", toVoid.payment_id, owner, "Wrong amount"), /already voided/);
+    await assert.rejects(voidPayment(key(94), "customer", toVoid.payment_id, employee, "Wrong amount"), /Payments permission/);
+    await setActor(otherOwner, otherOrg);
+    const foreign = (await db.query<{ result: PaymentResult }>(
+      "select public.create_payment_atomic($1,'customer',$2,5,null,'cash',null,'[]'::jsonb,null) as result",
+      [key(95), otherOrgCustomer],
+    )).rows[0].result;
+    await setActor(owner);
+    await assert.rejects(voidPayment(key(96), "customer", foreign.payment_id, owner, "Wrong org"), /unavailable in this organization/);
+
+    // T16 reconcile + correct (phase 15): drift is reported, never
+    // silently repaired; correction is explicit, audited, idempotent.
+    await db.query("update customers set outstanding_balance = 200 where id=$1", [creditCustomer]);
+    const driftRows = await reconcile("customer");
+    const creditRow = driftRows.find((r) => r.party_id === creditCustomer);
+    assert.ok(creditRow, "Drifted customer appears in the reconciliation");
+    assert.equal(creditRow.stored_balance, 200);
+    assert.equal(creditRow.derived_balance, await derived("customer", creditCustomer));
+    assert.equal(creditRow.drift, 200 - creditRow.derived_balance);
+    const corrected = await correct(key(120), "customer", creditCustomer, owner, "Balance check 2026-11-09");
+    assert.equal(corrected.corrected, true);
+    assert.equal(Number(corrected.stored_after), creditRow.derived_balance);
+    assert.equal((await reconcile("customer")).find((r) => r.party_id === creditCustomer), undefined, "Corrected customer leaves the reconciliation");
+    const correctReplay = await correct(key(120), "customer", creditCustomer, owner, "Balance check 2026-11-09");
+    assert.equal(correctReplay.replayed, true, "Same correction key replays");
+    const noop = await correct(key(121), "customer", creditCustomer, owner, "Balance check 2026-11-09");
+    assert.equal(noop.corrected, false, "Correcting a clean balance is a no-op, not an error");
+    await assert.rejects(correct(key(122), "customer", creditCustomer, employee), /Payments permission/);
+    await db.query("update suppliers set outstanding_balance = 100 where id=$1", [supplier]);
+    const supplierDrift = (await reconcile("supplier")).find((r) => r.party_id === supplier);
+    assert.ok(supplierDrift, "Drifted supplier appears in the reconciliation");
+    const supplierCorrected = await correct(key(123), "supplier", supplier, owner, "Balance check 2026-11-09");
+    assert.equal(supplierCorrected.corrected, true);
+    assert.equal((await reconcile("supplier")).find((r) => r.party_id === supplier), undefined);
 
     // Status function: unknown key, confirmed key, cross-org (no leak),
     // and another actor in the same org (rejected).

@@ -25,6 +25,8 @@ export interface PaymentSubmitInput {
   paymentMethod: string;
   notes: string | null;
   allocations: PaymentAllocationInput[];
+  /** Optional reference: cheque no., card last 4 digits, or bank ref. */
+  reference: string | null;
 }
 
 export interface PaymentSubmitResult {
@@ -35,6 +37,35 @@ export interface PaymentSubmitResult {
   allocated_amount: number;
   unapplied_amount: number;
   replayed: boolean;
+}
+
+export interface VoidPaymentResult {
+  payment_id: string;
+  kind: PaymentKind;
+  party_id: string;
+  amount: number;
+  voided: boolean;
+  replayed: boolean;
+  restored_balance: number;
+  restored_from: string;
+}
+
+export interface CorrectBalanceResult {
+  party_id: string;
+  kind: PaymentKind;
+  corrected: boolean;
+  replayed: boolean;
+  stored_before: number;
+  stored_after: number;
+  derived: number;
+}
+
+export interface ReconcileRow {
+  party_id: string;
+  party_name: string;
+  stored_balance: number;
+  derived_balance: number;
+  drift: number;
 }
 
 export function createPaymentAttemptKey(): string {
@@ -64,6 +95,7 @@ export async function submitPaymentAtomic(
       p_payment_method: input.paymentMethod,
       p_notes: input.notes,
       p_allocations: input.allocations,
+      p_reference: input.reference,
     });
     if (error) throw new Error(error.message || "Payment could not be saved. Please retry.");
     const result = data as PaymentSubmitResult | null;
@@ -93,6 +125,97 @@ export async function getPaymentRequestStatus(
   });
   if (error) throw new Error(error.message || "Payment status could not be checked. Please retry.");
   return (data ?? { status: "unknown" }) as { status: string; result?: PaymentSubmitResult };
+}
+
+// One in-flight void per attempt key, same contract as the payment submit:
+// a second call while a void is pending returns the same promise.
+const inFlightVoids = new Map<string, Promise<VoidPaymentResult>>();
+
+/**
+ * Void one saved payment through the atomic RPC: the payment is marked
+ * voided, its allocations stop covering anything, the stored outstanding
+ * balance is restored, and an audit row is written — one transaction.
+ * The voided row stays in history; nothing is hard-deleted.
+ */
+export async function voidPaymentAtomic(
+  client: SupabaseClient,
+  input: { kind: PaymentKind; paymentId: string; reason: string | null },
+  requestKey: string,
+): Promise<VoidPaymentResult> {
+  const existing = inFlightVoids.get(requestKey);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<VoidPaymentResult> => {
+    const { data, error } = await client.rpc("void_payment_atomic", {
+      p_request_key: requestKey,
+      p_kind: input.kind,
+      p_payment_id: input.paymentId,
+      p_reason: input.reason,
+    });
+    if (error) throw new Error(error.message || "Payment could not be voided. Please retry.");
+    const result = data as VoidPaymentResult | null;
+    if (!result || typeof result.payment_id !== "string" || result.payment_id === "") {
+      throw new Error("Payment could not be voided. Please retry.");
+    }
+    return result;
+  })();
+
+  inFlightVoids.set(requestKey, promise);
+  try {
+    return await promise;
+  } finally {
+    if (inFlightVoids.get(requestKey) === promise) inFlightVoids.delete(requestKey);
+  }
+}
+
+/** List every party whose stored balance differs from the derived balance. */
+export async function reconcileOutstandingBalances(
+  client: SupabaseClient,
+  kind: PaymentKind,
+): Promise<ReconcileRow[]> {
+  const { data, error } = await client.rpc("reconcile_outstanding_balances", {
+    p_kind: kind,
+  });
+  if (error) throw new Error(error.message || "Balances could not be checked. Please retry.");
+  return (data ?? []) as ReconcileRow[];
+}
+
+const inFlightCorrections = new Map<string, Promise<CorrectBalanceResult>>();
+
+/**
+ * Set one party's stored outstanding balance to the derived balance, after
+ * the owner's explicit approval from the reconciliation report. Audit-logged
+ * and idempotent per request key; a retry replays the correction.
+ */
+export async function correctOutstandingBalance(
+  client: SupabaseClient,
+  input: { kind: PaymentKind; partyId: string; reason: string | null },
+  requestKey: string,
+): Promise<CorrectBalanceResult> {
+  const existing = inFlightCorrections.get(requestKey);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<CorrectBalanceResult> => {
+    const { data, error } = await client.rpc("correct_outstanding_balance_atomic", {
+      p_request_key: requestKey,
+      p_kind: input.kind,
+      p_party_id: input.partyId,
+      p_reason: input.reason,
+    });
+    if (error) throw new Error(error.message || "Balance could not be corrected. Please retry.");
+    const result = data as CorrectBalanceResult | null;
+    if (!result || typeof result.party_id !== "string" || result.party_id === "") {
+      throw new Error("Balance could not be corrected. Please retry.");
+    }
+    return result;
+  })();
+
+  inFlightCorrections.set(requestKey, promise);
+  try {
+    return await promise;
+  } finally {
+    if (inFlightCorrections.get(requestKey) === promise) inFlightCorrections.delete(requestKey);
+  }
 }
 
 /**

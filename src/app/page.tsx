@@ -31,7 +31,15 @@ import { addBarcodeLine, addScannedLine } from "@/lib/invoices/barcode";
 import { createScanSubmitter, hasExactBarcodeMatch, isBarcodeShaped, type ScanSubmitter } from "@/lib/invoices/scan-submit";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
 import { createPurchase } from "@/lib/purchases/client";
-import { createPaymentAttemptKey, isUncertainPaymentError, submitPaymentAtomic } from "@/lib/payments/submit-payment";
+import {
+  correctOutstandingBalance,
+  createPaymentAttemptKey,
+  isUncertainPaymentError,
+  reconcileOutstandingBalances,
+  submitPaymentAtomic,
+  voidPaymentAtomic,
+  type ReconcileRow,
+} from "@/lib/payments/submit-payment";
 import { computePurchaseReturnValueByReturnId, computeReturnedValueByPurchaseTransaction, netPurchaseInvoiceAllocation } from "@/lib/purchases/returns-offset";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent as ReactChangeEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -430,6 +438,7 @@ export default function Home() {
     cash: t('money.cash'),
     bank: t('money.bank'),
     card: t('money.card'),
+    other: t('money.cheque'),
   };
   const expenseTypeLabelMap: Record<string, string> = {
     "Purchase Transport": t('page.expPurchaseTransport'),
@@ -4811,6 +4820,7 @@ setCustomerOrganizationName("");
         amount: paymentAmount,
         paymentDate: customerPaymentDate || null,
         paymentMethod: customerPaymentMethod,
+        reference: customerPaymentReference.trim() || null,
         notes: customerPaymentNotes || null,
         allocations: allocationRows
           .filter((row) => row.allocationAmount > 0)
@@ -4825,6 +4835,7 @@ setCustomerOrganizationName("");
       setSelectedCustomerPaymentId(null);
       setCustomerPaymentAmount("");
       setCustomerPaymentNotes("");
+      setCustomerPaymentReference("");
       setCustomerPaymentDate(toDateInputValue(new Date()));
       setCustomerPaymentMethod("cash");
       setCustomerPaymentAllocationsByInvoice({});
@@ -4839,10 +4850,7 @@ setCustomerOrganizationName("");
       if (!isUncertainPaymentError(err)) {
         customerPaymentAttemptKeyRef.current = null;
       }
-      // Until the card database update runs, the payment function rejects
-      // method 'card': explain it instead of leaking the raw error.
-      const paymentMessage = err instanceof Error ? err.message : t('page.savePaymentFailed');
-      setCustomerPaymentError(customerPaymentMethod === "card" && /payment_method/i.test(paymentMessage) ? t('payments.cardNotEnabled') : paymentMessage);
+      setCustomerPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
       console.error("Error saving customer payment:", err);
     } finally {
       setCustomerPaymentLoading(false);
@@ -4924,6 +4932,7 @@ setCustomerOrganizationName("");
         amount: paymentAmount,
         paymentDate: supplierPaymentDate || null,
         paymentMethod: supplierPaymentMethod,
+        reference: supplierPaymentReference.trim() || null,
         notes: supplierPaymentNotes || null,
         allocations: allocationRows
           .filter((row) => row.allocationAmount > 0)
@@ -4938,6 +4947,7 @@ setCustomerOrganizationName("");
       setSelectedSupplierPaymentId(null);
       setSupplierPaymentAmount("");
       setSupplierPaymentNotes("");
+      setSupplierPaymentReference("");
       setSupplierPaymentDate(toDateInputValue(new Date()));
       setSupplierPaymentMethod("cash");
       setSupplierPaymentAllocationsByInvoice({});
@@ -4957,6 +4967,97 @@ setCustomerOrganizationName("");
       setSupplierPaymentLoading(false);
     }
   };
+
+  const handleVoidPayment = async (kind: "customer" | "supplier", paymentId: string) => {
+    if (voidingPaymentId) {
+      return;
+    }
+    if (!window.confirm(t('payments.voidConfirm'))) {
+      return;
+    }
+    setVoidingPaymentId(paymentId);
+    try {
+      await voidPaymentAtomic(supabase, { kind, paymentId, reason: null }, createPaymentAttemptKey());
+      if (kind === "customer") {
+        setCustomerPaymentMessage(t('payments.paymentVoided'));
+      } else {
+        setSupplierPaymentMessage(t('payments.paymentVoided'));
+      }
+      await fetchCustomerPayments(currentOrganizationId);
+      await fetchSupplierPayments(currentOrganizationId);
+      await fetchCustomerPaymentAllocations(currentOrganizationId);
+      await fetchSupplierPaymentAllocations(currentOrganizationId);
+      await fetchSalesTransactions(currentOrganizationId);
+      await fetchAuditLogs(currentOrganizationId);
+    } catch (err) {
+      if (kind === "customer") {
+        setCustomerPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
+      } else {
+        setSupplierPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
+      }
+      console.error("Error voiding payment:", err);
+    } finally {
+      setVoidingPaymentId(null);
+    }
+  };
+
+  const handleCheckBalances = async (kind: "customer" | "supplier") => {
+    if (reconcileLoading) {
+      return;
+    }
+    setReconcileLoading(true);
+    setReconcileMessage(null);
+    try {
+      const rows = await reconcileOutstandingBalances(supabase, kind);
+      if (kind === "customer") {
+        setCustomerReconcileRows(rows);
+        setCustomerReconcileChecked(true);
+      } else {
+        setSupplierReconcileRows(rows);
+        setSupplierReconcileChecked(true);
+      }
+    } catch (err) {
+      if (kind === "customer") {
+        setCustomerPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
+      } else {
+        setSupplierPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
+      }
+      console.error("Error checking balances:", err);
+    } finally {
+      setReconcileLoading(false);
+    }
+  };
+
+  const handleCorrectBalance = async (kind: "customer" | "supplier", partyId: string) => {
+    if (reconcileLoading) {
+      return;
+    }
+    if (!window.confirm(t('payments.correctConfirm'))) {
+      return;
+    }
+    setReconcileLoading(true);
+    try {
+      const result = await correctOutstandingBalance(
+        supabase,
+        { kind, partyId, reason: "Balance check" },
+        createPaymentAttemptKey()
+      );
+      if (result.corrected) {
+        setReconcileMessage(t('payments.balanceCorrected'));
+        await handleCheckBalances(kind);
+      }
+    } catch (err) {
+      if (kind === "customer") {
+        setCustomerPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
+      } else {
+        setSupplierPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
+      }
+      console.error("Error correcting balance:", err);
+    } finally {
+      setReconcileLoading(false);
+    }
+  };
+
 
   const saveExpense = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -5669,7 +5770,8 @@ setCustomerOrganizationName("");
   const [customerPaymentAmount, setCustomerPaymentAmount] = useState("");
   const [customerPaymentNotes, setCustomerPaymentNotes] = useState("");
   const [customerPaymentDate, setCustomerPaymentDate] = useState(toDateInputValue(new Date()));
-  const [customerPaymentMethod, setCustomerPaymentMethod] = useState<"cash" | "bank" | "card">("cash");
+  const [customerPaymentMethod, setCustomerPaymentMethod] = useState<"cash" | "bank" | "card" | "other">("cash");
+  const [customerPaymentReference, setCustomerPaymentReference] = useState("");
   const [customerPaymentLoading, setCustomerPaymentLoading] = useState(false);
   const [customerPaymentMessage, setCustomerPaymentMessage] = useState<string | null>(null);
   const [customerPaymentError, setCustomerPaymentError] = useState<string | null>(null);
@@ -5685,7 +5787,8 @@ setCustomerOrganizationName("");
   const [supplierPaymentAmount, setSupplierPaymentAmount] = useState("");
   const [supplierPaymentNotes, setSupplierPaymentNotes] = useState("");
   const [supplierPaymentDate, setSupplierPaymentDate] = useState(toDateInputValue(new Date()));
-  const [supplierPaymentMethod, setSupplierPaymentMethod] = useState<"cash" | "bank">("cash");
+  const [supplierPaymentMethod, setSupplierPaymentMethod] = useState<"cash" | "bank" | "card" | "other">("cash");
+  const [supplierPaymentReference, setSupplierPaymentReference] = useState("");
   const [supplierPaymentLoading, setSupplierPaymentLoading] = useState(false);
   const [supplierPaymentMessage, setSupplierPaymentMessage] = useState<string | null>(null);
   const [supplierPaymentError, setSupplierPaymentError] = useState<string | null>(null);
@@ -5693,6 +5796,16 @@ setCustomerOrganizationName("");
   const supplierPaymentAttemptKeyRef = useRef<string | null>(null);
   const [supplierPaymentAllocationsByInvoice, setSupplierPaymentAllocationsByInvoice] =
     useState<Record<string, string>>({});
+  // Void + balance-check state, shared by the customer and supplier
+  // payment sections: voiding is one RPC call per payment, and the
+  // reconciliation list is fetched on demand per kind.
+  const [voidingPaymentId, setVoidingPaymentId] = useState<string | null>(null);
+  const [customerReconcileRows, setCustomerReconcileRows] = useState<ReconcileRow[]>([]);
+  const [supplierReconcileRows, setSupplierReconcileRows] = useState<ReconcileRow[]>([]);
+  const [customerReconcileChecked, setCustomerReconcileChecked] = useState(false);
+  const [supplierReconcileChecked, setSupplierReconcileChecked] = useState(false);
+  const [reconcileLoading, setReconcileLoading] = useState(false);
+  const [reconcileMessage, setReconcileMessage] = useState<string | null>(null);
   const currentMonthRange = getMonthRange();
   const [selectedSupplierLedgerId, setSelectedSupplierLedgerId] = useState<string>("");
   const [supplierLedgerStartDate, setSupplierLedgerStartDate] = useState(currentMonthRange.start);
@@ -6989,7 +7102,7 @@ setCustomerOrganizationName("");
       async () => {
         const { data, error } = await supabase
           .from("customer_payments")
-          .select("id, customer_id, amount, notes, created_at, payment_date, payment_method")
+          .select("id, customer_id, amount, notes, created_at, payment_date, payment_method, reference, voided_at, void_reason")
           .eq("organization_id", orgId)
           .order("id", { ascending: true });
         if (error) throw error;
@@ -7037,7 +7150,7 @@ setCustomerOrganizationName("");
       async () => {
         const { data, error } = await supabase
           .from("supplier_payments")
-          .select("id, supplier_id, amount, notes, payment_date, created_at")
+          .select("id, supplier_id, amount, notes, payment_date, created_at, payment_method, reference, voided_at, void_reason")
           .eq("organization_id", orgId)
           .order("id", { ascending: true });
         if (error) throw error;
@@ -9645,10 +9758,14 @@ setCustomerOrganizationName("");
     },
     {}
   );
+  const voidedCustomerPaymentIds = new Set(
+    customerPayments.filter((payment) => payment.voided_at).map((payment) => String(payment.id))
+  );
   const totalCustomerPaymentsByCustomer = customerPayments.reduce<Record<string, number>>(
     (totals, payment) => {
       const customerId = String(payment.customer_id ?? "");
       if (!customerId) return totals;
+      if (payment.voided_at) return totals;
       totals[customerId] = (totals[customerId] ?? 0) + safeNumber(payment.amount);
       return totals;
     },
@@ -9656,6 +9773,7 @@ setCustomerOrganizationName("");
   );
   const explicitAllocatedPaymentsByCustomer = customerPaymentAllocations.reduce<Record<string, number>>(
     (totals, allocation) => {
+      if (voidedCustomerPaymentIds.has(String(allocation.customer_payment_id ?? ""))) return totals;
       const salesTransactionId = String(allocation.sales_transaction_id ?? "");
       const transaction = salesTransactionsById[salesTransactionId];
       if (!transaction) return totals;
@@ -9947,10 +10065,14 @@ setCustomerOrganizationName("");
         (totals[purchaseTransactionId] ?? 0) + safeNumber(allocation.amount);
       return totals;
     }, {});
+  const voidedSupplierPaymentIds = new Set(
+    supplierPayments.filter((payment) => payment.voided_at).map((payment) => String(payment.id))
+  );
   const totalSupplierPaymentsBySupplier = supplierPayments.reduce<Record<string, number>>(
     (totals, payment) => {
       const supplierId = String(payment.supplier_id ?? "");
       if (!supplierId) return totals;
+      if (payment.voided_at) return totals;
       totals[supplierId] = (totals[supplierId] ?? 0) + safeNumber(payment.amount);
       return totals;
     },
@@ -9958,6 +10080,7 @@ setCustomerOrganizationName("");
   );
   const explicitSupplierAllocationsBySupplier =
     supplierPaymentAllocations.reduce<Record<string, number>>((totals, allocation) => {
+      if (voidedSupplierPaymentIds.has(String(allocation.supplier_payment_id ?? ""))) return totals;
       const purchaseTransactionId = String(allocation.purchase_transaction_id ?? "");
       const transaction = purchaseTransactionsById[purchaseTransactionId];
       if (!transaction) return totals;
@@ -20937,6 +21060,7 @@ setCustomerOrganizationName("");
               </button>
             </div>
           </div>
+<div {...entryNavigationHandlers}>
 <div className="grid gap-4 sm:grid-cols-4">
              <label className="flex flex-col gap-1 text-xs text-foreground/80">
                <span>{t('payments.selectCustomer')}</span>
@@ -20967,6 +21091,7 @@ setCustomerOrganizationName("");
                <span>{t('payments.paymentDate')}</span>
                <input
                  type="date"
+                 data-entry-skip
                  value={customerPaymentDate}
                  onChange={(e) => setCustomerPaymentDate(e.target.value)}
                  className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -20977,15 +21102,28 @@ setCustomerOrganizationName("");
                <span>{t('payments.paymentMethod')}</span>
                <select
                  value={customerPaymentMethod}
-                 onChange={(e) => setCustomerPaymentMethod(e.target.value as "cash" | "bank" | "card")}
+                 onChange={(e) => setCustomerPaymentMethod(e.target.value as "cash" | "bank" | "card" | "other")}
                  className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                >
                  <option value="cash">{t('money.cash')}</option>
                  <option value="bank">{t('money.bank')}</option>
                  <option value="card">{t('money.card')}</option>
+                 <option value="other">{t('money.cheque')}</option>
                </select>
              </label>
            </div>
+
+           <label className="flex w-full flex-col gap-1 text-xs text-foreground/80 sm:col-span-4">
+             <span>{t('payments.reference')}</span>
+             <input
+               type="text"
+               value={customerPaymentReference}
+               onChange={(e) => setCustomerPaymentReference(e.target.value)}
+               placeholder={t('payments.referencePlaceholder')}
+               className="min-h-11 w-full rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+             />
+           </label>
+
 
            <label className="flex w-full flex-col gap-1 text-xs text-foreground/80 sm:col-span-4">
              <span>{t('payments.notesOptional')}</span>
@@ -21095,6 +21233,7 @@ setCustomerOrganizationName("");
 
           <div className="mt-3">
             <button
+              data-entry-add
               type="button"
               onClick={handleSaveCustomerPayment}
               disabled={customerPaymentLoading}
@@ -21105,6 +21244,7 @@ setCustomerOrganizationName("");
             {customerPaymentMessage && <p className="mt-2 text-sm text-success">{customerPaymentMessage}</p>}
             {customerPaymentError && <p className="mt-2 text-sm text-destructive">{customerPaymentError}</p>}
           </div>
+</div>
 
           <div className="mt-6 border-t border-border pt-4">
             <h3 className="mb-3 text-lg font-semibold text-foreground">{t('payments.history')}</h3>
@@ -21179,6 +21319,11 @@ setCustomerOrganizationName("");
                             {paymentMethodLabelMap[String(historyItem.payment.payment_method)] ?? String(historyItem.payment.payment_method).replace(/_/g, " ")}
                           </div>
                         )}
+                        {historyItem.payment.reference && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {t('payments.referenceLabel')}: {historyItem.payment.reference}
+                          </div>
+                        )}
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('payments.totalPayment')}</div>
@@ -21201,6 +21346,20 @@ setCustomerOrganizationName("");
 
                     {historyItem.payment.notes && (
                       <p className="mt-2 text-sm text-muted-foreground">{t('sell.notesLabel')}: {historyItem.payment.notes}</p>
+                    )}
+                    {historyItem.payment.voided_at ? (
+                      <span className="mt-2 inline-block rounded bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
+                        {t('payments.voided')}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleVoidPayment("customer", historyItem.payment.id)}
+                        disabled={voidingPaymentId === historyItem.payment.id}
+                        className="mt-2 min-h-11 rounded border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {t('payments.voidPayment')}
+                      </button>
                     )}
 
                     {historyItem.unallocatedAmount > 0 && (
@@ -21239,6 +21398,44 @@ setCustomerOrganizationName("");
               </ul>
             )}
           </div>
+          <div className="mt-6 border-t border-border pt-4">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">{t('payments.reconcileTitle')}</h3>
+            <p className="mb-3 text-xs text-muted-foreground/80">{t('payments.reconcileHint')}</p>
+            <button
+              type="button"
+              onClick={() => handleCheckBalances("customer")}
+              disabled={reconcileLoading}
+              className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t('payments.checkBalances')}
+            </button>
+            {reconcileMessage && <p className="mt-2 text-sm text-success">{reconcileMessage}</p>}
+            {customerReconcileChecked && customerReconcileRows.length === 0 && (
+              <p className="mt-3 text-sm text-muted-foreground">{t('payments.noDrift')}</p>
+            )}
+            {customerReconcileRows.length > 0 && (
+              <ul className="mt-3 space-y-3">
+                {customerReconcileRows.map((row) => (
+                  <li key={row.party_id} className="flex flex-col gap-2 rounded border border-border bg-card p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="font-medium text-foreground">{row.party_name}</div>
+                      <div className="tabular-nums text-muted-foreground">
+                        {t('payments.storedBalance')}: {formatBooksMoney(row.stored_balance)} · {t('payments.derivedBalance')}: {formatBooksMoney(row.derived_balance)} · {t('payments.drift')}: {formatBooksMoney(row.drift)}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCorrectBalance("customer", row.party_id)}
+                      disabled={reconcileLoading}
+                      className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {t('payments.correctBalance')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
         )}
 
@@ -21265,6 +21462,7 @@ setCustomerOrganizationName("");
               >
                 {t('buy.exportBalancesCsv')}
               </button>
+            <div {...entryNavigationHandlers}>
             </div>
           </div>
 <div className="grid gap-4 sm:grid-cols-4">
@@ -21297,6 +21495,7 @@ setCustomerOrganizationName("");
                <span>{t('buy.paymentDate')}</span>
                <input
                  type="date"
+                 data-entry-skip
                  value={supplierPaymentDate}
                  onChange={(e) => setSupplierPaymentDate(e.target.value)}
                  className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -21307,14 +21506,28 @@ setCustomerOrganizationName("");
                <span>{t('payments.paymentMethod')}</span>
                <select
                  value={supplierPaymentMethod}
-                 onChange={(e) => setSupplierPaymentMethod(e.target.value as "cash" | "bank")}
+                 onChange={(e) => setSupplierPaymentMethod(e.target.value as "cash" | "bank" | "card" | "other")}
                  className="min-h-11 rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                >
                  <option value="cash">{t('money.cash')}</option>
                  <option value="bank">{t('money.bank')}</option>
+                 <option value="card">{t('money.card')}</option>
+                 <option value="other">{t('money.cheque')}</option>
                </select>
              </label>
            </div>
+
+           <label className="flex w-full flex-col gap-1 text-xs text-foreground/80 sm:col-span-4">
+             <span>{t('payments.reference')}</span>
+             <input
+               type="text"
+               value={supplierPaymentReference}
+               onChange={(e) => setSupplierPaymentReference(e.target.value)}
+               placeholder={t('payments.referencePlaceholder')}
+               className="min-h-11 w-full rounded border border-input px-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+             />
+           </label>
+
 
            <label className="flex w-full flex-col gap-1 text-xs text-foreground/80 sm:col-span-4">
              <span>{t('buy.notesOptionalPlaceholder')}</span>
@@ -21420,6 +21633,7 @@ setCustomerOrganizationName("");
 
           <div className="mt-3">
             <button
+              data-entry-add
               type="button"
               onClick={handleSaveSupplierPayment}
               disabled={supplierPaymentLoading}
@@ -21430,6 +21644,7 @@ setCustomerOrganizationName("");
             {supplierPaymentMessage && <p className="mt-2 text-sm text-success">{supplierPaymentMessage}</p>}
             {supplierPaymentError && <p className="mt-2 text-sm text-destructive">{supplierPaymentError}</p>}
           </div>
+            </div>
 
           <div className="mt-6 border-t border-border pt-4">
             <h3 className="mb-3 text-lg font-semibold text-foreground">{t('buy.supplierPaymentHistory')}</h3>
@@ -21452,6 +21667,16 @@ setCustomerOrganizationName("");
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.paymentDate')}</div>
                         <div>{getDateOnly(historyItem.payment.created_at) ?? "-"}</div>
+                        {historyItem.payment.payment_method && (
+                          <div className="mt-1 inline-block rounded bg-muted/40 px-2 py-0.5 text-xs capitalize text-muted-foreground">
+                            {paymentMethodLabelMap[String(historyItem.payment.payment_method)] ?? String(historyItem.payment.payment_method).replace(/_/g, " ")}
+                          </div>
+                        )}
+                        {historyItem.payment.reference && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {t('payments.referenceLabel')}: {historyItem.payment.reference}
+                          </div>
+                        )}
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.totalPayment')}</div>
@@ -21469,6 +21694,20 @@ setCustomerOrganizationName("");
 
                     {historyItem.payment.notes && (
                       <p className="mt-2 text-sm text-muted-foreground">{t('buy.notesPrefix')} {historyItem.payment.notes}</p>
+                    )}
+                    {historyItem.payment.voided_at ? (
+                      <span className="mt-2 inline-block rounded bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
+                        {t('payments.voided')}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleVoidPayment("supplier", historyItem.payment.id)}
+                        disabled={voidingPaymentId === historyItem.payment.id}
+                        className="mt-2 min-h-11 rounded border border-destructive/40 px-3 py-2 text-xs text-destructive hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {t('payments.voidPayment')}
+                      </button>
                     )}
 
                     {historyItem.allocationExceedsPayment && (
@@ -21497,6 +21736,44 @@ setCustomerOrganizationName("");
                         </ul>
                       </div>
                     )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="mt-6 border-t border-border pt-4">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">{t('payments.reconcileTitle')}</h3>
+            <p className="mb-3 text-xs text-muted-foreground/80">{t('payments.reconcileHint')}</p>
+            <button
+              type="button"
+              onClick={() => handleCheckBalances("supplier")}
+              disabled={reconcileLoading}
+              className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t('payments.checkBalances')}
+            </button>
+            {reconcileMessage && <p className="mt-2 text-sm text-success">{reconcileMessage}</p>}
+            {supplierReconcileChecked && supplierReconcileRows.length === 0 && (
+              <p className="mt-3 text-sm text-muted-foreground">{t('payments.noDrift')}</p>
+            )}
+            {supplierReconcileRows.length > 0 && (
+              <ul className="mt-3 space-y-3">
+                {supplierReconcileRows.map((row) => (
+                  <li key={row.party_id} className="flex flex-col gap-2 rounded border border-border bg-card p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="font-medium text-foreground">{row.party_name}</div>
+                      <div className="tabular-nums text-muted-foreground">
+                        {t('payments.storedBalance')}: {formatBooksMoney(row.stored_balance)} · {t('payments.derivedBalance')}: {formatBooksMoney(row.derived_balance)} · {t('payments.drift')}: {formatBooksMoney(row.drift)}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCorrectBalance("supplier", row.party_id)}
+                      disabled={reconcileLoading}
+                      className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {t('payments.correctBalance')}
+                    </button>
                   </li>
                 ))}
               </ul>
