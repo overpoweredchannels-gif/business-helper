@@ -64,6 +64,14 @@
 -- apply this file until the offending rows are reviewed.
 begin;
 
+-- The 2026-11-09 con-fix widened create_payment_atomic from 8 to 9
+-- parameters (p_reference). CREATE OR REPLACE only replaces the same
+-- signature, so a database where the 8-arg version was already applied
+-- (the disposable DB) would keep BOTH overloads. Drop the stale 8-arg
+-- signature first; on a fresh database this is a no-op. The 8-arg version
+-- is never called by the current client (submit-payment.ts passes 9 args).
+drop function if exists public.create_payment_atomic(uuid, text, uuid, numeric, date, text, text, jsonb);
+
 alter table public.customer_payments
   add column if not exists request_key uuid,
   add column if not exists request_fingerprint text,
