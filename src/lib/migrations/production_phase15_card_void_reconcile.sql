@@ -60,22 +60,34 @@
 -- reviewed.
 begin;
 
--- CHECK widening: drop any existing payment_method CHECK by definition
--- (phase-4 pattern), then add the widened one with an explicit name.
-do $$ declare r record; begin
-  for r in select conname, conrelid::regclass as tbl from pg_constraint
-    where contype = 'c' and conrelid in ('public.customer_payments'::regclass, 'public.supplier_payments'::regclass)
-      and pg_get_constraintdef(oid) ilike '%payment_method%' loop
-    execute 'alter table ' || r.tbl || ' drop constraint ' || quote_ident(r.conname);
-  end loop;
-  if not exists (select 1 from pg_constraint where conname = 'customer_payments_payment_method_check') then
-    alter table public.customer_payments add constraint customer_payments_payment_method_check
-      check (payment_method in ('cash', 'bank', 'card', 'other'));
+-- CHECK widening: drop the phase-4 payment_method CHECKs by their known
+-- names, then add the widened ones. No dynamic SQL: the names are the ones
+-- phase-4 created. If a payment_method CHECK exists under any OTHER name
+-- (e.g. a manual re-add), the block raises a clear error instead of
+-- silently leaving the old narrow CHECK in place.
+do $$ begin
+  if exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.customer_payments'::regclass
+      and pg_get_constraintdef(oid) ilike '%payment_method%'
+      and conname <> 'customer_payments_payment_method_check'
+  ) then
+    raise exception 'customer_payments has a payment_method CHECK under an unexpected name; drop it manually before applying phase-15';
   end if;
-  if not exists (select 1 from pg_constraint where conname = 'supplier_payments_payment_method_check') then
-    alter table public.supplier_payments add constraint supplier_payments_payment_method_check
-      check (payment_method in ('cash', 'bank', 'card', 'other'));
+  if exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.supplier_payments'::regclass
+      and pg_get_constraintdef(oid) ilike '%payment_method%'
+      and conname <> 'supplier_payments_payment_method_check'
+  ) then
+    raise exception 'supplier_payments has a payment_method CHECK under an unexpected name; drop it manually before applying phase-15';
   end if;
+  alter table public.customer_payments drop constraint if exists customer_payments_payment_method_check;
+  alter table public.supplier_payments drop constraint if exists supplier_payments_payment_method_check;
+  alter table public.customer_payments add constraint customer_payments_payment_method_check
+    check (payment_method in ('cash', 'bank', 'card', 'other'));
+  alter table public.supplier_payments add constraint supplier_payments_payment_method_check
+    check (payment_method in ('cash', 'bank', 'card', 'other'));
 end $$;
 
 alter table public.customer_payments
