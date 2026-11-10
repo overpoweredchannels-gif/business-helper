@@ -784,6 +784,34 @@ export default function Home() {
     Record<string, { display_name: string; role: string; is_active: boolean }>
   >({});
   const [staffSectionDraft, setStaffSectionDraft] = useState<string[]>([]);
+  // Per-action payment permissions (phase 17 columns). The draft mirrors the
+  // selected staff member's stored booleans; owners/admins always have full
+  // payment access through the gate, so their draft is forced to all true.
+  type StaffPaymentActionKey =
+    | "can_create_customer_payments"
+    | "can_edit_customer_payments"
+    | "can_void_customer_payments"
+    | "can_create_supplier_payments"
+    | "can_edit_supplier_payments"
+    | "can_void_supplier_payments";
+  const staffPaymentActionKeys: StaffPaymentActionKey[] = [
+    "can_create_customer_payments",
+    "can_edit_customer_payments",
+    "can_void_customer_payments",
+    "can_create_supplier_payments",
+    "can_edit_supplier_payments",
+    "can_void_supplier_payments",
+  ];
+  const [staffPaymentActionsDraft, setStaffPaymentActionsDraft] = useState<
+    Record<StaffPaymentActionKey, boolean>
+  >({
+    can_create_customer_payments: false,
+    can_edit_customer_payments: false,
+    can_void_customer_payments: false,
+    can_create_supplier_payments: false,
+    can_edit_supplier_payments: false,
+    can_void_supplier_payments: false,
+  });
   const [inventoryTransactions, setInventoryTransactions] = useState<InventoryTransaction[]>([]);
   const [inventoryTransactionsLoading, setInventoryTransactionsLoading] = useState(false);
   const [inventoryTab, setInventoryTab] = useState<"dashboard" | "adjustments" | "ledger" | "import">("dashboard");
@@ -1131,7 +1159,33 @@ export default function Home() {
       (permission) => permission.profile_id === selectedStaffProfileId
     );
     setStaffSectionDraft(configureSalesTools([...(selectedPermission?.granted_sections ?? [])]));
-  }, [selectedStaffProfileId, staffPermissions]);
+    // Payment actions load from the stored booleans. Owners/admins always
+    // have full payment access through the gate, so their draft reads as
+    // all granted (the toggles render checked and disabled for them).
+    const selectedProfile = staffProfiles.find((profile) => profile.id === selectedStaffProfileId);
+    const selectedIsOwnerOrAdmin =
+      selectedProfile?.role === "owner" || selectedProfile?.role === "admin";
+    setStaffPaymentActionsDraft({
+      can_create_customer_payments: selectedIsOwnerOrAdmin
+        ? true
+        : (selectedPermission?.can_create_customer_payments ?? false),
+      can_edit_customer_payments: selectedIsOwnerOrAdmin
+        ? true
+        : (selectedPermission?.can_edit_customer_payments ?? false),
+      can_void_customer_payments: selectedIsOwnerOrAdmin
+        ? true
+        : (selectedPermission?.can_void_customer_payments ?? false),
+      can_create_supplier_payments: selectedIsOwnerOrAdmin
+        ? true
+        : (selectedPermission?.can_create_supplier_payments ?? false),
+      can_edit_supplier_payments: selectedIsOwnerOrAdmin
+        ? true
+        : (selectedPermission?.can_edit_supplier_payments ?? false),
+      can_void_supplier_payments: selectedIsOwnerOrAdmin
+        ? true
+        : (selectedPermission?.can_void_supplier_payments ?? false),
+    });
+  }, [selectedStaffProfileId, staffPermissions, staffProfiles]);
 
   const fetchExpenses = async (organizationId: string | null) => {
     if (!organizationId) {
@@ -16970,6 +17024,35 @@ setCustomerOrganizationName("");
       grantedSections.some(
         (sectionId) => sectionPermissionMap[sectionId as SectionId] === key
       );
+    // Payment actions are only effective with their section ticked (the
+    // gate needs section + boolean), so the stored booleans are the
+    // section-gated draft values: unticking a section revokes its actions
+    // instead of leaving them armed for a later re-grant. can_manage_payments
+    // is the legacy full-access flag the gate also honours, so it is true
+    // only when every payment action is effectively granted; otherwise the
+    // per-action booleans decide. (Previously it was set from the section
+    // map alone, which granted full payment access to anyone with either
+    // payment section and made the six booleans dead code.)
+    const customerPaymentSectionOn = grantedSections.includes("customer-payments");
+    const supplierPaymentSectionOn =
+      grantedSections.includes("supplier-payments") || grantedSections.includes("supplier-ledger");
+    const effectivePaymentActions: Record<StaffPaymentActionKey, boolean> = {
+      can_create_customer_payments:
+        customerPaymentSectionOn && staffPaymentActionsDraft.can_create_customer_payments,
+      can_edit_customer_payments:
+        customerPaymentSectionOn && staffPaymentActionsDraft.can_edit_customer_payments,
+      can_void_customer_payments:
+        customerPaymentSectionOn && staffPaymentActionsDraft.can_void_customer_payments,
+      can_create_supplier_payments:
+        supplierPaymentSectionOn && staffPaymentActionsDraft.can_create_supplier_payments,
+      can_edit_supplier_payments:
+        supplierPaymentSectionOn && staffPaymentActionsDraft.can_edit_supplier_payments,
+      can_void_supplier_payments:
+        supplierPaymentSectionOn && staffPaymentActionsDraft.can_void_supplier_payments,
+    };
+    const hasFullPaymentAccess = staffPaymentActionKeys.every(
+      (key) => effectivePaymentActions[key]
+    );
     const permissionPayload = {
       organization_id: currentOrganizationId,
       profile_id: selectedStaffProfileId,
@@ -16978,7 +17061,8 @@ setCustomerOrganizationName("");
       can_manage_suppliers: mapLegacy("can_manage_suppliers"),
       can_create_purchases: mapLegacy("can_create_purchases"),
       can_create_sales: mapLegacy("can_create_sales"),
-      can_manage_payments: mapLegacy("can_manage_payments"),
+      can_manage_payments: hasFullPaymentAccess,
+      ...effectivePaymentActions,
       can_manage_expenses: mapLegacy("can_manage_expenses"),
       can_view_profit: mapLegacy("can_view_profit"),
       can_view_reports: mapLegacy("can_view_reports"),
@@ -25405,6 +25489,47 @@ setCustomerOrganizationName("");
             {(() => {
               const selectedProfile = staffProfiles.find((profile) => profile.id === selectedStaffProfileId);
               const selectedProfileIsOwner = selectedProfile?.role === "owner";
+              const selectedProfileIsOwnerOrAdmin =
+                selectedProfile?.role === "owner" || selectedProfile?.role === "admin";
+              // Payment action toggles, grouped per kind. An action is only
+              // effective with its section ticked (the gate needs section +
+              // boolean); the Supplier Ledger section counts as the supplier
+              // section, matching the gate.
+              const paymentActionGroups: Array<{
+                label: string;
+                sectionOn: boolean;
+                keys: StaffPaymentActionKey[];
+              }> = [
+                {
+                  label: navigationLabel("customer-payments", "Customer Payments", language),
+                  sectionOn: staffSectionDraft.includes("customer-payments"),
+                  keys: [
+                    "can_create_customer_payments",
+                    "can_edit_customer_payments",
+                    "can_void_customer_payments",
+                  ],
+                },
+                {
+                  label: navigationLabel("supplier-payments", "Supplier Payments", language),
+                  sectionOn:
+                    staffSectionDraft.includes("supplier-payments") ||
+                    staffSectionDraft.includes("supplier-ledger"),
+                  keys: [
+                    "can_create_supplier_payments",
+                    "can_edit_supplier_payments",
+                    "can_void_supplier_payments",
+                  ],
+                },
+              ];
+              const paymentActionLabel: Record<StaffPaymentActionKey, string> = {
+                can_create_customer_payments: t('staff.paymentActionCreate'),
+                can_edit_customer_payments: t('common.edit'),
+                can_void_customer_payments: t('staff.paymentActionVoid'),
+                can_create_supplier_payments: t('staff.paymentActionCreate'),
+                can_edit_supplier_payments: t('common.edit'),
+                can_void_supplier_payments: t('staff.paymentActionVoid'),
+              };
+              const showPaymentActions = paymentActionGroups.some((group) => group.sectionOn);
 
               if (!selectedProfile) {
                 return <p className="mt-4 text-sm text-muted-foreground">{t('staff.selectToEdit')}</p>;
@@ -25490,6 +25615,36 @@ setCustomerOrganizationName("");
                         return event.target.checked ? [...grants, `sales:${tool.id}`] : grants;
                       })} />{tool.label}
                     </label>)}</div>
+                  </fieldset>}
+
+                  {showPaymentActions && <fieldset className="mt-4 rounded border border-border p-4">
+                    <legend className="px-2 font-medium">{t('staff.paymentActions')}</legend>
+                    <p className="mb-3 text-sm text-muted-foreground">{t('staff.paymentActionsHint')}</p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {paymentActionGroups.map((group) => (
+                        <div key={group.label} className="rounded border border-border bg-muted/30 p-3">
+                          <p className="mb-2 text-sm font-medium text-foreground">{group.label}</p>
+                          {group.keys.map((key) => (
+                            <label key={key} className="flex min-h-11 items-center gap-2 rounded px-2 py-1.5 text-sm text-foreground/80 hover:bg-muted/50">
+                              <input
+                                type="checkbox"
+                                checked={
+                                  selectedProfileIsOwnerOrAdmin
+                                    ? true
+                                    : group.sectionOn && staffPaymentActionsDraft[key]
+                                }
+                                disabled={!group.sectionOn || selectedProfileIsOwnerOrAdmin}
+                                onChange={(e) =>
+                                  setStaffPaymentActionsDraft((current) => ({ ...current, [key]: e.target.checked }))
+                                }
+                                className="accent-primary"
+                              />
+                              <span>{paymentActionLabel[key]}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
                   </fieldset>}
 
                   <button

@@ -298,6 +298,12 @@ export interface StaffPermission {
   can_create_purchases: boolean | null;
   can_create_sales: boolean | null;
   can_manage_payments: boolean | null;
+  can_create_customer_payments: boolean | null;
+  can_edit_customer_payments: boolean | null;
+  can_void_customer_payments: boolean | null;
+  can_create_supplier_payments: boolean | null;
+  can_edit_supplier_payments: boolean | null;
+  can_void_supplier_payments: boolean | null;
   can_manage_expenses: boolean | null;
   can_view_profit: boolean | null;
   can_view_reports: boolean | null;
