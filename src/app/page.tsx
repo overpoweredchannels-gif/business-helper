@@ -5164,11 +5164,22 @@ setCustomerOrganizationName("");
     setSupplierPaymentError(null);
   };
 
-  const handleVoidPayment = async (kind: "customer" | "supplier", paymentId: string) => {
+  const handleVoidPayment = (kind: "customer" | "supplier", paymentId: string) => {
     if (voidingPaymentId) {
       return;
     }
-    if (!window.confirm(t('payments.voidConfirm'))) {
+    setConfirmDialog({
+      title: t('payments.voidPayment'),
+      body: t('payments.voidConfirm'),
+      confirmLabel: t('payments.voidPayment'),
+      onConfirm: () => {
+        void applyVoidPayment(kind, paymentId);
+      },
+    });
+  };
+
+  const applyVoidPayment = async (kind: "customer" | "supplier", paymentId: string) => {
+    if (voidingPaymentId) {
       return;
     }
     setVoidingPaymentId(paymentId);
