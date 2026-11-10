@@ -982,7 +982,7 @@ create or replace function public.edit_payment_atomic(
   p_party_id uuid,
   p_amount numeric,
   p_payment_date date,
-  p_method text,
+  p_payment_method text,
   p_notes text default null,
   p_allocations jsonb default '[]'::jsonb,
   p_reference text default null
@@ -1052,7 +1052,7 @@ begin
   if p_payment_date is null then
     raise exception 'Payment date is required' using errcode = '22023';
   end if;
-  if p_method not in ('cash', 'bank', 'card', 'other') then
+  if p_payment_method not in ('cash', 'bank', 'card', 'other') then
     raise exception 'Invalid payment_method' using errcode = '22023';
   end if;
   if jsonb_typeof(p_allocations) is distinct from 'array' then
@@ -1064,7 +1064,7 @@ begin
 
   v_fingerprint := md5(jsonb_build_object(
     'kind', p_kind, 'payment_id', p_payment_id, 'party_id', p_party_id, 'amount', p_amount,
-    'payment_date', p_payment_date, 'method', p_method, 'notes', p_notes,
+    'payment_date', p_payment_date, 'method', p_payment_method, 'notes', p_notes,
     'allocations', p_allocations, 'reference', p_reference
   )::text);
   perform pg_advisory_xact_lock(hashtextextended(v_org::text || ':' || p_kind || ':' || p_request_key::text, 0));
@@ -1313,7 +1313,7 @@ begin
     where customer_payment_id = p_payment_id and organization_id = v_org;
     update public.customer_payments
     set customer_id = p_party_id, amount = p_amount, payment_date = p_payment_date,
-        payment_method = p_method, notes = p_notes, reference = nullif(p_reference, ''),
+        payment_method = p_payment_method, notes = p_notes, reference = nullif(p_reference, ''),
         edited_at = now(), edit_request_key = p_request_key, edit_request_fingerprint = v_fingerprint
     where id = p_payment_id and organization_id = v_org;
     if p_party_id = v_old_party_id then
@@ -1338,7 +1338,7 @@ begin
       'Edited customer payment for ' || v_party_name,
       jsonb_build_object('customer_id', p_party_id, 'old_customer_id', v_old_party_id,
         'old_amount', v_old_amount, 'amount', p_amount,
-        'old_payment_method', v_old_method, 'payment_method', p_method,
+        'old_payment_method', v_old_method, 'payment_method', p_payment_method,
         'old_payment_date', v_old_date, 'payment_date', p_payment_date,
         'old_notes', v_old_notes, 'notes', p_notes,
         'old_reference', v_old_reference, 'reference', p_reference,
@@ -1351,7 +1351,7 @@ begin
     where supplier_payment_id = p_payment_id and organization_id = v_org;
     update public.supplier_payments
     set supplier_id = p_party_id, amount = p_amount, payment_date = p_payment_date,
-        payment_method = p_method, notes = p_notes, reference = nullif(p_reference, ''),
+        payment_method = p_payment_method, notes = p_notes, reference = nullif(p_reference, ''),
         edited_at = now(), edit_request_key = p_request_key, edit_request_fingerprint = v_fingerprint
     where id = p_payment_id and organization_id = v_org;
     if p_party_id = v_old_party_id then
@@ -1376,7 +1376,7 @@ begin
       'Edited supplier payment for ' || v_party_name,
       jsonb_build_object('supplier_id', p_party_id, 'old_supplier_id', v_old_party_id,
         'old_amount', v_old_amount, 'amount', p_amount,
-        'old_payment_method', v_old_method, 'payment_method', p_method,
+        'old_payment_method', v_old_method, 'payment_method', p_payment_method,
         'old_payment_date', v_old_date, 'payment_date', p_payment_date,
         'old_notes', v_old_notes, 'notes', p_notes,
         'old_reference', v_old_reference, 'reference', p_reference,
