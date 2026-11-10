@@ -9944,8 +9944,16 @@ setCustomerOrganizationName("");
     },
     {}
   );
+  // Voided payments keep their allocation rows (the void only marks the
+  // payment voided), so the receivables engine must skip allocations that
+  // belong to a voided payment — otherwise a voided payment stays counted
+  // as applied and its invoice never shows unpaid again.
+  const voidedCustomerPaymentIds = new Set(
+    customerPayments.filter((payment) => payment.voided_at).map((payment) => String(payment.id))
+  );
   const explicitAllocatedAmountsBySalesTransaction = customerPaymentAllocations.reduce<Record<string, number>>(
     (totals, allocation) => {
+      if (voidedCustomerPaymentIds.has(String(allocation.customer_payment_id ?? ""))) return totals;
       const salesTransactionId = String(allocation.sales_transaction_id ?? "");
       if (!salesTransactionId) return totals;
       totals[salesTransactionId] =
@@ -9963,9 +9971,6 @@ setCustomerOrganizationName("");
       return transactions;
     },
     {}
-  );
-  const voidedCustomerPaymentIds = new Set(
-    customerPayments.filter((payment) => payment.voided_at).map((payment) => String(payment.id))
   );
   const totalCustomerPaymentsByCustomer = customerPayments.reduce<Record<string, number>>(
     (totals, payment) => {
@@ -10272,17 +10277,20 @@ setCustomerOrganizationName("");
     },
     {}
   );
+  // Same void exclusion as the customer side: allocations of a voided
+  // supplier payment must not count toward what is owed on a purchase.
+  const voidedSupplierPaymentIds = new Set(
+    supplierPayments.filter((payment) => payment.voided_at).map((payment) => String(payment.id))
+  );
   const supplierAllocatedAmountsByPurchaseTransaction =
     supplierPaymentAllocations.reduce<Record<string, number>>((totals, allocation) => {
+      if (voidedSupplierPaymentIds.has(String(allocation.supplier_payment_id ?? ""))) return totals;
       const purchaseTransactionId = String(allocation.purchase_transaction_id ?? "");
       if (!purchaseTransactionId) return totals;
       totals[purchaseTransactionId] =
         (totals[purchaseTransactionId] ?? 0) + safeNumber(allocation.amount);
       return totals;
     }, {});
-  const voidedSupplierPaymentIds = new Set(
-    supplierPayments.filter((payment) => payment.voided_at).map((payment) => String(payment.id))
-  );
   const totalSupplierPaymentsBySupplier = supplierPayments.reduce<Record<string, number>>(
     (totals, payment) => {
       const supplierId = String(payment.supplier_id ?? "");
