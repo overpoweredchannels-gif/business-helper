@@ -975,6 +975,13 @@ grant execute on function public.correct_outstanding_balance_atomic(uuid,text,uu
 -- later payments; adding back the full old amount would re-add a
 -- portion the create floored away. Older payments with no create-audit
 -- record fall back to the delta (documented approximation, same as void).
+-- NOTE (2026-11-10): Postgres does NOT allow renaming an input parameter
+-- with CREATE OR REPLACE (error 42P13). The original deploy declared
+-- p_method; the live client sends p_payment_method. Drop the old function
+-- first, then re-create it with the corrected name. Nothing inside the
+-- database calls this function (only the app, via PostgREST), so the
+-- drop is safe.
+drop function if exists public.edit_payment_atomic(uuid,text,uuid,uuid,numeric,date,text,text,jsonb,text);
 create or replace function public.edit_payment_atomic(
   p_request_key uuid,
   p_kind text,
