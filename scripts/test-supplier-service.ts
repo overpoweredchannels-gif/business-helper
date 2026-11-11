@@ -89,7 +89,14 @@ const storedSupplier = {
 
 type Call = { method: string; args: unknown[] };
 
-function createMockQueryBuilder(finalResult: { data: unknown[] | null; error: { message: string } | null }) {
+type MockFinalResult = {
+  data: unknown[] | null;
+  error: { message: string } | null;
+  /** Per-table exact counts returned by head:true count queries. */
+  counts?: Record<string, number>;
+};
+
+function createMockQueryBuilder(finalResult: MockFinalResult, table: string) {
   const calls: Call[] = [];
   const builder = {
     calls,
@@ -123,18 +130,31 @@ function createMockQueryBuilder(finalResult: { data: unknown[] | null; error: { 
       calls.push({ method: "delete", args: [] });
       return builder;
     },
+    // Real supabase-js builders are thenable: awaiting a chain resolves to
+    // { data, error, count }. Count queries (head:true) resolve their
+    // per-table count from finalResult.counts.
+    then(
+      onFulfilled?: (value: { data: unknown[] | null; error: { message: string } | null; count: number }) => unknown,
+      onRejected?: (reason: unknown) => unknown,
+    ) {
+      return Promise.resolve({
+        data: finalResult.data,
+        error: finalResult.error,
+        count: finalResult.counts?.[table] ?? 0,
+      }).then(onFulfilled, onRejected);
+    },
   };
   return builder;
 }
 
 type MockFromCall = { table: string; builder: { calls: Call[] } };
 
-function createMockSupabase(finalResult: { data: unknown[] | null; error: { message: string } | null }) {
+function createMockSupabase(finalResult: MockFinalResult) {
   const fromCalls: MockFromCall[] = [];
   const mock = {
     fromCalls,
     from(table: string) {
-      const builder = createMockQueryBuilder(finalResult);
+      const builder = createMockQueryBuilder(finalResult, table);
       fromCalls.push({ table, builder });
       return builder;
     },
@@ -330,6 +350,68 @@ async function testDeleteSupplier() {
   assertEqual(auditArgs.action, "supplier_archived", "Audits the archive");
 }
 
+async function testMoveToRecycleBin() {
+  const { mock, client } = createMockSupabase({ data: [storedSupplier], error: null });
+  const service = SupplierService.withSupabase(client);
+
+  await service.moveToRecycleBin(owner, "sup-1");
+  const updateCall = findCallOnTable(mock.fromCalls, "suppliers", "update");
+  assertTrue(!!updateCall, "Moves the supplier to the bin with an update");
+  const updateArgs = updateCall?.args[0] as Record<string, unknown>;
+  assertEqual(updateArgs.is_active, false, "Marks the supplier inactive in the bin");
+  assertTrue(typeof updateArgs.deleted_at === "string", "Sets deleted_at when moving to the bin");
+  const auditArgs = findCallOnTable(mock.fromCalls, "audit_logs", "insert")?.args[0] as Record<string, unknown>;
+  assertEqual(auditArgs.action, "supplier_moved_to_recycle_bin", "Audits the move to the bin");
+}
+
+async function testRestoreSupplier() {
+  const { mock, client } = createMockSupabase({
+    data: [{ ...storedSupplier, is_active: false, deleted_at: "2026-11-10T00:00:00.000Z" }],
+    error: null,
+  });
+  const service = SupplierService.withSupabase(client);
+
+  await service.restoreSupplier(owner, "sup-1");
+  const updateCall = findCallOnTable(mock.fromCalls, "suppliers", "update");
+  assertTrue(!!updateCall, "Restores the supplier with an update");
+  const updateArgs = updateCall?.args[0] as Record<string, unknown>;
+  assertEqual(updateArgs.is_active, true, "Restores the supplier to active");
+  assertEqual(updateArgs.deleted_at, null, "Clears deleted_at on restore");
+  const auditArgs = findCallOnTable(mock.fromCalls, "audit_logs", "insert")?.args[0] as Record<string, unknown>;
+  assertEqual(auditArgs.action, "supplier_restored", "Audits the restore");
+}
+
+async function testPermanentDeleteBlocked() {
+  const { mock, client } = createMockSupabase({
+    data: [storedSupplier],
+    error: null,
+    counts: { purchase_transactions: 2, supplier_payments: 1, purchase_orders: 0, purchase_returns: 0, expenses: 0 },
+  });
+  const service = SupplierService.withSupabase(client);
+
+  let message = "";
+  try {
+    await service.permanentlyDeleteSupplier(owner, "sup-1");
+  } catch (err) {
+    message = err instanceof Error ? err.message : "";
+  }
+  assertTrue(message.includes("2 purchase invoices"), "Block message names linked purchase invoices");
+  assertTrue(message.includes("1 supplier payment"), "Block message names linked supplier payments");
+  const deleteCall = findCallOnTable(mock.fromCalls, "suppliers", "delete");
+  assertEqual(deleteCall, undefined, "Never issues the hard delete when blocked");
+}
+
+async function testPermanentDeleteAllowed() {
+  const { mock, client } = createMockSupabase({ data: [storedSupplier], error: null, counts: {} });
+  const service = SupplierService.withSupabase(client);
+
+  await service.permanentlyDeleteSupplier(owner, "sup-1");
+  const deleteCall = findCallOnTable(mock.fromCalls, "suppliers", "delete");
+  assertTrue(!!deleteCall, "Issues the hard delete when nothing is linked");
+  const auditArgs = findCallOnTable(mock.fromCalls, "audit_logs", "insert")?.args[0] as Record<string, unknown>;
+  assertEqual(auditArgs.action, "supplier_permanently_deleted", "Audits the permanent delete");
+}
+
 async function main() {
   await testCreateSupplier();
   await testGetSupplier();
@@ -337,6 +419,10 @@ async function main() {
   await testCrossTenantDenied();
   await testUpdateSupplier();
   await testDeleteSupplier();
+  await testMoveToRecycleBin();
+  await testRestoreSupplier();
+  await testPermanentDeleteBlocked();
+  await testPermanentDeleteAllowed();
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) {

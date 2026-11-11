@@ -57,10 +57,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   const { id } = await params;
+  const permanent = new URL(request.url).searchParams.get("permanent") === "true";
   const service = getService(request);
 
   try {
-    await service.deleteSupplier(auth.actor, id);
+    if (permanent) {
+      await service.permanentlyDeleteSupplier(auth.actor, id);
+    } else {
+      await service.deleteSupplier(auth.actor, id);
+    }
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";

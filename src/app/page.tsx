@@ -608,6 +608,15 @@ export default function Home() {
   const [supplierPhone, setSupplierPhone] = useState("");
   const [supplierWhatsapp, setSupplierWhatsapp] = useState("");
   const [supplierCity, setSupplierCity] = useState("");
+  const [supplierArea, setSupplierArea] = useState("");
+  const [supplierCreditLimit, setSupplierCreditLimit] = useState("");
+  const [supplierCreditDays, setSupplierCreditDays] = useState("");
+  const [supplierCreditPolicy, setSupplierCreditPolicy] = useState("");
+  const [supplierPreferredPaymentMethod, setSupplierPreferredPaymentMethod] = useState("");
+  const [supplierAllowOverLimit, setSupplierAllowOverLimit] = useState(false);
+  const [supplierAllowOverdueSales, setSupplierAllowOverdueSales] = useState(false);
+  const [showArchivedSuppliers, setShowArchivedSuppliers] = useState(true);
+  const [showSupplierRecycleBin, setShowSupplierRecycleBin] = useState(false);
   const [supplierNotes, setSupplierNotes] = useState("");
   const [supplierMessage, setSupplierMessage] = useState<string | null>(null);
   const [supplierError, setSupplierError] = useState<string | null>(null);
@@ -5553,7 +5562,7 @@ setCustomerOrganizationName("");
       async () => {
         const { data, error } = await supabase
           .from("suppliers")
-          .select("id, supplier_name, contact_person, phone, whatsapp, city, notes, is_active")
+          .select("id, supplier_name, contact_person, phone, whatsapp, city, area, notes, credit_limit, credit_days, credit_policy, preferred_payment_method, allow_over_limit, allow_overdue_sales, outstanding_balance, last_purchase_date, deleted_at, is_active")
           .eq("organization_id", orgId)
           .order("supplier_name", { ascending: true });
         if (error) throw error;
@@ -8237,6 +8246,23 @@ setCustomerOrganizationName("");
     await handleArchiveCustomer(customerId);
   };
 
+  const resetSupplierFormFields = () => {
+    setSupplierEditingId(null);
+    setSupplierName("");
+    setContactPerson("");
+    setSupplierPhone("");
+    setSupplierWhatsapp("");
+    setSupplierCity("");
+    setSupplierArea("");
+    setSupplierCreditLimit("");
+    setSupplierCreditDays("");
+    setSupplierCreditPolicy("");
+    setSupplierPreferredPaymentMethod("");
+    setSupplierAllowOverLimit(false);
+    setSupplierAllowOverdueSales(false);
+    setSupplierNotes("");
+  };
+
   const handleSaveSupplier = async () => {
     if (!supplierName.trim()) {
       setSupplierError(t('page.supplierNameRequired'));
@@ -8250,78 +8276,59 @@ setCustomerOrganizationName("");
       return;
     }
 
+    if (suppliersLoading) {
+      return;
+    }
+
     setSupplierError(null);
     setSupplierMessage(null);
     setSuppliersLoading(true);
 
+    // The full-field API validates server-side (validateSupplierInput) and
+    // writes the audit log; the old direct-Supabase insert bypassed both.
     const payload = {
-      supplier_name: supplierName,
-      contact_person: contactPerson || null,
-      phone: supplierPhone || null,
-      whatsapp: supplierWhatsapp || null,
-      city: supplierCity || null,
-      notes: supplierNotes || null,
+      supplier_name: supplierName.trim(),
+      contact_person: contactPerson.trim() || null,
+      phone: supplierPhone.trim() || null,
+      whatsapp: supplierWhatsapp.trim() || null,
+      city: supplierCity.trim() || null,
+      area: supplierArea.trim() || null,
+      notes: supplierNotes.trim() || null,
+      credit_limit: supplierCreditLimit.trim() === "" ? null : Number(supplierCreditLimit),
+      credit_days: supplierCreditDays.trim() === "" ? null : Number(supplierCreditDays),
+      credit_policy: supplierCreditPolicy || null,
+      preferred_payment_method: supplierPreferredPaymentMethod || null,
+      allow_over_limit: supplierAllowOverLimit,
+      allow_overdue_sales: supplierAllowOverdueSales,
     };
 
-    if (supplierEditingId) {
-      const { data, error } = await supabase
-        .from("suppliers")
-        .update(payload)
-        .eq("id", supplierEditingId)
-        .eq("organization_id", currentOrganizationId)
-        .select("id")
-        .single();
-
-      setSuppliersLoading(false);
-
-      if (error) {
-        setSupplierError(t('page.supplierUpdateFailed'));
-        console.error("Supabase update supplier error:", error);
-        return;
+    try {
+      const isEditing = Boolean(supplierEditingId);
+      const response = await authorizedFetch(
+        isEditing ? `/api/suppliers/${supplierEditingId}` : "/api/suppliers",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof (result as { error?: unknown })?.error === "string"
+            ? (result as { error: string }).error
+            : t('page.supplierSaveFailed'),
+        );
       }
-
-      await createAuditLog({
-        action: "updated",
-        entity_type: "supplier",
-        entity_id: data?.id ?? supplierEditingId,
-        entity_label: supplierName,
-        description: t('page.updatedSupplier').replace('{name}', supplierName),
-        new_values: payload,
-      });
-      setSupplierMessage(t('page.supplierUpdated'));
-    } else {
-      const { data, error } = await supabase.from("suppliers").insert({
-        ...payload,
-        organization_id: currentOrganizationId,
-      }).select("id").single();
-
+      setSupplierMessage(isEditing ? t('page.supplierUpdated') : t('page.supplierSaved'));
+      resetSupplierFormFields();
+      fetchSuppliers();
+    } catch (err) {
+      setSupplierError(err instanceof Error ? err.message : t('page.supplierSaveFailed'));
+      console.error("Save supplier error:", err);
+    } finally {
       setSuppliersLoading(false);
-
-      if (error) {
-        setSupplierError(t('page.supplierSaveFailed'));
-        console.error("Supabase add supplier error:", error);
-        return;
-      }
-
-      await createAuditLog({
-        action: "created",
-        entity_type: "supplier",
-        entity_id: data?.id ?? null,
-        entity_label: supplierName,
-        description: t('page.createdSupplier').replace('{name}', supplierName),
-        new_values: payload,
-      });
-      setSupplierMessage(t('page.supplierSaved'));
     }
-
-    setSupplierEditingId(null);
-    setSupplierName("");
-    setContactPerson("");
-    setSupplierPhone("");
-    setSupplierWhatsapp("");
-    setSupplierCity("");
-    setSupplierNotes("");
-    fetchSuppliers();
   };
 
   const handleEditSupplier = (supplier: Supplier) => {
@@ -8333,22 +8340,42 @@ setCustomerOrganizationName("");
     setSupplierPhone(supplier.phone ?? "");
     setSupplierWhatsapp(supplier.whatsapp ?? "");
     setSupplierCity(supplier.city ?? "");
+    setSupplierArea(supplier.area ?? "");
+    setSupplierCreditLimit(supplier.credit_limit == null ? "" : String(supplier.credit_limit));
+    setSupplierCreditDays(supplier.credit_days == null ? "" : String(supplier.credit_days));
+    setSupplierCreditPolicy(supplier.credit_policy ?? "");
+    setSupplierPreferredPaymentMethod(supplier.preferred_payment_method ?? "");
+    setSupplierAllowOverLimit(supplier.allow_over_limit ?? false);
+    setSupplierAllowOverdueSales(supplier.allow_overdue_sales ?? false);
     setSupplierNotes(supplier.notes ?? "");
   };
 
   const handleCancelSupplierEdit = () => {
-    setSupplierEditingId(null);
-    setSupplierName("");
-    setContactPerson("");
-    setSupplierPhone("");
-    setSupplierWhatsapp("");
-    setSupplierCity("");
-    setSupplierNotes("");
+    resetSupplierFormFields();
     setSupplierError(null);
     setSupplierMessage(null);
   };
 
-  const handleArchiveSupplier = async (supplierId: string) => {
+  // Archive / restore / recycle-bin / permanent-delete all go through the
+  // supplier API (server validation + audit log). Archive and delete
+  // confirm first in the in-app dialog; restore is non-destructive and
+  // needs no confirm. Permanent delete is blocked server-side whenever
+  // linked records exist — the block message names what is linked.
+  const handleArchiveSupplier = (supplier: Supplier) => {
+    setConfirmDialog({
+      title: t('suppliers.archiveTitle'),
+      body: t('suppliers.archiveBody').replace('{name}', supplier.supplier_name),
+      confirmLabel: t('products.archive'),
+      onConfirm: () => {
+        void applyArchiveSupplier(supplier.id);
+      },
+    });
+  };
+
+  const applyArchiveSupplier = async (supplierId: string) => {
+    if (suppliersLoading) {
+      return;
+    }
     setSupplierError(null);
     setSupplierMessage(null);
     if (!requireOrganization("archive supplier")) {
@@ -8356,50 +8383,177 @@ setCustomerOrganizationName("");
       return;
     }
     setSuppliersLoading(true);
-
-    const supplierToArchive = suppliers.find((supplier) => supplier.id === supplierId);
-    const isActive = supplierToArchive?.is_active !== false;
-    const { error } = await supabase
-      .from("suppliers")
-      .update({ is_active: !isActive })
-      .eq("id", supplierId)
-      .eq("organization_id", currentOrganizationId);
-
-    setSuppliersLoading(false);
-
-    if (error) {
-      setSupplierError(t('page.supplierArchiveFailed'));
-      console.error("Supabase archive supplier error:", JSON.stringify(error, null, 2));
-      return;
+    try {
+      const response = await authorizedFetch(`/api/suppliers/${supplierId}`, { method: "DELETE" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof (result as { error?: unknown })?.error === "string"
+            ? (result as { error: string }).error
+            : t('page.supplierArchiveFailed'),
+        );
+      }
+      setSupplierMessage(t('page.supplierArchivedOk'));
+      fetchSuppliers();
+    } catch (err) {
+      setSupplierError(err instanceof Error ? err.message : t('page.supplierArchiveFailed'));
+      console.error("Archive supplier error:", err);
+    } finally {
+      setSuppliersLoading(false);
     }
-
-    await createAuditLog({
-      action: isActive ? "archived" : "restored",
-      entity_type: "supplier",
-      entity_id: supplierId,
-      entity_label: supplierToArchive?.supplier_name ?? supplierId,
-      description: isActive ? t('page.archivedSupplier').replace('{name}', supplierToArchive?.supplier_name ?? supplierId) : t('page.restoredSupplier').replace('{name}', supplierToArchive?.supplier_name ?? supplierId),
-      old_values: supplierToArchive
-        ? {
-            supplier_name: supplierToArchive.supplier_name,
-            is_active: isActive,
-          }
-        : null,
-      new_values: { is_active: !isActive },
-    });
-    setSupplierMessage(
-      isActive ? t('page.supplierArchivedOk') : t('page.supplierRestoredOk')
-    );
-    fetchSuppliers();
   };
 
+  const handleRestoreSupplier = async (supplierId: string) => {
+    if (suppliersLoading) {
+      return;
+    }
+    setSupplierError(null);
+    setSupplierMessage(null);
+    if (!requireOrganization("restore supplier")) {
+      setSupplierError(orgNotLoadedMessage);
+      return;
+    }
+    setSuppliersLoading(true);
+    try {
+      const response = await authorizedFetch(`/api/suppliers/${supplierId}/restore`, { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof (result as { error?: unknown })?.error === "string"
+            ? (result as { error: string }).error
+            : t('suppliers.supplierActionFailed'),
+        );
+      }
+      setSupplierMessage(t('page.supplierRestoredOk'));
+      fetchSuppliers();
+    } catch (err) {
+      setSupplierError(err instanceof Error ? err.message : t('suppliers.supplierActionFailed'));
+      console.error("Restore supplier error:", err);
+    } finally {
+      setSuppliersLoading(false);
+    }
+  };
+
+  const handleDeleteSupplierToBin = (supplier: Supplier) => {
+    setConfirmDialog({
+      title: t('suppliers.deleteToBinTitle'),
+      body: t('suppliers.deleteToBinBody').replace('{name}', supplier.supplier_name),
+      confirmLabel: t('common.delete'),
+      onConfirm: () => {
+        void applyMoveSupplierToBin(supplier.id);
+      },
+    });
+  };
+
+  const applyMoveSupplierToBin = async (supplierId: string) => {
+    if (suppliersLoading) {
+      return;
+    }
+    setSupplierError(null);
+    setSupplierMessage(null);
+    if (!requireOrganization("delete supplier")) {
+      setSupplierError(orgNotLoadedMessage);
+      return;
+    }
+    setSuppliersLoading(true);
+    try {
+      const response = await authorizedFetch(`/api/suppliers/${supplierId}/recycle-bin`, { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof (result as { error?: unknown })?.error === "string"
+            ? (result as { error: string }).error
+            : t('suppliers.supplierActionFailed'),
+        );
+      }
+      setSupplierMessage(t('suppliers.movedToBinOk'));
+      fetchSuppliers();
+    } catch (err) {
+      setSupplierError(err instanceof Error ? err.message : t('suppliers.supplierActionFailed'));
+      console.error("Move supplier to recycle bin error:", err);
+    } finally {
+      setSuppliersLoading(false);
+    }
+  };
+
+  const handlePermanentDeleteSupplier = (supplier: Supplier) => {
+    setConfirmDialog({
+      title: t('suppliers.permanentDeleteTitle'),
+      body: t('suppliers.permanentDeleteBody').replace('{name}', supplier.supplier_name),
+      confirmLabel: t('common.delete'),
+      onConfirm: () => {
+        void applyPermanentDeleteSupplier(supplier.id);
+      },
+    });
+  };
+
+  const applyPermanentDeleteSupplier = async (supplierId: string) => {
+    if (suppliersLoading) {
+      return;
+    }
+    setSupplierError(null);
+    setSupplierMessage(null);
+    if (!requireOrganization("delete supplier")) {
+      setSupplierError(orgNotLoadedMessage);
+      return;
+    }
+    setSuppliersLoading(true);
+    try {
+      const response = await authorizedFetch(`/api/suppliers/${supplierId}?permanent=true`, { method: "DELETE" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof (result as { error?: unknown })?.error === "string"
+            ? (result as { error: string }).error
+            : t('suppliers.supplierActionFailed'),
+        );
+      }
+      setSupplierMessage(t('suppliers.permanentlyDeletedOk'));
+      fetchSuppliers();
+    } catch (err) {
+      setSupplierError(err instanceof Error ? err.message : t('suppliers.supplierActionFailed'));
+      console.error("Permanently delete supplier error:", err);
+    } finally {
+      setSuppliersLoading(false);
+    }
+  };
+
+  // The main list never shows binned suppliers (deleted_at set) — they live
+  // in the recycle bin view. Archived suppliers (inactive, no deleted_at)
+  // stay visible by default, exactly as before; the toggle hides them.
   const filteredSuppliers = suppliers.filter((supplier) => {
+    if (supplier.deleted_at) return false;
+    if (!showArchivedSuppliers && supplier.is_active === false) return false;
     const searchTerm = supplierSearch.trim().toLowerCase();
     if (!searchTerm) return true;
     return [supplier.supplier_name, supplier.contact_person, supplier.phone].some(
       (value) => value?.toLowerCase().includes(searchTerm)
     );
   });
+
+  const binnedSuppliers = suppliers.filter((supplier) => Boolean(supplier.deleted_at));
+
+  // Days left in the 7-day recycle bin; 0 means ready for permanent delete.
+  // The bin never auto-deletes — after 7 days the row just stays listed as ready.
+  const supplierBinDaysLeft = (deletedAt: string | null | undefined): number => {
+    if (!deletedAt) return 0;
+    return Math.max(0, 7 - Math.floor((Date.now() - new Date(deletedAt).getTime()) / 86400000));
+  };
+
+  // One-line credit summary for the list; unset parts show as "None", never invented.
+  const supplierCreditSummary = (supplier: Supplier): string => {
+    const limit = supplier.credit_limit != null ? formatBooksMoney(supplier.credit_limit) : t('common.none');
+    const days = supplier.credit_days != null ? `${supplier.credit_days} ${t('suppliers.creditDaysSuffix')}` : t('common.none');
+    let policy = t('common.none');
+    if (supplier.credit_policy === "cash_only") policy = t('page.creditCashOnly');
+    if (supplier.credit_policy === "unrestricted") policy = t('page.creditUnrestricted');
+    let method = t('common.none');
+    if (supplier.preferred_payment_method === "cash") method = t('money.cash');
+    if (supplier.preferred_payment_method === "bank") method = t('money.bank');
+    if (supplier.preferred_payment_method === "card") method = t('money.card');
+    if (supplier.preferred_payment_method === "cheque") method = t('money.cheque');
+    return `${limit} · ${days} · ${policy} · ${method}`;
+  };
 
   const activeSuppliers = useMemo(
     () => suppliers.filter((supplier) => supplier.is_active !== false),
@@ -23848,7 +24002,7 @@ setCustomerOrganizationName("");
             {supplierEditingId ? t('suppliers.editSupplier') : t('suppliers.management')}
           </h2>
           <details className="mb-5 rounded-lg border border-border p-4"><summary className="cursor-pointer font-medium">{t('suppliers.viewImportedHistory')}</summary><div className="mt-3"><HistoricalRecords organizationId={currentOrganizationId} partyType="supplier" /></div></details>
-          <div className="space-y-6">
+          <div className="space-y-6" {...entryNavigationHandlers}>
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>{t('suppliers.supplierName')}</span>
               <input
@@ -23905,6 +24059,93 @@ setCustomerOrganizationName("");
             </div>
 
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
+              <span>{t('suppliers.areaLabel')}</span>
+              <input
+                type="text"
+                value={supplierArea}
+                onChange={(e) => setSupplierArea(e.target.value)}
+                className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>{t('suppliers.creditLimitLabel')}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={supplierCreditLimit}
+                  onChange={(e) => setSupplierCreditLimit(e.target.value)}
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>{t('suppliers.creditDaysLabel')}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={supplierCreditDays}
+                  onChange={(e) => setSupplierCreditDays(e.target.value)}
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>{t('suppliers.creditPolicyLabel')}</span>
+                <select
+                  value={supplierCreditPolicy}
+                  onChange={(e) => setSupplierCreditPolicy(e.target.value)}
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="">{t('common.none')}</option>
+                  <option value="cash_only">{t('page.creditCashOnly')}</option>
+                  <option value="unrestricted">{t('page.creditUnrestricted')}</option>
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>{t('suppliers.preferredPaymentLabel')}</span>
+                <select
+                  value={supplierPreferredPaymentMethod}
+                  onChange={(e) => setSupplierPreferredPaymentMethod(e.target.value)}
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="">{t('common.none')}</option>
+                  <option value="cash">{t('money.cash')}</option>
+                  <option value="bank">{t('money.bank')}</option>
+                  <option value="card">{t('money.card')}</option>
+                  <option value="cheque">{t('money.cheque')}</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-4">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-foreground/80">
+                <input
+                  type="checkbox"
+                  checked={supplierAllowOverLimit}
+                  onChange={(e) => setSupplierAllowOverLimit(e.target.checked)}
+                  className="size-4"
+                />
+                {t('suppliers.allowOverLimitLabel')}
+              </label>
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-foreground/80">
+                <input
+                  type="checkbox"
+                  checked={supplierAllowOverdueSales}
+                  onChange={(e) => setSupplierAllowOverdueSales(e.target.checked)}
+                  className="size-4"
+                />
+                {t('suppliers.allowOverdueSalesLabel')}
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>{t('sell.notesLabel')}</span>
               <textarea
                 value={supplierNotes}
@@ -23919,6 +24160,7 @@ setCustomerOrganizationName("");
                 type="button"
                 onClick={handleSaveSupplier}
                 disabled={suppliersLoading}
+                data-entry-add
                 className="min-h-11 flex-1 rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
               >
                 {supplierEditingId ? t('suppliers.updateSupplier') : t('suppliers.saveSupplier')}
@@ -23952,52 +24194,142 @@ setCustomerOrganizationName("");
             </div>
 
             <div>
-              <h3 className="mb-3 text-lg font-semibold text-foreground">{t('suppliers.existingSuppliers')}</h3>
-              {suppliersLoading ? (
-                <p className="text-sm text-muted-foreground">{t('suppliers.loadingSuppliers')}</p>
-              ) : filteredSuppliers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t('suppliers.noSuppliersFound')}</p>
+              <div className="mb-3 flex flex-wrap items-center gap-4">
+                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-foreground/80">
+                  <input
+                    type="checkbox"
+                    checked={showArchivedSuppliers}
+                    onChange={(e) => setShowArchivedSuppliers(e.target.checked)}
+                    className="size-4"
+                  />
+                  {t('suppliers.showArchived')}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowSupplierRecycleBin((value) => !value)}
+                  className="min-h-11 rounded border border-border px-3 py-1 text-sm text-foreground/80 hover:bg-muted/30"
+                >
+                  {showSupplierRecycleBin
+                    ? t('suppliers.hideRecycleBin')
+                    : `${t('suppliers.showRecycleBin')} (${binnedSuppliers.length})`}
+                </button>
+              </div>
+              {showSupplierRecycleBin ? (
+                <>
+                  <h3 className="mb-3 text-lg font-semibold text-foreground">{t('suppliers.recycleBinTitle')}</h3>
+                  {binnedSuppliers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{t('suppliers.noBinnedSuppliers')}</p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {binnedSuppliers.map((supplier) => {
+                        const daysLeft = supplierBinDaysLeft(supplier.deleted_at);
+                        return (
+                          <li
+                            key={supplier.id}
+                            className="flex flex-col gap-2 rounded border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="space-y-1 text-sm text-foreground/80">
+                              <div className="font-medium text-foreground">{supplier.supplier_name}</div>
+                              <div>{t('suppliers.deletedPrefix')} {supplier.deleted_at ? formatDate(supplier.deleted_at) : t('common.none')}</div>
+                              <div>
+                                {daysLeft > 0
+                                  ? t('suppliers.daysLeft').replace('{days}', String(daysLeft))
+                                  : t('suppliers.readyForPermanentDelete')}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleRestoreSupplier(supplier.id)}
+                                disabled={suppliersLoading}
+                                className="min-h-11 rounded bg-primary px-3 py-1 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-primary/30"
+                              >
+                                {t('common.restore')}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePermanentDeleteSupplier(supplier)}
+                                disabled={suppliersLoading}
+                                className="min-h-11 rounded bg-destructive px-3 py-1 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-destructive/30"
+                              >
+                                {t('suppliers.deletePermanently')}
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </>
               ) : (
-                <ul className="space-y-3">
-                  {filteredSuppliers.map((supplier) => (
-                    <li
-                      key={supplier.id}
-                      className="flex flex-col gap-2 rounded border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="space-y-1 text-sm text-foreground/80">
-                        <div className="font-medium text-foreground">
-                          {supplier.supplier_name}
-                          {supplier.is_active === false && (
-                            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{t('common.archived')}</span>
-                          )}
-                        </div>
-                        <div>{t('suppliers.contactPrefix')} {supplier.contact_person ?? t('common.none')}</div>
-                        <div>{t('customers.phonePrefix')} {supplier.phone ?? t('common.none')}</div>
-                        <div>{t('customers.cityPrefix')} {supplier.city ?? t('common.none')}</div>
-                      </div>
-                      <div className="flex shrink-0 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleEditSupplier(supplier)}
-                          className="min-h-11 rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
+                <>
+                  <h3 className="mb-3 text-lg font-semibold text-foreground">{t('suppliers.existingSuppliers')}</h3>
+                  {suppliersLoading ? (
+                    <p className="text-sm text-muted-foreground">{t('suppliers.loadingSuppliers')}</p>
+                  ) : filteredSuppliers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{t('suppliers.noSuppliersFound')}</p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {filteredSuppliers.map((supplier) => (
+                        <li
+                          key={supplier.id}
+                          className="flex flex-col gap-2 rounded border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
                         >
-                          {t('common.edit')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleArchiveSupplier(supplier.id)}
-                          className={`min-h-11 rounded px-3 py-1 text-sm text-white transition hover:opacity-90 ${
-                            supplier.is_active === false
-                              ? "bg-primary"
-                              : "bg-destructive"
-                          }`}
-                        >
-                          {supplier.is_active === false ? t('common.restore') : t('products.archive')}
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                          <div className="space-y-1 text-sm text-foreground/80">
+                            <div className="font-medium text-foreground">
+                              {supplier.supplier_name}
+                              {supplier.is_active === false && (
+                                <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{t('common.archived')}</span>
+                              )}
+                            </div>
+                            <div>{t('suppliers.contactPrefix')} {supplier.contact_person ?? t('common.none')}</div>
+                            <div>{t('customers.phonePrefix')} {supplier.phone ?? t('common.none')}</div>
+                            <div>{t('customers.cityPrefix')} {supplier.city ?? t('common.none')}</div>
+                            <div>{t('suppliers.outstandingPrefix')} {formatBooksMoney(supplier.outstanding_balance ?? 0)}</div>
+                            <div>{t('suppliers.lastPurchasePrefix')} {supplier.last_purchase_date ? formatDate(supplier.last_purchase_date) : t('common.none')}</div>
+                            <div>{t('suppliers.creditPrefix')} {supplierCreditSummary(supplier)}</div>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleEditSupplier(supplier)}
+                              className="min-h-11 rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
+                            >
+                              {t('common.edit')}
+                            </button>
+                            {supplier.is_active === false ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleRestoreSupplier(supplier.id)}
+                                disabled={suppliersLoading}
+                                className="min-h-11 rounded bg-primary px-3 py-1 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-primary/30"
+                              >
+                                {t('common.restore')}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleArchiveSupplier(supplier)}
+                                disabled={suppliersLoading}
+                                className="min-h-11 rounded bg-destructive px-3 py-1 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-destructive/30"
+                              >
+                                {t('products.archive')}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSupplierToBin(supplier)}
+                              disabled={suppliersLoading}
+                              className="min-h-11 rounded border border-border px-3 py-1 text-sm text-destructive hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {t('common.delete')}
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
             </div>
           </div>

@@ -176,7 +176,7 @@ export class SupplierService {
       throw new Error("Supplier not found");
     }
 
-    await this.repository.setActive(actor.organizationId, supplierId, true);
+    await this.repository.restore(actor.organizationId, supplierId);
 
     await this.audit.create({
       organization_id: actor.organizationId,
@@ -189,6 +189,90 @@ export class SupplierService {
       description: `Restored supplier ${existing.supplier_name}`,
       old_values: { is_active: false },
       new_values: { is_active: true },
+    });
+  }
+
+  /** Move a supplier to the 7-day recycle bin (inactive + deleted_at set). */
+  async moveToRecycleBin(actor: ActorContext, supplierId: string) {
+    if (!actor.organizationId) {
+      throw new Error("Organization context required");
+    }
+
+    const existing = await this.repository.findById(actor.organizationId, supplierId);
+    if (!existing) {
+      throw new Error("Supplier not found");
+    }
+
+    await this.repository.moveToBin(actor.organizationId, supplierId);
+
+    await this.audit.create({
+      organization_id: actor.organizationId,
+      actor_profile_id: actor.profileId,
+      actor_email: actor.email,
+      action: "supplier_moved_to_recycle_bin",
+      entity_type: "supplier",
+      entity_id: supplierId,
+      entity_label: existing.supplier_name,
+      description: `Moved supplier ${existing.supplier_name} to the recycle bin`,
+      old_values: { supplier_name: existing.supplier_name, is_active: true },
+      new_values: { is_active: false },
+    });
+  }
+
+  /**
+   * Permanently delete a supplier. Blocked whenever any record is still
+   * linked to it — the live FKs would otherwise either fail with a raw
+   * database error (purchase invoices, supplier payments, expenses are
+   * NO ACTION) or silently unlink history (purchase orders, purchase
+   * returns are SET NULL). The block message names every non-zero count.
+   */
+  async permanentlyDeleteSupplier(actor: ActorContext, supplierId: string) {
+    if (!actor.organizationId) {
+      throw new Error("Organization context required");
+    }
+
+    const existing = await this.repository.findById(actor.organizationId, supplierId);
+    if (!existing) {
+      throw new Error("Supplier not found");
+    }
+
+    const counts = await this.repository.countLinkedRecords(actor.organizationId, supplierId);
+    const parts: string[] = [];
+    if (counts.purchase_transactions > 0) {
+      parts.push(`${counts.purchase_transactions} purchase invoice${counts.purchase_transactions === 1 ? "" : "s"}`);
+    }
+    if (counts.supplier_payments > 0) {
+      parts.push(`${counts.supplier_payments} supplier payment${counts.supplier_payments === 1 ? "" : "s"}`);
+    }
+    if (counts.purchase_orders > 0) {
+      parts.push(`${counts.purchase_orders} purchase order${counts.purchase_orders === 1 ? "" : "s"}`);
+    }
+    if (counts.purchase_returns > 0) {
+      parts.push(`${counts.purchase_returns} purchase return${counts.purchase_returns === 1 ? "" : "s"}`);
+    }
+    if (counts.expenses > 0) {
+      parts.push(`${counts.expenses} expense${counts.expenses === 1 ? "" : "s"}`);
+    }
+    if (parts.length > 0) {
+      throw new Error(
+        `Cannot permanently delete ${existing.supplier_name}: ${parts.join(", ")} still linked. ` +
+          `Remove the linked records first, or keep the supplier in the recycle bin.`,
+      );
+    }
+
+    await this.repository.remove(actor.organizationId, supplierId);
+
+    await this.audit.create({
+      organization_id: actor.organizationId,
+      actor_profile_id: actor.profileId,
+      actor_email: actor.email,
+      action: "supplier_permanently_deleted",
+      entity_type: "supplier",
+      entity_id: supplierId,
+      entity_label: existing.supplier_name,
+      description: `Permanently deleted supplier ${existing.supplier_name}`,
+      old_values: { supplier_name: existing.supplier_name },
+      new_values: null,
     });
   }
 }

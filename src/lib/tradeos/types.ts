@@ -72,7 +72,17 @@ export interface Supplier {
   phone: string | null;
   whatsapp: string | null;
   city: string | null;
+  area?: string | null;
   notes: string | null;
+  credit_limit?: number | null;
+  credit_days?: number | null;
+  credit_policy?: string | null;
+  preferred_payment_method?: string | null;
+  allow_over_limit?: boolean | null;
+  allow_overdue_sales?: boolean | null;
+  outstanding_balance?: number | null;
+  last_purchase_date?: string | null;
+  deleted_at?: string | null;
   is_active?: boolean | null;
 }
 
