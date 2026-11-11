@@ -8,8 +8,8 @@ import { getMapProvider } from "@/lib/maps/map-provider";
 import { getPlaceName } from "@/lib/maps/client-maps";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { useRegional } from "@/components/regional/RegionalProvider";
-import { localeFor } from "@/lib/regional/settings";
 import { renderDeferred, type DeferredMessage } from "@/lib/regional/deferred";
+import { formatTime } from "@/lib/tradeos/formatters";
 
 interface MeResponse {
   ok: boolean;
@@ -31,8 +31,7 @@ interface LocationPoint {
 }
 
 export function EmployeeLiveTracking() {
-  const { t, language } = useRegional();
-  const locale = localeFor(language);
+  const { t } = useRegional();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | DeferredMessage | null>(null);
   const [message, setMessage] = useState<string | DeferredMessage | null>(null);
@@ -432,7 +431,7 @@ export function EmployeeLiveTracking() {
           </div>
           {lastSavedAt && (
             <div className="text-[11px] text-body">
-              {renderDeferred(t, { key: 'tracking.lastUpdated', values: { time: new Date(lastSavedAt).toLocaleTimeString(locale) } })}
+              {renderDeferred(t, { key: 'tracking.lastUpdated', values: { time: formatTime(lastSavedAt) } })}
             </div>
           )}
         </div>

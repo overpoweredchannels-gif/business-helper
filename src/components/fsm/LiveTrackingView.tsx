@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { formatTime } from "@/lib/tradeos/formatters";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { getMapProvider } from "@/lib/maps/map-provider";
 import { getPlaceName } from "@/lib/maps/client-maps";
@@ -251,7 +252,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                     )}
                     {emp.scheduledEndAt && emp.isOnDuty && (
                       <div className="mt-0.5 text-[11px] text-light-text">
-                        {t('fsm.tracking.cutoff').replace('{time}', new Date(emp.scheduledEndAt).toLocaleTimeString())}
+                        {t('fsm.tracking.cutoff').replace('{time}', formatTime(emp.scheduledEndAt))}
                       </div>
                     )}
                   </div>
@@ -337,7 +338,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                       <>
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-light-text">{t('fsm.tracking.recordedPoints').replace('{count}', String(points.length))}</span>
-                          <span className="text-body">{t('fsm.tracking.lastSeen').replace('{time}', new Date(last.captured_at).toLocaleTimeString())}</span>
+                          <span className="text-body">{t('fsm.tracking.lastSeen').replace('{time}', formatTime(last.captured_at))}</span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-primary">
                           <Maximize2 className="size-3.5" />

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { formatTime } from "@/lib/tradeos/formatters";
 import LiveMap from "./LiveMap";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import type { CurrentLocationView } from "../../lib/location/types";
@@ -31,7 +32,7 @@ export default function LocationDashboard() {
       setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
-      setLastRefresh(new Date().toLocaleTimeString());
+      setLastRefresh(formatTime(new Date()));
     }
   }, [t]);
 
@@ -158,7 +159,7 @@ export default function LocationDashboard() {
                 )}
                 {emp.scheduledEndAt && emp.isOnDuty && (
                   <div style={{ fontSize: "0.7rem", color: "#6b7280", marginTop: "0.25rem" }}>
-                    {t('fsm.tracking.scheduledEnd').replace('{time}', new Date(emp.scheduledEndAt).toLocaleTimeString())}
+                    {t('fsm.tracking.scheduledEnd').replace('{time}', formatTime(emp.scheduledEndAt))}
                   </div>
                 )}
               </div>

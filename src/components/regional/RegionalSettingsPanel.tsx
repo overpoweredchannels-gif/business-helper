@@ -1,8 +1,9 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {useRegional} from './RegionalProvider';
-import {currencies,locales,parseRegionalSettings,type RegionalSettings,type Currency,type Language} from '@/lib/regional/settings';
+import {currencies,locales,sanitizeRegionalSettings,type RegionalSettings,type Currency,type Language} from '@/lib/regional/settings';
 import {formatDocumentMoney} from '@/lib/regional/money';
+import {setActiveTimeZone} from '@/lib/tradeos/formatters';
 import {messages,type MessageKey} from '@/lib/regional/messages';
 import {regionalUi} from '@/lib/regional/ui-messages';
 
@@ -20,7 +21,7 @@ export function resolveRegionalErrorText(error:string|null,language:Language):st
   return regionalUi[language].saveError;
 }
 export function RegionalSettingsPanel({request,canEdit}:Props){
-  const {enabled,language,t,ui}=useRegional();
+  const {enabled,language,t,ui,setLanguage}=useRegional();
   const [preferences,setPreferences]=useState<RegionalSettings|null>(null);
   const [revision,setRevision]=useState('');
   const [reload,setReload]=useState(0);
@@ -34,7 +35,10 @@ export function RegionalSettingsPanel({request,canEdit}:Props){
     request('/api/identity/organization/regional',{signal:controller.signal}).then(async response=>{
       const data=await response.json();
       if(!response.ok)throw new Error(data.error==='regional.persistenceUnavailable'?'persistenceUnavailable':'loadError');
-      const parsed=parseRegionalSettings(data.preferences);
+      // The server already sanitizes; sanitize again so a missing or
+      // malformed stored value can never crash the load path into the
+      // red error note — the form opens on the app defaults instead.
+      const parsed=sanitizeRegionalSettings(data.preferences);
       if(controller.signal.aborted)return;
       setPreferences(parsed);setRevision(data.revision);setError(null);
     }).catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error&&error.message==='persistenceUnavailable'?'persistenceUnavailable':'loadError');});
@@ -55,7 +59,13 @@ export function RegionalSettingsPanel({request,canEdit}:Props){
         const response=await request('/api/identity/organization/regional',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({preferences,revision})});
         const data=await response.json();
         if(!response.ok){setError(data.error??'saveError');return;}
-        setPreferences(parseRegionalSettings(data.preferences));setRevision(data.revision);setSaved(true);
+        const saved=sanitizeRegionalSettings(data.preferences);
+        setPreferences(saved);setRevision(data.revision);setSaved(true);
+        // Apply the saved settings in this browser at once, each on its
+        // own: the saved language becomes the UI language, the saved time
+        // zone drives event-time display. The other settings are untouched.
+        setLanguage(saved.language);
+        setActiveTimeZone(saved.timeZone);
       }catch{setError('saveError');}finally{setBusy(false);}
     }} className="space-y-4">
       <fieldset disabled={!canEdit||busy} className="grid gap-4 sm:grid-cols-2">

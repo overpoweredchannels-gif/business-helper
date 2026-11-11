@@ -1,6 +1,7 @@
 import type { MemoryStore } from "../brain/memory/business-memory";
 import type { StaffMemory } from "../brain/contracts/memory";
 import type { StaffAssignment } from "./staff-executor";
+import { formatTime } from "@/lib/tradeos/formatters";
 
 export type StaffQueryIntent =
   | "who_on_duty"
@@ -67,7 +68,7 @@ function handleWhoOnDuty(allStaff: StaffMemory[]): StaffQueryResult {
   }
   const items = onDuty.slice(0, 5).map((s) => {
     const role = s.role ? ` (${s.role})` : "";
-    const since = s.onDutySince ? ` since ${new Date(s.onDutySince).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "";
+    const since = s.onDutySince ? ` since ${formatTime(s.onDutySince, { hour: "2-digit", minute: "2-digit" })}` : "";
     return `${s.name}${role}${since}`;
   });
   const extra = onDuty.length > 5 ? ` And ${onDuty.length - 5} more staff on duty.` : "";

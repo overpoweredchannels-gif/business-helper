@@ -75,6 +75,32 @@ export function parseCurrencyCookie(cookie: string): Currency | null {
  * script behind the same gate. */
 export const LANGUAGE_BOOTSTRAP_SCRIPT = `try{var lang=null;var parts=document.cookie.split(';');for(var i=0;i<parts.length;i++){var p=parts[i].replace(/^\\s+/,'');if(p.indexOf('tradeos-ui-language=')===0){var v=p.substring(p.indexOf('=')+1);if(v==='en'||v==='es'||v==='it'||v==='ur'){lang=v;}break;}}if(lang==='ur'){document.documentElement.lang='ur';document.documentElement.dir='rtl';}else if(lang==='es'){document.documentElement.lang='es';document.documentElement.dir='ltr';}else if(lang==='it'){document.documentElement.lang='it';document.documentElement.dir='ltr';}}catch(e){}`;
 
+export function parseTimeZone(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const zone = value.trim();
+  if (!zone) return null;
+  try { new Intl.DateTimeFormat('en', { timeZone: zone }).format(0); }
+  catch { return null; }
+  return zone;
+}
+
+/** Per-field sanitizer for stored regional preferences. Each field is
+ * validated on its own and falls back to the app's existing default
+ * (legacyRegionalSettings: en / en-PK / Asia/Karachi / PKR) when missing,
+ * null or malformed; unknown keys are ignored. Never throws, so a partially
+ * corrupt stored object still yields usable settings and can always be
+ * re-saved. The strict parseRegionalSettings below stays the validator for
+ * supplied (new) values. */
+export function sanitizeRegionalSettings(input: unknown): RegionalSettings {
+  const v = (input && typeof input === 'object' && !Array.isArray(input)) ? input as Record<string, unknown> : {};
+  return {
+    language: (languages as readonly string[]).includes(v.language as string) ? (v.language as Language) : legacyRegionalSettings.language,
+    locale: (locales as readonly string[]).includes(v.locale as string) ? (v.locale as RegionalLocale) : legacyRegionalSettings.locale,
+    timeZone: parseTimeZone(v.timeZone) ?? legacyRegionalSettings.timeZone,
+    accountingCurrency: isCurrency(v.accountingCurrency) ? v.accountingCurrency : legacyRegionalSettings.accountingCurrency,
+  };
+}
+
 export function parseRegionalSettings(input: unknown): RegionalSettings {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('regional.invalid');
   const v = input as Record<string, unknown>;
@@ -82,10 +108,8 @@ export function parseRegionalSettings(input: unknown): RegionalSettings {
   if (!languages.includes(v.language as Language)) throw new Error('regional.languageInvalid');
   if (!locales.includes(v.locale as RegionalLocale)) throw new Error('regional.localeInvalid');
   if (!isCurrency(v.accountingCurrency)) throw new Error('regional.currencyInvalid');
-  if (typeof v.timeZone !== 'string' || !v.timeZone.trim()) throw new Error('regional.timeZoneInvalid');
-  try { new Intl.DateTimeFormat('en', { timeZone: v.timeZone }).format(0); }
-  catch { throw new Error('regional.timeZoneInvalid'); }
-  return { language: v.language as Language, locale: v.locale as RegionalLocale, timeZone: v.timeZone, accountingCurrency: v.accountingCurrency };
+  if (parseTimeZone(v.timeZone) === null) throw new Error('regional.timeZoneInvalid');
+  return { language: v.language as Language, locale: v.locale as RegionalLocale, timeZone: v.timeZone as string, accountingCurrency: v.accountingCurrency };
 }
 
 /** Pure rule only. Persistence must enforce this atomically with transaction creation. */
