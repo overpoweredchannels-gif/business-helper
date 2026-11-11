@@ -6462,6 +6462,10 @@ setCustomerOrganizationName("");
   const [salesOrdersError, setSalesOrdersError] = useState<string | null>(null);
   const [salesOrderItems, setSalesOrderItems] = useState<SalesOrderItem[]>([]);
   const [draftReviewOrder, setDraftReviewOrder] = useState<SalesOrder | null>(null);
+  // A draft opened from a notification (bell, toast, notification centre):
+  // the sales-order id from the notification's entity_id, plus whether the
+  // refresh that must run before the order can be found has completed.
+  const [pendingDraftReview, setPendingDraftReview] = useState<{ id: string; refreshed: boolean } | null>(null);
   // In-app confirmation for destructive actions. The handlers that used
   // window.confirm() here silently no-opped wherever the native dialog did
   // not resolve (embedded/automated browsers, suppressed dialogs): the click
@@ -6483,6 +6487,41 @@ setCustomerOrganizationName("");
   const [soLines, setSoLines] = useState<SalesLine[]>([]);
   const [soMessage, setSoMessage] = useState<string | null>(null);
   const [soError, setSoError] = useState<string | null>(null);
+
+  // Opens the exact draft a notification refers to (its entity_id is the
+  // sales-order id) instead of landing on the pending list. Marks the
+  // notification read first, so the bell count clears and the draft toast
+  // cannot re-fire for the same draft after a reload.
+  const openDraftReview = async (draftEntityId: string, notificationId?: string) => {
+    if (notificationId) {
+      void markNotificationsRead(notificationId);
+    }
+    setSoError(null);
+    setSoMessage(null);
+    handleSectionChange("sales");
+    setSalesTab("orders");
+    setSalesOrderStatusFilter("pending_approval");
+    setPendingDraftReview({ id: draftEntityId, refreshed: false });
+    await refreshSalesOrders();
+    setPendingDraftReview((current) =>
+      current && current.id === draftEntityId ? { ...current, refreshed: true } : current
+    );
+  };
+
+  useEffect(() => {
+    if (!pendingDraftReview || !pendingDraftReview.refreshed) return;
+    const order = salesOrders.find((o) => String(o.id) === pendingDraftReview.id);
+    if (order) {
+      setDraftReviewOrder(order);
+      setDraftReviewAction("approve");
+      setDraftReviewReason("");
+      setSoError(null);
+      setSoMessage(null);
+    } else {
+      setSoError(t('draft.notPendingAnymore'));
+    }
+    setPendingDraftReview(null);
+  }, [pendingDraftReview, salesOrders, t]);
   const [soLoading, setSoLoading] = useState(false);
   const [soEditingId, setSoEditingId] = useState<string | null>(null);
 
@@ -17900,6 +17939,8 @@ setCustomerOrganizationName("");
         notifications={[
           ...realNotifications.filter((n) => !n.is_read).slice(0, 5).map((n) => ({
             id: n.id,
+            notificationId: n.id,
+            entityId: n.category === "draft_sale" ? n.entity_id : null,
             title: n.title,
             description: n.body ?? undefined,
             severity: (n.category === "draft_sale" || n.category === "inventory"
@@ -17925,6 +17966,15 @@ setCustomerOrganizationName("");
           }] : []),
         ]}
         onNotificationClick={(n) => {
+          // Clicking a bell item acts on it: a draft opens that exact draft,
+          // any other real notification is marked read, then navigation runs.
+          if (n.entityId) {
+            void openDraftReview(n.entityId, n.notificationId);
+            return;
+          }
+          if (n.notificationId) {
+            void markNotificationsRead(n.notificationId);
+          }
           if (n.section === "sales") {
             handleSectionChange("sales");
             setSalesTab("orders");
@@ -27323,11 +27373,8 @@ setCustomerOrganizationName("");
         {activeSectionAllowed && activeSection === "notifications" && (
         <section className="workspace-section">
           <NotificationCenter
-            onReviewDraft={() => {
-              handleSectionChange("sales");
-              setSalesTab("orders");
-              setSalesOrderStatusFilter("pending_approval");
-              refreshSalesOrders();
+            onReviewDraft={(draftEntityId, notificationId) => {
+              void openDraftReview(draftEntityId, notificationId);
             }}
           />
         </section>
@@ -28447,10 +28494,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   type="button"
                   onClick={() => {
                     setSaleAlert(null);
-                    handleSectionChange("sales");
-                    setSalesTab("orders");
-                    setSalesOrderStatusFilter("pending_approval");
-                    refreshSalesOrders();
+                    if (saleAlert.entity_id) {
+                      void openDraftReview(saleAlert.entity_id, saleAlert.id);
+                    } else {
+                      handleSectionChange("sales");
+                      setSalesTab("orders");
+                      setSalesOrderStatusFilter("pending_approval");
+                      refreshSalesOrders();
+                    }
                   }}
                   className="mt-2 rounded bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90"
                 >

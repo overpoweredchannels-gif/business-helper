@@ -22,7 +22,7 @@ const CATEGORY_STYLES: Record<string, string> = {
 };
 
 interface NotificationCenterProps {
-  onReviewDraft?: (draftEntityId: string) => void;
+  onReviewDraft?: (draftEntityId: string, notificationId: string) => void;
 }
 
 export default function NotificationCenter({ onReviewDraft }: NotificationCenterProps) {
@@ -256,7 +256,7 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
                     {isDraft && onReviewDraft && (
                       <button
                         type="button"
-                        onClick={() => onReviewDraft(note.entity_id!)}
+                        onClick={() => onReviewDraft(note.entity_id!, note.id)}
                         className="rounded bg-primary px-2.5 py-0.5 text-[11px] font-medium text-white hover:bg-primary/90"
                       >
                         {t('fsm.notifications.reviewDraft')}

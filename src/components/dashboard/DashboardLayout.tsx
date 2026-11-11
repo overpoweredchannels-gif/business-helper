@@ -17,6 +17,10 @@ interface Notification {
   severity?: "info" | "warning" | "critical";
   section?: string;
   time?: string;
+  /** Real in-app notification id (only for rows backed by the notifications table). */
+  notificationId?: string;
+  /** Sales-order id for draft_sale notifications, so the click can open that draft. */
+  entityId?: string | null;
 }
 
 interface DashboardLayoutProps {
