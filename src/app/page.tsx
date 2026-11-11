@@ -42,6 +42,8 @@ import {
   type ReconcileRow,
 } from "@/lib/payments/submit-payment";
 import { computePurchaseReturnValueByReturnId, computeReturnedValueByPurchaseTransaction, netPurchaseInvoiceAllocation } from "@/lib/purchases/returns-offset";
+import { buildReturnPrefillLines } from "@/lib/returns/prefill";
+import { cancelPurchaseReturnAtomic, cancelSalesReturnAtomic } from "@/lib/returns/cancel-return";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent as ReactChangeEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -6016,6 +6018,9 @@ setCustomerOrganizationName("");
   // payment sections: voiding is one RPC call per payment, and the
   // reconciliation list is fetched on demand per kind.
   const [voidingPaymentId, setVoidingPaymentId] = useState<string | null>(null);
+  // Cancel state, shared by the sales and purchase return sections:
+  // cancelling is one RPC call per return (same guard as voiding).
+  const [cancellingReturnId, setCancellingReturnId] = useState<string | null>(null);
   // Payment being edited in the section form (same payment id, same form):
   // `allocations` are the payment's STORED allocations keyed by invoice id.
   // The edit panel must keep headroom for them — the edit RPC self-excludes
@@ -9152,39 +9157,35 @@ setCustomerOrganizationName("");
     const invoiceReturnItems = purchaseReturnItems.filter(
       (item) => purchaseReturns.find((r) => r.id === item.purchase_return_id)?.purchase_transaction_id === transactionId
     );
-    const returnedByProduct = new Map<string, number>();
-    for (const item of invoiceReturnItems) {
-      const key = String(item.product_id);
-      const product = products.find((p) => String(p.id) === String(item.product_id));
-      // Normalize returned quantities to main units before subtracting from
-      // the purchased main-unit quantity.
-      returnedByProduct.set(
-        key,
-        (returnedByProduct.get(key) ?? 0) +
-          quantityToMainUnits(safeNumber(item.quantity), item.unit_mode ?? "main", product?.units_per_pack)
-      );
-    }
+    // One shared prefill helper for both return forms: quantities are
+    // normalized to main units before subtracting, the remainder is
+    // converted back into the invoice line's own unit mode, and cancelled
+    // returns never count (same rule as the server guard).
+    const prefilledLines = buildReturnPrefillLines({
+      invoiceItems: invoiceItems.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_mode: item.unit_mode,
+        batch_number: item.batch_number,
+        expiry_date: item.expiry_date,
+      })),
+      returnedItems: invoiceReturnItems.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_mode: item.unit_mode,
+        cancelled:
+          purchaseReturns.find((r) => r.id === item.purchase_return_id)?.status === "cancelled",
+      })),
+      products,
+    });
 
     setReturnLines(
-      invoiceItems.map((item) => {
-        const key = String(item.product_id);
-        const product = products.find((p) => String(p.id) === String(item.product_id));
-        const alreadyReturned = returnedByProduct.get(key) ?? 0;
-        const purchasedMain = quantityToMainUnits(safeNumber(item.quantity), item.unit_mode ?? "main", product?.units_per_pack);
-        const remainingMain = Math.max(0, purchasedMain - alreadyReturned);
-        // Prefill in the line's own unit mode so the user sees a familiar number.
-        const remaining =
-          item.unit_mode === "subunit" && Number(product?.units_per_pack ?? 0) > 0
-            ? remainingMain * Number(product?.units_per_pack)
-            : remainingMain;
+      prefilledLines.map((line, index) => {
+        const item = invoiceItems[index];
         return {
-          product_id: String(item.product_id),
-          quantity: String(remaining),
-          purchase_price: item.purchase_price != null ? String(item.purchase_price) : "",
-          selling_price: item.selling_price != null ? String(item.selling_price) : "",
-          unit_mode: item.unit_mode ?? "main",
-          batch_number: item.batch_number ?? "",
-          expiry_date: item.expiry_date ?? "",
+          ...line,
+          purchase_price: item?.purchase_price != null ? String(item.purchase_price) : "",
+          selling_price: item?.selling_price != null ? String(item.selling_price) : "",
         };
       })
     );
@@ -9309,43 +9310,47 @@ setCustomerOrganizationName("");
     }
   };
 
-  const handleDeletePurchaseReturn = async (returnId: string) => {
+  // Cancel a purchase return instead of deleting it: the record and its
+  // history stay, the status becomes Cancelled, the compensating stock
+  // movement is written by the RPC (same row the item-DELETE trigger wrote
+  // on a hard delete), and the payable offset restores itself because the
+  // payables engine excludes cancelled returns. Mirrors handleVoidPayment.
+  const handleCancelPurchaseReturn = async (returnId: string) => {
     const purchaseReturn = purchaseReturns.find((item) => item.id === returnId);
-    if (!purchaseReturn) return;
+    if (!purchaseReturn || purchaseReturn.status !== "confirmed") return;
+    if (cancellingReturnId) return;
 
-    if (
-      !window.confirm(
-        t('page.deletePrConfirm').replace('{number}', purchaseReturn.return_number)
-      )
-    ) {
-      return;
-    }
-
-    const { error } = await supabase
-      .from("purchase_returns")
-      .delete()
-      .eq("id", returnId)
-      .eq("organization_id", currentOrganizationId);
-
-    if (error) {
-      setReturnError(t('page.deletePurchaseReturnFailed'));
-      console.error("Supabase delete purchase return error:", error);
-      return;
-    }
-
-    await createAuditLog({
-      action: "deleted",
-      entity_type: "purchase_return",
-      entity_id: returnId,
-      entity_label: purchaseReturn.return_number,
-      description: t('page.deletedPr').replace('{number}', purchaseReturn.return_number),
-      old_values: { return_number: purchaseReturn.return_number },
+    setConfirmDialog({
+      title: t('page.cancelPurchaseReturn'),
+      body: t('page.cancelPrConfirm').replace('{number}', purchaseReturn.return_number),
+      confirmLabel: t('page.cancelReturn'),
+      onConfirm: () => {
+        void applyCancelPurchaseReturn(returnId);
+      },
     });
+  };
 
-    setReturnMessage(t('page.purchaseReturnDeleted'));
-    await fetchPurchaseReturns();
-    await fetchPurchaseReturnItems();
-    fetchProducts();
+  const applyCancelPurchaseReturn = async (returnId: string) => {
+    const purchaseReturn = purchaseReturns.find((item) => item.id === returnId);
+    if (!purchaseReturn || purchaseReturn.status !== "confirmed") return;
+    if (cancellingReturnId) return;
+
+    setCancellingReturnId(returnId);
+    try {
+      await cancelPurchaseReturnAtomic(supabase, returnId);
+      setReturnMessage(t('page.purchaseReturnCancelled'));
+      setReturnError(null);
+      await fetchPurchaseReturns();
+      await fetchPurchaseReturnItems();
+      await fetchInventoryTransactions();
+      await fetchProducts();
+      await fetchAuditLogs(currentOrganizationId);
+    } catch (err) {
+      setReturnError(err instanceof Error ? err.message : t('page.cancelPurchaseReturnFailed'));
+      console.error("Error cancelling purchase return:", err);
+    } finally {
+      setCancellingReturnId(null);
+    }
   };
 
   const handlePrintPurchaseReturn = (returnId: string) => {
@@ -9379,6 +9384,7 @@ setCustomerOrganizationName("");
         <div><strong>${t('print.returnNumber')}:</strong> ${escapeHtml(purchaseReturn.return_number)}</div>
         <div><strong>${t('sell.returnDate')}:</strong> ${escapeHtml(formatDate(purchaseReturn.return_date ?? purchaseReturn.created_at))}</div>
         <div><strong>${t('buy.supplierPrefix')}</strong> ${escapeHtml(supplier?.supplier_name ?? t('print.unknownSupplier'))}</div>
+        <div><strong>${t('sell.statusLabel')}:</strong> ${escapeHtml(purchaseReturn.status === "confirmed" ? t('buy.statusConfirmed') : t('buy.statusCancelled'))}</div>
       </div>
       <table>
         <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('buy.unitPrice'), t('buy.lineTotal')])}</thead>
@@ -9872,25 +9878,39 @@ setCustomerOrganizationName("");
     const invoiceReturnItems = salesReturnItems.filter(
       (item) => salesReturns.find((r) => r.id === item.sales_return_id)?.sales_transaction_id === value
     );
-    const returnedByProduct = new Map<string, number>();
-    for (const item of invoiceReturnItems) {
-      const key = String(item.product_id);
-      returnedByProduct.set(key, (returnedByProduct.get(key) ?? 0) + safeNumber(item.quantity));
-    }
+    // One shared prefill helper for both return forms: quantities are
+    // normalized to main units before subtracting, the remainder is
+    // converted back into the invoice line's own unit mode, and cancelled
+    // returns never count (same rule as the server guard). This fixes the
+    // old prefill, which subtracted raw quantities across mixed unit modes
+    // (24 subunits sold minus a 1-main return prefilled 23 subunits
+    // instead of 12; 2 main sold minus a 12-subunit return prefilled 0
+    // instead of 1 main).
+    const prefilledLines = buildReturnPrefillLines({
+      invoiceItems: invoiceItems.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_mode: item.unit_mode,
+        batch_number: item.batch_number,
+        expiry_date: item.expiry_date,
+      })),
+      returnedItems: invoiceReturnItems.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_mode: item.unit_mode,
+        cancelled:
+          salesReturns.find((r) => r.id === item.sales_return_id)?.status === "cancelled",
+      })),
+      products,
+    });
 
     setSrLines(
-      invoiceItems.map((item) => {
-        const key = String(item.product_id);
-        const alreadyReturned = returnedByProduct.get(key) ?? 0;
-        const remaining = Math.max(0, safeNumber(item.quantity) - alreadyReturned);
+      prefilledLines.map((line, index) => {
+        const item = invoiceItems[index];
         return {
-          product_id: String(item.product_id),
-          quantity: String(remaining),
-          selling_price: item.selling_price != null ? String(item.selling_price) : "",
-          discount: item.discount != null ? String(item.discount) : "",
-          unit_mode: item.unit_mode ?? "main",
-          batch_number: item.batch_number ?? "",
-          expiry_date: item.expiry_date ?? "",
+          ...line,
+          selling_price: item?.selling_price != null ? String(item.selling_price) : "",
+          discount: item?.discount != null ? String(item.discount) : "",
         };
       })
     );
@@ -10015,38 +10035,48 @@ setCustomerOrganizationName("");
     }
   };
 
-  const handleDeleteSalesReturn = async (returnId: string) => {
+  // Cancel a sales return instead of deleting it: the record and its
+  // history stay, the status becomes Cancelled, the compensating stock
+  // movement is written by the RPC (same row the item-DELETE trigger wrote
+  // on a hard delete), and the receivable offset restores itself because
+  // the receivables engine excludes cancelled returns. Mirrors
+  // handleVoidPayment.
+  const handleCancelSalesReturn = async (returnId: string) => {
     const salesReturn = salesReturns.find((item) => item.id === returnId);
-    if (!salesReturn) return;
+    if (!salesReturn || salesReturn.status !== "confirmed") return;
+    if (cancellingReturnId) return;
 
-    if (!window.confirm(t('page.deleteSrConfirm').replace('{number}', salesReturn.return_number))) return;
-
-    const { error } = await supabase
-      .from("sales_returns")
-      .delete()
-      .eq("id", returnId)
-      .eq("organization_id", currentOrganizationId);
-
-    if (error) {
-      setSrError(t('page.deleteSalesReturnFailed'));
-      console.error("Supabase delete sales return error:", error);
-      return;
-    }
-
-    await createAuditLog({
-      action: "deleted",
-      entity_type: "sales_return",
-      entity_id: returnId,
-      entity_label: salesReturn.return_number,
-      description: t('page.deletedSr').replace('{number}', salesReturn.return_number),
-      old_values: { status: salesReturn.status },
+    setConfirmDialog({
+      title: t('page.cancelSalesReturn'),
+      body: t('page.cancelSrConfirm').replace('{number}', salesReturn.return_number),
+      confirmLabel: t('page.cancelReturn'),
+      onConfirm: () => {
+        void applyCancelSalesReturn(returnId);
+      },
     });
+  };
 
-    setSrMessage(t('page.salesReturnDeleted'));
-    fetchSalesReturns();
-    fetchSalesReturnItems();
-    fetchInventoryTransactions();
-    fetchProducts();
+  const applyCancelSalesReturn = async (returnId: string) => {
+    const salesReturn = salesReturns.find((item) => item.id === returnId);
+    if (!salesReturn || salesReturn.status !== "confirmed") return;
+    if (cancellingReturnId) return;
+
+    setCancellingReturnId(returnId);
+    try {
+      await cancelSalesReturnAtomic(supabase, returnId);
+      setSrMessage(t('page.salesReturnCancelled'));
+      setSrError(null);
+      await fetchSalesReturns();
+      await fetchSalesReturnItems();
+      await fetchInventoryTransactions();
+      await fetchProducts();
+      await fetchAuditLogs(currentOrganizationId);
+    } catch (err) {
+      setSrError(err instanceof Error ? err.message : t('page.cancelSalesReturnFailed'));
+      console.error("Error cancelling sales return:", err);
+    } finally {
+      setCancellingReturnId(null);
+    }
   };
 
   const handlePrintSalesReturn = (returnId: string) => {
@@ -10082,6 +10112,7 @@ setCustomerOrganizationName("");
         <div><strong>${t('print.returnNumber')}:</strong> ${escapeHtml(salesReturn.return_number)}</div>
         <div><strong>${t('sell.returnDate')}:</strong> ${escapeHtml(formatDate(salesReturn.return_date ?? salesReturn.created_at))}</div>
         <div><strong>${t('sell.customer')}:</strong> ${escapeHtml(customer?.customer_name ?? t('sell.unknownCustomer'))}</div>
+        <div><strong>${t('sell.statusLabel')}:</strong> ${escapeHtml(salesReturn.status === "confirmed" ? t('sell.statusConfirmed') : t('sell.statusCancelled'))}</div>
       </div>
       <table>
         <thead>${renderHeaderRows([t('sell.product'), t('sell.quantity'), t('buy.unitPrice'), t('buy.lineTotal')])}</thead>
@@ -21204,7 +21235,22 @@ setCustomerOrganizationName("");
                 return (
                   <li key={salesReturn.id} className="rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="font-medium text-foreground">{t('sell.returnLabel')}: {salesReturn.return_number}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-medium text-foreground">{t('sell.returnLabel')}: {salesReturn.return_number}</div>
+                        <span
+                          className={`rounded px-2 py-0.5 text-xs ${
+                            salesReturn.status === "confirmed"
+                              ? "bg-success/10 text-success"
+                              : "bg-destructive/10 text-destructive"
+                          }`}
+                        >
+                          {salesReturn.status === "confirmed"
+                            ? t('sell.statusConfirmed')
+                            : salesReturn.status === "cancelled"
+                              ? t('sell.statusCancelled')
+                              : (salesReturn.status as string).charAt(0).toUpperCase() + (salesReturn.status as string).slice(1)}
+                        </span>
+                      </div>
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
@@ -21213,13 +21259,15 @@ setCustomerOrganizationName("");
                         >
                           {t('sell.print')}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteSalesReturn(salesReturn.id)}
-                          className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
-                        >
-                          {t('common.delete')}
-                        </button>
+                        {salesReturn.status === "confirmed" && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelSalesReturn(salesReturn.id)}
+                            className="rounded border border-destructive px-3 py-1 text-xs text-destructive hover:bg-destructive/5"
+                          >
+                            {t('page.cancelReturn')}
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div>{t('sell.customer')}: {customer?.customer_name ?? t('sell.unknown')}</div>
@@ -21237,7 +21285,7 @@ setCustomerOrganizationName("");
                           const product = products.find((p) => String(p.id) === String(item.product_id));
                           return (
                             <div key={item.id}>
-                              {product?.name ?? t('sell.unknownProduct')} × {item.quantity}
+                              {product?.name ?? t('sell.unknownProduct')} × {item.quantity} {unitLabelFor(product, item.unit_mode ?? "main")}
                               {item.batch_number ? ` (${t('sell.batch')} ${item.batch_number})` : ""}
                             </div>
                           );
@@ -25726,13 +25774,15 @@ setCustomerOrganizationName("");
                         >
                           {t('sell.print')}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePurchaseReturn(purchaseReturn.id)}
-                          className="rounded border border-destructive px-3 py-1.5 text-sm text-destructive hover:bg-destructive/5"
-                        >
-                          {t('common.delete')}
-                        </button>
+                        {purchaseReturn.status === "confirmed" && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelPurchaseReturn(purchaseReturn.id)}
+                            className="rounded border border-destructive px-3 py-1.5 text-sm text-destructive hover:bg-destructive/5"
+                          >
+                            {t('page.cancelReturn')}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </li>
