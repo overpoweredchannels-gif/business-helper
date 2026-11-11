@@ -274,7 +274,13 @@ export const getBatchBreakdown = (
       issued: 0,
       balance: 0,
     };
-    if (transaction.expiry_date) entry.expiryDate = transaction.expiry_date;
+    if (transaction.expiry_date && (!entry.expiryDate || transaction.expiry_date < entry.expiryDate)) {
+      // Same batch number received twice with different expiries: the
+      // batch's stock first expires at the earliest date, so the breakdown
+      // shows (and sorts by) the earliest — never a later one that would
+      // hide stock that is already expired.
+      entry.expiryDate = transaction.expiry_date;
+    }
     if (Number(transaction.quantity_delta) > 0) {
       entry.received += Number(transaction.quantity_delta);
     } else {

@@ -40,6 +40,21 @@ export const normalizeOptionalDate = (value: unknown): string | null => {
   return text;
 };
 
+// ─── Expiry rule ────────────────────────────────────────────────────────────
+
+// Today as a YYYY-MM-DD string (UTC, so the client and the server compute
+// the same value for the same input).
+export const todayIsoDate = (): string => new Date().toISOString().slice(0, 10);
+
+// A batch expiry has already passed when it falls before the transaction's
+// own date — the date the goods were received — or before today when the
+// input carries no date. Dates are YYYY-MM-DD strings, so lexicographic
+// comparison is chronological. An expiry date is optional everywhere in this
+// codebase (see the `*Optional` labels in messages.ts), so a missing date is
+// never an error here — only a date that is already past is rejected.
+export const expiryAlreadyPassed = (expiryDate: string, referenceDate: string): boolean =>
+  expiryDate < referenceDate;
+
 // ─── Purchase orders ────────────────────────────────────────────────────────
 
 export interface PurchaseOrderLineLike {
@@ -87,6 +102,10 @@ export function validatePurchaseOrderInput(input: PurchaseOrderInputLike): Valid
   if (!Array.isArray(input.lines) || input.lines.length === 0) {
     errors.push("Add at least one product line.");
   } else {
+    // A batch ordered with an expiry already past on the order date can
+    // never be good stock — reject it here (the only enforcement point: PO
+    // creation writes directly to Supabase from the client).
+    const referenceDate = orderDate ?? todayIsoDate();
     input.lines.forEach((line, index) => {
       const label = `Line ${index + 1}`;
       if (!line.product_id) {
@@ -104,8 +123,11 @@ export function validatePurchaseOrderInput(input: PurchaseOrderInputLike): Valid
       if (batch && batch.length > MAX_BATCH_NUMBER_LENGTH) {
         errors.push(`${label}: batch number is too long.`);
       }
-      if (line.expiry_date && !normalizeOptionalDate(line.expiry_date)) {
+      const expiry = normalizeOptionalDate(line.expiry_date);
+      if (line.expiry_date && !expiry) {
         errors.push(`${label}: expiry date is not a valid date.`);
+      } else if (expiry && expiryAlreadyPassed(expiry, referenceDate)) {
+        errors.push(`${label}: expiry date has already passed.`);
       }
     });
   }
@@ -146,6 +168,19 @@ export function validateReceiveQuantities(lines: ReceiveLineLike[]): ValidationR
     const unitPrice = normalizeOptionalNumber(line.unit_price);
     if (unitPrice !== null && unitPrice < 0) {
       errors.push(`${label}: unit price cannot be negative.`);
+    }
+    // Rows that are not being received are skipped above, so a stale date on
+    // an untouched row never blocks the receipt. A receipt happens today,
+    // so the reference date is today.
+    const batch = normalizeOptionalText(line.batch_number);
+    if (batch && batch.length > MAX_BATCH_NUMBER_LENGTH) {
+      errors.push(`${label}: batch number is too long.`);
+    }
+    const expiry = normalizeOptionalDate(line.expiry_date);
+    if (line.expiry_date && !expiry) {
+      errors.push(`${label}: expiry date is not a valid date.`);
+    } else if (expiry && expiryAlreadyPassed(expiry, todayIsoDate())) {
+      errors.push(`${label}: expiry date has already passed.`);
     }
   });
 
@@ -288,8 +323,13 @@ export function validatePurchaseTransactionInput(input: PurchaseTransactionInput
       if (batch && batch.length > MAX_BATCH_NUMBER_LENGTH) {
         errors.push(`${label}: batch number is too long.`);
       }
-      if (line.expiry_date && !normalizeOptionalDate(line.expiry_date)) {
+      // Reference date is the purchase date — the date the goods were
+      // received — or today when no purchase date is given.
+      const expiry = normalizeOptionalDate(line.expiry_date);
+      if (line.expiry_date && !expiry) {
         errors.push(`${label}: expiry date is not a valid date.`);
+      } else if (expiry && expiryAlreadyPassed(expiry, purchaseDate ?? todayIsoDate())) {
+        errors.push(`${label}: expiry date has already passed.`);
       }
       if (line.unit_mode && !["main", "subunit"].includes(line.unit_mode)) {
         errors.push(`${label}: unit mode must be main or subunit.`);
@@ -352,8 +392,14 @@ export function validatePurchaseReturnInput(input: PurchaseReturnInputLike): Val
       if (batch && batch.length > MAX_BATCH_NUMBER_LENGTH) {
         errors.push(`${label}: batch number is too long.`);
       }
-      if (line.expiry_date && !normalizeOptionalDate(line.expiry_date)) {
+      // Reference date is the return date — or today when no return date is
+      // given. A returned batch that was already expired on that date must
+      // not be written back into stock as good stock.
+      const expiry = normalizeOptionalDate(line.expiry_date);
+      if (line.expiry_date && !expiry) {
         errors.push(`${label}: expiry date is not a valid date.`);
+      } else if (expiry && expiryAlreadyPassed(expiry, returnDate ?? todayIsoDate())) {
+        errors.push(`${label}: expiry date has already passed.`);
       }
     });
   }

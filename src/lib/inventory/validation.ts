@@ -82,6 +82,12 @@ export const validateAdjustmentInput = (input: InventoryAdjustmentInputLike): Va
 
   if (expiryDate === null && input.expiry_date !== undefined && input.expiry_date !== null && input.expiry_date !== "") {
     errors.push("Expiry date is not a valid date");
+  } else if (expiryDate !== null && expiryDate < new Date().toISOString().slice(0, 10)) {
+    // An adjustment happens today, so the reference date is today. A batch
+    // that is already expired must not be adjusted back into stock as good
+    // stock. A missing date stays allowed — expiry is optional (see the
+    // `*Optional` labels in messages.ts).
+    errors.push("Expiry date has already passed");
   }
 
   return { ok: errors.length === 0, errors };
