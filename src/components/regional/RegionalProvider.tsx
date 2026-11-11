@@ -5,6 +5,7 @@ import {messages,type MessageKey} from '@/lib/regional/messages';
 import {regionalUi,type RegionalUiKey} from '@/lib/regional/ui-messages';
 import {regionalQaEnabled} from '@/lib/regional/qa';
 import {getActiveBooksCurrency,setActiveCurrency,setActiveFxRate} from '@/lib/tradeos/formatters';
+import {parseStoredPkrPerUnit} from '@/lib/fx/stored-rate';
 import {supabase} from '@/lib/supabase/client';
 
 type RegionalContext={language:Language;enabled:boolean;setLanguage:(language:Language)=>void;currency:Currency;setCurrency:(currency:Currency)=>void;fxRate:number|null;refreshFxRate:()=>void;t:(key:MessageKey)=>string;ui:(key:RegionalUiKey)=>string};
@@ -14,12 +15,13 @@ async function fetchFxRate(currency:Currency):Promise<number|null>{
     const {data}=await supabase.auth.getSession();
     const token=data.session?.access_token;
     if(!token)return null;
-    const response=await fetch(`/api/fx/live?currency=${currency}`,{headers:{Authorization:`Bearer ${token}`}});
+    // Owner-entered saved rate (PKR per 1 unit) — the only conversion
+    // authority. No live feed is consulted anywhere any more.
+    const response=await fetch(`/api/fx/rates?currency=${currency}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!response.ok)return null;
     const payload=await response.json() as {ok?:boolean;rate?:string|number|null};
-    if(!payload.ok||payload.rate===null||payload.rate===undefined)return null;
-    const parsed=typeof payload.rate==='number'?payload.rate:Number.parseFloat(payload.rate);
-    return Number.isFinite(parsed)&&parsed>0?parsed:null;
+    if(!payload.ok)return null;
+    return parseStoredPkrPerUnit(payload.rate);
   }catch{return null;}
 }
 function subscribeLanguage(onChange:()=>void){
@@ -56,16 +58,16 @@ export function RegionalProvider({children,initialLanguage='en'}:{children:React
   const refreshFxRate=()=>setFxRefreshTick(n=>n+1);
   useEffect(()=>{
     if(!enabled)return;
-    // Clear first: while a new currency's live rate is loading (or fails),
+    // Clear first: while a new currency's saved rate is loading (or fails),
     // no stale rate from the previous currency may label amounts.
     setFxRate(null);setActiveFxRate(null);
     // No conversion when the display currency IS the books currency:
     // amounts are already stored in it, and a rate would double-convert.
     if(currency===getActiveBooksCurrency()){return;}
     let cancelled=false;
-    // A failed live rate must never leave amounts labelled in a currency
+    // A missing saved rate must never leave amounts labelled in a currency
     // with no rate — fall back to the books currency rather than
-    // mislabelling them.
+    // mislabelling them. Nothing here invents a rate or consults a feed.
     void fetchFxRate(currency).then(rate=>{if(cancelled)return;if(rate===null){setCurrency(getActiveBooksCurrency());return;}setFxRate(rate);setActiveFxRate(rate);});
     return ()=>{cancelled=true;};
   },[currency,fxRefreshTick,enabled]);

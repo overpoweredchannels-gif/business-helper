@@ -1,7 +1,12 @@
 "use client";
 
 import { useRegional } from "@/components/regional/RegionalProvider";
-import { conversionRatePerUnit } from "@/lib/fx/live-rate";
+import {
+  isValidTypedRate,
+  parseStoredPkrPerUnit,
+  pkrPerUnitFor,
+  switchRateFromPkrPerUnit,
+} from "@/lib/fx/stored-rate";
 import { currencies, type Currency } from "@/lib/regional/settings";
 import { supabase } from "@/lib/supabase/client";
 import { getActiveBooksCurrency } from "@/lib/tradeos/formatters";
@@ -17,17 +22,73 @@ function formatSwitchRate(rate: number): string {
   return rate.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 }
 
+type StoredRateFetch =
+  | { kind: "ready"; rate: number | null }
+  | { kind: "notSetup" }
+  | { kind: "error" };
+
+/** Latest active owner-entered rate (PKR per 1 unit) for a currency, or
+ * null when none is saved. A 503 means the fx_quotes table is absent. */
+async function fetchStoredRate(
+  currency: Currency,
+  token: string,
+): Promise<StoredRateFetch> {
+  try {
+    const response = await fetch(`/api/fx/rates?currency=${currency}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.status === 503) return { kind: "notSetup" };
+    if (!response.ok) return { kind: "error" };
+    const payload = (await response.json().catch(() => null)) as {
+      ok?: boolean;
+      rate?: string | null;
+    } | null;
+    if (!payload?.ok) return { kind: "error" };
+    return { kind: "ready", rate: parseStoredPkrPerUnit(payload.rate) };
+  } catch {
+    return { kind: "error" };
+  }
+}
+
+type StoredRateSave = "ok" | "notSetup" | "error";
+
+/** Save an owner-entered rate (PKR per 1 unit) for a currency. */
+async function saveStoredRate(
+  currency: Currency,
+  rateText: string,
+  token: string,
+): Promise<StoredRateSave> {
+  try {
+    const response = await fetch("/api/fx/rates", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ currency, rate: rateText.trim() }),
+    });
+    if (response.status === 503) return "notSetup";
+    return response.ok ? "ok" : "error";
+  } catch {
+    return "error";
+  }
+}
+
 /**
  * Header currency switcher — the currency twin of LanguageSwitcher, and
  * the ONLY currency control in the app.
  *
- * Picking a currency really switches the whole business to it at today's
- * live internet rate: one confirmation inside the popup (rate shown, no
- * page, no typing), then POST /api/books/convert runs the single atomic
- * conversion and the page reloads so no old-currency amount is ever shown
- * labelled with the new one. There is no separate display currency any
- * more: the switch sets the stored display cookie to the new books
- * currency too, so every surface follows the switch.
+ * Picking a currency really switches the whole business to it at the
+ * owner's saved rate: the popup shows the saved PKR-per-unit rate, then
+ * one confirmation runs POST /api/books/convert and the page reloads so
+ * no old-currency amount is ever shown labelled with the new one. When
+ * no saved rate exists for the new currency (or for the current books
+ * currency, when it is not PKR), the popup asks the owner to type it —
+ * PKR per 1 unit — and saves it first. The switch never uses a live
+ * rate, never falls back to 1.0, and never converts on a guessed rate.
+ * There is no separate display currency any more: the switch sets the
+ * stored display cookie to the new books currency too, so every surface
+ * follows the switch.
  *
  * Owner-only: the convert route rejects non-owners, so the control does
  * not render for anyone else. Staff see amounts in the books currency
@@ -48,6 +109,16 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
   const [loadingRate, setLoadingRate] = useState(false);
   const [converting, setConverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Rate-entry step: the books currency the switch starts from, the
+  // stored PKR-per-unit rates resolved for both legs (null = none saved),
+  // and the owner's typed rates for whichever leg is missing.
+  const [switchFrom, setSwitchFrom] = useState<Currency | null>(null);
+  const [storedToRate, setStoredToRate] = useState<number | null>(null);
+  const [storedFromRate, setStoredFromRate] = useState<number | null>(null);
+  const [enteringRate, setEnteringRate] = useState(false);
+  const [rateInput, setRateInput] = useState("");
+  const [fromRateInput, setFromRateInput] = useState("");
+  const [savingRate, setSavingRate] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,6 +138,13 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
     setRate(null);
     setError(null);
     setConverting(false);
+    setSwitchFrom(null);
+    setStoredToRate(null);
+    setStoredFromRate(null);
+    setEnteringRate(false);
+    setRateInput("");
+    setFromRateInput("");
+    setSavingRate(false);
   }
 
   function openPopup() {
@@ -91,6 +169,13 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
     setTarget(code);
     setRate(null);
     setError(null);
+    setSwitchFrom(current);
+    setStoredToRate(null);
+    setStoredFromRate(null);
+    setEnteringRate(false);
+    setRateInput("");
+    setFromRateInput("");
+    setSavingRate(false);
     setLoadingRate(true);
     try {
       const { data } = await supabase.auth.getSession();
@@ -99,17 +184,36 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
         setError(ui("header.currencySwitchRateError"));
         return;
       }
-      const response = await fetch(`/api/fx/live?currency=${code}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        ok?: boolean;
-        perPkr?: Partial<Record<Currency, number>>;
-      } | null;
-      const switchRate =
-        response.ok && payload?.ok
-          ? conversionRatePerUnit(payload.perPkr, current, code)
-          : null;
+      // Saved rates for both legs of the switch. PKR needs no row: it
+      // is the identity (1 PKR per 1 PKR).
+      const [toResult, fromResult] = await Promise.all([
+        fetchStoredRate(code, token),
+        current === "PKR"
+          ? Promise.resolve<StoredRateFetch>({ kind: "ready", rate: 1 })
+          : fetchStoredRate(current, token),
+      ]);
+      if (toResult.kind === "notSetup" || fromResult.kind === "notSetup") {
+        setError(ui("header.currencySwitchRatesNotSetup"));
+        return;
+      }
+      if (toResult.kind === "error" || fromResult.kind === "error") {
+        setError(ui("header.currencySwitchRateError"));
+        return;
+      }
+      const toRate = toResult.rate;
+      const fromRate = current === "PKR" ? 1 : fromResult.rate;
+      setStoredToRate(toRate);
+      setStoredFromRate(fromRate);
+      // A missing leg blocks the switch: the owner types the missing
+      // rate(s) next. Nothing converts on a guessed rate.
+      if (toRate === null || fromRate === null) {
+        setEnteringRate(true);
+        return;
+      }
+      const switchRate = switchRateFromPkrPerUnit(
+        pkrPerUnitFor(current, fromRate),
+        pkrPerUnitFor(code, toRate),
+      );
       if (switchRate === null) {
         setError(ui("header.currencySwitchRateError"));
         return;
@@ -119,6 +223,71 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
       setError(ui("header.currencySwitchRateError"));
     } finally {
       setLoadingRate(false);
+    }
+  }
+
+  /** Save the typed rate(s) for the missing leg(s), then show the confirm step. */
+  async function saveEnteredRates() {
+    if (!target || !switchFrom) return;
+    const needsTo = storedToRate === null;
+    const needsFrom = switchFrom !== "PKR" && storedFromRate === null;
+    if (needsTo && !isValidTypedRate(rateInput)) {
+      setError(ui("header.currencySwitchRateInvalid"));
+      return;
+    }
+    if (needsFrom && !isValidTypedRate(fromRateInput)) {
+      setError(ui("header.currencySwitchRateInvalid"));
+      return;
+    }
+    setSavingRate(true);
+    setError(null);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) {
+        setError(ui("header.currencySwitchRateError"));
+        return;
+      }
+      let toRate = storedToRate;
+      let fromRate = storedFromRate;
+      if (needsTo) {
+        const saved = await saveStoredRate(target, rateInput, token);
+        if (saved !== "ok") {
+          setError(
+            saved === "notSetup"
+              ? ui("header.currencySwitchRatesNotSetup")
+              : ui("header.currencySwitchRateError"),
+          );
+          return;
+        }
+        toRate = parseStoredPkrPerUnit(rateInput);
+      }
+      if (needsFrom) {
+        const saved = await saveStoredRate(switchFrom, fromRateInput, token);
+        if (saved !== "ok") {
+          setError(
+            saved === "notSetup"
+              ? ui("header.currencySwitchRatesNotSetup")
+              : ui("header.currencySwitchRateError"),
+          );
+          return;
+        }
+        fromRate = parseStoredPkrPerUnit(fromRateInput);
+      }
+      const switchRate = switchRateFromPkrPerUnit(
+        pkrPerUnitFor(switchFrom, fromRate),
+        pkrPerUnitFor(target, toRate),
+      );
+      if (switchRate === null) {
+        setError(ui("header.currencySwitchRateError"));
+        return;
+      }
+      setStoredToRate(toRate);
+      setStoredFromRate(fromRate);
+      setRate(switchRate);
+      setEnteringRate(false);
+    } finally {
+      setSavingRate(false);
     }
   }
 
@@ -141,11 +310,11 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
         },
         // Send exactly six decimals: the convert route's parser
         // rejects more, and the switch rate is a raw division
-        // (toQuote / fromQuote), so a return leg like EUR→PKR sends a
-        // long float (308.8326139…) while PKR→EUR sends the clean
-        // upstream quote (0.003238). That asymmetry is why the
+        // (fromPkrPerUnit / toPkrPerUnit), so a return leg like EUR→PKR
+        // sends a long float (308.8326139…) while PKR→EUR sends the
+        // clean stored quote (0.003238). That asymmetry is why the
         // 2026-10-30 QA run switched to EUR fine but every switch back
-        // failed with the live-rate line. toFixed(6) is always
+        // failed with the rate error line. toFixed(6) is always
         // parser-legal and far inside reconciliation tolerance.
         body: JSON.stringify({ toCurrency: target, rate: rate.toFixed(6) }),
       });
@@ -246,41 +415,124 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
               </p>
               {loadingRate ? (
                 <p className="text-sm text-light-text">{ui("header.currencySwitching")}</p>
+              ) : enteringRate ? (
+                <>
+                  <p className="text-sm text-light-text">
+                    {ui("header.currencySwitchEnterRate").replace(
+                      "{currency}",
+                      storedToRate === null ? target : (switchFrom ?? target),
+                    )}
+                  </p>
+                  {storedToRate !== null ? (
+                    <p className="text-sm">
+                      {ui("header.currencySwitchRate")
+                        .replace("{from}", target)
+                        .replace("{rate}", formatSwitchRate(storedToRate))
+                        .replace("{to}", "PKR")}
+                    </p>
+                  ) : (
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-medium text-foreground">
+                        {ui("header.currencySwitchRateLabel").replace("{currency}", target)}
+                      </span>
+                      <input
+                        className="min-h-11 w-full rounded border border-input bg-background px-3 py-2 text-base tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        inputMode="decimal"
+                        autoFocus
+                        value={rateInput}
+                        onChange={(event) => setRateInput(event.target.value)}
+                      />
+                    </label>
+                  )}
+                  {switchFrom !== null && switchFrom !== "PKR" && (
+                    storedFromRate !== null ? (
+                      <p className="text-sm">
+                        {ui("header.currencySwitchRate")
+                          .replace("{from}", switchFrom)
+                          .replace("{rate}", formatSwitchRate(storedFromRate))
+                          .replace("{to}", "PKR")}
+                      </p>
+                    ) : (
+                      <label className="block space-y-1.5">
+                        <span className="text-sm font-medium text-foreground">
+                          {ui("header.currencySwitchRateLabel").replace("{currency}", switchFrom)}
+                        </span>
+                        <input
+                          className="min-h-11 w-full rounded border border-input bg-background px-3 py-2 text-base tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          inputMode="decimal"
+                          value={fromRateInput}
+                          onChange={(event) => setFromRateInput(event.target.value)}
+                        />
+                      </label>
+                    )
+                  )}
+                  {error && <p className="text-sm text-destructive">{error}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void saveEnteredRates()}
+                      disabled={savingRate}
+                      className="flex-1 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium min-h-[44px] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {savingRate
+                        ? ui("header.currencySwitching")
+                        : ui("header.currencySwitchRateSave")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTarget(null);
+                        setRate(null);
+                        setError(null);
+                        setEnteringRate(false);
+                      }}
+                      disabled={savingRate}
+                      className="flex-1 px-4 py-2 rounded-lg border border-input text-sm font-medium min-h-[44px] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {ui("header.currencySwitchCancel")}
+                    </button>
+                  </div>
+                </>
               ) : rate !== null ? (
-                <p className="text-sm">
-                  {ui("header.currencySwitchRate")
-                    .replace("{from}", booksCurrency)
-                    .replace("{rate}", formatSwitchRate(rate))
-                    .replace("{to}", target)}
-                </p>
+                <>
+                  <p className="text-sm">
+                    {ui("header.currencySwitchRate")
+                      .replace("{from}", booksCurrency)
+                      .replace("{rate}", formatSwitchRate(rate))
+                      .replace("{to}", target)}
+                  </p>
+                  <p className="text-sm text-light-text">{ui("header.currencySwitchRecords")}</p>
+                  {error && <p className="text-sm text-destructive">{error}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void confirmSwitch()}
+                      disabled={rate === null || loadingRate || converting}
+                      className="flex-1 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium min-h-[44px] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      data-confirm-currency-switch={target}
+                    >
+                      {converting
+                        ? ui("header.currencySwitching")
+                        : ui("header.currencySwitchButton")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTarget(null);
+                        setRate(null);
+                        setError(null);
+                      }}
+                      disabled={converting}
+                      className="flex-1 px-4 py-2 rounded-lg border border-input text-sm font-medium min-h-[44px] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {ui("header.currencySwitchCancel")}
+                    </button>
+                  </div>
+                </>
               ) : null}
-              <p className="text-sm text-light-text">{ui("header.currencySwitchRecords")}</p>
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void confirmSwitch()}
-                  disabled={rate === null || loadingRate || converting}
-                  className="flex-1 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium min-h-[44px] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  data-confirm-currency-switch={target}
-                >
-                  {converting
-                    ? ui("header.currencySwitching")
-                    : ui("header.currencySwitchButton")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTarget(null);
-                    setRate(null);
-                    setError(null);
-                  }}
-                  disabled={converting}
-                  className="flex-1 px-4 py-2 rounded-lg border border-input text-sm font-medium min-h-[44px] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {ui("header.currencySwitchCancel")}
-                </button>
-              </div>
+              {!loadingRate && !enteringRate && rate === null && error && (
+                <p className="text-sm text-destructive">{error}</p>
+              )}
             </div>
           )}
         </div>
