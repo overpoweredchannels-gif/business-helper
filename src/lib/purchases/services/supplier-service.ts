@@ -224,7 +224,7 @@ export class SupplierService {
    * linked to it — the live FKs would otherwise either fail with a raw
    * database error (purchase invoices, supplier payments, expenses are
    * NO ACTION) or silently unlink history (purchase orders, purchase
-   * returns are SET NULL). The block message names every non-zero count.
+   * returns, tasks, AI drafts are SET NULL). The block message names every non-zero count.
    */
   async permanentlyDeleteSupplier(actor: ActorContext, supplierId: string) {
     if (!actor.organizationId) {
@@ -252,6 +252,12 @@ export class SupplierService {
     }
     if (counts.expenses > 0) {
       parts.push(`${counts.expenses} expense${counts.expenses === 1 ? "" : "s"}`);
+    }
+    if (counts.tasks > 0) {
+      parts.push(`${counts.tasks} task${counts.tasks === 1 ? "" : "s"}`);
+    }
+    if (counts.ai_action_drafts > 0) {
+      parts.push(`${counts.ai_action_drafts} AI draft${counts.ai_action_drafts === 1 ? "" : "s"}`);
     }
     if (parts.length > 0) {
       throw new Error(

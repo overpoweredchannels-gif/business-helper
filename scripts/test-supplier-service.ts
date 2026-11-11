@@ -385,7 +385,7 @@ async function testPermanentDeleteBlocked() {
   const { mock, client } = createMockSupabase({
     data: [storedSupplier],
     error: null,
-    counts: { purchase_transactions: 2, supplier_payments: 1, purchase_orders: 0, purchase_returns: 0, expenses: 0 },
+    counts: { purchase_transactions: 2, supplier_payments: 1, purchase_orders: 0, purchase_returns: 0, expenses: 0, tasks: 3, ai_action_drafts: 2 },
   });
   const service = SupplierService.withSupabase(client);
 
@@ -397,6 +397,32 @@ async function testPermanentDeleteBlocked() {
   }
   assertTrue(message.includes("2 purchase invoices"), "Block message names linked purchase invoices");
   assertTrue(message.includes("1 supplier payment"), "Block message names linked supplier payments");
+  assertTrue(message.includes("3 tasks"), "Block message names linked tasks");
+  assertTrue(message.includes("2 AI drafts"), "Block message names linked AI drafts");
+  const draftsEqCalls = mock.fromCalls
+    .find((c) => c.table === "ai_action_drafts")
+    ?.builder.calls.filter((c) => c.method === "eq")
+    .map((c) => c.args);
+  assertTrue(
+    draftsEqCalls?.some((args) => args[0] === "related_supplier_id" && args[1] === "sup-1") ?? false,
+    "Counts AI drafts via related_supplier_id",
+  );
+  assertTrue(
+    draftsEqCalls?.some((args) => args[0] === "organization_id" && args[1] === "org-1") ?? false,
+    "Counts AI drafts org-scoped",
+  );
+  const tasksEqCalls = mock.fromCalls
+    .find((c) => c.table === "tasks")
+    ?.builder.calls.filter((c) => c.method === "eq")
+    .map((c) => c.args);
+  assertTrue(
+    tasksEqCalls?.some((args) => args[0] === "supplier_id" && args[1] === "sup-1") ?? false,
+    "Counts tasks via supplier_id",
+  );
+  assertTrue(
+    tasksEqCalls?.some((args) => args[0] === "organization_id" && args[1] === "org-1") ?? false,
+    "Counts tasks org-scoped",
+  );
   const deleteCall = findCallOnTable(mock.fromCalls, "suppliers", "delete");
   assertEqual(deleteCall, undefined, "Never issues the hard delete when blocked");
 }
@@ -408,6 +434,8 @@ async function testPermanentDeleteAllowed() {
   await service.permanentlyDeleteSupplier(owner, "sup-1");
   const deleteCall = findCallOnTable(mock.fromCalls, "suppliers", "delete");
   assertTrue(!!deleteCall, "Issues the hard delete when nothing is linked");
+  assertTrue(mock.fromCalls.some((c) => c.table === "tasks"), "Checks tasks even when nothing is linked");
+  assertTrue(mock.fromCalls.some((c) => c.table === "ai_action_drafts"), "Checks AI drafts even when nothing is linked");
   const auditArgs = findCallOnTable(mock.fromCalls, "audit_logs", "insert")?.args[0] as Record<string, unknown>;
   assertEqual(auditArgs.action, "supplier_permanently_deleted", "Audits the permanent delete");
 }

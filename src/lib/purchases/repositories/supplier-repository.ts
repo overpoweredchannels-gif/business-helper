@@ -159,30 +159,37 @@ export class SupplierRepository {
    * Counts of records linked to a supplier, per table. The live FKs are
    * mixed: purchase_transactions / supplier_payments / expenses are NO
    * ACTION (a hard delete would fail), while purchase_orders /
-   * purchase_returns are SET NULL (a hard delete would silently unlink).
-   * The caller blocks permanent delete whenever any count is non-zero, so
-   * neither failure mode can ever be reached from the app.
+   * purchase_returns / tasks / ai_action_drafts are SET NULL (a hard
+   * delete would silently unlink). The caller blocks permanent delete
+   * whenever any count is non-zero, so neither failure mode can ever be
+   * reached from the app. The link column differs per table: every table
+   * uses supplier_id except ai_action_drafts, which links via
+   * related_supplier_id.
    */
   async countLinkedRecords(organizationId: string, id: string) {
-    const tables = [
-      "purchase_transactions",
-      "supplier_payments",
-      "purchase_orders",
-      "purchase_returns",
-      "expenses",
+    const links = [
+      { table: "purchase_transactions", column: "supplier_id" },
+      { table: "supplier_payments", column: "supplier_id" },
+      { table: "purchase_orders", column: "supplier_id" },
+      { table: "purchase_returns", column: "supplier_id" },
+      { table: "expenses", column: "supplier_id" },
+      { table: "tasks", column: "supplier_id" },
+      { table: "ai_action_drafts", column: "related_supplier_id" },
     ] as const;
-    const counts: Record<(typeof tables)[number], number> = {
+    const counts: Record<(typeof links)[number]["table"], number> = {
       purchase_transactions: 0,
       supplier_payments: 0,
       purchase_orders: 0,
       purchase_returns: 0,
       expenses: 0,
+      tasks: 0,
+      ai_action_drafts: 0,
     };
-    for (const table of tables) {
+    for (const { table, column } of links) {
       const { count, error } = await this.supabase
         .from(table)
         .select("id", { count: "exact", head: true })
-        .eq("supplier_id", id)
+        .eq(column, id)
         .eq("organization_id", organizationId);
       if (error) {
         throw error;
