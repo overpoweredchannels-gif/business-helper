@@ -24150,6 +24150,12 @@ setCustomerOrganizationName("");
               <textarea
                 value={supplierNotes}
                 onChange={(e) => setSupplierNotes(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.preventDefault();
+                    focusNextEntryField(e.currentTarget);
+                  }
+                }}
                 className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 rows={3}
               />
