@@ -21,7 +21,7 @@ import { formatAvailableStock } from "@/lib/products/stock-display";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
-import { calculateSaleLineDiscountAmount, hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
+import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
@@ -4394,7 +4394,7 @@ setCustomerOrganizationName("");
       return;
     }
 
-    if (quickSaleMode && isOwnerOrAdmin() && salesPaymentType === "cash") {
+    if (quickSaleMode && salesPaymentType === "cash") {
       if (posCashReceived.trim() !== "" && !hasAllowedPrecision(posCashReceived, SALE_MONEY_DECIMAL_PLACES)) {
         setSalesError(t('page.cashTwoDecimals'));
         setSalesMessage(null);
@@ -4464,11 +4464,6 @@ setCustomerOrganizationName("");
     }
 
     const parsedTaxRate = salesTaxRate.trim() === "" ? 0 : Number(salesTaxRate);
-    if (staffSaleGateOutcome === "approval" && (rawInvoiceDiscount !== 0 || parsedTaxRate !== 0)) {
-      setSalesError(t('page.approvalLineDiscountsOnly'));
-      return;
-    }
-
     if (salesTaxRate.trim() !== "" && (!Number.isFinite(parsedTaxRate) || parsedTaxRate < 0 || !hasAllowedPrecision(salesTaxRate, SALE_MONEY_DECIMAL_PLACES))) {
       setSalesError(t('page.taxRateValid'));
       setSalesMessage(null);
@@ -4622,6 +4617,14 @@ setCustomerOrganizationName("");
             // it on the order and approveDraft writes it onto the invoice,
             // so a staff sale keeps its note exactly like an owner sale.
             notes: salesNotes.trim() ? salesNotes.trim() : null,
+            invoiceDiscount: rawInvoiceDiscount,
+            invoiceDiscountType: salesDiscountType,
+            taxRate: parsedTaxRate,
+            cashReceived: salesPaymentType === "cash"
+              ? (quickSaleMode
+                ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal ?? 0) : safeNumber(posCashReceived))
+                : null)
+              : 0,
           }),
         });
         const data = await res.json();
@@ -5771,7 +5774,7 @@ setCustomerOrganizationName("");
 
     let query = supabase
       .from("sales_orders")
-      .select("id, organization_id, so_number, customer_id, order_date, expected_date, notes, status, payment_type, credit_days, created_by_profile_id, created_at, updated_at")
+      .select("id, organization_id, so_number, customer_id, order_date, expected_date, notes, status, payment_type, credit_days, invoice_discount, invoice_discount_type, tax_rate, cash_received, created_by_profile_id, created_at, updated_at")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
     if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
@@ -10278,8 +10281,8 @@ setCustomerOrganizationName("");
     paymentType: salesPaymentType,
     currency: getActiveBooksCurrency(),
     cashReceived: posCashReceived,
-    validateCash: quickSaleMode && isOwnerOrAdmin(),
-    allowInvoiceAdjustments: isOwnerOrAdmin(),
+    validateCash: quickSaleMode,
+    allowInvoiceAdjustments: true,
   });
   const currentSaleAmounts = currentSaleDraft.amounts;
   const currentSalesInvoiceTotal = currentSaleAmounts?.total;
@@ -28736,7 +28739,20 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
           const order = draftReviewOrder;
           const orderItems = salesOrderItems.filter((item) => item.sales_order_id === order.id);
           const customer = customers.find((c) => c.id === order.customer_id);
-          const total = orderItems.reduce(
+          // The total the owner is approving: line subtotal minus the invoice
+          // discount, plus tax — the same math as the normal save. Drafts
+          // created before this slice carry 0/0/0, so the result equals the
+          // plain item sum for them.
+          let reviewAmounts: { invoiceDiscount: number; tax: number; total: number } | null = null;
+          try {
+            reviewAmounts = calculateSaleAmounts(
+              orderItems.map((item) => ({ quantity: item.quantity_ordered, sellingPrice: item.unit_price ?? 0, discount: item.discount ?? 0 })),
+              { invoiceDiscount: order.invoice_discount ?? 0, invoiceDiscountType: order.invoice_discount_type ?? "flat", taxRate: order.tax_rate ?? 0 },
+            );
+          } catch {
+            reviewAmounts = null;
+          }
+          const total = reviewAmounts?.total ?? orderItems.reduce(
             (sum, item) => sum + Number(item.quantity_ordered) * Number(item.unit_price ?? 0) - Number(item.discount ?? 0),
             0
           );
@@ -28794,10 +28810,28 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                       );
                     })}
                   </ul>
+                  {reviewAmounts && reviewAmounts.invoiceDiscount > 0 && (
+                    <div className="flex items-center justify-between px-3 py-2 text-sm text-foreground/90">
+                      <span>{t('sell.invoiceDiscountRow')}{order.invoice_discount_type === "percent" ? ` (${order.invoice_discount}%)` : ""}</span>
+                      <span>-{formatBooksMoney(reviewAmounts.invoiceDiscount)}</span>
+                    </div>
+                  )}
+                  {reviewAmounts && reviewAmounts.tax > 0 && (
+                    <div className="flex items-center justify-between px-3 py-2 text-sm text-foreground/90">
+                      <span>{t('sell.tax')} ({order.tax_rate}%)</span>
+                      <span>{formatBooksMoney(reviewAmounts.tax)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between border-t border-border px-3 py-2 text-sm font-semibold text-foreground">
                     <span>{t('common.total')}</span>
                     <span>{formatBooksMoney(total)}</span>
                   </div>
+                  {order.payment_type === "cash" && order.cash_received !== null && order.cash_received !== undefined && (
+                    <div className="flex items-center justify-between px-3 py-2 text-sm text-foreground/90">
+                      <span>{t('pos.cashReceived')}</span>
+                      <span>{formatBooksMoney(Number(order.cash_received))}</span>
+                    </div>
+                  )}
                 </div>
 
                 {order.notes && <div className="mt-3 text-xs text-muted-foreground/80">{t('sell.notesLabel')}: {order.notes}</div>}

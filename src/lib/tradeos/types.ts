@@ -141,6 +141,10 @@ export interface SalesOrder {
   status: "draft" | "confirmed" | "delivered" | "cancelled" | "pending_approval" | "rejected" | "converted";
   payment_type: "cash" | "card" | "credit" | null;
   credit_days: number | null;
+  invoice_discount?: number | null;
+  invoice_discount_type?: "flat" | "percent" | null;
+  tax_rate?: number | null;
+  cash_received?: number | null;
   created_by_profile_id: string | null;
   created_at: string;
   updated_at: string;

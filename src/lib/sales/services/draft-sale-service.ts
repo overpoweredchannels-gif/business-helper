@@ -1,6 +1,7 @@
 import { createSupabaseService } from "@/lib/supabase/server";
 import { getInvoiceNumberService, generateSalesInvoice } from "@/lib/invoices/invoice-number-service";
 import { logAuditEvent } from "@/lib/identity/audit";
+import { calculateSaleAmounts, roundMoney } from "@/lib/sales/sale-amounts";
 import type { ActorContext } from "@/lib/identity/types";
 import { loadSalesmanAssignmentScope } from "@/lib/sales/salesman-workspace-service";
 
@@ -23,6 +24,13 @@ export interface CreateDraftSaleInput {
   saleDate?: string;
   paymentType?: "cash" | "card" | "credit";
   creditDays?: number;
+  /** Invoice-level discount entered in POS: an amount when "flat", a percent when "percent". */
+  invoiceDiscount?: number;
+  invoiceDiscountType?: "flat" | "percent";
+  /** Tax rate percent entered in POS. */
+  taxRate?: number;
+  /** Cash tendered in POS (cash sales only). Null/undefined = not tendered at POS. */
+  cashReceived?: number | null;
 }
 
 export interface DraftSaleResult {
@@ -43,6 +51,66 @@ export interface ApproveResult {
   error?: string;
   invoice?: any;
   invoiceNumber?: string;
+}
+
+export type ApprovalSaleDraftAmountsInput = {
+  invoiceDiscount?: number | null;
+  invoiceDiscountType?: "flat" | "percent" | null;
+  taxRate?: number | null;
+  cashReceived?: number | null;
+  paymentType?: "cash" | "card" | "credit" | null;
+  /** Raw draft-row (snake_case) aliases, so the helper also accepts a
+   * sales_orders row straight from Supabase. */
+  invoice_discount?: number | null;
+  invoice_discount_type?: "flat" | "percent" | null;
+  tax_rate?: number | null;
+  cash_received?: number | null;
+  payment_type?: "cash" | "card" | "credit" | null;
+};
+
+export type ApprovalSaleDraftAmounts = {
+  lineSubtotal: number;
+  invoiceDiscount: number;
+  tax: number;
+  total: number;
+  cashReceived: number;
+  changeDue: number;
+};
+
+/**
+ * Approval-mode totals, computed with the same helper the POS form and the
+ * normal save RPC mirror (calculateSaleAmounts): line subtotal minus the
+ * invoice discount, plus tax on the remainder. Cash tender defaults to the
+ * total when the draft carries no tender (a non-quick-sale cash sale), and
+ * to 0 for card/credit — exactly like create_sales_invoice_atomic.
+ */
+export function buildApprovalSaleAmounts(
+  draft: ApprovalSaleDraftAmountsInput,
+  items: Array<{ quantity_ordered: number | string; unit_price: number | string; discount?: number | string | null }>,
+): ApprovalSaleDraftAmounts {
+  const amounts = calculateSaleAmounts(
+    items.map((item) => ({
+      quantity: item.quantity_ordered,
+      sellingPrice: item.unit_price,
+      discount: item.discount ?? 0,
+    })),
+    {
+      invoiceDiscount: draft.invoiceDiscount ?? draft.invoice_discount ?? 0,
+      invoiceDiscountType: draft.invoiceDiscountType ?? draft.invoice_discount_type ?? "flat",
+      taxRate: draft.taxRate ?? draft.tax_rate ?? 0,
+    },
+  );
+  const rawPaymentType = draft.paymentType ?? draft.payment_type;
+  const paymentType = rawPaymentType === "card" ? "card" : rawPaymentType === "cash" ? "cash" : "credit";
+  const cashReceived = paymentType === "cash" ? (draft.cashReceived ?? draft.cash_received ?? amounts.total) : 0;
+  return {
+    lineSubtotal: amounts.subtotal,
+    invoiceDiscount: amounts.invoiceDiscount,
+    tax: amounts.tax,
+    total: amounts.total,
+    cashReceived,
+    changeDue: paymentType === "cash" ? roundMoney(cashReceived - amounts.total) : 0,
+  };
 }
 
 function addDaysToIsoDate(isoDate: string, days: number): string {
@@ -131,6 +199,40 @@ export class DraftSaleService {
       verifiedItems.push(item);
     }
 
+    // Invoice discount / tax / cash tender: same bounds as the normal save
+    // RPC (create_sales_invoice_atomic) so a draft can never carry values
+    // approval could not convert into an identical invoice.
+    const invoiceDiscount = input.invoiceDiscount ?? 0;
+    const invoiceDiscountType = input.invoiceDiscountType ?? "flat";
+    const taxRate = input.taxRate ?? 0;
+    const cashReceived = input.cashReceived ?? null;
+    if (!Number.isFinite(invoiceDiscount) || invoiceDiscount < 0 || Math.round(invoiceDiscount * 100) !== invoiceDiscount * 100) {
+      return { ok: false, error: "Invalid invoice discount." };
+    }
+    if (invoiceDiscountType !== "flat" && invoiceDiscountType !== "percent") {
+      return { ok: false, error: "Invalid invoice discount type." };
+    }
+    if (invoiceDiscountType === "percent" && invoiceDiscount > 100) {
+      return { ok: false, error: "Invoice discount percent cannot exceed 100." };
+    }
+    if (invoiceDiscountType === "flat" && invoiceDiscount > totalAmount) {
+      return { ok: false, error: "Invoice discount cannot exceed the sale subtotal." };
+    }
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 999.99 || Math.round(taxRate * 100) !== taxRate * 100) {
+      return { ok: false, error: "Invalid tax rate." };
+    }
+    if (cashReceived !== null && (!Number.isFinite(cashReceived) || cashReceived < 0 || Math.round(cashReceived * 100) !== cashReceived * 100)) {
+      return { ok: false, error: "Invalid cash received amount." };
+    }
+    const approvalAmounts = buildApprovalSaleAmounts(
+      { invoiceDiscount, invoiceDiscountType, taxRate, cashReceived, paymentType: input.paymentType ?? "credit" },
+      verifiedItems.map((item) => ({ quantity_ordered: item.quantity, unit_price: item.unitPrice, discount: item.discount ?? 0 })),
+    );
+    if ((input.paymentType ?? "credit") === "cash" && approvalAmounts.cashReceived < approvalAmounts.total) {
+      return { ok: false, error: "Cash received is less than the sale total." };
+    }
+    totalAmount = approvalAmounts.total;
+
     // Insert draft order
     const { data: draft, error: draftError } = await supabase
       .from("sales_orders")
@@ -144,6 +246,10 @@ export class DraftSaleService {
         status: "pending_approval",
         payment_type: input.paymentType ?? "credit",
         credit_days: input.creditDays ?? null,
+        invoice_discount: invoiceDiscount,
+        invoice_discount_type: invoiceDiscountType,
+        tax_rate: taxRate,
+        cash_received: cashReceived,
         created_by_profile_id: actor.profileId,
       })
       .select()
@@ -217,7 +323,8 @@ export class DraftSaleService {
       .from("sales_orders")
       .select(`
         id, so_number, customer_id, order_date, expected_date, notes, status,
-        created_by_profile_id, created_at, updated_at,
+        created_by_profile_id, created_at, updated_at, invoice_discount,
+        invoice_discount_type, tax_rate, cash_received, payment_type,
         customers!inner(customer_name, shop_name),
         sales_order_items(product_id, quantity_ordered, unit_price, discount),
         profiles!left(full_name)
@@ -249,14 +356,12 @@ export class DraftSaleService {
       return { ok: false, error: `Failed to load drafts: ${error.message}` };
     }
 
-    // Compute total per draft
+    // Compute total per draft, with the invoice discount and tax applied —
+    // the total the owner is approving.
     const drafts = (data ?? []).map((draft: any) => {
       const items = draft.sales_order_items ?? [];
-      const total = items.reduce(
-        (sum: number, item: any) => sum + Number(item.quantity_ordered ?? 0) * Number(item.unit_price ?? 0) - Number(item.discount ?? 0),
-        0
-      );
-      return { ...draft, total_amount: total };
+      const amounts = buildApprovalSaleAmounts(draft, items);
+      return { ...draft, total_amount: amounts.total };
     });
 
     return { ok: true, drafts, total: count ?? 0 };
@@ -285,7 +390,8 @@ export class DraftSaleService {
       .from("sales_orders")
       .select(`
         id, organization_id, so_number, customer_id, order_date, expected_date, notes,
-        status, payment_type, credit_days, created_by_profile_id, created_at,
+        status, payment_type, credit_days, invoice_discount, invoice_discount_type,
+        tax_rate, cash_received, created_by_profile_id, created_at,
         sales_order_items(product_id, quantity_ordered, unit_price, discount, unit_mode, bonus)
       `)
       .eq("id", draftId)
@@ -345,11 +451,11 @@ export class DraftSaleService {
       return { ok: false, error: err instanceof Error ? err.message : "Failed to generate invoice number" };
     }
 
-    // Compute total
-    const totalAmount = items.reduce(
-      (sum: number, item: any) => sum + Number(item.quantity_ordered ?? 0) * Number(item.unit_price ?? 0) - Number(item.discount ?? 0),
-      0
-    );
+    // Compute the total exactly like the normal save: line subtotal minus
+    // the invoice discount, plus tax on the remainder. Cash tender defaults
+    // to the total when the draft carries none (a non-quick-sale cash sale).
+    const approvalAmounts = buildApprovalSaleAmounts(draft, items);
+    const totalAmount = approvalAmounts.total;
 
     const now = new Date().toISOString();
 
@@ -397,6 +503,11 @@ export class DraftSaleService {
         status: paymentType === "credit" ? "confirmed" : "paid",
         notes: `Converted from draft ${draft.so_number}. ${draft.notes ?? ""}`.trim(),
         total_amount: totalAmount,
+        discount_amount: approvalAmounts.invoiceDiscount,
+        tax_rate: draft.tax_rate ?? 0,
+        tax_amount: approvalAmounts.tax,
+        cash_received: approvalAmounts.cashReceived,
+        change_due: approvalAmounts.changeDue,
         invoice_type: "sales",
         created_by_profile_id: draft.created_by_profile_id ?? actor.profileId,
         created_at: now,
@@ -651,7 +762,8 @@ export class DraftSaleService {
       .from("sales_orders")
       .select(`
         id, so_number, customer_id, order_date, expected_date, notes, status,
-        created_by_profile_id, created_at, updated_at,
+        created_by_profile_id, created_at, updated_at, invoice_discount,
+        invoice_discount_type, tax_rate, cash_received, payment_type,
         customers!inner(customer_name, shop_name),
         sales_order_items(product_id, quantity_ordered, unit_price, discount)
       `)
@@ -666,11 +778,8 @@ export class DraftSaleService {
 
     const drafts = (data ?? []).map((draft: any) => {
       const items = draft.sales_order_items ?? [];
-      const total = items.reduce(
-        (sum: number, item: any) => sum + Number(item.quantity_ordered ?? 0) * Number(item.unit_price ?? 0) - Number(item.discount ?? 0),
-        0
-      );
-      return { ...draft, total_amount: total };
+      const amounts = buildApprovalSaleAmounts(draft, items);
+      return { ...draft, total_amount: amounts.total };
     });
 
     return { ok: true, drafts, total: drafts.length };

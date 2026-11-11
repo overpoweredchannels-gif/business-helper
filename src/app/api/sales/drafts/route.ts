@@ -57,6 +57,10 @@ export async function POST(request: NextRequest) {
     saleDate?: string;
     paymentType?: "cash" | "card" | "credit";
     creditDays?: number;
+    invoiceDiscount?: number;
+    invoiceDiscountType?: "flat" | "percent";
+    taxRate?: number;
+    cashReceived?: number | null;
   };
 
   try {
@@ -65,7 +69,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { customerId, visitId, routeId, items, notes, expectedDate, saleDate, paymentType, creditDays } = body;
+  const { customerId, visitId, routeId, items, notes, expectedDate, saleDate, paymentType, creditDays, invoiceDiscount, invoiceDiscountType, taxRate, cashReceived } = body;
 
   if (!customerId || !items || !Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ ok: false, error: "customerId and items are required" }, { status: 400 });
@@ -82,6 +86,10 @@ export async function POST(request: NextRequest) {
     saleDate,
     paymentType,
     creditDays,
+    invoiceDiscount,
+    invoiceDiscountType,
+    taxRate,
+    cashReceived,
   });
 
   if (!result.ok) {
