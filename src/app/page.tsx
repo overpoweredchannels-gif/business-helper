@@ -69,7 +69,6 @@ import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
 import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
-import { selectWithColumnFallback } from "@/lib/supabase/select-with-column-fallback";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, SetupImportPrompt, type SectionSummary } from "@/components/dashboard";
 import { RecordHistoryPanel } from "@/components/sales/RecordHistoryPanel";
 import { useDashboardOrder } from "@/lib/preferences/use-dashboard-order";
@@ -1850,38 +1849,23 @@ export default function Home() {
       return;
     }
 
-    // staff_sales_mode, drawer_no_sale_staff_allowed, books_currency and
-    // regional_preferences all arrived with additive migrations that may
-    // not have run yet on this database. Until a column exists the
-    // widened select fails with 42703, so the shared tolerant read drops
-    // each missing column and retries, down to the floor list below —
-    // the exact select this loader used before any of those columns
-    // existed. A dropped setting then reads as absent and its gate keeps
-    // the pre-setting behaviour (staff sales stay "approval"; staff No
-    // Sale stays blocked; books currency resolves from
-    // regional_preferences when present, else PKR). Production incident
-    // 2026-10-23: the previous hand-written chain's deepest level still
-    // selected regional_preferences, which the production table does not
-    // have, so every retry failed and settings did not load at all.
-    const organizationResult = await selectWithColumnFallback({
-      columns: [
-        "id", "name", "phone", "address", "city", "invoice_footer_note",
-        "default_payment_terms", "overselling_policy", "staff_sales_mode",
-        "drawer_no_sale_staff_allowed", "books_currency", "regional_preferences",
-      ],
-      floor: [
-        "id", "name", "phone", "address", "city", "invoice_footer_note",
-        "default_payment_terms", "overselling_policy",
-      ],
-      run: (columns) =>
-        supabase
-          .from("organizations")
-          .select(columns.join(", "))
-          .eq("id", orgId)
-          .maybeSingle(),
-    });
-
-    const { data, error } = organizationResult;
+    // All six columns the old tolerant read dropped one by one
+    // (staff_sales_mode, drawer_no_sale_staff_allowed, books_currency,
+    // regional_preferences, invoice_footer_note, default_payment_terms)
+    // are guaranteed by migration phase 21, so this is a direct select:
+    // a missing column is a real schema error and must surface through
+    // the error path below, never silently drop a setting. Do NOT
+    // reintroduce selectWithColumnFallback here — the 2026-10-23
+    // incident showed the tolerant read hiding a missing column until
+    // settings silently loaded wrong (and the save below silently
+    // dropped the two owner toggles while reporting success).
+    const { data, error } = await supabase
+      .from("organizations")
+      .select(
+        "id, name, phone, address, city, invoice_footer_note, default_payment_terms, overselling_policy, staff_sales_mode, drawer_no_sale_staff_allowed, books_currency, regional_preferences",
+      )
+      .eq("id", orgId)
+      .maybeSingle();
 
     if (error) {
       console.error("Supabase fetch organization error:", JSON.stringify(error, null, 2));
@@ -4342,6 +4326,8 @@ setCustomerOrganizationName("");
               fallbackPayment: salesPaymentType,
               customerWhatsapp: recoveredCustomer?.whatsapp ?? null,
               customerPhone: recoveredCustomer?.phone ?? null,
+              footerNote: String(currentOrganization?.invoice_footer_note ?? "").trim(),
+              paymentTerms: String(currentOrganization?.default_payment_terms ?? "").trim(),
             }));
           }
           setSalesError(null);
@@ -4702,6 +4688,8 @@ setCustomerOrganizationName("");
           customerName: queuedCustomer?.customer_name ?? SEEDED_WALK_IN_CUSTOMER_NAME,
           customerWhatsapp: queuedCustomer?.whatsapp ?? null,
           customerPhone: queuedCustomer?.phone ?? null,
+          footerNote: String(currentOrganization?.invoice_footer_note ?? "").trim(),
+          paymentTerms: String(currentOrganization?.default_payment_terms ?? "").trim(),
           productById: (id) => products.find((p) => String(p.id) === id),
         }));
         if (saved.confirmedCount > 0) {
@@ -4742,6 +4730,8 @@ setCustomerOrganizationName("");
         fallbackPayment: salesPaymentType,
         customerWhatsapp: saleCustomer?.whatsapp ?? null,
         customerPhone: saleCustomer?.phone ?? null,
+        footerNote: String(currentOrganization?.invoice_footer_note ?? "").trim(),
+        paymentTerms: String(currentOrganization?.default_payment_terms ?? "").trim(),
       }));
       if (previousPendingConfirmed) {
         setSalesMessage(t('page.earlierSaleConfirmed').replace('{number}', invoiceNumber));
@@ -16952,50 +16942,22 @@ setCustomerOrganizationName("");
         staff_sales_mode: parseStaffSalesMode(businessSettingsStaffSalesMode),
         drawer_no_sale_staff_allowed: businessSettingsDrawerNoSaleStaffAllowed,
       };
-      // staff_sales_mode and drawer_no_sale_staff_allowed arrive with
-      // additive migrations that may not have run yet. Each is updated
-      // on its own and a 42703 (column not there yet) is tolerated, so a
-      // pre-migration database can never fail the whole settings save
-      // over an owner toggle whose column is still missing — the core
-      // settings save exactly as it did before those columns existed.
-      const {
-        drawer_no_sale_staff_allowed: drawerNoSaleStaffAllowedValue,
-        staff_sales_mode: staffSalesModeValue,
-        ...organizationUpdate
-      } = newBusinessSettings;
+      // staff_sales_mode and drawer_no_sale_staff_allowed are saved in
+      // the same update as every other setting: their columns are
+      // guaranteed by migration phase 21, so a failure (including a
+      // 42703 if the migration has not run) must surface through the
+      // error path below — the old code updated them separately and
+      // swallowed 42703, so the owner saw "Business settings saved"
+      // while the two toggles never persisted.
       const { error } = await supabase
         .from("organizations")
-        .update(organizationUpdate)
+        .update(newBusinessSettings)
         .eq("id", currentOrganizationId);
 
       if (error) {
         console.error("Supabase business settings update error:", JSON.stringify(error, null, 2));
         setBusinessSettingsError(t('page.bizSettingsSaveFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
         return;
-      }
-
-      const { error: staffSalesSettingError } = await supabase
-        .from("organizations")
-        .update({ staff_sales_mode: staffSalesModeValue })
-        .eq("id", currentOrganizationId);
-      if (
-        staffSalesSettingError &&
-        staffSalesSettingError.code !== "42703" &&
-        !staffSalesSettingError.message?.includes("staff_sales_mode")
-      ) {
-        console.error("Supabase staff sales setting update error:", JSON.stringify(staffSalesSettingError, null, 2));
-      }
-
-      const { error: drawerSettingError } = await supabase
-        .from("organizations")
-        .update({ drawer_no_sale_staff_allowed: drawerNoSaleStaffAllowedValue })
-        .eq("id", currentOrganizationId);
-      if (
-        drawerSettingError &&
-        drawerSettingError.code !== "42703" &&
-        !drawerSettingError.message?.includes("drawer_no_sale_staff_allowed")
-      ) {
-        console.error("Supabase drawer setting update error:", JSON.stringify(drawerSettingError, null, 2));
       }
 
       await createAuditLog({

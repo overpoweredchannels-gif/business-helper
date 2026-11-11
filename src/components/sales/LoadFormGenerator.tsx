@@ -582,6 +582,8 @@ const previewSummary: LoadFormSummary = {
   org_name: "Aankh Distributors",
   org_address: "Main Bazaar, Faisalabad",
   org_phone: "0300-1234567",
+  org_footer_note: "",
+  org_payment_terms: "",
   groupBy: "brand",
   groupBySalesman: true,
   salesmen: [

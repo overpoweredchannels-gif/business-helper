@@ -608,6 +608,8 @@ const previewDoc: SalesInvoiceDoc = {
   org_name: "Aankh Distributors",
   org_address: "Main Bazaar, Faisalabad",
   org_phone: "0300-1234567",
+  org_footer_note: "",
+  org_payment_terms: "",
   lines: [
     {
       product_id: 1,

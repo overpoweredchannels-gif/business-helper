@@ -49,6 +49,7 @@ function useReceiptChromeLabels(): ReceiptChromeLabels {
     dateLabel: t("receipt.dateLabel"),
     footnote: t("receipt.footnote"),
     walkInCustomer: t("receipt.walkInCustomer"),
+    paymentTerms: t("print.paymentTerms"),
     columns: {
       product: t("receipt.columnItem"),
       quantity: t("receipt.columnQty"),
@@ -131,6 +132,12 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
     </div>
     {template.header.showOrgName && template.header.orgNamePosition === "bottom" && orgName}
     {template.footer.showFootnote && <p className="mt-2 border-t pt-1" style={{ borderColor: template.page.rule, fontSize: template.footer.footnoteSizePx }}>{chrome.footnoteText}</p>}
+    {/* Organization footer note and payment terms (Business Settings),
+        same footer zone and style as the template footnote — org
+        settings, not template content, so NOT gated by showFootnote.
+        Each renders only when set; when unset nothing renders here. */}
+    {receipt.paymentTerms && <p className="mt-2 border-t pt-1" style={{ borderColor: template.page.rule, fontSize: template.footer.footnoteSizePx }}><strong>{chrome.paymentTermsLabel}:</strong> {receipt.paymentTerms}</p>}
+    {receipt.footerNote && <p className="mt-2 border-t pt-1" style={{ borderColor: template.page.rule, fontSize: template.footer.footnoteSizePx }}>{receipt.footerNote}</p>}
     </div>
   </div>;
 }
