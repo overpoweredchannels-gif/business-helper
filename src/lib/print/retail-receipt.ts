@@ -23,6 +23,10 @@ export type Receipt = {
   /** Customer contact for WhatsApp sharing; print rendering ignores these. */
   customerWhatsapp?: string | null;
   customerPhone?: string | null;
+  /** Organization footer note (Business Settings) for the printed receipt; omitted when unset. */
+  footerNote?: string;
+  /** Organization payment terms (Business Settings) for the printed receipt; omitted when unset. */
+  paymentTerms?: string;
   lineSubtotal: number;
   lineDiscount: number;
   subtotal: number;
@@ -178,6 +182,8 @@ export type ReceiptChromeLabels = {
   /** Label for the sale-note line on the receipt ("Notes"). Optional so
    * older callers keep compiling; renderers fall back to "Notes". */
   notesLabel?: string;
+  /** Label for the organization payment-terms line; defaults to "Payment Terms". */
+  paymentTerms?: string;
   columns: Partial<Record<string, string>>;
 };
 
@@ -186,6 +192,7 @@ export const defaultReceiptChromeLabels: ReceiptChromeLabels = {
   dateLabel: "Date",
   footnote: "Thank you for your business.",
   walkInCustomer: SEEDED_WALK_IN_CUSTOMER_NAME,
+  paymentTerms: "Payment Terms",
   columns: { product: "Item", quantity: "Qty", price: "Rate", total: "Amount" },
 };
 
@@ -193,6 +200,7 @@ export type ResolvedReceiptChrome = {
   headingText: string;
   dateLabel: string;
   footnoteText: string;
+  paymentTermsLabel: string;
   columns: PrintColumn[];
 };
 
@@ -205,6 +213,7 @@ export function resolveReceiptChrome(template: PrintTemplate, chrome: ReceiptChr
     headingText: template.header.headingText === shipped.header.headingText ? chrome.heading : template.header.headingText,
     dateLabel: template.header.dateLabel === shipped.header.dateLabel ? chrome.dateLabel : template.header.dateLabel,
     footnoteText: template.footer.footnoteText === shipped.footer.footnoteText ? chrome.footnote : template.footer.footnoteText,
+    paymentTermsLabel: chrome.paymentTerms ?? defaultReceiptChromeLabels.paymentTerms ?? "Payment Terms",
     columns: template.columns.labels.map(column => {
       const shippedColumn = shipped.columns.labels.find(candidate => candidate.key === column.key);
       const localized = chrome.columns[column.key];
@@ -221,7 +230,7 @@ export function resolveReceiptCustomerName(customer: string, chrome: ReceiptChro
 
 export function buildAtomicSaleReceipt(
   result: AtomicSaleReceiptResult,
-  details: { scope: string; business: string; fallbackDate: string; fallbackPayment: string; customerWhatsapp?: string | null; customerPhone?: string | null },
+  details: { scope: string; business: string; fallbackDate: string; fallbackPayment: string; customerWhatsapp?: string | null; customerPhone?: string | null; footerNote?: string; paymentTerms?: string },
 ): Receipt {
   const transaction = result.transaction;
   const lines: ReceiptLine[] = result.items.map(item => ({
@@ -285,6 +294,8 @@ export function buildOfflineSaleReceipt(
     customerName: string;
     customerWhatsapp?: string | null;
     customerPhone?: string | null;
+    footerNote?: string;
+    paymentTerms?: string;
     productById: (id: string) => { name: string; unit_type: string | null; subunit_type?: string | null } | undefined;
   },
 ): Receipt {
@@ -311,6 +322,8 @@ export function buildOfflineSaleReceipt(
     customer: details.customerName,
     customerWhatsapp: details.customerWhatsapp ?? null,
     customerPhone: details.customerPhone ?? null,
+    footerNote: details.footerNote,
+    paymentTerms: details.paymentTerms,
     lineSubtotal: calculated.lineSubtotal,
     lineDiscount: calculated.lineDiscount,
     subtotal: calculated.subtotal,
@@ -385,6 +398,16 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
   const orgName = template.header.showOrgName
     ? `<h1>${escapeHtml(receipt.business)}</h1>`
     : "";
+  // The template's own footnote first, exactly as before. The
+  // organization's payment terms and footer note (Business Settings)
+  // follow in the same footer zone and style — they are org settings,
+  // not template content, so they are NOT gated by showFootnote: a
+  // template toggle must never silently drop what the owner set. Each
+  // renders only when set; when unset nothing renders here at all.
+  const orgFooter = [
+    receipt.paymentTerms ? `<p class="footer"><strong>${escapeHtml(resolved.paymentTermsLabel)}:</strong> ${escapeHtml(receipt.paymentTerms)}</p>` : "",
+    receipt.footerNote ? `<p class="footer">${escapeHtml(receipt.footerNote)}</p>` : "",
+  ].join("");
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(`${receipt.business} - ${receipt.number}`)}</title><style>
     @page{size:${width}mm auto;margin:0}
@@ -404,5 +427,5 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
     .grand-total{border-top:1px solid ${template.page.rule};padding-top:1mm;font-size:${template.footer.valueSizePx}px}
     .footer{border-top:1px solid ${template.page.rule};margin-top:2mm;padding-top:1mm;font-size:${template.footer.footnoteSizePx}px}
     @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style></head><body data-receipt-paper-width="${width}mm" data-receipt-content-width="${contentWidth}mm">${template.header.showOrgName && template.header.orgNamePosition === "top" ? orgName : ""}<h2>${escapeHtml(resolved.headingText)}</h2><p>${meta}</p>${notesLine}${width === 40 ? stackedRows : `<table><thead><tr>${columns}</tr></thead><tbody>${rows}</tbody></table>`}<div class="summary">${summary}</div>${template.footer.showFootnote ? `<p class="footer">${escapeHtml(resolved.footnoteText)}</p>` : ""}${template.header.showOrgName && template.header.orgNamePosition === "bottom" ? orgName : ""}</body></html>`;
+  </style></head><body data-receipt-paper-width="${width}mm" data-receipt-content-width="${contentWidth}mm">${template.header.showOrgName && template.header.orgNamePosition === "top" ? orgName : ""}<h2>${escapeHtml(resolved.headingText)}</h2><p>${meta}</p>${notesLine}${width === 40 ? stackedRows : `<table><thead><tr>${columns}</tr></thead><tbody>${rows}</tbody></table>`}<div class="summary">${summary}</div>${template.footer.showFootnote ? `<p class="footer">${escapeHtml(resolved.footnoteText)}</p>` : ""}${orgFooter}${template.header.showOrgName && template.header.orgNamePosition === "bottom" ? orgName : ""}</body></html>`;
 }

@@ -27,7 +27,7 @@ export interface SalesInvoiceFilters {
   /** Inclusive upper bound on sale_date (YYYY-MM-DD). */
   dateTo?: string | null;
   /** Organization branding (name/address/city/phone) for the printed header. */
-  org?: { name?: string; address?: string; city?: string; phone?: string } | null;
+  org?: { name?: string; address?: string; city?: string; phone?: string; invoice_footer_note?: string | null; default_payment_terms?: string | null } | null;
 }
 
 export interface SalesInvoiceLine {
@@ -70,6 +70,10 @@ export interface SalesInvoiceDoc {
   org_name: string;
   org_address: string;
   org_phone: string;
+  /** Organization footer note (Business Settings) for the printed footer; "" when unset. */
+  org_footer_note: string;
+  /** Organization payment terms (Business Settings) for the printed footer; "" when unset. */
+  org_payment_terms: string;
   lines: SalesInvoiceLine[];
   /** Grand total (after invoice-level discount + tax). */
   grand_total: number;
@@ -250,6 +254,8 @@ export async function buildSalesInvoices(
         org_name: filters.org?.name?.trim() ?? "",
         org_address: [filters.org?.address?.trim(), filters.org?.city?.trim()].filter(Boolean).join(", ") || "",
         org_phone: filters.org?.phone?.trim() ?? "",
+        org_footer_note: String(filters.org?.invoice_footer_note ?? "").trim(),
+        org_payment_terms: String(filters.org?.default_payment_terms ?? "").trim(),
         lines,
         grand_total: invoiceTotal,
         discount_total: discountAmount,

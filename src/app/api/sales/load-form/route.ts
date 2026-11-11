@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     const { data: org } = await supabase
       .from("organizations")
-      .select("name, address, city, phone")
+      .select("name, address, city, phone, invoice_footer_note, default_payment_terms")
       .eq("id", actor.organizationId)
       .maybeSingle();
 

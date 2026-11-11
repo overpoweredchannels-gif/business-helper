@@ -27,7 +27,7 @@ export interface LoadFormFilters {
   /** How to group products: by product brand or by customer. Defaults to brand. */
   groupBy?: LoadFormGroupBy;
   /** Organization branding (name/address/city/phone) for the printed header. */
-  org?: { name?: string; address?: string; city?: string; phone?: string } | null;
+  org?: { name?: string; address?: string; city?: string; phone?: string; invoice_footer_note?: string | null; default_payment_terms?: string | null } | null;
 }
 
 export interface LoadFormLine {
@@ -81,6 +81,10 @@ export interface LoadFormSummary {
   org_name: string;
   org_address: string;
   org_phone: string;
+  /** Organization footer note (Business Settings) for the printed footer; "" when unset. */
+  org_footer_note: string;
+  /** Organization payment terms (Business Settings) for the printed footer; "" when unset. */
+  org_payment_terms: string;
   groupBy: LoadFormGroupBy;
   /**
    * true when the user filtered to specific salesmen (per-salesman sections +
@@ -373,6 +377,8 @@ export async function buildLoadForm(
   const orgCity = filters.org?.city?.trim() ?? "";
   const orgAddress = [filters.org?.address?.trim(), orgCity].filter(Boolean).join(", ") || "";
   const orgPhone = filters.org?.phone?.trim() ?? "";
+  const orgFooterNote = String(filters.org?.invoice_footer_note ?? "").trim();
+  const orgPaymentTerms = String(filters.org?.default_payment_terms ?? "").trim();
 
   return {
     ok: true,
@@ -380,6 +386,8 @@ export async function buildLoadForm(
       org_name: orgName,
       org_address: orgAddress,
       org_phone: orgPhone,
+      org_footer_note: orgFooterNote,
+      org_payment_terms: orgPaymentTerms,
       groupBy,
       groupBySalesman,
       salesmen,

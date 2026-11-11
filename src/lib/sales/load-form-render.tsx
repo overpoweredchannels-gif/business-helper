@@ -328,8 +328,22 @@ export function LoadFormDocument({
         </div>
       )}
 
+      {/* The template's own footnote first, exactly as before. The
+          organization's footer note and payment terms (Business Settings)
+          follow in the same footer zone and style — they are org settings,
+          not template content, so they are NOT gated by showFootnote: a
+          template toggle must never silently drop what the owner set. Each
+          renders only when set; when unset nothing renders here at all. */}
       {footer.showFootnote && (
         <div style={{ textAlign: "center", fontSize: footer.footnoteSizePx, marginTop: 6 }}>{footer.footnoteText}</div>
+      )}
+      {summary.org_payment_terms && (
+        <div style={{ textAlign: "center", fontSize: footer.footnoteSizePx, marginTop: 4 }}>
+          <strong>Payment Terms:</strong> {summary.org_payment_terms}
+        </div>
+      )}
+      {summary.org_footer_note && (
+        <div style={{ textAlign: "center", fontSize: footer.footnoteSizePx, marginTop: 4 }}>{summary.org_footer_note}</div>
       )}
     </div>
   );

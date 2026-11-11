@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { cloneDefaultTemplate } from "../src/lib/print/default-templates";
-import { buildAtomicSaleReceipt, buildPrintableReceiptHtml, getReceiptSummaryRows, type Receipt } from "../src/lib/print/retail-receipt";
+import { buildAtomicSaleReceipt, buildOfflineSaleReceipt, buildPrintableReceiptHtml, getReceiptSummaryRows, type Receipt } from "../src/lib/print/retail-receipt";
 import { formatAvailableStock } from "../src/lib/products/stock-display";
 
 const confirmedReceipt = buildAtomicSaleReceipt({
@@ -104,4 +104,51 @@ assert.match(longHtml, /Rs 9,877,404,197\.54|Rs 9,877,404,197\.54/);
 const creditRows = getReceiptSummaryRows({ ...shortReceipt, payment: "credit" });
 assert.equal(creditRows.some(row => row.label === "Tendered" || row.label === "Change due"), false);
 
-console.log("POS receipt tests passed: confirmed amounts, 58mm/80mm layouts, wrapping, short/long content, and tender/change.");
+// --- Organization footer note + payment terms (2026-11-12): the
+// receipt renderers printed only the template's footnote — what the
+// owner set in Business Settings never appeared. The receipt now
+// carries both, rendered after the template footnote in the same
+// footer zone and style; each renders only when set.
+const orgReceipt: Receipt = {
+  ...shortReceipt,
+  footerNote: "Thank you, please visit again.",
+  paymentTerms: "Due on receipt",
+};
+const orgHtml = buildPrintableReceiptHtml(orgReceipt, smallTemplate);
+assert.ok(orgHtml.includes("Thank you for your business."), "template footnote still renders first");
+assert.ok(orgHtml.includes("Payment Terms:"), "payment terms label renders");
+assert.ok(orgHtml.includes("Due on receipt"), "payment terms render exactly as set");
+assert.ok(orgHtml.includes("Thank you, please visit again."), "footer note renders exactly as set");
+assert.ok(orgHtml.indexOf("Thank you for your business.") < orgHtml.indexOf("Payment Terms:"), "template footnote precedes the org lines");
+// Unset: the receipt renders exactly as before — no empty block, no
+// "Payment Terms:" line.
+assert.ok(!smallHtml.includes("Payment Terms:"), "unset terms render nothing");
+assert.ok(!smallHtml.includes("Thank you, please visit again."), "unset footer note renders nothing");
+// Org lines are org settings, not template content: turning the
+// template footnote off must not silently drop what the owner set.
+const noFootnoteReceiptTemplate = cloneDefaultTemplate("retail_receipt");
+noFootnoteReceiptTemplate.footer.showFootnote = false;
+const noFootnoteReceiptHtml = buildPrintableReceiptHtml(orgReceipt, noFootnoteReceiptTemplate);
+assert.ok(!noFootnoteReceiptHtml.includes("Thank you for your business."), "template footnote off hides the template text");
+assert.ok(noFootnoteReceiptHtml.includes("Due on receipt"), "org terms still render with the template footnote off");
+assert.ok(noFootnoteReceiptHtml.includes("Thank you, please visit again."), "org footer note still renders with the template footnote off");
+// Both receipt builders carry the fields through.
+const orgConfirmed = buildAtomicSaleReceipt({
+  customer_name: "Walk-in",
+  transaction: {
+    invoice_number: "S-100126", sale_date: "2026-09-26", payment_type: "cash",
+    discount_amount: "5.00", tax_rate: "10.00", tax_amount: "12.00",
+    total_amount: "131.99", cash_received: "135.00", change_due: "3.01",
+  },
+  items: [{ product_name: "Small Pack", quantity: "0.125", selling_price: "1000.00", discount: "0.01", bonus: "0.000", unit_mode: "main", unit_type: "Case" }],
+}, { scope: "org:owner", business: "Corner Shop", fallbackDate: "today", fallbackPayment: "credit", footerNote: "Thank you, please visit again.", paymentTerms: "Due on receipt" });
+assert.equal(orgConfirmed.footerNote, "Thank you, please visit again.");
+assert.equal(orgConfirmed.paymentTerms, "Due on receipt");
+const orgOffline = buildOfflineSaleReceipt(
+  { customer_id: "c1", sale_date: "2026-09-26", payment_type: "cash", invoice_discount: 0, invoice_discount_type: "flat", tax_rate: 0, cash_received: 200, credit_override_confirmed: false, lines: [{ product_id: "p1", quantity: 1, selling_price: 100, discount: 0, bonus: 0, unit_mode: "main" }] },
+  { scope: "org:owner", business: "Corner Shop", pendingLabel: "Pending sync", customerName: "Walk-in", footerNote: "Thank you, please visit again.", paymentTerms: "Due on receipt", productById: () => ({ name: "Sample", unit_type: "Pcs" }) },
+);
+assert.equal(orgOffline.footerNote, "Thank you, please visit again.");
+assert.equal(orgOffline.paymentTerms, "Due on receipt");
+
+console.log("POS receipt tests passed: confirmed amounts, 58mm/80mm layouts, wrapping, short/long content, tender/change, and org footer note + payment terms.");
