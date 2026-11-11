@@ -11481,6 +11481,19 @@ setCustomerOrganizationName("");
       if (biCategoryFilter !== "all" && String(product?.category_id ?? "") !== biCategoryFilter) return false;
       return matchesSearch([product?.name, category?.name, purchasesById[String(item.purchase_transaction_id)]?.invoice_number]);
     });
+    // Counts follow the selected items: when a product or category filter is
+    // active, only transactions with at least one selected item count. With
+    // no product/category filter these are the same arrays, so the
+    // unfiltered view is byte-identical.
+    const itemFilterActive = biProductFilter !== "all" || biCategoryFilter !== "all";
+    const salesTransactionIdsWithSelectedItems = new Set(selectedSalesItems.map((item) => String(item.sales_transaction_id)));
+    const purchaseTransactionIdsWithSelectedItems = new Set(selectedPurchaseItems.map((item) => String(item.purchase_transaction_id)));
+    const countedSalesTransactions = itemFilterActive
+      ? selectedSalesTransactions.filter((transaction) => salesTransactionIdsWithSelectedItems.has(String(transaction.id)))
+      : selectedSalesTransactions;
+    const countedPurchaseTransactions = itemFilterActive
+      ? selectedPurchaseTransactions.filter((transaction) => purchaseTransactionIdsWithSelectedItems.has(String(transaction.id)))
+      : selectedPurchaseTransactions;
     const selectedCustomerPayments = customerPayments.filter((payment) => {
       if (!isCurrentOrganizationRecord(payment)) return false;
       if (!isInBiRange(payment.payment_date, payment.created_at)) return false;
@@ -11501,8 +11514,12 @@ setCustomerOrganizationName("");
     const selectedExpenses = expenses.filter((expense) => {
       if (!isCurrentOrganizationRecord(expense)) return false;
       if (!isInBiRange(expense.expense_date, expense.created_at)) return false;
-      if (biCustomerFilter !== "all" && expense.customer_id !== biCustomerFilter) return false;
-      if (biProductFilter !== "all") return false;
+      // Expenses carry no product/category link, so those filters never
+      // change them; a customer filter keeps unlinked (operating) expenses
+      // and excludes only expenses linked to a different customer. Expenses
+      // also carry no staff attribution, so the staff filter never changes
+      // them either.
+      if (biCustomerFilter !== "all" && expense.customer_id != null && expense.customer_id !== biCustomerFilter) return false;
       return matchesSearch([expense.expense_type, expense.notes]);
     });
     const selectedTasks = tasks.filter((task) => {
@@ -11610,7 +11627,7 @@ setCustomerOrganizationName("");
 
     const customerAnalytics = customers
       .map((customer) => {
-        const customerSales = selectedSalesTransactions.filter((transaction) => transaction.customer_id === customer.id);
+        const customerSales = countedSalesTransactions.filter((transaction) => transaction.customer_id === customer.id);
         const customerSaleIds = new Set(customerSales.map((transaction) => String(transaction.id)));
         const totalSales = selectedSalesItems
           .filter((item) => customerSaleIds.has(String(item.sales_transaction_id)))
@@ -11665,7 +11682,7 @@ setCustomerOrganizationName("");
     const staffAnalytics = staffProfiles
       .map((profile) => {
         const profileId = profile.id;
-        const salesCount = selectedSalesTransactions.filter((transaction) => String(getRecordProfileId(transaction)) === profileId).length;
+        const salesCount = countedSalesTransactions.filter((transaction) => String(getRecordProfileId(transaction)) === profileId).length;
         const salesAmount = selectedSalesItems
           .filter((item) => String(getRecordProfileId(salesById[String(item.sales_transaction_id)])) === profileId)
           .reduce((sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price), 0);
@@ -11722,6 +11739,9 @@ setCustomerOrganizationName("");
     const operatingExpenseTotal = selectedExpenses
       .filter((expense) => !expense.purchase_transaction_id && !expense.sales_transaction_id)
       .reduce((sum, expense) => sum + safeNumber(expense.amount), 0);
+    const purchaseLinkedExpenseCount = selectedExpenses.filter((expense) => Boolean(expense.purchase_transaction_id)).length;
+    const salesLinkedExpenseCount = selectedExpenses.filter((expense) => Boolean(expense.sales_transaction_id)).length;
+    const operatingExpenseCount = selectedExpenses.filter((expense) => !expense.purchase_transaction_id && !expense.sales_transaction_id).length;
 
     const dailyGroups: Record<string, { date: string; sales: number; purchases: number; collections: number; expenses: number; profit: number }> = {};
     const ensureDay = (dateValue: string | null | undefined) => {
@@ -11794,7 +11814,7 @@ setCustomerOrganizationName("");
       )
       .sort((a, b) => b.quantity - a.quantity)[0] ?? null;
 
-    const activeCustomerCount = new Set(selectedSalesTransactions.map((transaction) => transaction.customer_id)).size;
+    const activeCustomerCount = new Set(countedSalesTransactions.map((transaction) => transaction.customer_id)).size;
     const productsSoldCount = new Set(selectedSalesItems.map((item) => String(item.product_id))).size;
     const topByQuantity = productAnalytics.slice().sort((a, b) => b.quantitySold - a.quantitySold).slice(0, 10);
     const topBySalesValue = productAnalytics.slice().sort((a, b) => b.salesValue - a.salesValue).slice(0, 10);
@@ -11859,15 +11879,15 @@ setCustomerOrganizationName("");
       selectedAuditLogs,
       overview: {
         totalSalesAmount: salesLineTotals.revenue,
-        salesInvoiceCount: selectedSalesTransactions.length,
+        salesInvoiceCount: countedSalesTransactions.length,
         totalPurchasesAmount,
-        purchaseInvoiceCount: selectedPurchaseTransactions.length,
+        purchaseInvoiceCount: countedPurchaseTransactions.length,
         customerCollectionsTotal,
         supplierPaymentsTotal,
         expensesTotal,
         estimatedGrossProfit,
         estimatedNetProfit,
-        averageSaleValue: selectedSalesTransactions.length > 0 ? salesLineTotals.revenue / selectedSalesTransactions.length : 0,
+        averageSaleValue: countedSalesTransactions.length > 0 ? salesLineTotals.revenue / countedSalesTransactions.length : 0,
         activeCustomerCount,
         productsSoldCount,
         lowStockCount: lowStockProducts.length,
@@ -11895,6 +11915,9 @@ setCustomerOrganizationName("");
       purchaseLinkedExpenseTotal,
       salesLinkedExpenseTotal,
       operatingExpenseTotal,
+      purchaseLinkedExpenseCount,
+      salesLinkedExpenseCount,
+      operatingExpenseCount,
       dailyTrends,
       monthlySales,
       weekdaySales,
@@ -12013,11 +12036,16 @@ setCustomerOrganizationName("");
   const exportBiExpenseAnalyticsCsv = () => {
     downloadCsv(
       "tradeos-bi-expense-analytics.csv",
-      businessIntelligenceAnalytics.expensesByType.map((expense) => ({
-        "Expense Type": expense.expenseType,
-        Entries: expense.entryCount,
-        "Total Amount": expense.totalAmount,
-      }))
+      [
+        ...businessIntelligenceAnalytics.expensesByType.map((expense) => ({
+          "Expense Type": expense.expenseType,
+          Entries: expense.entryCount,
+          "Total Amount": expense.totalAmount,
+        })),
+        { "Expense Type": t('bi.purchaseLinked'), Entries: businessIntelligenceAnalytics.purchaseLinkedExpenseCount, "Total Amount": businessIntelligenceAnalytics.purchaseLinkedExpenseTotal },
+        { "Expense Type": t('bi.salesLinked'), Entries: businessIntelligenceAnalytics.salesLinkedExpenseCount, "Total Amount": businessIntelligenceAnalytics.salesLinkedExpenseTotal },
+        { "Expense Type": t('bi.operating'), Entries: businessIntelligenceAnalytics.operatingExpenseCount, "Total Amount": businessIntelligenceAnalytics.operatingExpenseTotal },
+      ]
     );
     setBiMessage(t('page.biExpenseCsvExported'));
     setBiError(null);
@@ -18373,6 +18401,7 @@ setCustomerOrganizationName("");
               </div>
               <div className="workspace-panel rounded-xl border border-border bg-card p-4">
                 <h3 className="mb-3 text-lg font-medium text-foreground">{t('bi.customerCreditSignals')}</h3>
+                <p className="mb-3 text-xs text-muted-foreground">{t('bi.allTimeBalancesNote')}</p>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
                     <thead className="text-xs uppercase text-muted-foreground/80">
@@ -18485,6 +18514,7 @@ setCustomerOrganizationName("");
                     <div className="mt-1 font-semibold text-foreground">{formatBooksMoney(businessIntelligenceAnalytics.operatingExpenseTotal)}</div>
                   </div>
                 </div>
+                <p className="mt-3 text-xs text-muted-foreground">{t('bi.expenseProductNote')} {t('bi.expenseStaffNote')}</p>
               </div>
             </div>
           )}
