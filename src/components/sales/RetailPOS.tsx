@@ -19,7 +19,7 @@ import { isNoSaleReasonValid, NO_SALE_REASON_CODES, type NoSaleReasonCode } from
 import type { MessageKey } from "@/lib/regional/messages";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { initKeyboardModality, wasLastInputKeyboard } from "@/lib/keyboard-modality";
-import { formatBooksMoney, getActiveBooksCurrency } from "@/lib/tradeos/formatters";
+import { formatBooksMoney, formatTime, getActiveBooksCurrency } from "@/lib/tradeos/formatters";
 import { hasSubunit, subunitPriceFromMain } from "@/lib/tradeos/units";
 
 export type CounterSale = {
@@ -412,7 +412,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
   });
   const saveBasket = () => {
     if (!sale.lines.length) return;
-    const name = templateName.trim() || `Basket ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    const name = templateName.trim() || `Basket ${new Date().toLocaleDateString()} ${formatTime(new Date(), { hour: "2-digit", minute: "2-digit" })}`;
     const existing = readTemplates();
     const next = [{ id: crypto.randomUUID(), name, sale, savedAt: new Date().toISOString(), currency: getActiveBooksCurrency() }, ...existing.filter(item => item.name !== name)].slice(0, 10);
     if (persistTemplates(next)) {

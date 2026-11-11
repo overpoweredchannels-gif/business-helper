@@ -148,11 +148,12 @@ import {
   getUsableTimestamp,
   isDateInRange,
   setActiveBooksCurrency,
+  setActiveTimeZone,
   toDateInputValue,
 } from "@/lib/tradeos/formatters";
 import { calendarDayOfRecord } from "@/lib/regional/dates";
 import { resolveBooksCurrency } from "@/lib/books/currency";
-import { currencies as booksCurrencyOptions, parseCurrencyCookie, type Currency } from "@/lib/regional/settings";
+import { currencies as booksCurrencyOptions, languages, parseCurrencyCookie, parseLanguageCookie, parseTimeZone, type Currency, type Language } from "@/lib/regional/settings";
 import type {
   AiActionDraft,
   AiActionMessage,
@@ -358,7 +359,7 @@ function formatDashboardMoney(displayCurrency: string, displayFxRate: number | n
 
 export default function Home() {
   const router = useRouter();
-  const { t, language, currency: displayCurrency, fxRate: displayFxRate, setCurrency } = useRegional();
+  const { t, language, currency: displayCurrency, fxRate: displayFxRate, setCurrency, setLanguage } = useRegional();
   // Auth-guard error lines, translated once per render and reused by the
   // 60+ handlers below (keeps the t() calls out of the handler bodies).
   const orgNotLoadedMessage = t('page.orgNotLoaded');
@@ -1811,6 +1812,20 @@ export default function Home() {
     setBooksCurrency(resolvedBooksCurrency);
     setBooksTargetCurrency(resolvedBooksCurrency);
     setActiveBooksCurrency(resolvedBooksCurrency);
+    // Regional preferences: the organisation's saved time zone drives
+    // event-time display (formatDateTime/formatTime read it from the
+    // formatters module); an absent or invalid stored zone leaves the
+    // device-local display unchanged. The saved language is the UI
+    // default only when this browser has no language choice yet — a
+    // cookie already set always wins, so changing the saved language
+    // never resets a browser's own choice.
+    setActiveTimeZone(parseTimeZone(organization?.regional_preferences?.timeZone));
+    if (parseLanguageCookie(document.cookie) === null) {
+      const storedLanguage = organization?.regional_preferences?.language;
+      if (typeof storedLanguage === "string" && (languages as readonly string[]).includes(storedLanguage)) {
+        setLanguage(storedLanguage as Language);
+      }
+    }
     // There is no separate display currency any more: a stale display
     // cookie (from the display era, or another tab) must not keep
     // converting books amounts through a PKR-based rate. Snap it to

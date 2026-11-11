@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import SalesmanLayout from "@/components/salesman/SalesmanLayout";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { resolveBooksCurrency } from "@/lib/books/currency";
-import { setActiveBooksCurrency } from "@/lib/tradeos/formatters";
+import { setActiveBooksCurrency, setActiveTimeZone } from "@/lib/tradeos/formatters";
+import { parseTimeZone } from "@/lib/regional/settings";
 import { Loader2 } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
@@ -40,6 +41,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           // already returns books_currency + regional_preferences.
           setActiveBooksCurrency(
             resolveBooksCurrency(data.me.organization?.books_currency, data.me.organization?.regional_preferences),
+          );
+          setActiveTimeZone(
+            parseTimeZone(
+              (data.me.organization?.regional_preferences as Record<string, unknown> | null | undefined)?.timeZone,
+            ),
           );
           setMe(data.me);
         } else {

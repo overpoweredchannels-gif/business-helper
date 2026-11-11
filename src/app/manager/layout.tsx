@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import OwnerFsmLayout from "@/components/salesman/OwnerFsmLayout";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { resolveBooksCurrency } from "@/lib/books/currency";
-import { setActiveBooksCurrency } from "@/lib/tradeos/formatters";
+import { setActiveBooksCurrency, setActiveTimeZone } from "@/lib/tradeos/formatters";
+import { parseTimeZone } from "@/lib/regional/settings";
 import { Loader2 } from "lucide-react";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -29,6 +30,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           setActiveBooksCurrency(
             resolveBooksCurrency(data.me.organization?.books_currency, data.me.organization?.regional_preferences),
           );
+          setActiveTimeZone(parseTimeZone(data.me.organization?.regional_preferences?.timeZone));
           setOrgName(data.me.organization?.name ?? null);
           setUserName(data.me.profile?.display_name || data.me.profile?.full_name || null);
         } else {

@@ -1,6 +1,6 @@
 import { safeNumber } from "./validators";
 import { formatCalendarDate } from "@/lib/regional/dates";
-import { isCurrency, type Currency, type RegionalLocale } from "@/lib/regional/settings";
+import { isCurrency, parseTimeZone, type Currency, type RegionalLocale } from "@/lib/regional/settings";
 import { formatBooksAmount } from "@/lib/books/format";
 
 /** App-wide display currency. Amounts in TradeOS are plain numbers denominated
@@ -37,6 +37,22 @@ export function setActiveFxRate(ratePkrPerUnit: number | null) {
 
 export function getActiveFxRate(): number | null {
   return activeRatePkrPerUnit;
+}
+
+/** App-wide display time zone: the organisation's saved time zone. Null
+ * means "no saved zone" — event times render in the device-local zone,
+ * exactly as before. The main page and the manager/salesman layouts push
+ * the saved zone here when the organisation loads; the regional panel
+ * pushes it on save. Calendar/invoice dates never use this (see
+ * formatDate, which pins date-only values to UTC). */
+let activeTimeZone: string | null = null;
+
+export function setActiveTimeZone(timeZone: string | null | undefined) {
+  activeTimeZone = parseTimeZone(timeZone);
+}
+
+export function getActiveTimeZone(): string | null {
+  return activeTimeZone;
 }
 
 function toDisplayValue(value: unknown): number {
@@ -168,7 +184,20 @@ export const formatDateTime = (value: unknown) => {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: activeTimeZone ?? undefined,
   });
+};
+
+/** Event-time display (tracking, duty, audit, notification times). Renders
+ * the instant in the organisation's saved time zone when one is set, else
+ * the device-local zone — the same rule as formatDateTime. Caller options
+ * are preserved; only the zone is injected. Invalid or empty values render
+ * "-" like formatDateTime. */
+export const formatTime = (value: unknown, options?: Intl.DateTimeFormatOptions) => {
+  const date =
+    value instanceof Date ? value : typeof value === "string" && value.trim() ? new Date(value) : null;
+  if (!date || !Number.isFinite(date.getTime())) return "-";
+  return date.toLocaleTimeString(activeNumberLocale, { ...options, timeZone: activeTimeZone ?? undefined });
 };
 
 export const formatNumber = (value: unknown) =>

@@ -22,9 +22,26 @@ async function main(){
   await assert.rejects(service.save(actor,{...legacyRegionalSettings},original.revision),/conflict/);
   stored=Object.fromEntries(Object.entries(stored).reverse());
   assert.equal((await service.get(actor)).revision,saved.revision,'JSONB key ordering cannot invalidate a revision');
+  // New contract: missing/corrupt stored settings fall back to defaults and
+  // can always be re-saved; a partial save changes only the provided fields.
+  stored=null as unknown as Record<string,unknown>;
+  assert.deepEqual((await service.get(actor)).preferences,legacyRegionalSettings);
+  stored={language:'xx',locale:'xx',timeZone:'Not/AZone',accountingCurrency:'XYZ',admin:true};
+  assert.deepEqual((await service.get(actor)).preferences,legacyRegionalSettings);
+  const corruptRevision=(await service.get(actor)).revision;
+  const repaired=await service.save(actor,{timeZone:'Europe/Madrid'},corruptRevision);
+  assert.equal(repaired.preferences.timeZone,'Europe/Madrid');
+  assert.equal(repaired.preferences.language,'en');
+  assert.equal(repaired.preferences.accountingCurrency,'PKR');
+  assert.deepEqual(stored,repaired.preferences);
+  const afterRepair=await service.get(actor);
+  const languageOnly=await service.save(actor,{language:'ur'},afterRepair.revision);
+  assert.equal(languageOnly.preferences.language,'ur');
+  assert.equal(languageOnly.preferences.timeZone,'Europe/Madrid');
+  assert.equal(languageOnly.preferences.accountingCurrency,'PKR');
   conflict=true;
   await assert.rejects(service.save(actor,{...legacyRegionalSettings},saved.revision),/conflict/);
-  assert.equal(writes,1);
+  assert.equal(writes,3); // 1 original save + 2 new-contract saves above
   assert.equal(regionalQaEnabled('https://lhqmtgrstvwtysfjjmhz.supabase.co'),false);
   assert.equal(regionalQaEnabled('https://rtfowunsyrdygyvubnvs.supabase.co'),true);
   console.log('PASS owner/active/tenant scope, currency lock, malformed input, stale/concurrent save and QA-only guard.');

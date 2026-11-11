@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { formatTime } from "@/lib/tradeos/formatters";
 import { getGoogleMaps } from "@/lib/maps/client-loader";
 import { getMapProvider } from "@/lib/maps/map-provider";
 import { getPlaceName } from "@/lib/maps/client-maps";
@@ -142,7 +143,7 @@ function InteractiveTrace({
               strokeColor: "#ffffff",
               strokeWeight: 1,
             },
-            title: new Date(points[i].captured_at).toLocaleTimeString(),
+            title: formatTime(points[i].captured_at),
           });
           bounds.extend(p);
         });
