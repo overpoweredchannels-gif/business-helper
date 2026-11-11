@@ -1,6 +1,8 @@
 import re, sys
 
-client = open('./src/lib/payments/submit-payment.ts').read()
+client = ''
+for path in ['./src/lib/payments/submit-payment.ts', './src/lib/returns/cancel-return.ts']:
+    client += open(path).read()
 calls = {}
 for m in re.finditer(r'client\.rpc\("([^"]+)",\s*\{([^}]+)\}', client):
     name, body = m.group(1), m.group(2)
@@ -9,7 +11,7 @@ for m in re.finditer(r'client\.rpc\("([^"]+)",\s*\{([^}]+)\}', client):
 
 import glob
 defs = {}
-for path in sorted(glob.glob('./src/lib/migrations/production_phase1[45678]*.sql')):
+for path in sorted(glob.glob('./src/lib/migrations/production_phase*.sql')):
     sql = open(path).read()
     for m in re.finditer(r'create or replace function public\.(\w+)\((.*?)\)\s*returns', sql, re.S):
         params = [p.strip().split()[0] for p in m.group(2).split(',') if p.strip()]
