@@ -400,7 +400,7 @@ export function Header({
           {/* Language Switcher */}
           <div className="hidden xl:block"><LanguageSwitcher /></div>
 
-          {/* Display currency dropdown (live-rate conversion; records stay in books currency) */}
+          {/* Display currency dropdown (saved-rate conversion; records stay in books currency) */}
           <div className="hidden xl:block"><CurrencySwitcher canSwitch={canSwitchCurrency} /></div>
 
           {/* Notifications */}

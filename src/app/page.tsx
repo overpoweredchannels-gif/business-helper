@@ -1814,7 +1814,7 @@ export default function Home() {
     // There is no separate display currency any more: a stale display
     // cookie (from the display era, or another tab) must not keep
     // converting books amounts through a PKR-based rate. Snap it to
-    // books; the provider effect then skips its live-rate fetch too.
+    // books; the provider effect then skips its saved-rate fetch too.
     // Compare the LIVE cookie, not the closure's displayCurrency: the
     // mount render's value can be the SSR snapshot ('PKR') while the
     // real cookie is another currency, which made this snap silently

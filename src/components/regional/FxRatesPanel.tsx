@@ -132,6 +132,9 @@ export function FxRatesPanel() {
             : t("fx.noRate")}
         </p>
       )}
+      {state.kind === "ready" && state.rate && (
+        <p className="text-sm text-muted-foreground">{t("fx.inUse")}</p>
+      )}
       {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
       {savedTick && <p role="status" className="text-sm text-foreground">{t("fx.saved")}</p>}
 
