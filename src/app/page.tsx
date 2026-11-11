@@ -8981,6 +8981,8 @@ setCustomerOrganizationName("");
         remaining: line.quantityOrdered - line.quantityReceived,
         receive_quantity: line.receiveQuantity,
         unit_price: line.unitPrice,
+        batch_number: line.batchNumber,
+        expiry_date: line.expiryDate,
       }))
     );
     if (!validation.ok) {
