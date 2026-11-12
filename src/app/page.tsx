@@ -150,6 +150,7 @@ import {
   setActiveBooksCurrency,
   toDateInputValue,
 } from "@/lib/tradeos/formatters";
+import { buildSupplierExportRows } from "@/lib/suppliers/export";
 import { calendarDayOfRecord } from "@/lib/regional/dates";
 import { resolveBooksCurrency } from "@/lib/books/currency";
 import { currencies as booksCurrencyOptions, parseCurrencyCookie, type Currency } from "@/lib/regional/settings";
@@ -13563,6 +13564,22 @@ setCustomerOrganizationName("");
     );
   };
 
+  // Suppliers list export: the CSV covers exactly the suppliers the list
+  // shows — filteredSuppliers already applies the search text and the
+  // Show-archived toggle, and never includes binned suppliers (they live
+  // in the recycle bin view, which has no export button). Same downloadCsv
+  // pattern and filename style as the balances exports above.
+  const handleExportSuppliersCsv = () => {
+    downloadCsv(
+      "tradeos-suppliers.csv",
+      buildSupplierExportRows(filteredSuppliers, {
+        noneLabel: t('common.none'),
+        formatDate,
+        creditSummary: supplierCreditSummary,
+      })
+    );
+  };
+
   const getAiBusinessPresetRange = (preset: string) => {
     const now = new Date();
     const today = toDateInputValue(now);
@@ -24269,7 +24286,17 @@ setCustomerOrganizationName("");
                 </>
               ) : (
                 <>
-                  <h3 className="mb-3 text-lg font-semibold text-foreground">{t('suppliers.existingSuppliers')}</h3>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-lg font-semibold text-foreground">{t('suppliers.existingSuppliers')}</h3>
+                    <button
+                      type="button"
+                      onClick={handleExportSuppliersCsv}
+                      disabled={filteredSuppliers.length === 0}
+                      className="min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
+                    >
+                      {t('suppliers.exportCsv')}
+                    </button>
+                  </div>
                   {suppliersLoading ? (
                     <p className="text-sm text-muted-foreground">{t('suppliers.loadingSuppliers')}</p>
                   ) : filteredSuppliers.length === 0 ? (
