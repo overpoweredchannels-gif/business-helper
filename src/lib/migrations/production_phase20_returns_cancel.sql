@@ -13,20 +13,21 @@
 --         cancelled return stops offsetting the invoice the moment its
 --         status flips, exactly like a voided payment stops covering
 --         anything.
---       - Stock: the compensating inventory movement the item-DELETE trigger
---         would have written on a hard delete
---         (inventory_sync_sale_return_item / inventory_sync_purchase_return_item):
---         same movement_type ('return_in' for sales, 'return_out' for
---         purchases), same reference_type/reference_id, same batch/expiry,
---         same subunit normalization against the product's CURRENT
---         units_per_pack, same plain current_stock update (no floor — the
---         DELETE path has none either). The items stay, so the trigger does
---         not fire; the RPC writes the identical row instead. The one
---         deliberate difference from the trigger: the movement is dated at
---         cancellation time (now()), not backdated to the item's created_at —
---         a cancel is a real event that happens now (void_payment_atomic
---         likewise stamps voided_at = now()), and the ledger should show
---         the stock leaving/returning on the day it actually did.
+--       - Stock: SALES — the pre-existing sales_return_cancel_reverses_items
+--         trigger (20260928) reverses the return's stock the moment the
+--         status flips to 'cancelled' (via cancel_sales_return_inventory /
+--         apply_sales_return_inventory_changes, subunit-normalized). The
+--         sales cancel RPC must NOT write its own compensating movement —
+--         doing so reversed stock twice (QA 2026-11-12: cancelling a
+--         1-Pack return removed 2 packs). The trigger is the single
+--         reversal; its movement is dated at the return item's created_at.
+--         PURCHASES — there is NO purchase cancel trigger, so the purchase
+--         cancel RPC writes the compensating movement itself
+--         ('return_out' with the positive quantity, reversing the
+--         return-out), same subunit normalization, dated at cancel time.
+--         The items stay in both cases, so the item-DELETE triggers do not
+--         fire; the reversal comes from the status-flip trigger (sales)
+--         or the RPC itself (purchases).
 --       - Audit: one 'cancelled' audit row is written inside the RPC, so a
 --         cancel can never land without its audit trail (same as
 --         void_payment_atomic).
@@ -116,8 +117,10 @@ $$;
 revoke all on function public.purchases_create_allowed(uuid) from public, anon;
 grant execute on function public.purchases_create_allowed(uuid) to authenticated, service_role;
 
--- Cancel a confirmed sales return: status -> 'cancelled' + the compensating
--- stock movement the item-DELETE trigger would have written, + audit row.
+-- Cancel a confirmed sales return: status -> 'cancelled' + audit row.
+-- Stock is reversed by the pre-existing sales_return_cancel_reverses_items
+-- trigger, which fires on this status flip — this RPC writes NO stock
+-- movement of its own (writing one doubled the reversal: QA 2026-11-12).
 -- The status guard is the idempotency: a second cancel errors instead of
 -- reversing stock twice.
 create or replace function public.cancel_sales_return_atomic(p_return_id uuid)
@@ -131,9 +134,6 @@ declare
   v_org uuid;
   v_return_number text;
   v_status text;
-  v_item record;
-  v_delta numeric;
-  v_upp integer;
 begin
   if v_actor is null or p_return_id is null then
     raise exception 'Authenticated actor and return are required' using errcode = '22023';
@@ -161,36 +161,13 @@ begin
   set status = 'cancelled', updated_at = now()
   where id = p_return_id and organization_id = v_org;
 
-  -- Compensating stock movement per item, exactly as
-  -- inventory_sync_sale_return_item writes it on item DELETE: 'return_in'
-  -- with the negated quantity, normalized to main units when the line is a
-  -- subunit, same batch/expiry, same reference — dated at cancel time.
-  for v_item in
-    select product_id, quantity, unit_mode, batch_number, expiry_date
-    from public.sales_return_items
-    where sales_return_id = p_return_id and organization_id = v_org
-    order by created_at, id
-  loop
-    v_delta := -coalesce(v_item.quantity, 0);
-    if coalesce(v_item.unit_mode, 'main') = 'subunit' then
-      select units_per_pack into v_upp from public.products where id = v_item.product_id;
-      if v_upp is not null and v_upp > 0 then
-        v_delta := v_delta / v_upp;
-      end if;
-    end if;
-    if v_delta = 0 then
-      continue;
-    end if;
-    insert into public.inventory_transactions
-      (organization_id, product_id, movement_type, quantity_delta, reason, batch_number,
-       expiry_date, reference_type, reference_id, created_at)
-    values
-      (v_org, v_item.product_id, 'return_in', v_delta, null, v_item.batch_number,
-       v_item.expiry_date, 'sales_return', p_return_id, now());
-    update public.products
-    set current_stock = current_stock + v_delta, updated_at = now()
-    where id = v_item.product_id;
-  end loop;
+  -- Stock: intentionally NO movement here. The sales_return_cancel_reverses_items
+  -- trigger (AFTER UPDATE on sales_returns) reverses the return's stock the
+  -- moment this UPDATE flips the status to 'cancelled'. Writing a
+  -- compensating movement here as well reversed stock twice (QA 2026-11-12:
+  -- cancelling a 1-Pack return removed 2 packs). The trigger is the single
+  -- reversal; it is subunit-normalized and dates the movement at the return
+  -- item's created_at.
 
   insert into public.audit_logs (
     organization_id, actor_profile_id, action, entity_type, entity_id,
