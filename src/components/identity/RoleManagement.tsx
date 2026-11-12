@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { CUSTOM_ROLE_PERMISSIONS } from "@/lib/identity/custom-role-edit";
 
 interface RoleView {
   id: string;
@@ -12,28 +13,10 @@ interface RoleView {
   isBuiltIn: boolean;
 }
 
-const ALL_PERMISSIONS = [
-  "sales_view",
-  "sales_create",
-  "sales_manage",
-  "purchases_view",
-  "purchases_create",
-  "inventory_view",
-  "inventory_manage",
-  "customers_view",
-  "customers_manage",
-  "suppliers_view",
-  "suppliers_manage",
-  "reports_view",
-  "profit_view",
-  "payments_manage",
-  "expenses_manage",
-  "tasks_manage",
-  "location_view",
-  "ai_assistant",
-  "administration",
-  "settings_manage",
-];
+// The full permission set the roles API accepts. The form used to offer
+// only the first 20 — field_sales, draft_approval and import_export could
+// never be assigned from the app. Labels live under identity.roles.perm.*.
+const ALL_PERMISSIONS = [...CUSTOM_ROLE_PERMISSIONS];
 
 const rowStyle: React.CSSProperties = {
   display: "flex",
@@ -54,6 +37,7 @@ const inputStyle: React.CSSProperties = {
 
 const buttonStyle: React.CSSProperties = {
   padding: "0.5rem 1rem",
+  minHeight: "44px",
   background: "#111827",
   color: "#fff",
   border: "none",
@@ -62,7 +46,28 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-export default function RoleManagement() {
+const dangerButtonStyle: React.CSSProperties = {
+  ...buttonStyle,
+  background: "#fff",
+  color: "#dc2626",
+  border: "1px solid #dc2626",
+};
+
+export default function RoleManagement({
+  onRequestConfirm,
+}: {
+  // The page-level in-app confirmation dialog (the same setConfirmDialog
+  // the void dialog and the supplier archive use). RoleManagement renders
+  // inside the page, so the delete confirm goes through it instead of a
+  // native popup — window.confirm silently no-ops wherever the native
+  // dialog does not resolve.
+  onRequestConfirm: (dialog: {
+    title: string;
+    body: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  }) => void;
+}) {
   const { t } = useRegional();
   const permissionLabel = (p: string) => {
     const labels: Record<string, string> = {
@@ -86,16 +91,22 @@ export default function RoleManagement() {
       ai_assistant: t('identity.roles.perm.aiAssistant'),
       administration: t('identity.roles.perm.administration'),
       settings_manage: t('identity.roles.perm.settingsManage'),
+      field_sales: t('identity.roles.perm.fieldSales'),
+      draft_approval: t('identity.roles.perm.draftApproval'),
+      import_export: t('identity.roles.perm.importExport'),
     };
     return labels[p] ?? p;
   };
   const [roles, setRoles] = useState<RoleView[]>([]);
   const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newPermissions, setNewPermissions] = useState<string[]>([]);
+  // One form serves both create and edit, exactly as the create form was:
+  // formRoleId null means create, set means edit that role (prefilled).
+  const [showForm, setShowForm] = useState(false);
+  const [formRoleId, setFormRoleId] = useState<string | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formDescription, setFormDescription] = useState("");
+  const [formPermissions, setFormPermissions] = useState<string[]>([]);
 
   const loadRoles = async () => {
     try {
@@ -118,27 +129,78 @@ export default function RoleManagement() {
   }, []);
 
   const togglePermission = (permission: string) => {
-    setNewPermissions((prev) =>
+    setFormPermissions((prev) =>
       prev.includes(permission) ? prev.filter((p) => p !== permission) : [...prev, permission],
     );
   };
 
-  const createRole = async () => {
-    if (!newName.trim()) return;
-    const res = await authorizedFetch("/api/identity/roles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, description: newDescription, permissions: newPermissions }),
+  const closeForm = () => {
+    setShowForm(false);
+    setFormRoleId(null);
+    setFormName("");
+    setFormDescription("");
+    setFormPermissions([]);
+  };
+
+  const openCreateRole = () => {
+    closeForm();
+    setShowForm(true);
+  };
+
+  const openEditRole = (role: RoleView) => {
+    setFormRoleId(role.id);
+    setFormName(role.name);
+    setFormDescription(role.description);
+    setFormPermissions(role.permissions);
+    setShowForm(true);
+    setError(null);
+  };
+
+  const submitForm = async () => {
+    if (!formName.trim()) return;
+    const isEdit = formRoleId !== null;
+    const res = await authorizedFetch(
+      isEdit ? `/api/identity/roles/${encodeURIComponent(formRoleId)}` : "/api/identity/roles",
+      {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: formName, description: formDescription, permissions: formPermissions }),
+      },
+    );
+    const data = await res.json();
+    if (data.ok) {
+      closeForm();
+      loadRoles();
+    } else {
+      setError(
+        data.error ||
+          t(isEdit ? 'identity.roles.updateFailed' : 'identity.roles.createFailed'),
+      );
+    }
+  };
+
+  const requestDeleteRole = (role: RoleView) => {
+    onRequestConfirm({
+      title: t('identity.roles.deleteRoleTitle'),
+      body: t('identity.roles.deleteRoleBody').replace('{name}', role.name),
+      confirmLabel: t('common.delete'),
+      onConfirm: () => {
+        void applyDeleteRole(role.id);
+      },
+    });
+  };
+
+  const applyDeleteRole = async (roleId: string) => {
+    const res = await authorizedFetch(`/api/identity/roles/${encodeURIComponent(roleId)}`, {
+      method: "DELETE",
     });
     const data = await res.json();
     if (data.ok) {
-      setShowCreate(false);
-      setNewName("");
-      setNewDescription("");
-      setNewPermissions([]);
       loadRoles();
     } else {
-      setError(data.error || t('identity.roles.createFailed'));
+      // This is where the staff-hold block surfaces: the server refuses
+      // the delete and names how many staff still have the role.
+      setError(data.error || t('identity.roles.deleteFailed'));
     }
   };
 
@@ -146,8 +208,17 @@ export default function RoleManagement() {
     <div style={{ padding: "1.5rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
         <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>{t('identity.roles.title')}</h2>
-        <button style={buttonStyle} onClick={() => setShowCreate((v) => !v)}>
-          {showCreate ? t('common.cancel') : t('identity.roles.newCustomRole')}
+        <button
+          style={buttonStyle}
+          onClick={() => {
+            if (showForm) {
+              closeForm();
+            } else {
+              openCreateRole();
+            }
+          }}
+        >
+          {showForm ? t('common.cancel') : t('identity.roles.newCustomRole')}
         </button>
       </div>
 
@@ -155,20 +226,20 @@ export default function RoleManagement() {
         <p style={{ color: "#dc2626", fontSize: "0.875rem", marginBottom: "1rem" }}>{error}</p>
       )}
 
-      {showCreate && (
+      {showForm && (
         <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "1rem", marginBottom: "1.5rem" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
             <input
               style={inputStyle}
               placeholder={t('identity.roles.roleNamePlaceholder')}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
+              value={formName}
+              onChange={(e) => setFormName(e.target.value)}
             />
             <input
               style={inputStyle}
               placeholder={t('identity.roles.descriptionPlaceholder')}
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
+              value={formDescription}
+              onChange={(e) => setFormDescription(e.target.value)}
             />
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
@@ -180,7 +251,7 @@ export default function RoleManagement() {
                   alignItems: "center",
                   gap: "0.375rem",
                   fontSize: "0.8125rem",
-                  background: newPermissions.includes(permission) ? "#e0e7ff" : "#fff",
+                  background: formPermissions.includes(permission) ? "#e0e7ff" : "#fff",
                   border: "1px solid #d1d5db",
                   borderRadius: "0.375rem",
                   padding: "0.25rem 0.5rem",
@@ -189,15 +260,15 @@ export default function RoleManagement() {
               >
                 <input
                   type="checkbox"
-                  checked={newPermissions.includes(permission)}
+                  checked={formPermissions.includes(permission)}
                   onChange={() => togglePermission(permission)}
                 />
                 {permissionLabel(permission)}
               </label>
             ))}
           </div>
-          <button style={buttonStyle} onClick={createRole} disabled={!newName.trim()}>
-            {t('identity.roles.createRole')}
+          <button style={buttonStyle} onClick={submitForm} disabled={!formName.trim()}>
+            {formRoleId !== null ? t('common.save') : t('identity.roles.createRole')}
           </button>
         </div>
       )}
@@ -225,9 +296,21 @@ export default function RoleManagement() {
               {role.description || t('identity.roles.permissionsCount').replace('{count}', String(role.permissions.length))}
             </p>
           </div>
-          <span style={{ fontSize: "0.8125rem", color: "#374151", whiteSpace: "nowrap" }}>
-            {t('identity.roles.permissionsCount').replace('{count}', String(role.permissions.length))}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+            <span style={{ fontSize: "0.8125rem", color: "#374151", whiteSpace: "nowrap" }}>
+              {t('identity.roles.permissionsCount').replace('{count}', String(role.permissions.length))}
+            </span>
+            {!role.isBuiltIn && (
+              <>
+                <button type="button" style={buttonStyle} onClick={() => openEditRole(role)}>
+                  {t('common.edit')}
+                </button>
+                <button type="button" style={dangerButtonStyle} onClick={() => requestDeleteRole(role)}>
+                  {t('common.delete')}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       ))}
     </div>

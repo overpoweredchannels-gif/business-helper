@@ -27597,7 +27597,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         {activeSectionAllowed && activeSection === "security-check" && (
         <div className="mt-8 grid gap-6 lg:grid-cols-2">
           <div className="rounded border border-border bg-card">
-            <RoleManagement />
+            <RoleManagement onRequestConfirm={setConfirmDialog} />
           </div>
           <div className="rounded border border-border bg-card">
             <InvitationPanel />
