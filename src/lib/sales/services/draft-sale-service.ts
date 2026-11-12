@@ -344,7 +344,7 @@ export class DraftSaleService {
         "resolve_overselling_policy",
         { p_organization_id: actor.organizationId, p_product_id: item.product_id }
       );
-      if (policyError) return { ok: false, error: "Could not verify stock policy. Retry approval." };
+      if (policyError) return { ok: false, error: `Could not verify stock policy: ${policyError.message}` };
       const oversellingAllowed = String(effectivePolicy ?? "allow") !== "block";
       if (!oversellingAllowed && Number(product.current_stock ?? 0) < requestedMain) {
         return { ok: false, error: `Insufficient stock for product ${item.product_id}: ${product.current_stock} available, ${requestedMain} requested` };

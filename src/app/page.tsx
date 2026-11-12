@@ -1403,7 +1403,7 @@ export default function Home() {
   const fetchRealNotifications = async (organizationId?: string | null) => {
     if (!currentProfile) return;
     try {
-      const response = await authorizedFetch("/api/notifications?limit=20&unread_only=true");
+      const response = await authorizedFetch("/api/notifications?limit=100&unread_only=true");
       const data = await response.json();
       if (!data.ok || !Array.isArray(data.notifications)) {
         if (data.error) console.warn("fetch notifications:", data.error);
@@ -6511,7 +6511,10 @@ setCustomerOrganizationName("");
   useEffect(() => {
     if (!pendingDraftReview || !pendingDraftReview.refreshed) return;
     const order = salesOrders.find((o) => String(o.id) === pendingDraftReview.id);
-    if (order) {
+    // Only a still-pending draft opens the review dialog. A draft that was
+    // approved or rejected in the meantime must not open the dialog (and
+    // must not offer Approve): report it as no longer pending instead.
+    if (order && order.status === "pending_approval") {
       setDraftReviewOrder(order);
       setDraftReviewAction("approve");
       setDraftReviewReason("");
@@ -17931,11 +17934,7 @@ setCustomerOrganizationName("");
               }
             : undefined
         }
-        notificationCount={
-          aiAlerts.filter((a) => a.status === "active" || a.status === "new").length +
-          realNotifications.filter((n) => !n.is_read).length +
-          (lowStockProducts.length > 0 ? 1 : 0)
-        }
+        notificationCount={realNotifications.filter((n) => !n.is_read).length}
         notifications={[
           ...realNotifications.filter((n) => !n.is_read).slice(0, 5).map((n) => ({
             id: n.id,
@@ -27376,6 +27375,7 @@ setCustomerOrganizationName("");
             onReviewDraft={(draftEntityId, notificationId) => {
               void openDraftReview(draftEntityId, notificationId);
             }}
+            onRequestConfirm={setConfirmDialog}
           />
         </section>
         )}
@@ -28712,6 +28712,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   </div>
                 )}
 
+                {order.status !== "pending_approval" && (
+                  <p className="mt-4 text-sm text-muted-foreground">{t('draft.notPendingAnymore')}</p>
+                )}
+
                 <div className="mt-4 flex flex-wrap justify-end gap-2">
                   <button
                     type="button"
@@ -28720,21 +28724,23 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   >
                     {t('common.cancel')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => submitDraftReview()}
-                    disabled={draftReviewLoading}
-                    className={cn(
-                      "rounded px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50",
-                      draftReviewAction === "reject" ? "bg-destructive" : "bg-primary"
-                    )}
-                  >
-                    {draftReviewLoading
-                      ? t('draft.working')
-                      : draftReviewAction === "reject"
-                        ? t('draft.rejectDraft')
-                        : t('draft.approveConvert')}
-                  </button>
+                  {order.status === "pending_approval" && (
+                    <button
+                      type="button"
+                      onClick={() => submitDraftReview()}
+                      disabled={draftReviewLoading}
+                      className={cn(
+                        "rounded px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50",
+                        draftReviewAction === "reject" ? "bg-destructive" : "bg-primary"
+                      )}
+                    >
+                      {draftReviewLoading
+                        ? t('draft.working')
+                        : draftReviewAction === "reject"
+                          ? t('draft.rejectDraft')
+                          : t('draft.approveConvert')}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

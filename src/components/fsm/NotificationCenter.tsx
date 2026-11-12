@@ -23,9 +23,19 @@ const CATEGORY_STYLES: Record<string, string> = {
 
 interface NotificationCenterProps {
   onReviewDraft?: (draftEntityId: string, notificationId: string) => void;
+  // Opens the page-level in-app confirm dialog (the repo standard). The
+  // destructive Clear all action must never go through window.confirm:
+  // native dialogs are suppressed in automated/embedded browsers, so the
+  // click produced no prompt and the DELETE was never called.
+  onRequestConfirm: (dialog: {
+    title: string;
+    body: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  }) => void;
 }
 
-export default function NotificationCenter({ onReviewDraft }: NotificationCenterProps) {
+export default function NotificationCenter({ onReviewDraft, onRequestConfirm }: NotificationCenterProps) {
   const { t } = useRegional();
   const categoryLabel = (c: NotificationCategory) => {
     const labels: Record<NotificationCategory, string> = {
@@ -112,8 +122,7 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
     }
   };
 
-  const clearAll = async () => {
-    if (!window.confirm(t('fsm.notifications.clearConfirm'))) return;
+  const doClearAll = async () => {
     const res = await authorizedFetch("/api/notifications", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -126,6 +135,17 @@ export default function NotificationCenter({ onReviewDraft }: NotificationCenter
     } else {
       setMessage({ type: "error", text: data.error || t('fsm.notifications.clearFailed') });
     }
+  };
+
+  const clearAll = () => {
+    onRequestConfirm({
+      title: t('fsm.notifications.clearConfirm'),
+      body: t('fsm.notifications.clearConfirmBody'),
+      confirmLabel: t('fsm.notifications.clearAll'),
+      onConfirm: () => {
+        void doClearAll();
+      },
+    });
   };
 
   const visible = useMemo(() => {

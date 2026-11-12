@@ -422,7 +422,9 @@ export function Header({
             >
               <Bell className="size-4.5" />
               {notificationCount > 0 && (
-                <span className="absolute top-2 end-2 size-2 rounded-full bg-destructive" />
+                <span className="absolute top-1 end-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[11px] font-semibold tabular-nums text-white">
+                  {notificationCount > 99 ? "99+" : notificationCount}
+                </span>
               )}
             </button>
             {notifOpen && (

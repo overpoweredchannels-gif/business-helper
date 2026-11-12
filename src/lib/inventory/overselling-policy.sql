@@ -86,7 +86,7 @@ end $$;
 -- ---------------------------------------------------------------------------
 create or replace function public.resolve_overselling_policy(
   p_organization_id uuid,
-  p_product_id integer
+  p_product_id uuid
 ) returns text
 language plpgsql security definer set search_path = public as $$
 declare
@@ -135,6 +135,6 @@ begin
 end;
 $$;
 
-revoke execute on function public.resolve_overselling_policy(uuid, integer) from public;
-grant execute on function public.resolve_overselling_policy(uuid, integer) to authenticated;
-grant execute on function public.resolve_overselling_policy(uuid, integer) to service_role;
+revoke execute on function public.resolve_overselling_policy(uuid, uuid) from public;
+grant execute on function public.resolve_overselling_policy(uuid, uuid) to authenticated;
+grant execute on function public.resolve_overselling_policy(uuid, uuid) to service_role;
