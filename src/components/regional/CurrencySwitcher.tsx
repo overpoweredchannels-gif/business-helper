@@ -186,8 +186,13 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
       }
       // Saved rates for both legs of the switch. PKR needs no row: it
       // is the identity (1 PKR per 1 PKR).
+      // PKR needs no row on either leg: it is the identity (1 PKR per
+      // 1 PKR). The rates route rejects PKR with a 400, so fetching it
+      // would fail every switch back to PKR.
       const [toResult, fromResult] = await Promise.all([
-        fetchStoredRate(code, token),
+        code === "PKR"
+          ? Promise.resolve<StoredRateFetch>({ kind: "ready", rate: 1 })
+          : fetchStoredRate(code, token),
         current === "PKR"
           ? Promise.resolve<StoredRateFetch>({ kind: "ready", rate: 1 })
           : fetchStoredRate(current, token),
