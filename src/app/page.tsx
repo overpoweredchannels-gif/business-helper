@@ -80,6 +80,7 @@ import { useDashboardWidgets } from "@/lib/preferences/use-dashboard-widgets";
 import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardSectionWidgetId } from "@/lib/dashboard/section-cards";
 import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
 import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
+import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
 import { bootstrapOrganizationData } from "@/lib/brain/supabase-loader";
@@ -12484,6 +12485,30 @@ setCustomerOrganizationName("");
     .slice()
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 10);
+  // Recent Activity is one recency-ordered merge of both kinds, capped at
+  // the 5 rows the widget shows — purchases compete on recency instead of
+  // being appended after the sales and cut off by the widget's slice(0, 5).
+  // The amount column the widget renders was never filled by this feed; it
+  // now shows the invoice total, the same formatBooksMoney value the
+  // dashboard's smart modules already show for these invoices.
+  const recentActivities = buildRecentActivities([
+    ...recentSalesInvoices.map((inv) => ({
+      id: `sale-${inv.id}`,
+      type: "sale" as const,
+      description: t('dashboard.saleNumber').replace('{number}', inv.invoice_number),
+      time: formatDateTime(inv.created_at),
+      amount: formatBooksMoney(safeNumber(inv.total_amount)),
+      createdAt: inv.created_at,
+    })),
+    ...recentPurchaseInvoices.map((inv) => ({
+      id: `purchase-${inv.id}`,
+      type: "purchase" as const,
+      description: t('dashboard.purchaseNumber').replace('{number}', inv.invoice_number),
+      time: formatDateTime(inv.created_at),
+      amount: formatBooksMoney(safeNumber(inv.total_amount)),
+      createdAt: inv.created_at,
+    })),
+  ]);
   const handleProfitLossStartDateChange = (value: string) => {
     setProfitLossStartDate(value);
     if (value && profitLossEndDate && profitLossEndDate < value) {
@@ -18143,20 +18168,7 @@ setCustomerOrganizationName("");
             customersToFollowUp={customersToFollowUp}
             expiringProducts={expiringProducts}
             pendingApprovals={salesOrders.filter((o) => o.status === "pending_approval").length}
-            recentActivities={[
-              ...recentSalesInvoices.slice(0, 5).map((inv) => ({
-                id: `sale-${inv.id}`,
-                type: "sale" as const,
-                description: t('dashboard.saleNumber').replace('{number}', inv.invoice_number),
-                time: formatDateTime(inv.created_at),
-              })),
-              ...recentPurchaseInvoices.slice(0, 3).map((inv) => ({
-                id: `purchase-${inv.id}`,
-                type: "purchase" as const,
-                description: t('dashboard.purchaseNumber').replace('{number}', inv.invoice_number),
-                time: formatDateTime(inv.created_at),
-              })),
-            ]}
+            recentActivities={recentActivities}
             smartModules={[
               { id: "products", title: t('stock.products'), summary: t('dashboard.productsInCatalog').replace('{count}', String(totalProducts)), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products"), onOpen: () => handleSectionChange("products") },
               { id: "customers", title: t('nav.customers'), summary: t('dashboard.registeredCustomers').replace('{count}', String(totalCustomers)), readStatus: dashboardReadStatusFor("customers"), lastSuccessfulAt: dashboardLastSuccessFor("customers"), onOpen: () => handleSectionChange("customers") },
