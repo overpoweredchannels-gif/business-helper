@@ -1,5 +1,6 @@
 import { createSupabaseService } from "@/lib/supabase/server";
 import type { ModulePermission, RoleDefinition } from "../types";
+import { isDuplicateCustomRoleName } from "../custom-role-edit";
 
 type RoleRow = {
   id: string;
@@ -78,10 +79,34 @@ export class RoleRepository {
     updates: { name?: string; description?: string; permissions?: ModulePermission[] },
   ) {
     const payload: Record<string, unknown> = {};
-    if (updates.name !== undefined) payload.name = updates.name.trim();
+    const supabase = createSupabaseService();
+    if (updates.name !== undefined) {
+      const name = updates.name.trim();
+      if (name.length === 0) {
+        return { error: "Role name is required." };
+      }
+      // A rename never changes the role id, so a name collision would not
+      // trip the primary key — check explicitly against the org's other
+      // custom roles (case-insensitive, like the create slug).
+      const { data: siblings, error: siblingsError } = await supabase
+        .from("role_definitions")
+        .select("id, name")
+        .eq("organization_id", organizationId)
+        .eq("is_built_in", false);
+      if (siblingsError) return { error: siblingsError.message };
+      if (
+        isDuplicateCustomRoleName(
+          name,
+          (siblings ?? []) as Array<{ id: string; name: string }>,
+          id,
+        )
+      ) {
+        return { error: "A custom role with this name already exists." };
+      }
+      payload.name = name;
+    }
     if (updates.description !== undefined) payload.description = updates.description.trim();
     if (updates.permissions !== undefined) payload.permissions = updates.permissions;
-    const supabase = createSupabaseService();
     const { data, error } = await supabase
       .from("role_definitions")
       .update(payload)
@@ -93,6 +118,23 @@ export class RoleRepository {
     if (error) return { error: error.message };
     if (!data) return { error: "Custom role not found." };
     return { role: mapRole(data as RoleRow) };
+  }
+
+  // Staff members holding a role, by role id. profiles.role is free-text
+  // with no foreign key to role_definitions, so a delete never fails at
+  // the database level — the DELETE route calls this first and blocks
+  // when the count is above zero. Active or not: the reference exists
+  // either way, and an inactive profile reactivated later would come
+  // back holding a role that no longer exists.
+  async countHolders(organizationId: string, roleId: string): Promise<number> {
+    const supabase = createSupabaseService();
+    const { count, error } = await supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .eq("role", roleId);
+    if (error) throw error;
+    return count ?? 0;
   }
 
   async delete(organizationId: string, id: string) {
