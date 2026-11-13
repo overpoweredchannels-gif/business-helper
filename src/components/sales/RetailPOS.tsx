@@ -91,6 +91,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
 }) {
   const [held, setHeld] = useState<HeldSale[]>([]);
   const [heldOpen, setHeldOpen] = useState(false);
+  const [discardTarget, setDiscardTarget] = useState<HeldSale | null>(null);
   const [templates, setTemplates] = useState<BasketTemplate[]>([]);
   const [templateName, setTemplateName] = useState("");
   const [storedSearch, setStoredSearch] = useState("");
@@ -362,6 +363,20 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
       }
       if (persist(latest.filter(item => item.id !== row.id))) { onRestore(saved.sale); setNotice(t("pos.saleResumed")); }
     } catch { setNotice(t("pos.heldReadFailedUnchanged")); }
+  };
+  // Discard one held sale: re-read storage first (another window may
+  // already have resumed/discarded it), remove ONLY that row, and keep
+  // every other held sale untouched. The row is confirmed in-app first
+  // (discardTarget dialog below) — never window.confirm. Unlike resume,
+  // discarding is allowed while a current sale is open: it touches no
+  // basket state, only the held list.
+  const discardHeld = (row: HeldSale) => {
+    if (busy) return;
+    try {
+      const latest = readHeld();
+      if (!latest.some(item => item.id === row.id)) { setHeld(latest); setDiscardTarget(null); setNotice(t("pos.heldAlreadyRemoved")); return; }
+      if (persist(latest.filter(item => item.id !== row.id))) { setDiscardTarget(null); setNotice(t("pos.saleDiscarded")); }
+    } catch { setDiscardTarget(null); setNotice(t("pos.heldReadFailedUnchanged")); }
   };
   const draftResult = validateSaleDraft({
     lines: sale.lines,
@@ -694,7 +709,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
     </details>
     <details className="rounded-xl border bg-card p-4" open={heldOpen} onToggle={event => setHeldOpen(event.currentTarget.open)}><summary className="cursor-pointer font-semibold">{t("pos.heldTitle").replace("{count}", String(held.length))}</summary><p className="my-3 text-sm text-muted-foreground">{t("pos.heldIntro")}</p>
       <label className="mb-3 block text-sm">{t("pos.heldSearchLabel")}<input type="search" value={storedSearch} onChange={event => setStoredSearch(event.target.value)} placeholder={t("pos.heldSearchPlaceholder")} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-3" /></label>
-      {visibleHeld.length === 0 ? <p className="text-sm text-muted-foreground">{t("pos.heldNoMatch")}</p> : visibleHeld.map(row => { const heldTotal = getSaleTotal(row.sale); return <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 border-t py-3"><span>{customers.find(c => c.id === row.sale.customerId)?.customer_name ?? t("pos.customer")} · {t("pos.basketLines").replace("{count}", String(row.sale.lines.length))} · {new Date(row.savedAt).toLocaleString()} · {heldTotal === null ? t("pos.totalUnavailable") : formatBooksMoney(heldTotal)}{row.sale.notes ? <> · {row.sale.notes}</> : null}</span><button type="button" disabled={busy || sale.lines.length > 0} onClick={() => resume(row)} className="min-h-11 rounded border border-primary px-4 text-primary disabled:opacity-40">{t("pos.resume")}</button></div>; })}
+      {visibleHeld.length === 0 ? <p className="text-sm text-muted-foreground">{t("pos.heldNoMatch")}</p> : visibleHeld.map(row => { const heldTotal = getSaleTotal(row.sale); return <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 border-t py-3"><span>{customers.find(c => c.id === row.sale.customerId)?.customer_name ?? t("pos.customer")} · {t("pos.basketLines").replace("{count}", String(row.sale.lines.length))} · {new Date(row.savedAt).toLocaleString()} · {heldTotal === null ? t("pos.totalUnavailable") : formatBooksMoney(heldTotal)}{row.sale.notes ? <> · {row.sale.notes}</> : null}</span><span className="flex flex-wrap gap-2"><button type="button" disabled={busy || sale.lines.length > 0} onClick={() => resume(row)} className="min-h-11 rounded border border-primary px-4 text-primary disabled:opacity-40">{t("pos.resume")}</button><button type="button" disabled={busy} onClick={() => setDiscardTarget(row)} className="min-h-11 rounded border border-destructive/40 px-4 text-destructive disabled:opacity-40">{t("pos.discard")}</button></span></div>; })}
     </details>
     <details className="rounded-xl border bg-card p-4"><summary className="cursor-pointer font-semibold">{t("drawer.settingsTitle")}</summary>
       <div className="mt-3 space-y-3">
@@ -716,6 +731,19 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setNoSaleOpen(false)} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("common.cancel")}</button>
             <button type="button" disabled={!isNoSaleReasonValid({ reasonCode: noSaleReason, reasonNote: noSaleNote })} onClick={confirmNoSale} className="min-h-11 min-w-11 rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">{t("drawer.confirmOpen")}</button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )}
+    {discardTarget && createPortal(
+      <div data-context-help-skip role="dialog" aria-modal="true" aria-label={t("pos.discardHeldTitle")} className="fixed inset-0 z-[100] overflow-auto bg-black/30 p-4">
+        <div className="mx-auto max-w-md space-y-4 rounded-xl bg-card p-4 shadow-xl">
+          <h3 className="font-semibold">{t("pos.discardHeldTitle")}</h3>
+          <p className="text-sm text-muted-foreground">{t("pos.discardHeldBody").replace("{customer}", customers.find(c => c.id === discardTarget.sale.customerId)?.customer_name ?? t("pos.customer")).replace("{total}", (() => { const heldTotal = getSaleTotal(discardTarget.sale); return heldTotal === null ? t("pos.totalUnavailable") : formatBooksMoney(heldTotal); })())}</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setDiscardTarget(null)} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("common.cancel")}</button>
+            <button type="button" disabled={busy} onClick={() => discardHeld(discardTarget)} className="min-h-11 min-w-11 rounded border border-destructive/40 px-3 py-2 text-sm font-medium text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">{t("pos.discard")}</button>
           </div>
         </div>
       </div>,

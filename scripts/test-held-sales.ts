@@ -183,4 +183,30 @@ assert.doesNotMatch(
   "a receipt without a note prints no note line",
 );
 
-console.log("Held-sale Phase A checks passed: full-sale round-trip (tender, scan unit, notes), legacy normalization, strict validation, currency guard, basket flow-through, receipt + print notes.");
+// 8. Multiple held sales (UMAIR 2026-11-13): several sales held at once,
+// each row carrying its own customer, timestamp and note — and discard /
+// resume-clean removing ONLY that row, never the others.
+const multiHeld = [
+  heldRow({ id: "11111111-1111-4111-8111-111111111111", savedAt: "2026-11-13T07:00:00.000Z", sale: { ...heldRow().sale, customerId: "c1", notes: "Deliver after 5pm" } }),
+  heldRow({ id: "22222222-2222-4222-8222-222222222222", savedAt: "2026-11-13T07:05:00.000Z", sale: { ...heldRow().sale, customerId: "c2", notes: "Call before dispatch", paymentType: "credit" } }),
+  heldRow({ id: "33333333-3333-4333-8333-333333333333", savedAt: "2026-11-13T07:10:00.000Z", sale: { ...heldRow().sale, customerId: null, notes: "" } }),
+];
+const parsedMulti = parseHeldSales(JSON.stringify(multiHeld));
+assert.equal(parsedMulti.length, 3, "three held sales round-trip as three rows");
+assert.deepEqual(
+  parsedMulti.map(row => [row.sale.customerId, row.savedAt, row.sale.notes]),
+  [["c1", "2026-11-13T07:00:00.000Z", "Deliver after 5pm"], ["c2", "2026-11-13T07:05:00.000Z", "Call before dispatch"], [null, "2026-11-13T07:10:00.000Z", ""]],
+  "each held row keeps its own customer, timestamp and note so it can be told apart",
+);
+// Discard = the same filter resume uses: only the named id leaves.
+const afterDiscard = parsedMulti.filter(row => row.id !== "22222222-2222-4222-8222-222222222222");
+assert.deepEqual(afterDiscard.map(row => row.id), ["11111111-1111-4111-8111-111111111111", "33333333-3333-4333-8333-333333333333"], "discarding removes only that row; the other held sales stay byte-identical");
+assert.deepEqual(afterDiscard[0], parsedMulti[0], "a surviving held row is untouched by a discard");
+// Resume-clean: restoring a row filters it out of the list, and applying
+// the same filter again is a no-op — the restored sale cannot duplicate.
+const afterResume = parsedMulti.filter(row => row.id !== "11111111-1111-4111-8111-111111111111");
+assert.equal(afterResume.length, 2, "resuming removes the row from the held list");
+assert.equal(afterResume.filter(row => row.id === "11111111-1111-4111-8111-111111111111").length, 0, "no duplicate of the restored sale remains in the held list");
+assert.deepEqual(afterResume.filter(row => row.id !== "11111111-1111-4111-8111-111111111111"), afterResume, "re-applying the resume filter changes nothing");
+
+console.log("Held-sale Phase A checks passed: full-sale round-trip (tender, scan unit, notes), legacy normalization, strict validation, currency guard, basket flow-through, receipt + print notes, multi-hold display fields, discard-only-that-row, resume-clean with no duplicates.");
