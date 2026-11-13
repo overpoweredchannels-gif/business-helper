@@ -1,12 +1,4 @@
 import { createSupabaseService } from "@/lib/supabase/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  createPaymentAttemptKey,
-  getPaymentRequestStatus,
-  isUncertainPaymentError,
-  submitPaymentAtomic,
-  voidPaymentAtomic,
-} from "@/lib/payments/submit-payment";
 import { getInvoiceNumberService, generateSalesInvoice } from "@/lib/invoices/invoice-number-service";
 import { logAuditEvent } from "@/lib/identity/audit";
 import type { ActorContext } from "@/lib/identity/types";
@@ -277,8 +269,7 @@ export class DraftSaleService {
    */
   async approveDraft(
     actor: ActorContext,
-    draftId: string,
-    opts?: { userClient?: SupabaseClient }
+    draftId: string
   ): Promise<ApproveResult> {
     if (!actor.organizationId) {
       return { ok: false, error: "Organization context required" };
@@ -286,11 +277,6 @@ export class DraftSaleService {
     if (!actor.isOwner && !actor.permissions?.includes("draft_approval")) {
       return { ok: false, error: "Only owner or approver can approve drafts" };
     }
-    // The payment step runs through create_payment_atomic, which resolves the
-    // caller via auth.uid() — so it needs the approver's own client, not the
-    // service-role client. Without it the approval fails closed rather than
-    // writing the payment through the direct path.
-    const userClient = opts?.userClient ?? null;
 
     const supabase = createSupabaseService();
 
@@ -446,65 +432,64 @@ export class DraftSaleService {
     }
 
     if (paymentType === "cash" || paymentType === "card") {
-      // Paid tenders go through the atomic payment RPC: one transaction for
-      // the payment row, its allocation against this invoice, the customer
-      // balance and the audit row. A fresh key per approval attempt makes a
-      // manual retry create a new payment (the draft was restored to pending);
-      // a lost response is resolved by the request-status check below, never
-      // by guessing.
-      if (!userClient) {
-        await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
-        await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
-        await restorePending();
-        return { ok: false, error: "Approval requires a signed-in user session to record the payment. Please sign in again and retry." };
-      }
-      const paymentKey = createPaymentAttemptKey();
-      let paymentResult: { payment_id: string } | null = null;
-      try {
-        paymentResult = await submitPaymentAtomic(userClient, {
-          kind: "customer",
-          partyId: draft.customer_id,
-          amount: totalAmount,
-          paymentDate: draft.order_date ?? now.split("T")[0],
-          paymentMethod: paymentType,
-          notes: `Payment received against invoice ${invoiceNumber}`,
-          allocations: [{ invoice_id: invoice.id, amount: totalAmount }],
-          reference: null,
-        }, paymentKey);
-      } catch (err) {
-        if (isUncertainPaymentError(err)) {
-          // The RPC may have committed before the response was lost.
-          try {
-            const status = await getPaymentRequestStatus(userClient, paymentKey, "customer");
-            if (status.status === "confirmed" && status.result) {
-              paymentResult = status.result;
-            } else {
-              // Nothing landed: clean up the invoice and let the approver retry.
-              await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
-              await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
-              await restorePending();
-              return { ok: false, error: "Payment outcome could not be confirmed. No payment was recorded — please retry approval." };
-            }
-          } catch {
-            // Do NOT delete the invoice here: the payment may exist. Leave
-            // the draft 'approved' and surface it for the owner's review.
-            return { ok: false, error: "Payment outcome is unknown. Check the customer ledger before retrying — do not approve twice." };
-          }
-        } else {
-          // Definitive rejection (validation, permission, balance): the RPC
-          // wrote nothing, so only the invoice side needs cleanup.
+      // Paid tenders are recorded with direct inserts (phase 13/16 pattern).
+      // create_payment_atomic is a collections RPC: its allocation validation
+      // only accepts unpaid receivables, so it always rejects an allocation
+      // against this already-paid cash/card invoice. The draft claim
+      // (pending_approval → approved) is the idempotency guard, and the
+      // approval itself is audit-logged below (draft_sale_approved).
+      if (totalAmount > 0) {
+        const { data: payment, error: paymentError } = await supabase
+          .from("customer_payments")
+          .insert({
+            organization_id: actor.organizationId,
+            customer_id: draft.customer_id,
+            amount: totalAmount,
+            payment_date: draft.order_date ?? now.split("T")[0],
+            payment_method: paymentType,
+            notes: `Payment received against invoice ${invoiceNumber}`,
+          })
+          .select("id")
+          .single();
+        if (paymentError || !payment) {
           await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
           await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
           await restorePending();
-          return { ok: false, error: `Failed to record payment: ${err instanceof Error ? err.message : String(err)}` };
+          return { ok: false, error: `Failed to record payment: ${paymentError?.message ?? "no payment was returned"}` };
         }
+        const { error: allocationError } = await supabase
+          .from("customer_payment_allocations")
+          .insert({
+            customer_payment_id: payment.id,
+            sales_transaction_id: invoice.id,
+            amount: totalAmount,
+            organization_id: actor.organizationId,
+          });
+        if (allocationError) {
+          await supabase.from("customer_payments").delete().eq("id", payment.id).eq("organization_id", actor.organizationId);
+          await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
+          await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
+          await restorePending();
+          return { ok: false, error: `Failed to record payment allocation: ${allocationError.message}` };
+        }
+        paymentId = payment.id;
       }
-      paymentId = paymentResult?.payment_id ?? null;
-      if (!paymentId) {
+      // Stamp last_sale_date, as the credit branch does below. The customer
+      // outstanding_balance is untouched — correct for a cash sale (phase 13
+      // does not change it either).
+      const { error: lastSaleError } = await supabase.from("customers").update({
+        last_sale_date: now,
+        updated_at: now,
+      }).eq("id", draft.customer_id).eq("organization_id", actor.organizationId);
+      if (lastSaleError) {
+        if (paymentId) {
+          await supabase.from("customer_payment_allocations").delete().eq("customer_payment_id", paymentId).eq("organization_id", actor.organizationId);
+          await supabase.from("customer_payments").delete().eq("id", paymentId).eq("organization_id", actor.organizationId);
+        }
         await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
         await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
         await restorePending();
-        return { ok: false, error: "Failed to record payment: no payment id was returned" };
+        return { ok: false, error: `Failed to update customer last sale date: ${lastSaleError.message}` };
       }
     } else {
       const { data: customer, error: customerError } = await supabase
@@ -551,23 +536,11 @@ export class DraftSaleService {
           .eq("id", draft.customer_id).eq("organization_id", actor.organizationId);
       }
       if (paymentId) {
-        // Reverse the RPC payment through the void (restores the customer
-        // balance and audits the reversal) instead of deleting the row.
-        // If the void itself fails, leave the invoice and payment in place
-        // and surface it — the draft stays 'approved' for the owner's review
-        // rather than risking a second approval creating a duplicate.
-        if (!userClient) {
-          return { ok: false, error: `Failed to finalize draft: ${updateDraftError.message}. The payment ${paymentId} could not be reversed without a user session — please review before retrying.` };
-        }
-        try {
-          await voidPaymentAtomic(
-            userClient,
-            { kind: "customer", paymentId, reason: "Draft approval could not be finalized" },
-            createPaymentAttemptKey()
-          );
-        } catch (voidErr) {
-          return { ok: false, error: `Failed to finalize draft and the payment could not be reversed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}. Invoice ${invoiceNumber} and its payment are still recorded — please review before retrying.` };
-        }
+        // The tender was recorded with direct inserts (no RPC, no balance
+        // change), so delete the allocation + payment rows instead of
+        // voiding — voiding would wrongly restore/increase the balance.
+        await supabase.from("customer_payment_allocations").delete().eq("customer_payment_id", paymentId).eq("organization_id", actor.organizationId);
+        await supabase.from("customer_payments").delete().eq("id", paymentId).eq("organization_id", actor.organizationId);
       }
       await supabase.from("sales_items").delete().eq("sales_transaction_id", invoice.id).eq("organization_id", actor.organizationId);
       await supabase.from("sales_transactions").delete().eq("id", invoice.id).eq("organization_id", actor.organizationId);
