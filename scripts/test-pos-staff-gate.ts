@@ -140,6 +140,10 @@ const heldRow = (overrides: Partial<HeldSale> = {}): HeldSale => ({
     discount: "",
     discountType: "flat",
     tax: "",
+    // Phase A: the held row carries the whole sale — tender, scan unit, notes.
+    cashReceived: "500",
+    scanUnit: "main",
+    notes: "Deliver after 5pm",
   },
   ...overrides,
 });

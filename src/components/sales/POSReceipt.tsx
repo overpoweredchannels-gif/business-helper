@@ -49,6 +49,7 @@ function useReceiptChromeLabels(): ReceiptChromeLabels {
     dateLabel: t("receipt.dateLabel"),
     footnote: t("receipt.footnote"),
     walkInCustomer: t("receipt.walkInCustomer"),
+    notesLabel: t("sell.notesLabel"),
     columns: {
       product: t("receipt.columnItem"),
       quantity: t("receipt.columnQty"),
@@ -93,6 +94,7 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
     {template.header.showOrgName && template.header.orgNamePosition === "top" && orgName}
     <p className="font-semibold" style={{ fontSize: template.header.headingSizePx }}>{chrome.headingText}</p>
     <p className="mb-2" style={{ fontSize: template.header.metaSizePx }}>{meta.join(" · ")}</p>
+    {receipt.notes ? <p className="mb-2" style={{ fontSize: template.header.metaSizePx }}>{chromeLabels.notesLabel ?? "Notes"}: {receipt.notes}</p> : null}
     {/* 40mm cannot hold the table: same stacked lines as the printed sheet. */}
     {getReceiptWidthMm(template) === 40 ? (
       <div>{lineRows.map((line, index) => (

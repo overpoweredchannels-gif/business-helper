@@ -8,6 +8,10 @@ export type AtomicSaleInput = {
   invoice_discount_type: "flat" | "percent";
   tax_rate: number;
   cash_received: number | null;
+  /** Free-text sale note; stored in sales_transactions.notes by the
+   * atomic RPC once the Phase A migration has been run. Null/omitted
+   * keeps the historical behaviour (notes null). */
+  notes?: string | null;
   credit_override_confirmed: boolean;
   lines: Array<{
     product_id: string;

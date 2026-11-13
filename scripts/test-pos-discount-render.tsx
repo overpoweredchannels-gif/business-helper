@@ -10,6 +10,9 @@ const sale: CounterSale = {
   discount: "10",
   discountType: "percent",
   tax: "",
+  cashReceived: "",
+  scanUnit: "main",
+  notes: "",
   lines: [{ product_id: "p1", quantity: "1", selling_price: "80.60", discount: "", unit_mode: "main" }],
 };
 const products = [{ id: "p1", name: "Test product", unit_type: "Unit", units_per_pack: null }] as unknown as Product[];
@@ -19,7 +22,7 @@ const render = (draft: CounterSale, owner: boolean) => renderToStaticMarkup(
     scanUnit="main" cashReceived="" focusSignal={0} onScan={() => null} onAdd={() => undefined}
     onUnit={() => undefined} onCustomer={() => undefined} onLine={() => undefined}
     onRemove={() => undefined} onSave={() => undefined} onCashReceived={() => undefined}
-    onDiscount={() => undefined} onDiscountType={() => undefined} onAdvanced={() => undefined}
+    onDiscount={() => undefined} onDiscountType={() => undefined} onNotes={() => undefined} onAdvanced={() => undefined}
     onRestore={() => undefined} onClear={() => undefined} onPaymentType={() => undefined} />,
 );
 

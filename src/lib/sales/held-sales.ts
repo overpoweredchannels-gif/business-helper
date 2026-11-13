@@ -11,7 +11,18 @@ import { currencyStampStatus, stampLegacyRows, type CurrencyStampStatus } from "
  * value under a backup key and reports an empty list instead of throwing,
  * so the Hold control stays usable; the strict `parseHeldSales` remains
  * for the write paths (hold/resume re-read and refuse on corruption).
+ *
+ * Phase A (held sale must return exactly as left): the held row carries
+ * the WHOLE counter sale, not just the basket — the typed cash tender
+ * (`cashReceived`), the scan-unit preference (`scanUnit`) and the sale
+ * notes (`notes`) are stored alongside the lines, so resuming restores
+ * the tender the cashier had already typed and the note they had
+ * written. All three are optional on read: rows held before Phase A
+ * carry none of them, and `parseHeldSales` normalizes those to the
+ * empty-sale defaults instead of rejecting the row.
  */
+export const HELD_SALE_NOTES_MAX_LENGTH = 500;
+
 export type HeldCounterSale = {
   lines: BarcodeLine[];
   customerId: string | null;
@@ -20,6 +31,12 @@ export type HeldCounterSale = {
   discount: string;
   discountType: "flat" | "percent";
   tax: string;
+  /** Cash tender typed in the Cash Received box ("" when none typed). */
+  cashReceived?: string;
+  /** Scan-unit preference in force when the sale was held. */
+  scanUnit?: "main" | "subunit";
+  /** Free-text sale note ("" when none written). Max 500 chars. */
+  notes?: string;
 };
 export type HeldSale = {
   id: string;
@@ -57,10 +74,24 @@ export function parseHeldSales(raw: string | null): HeldSale[] {
       || !Array.isArray(draft.lines) || !["cash", "card", "credit"].includes(draft.paymentType)
       || !["flat", "percent"].includes(draft.discountType)
       || ![draft.date, draft.discount, draft.tax].every(value => typeof value === "string")
+      || (draft.cashReceived !== undefined && typeof draft.cashReceived !== "string")
+      || (draft.scanUnit !== undefined && !["main", "subunit"].includes(draft.scanUnit))
+      || (draft.notes !== undefined && (typeof draft.notes !== "string" || draft.notes.length > HELD_SALE_NOTES_MAX_LENGTH))
       || (draft.customerId !== null && typeof draft.customerId !== "string")
       || draft.lines.some((line: Record<string, unknown>) => !line || ![line.quantity, line.selling_price, line.discount].every(value => typeof value === "string") || (line.product_id !== null && typeof line.product_id !== "string") || (line.bonus !== undefined && typeof line.bonus !== "string") || (line.unit_mode !== undefined && !["main", "subunit"].includes(String(line.unit_mode))));
   })) throw new Error("Invalid held sales");
-  return stored as HeldSale[];
+  // Normalize pre-Phase A rows: the new fields were never written, so
+  // they read back as the empty-sale defaults instead of `undefined` —
+  // every consumer can rely on them being present after a parse.
+  return (stored as HeldSale[]).map(row => ({
+    ...row,
+    sale: {
+      ...row.sale,
+      cashReceived: row.sale.cashReceived ?? "",
+      scanUnit: row.sale.scanUnit ?? "subunit",
+      notes: row.sale.notes ?? "",
+    },
+  }));
 }
 
 type HeldSalesStorage = {

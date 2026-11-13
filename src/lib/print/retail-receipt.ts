@@ -33,6 +33,8 @@ export type Receipt = {
   received?: number;
   change?: number;
   payment: string;
+  /** Free-text sale note, printed on the receipt when present. */
+  notes?: string | null;
   lines: ReceiptLine[];
 };
 
@@ -173,6 +175,9 @@ export type ReceiptChromeLabels = {
   dateLabel: string;
   footnote: string;
   walkInCustomer: string;
+  /** Label for the sale-note line on the receipt ("Notes"). Optional so
+   * older callers keep compiling; renderers fall back to "Notes". */
+  notesLabel?: string;
   columns: Partial<Record<string, string>>;
 };
 
@@ -259,6 +264,9 @@ export function buildAtomicSaleReceipt(
     received: Number(transaction.cash_received ?? 0),
     change: Number(transaction.change_due ?? 0),
     payment: String(transaction.payment_type ?? details.fallbackPayment),
+    // sales_atomic_result returns the whole transaction row, so notes
+    // arrives here with no extra select once the RPC stores it.
+    notes: typeof transaction.notes === "string" && transaction.notes.trim() !== "" ? transaction.notes : null,
     lines,
   };
 }
@@ -315,6 +323,7 @@ export function buildOfflineSaleReceipt(
       ? Math.max(0, input.cash_received - calculated.total)
       : 0,
     payment: input.payment_type,
+    notes: typeof input.notes === "string" && input.notes.trim() !== "" ? input.notes : null,
     lines,
   };
 }
@@ -365,6 +374,11 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
     template.header.showDate ? `${resolved.dateLabel}: ${receipt.date}` : "",
     template.header.showCustomer ? resolveReceiptCustomerName(receipt.customer, chrome) : "",
   ].filter(Boolean).map(escapeHtml).join(" · ");
+  // Sale note (Phase A): printed under the header meta when the sale
+  // carried one, so the packer/cashier sees it on the paper copy.
+  const notesLine = receipt.notes
+    ? `<p>${escapeHtml(chrome.notesLabel ?? "Notes")}: ${escapeHtml(receipt.notes)}</p>`
+    : "";
   const summary = summaryRows.map(row =>
     `<div class="summary-row${row.key === "total" ? " grand-total" : ""}"><span>${escapeHtml(row.label)}</span><strong>${formatBooksMoney(roundMoney(row.amount))}</strong></div>`,
   ).join("");
@@ -390,5 +404,5 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
     .grand-total{border-top:1px solid ${template.page.rule};padding-top:1mm;font-size:${template.footer.valueSizePx}px}
     .footer{border-top:1px solid ${template.page.rule};margin-top:2mm;padding-top:1mm;font-size:${template.footer.footnoteSizePx}px}
     @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style></head><body data-receipt-paper-width="${width}mm" data-receipt-content-width="${contentWidth}mm">${template.header.showOrgName && template.header.orgNamePosition === "top" ? orgName : ""}<h2>${escapeHtml(resolved.headingText)}</h2><p>${meta}</p>${width === 40 ? stackedRows : `<table><thead><tr>${columns}</tr></thead><tbody>${rows}</tbody></table>`}<div class="summary">${summary}</div>${template.footer.showFootnote ? `<p class="footer">${escapeHtml(resolved.footnoteText)}</p>` : ""}${template.header.showOrgName && template.header.orgNamePosition === "bottom" ? orgName : ""}</body></html>`;
+  </style></head><body data-receipt-paper-width="${width}mm" data-receipt-content-width="${contentWidth}mm">${template.header.showOrgName && template.header.orgNamePosition === "top" ? orgName : ""}<h2>${escapeHtml(resolved.headingText)}</h2><p>${meta}</p>${notesLine}${width === 40 ? stackedRows : `<table><thead><tr>${columns}</tr></thead><tbody>${rows}</tbody></table>`}<div class="summary">${summary}</div>${template.footer.showFootnote ? `<p class="footer">${escapeHtml(resolved.footnoteText)}</p>` : ""}${template.header.showOrgName && template.header.orgNamePosition === "bottom" ? orgName : ""}</body></html>`;
 }

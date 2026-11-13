@@ -25,6 +25,12 @@ import { hasSubunit, subunitPriceFromMain } from "@/lib/tradeos/units";
 export type CounterSale = {
   lines: BarcodeLine[]; customerId: string | null; date: string;
   paymentType: "cash" | "card" | "credit"; discount: string; discountType: "flat" | "percent"; tax: string;
+  /** Cash tender typed in the Cash Received box ("" when none typed). Held + restored exactly. */
+  cashReceived?: string;
+  /** Scan-unit preference in force for this sale. Held + restored exactly. */
+  scanUnit?: "main" | "subunit";
+  /** Free-text sale note ("" when none written). Held + restored exactly; saved with the sale. */
+  notes?: string;
 };
 
 
@@ -36,7 +42,7 @@ const NO_SALE_REASON_KEYS: Record<NoSaleReasonCode, MessageKey> = {
   "other": "drawer.reasonOther",
 };
 
-export function RetailPOS({ scope, sale, products, customers, busy, owner, productNameFallback, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, clearSignal = 0, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect, onCustomizeReceipt }: {
+export function RetailPOS({ scope, sale, products, customers, busy, owner, productNameFallback, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, clearSignal = 0, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onNotes, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect, onCustomizeReceipt }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; busy: boolean; owner: boolean;
   /** Names of products scanned/added while the products list was stale:
    * a line whose product is missing from `products` shows its scanned
@@ -57,6 +63,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
   onLine: (index: number, field: keyof BarcodeLine, value: string) => void; onRemove: (index: number) => void;
   onSave: () => void; onCashReceived: (amount: string) => void;
   onDiscount: (amount: string) => void; onDiscountType: (type: "flat" | "percent") => void;
+  onNotes: (value: string) => void;
   onAdvanced: () => void; onRestore: (sale: CounterSale) => void; onClear: () => void;
   /** Tender switch for the payment bar: Cash / Card. Credit stays
    * selectable in the full invoice form and is shown as the active
@@ -83,6 +90,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
   onCustomizeReceipt?: () => void;
 }) {
   const [held, setHeld] = useState<HeldSale[]>([]);
+  const [heldOpen, setHeldOpen] = useState(false);
   const [templates, setTemplates] = useState<BasketTemplate[]>([]);
   const [templateName, setTemplateName] = useState("");
   const [storedSearch, setStoredSearch] = useState("");
@@ -335,7 +343,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
     try { latest = readHeld(); } catch { setNotice(t("pos.heldReadFailedOpen")); return; }
     if (latest.length >= 50) { setNotice(t("pos.heldLimit")); return; }
     holdLock.current = true;
-    if (persist([...latest, { id: crypto.randomUUID(), savedAt: new Date().toISOString(), currency: getActiveBooksCurrency(), sale }])) { onClear(); setNotice(t("pos.saleHeld")); }
+    if (persist([...latest, { id: crypto.randomUUID(), savedAt: new Date().toISOString(), currency: getActiveBooksCurrency(), sale }])) { onClear(); setHeldOpen(true); setNotice(t("pos.saleHeld")); }
     else holdLock.current = false;
   };
   const resume = (row: HeldSale) => {
@@ -407,7 +415,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
     if (!query) return true;
     const customerName = customers.find(c => c.id === row.sale.customerId)?.customer_name ?? t("receipt.walkInCustomer");
     const productNames = row.sale.lines.map(line => products.find(p => String(p.id) === line.product_id)?.name ?? "").filter(Boolean).join(" ");
-    const summary = [customerName, productNames, row.sale.paymentType, new Date(row.savedAt).toLocaleDateString(), getSaleTotal(row.sale) === null ? "unavailable" : String(getSaleTotal(row.sale)), row.id].join(" ").toLowerCase();
+    const summary = [customerName, productNames, row.sale.paymentType, row.sale.notes ?? "", new Date(row.savedAt).toLocaleDateString(), getSaleTotal(row.sale) === null ? "unavailable" : String(getSaleTotal(row.sale)), row.id].join(" ").toLowerCase();
     return summary.includes(query);
   });
   const saveBasket = () => {
@@ -665,6 +673,11 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
       </div>}
       {owner && draftResult.amounts && Number(sale.discount) > 0 && <p className="mt-2 text-sm tabular-nums">{t("pos.discountBeforeTax").replace("{amount}", formatBooksMoney(draftResult.amounts.invoiceDiscount))}</p>}</div>
       {owner && sale.paymentType === "cash" && <div className="sm:min-w-52"><label className="block text-sm">{t("pos.cashReceived")}<input id="pos-cash-received" data-pos-cash-received aria-label={t("pos.cashReceived")} type="text" inputMode="decimal" value={cashReceived} placeholder={total === null ? t("pos.saleTotalUnavailable") : String(total)} onChange={event => onCashReceived(event.target.value)} onKeyDown={handleCashReceivedKeyDown} disabled={busy} className="mt-1 block min-h-11 w-full rounded border border-input bg-background px-3 tabular-nums sm:w-40" /></label><div className="mt-2 flex flex-wrap gap-2">{quickCashPresets.map(preset => <button key={preset.label} type="button" disabled={busy} className="min-h-11 rounded border px-2 text-xs disabled:opacity-40" onClick={() => onCashReceived(String(preset.value))}>{preset.label}</button>)}</div>{draftResult.issues.filter(issue => issue.field === "cash_received").map(issue => <p key={issue.message} className="mt-2 text-sm text-destructive" role="alert">{draftResult.cashSummary?.status === "cash-short" ? <>{t("pos.cashShortBy")}{" "}<span className="tabular-nums">{formatBooksMoney(draftResult.cashSummary.shortfall)}</span>.</> : issue.message}</p>)}{!draftResult.issues.some(issue => issue.field === "cash_received") && (cashReceived.trim() === "" ? <p className="mt-2 text-sm text-muted-foreground">{t("pos.cashBlankHint")}</p> : draftResult.cashSummary ? <p className="mt-2 text-sm">{t("pos.changeDueLabel")}{" "}<span className="tabular-nums">{formatBooksMoney(draftResult.cashSummary.change)}</span></p> : <p className="mt-2 text-sm text-muted-foreground">{t("pos.cashSummaryUnavailable")}</p>)}</div>}
+      {/* Sale notes (Phase A): written here, held with the sale, saved
+          with the invoice and printed on its receipt. data-entry-skip
+          keeps the Enter walk unchanged — the walk still ends at Pay &
+          Save; the cashier reaches Notes by tap/click when needed. */}
+      <div><label className="block text-sm font-medium" htmlFor="pos-sale-notes">{t("sell.notesOptional")}<input id="pos-sale-notes" data-pos-sale-notes data-entry-skip type="text" maxLength={500} value={sale.notes ?? ""} disabled={busy} onChange={event => onNotes(event.target.value)} placeholder={t("sell.notesOptional")} className="mt-1 block min-h-11 w-full rounded border border-input bg-background px-3 text-base" /></label></div>
       <div className="flex flex-col gap-2 sm:flex-row"><button type="button" disabled={busy || !sale.lines.length || !storageReady} onClick={hold} className="min-h-12 rounded-lg border border-primary px-5 font-semibold disabled:opacity-40">{t("pos.holdSale")}</button><button data-entry-add type="button" disabled={busy || !sale.lines.length || !sale.customerId || !draftResult.valid} onClick={onSave} className="min-h-12 w-full rounded-lg bg-primary px-6 font-semibold text-primary-foreground disabled:opacity-40 sm:w-auto">{busy ? t("pos.saving") : owner || staffDirectSale ? sale.paymentType === "credit" ? t("pos.saveCreditSale") : t("pos.payAndSave") : t("pos.sendForApproval")}</button>{onCustomizeReceipt && <button type="button" onClick={onCustomizeReceipt} className="min-h-12 rounded-lg border border-border px-5 font-semibold text-foreground/80 hover:bg-muted/40">{t("pos.customizeReceipt")}</button>}</div>
       </div>
       {saveHint && <p data-pos-save-hint role="status" className="text-sm text-muted-foreground">{saveHint}{walkInState === "failed" && onRetryWalkIn && <button type="button" onClick={onRetryWalkIn} className="ml-3 min-h-11 rounded border border-input px-3 font-medium text-foreground">{t("pos.retry")}</button>}</p>}
@@ -679,9 +692,9 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
         {templates.length === 0 ? <p className="text-sm text-muted-foreground">{t("pos.noBaskets")}</p> : templates.map(template => <div key={template.id} className="flex flex-wrap items-center justify-between gap-3 rounded border p-2"><div><p className="font-medium">{template.name}</p><p className="text-xs text-muted-foreground">{new Date(template.savedAt).toLocaleString()} · {t("pos.basketLines").replace("{count}", String(template.sale.lines.length))}</p></div><button type="button" disabled={busy || sale.lines.length > 0} onClick={() => applyTemplate(template)} className="min-h-11 rounded border border-primary px-4 text-sm text-primary disabled:opacity-40">{t("pos.load")}</button></div>)}
       </div>
     </details>
-    <details className="rounded-xl border bg-card p-4"><summary className="cursor-pointer font-semibold">{t("pos.heldTitle").replace("{count}", String(held.length))}</summary><p className="my-3 text-sm text-muted-foreground">{t("pos.heldIntro")}</p>
+    <details className="rounded-xl border bg-card p-4" open={heldOpen} onToggle={event => setHeldOpen(event.currentTarget.open)}><summary className="cursor-pointer font-semibold">{t("pos.heldTitle").replace("{count}", String(held.length))}</summary><p className="my-3 text-sm text-muted-foreground">{t("pos.heldIntro")}</p>
       <label className="mb-3 block text-sm">{t("pos.heldSearchLabel")}<input type="search" value={storedSearch} onChange={event => setStoredSearch(event.target.value)} placeholder={t("pos.heldSearchPlaceholder")} className="mt-1 min-h-11 w-full rounded border border-input bg-background px-3" /></label>
-      {visibleHeld.length === 0 ? <p className="text-sm text-muted-foreground">{t("pos.heldNoMatch")}</p> : visibleHeld.map(row => { const heldTotal = getSaleTotal(row.sale); return <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 border-t py-3"><span>{customers.find(c => c.id === row.sale.customerId)?.customer_name ?? t("pos.customer")} · {t("pos.basketLines").replace("{count}", String(row.sale.lines.length))} · {new Date(row.savedAt).toLocaleString()} · {heldTotal === null ? t("pos.totalUnavailable") : formatBooksMoney(heldTotal)}</span><button type="button" disabled={busy || sale.lines.length > 0} onClick={() => resume(row)} className="min-h-11 rounded border border-primary px-4 text-primary disabled:opacity-40">{t("pos.resume")}</button></div>; })}
+      {visibleHeld.length === 0 ? <p className="text-sm text-muted-foreground">{t("pos.heldNoMatch")}</p> : visibleHeld.map(row => { const heldTotal = getSaleTotal(row.sale); return <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 border-t py-3"><span>{customers.find(c => c.id === row.sale.customerId)?.customer_name ?? t("pos.customer")} · {t("pos.basketLines").replace("{count}", String(row.sale.lines.length))} · {new Date(row.savedAt).toLocaleString()} · {heldTotal === null ? t("pos.totalUnavailable") : formatBooksMoney(heldTotal)}{row.sale.notes ? <> · {row.sale.notes}</> : null}</span><button type="button" disabled={busy || sale.lines.length > 0} onClick={() => resume(row)} className="min-h-11 rounded border border-primary px-4 text-primary disabled:opacity-40">{t("pos.resume")}</button></div>; })}
     </details>
     <details className="rounded-xl border bg-card p-4"><summary className="cursor-pointer font-semibold">{t("drawer.settingsTitle")}</summary>
       <div className="mt-3 space-y-3">

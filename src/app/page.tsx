@@ -4675,6 +4675,12 @@ setCustomerOrganizationName("");
             ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal ?? 0) : safeNumber(posCashReceived))
             : null)
           : 0,
+        // Phase A: the sale note travels with the invoice. The atomic
+        // RPC stores it in sales_transactions.notes once the Phase A
+        // migration (src/lib/migrations/held_sale_notes_atomic_rpc.sql)
+        // has been run; until then the RPC ignores the unknown key and
+        // the note still survives hold/resume in the browser.
+        notes: salesNotes.trim() ? salesNotes.trim() : null,
         credit_override_confirmed: overrideConfirmed,
         lines: invoiceLines.map((line) => ({
           product_id: String(line.product_id),
@@ -4724,6 +4730,7 @@ setCustomerOrganizationName("");
         setSalesInvoiceDate(toDateInputValue(new Date()));
         setSalesPaymentType("cash");
         setPosCashReceived("");
+        setSalesNotes("");
         setSalesDiscountAmount("");
         setSalesDiscountType("flat");
         setSalesTaxRate("");
@@ -4786,6 +4793,7 @@ setCustomerOrganizationName("");
       setSalesInvoiceDate(toDateInputValue(new Date()));
       setSalesPaymentType("cash");
       setPosCashReceived("");
+      setSalesNotes("");
       setSalesDiscountAmount("");
       setSalesDiscountType("flat");
       setSalesTaxRate("");
@@ -6048,6 +6056,10 @@ setCustomerOrganizationName("");
   const [salesInvoiceDate, setSalesInvoiceDate] = useState(toDateInputValue(new Date()));
   const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "card" | "credit">("cash");
   const [posCashReceived, setPosCashReceived] = useState("");
+  // Sale notes (Phase A): typed in the POS payment bar, held with the
+  // sale, saved with the invoice (AtomicSaleInput.notes) and printed on
+  // its receipt. Empty string = no note; trimmed at save time.
+  const [salesNotes, setSalesNotes] = useState("");
   const [salesDiscountAmount, setSalesDiscountAmount] = useState("");
   const [salesDiscountType, setSalesDiscountType] = useState<"flat" | "percent">("flat");
   const [salesTaxRate, setSalesTaxRate] = useState("");
@@ -6318,11 +6330,19 @@ setCustomerOrganizationName("");
     setSalesLines(sale.lines.map(line => ({ ...line, discount_type: line.discount_type ?? "flat" }))); setSelectedCustomerIdForSale(sale.customerId);
     setSalesInvoiceDate(sale.date); setSalesPaymentType(sale.paymentType);
     setSalesDiscountAmount(sale.discount); setSalesDiscountType(sale.discountType); setSalesTaxRate(sale.tax);
+    // Phase A: the held row carries the whole sale — the typed cash
+    // tender, the scan-unit preference and the notes come back exactly
+    // as left. `??` covers rows held before Phase A (and old basket
+    // templates), which carry none of these fields.
+    setPosCashReceived(sale.cashReceived ?? ""); setSaleScanUnit(sale.scanUnit ?? "subunit"); setSalesNotes(sale.notes ?? "");
     clearCreditOverrideState(); setSaleScanFocus(value => value + 1);
     void fetchProducts();
   };
   const clearCounterSale = () => {
-    restoreCounterSale({ lines: [], customerId: selectedCustomerIdForSale, date: toDateInputValue(new Date()), paymentType: "cash", discount: "", discountType: "flat", tax: "" });
+    // A fresh basket after a hold keeps the cashier's scan-unit
+    // preference (it is a preference, not sale data); tender and notes
+    // are sale data, so they reset with the basket.
+    restoreCounterSale({ lines: [], customerId: selectedCustomerIdForSale, date: toDateInputValue(new Date()), paymentType: "cash", discount: "", discountType: "flat", tax: "", cashReceived: "", scanUnit: saleScanUnit, notes: "" });
   };
   useEffect(() => {
     if (!quickSaleMode || !currentOrganizationId || !currentProfile?.id) return;
@@ -19958,11 +19978,11 @@ setCustomerOrganizationName("");
               <ProductCatalogErrorBanner onRetry={retryProductsLoad} hasStaleData={products.length > 0} />
             )}
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
-              sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate }}
+              sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate, cashReceived: posCashReceived, scanUnit: saleScanUnit, notes: salesNotes }}
               products={activeProducts} productNameFallback={scannedProductNames} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus} clearSignal={saleBarcodeClearSignal}
               onScan={(code, options) => { const result = runSalesScan(code, options); return result.status === "not-found" ? null : String(result.product.id); }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setScannedProductNames(current => ({ ...current, [String(product.id)]: product.name })); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
-              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onAdvanced={() => { setQuickSaleMode(false); setSaleScanFocus(value => value + 1); }} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} onCustomizeReceipt={() => setShowPosReceiptCustomizer(true)} />}
+              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onNotes={setSalesNotes} onAdvanced={() => { setQuickSaleMode(false); setSaleScanFocus(value => value + 1); }} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} onCustomizeReceipt={() => setShowPosReceiptCustomizer(true)} />}
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
             <section className="scanner-panel" data-help-topic="barcode">
