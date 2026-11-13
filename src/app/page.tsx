@@ -25137,7 +25137,7 @@ setCustomerOrganizationName("");
                           {t('sell.remove')}
                         </button>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-5">
+                      <div className="grid gap-2 sm:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.product')}</span>
                           <select
@@ -25201,6 +25201,15 @@ setCustomerOrganizationName("");
                             type="text"
                             value={line.batch_number}
                             onChange={(e) => handlePoLineChange(index, "batch_number", e.target.value)}
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>{t('sell.expiryDateOptional')}</span>
+                          <input
+                            type="date"
+                            value={line.expiry_date}
+                            onChange={(e) => handlePoLineChange(index, "expiry_date", e.target.value)}
                             className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
@@ -25629,7 +25638,7 @@ setCustomerOrganizationName("");
                           {t('sell.remove')}
                         </button>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-5">
+                      <div className="grid gap-2 sm:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.product')}</span>
                           <select
@@ -25691,6 +25700,15 @@ setCustomerOrganizationName("");
                             type="text"
                             value={line.batch_number}
                             onChange={(e) => handleReturnLineChange(index, "batch_number", e.target.value)}
+                            className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-foreground/80">
+                          <span>{t('sell.expiryDateOptional')}</span>
+                          <input
+                            type="date"
+                            value={line.expiry_date}
+                            onChange={(e) => handleReturnLineChange(index, "expiry_date", e.target.value)}
                             className="min-h-11 rounded border border-input px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </label>
