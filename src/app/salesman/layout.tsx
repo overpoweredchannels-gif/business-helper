@@ -28,29 +28,36 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { t } = useRegional();
 
   useEffect(() => {
+    // Retry the staff-profile fetch: the first attempt can race the session
+    // being restored right after sign-in/navigation, and a single 401 here
+    // permanently gates the staff member out with "An active employee
+    // profile is required" even though the session is valid.
     (async () => {
-      try {
-        const res = await authorizedFetch("/api/identity/staff/me");
-        const data: MeResponse = await res.json();
-        if (data.ok && data.me) {
-          // Resolve the org's books currency before children render
-          // (they mount only after this gate lifts), so salesman pages
-          // format books amounts with formatBooksMoney in the right
-          // currency instead of any hardcoded one. The identity route
-          // already returns books_currency + regional_preferences.
-          setActiveBooksCurrency(
-            resolveBooksCurrency(data.me.organization?.books_currency, data.me.organization?.regional_preferences),
-          );
-          setMe(data.me);
-        } else {
-          setNotStaff(true);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const res = await authorizedFetch("/api/identity/staff/me");
+          const data: MeResponse = await res.json();
+          if (data.ok && data.me) {
+            // Resolve the org's books currency before children render
+            // (they mount only after this gate lifts), so salesman pages
+            // format books amounts with formatBooksMoney in the right
+            // currency instead of any hardcoded one. The identity route
+            // already returns books_currency + regional_preferences.
+            setActiveBooksCurrency(
+              resolveBooksCurrency(data.me.organization?.books_currency, data.me.organization?.regional_preferences),
+            );
+            setMe(data.me);
+            return;
+          }
+        } catch {
+          // fall through to the retry below
         }
-      } catch {
-        setNotStaff(true);
-      } finally {
-        setLoading(false);
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
       }
-    })();
+      setNotStaff(true);
+    })().finally(() => setLoading(false));
   }, []);
 
   if (loading) {

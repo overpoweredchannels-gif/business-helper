@@ -338,8 +338,28 @@ const PURCHASE_LIST_SORT_OPTIONS: { value: PurchaseListSort; label: string }[] =
 ];
 
 async function authorizedFetch(input: string, init: RequestInit = {}): Promise<Response> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  // The session can be momentarily absent right after sign-in or a navigation
+  // (the browser client is still restoring it from storage), so a bare
+  // getSession() is not treated as "signed out": re-read once after a short
+  // pause and, if the token is still missing, attempt one refresh before the
+  // request goes out. A request that still has no token goes out
+  // unauthenticated and the API answers 401, exactly as before.
+  let token = (await supabase.auth.getSession()).data.session?.access_token ?? null;
+  if (!token) {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    token = (await supabase.auth.getSession()).data.session?.access_token ?? null;
+  }
+  if (!token) {
+    try {
+      const { data } = await supabase.auth.refreshSession();
+      token = data.session?.access_token ?? null;
+    } catch {
+      // ignore — the request below will carry no token and the API 401s
+    }
+    if (!token) {
+      token = (await supabase.auth.getSession()).data.session?.access_token ?? null;
+    }
+  }
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   return fetch(input, { ...init, headers });
@@ -754,6 +774,9 @@ export default function Home() {
   const productsLoading = productsReadStatus === "loading" || productsReadStatus === "not-loaded";
   const profileLoadRequestRef = useRef(0);
   const authCheckRequestRef = useRef(0);
+  // Last auth user id checkAuthUser resolved. The auth-state listener uses it
+  // to re-resolve the profile only when the signed-in user actually changes.
+  const lastResolvedAuthUserIdRef = useRef<string | null>(null);
   const dashboardAccountIdRef = useRef<string | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -1067,6 +1090,19 @@ export default function Home() {
 
   useEffect(() => {
     checkAuthUser();
+    // Re-resolve the profile if the signed-in user changes under the app
+    // (e.g. another tab signs in as a different user, or a stale session is
+    // restored). Without this the rendered identity can go stale or flip to
+    // the other account while the profile state still shows the first user.
+    // Routine token refreshes keep the same user id and do not re-trigger.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextUserId = session?.user?.id ?? null;
+      if (nextUserId !== lastResolvedAuthUserIdRef.current) {
+        void checkAuthUser();
+      }
+    });
+    return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Deep-link routing: "/#section-id" opens that section directly. Used by the
@@ -1103,7 +1139,18 @@ export default function Home() {
         (permission) => permission.profile_id === currentProfile?.id
       ) ?? selfStaffPermission;
     const granted = ownPermission?.granted_sections ?? [];
-    const hasBusinessAccess = granted.some((sectionId) => sectionId !== "dashboard");
+    // Mirror canAccessSection's fallback: granted_sections is the source of
+    // truth once set, but a legacy row (empty granted_sections) grants a
+    // business section through its booleans. Without this the redirect
+    // bounces a legacy-granted staff member to /salesman even though the
+    // section gate itself would let them in.
+    const legacySectionKeys = (
+      Object.values(sectionPermissionMap) as Array<StaffPermissionKey | "owner_admin" | undefined>
+    ).filter((key): key is StaffPermissionKey => key !== undefined && key !== "owner_admin");
+    const hasLegacyBusinessAccess =
+      granted.length === 0 && legacySectionKeys.some((key) => Boolean(ownPermission?.[key]));
+    const hasBusinessAccess =
+      granted.some((sectionId) => sectionId !== "dashboard") || hasLegacyBusinessAccess;
     // Wait until both the org-wide client fetch AND the server-side
     // /api/identity/staff/me row have resolved so we do not wrongly bounce a
     // staff member who was granted business sections.
@@ -1646,16 +1693,29 @@ export default function Home() {
 
   const fetchSelfStaffPermission = async () => {
     try {
-      const response = await authorizedFetch("/api/identity/staff/me");
-      const data = await response.json();
-      if (response.ok && data?.me?.permissions) {
-        setSelfStaffPermission(data.me.permissions);
+      // One retry: the first attempt can race the session being restored
+      // right after sign-in/navigation, and a single 401 here leaves the
+      // staff member with no permissions — the org-wide staff_permissions
+      // read is RLS-denied for staff, so this API row is the only source
+      // the section gate can use.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const response = await authorizedFetch("/api/identity/staff/me");
+          const data = await response.json();
+          if (response.ok && data?.me?.permissions) {
+            setSelfStaffPermission(data.me.permissions);
+          }
+          if (response.ok && data?.me?.employee) {
+            setSelfEmployee(data.me.employee);
+          }
+          if (response.ok) return;
+        } catch {
+          // fall through to the retry below
+        }
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
       }
-      if (response.ok && data?.me?.employee) {
-        setSelfEmployee(data.me.employee);
-      }
-    } catch {
-      // fall back to org-wide staffPermissions resolution
     } finally {
       setSelfStaffPermissionLoaded(true);
     }
@@ -1688,6 +1748,10 @@ export default function Home() {
 
     if (profilesResult.error) {
       console.error("Supabase fetch staff profiles error:", JSON.stringify(profilesResult.error, null, 2));
+      // Mark the fetch resolved even on failure: the gate's loading guard
+      // waits on this flag, and a failed profiles read must not leave a
+      // staff member stuck with neither the section nor the denial.
+      setStaffPermissionsLoaded(true);
       return;
     }
 
@@ -2037,6 +2101,7 @@ export default function Home() {
     if (authRequestId !== authCheckRequestRef.current) return;
     if (sessionError) {
       console.error(`${logTag} sessionError:`, sessionError);
+      lastResolvedAuthUserIdRef.current = null;
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
@@ -2046,6 +2111,7 @@ export default function Home() {
 
     if (!sessionData?.session) {
       console.log(`${logTag} no session found — user not authenticated`);
+      lastResolvedAuthUserIdRef.current = null;
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
@@ -2070,6 +2136,7 @@ export default function Home() {
     console.log(`${logTag} user loaded: id=${user?.id ?? "null"}, email=${user?.email ?? "null"}, email_confirmed_at=${user?.email_confirmed_at ?? "null"}, confirmed_at=${user?.confirmed_at ?? "null"}`);
     invalidateDashboardSession();
     setCurrentUser(user);
+    lastResolvedAuthUserIdRef.current = user?.id ?? null;
     if (user?.id) {
       try {
         console.log(`${logTag} calling provisionWorkspace...`);
@@ -6851,6 +6918,11 @@ setCustomerOrganizationName("");
   const activeSectionLabel =
     navigationItems.find((item) => item.id === activeSection)?.label ?? "Dashboard";
   const activeSectionAllowed = canAccessSection(activeSection);
+  // Staff section access is only decided once both permission sources have
+  // resolved. Before that currentStaffPermission is null and the gate would
+  // wrongly render "Permission Required" for a staff member who is actually
+  // granted the section.
+  const staffPermissionsResolved = staffPermissionsLoaded && selfStaffPermissionLoaded;
   const filteredAiActionDrafts = aiActionDrafts.filter((draft) => {
     const evaluation = evaluateAiDraftData(draft.action_type, draft.parsed_data ?? {});
     const isReady = Boolean(draft.ready_to_execute || evaluation.readyToExecute);
@@ -9736,6 +9808,11 @@ setCustomerOrganizationName("");
       setDraftReviewReason("");
       fetchSalesOrders();
       fetchSalesTransactions();
+      // The approved invoice's line items live in sales_items. Without this
+      // refresh the in-memory salesItems stays stale, so Print Invoice (and
+      // the ledger detail) for a just-approved draft renders "No line items
+      // found" even though approveDraft inserted the rows.
+      fetchSalesItems();
       fetchRealNotifications();
     } catch (err) {
       setSoError(err instanceof Error ? err.message : t('page.actionFailed'));
@@ -18148,7 +18225,7 @@ setCustomerOrganizationName("");
       )}
           <div>
 
-        {!activeSectionAllowed && (
+        {!activeSectionAllowed && staffPermissionsResolved && (
         <section className="rounded border border-destructive/20 bg-destructive/5 p-5">
           <h2 className="text-xl font-medium text-destructive/90">{t('sections.permissionRequired')}</h2>
           <p className="mt-2 text-sm text-destructive/90">

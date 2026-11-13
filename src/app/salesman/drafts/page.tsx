@@ -76,30 +76,48 @@ export default function DraftsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await authorizedFetch("/api/sales/drafts/mine");
-      const data = await res.json();
-      if (data.ok) {
-        setDrafts(data.drafts ?? []);
-      } else {
-        setError(data.error || t('salesman.drafts.loadFailed'));
+      // One retry: the first attempt can race the session being restored
+      // right after sign-in/navigation, and a single 401 here shows a
+      // permanent "Missing authorization token" error.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const res = await authorizedFetch("/api/sales/drafts/mine");
+          const data = await res.json();
+          if (data.ok) {
+            setDrafts(data.drafts ?? []);
+            return;
+          }
+          if (attempt === 1) setError(data.error || t('salesman.drafts.loadFailed'));
+        } catch (err) {
+          if (attempt === 1) setError(err instanceof Error ? err.message : t('tracking.networkError'));
+        }
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('tracking.networkError'));
     } finally {
       setLoading(false);
     }
   }, [t]);
 
   const loadFormData = useCallback(async () => {
-    try {
-      const response = await authorizedFetch("/api/identity/staff/sales-options");
-      const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error ?? t('salesman.drafts.loadOptionsFailed'));
-      setCustomers(Array.isArray(data.customers) ? data.customers : []);
-      setProducts(Array.isArray(data.products) ? data.products : []);
-      setAssignment(data.assignment ?? null);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('salesman.drafts.loadOptionsFailed'));
+    // One retry, same reason as loadDrafts: a transient 401 must not leave
+    // the form with "0 eligible customers" and no products.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await authorizedFetch("/api/identity/staff/sales-options");
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error ?? t('salesman.drafts.loadOptionsFailed'));
+        setCustomers(Array.isArray(data.customers) ? data.customers : []);
+        setProducts(Array.isArray(data.products) ? data.products : []);
+        setAssignment(data.assignment ?? null);
+        return;
+      } catch (reason) {
+        if (attempt === 1) setError(reason instanceof Error ? reason.message : t('salesman.drafts.loadOptionsFailed'));
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
     }
   }, [t]);
 
