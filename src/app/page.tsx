@@ -4618,6 +4618,10 @@ setCustomerOrganizationName("");
               })),
             paymentType: salesPaymentType,
             creditDays: salesPaymentType === "credit" ? selectedCustomerCreditDays : undefined,
+            // Staff draft carries the sale note too: the drafts API stores
+            // it on the order and approveDraft writes it onto the invoice,
+            // so a staff sale keeps its note exactly like an owner sale.
+            notes: salesNotes.trim() ? salesNotes.trim() : null,
           }),
         });
         const data = await res.json();
@@ -4631,6 +4635,7 @@ setCustomerOrganizationName("");
         setSalesDiscountAmount("");
         setSalesDiscountType("flat");
         setSalesTaxRate("");
+        setSalesNotes("");
         clearCreditOverrideState();
         setSalesLines([]);
         fetchSalesTransactions();
@@ -7755,7 +7760,7 @@ setCustomerOrganizationName("");
       async () => {
         let query = supabase
           .from("sales_transactions")
-          .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount")
+          .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount, notes")
           .eq("organization_id", orgId)
           .order("created_at", { ascending: false });
         if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
@@ -13407,6 +13412,11 @@ setCustomerOrganizationName("");
         <div><strong>${t('sell.saleDate')}:</strong> ${escapeHtml(formatDate(transaction.sale_date ?? transaction.created_at))}</div>
         <div><strong>${t('sell.customer')}:</strong> ${escapeHtml(customer?.customer_name ?? t('sell.unknownCustomer'))}</div>
         <div><strong>${t('sell.paymentType')}:</strong> ${escapeHtml(transaction.payment_type === "credit" ? t('sell.paymentCredit') : transaction.payment_type === "card" ? t('sell.paymentCard') : t('sell.paymentCash'))}</div>
+        ${
+          transaction.notes && transaction.notes.trim() !== ""
+            ? `<div><strong>${t('sell.notesLabel')}:</strong> ${escapeHtml(transaction.notes)}</div>`
+            : ""
+        }
         ${
           transaction.credit_due_date
             ? `<div><strong>${t('sell.creditDueDate')}:</strong> ${escapeHtml(formatDate(transaction.credit_due_date))}</div>`
@@ -20515,6 +20525,9 @@ setCustomerOrganizationName("");
                     <div>{t('sell.customer')}: {customer?.customer_name ?? t('sell.unknown')}</div>
                     <div className="text-xs text-muted-foreground/80">{t('sell.dateLabel')}: {date}</div>
                     <div>{t('sell.paymentType')}: {paymentType === "credit" ? t('sell.paymentCredit') : t('sell.paymentCash')}</div>
+                    {tx.notes && tx.notes.trim() !== "" && (
+                      <div>{t('sell.notesLabel')}: {tx.notes}</div>
+                    )}
                     <div>{t('sell.statusLabel')}: {creditStatus}</div>
                     {tx.total_amount != null && <div>{t('sell.totalAmount')}: {formatBooksMoney(Number(tx.total_amount || 0))}</div>}
                     {(tx.discount_amount != null && Number(tx.discount_amount) > 0) && (
