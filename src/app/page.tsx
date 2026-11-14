@@ -37,6 +37,7 @@ import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
 import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecision, resolveSaleCashReceived, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
+import { loadOfflineCustomers, loadOfflineProducts, saveOfflineCustomers, saveOfflineProducts } from "@/lib/offline/offline-store";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
@@ -5646,6 +5647,11 @@ setCustomerOrganizationName("");
     setCategories(data ?? []);
   };
 
+  // Phase E1: the offline cache is scoped exactly like the sale queue
+  // (org + profile), so one cashier never sees another's catalogue.
+  const offlineCacheScope = (orgId: string): string | null =>
+    currentProfile?.id ? `${orgId}:${currentProfile.id}` : null;
+
   const fetchProducts = async (organizationId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -5660,13 +5666,40 @@ setCustomerOrganizationName("");
       "products",
       orgId,
       async () => {
-        const { data, error } = await allPages((from, to) => supabase
-          .from("products")
-          .select("id, name, brand_id, category_id, unit_type, subunit_type, units_per_pack, sku, barcode, last_purchase_price, default_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, current_stock, overselling_policy, is_active, created_at, updated_at")
-          .eq("organization_id", orgId)
-          .order("name", { ascending: true }).order("id", { ascending: true }).range(from, to));
-        if (error) throw error;
-        return data ?? [];
+        const scope = offlineCacheScope(orgId);
+        const loadCached = async (): Promise<Product[] | null> => {
+          if (!scope) return null;
+          const cached = await loadOfflineProducts<Product>(scope);
+          if (cached.rows.length === 0) return null;
+          setProductsFromCache(cached.savedAt);
+          return cached.rows;
+        };
+        // Skip the network round-trip entirely while offline: the live
+        // fetch would hang until it times out, and the cache is the only
+        // catalogue the cashier can use.
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const cached = await loadCached();
+          if (cached) return cached;
+          throw new Error("Offline and no cached products");
+        }
+        try {
+          const { data, error } = await allPages((from, to) => supabase
+            .from("products")
+            .select("id, name, brand_id, category_id, unit_type, subunit_type, units_per_pack, sku, barcode, last_purchase_price, default_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, current_stock, overselling_policy, is_active, created_at, updated_at")
+            .eq("organization_id", orgId)
+            .order("name", { ascending: true }).order("id", { ascending: true }).range(from, to));
+          if (error) throw error;
+          const rows = data ?? [];
+          setProductsFromCache(null);
+          if (scope) void saveOfflineProducts(scope, rows);
+          return rows;
+        } catch (caught) {
+          // Live fetch failed (flappy network, server error): fall back
+          // to the cached catalogue instead of an empty product list.
+          const cached = await loadCached();
+          if (cached) return cached;
+          throw caught;
+        }
       },
       setProducts,
       (error) => console.error("Supabase fetch products error:", error),
@@ -5697,15 +5730,37 @@ setCustomerOrganizationName("");
       "customers",
       orgId,
       async () => {
-        const { data, error } = await allPages((from, to) => supabase
-          .from("customers")
-          .select(
-            "id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, assigned_salesman_id, assigned_territory_id"
-          )
-          .eq("organization_id", orgId)
-          .order("customer_name", { ascending: true }).order("id", { ascending: true }).range(from, to));
-        if (error) throw error;
-        return data ?? [];
+        const scope = offlineCacheScope(orgId);
+        const loadCached = async (): Promise<Customer[] | null> => {
+          if (!scope) return null;
+          const cached = await loadOfflineCustomers<Customer>(scope);
+          if (cached.rows.length === 0) return null;
+          setCustomersFromCache(cached.savedAt);
+          return cached.rows;
+        };
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const cached = await loadCached();
+          if (cached) return cached;
+          throw new Error("Offline and no cached customers");
+        }
+        try {
+          const { data, error } = await allPages((from, to) => supabase
+            .from("customers")
+            .select(
+              "id, customer_name, shop_name, organization_name, contact_person, phone, whatsapp, city, area, address, shipping_address, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, notes, assigned_salesman_id, assigned_territory_id"
+            )
+            .eq("organization_id", orgId)
+            .order("customer_name", { ascending: true }).order("id", { ascending: true }).range(from, to));
+          if (error) throw error;
+          const rows = data ?? [];
+          setCustomersFromCache(null);
+          if (scope) void saveOfflineCustomers(scope, rows);
+          return rows;
+        } catch (caught) {
+          const cached = await loadCached();
+          if (cached) return cached;
+          throw caught;
+        }
       },
       setCustomers,
       (error) => console.error("Supabase fetch customers error:", error),
@@ -6275,6 +6330,15 @@ setCustomerOrganizationName("");
   const [lastPOSReceipt, setLastPOSReceipt] = useState<Receipt | null>(null);
   const [pendingSalesCount, setPendingSalesCount] = useState(0);
   const [pendingSalesNotices, setPendingSalesNotices] = useState<string[]>([]);
+  // Phase E1 offline mode: true while the browser reports no network.
+  // The sale form reads this (not the queue) so the cashier sees the
+  // offline state even before any sale is queued.
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== "undefined" ? navigator.onLine : true);
+  // ISO savedAt of the cached catalogue currently shown, or null when the
+  // rows on screen came from a live fetch. The banner names the cache time
+  // so the cashier knows the list may be older than the server.
+  const [productsFromCache, setProductsFromCache] = useState<string | null>(null);
+  const [customersFromCache, setCustomersFromCache] = useState<string | null>(null);
   // True only while the form holds a basket restored from the queue (mount
   // restore). The save handler reads and clears it, so only the first save
   // after a restore can count as that basket's retry.
@@ -6317,6 +6381,29 @@ setCustomerOrganizationName("");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshPendingSales, currentOrganizationId, currentProfile?.id]);
+  // Phase E1: track the browser's online state for the offline banner.
+  useEffect(() => {
+    const update = () => setIsOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  // Phase E1: when the network returns, refresh the catalogue so a cached
+  // copy is replaced by live rows (and the cached banner clears). The
+  // drain effect above already syncs queued sales on "online"; this
+  // covers the no-queue case, where nothing else would refetch.
+  const wasOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    if (isOnline && !wasOnlineRef.current) {
+      void fetchProducts(currentOrganizationId);
+      void fetchCustomers(currentOrganizationId);
+    }
+    wasOnlineRef.current = isOnline;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline, currentOrganizationId]);
   // Pre-sale receipt setup: the POS screen's Customize receipt button opens
   // the template customizer over a sample receipt (no sale needed). The
   // saved template is picked up by the next sale's receipt dialog, which
@@ -20824,6 +20911,19 @@ setCustomerOrganizationName("");
             }} />}
             {salesMessage && <p className="mt-4 text-sm text-success">{salesMessage}</p>}
             {salesError && <p className="mt-4 text-sm text-destructive">{salesError}</p>}
+            {(!isOnline || productsFromCache || customersFromCache) && (
+              <div role="status" className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                {!isOnline && <p className="font-medium">{t('offline.mode')}</p>}
+                {pendingSalesCount > 0 && (
+                  <p className={!isOnline ? "mt-1" : undefined}>{t('offline.waiting').replace('{count}', String(pendingSalesCount))}</p>
+                )}
+                {(productsFromCache || customersFromCache) && (
+                  <p className={(!isOnline || pendingSalesCount > 0) ? "mt-1" : undefined}>
+                    {t('offline.cachedCatalogue').replace('{time}', new Date(productsFromCache ?? customersFromCache ?? "").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}
+                  </p>
+                )}
+              </div>
+            )}
             {(pendingSalesCount > 0 || pendingSalesNotices.length > 0) && (
               <div role="status" className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
                 {pendingSalesCount > 0 && (
