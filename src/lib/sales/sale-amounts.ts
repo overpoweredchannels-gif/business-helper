@@ -1,3 +1,5 @@
+import { safeNumber } from "@/lib/tradeos/validators";
+
 export type SaleAmountLine = {
   quantity: number | string;
   sellingPrice: number | string;
@@ -169,6 +171,35 @@ export function hasAllowedPrecision(value: string | number, decimalPlaces: numbe
 export function roundMoney(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return centsToMoney(moneyToCents(value));
+}
+
+/**
+ * Tender to send with a sale for the given payment type (direct atomic
+ * save and staff-draft body share this).
+ *
+ * Cash: the entered tender (blank = exact total). Card: the sale is
+ * charged the total, no change due — so the tender IS the total.
+ * Credit: no tender.
+ *
+ * (2026-11-14: the client sent 0 for card, and
+ * create_sales_invoice_atomic rejected every card sale with "Cash
+ * received is less than the sale total" because 0 < total — while cash
+ * worked, because its tender defaulted to the total. The RPC itself
+ * defaults a null/empty card tender to the total; an explicit 0
+ * defeats that default, so card must send the total explicitly.)
+ */
+export function resolveSaleCashReceived(
+  paymentType: "cash" | "card" | "credit",
+  cashReceivedText: string,
+  total: number,
+): number {
+  if (paymentType === "cash") {
+    return cashReceivedText.trim() === "" ? roundMoney(total) : safeNumber(cashReceivedText);
+  }
+  if (paymentType === "card") {
+    return roundMoney(total);
+  }
+  return 0;
 }
 
 export function calculateSaleLineTotal(line: SaleAmountLine): number {

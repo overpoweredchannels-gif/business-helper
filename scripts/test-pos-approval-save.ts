@@ -74,14 +74,30 @@ const items = [
   assert.equal(amounts.changeDue, 12.5);
 }
 
-// Card tender: same totals, but no cash received and no change due.
+// Card tender: same totals; the card is charged the total, so the
+// recorded tender is the total — matching the direct atomic sale,
+// which stores cash_received = total for card — and no change due.
+// (2026-11-14: the old expectation of 0 was the same inconsistency
+// that broke direct card sales — an explicit 0 tender is rejected by
+// the RPC. A card sale carries the total as its tender.)
 {
   const amounts = buildApprovalSaleAmounts(
     { invoiceDiscount: 10, invoiceDiscountType: "flat", taxRate: 10, cashReceived: null, paymentType: "card" },
     items,
   );
   assert.equal(amounts.total, 137.5);
-  assert.equal(amounts.cashReceived, 0);
+  assert.equal(amounts.cashReceived, 137.5);
+  assert.equal(amounts.changeDue, 0);
+}
+
+// Card tender with an explicit stored tender: the stored amount is used.
+{
+  const amounts = buildApprovalSaleAmounts(
+    { invoiceDiscount: 10, invoiceDiscountType: "flat", taxRate: 10, cashReceived: 137.5, paymentType: "card" },
+    items,
+  );
+  assert.equal(amounts.total, 137.5);
+  assert.equal(amounts.cashReceived, 137.5);
   assert.equal(amounts.changeDue, 0);
 }
 
@@ -151,4 +167,4 @@ const items = [
   assert.equal(amounts.changeDue, 0.34);
 }
 
-console.log("POS approval-save checks passed: flat/percent invoice discount, tax on the remainder, cash default/exact/over-tender change, card + credit zero cash, snake_case draft-row parity, percent rounding, QA S-100067 figures, owner-confirmed over-tender.");
+console.log("POS approval-save checks passed: flat/percent invoice discount, tax on the remainder, cash default/exact/over-tender change, card tender = total, credit zero cash, snake_case draft-row parity, percent rounding, QA S-100067 figures, owner-confirmed over-tender.");

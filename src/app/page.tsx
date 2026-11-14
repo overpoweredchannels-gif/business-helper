@@ -21,7 +21,7 @@ import { formatAvailableStock } from "@/lib/products/stock-display";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
-import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecision, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
+import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecision, resolveSaleCashReceived, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
@@ -4687,9 +4687,10 @@ setCustomerOrganizationName("");
             invoiceDiscount: rawInvoiceDiscount,
             invoiceDiscountType: salesDiscountType,
             taxRate: parsedTaxRate,
-            cashReceived: salesPaymentType === "cash"
-              ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal ?? 0) : safeNumber(posCashReceived))
-              : 0,
+            // Card is charged the total (resolveSaleCashReceived): the
+            // atomic RPC rejects an explicit 0 tender for card, so a
+            // card draft must carry the total, never 0.
+            cashReceived: resolveSaleCashReceived(salesPaymentType, posCashReceived, currentSalesInvoiceTotal ?? 0),
           }),
         });
         const data = await res.json();
@@ -4743,9 +4744,11 @@ setCustomerOrganizationName("");
         invoice_discount: rawInvoiceDiscount,
         invoice_discount_type: salesDiscountType,
         tax_rate: parsedTaxRate,
-        cash_received: salesPaymentType === "cash"
-          ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal ?? 0) : safeNumber(posCashReceived))
-          : 0,
+        // Card is charged the total (resolveSaleCashReceived): the
+        // atomic RPC rejects an explicit 0 tender for card ("Cash
+        // received is less than the sale total"), so a card sale must
+        // send the total, never 0.
+        cash_received: resolveSaleCashReceived(salesPaymentType, posCashReceived, currentSalesInvoiceTotal ?? 0),
         // Phase A: the sale note travels with the invoice. The atomic
         // RPC stores it in sales_transactions.notes once the Phase A
         // migration (src/lib/migrations/held_sale_notes_atomic_rpc.sql)

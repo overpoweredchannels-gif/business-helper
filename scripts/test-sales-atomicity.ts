@@ -71,6 +71,54 @@ async function testAtomicSaleClientRetry() {
   }
 }
 
+/** Rejection surfacing (2026-11-14 production card failure): when the
+ * server finally rejects the own sale — here the card sale the old
+ * client sent with cash_received 0, rejected by
+ * create_sales_invoice_atomic with "Cash received is less than the sale
+ * total" — createAtomicSale must throw that real reason, not the generic
+ * "could not be confirmed" message, which misleads the cashier into
+ * retrying a sale that will fail the same way. The rejected attempt is
+ * dropped from the queue, so there is nothing to reconcile. */
+async function testAtomicSaleClientRejectionSurfacesReason() {
+  const values = new Map<string, string>();
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+  } } });
+  try {
+    const input: AtomicSaleInput = {
+      customer_id: cashCustomer, sale_date: "2026-09-26", payment_type: "card",
+      invoice_discount: 0, invoice_discount_type: "flat", tax_rate: 0, cash_received: 0,
+      credit_override_confirmed: false,
+      lines: [{ product_id: cashProduct, quantity: 1, selling_price: 1.13, discount: 0, bonus: 0, unit_mode: "main" }],
+    };
+    const client = {
+      rpc: async (name: string) => {
+        if (name === "create_sales_invoice_atomic") {
+          return { data: null, error: { code: "22023", message: "Cash received is less than the sale total" } };
+        }
+        return { data: { status: "unknown" }, error: null };
+      },
+    } as unknown as SupabaseClient;
+
+    let thrown: unknown;
+    try {
+      await createAtomicSale(client, "org:actor", input);
+    } catch (caught) {
+      thrown = caught;
+    }
+    assert.ok(thrown instanceof Error, "a server rejection throws");
+    assert.match(thrown.message, /Cash received is less than the sale total/, "a server rejection surfaces its real reason");
+    assert.ok(!/could not be confirmed/i.test(thrown.message), "a rejection does not hide behind the ambiguous message");
+    assert.deepEqual(readPendingSalesQueue("org:actor"), [], "a rejected attempt is dropped from the queue");
+  } finally {
+    if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+}
+
 /** Offline queue order (2026-11-02): while the network is down, two sales
  * queue in order with positions 1 and 2; when it returns, the drain
  * confirms them oldest-first and empties the queue. A re-save marked as a
@@ -690,6 +738,7 @@ async function main() {
     await assert.rejects(db.query("select public.create_sales_invoice_atomic($1,$2::jsonb)", ["70000000-0000-4000-8000-000000000080", JSON.stringify(base())]), /Owner sales permission/);
     await db.exec("reset role");
     await testAtomicSaleClientRetry();
+    await testAtomicSaleClientRejectionSurfacesReason();
     await testOfflineQueueOrder();
     await testOfflineIdenticalFreshSaleQueues();
     console.log("Atomic sales PostgreSQL tests passed: cash/credit, tender/change, stock conversions, discounts/tax, rollback, idempotency, authorization, tenant scope, and stock limits.");

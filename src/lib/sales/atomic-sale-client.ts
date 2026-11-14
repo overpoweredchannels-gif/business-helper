@@ -305,6 +305,14 @@ export async function createAtomicSale(
       rejectedMessages: outcome.rejectedMessages,
     };
   }
+  if (outcome.rejectedMessages.length > 0) {
+    // A final server rejection: the sale was dropped from the queue, so
+    // there is nothing to reconcile — surface the real reason (e.g. a
+    // validation failure) instead of the ambiguous "could not be
+    // confirmed" message, which misleads the cashier into retrying a
+    // sale that will fail the same way.
+    throw new Error(outcome.rejectedMessages.join(" "));
+  }
   throw new Error("Sale status could not be confirmed. Your basket and request are saved; retry to reconcile the same sale.");
 }
 

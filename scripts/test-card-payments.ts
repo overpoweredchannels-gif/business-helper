@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { resolveSaleCashReceived } from "../src/lib/sales/sale-amounts";
 import { validateSalesInvoiceInput } from "../src/lib/sales/validation";
 import { validateSaleDraft } from "../src/lib/sales/sale-draft";
 import { parseHeldSales, type HeldSale } from "../src/lib/sales/held-sales";
@@ -139,5 +140,22 @@ for (const [language, table] of Object.entries(messages)) {
     assert.ok(typeof table[key] === "string" && table[key].length > 0, `${language} has a non-empty ${key}`);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Tender resolution (2026-11-14 production card failure): a card sale is
+// charged the total, so its tender IS the total — never 0. The client
+// used to send cash_received 0 for card, and
+// create_sales_invoice_atomic rejected every card sale with "Cash
+// received is less than the sale total" (0 < total) while cash worked.
+// ---------------------------------------------------------------------------
+
+assert.equal(resolveSaleCashReceived("card", "", 1.13), 1.13, "card tender is the total (UMAIR's stranger book sale)");
+assert.equal(resolveSaleCashReceived("card", "0", 1.13), 1.13, "card tender ignores any stray cash text");
+assert.equal(resolveSaleCashReceived("card", "", 100), 100, "card tender is the total for a round amount");
+assert.equal(resolveSaleCashReceived("cash", "", 1.13), 1.13, "cash with blank tender defaults to the total");
+assert.equal(resolveSaleCashReceived("cash", "2", 1.13), 2, "cash with an entered tender keeps it");
+assert.equal(resolveSaleCashReceived("cash", "not-a-number", 1.13), 0, "cash with garbage tender resolves to 0");
+assert.equal(resolveSaleCashReceived("credit", "", 1.13), 0, "credit carries no tender");
+assert.equal(resolveSaleCashReceived("credit", "5", 1.13), 0, "credit ignores any stray cash text");
 
 console.log("test-card-payments: all assertions passed");

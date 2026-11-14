@@ -81,8 +81,9 @@ export type ApprovalSaleDraftAmounts = {
  * Approval-mode totals, computed with the same helper the POS form and the
  * normal save RPC mirror (calculateSaleAmounts): line subtotal minus the
  * invoice discount, plus tax on the remainder. Cash tender defaults to the
- * total when the draft carries no tender (a non-quick-sale cash sale), and
- * to 0 for card/credit — exactly like create_sales_invoice_atomic.
+ * total when the draft carries no tender (a non-quick-sale cash sale); a
+ * card sale is charged the total, so its tender defaults to the total too
+ * — exactly like create_sales_invoice_atomic. Credit carries no tender.
  */
 export function buildApprovalSaleAmounts(
   draft: ApprovalSaleDraftAmountsInput,
@@ -102,7 +103,7 @@ export function buildApprovalSaleAmounts(
   );
   const rawPaymentType = draft.paymentType ?? draft.payment_type;
   const paymentType = rawPaymentType === "card" ? "card" : rawPaymentType === "cash" ? "cash" : "credit";
-  const cashReceived = paymentType === "cash" ? (draft.cashReceived ?? draft.cash_received ?? amounts.total) : 0;
+  const cashReceived = paymentType === "cash" || paymentType === "card" ? (draft.cashReceived ?? draft.cash_received ?? amounts.total) : 0;
   return {
     lineSubtotal: amounts.subtotal,
     invoiceDiscount: amounts.invoiceDiscount,
