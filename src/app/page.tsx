@@ -21057,7 +21057,7 @@ setCustomerOrganizationName("");
                     </div>
                     <div>{t('sell.customer')}: {customer?.customer_name ?? t('sell.unknown')}</div>
                     <div className="text-xs text-muted-foreground/80">{t('sell.dateLabel')}: {date}</div>
-                    <div>{t('sell.paymentType')}: {paymentType === "credit" ? t('sell.paymentCredit') : t('sell.paymentCash')}</div>
+                    <div>{t('sell.paymentType')}: {paymentType === "credit" ? t('sell.paymentCredit') : paymentType === "card" ? t('sell.paymentCard') : t('sell.paymentCash')}</div>
                     {tx.notes && tx.notes.trim() !== "" && (
                       <div>{t('sell.notesLabel')}: {tx.notes}</div>
                     )}
