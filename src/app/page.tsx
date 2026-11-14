@@ -103,7 +103,12 @@ import { bootstrapOrganizationData } from "@/lib/brain/supabase-loader";
 import type { ChatResponse } from "@/lib/conversation";
 import type { ChatContext } from "@/hooks/useAIChat";
 import { AIAssistant } from "@/components/ai/AIAssistant";
-import { hasPermission as hasRolePermission } from "@/lib/identity/roles";
+import {
+  buildAssignableRoles,
+  hasAssignableRolePermission,
+  isAssignableRoleId,
+  type CustomRoleInput,
+} from "@/lib/identity/assignable-roles";
 import RoleManagement from "@/components/identity/RoleManagement";
 import PermissionMatrix from "@/components/identity/PermissionMatrix";
 import InvitationPanel from "@/components/identity/InvitationPanel";
@@ -142,7 +147,6 @@ import {
   navigationItems,
   sectionPermissionGroups,
   sectionPermissionMap,
-  staffRoles,
   taskPriorities,
   taskPriorityLabels,
   taskStatuses,
@@ -833,6 +837,11 @@ export default function Home() {
   const [staffProfileDrafts, setStaffProfileDrafts] = useState<
     Record<string, { display_name: string; role: string; is_active: boolean }>
   >({});
+  // Custom roles the org defined, fetched from GET /api/identity/roles.
+  // The staff Role dropdown offers the built-in staffRoles plus these,
+  // so a custom role can be assigned to a staff member. Until the fetch
+  // lands the dropdown falls back to built-in roles only.
+  const [assignableCustomRoles, setAssignableCustomRoles] = useState<CustomRoleInput[]>([]);
   const [staffSectionDraft, setStaffSectionDraft] = useState<string[]>([]);
   // Per-action payment permissions (phase 17 columns). The draft mirrors the
   // selected staff member's stored booleans; owners/admins always have full
@@ -7180,9 +7189,40 @@ setCustomerOrganizationName("");
     }
   };
 
+  // Custom roles for the staff Role dropdown (GET /api/identity/roles
+  // returns built-in + custom; only the custom ones are stored here,
+  // the built-in list comes from staffRoles). A failed fetch is
+  // non-fatal — the dropdown falls back to built-in roles only.
+  const loadAssignableCustomRoles = async () => {
+    try {
+      const res = await authorizedFetch("/api/identity/roles");
+      const data = await res.json();
+      if (data.ok) {
+        const custom: CustomRoleInput[] = (
+          data.roles as Array<{ id: string; name: string; permissions: string[]; isBuiltIn: boolean }>
+        )
+          .filter((role) => !role.isBuiltIn)
+          .map((role) => ({ id: role.id, name: role.name, permissions: role.permissions }));
+        setAssignableCustomRoles(custom);
+      }
+    } catch {
+      // Keep the previous list (built-in only on first load).
+    }
+  };
+
+  // Roles assignable to a staff member: built-in staffRoles plus the
+  // org's custom roles (label = display name, value = org-prefixed id).
+  const assignableRoles = useMemo(
+    () => buildAssignableRoles(assignableCustomRoles),
+    [assignableCustomRoles],
+  );
+
   useEffect(() => {
     if (activeSection === "business-settings" && isOwnerOrAdmin()) {
       void fetchDrawerEvents();
+    }
+    if (activeSection === "staff-permissions" && isOwnerOrAdmin()) {
+      void loadAssignableCustomRoles();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, currentOrganizationId]);
@@ -7200,7 +7240,14 @@ setCustomerOrganizationName("");
     const first = salesTools.find(tool => hasSalesTool(access, tool.id));
     if (first) setSalesTab(first.id);
   }, [currentStaffPermission, currentProfile?.role, salesTab]);
-  const canImportExport = isOwnerOrAdmin() || hasRolePermission(currentProfile?.role ?? null, "import_export");
+  // Import/export resolves through the assignable roles so a staff
+  // member on a custom role with the import_export permission can use
+  // it — roles.ts alone only knows built-in roles (its in-memory
+  // customRoles array is never populated). The server enforces the
+  // same way (api-context.ts RoleRepository fallback).
+  const canImportExport =
+    isOwnerOrAdmin() ||
+    hasAssignableRolePermission(currentProfile?.role ?? null, "import_export", assignableCustomRoles);
   const canManageInventory = hasPermission("can_manage_inventory");
   // ── Customizable navigation menu ──────────────────────────────────────────
   // Owner can reorder and show/hide sections from the sidebar. Order + hidden
@@ -17780,7 +17827,10 @@ setCustomerOrganizationName("");
       role: profile.role ?? "staff",
       is_active: profile.is_active !== false,
     };
-    const nextRole = staffRoles.includes(draft.role) ? draft.role : "staff";
+    // A custom role id is assignable too — only a dangling/unknown role
+    // id falls back to "staff" (e.g. a role deleted after the draft was
+    // opened). Built-in roles keep the exact behaviour as before.
+    const nextRole = isAssignableRoleId(draft.role, assignableRoles) ? draft.role : "staff";
     const isSelf = currentProfile?.id === profileId;
 
     if (isSelf && draft.is_active === false) {
@@ -26547,8 +26597,8 @@ setCustomerOrganizationName("");
                               onChange={(e) => updateStaffProfileDraft(profile.id, "role", e.target.value)}
                               className="rounded border border-border px-3 py-2"
                             >
-                              {staffRoles.map((role) => (
-                                <option key={role} value={role}>{role}</option>
+                              {assignableRoles.map((role) => (
+                                <option key={role.id} value={role.id}>{role.name}</option>
                               ))}
                             </select>
                             {profileIsOwnerOrAdmin && (

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/identity/authorization";
 import { ProfileService } from "@/lib/identity/services/profile-service";
-import { staffRoles } from "@/lib/tradeos/constants";
 
 export async function GET(request: Request) {
   const permission = await requireOwner(request);
@@ -23,7 +22,10 @@ export async function PATCH(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const profileId = typeof body.profile_id === "string" ? body.profile_id : "";
-  if (!profileId || typeof body.role !== "string" || !staffRoles.includes(body.role) || typeof body.is_active !== "boolean") {
+  // The role is only type-checked here — ProfileService does the
+  // authoritative validation (built-in staff role, or a custom role
+  // that exists in this organization) and rejects anything else.
+  if (!profileId || typeof body.role !== "string" || body.role.length === 0 || typeof body.is_active !== "boolean") {
     return NextResponse.json({ error: "A profile, valid role, and account status are required." }, { status: 400 });
   }
   if (body.display_name !== null && typeof body.display_name !== "string") {

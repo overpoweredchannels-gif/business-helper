@@ -1,4 +1,5 @@
 import { ProfileRepository, ProfileRecord } from "../repositories/profile-repository";
+import { RoleRepository } from "../repositories/role-repository";
 import type { ActorContext } from "../types";
 import { staffRoles } from "@/lib/tradeos/constants";
 
@@ -25,8 +26,20 @@ export class ProfileService {
     if (!actor.isOwner) throw new Error("Owner access required.");
     if (!actor.organizationId) throw new Error("Organization context required.");
     if (!profileId) throw new Error("Staff profile is required.");
-    if (typeof updates.role !== "string" || !staffRoles.includes(updates.role)) {
+    if (typeof updates.role !== "string" || updates.role.length === 0) {
       throw new Error("Choose a valid staff role.");
+    }
+    // A role is valid when it is one of the built-in staff roles, or a
+    // custom role that exists in this organization (role_definitions).
+    // profiles.role is free-text with no enum or foreign key, so no
+    // schema change is needed — this check is the only thing that used
+    // to reject custom role ids. A role id from another organization,
+    // or a deleted/typo'd id, is not found and is rejected.
+    if (!staffRoles.includes(updates.role)) {
+      const customRole = await new RoleRepository().find(actor.organizationId, updates.role);
+      if (!customRole) {
+        throw new Error("Choose a valid staff role.");
+      }
     }
     if (typeof updates.is_active !== "boolean") throw new Error("Staff account status is invalid.");
     if (updates.display_name !== null && typeof updates.display_name !== "string") {
