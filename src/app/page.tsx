@@ -19,6 +19,18 @@ import { SEEDED_WALK_IN_CUSTOMER_NAME, buildAtomicSaleReceipt, buildOfflineSaleR
 import { fillWhatsAppTemplate, firstWhatsAppLink, parseWhatsAppNumber } from "@/lib/share/whatsapp";
 import { formatAvailableStock } from "@/lib/products/stock-display";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
+import { MiniTabBar } from "@/components/sales/MiniTabBar";
+import {
+  MINI_TABS_LIMIT,
+  emptyMiniTabSale,
+  loadMiniTabs,
+  miniTabCurrencyStatus,
+  miniTabsStorageKey,
+  newMiniTab as createMiniTab,
+  type MiniTab,
+  type MiniTabsStore,
+} from "@/lib/sales/mini-tabs";
+import type { HeldCounterSale } from "@/lib/sales/held-sales";
 import { QuickAddCustomerDialog, type QuickAddCustomerFields } from "@/components/sales/QuickAddCustomerDialog";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
@@ -4763,6 +4775,8 @@ setCustomerOrganizationName("");
         setSalesNotes("");
         clearCreditOverrideState();
         setSalesLines([]);
+        // Phase D: the approved draft completes this tab; load the next.
+        completeActiveMiniTab();
         fetchSalesTransactions();
         fetchSalesItems();
         fetchSalesOrderItems();
@@ -4868,6 +4882,8 @@ setCustomerOrganizationName("");
         setSalesTaxRate("");
         clearCreditOverrideState();
         setSalesLines([]);
+        // Phase D: the queued sale completes this tab; load the next.
+        completeActiveMiniTab();
         return;
       }
       const { result, previousPendingConfirmed } = saved;
@@ -4894,6 +4910,8 @@ setCustomerOrganizationName("");
         fetchProducts();
         fetchCustomerPayments();
         fetchCustomerPaymentAllocations();
+        // Phase D: the earlier sale was confirmed, so this tab is done.
+        completeActiveMiniTab();
         return;
       }
 
@@ -4934,6 +4952,8 @@ setCustomerOrganizationName("");
       setSalesTaxRate("");
       clearCreditOverrideState();
       setSalesLines([]);
+      // Phase D: the saved invoice completes this tab; load the next.
+      completeActiveMiniTab();
 
       fetchSalesTransactions();
       fetchSalesItems();
@@ -6190,6 +6210,17 @@ setCustomerOrganizationName("");
   const [salesInvoiceNumber, setSalesInvoiceNumber] = useState("");
   const [salesInvoiceDate, setSalesInvoiceDate] = useState(toDateInputValue(new Date()));
   const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "card" | "credit">("cash");
+  // Phase D (user-visit UX): mini-tabs — 2–4 concurrent invoices. Each
+  // tab holds a whole counter sale in browser storage; the live sale
+  // above is always the active tab's sale, snapshotted back into its
+  // slot on every change, so switching tabs can never mix data.
+  const [miniTabs, setMiniTabs] = useState<MiniTab[]>([]);
+  const [activeMiniTabId, setActiveMiniTabId] = useState<string | null>(null);
+  const miniTabsRestoredScope = useRef<string | null>(null);
+  const miniTabsRef = useRef<MiniTab[]>([]);
+  miniTabsRef.current = miniTabs;
+  const activeMiniTabIdRef = useRef<string | null>(null);
+  activeMiniTabIdRef.current = activeMiniTabId;
   // Phase C (user-visit UX): quick-add customer dialog state. The dialog
   // itself lives in QuickAddCustomerDialog; the handler below posts the
   // four fields and auto-selects the new customer in this sale.
@@ -6485,6 +6516,203 @@ setCustomerOrganizationName("");
     // are sale data, so they reset with the basket.
     restoreCounterSale({ lines: [], customerId: selectedCustomerIdForSale, date: toDateInputValue(new Date()), paymentType: "cash", discount: "", discountType: "flat", tax: "", cashReceived: "", scanUnit: saleScanUnit, notes: "" });
   };
+  // Phase D (user-visit UX): mini-tabs. The live sale above is always
+  // the active tab's sale. Every handler below persists the whole store
+  // (tabs + active id) so a reload reopens the same tabs; the sync
+  // effect after the load effect keeps the active tab's stored sale
+  // identical to the live sale on every edit.
+  const miniTabsScope = currentOrganizationId && currentProfile?.id ? `${currentOrganizationId}:${currentProfile.id}` : null;
+  const currentCounterSale = (): HeldCounterSale => ({
+    lines: salesLines,
+    customerId: selectedCustomerIdForSale,
+    date: salesInvoiceDate,
+    paymentType: salesPaymentType,
+    discount: salesDiscountAmount,
+    discountType: salesDiscountType,
+    tax: salesTaxRate,
+    cashReceived: posCashReceived,
+    scanUnit: saleScanUnit,
+    notes: salesNotes,
+  });
+  const persistMiniTabs = (store: MiniTabsStore) => {
+    if (miniTabsScope) {
+      try {
+        window.localStorage.setItem(miniTabsStorageKey(miniTabsScope), JSON.stringify(store));
+      } catch {
+        // Storage failure: keep the tabs in memory; the strip stays usable.
+      }
+    }
+    setMiniTabs(store.tabs);
+    setActiveMiniTabId(store.activeId);
+  };
+  const snapshotActiveTab = (): MiniTabsStore | null => {
+    const activeId = activeMiniTabIdRef.current;
+    const current = miniTabsRef.current;
+    if (!activeId) return null;
+    const index = current.findIndex((tab) => tab.id === activeId);
+    if (index < 0) return null;
+    return {
+      tabs: current.map((tab, i) => (i === index ? { ...tab, sale: currentCounterSale() } : tab)),
+      activeId,
+    };
+  };
+  const freshTabSale = () =>
+    emptyMiniTabSale(
+      quickSaleMode ? walkInCustomerId.current : null,
+      saleScanUnit,
+      toDateInputValue(new Date()),
+    );
+  const switchMiniTab = (id: string) => {
+    if (id === activeMiniTabIdRef.current || salesInvoiceLoading) return;
+    const target = miniTabsRef.current.find((tab) => tab.id === id);
+    if (!target) return;
+    if (miniTabCurrencyStatus(target, getActiveBooksCurrency()) === "stale") {
+      setSalesError(
+        t("pos.tabCurrencyMismatch")
+          .replace("{held}", String(target.currency))
+          .replace("{books}", getActiveBooksCurrency()),
+      );
+      return;
+    }
+    const snapshot = snapshotActiveTab();
+    const tabs = snapshot ? snapshot.tabs : miniTabsRef.current;
+    persistMiniTabs({ tabs, activeId: id });
+    restoreCounterSale(target.sale);
+    setSaleScanFocus((value) => value + 1);
+  };
+  const newMiniTab = () => {
+    if (miniTabsRef.current.length >= MINI_TABS_LIMIT) {
+      setSalesError(t("pos.tabLimit"));
+      return;
+    }
+    const snapshot = snapshotActiveTab();
+    const tabs = snapshot ? snapshot.tabs : miniTabsRef.current;
+    const tab = createMiniTab(freshTabSale(), getActiveBooksCurrency());
+    persistMiniTabs({ tabs: [...tabs, tab], activeId: tab.id });
+    restoreCounterSale(tab.sale);
+    setSaleScanFocus((value) => value + 1);
+  };
+  const duplicateMiniTab = () => {
+    if (miniTabsRef.current.length >= MINI_TABS_LIMIT) {
+      setSalesError(t("pos.tabLimit"));
+      return;
+    }
+    if (!activeMiniTabIdRef.current) return;
+    const snapshot = snapshotActiveTab();
+    const tabs = snapshot ? snapshot.tabs : miniTabsRef.current;
+    const tab = createMiniTab(currentCounterSale(), getActiveBooksCurrency());
+    persistMiniTabs({ tabs: [...tabs, tab], activeId: tab.id });
+    restoreCounterSale(tab.sale);
+    setSaleScanFocus((value) => value + 1);
+  };
+  const closeMiniTab = (id: string) => {
+    const current = miniTabsRef.current;
+    const index = current.findIndex((tab) => tab.id === id);
+    if (index < 0) return;
+    if (current.length <= 1) {
+      // Last tab: clear it in place instead of removing the strip.
+      const tab = current[0];
+      const empty = freshTabSale();
+      persistMiniTabs({
+        tabs: [{ ...tab, sale: empty, savedAt: new Date().toISOString() }],
+        activeId: tab.id,
+      });
+      restoreCounterSale(empty);
+      setSalesMessage(t("pos.tabClosed"));
+      return;
+    }
+    const tabs = current.filter((tab) => tab.id !== id);
+    const wasActive = id === activeMiniTabIdRef.current;
+    const nextActive = wasActive
+      ? tabs[Math.min(index, tabs.length - 1)]
+      : current.find((tab) => tab.id === activeMiniTabIdRef.current) ?? tabs[0];
+    persistMiniTabs({ tabs, activeId: nextActive.id });
+    if (wasActive) restoreCounterSale(nextActive.sale);
+    setSalesMessage(t("pos.tabClosed"));
+    setSaleScanFocus((value) => value + 1);
+  };
+  // A completed invoice clears its tab: the tab closes and the next
+  // tab's sale loads, so the cashier continues with Enter on the next
+  // customer. Called after the save handler's own form reset, in every
+  // success path (staff draft, queued/offline, confirmed save).
+  const completeActiveMiniTab = () => {
+    const current = miniTabsRef.current;
+    const activeId = activeMiniTabIdRef.current;
+    if (!activeId) return;
+    const index = current.findIndex((tab) => tab.id === activeId);
+    if (index < 0) return;
+    if (current.length <= 1) {
+      const tab = current[0];
+      const empty = freshTabSale();
+      persistMiniTabs({
+        tabs: [{ ...tab, sale: empty, savedAt: new Date().toISOString() }],
+        activeId: tab.id,
+      });
+      restoreCounterSale(empty);
+      return;
+    }
+    const tabs = current.filter((tab) => tab.id !== activeId);
+    const nextActive = tabs[Math.min(index, tabs.length - 1)];
+    persistMiniTabs({ tabs, activeId: nextActive.id });
+    restoreCounterSale(nextActive.sale);
+    setSaleScanFocus((value) => value + 1);
+  };
+  // Load tabs once per scope and restore the active tab's sale. Runs
+  // before the sync effect below, so the sync never overwrites a stored
+  // tab with the empty first-mount sale.
+  useEffect(() => {
+    if (!miniTabsScope || !currentOrganizationId || !currentProfile?.id) return;
+    if (miniTabsRestoredScope.current === miniTabsScope) return;
+    miniTabsRestoredScope.current = miniTabsScope;
+    const key = miniTabsStorageKey(miniTabsScope);
+    const loaded = loadMiniTabs(window.localStorage, key);
+    let store = loaded.store;
+    if (store.tabs.length === 0) {
+      // First use: seed one tab from the live sale so nothing open is lost.
+      const tab = createMiniTab(currentCounterSale(), getActiveBooksCurrency());
+      store = { tabs: [tab], activeId: tab.id };
+      try {
+        window.localStorage.setItem(key, JSON.stringify(store));
+      } catch {
+        // Storage failure: keep the tab in memory.
+      }
+    }
+    const active = store.tabs.find((tab) => tab.id === store.activeId) ?? store.tabs[0];
+    setMiniTabs(store.tabs);
+    setActiveMiniTabId(active?.id ?? null);
+    if (active && miniTabCurrencyStatus(active, getActiveBooksCurrency()) !== "stale") {
+      restoreCounterSale(active.sale);
+    } else if (active) {
+      setSalesError(
+        t("pos.tabCurrencyMismatch")
+          .replace("{held}", String(active.currency))
+          .replace("{books}", getActiveBooksCurrency()),
+      );
+    }
+  }, [miniTabsScope, currentOrganizationId, currentProfile?.id]);
+  // Keep the active tab's stored sale identical to the live sale on
+  // every edit. Writes only when the sale actually changed, and never
+  // before the load effect above has restored the scope's tabs.
+  useEffect(() => {
+    if (!miniTabsScope || miniTabsRestoredScope.current !== miniTabsScope) return;
+    const activeId = activeMiniTabIdRef.current;
+    if (!activeId) return;
+    const current = miniTabsRef.current;
+    const index = current.findIndex((tab) => tab.id === activeId);
+    if (index < 0) return;
+    const sale = currentCounterSale();
+    if (JSON.stringify(current[index].sale) === JSON.stringify(sale)) return;
+    const next = current.map((tab, i) => (i === index ? { ...tab, sale } : tab));
+    try {
+      window.localStorage.setItem(
+        miniTabsStorageKey(miniTabsScope),
+        JSON.stringify({ tabs: next, activeId }),
+      );
+    } catch {
+      // Storage failure: keep the tabs in memory.
+    }
+    setMiniTabs(next);
+  }, [salesLines, selectedCustomerIdForSale, salesInvoiceDate, salesPaymentType, salesDiscountAmount, salesDiscountType, salesTaxRate, posCashReceived, saleScanUnit, salesNotes, activeMiniTabId, miniTabsScope]);
   useEffect(() => {
     if (!quickSaleMode || !currentOrganizationId || !currentProfile?.id) return;
     walkInCustomerId.current = null;
@@ -20138,6 +20366,10 @@ setCustomerOrganizationName("");
             {productsReadStatus === "failed" && (
               <ProductCatalogErrorBanner onRetry={retryProductsLoad} hasStaleData={products.length > 0} />
             )}
+            {/* Phase D (user-visit UX): mini-tabs for concurrent invoices.
+                One strip above both sale surfaces — they share the live
+                sale state, so the active tab is the sale in either view. */}
+            <MiniTabBar tabs={miniTabs} activeId={activeMiniTabId} customers={customers} disabled={salesInvoiceLoading || productsLoading} onSwitch={switchMiniTab} onNew={newMiniTab} onDuplicate={duplicateMiniTab} onClose={closeMiniTab} />
             {quickSaleMode && <RetailPOS key={`${currentOrganizationId}:${currentProfile?.id}`} scope={`${currentOrganizationId}:${currentProfile?.id}`}
               sale={{ lines: salesLines, customerId: selectedCustomerIdForSale, date: salesInvoiceDate, paymentType: salesPaymentType, discount: salesDiscountAmount, discountType: salesDiscountType, tax: salesTaxRate, cashReceived: posCashReceived, scanUnit: saleScanUnit, notes: salesNotes }}
               products={activeProducts} productNameFallback={scannedProductNames} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus} clearSignal={saleBarcodeClearSignal}
