@@ -27,6 +27,7 @@ import {
   miniTabCurrencyStatus,
   miniTabsStorageKey,
   newMiniTab as createMiniTab,
+  restampEmptyMiniTabs,
   type MiniTab,
   type MiniTabsStore,
 } from "@/lib/sales/mini-tabs";
@@ -6611,10 +6612,12 @@ setCustomerOrganizationName("");
     if (index < 0) return;
     if (current.length <= 1) {
       // Last tab: clear it in place instead of removing the strip.
+      // The cleared tab is empty, so its currency stamp is re-stamped
+      // to the current books currency (an empty tab holds no amounts).
       const tab = current[0];
       const empty = freshTabSale();
       persistMiniTabs({
-        tabs: [{ ...tab, sale: empty, savedAt: new Date().toISOString() }],
+        tabs: [{ ...tab, currency: getActiveBooksCurrency(), sale: empty, savedAt: new Date().toISOString() }],
         activeId: tab.id,
       });
       restoreCounterSale(empty);
@@ -6645,7 +6648,7 @@ setCustomerOrganizationName("");
       const tab = current[0];
       const empty = freshTabSale();
       persistMiniTabs({
-        tabs: [{ ...tab, sale: empty, savedAt: new Date().toISOString() }],
+        tabs: [{ ...tab, currency: getActiveBooksCurrency(), sale: empty, savedAt: new Date().toISOString() }],
         activeId: tab.id,
       });
       restoreCounterSale(empty);
@@ -6662,6 +6665,16 @@ setCustomerOrganizationName("");
   // tab with the empty first-mount sale.
   useEffect(() => {
     if (!miniTabsScope || !currentOrganizationId || !currentProfile?.id) return;
+    // Wait for the org: getActiveBooksCurrency() returns the PKR module
+    // default until populateBusinessSettings resolves the real books
+    // currency, and a tab stamped with that transient default is then
+    // blocked forever as "stale" (proven 2026-11-14: the mount-seeded
+    // tab was stamped PKR under a EUR org and could never be opened
+    // again). Do not mark the scope restored until the org is here —
+    // populateBusinessSettings sets currentOrganization and the module
+    // currency in the same synchronous call, so by the time this reads
+    // it the value is the resolved currency.
+    if (!currentOrganization) return;
     if (miniTabsRestoredScope.current === miniTabsScope) return;
     miniTabsRestoredScope.current = miniTabsScope;
     const key = miniTabsStorageKey(miniTabsScope);
@@ -6671,11 +6684,15 @@ setCustomerOrganizationName("");
       // First use: seed one tab from the live sale so nothing open is lost.
       const tab = createMiniTab(currentCounterSale(), getActiveBooksCurrency());
       store = { tabs: [tab], activeId: tab.id };
-      try {
-        window.localStorage.setItem(key, JSON.stringify(store));
-      } catch {
-        // Storage failure: keep the tab in memory.
-      }
+    } else {
+      // Heal empty tabs stamped before the fix (see restampEmptyMiniTabs).
+      const healed = restampEmptyMiniTabs(store.tabs, getActiveBooksCurrency());
+      if (healed.restamped) store = { ...store, tabs: healed.tabs };
+    }
+    try {
+      window.localStorage.setItem(key, JSON.stringify(store));
+    } catch {
+      // Storage failure: keep the tabs in memory.
     }
     const active = store.tabs.find((tab) => tab.id === store.activeId) ?? store.tabs[0];
     setMiniTabs(store.tabs);
@@ -6689,7 +6706,7 @@ setCustomerOrganizationName("");
           .replace("{books}", getActiveBooksCurrency()),
       );
     }
-  }, [miniTabsScope, currentOrganizationId, currentProfile?.id]);
+  }, [miniTabsScope, currentOrganizationId, currentProfile?.id, currentOrganization]);
   // Keep the active tab's stored sale identical to the live sale on
   // every edit. Writes only when the sale actually changed, and never
   // before the load effect above has restored the scope's tabs.

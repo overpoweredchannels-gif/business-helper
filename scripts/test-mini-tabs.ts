@@ -9,6 +9,7 @@ import {
   miniTabsStorageKey,
   newMiniTab,
   parseMiniTabs,
+  restampEmptyMiniTabs,
   type MiniTab,
   type MiniTabsStore,
 } from "../src/lib/sales/mini-tabs";
@@ -236,6 +237,22 @@ assert.equal(built.currency, "EUR", "a new tab is stamped with the books currenc
 assert.notEqual(built.id, newMiniTab({ ...tabSaleA }, "EUR").id, "each new tab gets a unique id");
 assert.equal(miniTabsStorageKey("org:profile"), SCOPE_KEY, "the storage key is scoped per org + profile");
 
+// 10. Heal: an empty tab stamped with a stale currency is re-stamped to
+// the current books currency (it holds no amounts, so nothing is
+// mislabelled); a tab with lines is never touched.
+const healed = restampEmptyMiniTabs(
+  [tabA({ sale: { ...tabSaleA, lines: [] } }), tabB()],
+  "PKR",
+);
+assert.equal(healed.restamped, true, "an empty stale tab is healed");
+assert.equal(healed.tabs[0].currency, "PKR", "the empty tab is re-stamped to the books currency");
+assert.equal(healed.tabs[1].currency, "EUR", "a tab with lines keeps its own stamp");
+assert.deepEqual(
+  restampEmptyMiniTabs([tabA(), tabB()], "EUR"),
+  { tabs: [tabA(), tabB()], restamped: false },
+  "tabs already stamped with the books currency are untouched",
+);
+
 console.log(
-  "Mini-tabs Phase D checks passed: two-tab round-trip with active tab, per-tab isolation (customer, lines, discount, payment mode, notes, tender), 4-tab limit, strict validation, legacy normalization, corrupt-store quarantine, currency guard, empty/new tab builders.",
+  "Mini-tabs Phase D checks passed: two-tab round-trip with active tab, per-tab isolation (customer, lines, discount, payment mode, notes, tender), 4-tab limit, strict validation, legacy normalization, corrupt-store quarantine, currency guard, empty/new tab builders, empty-tab currency heal.",
 );

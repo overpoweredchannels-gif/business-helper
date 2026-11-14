@@ -188,3 +188,36 @@ export function newMiniTab(sale: HeldCounterSale, currency: Currency): MiniTab {
     sale,
   };
 }
+
+/**
+ * Heal tabs whose currency stamp is stale but which hold no amounts: an
+ * empty tab has no lines, so its stamp means nothing and re-stamping it
+ * to the current books currency can never mislabel an amount. Tabs with
+ * lines are returned untouched — a stale stamp there is a real currency
+ * switch and the guard must keep blocking them.
+ *
+ * This exists because the first Phase D build stamped the mount-seeded
+ * tab with the books currency before the org had loaded (the module
+ * default PKR), so a live EUR org left a PKR-stamped tab that could
+ * never be opened again. New tabs are stamped only once the org is
+ * loaded (see the page's load effect), so only those early empty tabs
+ * need healing.
+ */
+export function restampEmptyMiniTabs(
+  tabs: MiniTab[],
+  booksCurrency: Currency,
+): { tabs: MiniTab[]; restamped: boolean } {
+  let restamped = false;
+  const healed = tabs.map((tab) => {
+    if (
+      tab.sale.lines.length === 0 &&
+      tab.currency !== undefined &&
+      tab.currency !== booksCurrency
+    ) {
+      restamped = true;
+      return { ...tab, currency: booksCurrency };
+    }
+    return tab;
+  });
+  return { tabs: healed, restamped };
+}
