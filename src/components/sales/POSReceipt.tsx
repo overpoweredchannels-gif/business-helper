@@ -153,6 +153,12 @@ export function POSReceipt({ receipt, autoPrint = false, autoOpen = false, onDon
   const templateReady = loadedScope === receipt.scope;
   const activeTemplate = templateReady ? template : defaultTemplate;
   const printFrame = useRef<HTMLIFrameElement | null>(null);
+  // Enter-Enter flow (Phase B, 2026-11-14): the cashier presses Enter on
+  // Pay & Save, the preview opens, and Enter again must print — so the
+  // Print button takes focus the moment the dialog is open and enabled
+  // (the button is disabled until the template is ready, and a disabled
+  // button cannot take focus).
+  const printButtonRef = useRef<HTMLButtonElement | null>(null);
   const printCleanup = useRef<(() => void) | null>(null);
   // The "Preparing receipt…" UI state, owned per print run and held
   // only until the run dispatches its native print dialog (PrintRunUiLock).
@@ -228,6 +234,14 @@ export function POSReceipt({ receipt, autoPrint = false, autoOpen = false, onDon
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [dismissReceipt, open]);
+
+  // Focus the Print button as soon as the dialog is open and the button
+  // is enabled. The cashier's last action was the keyboard (Enter on
+  // Pay & Save), so the focus ring shows and a second Enter prints.
+  useEffect(() => {
+    if (!open || !templateReady) return;
+    printButtonRef.current?.focus();
+  }, [open, templateReady]);
 
   useEffect(() => () => printCleanup.current?.(), []);
 
@@ -479,7 +493,7 @@ export function POSReceipt({ receipt, autoPrint = false, autoOpen = false, onDon
               </select>
             </label>
             <button type="button" onClick={() => setCustomizing(true)} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('receipt.editTemplate')}</button>
-            <button type="button" onClick={() => void print()} disabled={!templateReady || printing} className="min-h-11 min-w-11 rounded bg-primary px-3 py-2 text-sm text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">{printing ? t('receipt.preparing') : t('receipt.printReceipt')}</button>
+            <button type="button" ref={printButtonRef} onClick={() => void print()} disabled={!templateReady || printing} className="min-h-11 min-w-11 rounded bg-primary px-3 py-2 text-sm text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">{printing ? t('receipt.preparing') : t('receipt.printReceipt')}</button>
             {shareLink && (
               <a href={shareLink} target="_blank" rel="noreferrer" className="min-h-11 min-w-11 rounded border border-success px-3 py-2 text-sm text-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 {t('share.whatsapp')}
