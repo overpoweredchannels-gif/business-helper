@@ -19,6 +19,7 @@ import { SEEDED_WALK_IN_CUSTOMER_NAME, buildAtomicSaleReceipt, buildOfflineSaleR
 import { fillWhatsAppTemplate, firstWhatsAppLink, parseWhatsAppNumber } from "@/lib/share/whatsapp";
 import { formatAvailableStock } from "@/lib/products/stock-display";
 import { RetailPOS, type CounterSale } from "@/components/sales/RetailPOS";
+import { QuickAddCustomerDialog, type QuickAddCustomerFields } from "@/components/sales/QuickAddCustomerDialog";
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
 import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecision, resolveSaleCashReceived, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
@@ -2489,6 +2490,75 @@ setCustomerOrganizationName("");
       if (!line.product_id || !unchangedLines.has(line)) return line;
       return applyRecentPrice(line, products.find((product) => String(product.id) === String(line.product_id)), prices.get(String(line.product_id)));
     }));
+  };
+
+  // Phase C (user-visit UX): quick-add a customer from inside the sale.
+  // Only name/phone/address/payment-mode are asked. No credit limit is
+  // sent, so the API stores null (unlimited until the owner sets one).
+  // Credit mode creates the customer with an unrestricted policy — a
+  // cash_only policy would make the very next credit save fail — and
+  // Cash mode with cash_only. On success the new customer joins the
+  // local list and is selected in this sale with the matching payment
+  // type, so the cashier keeps scanning without leaving the sale.
+  const handleQuickAddCustomer = async (fields: QuickAddCustomerFields) => {
+    setQuickAddCustomerBusy(true);
+    setQuickAddCustomerError(null);
+    const creditPolicy = fields.paymentMode === "credit" ? "unrestricted" : "cash_only";
+    const response = await authorizedFetch("/api/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name: fields.name,
+        phone: fields.phone || null,
+        address: fields.address || null,
+        preferred_payment_method: fields.paymentMode,
+        credit_policy: creditPolicy,
+      }),
+    });
+    const result = await response.json();
+    setQuickAddCustomerBusy(false);
+    if (!response.ok || !result.ok || !result.customer?.id) {
+      setQuickAddCustomerError(result.error ?? t('page.failedSaveCustomer'));
+      return;
+    }
+    const created: Customer = {
+      id: result.customer.id,
+      customer_name: result.customer.customer_name ?? fields.name,
+      shop_name: null,
+      phone: fields.phone || null,
+      whatsapp: null,
+      city: null,
+      area: null,
+      address: fields.address || null,
+      customer_type: "Retailer",
+      credit_policy: creditPolicy,
+      credit_limit: null,
+      credit_days: null,
+      allow_over_limit: false,
+      allow_overdue_sales: false,
+      preferred_payment_method: fields.paymentMode,
+      is_active: true,
+    };
+    await createAuditLog({
+      action: "created",
+      entity_type: "customer",
+      entity_id: created.id,
+      entity_label: created.customer_name,
+      description: t('page.createdCustomer').replace('{name}', created.customer_name),
+      new_values: {
+        customer_name: created.customer_name,
+        phone: created.phone,
+        credit_policy: creditPolicy,
+      },
+    });
+    setCustomers(current => current.some(customer => customer.id === created.id) ? current : [...current, created]);
+    setQuickAddCustomerOpen(false);
+    setQuickAddCustomerError(null);
+    await handleSalesCustomerChange(created.id);
+    handleSalesPaymentTypeChange(fields.paymentMode === "credit" ? "credit" : "cash");
+    setSalesMessage(t('pos.quickAddCustomerAdded').replace('{name}', created.customer_name));
+    setSaleScanFocus(value => value + 1);
+    void fetchCustomers();
   };
 
   const handleSalesOrderCustomerChange = async (customerId: string) => {
@@ -6120,6 +6190,12 @@ setCustomerOrganizationName("");
   const [salesInvoiceNumber, setSalesInvoiceNumber] = useState("");
   const [salesInvoiceDate, setSalesInvoiceDate] = useState(toDateInputValue(new Date()));
   const [salesPaymentType, setSalesPaymentType] = useState<"cash" | "card" | "credit">("cash");
+  // Phase C (user-visit UX): quick-add customer dialog state. The dialog
+  // itself lives in QuickAddCustomerDialog; the handler below posts the
+  // four fields and auto-selects the new customer in this sale.
+  const [quickAddCustomerOpen, setQuickAddCustomerOpen] = useState(false);
+  const [quickAddCustomerBusy, setQuickAddCustomerBusy] = useState(false);
+  const [quickAddCustomerError, setQuickAddCustomerError] = useState<string | null>(null);
   const [posCashReceived, setPosCashReceived] = useState("");
   // Sale notes (Phase A): typed in the POS payment bar, held with the
   // sale, saved with the invoice (AtomicSaleInput.notes) and printed on
@@ -20067,7 +20143,8 @@ setCustomerOrganizationName("");
               products={activeProducts} productNameFallback={scannedProductNames} customers={activeCustomers} busy={salesInvoiceLoading || productsLoading || walkInBusy} owner={isOwnerOrAdmin()} staffDirectSale={staffSaleGateOutcome === "direct"} walkInState={walkInBusy ? "preparing" : walkInFailed ? "failed" : "idle"} onRetryWalkIn={() => setWalkInAttempt(attempt => attempt + 1)} scanUnit={saleScanUnit} cashReceived={posCashReceived} focusSignal={saleScanFocus} clearSignal={saleBarcodeClearSignal}
               onScan={(code, options) => { const result = runSalesScan(code, options); return result.status === "not-found" ? null : String(result.product.id); }}
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setScannedProductNames(current => ({ ...current, [String(product.id)]: product.name })); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
-              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onNotes={setSalesNotes} onAdvanced={() => { setQuickSaleMode(false); setSaleScanFocus(value => value + 1); }} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} onCustomizeReceipt={() => setShowPosReceiptCustomizer(true)} />}
+              onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onQuickAddCustomer={() => setQuickAddCustomerOpen(true)} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onNotes={setSalesNotes} onAdvanced={() => { setQuickSaleMode(false); setSaleScanFocus(value => value + 1); }} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} onCustomizeReceipt={() => setShowPosReceiptCustomizer(true)} />}
+            <QuickAddCustomerDialog key={quickAddCustomerOpen ? "quick-add-open" : "quick-add-closed"} open={quickAddCustomerOpen} busy={quickAddCustomerBusy} error={quickAddCustomerError} onClose={() => { if (!quickAddCustomerBusy) setQuickAddCustomerOpen(false); }} onSubmit={(fields) => void handleQuickAddCustomer(fields)} />
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
             <section className="scanner-panel" data-help-topic="barcode">
@@ -20103,6 +20180,7 @@ setCustomerOrganizationName("");
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('sell.customer')}</span>
                 <ProductSearchSelect label={t('sell.customer')} searchPlaceholder={t('sell.searchCustomer')} value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={invoiceCustomerOptions} focusSignal={saleCustomerFocus} inputRef={saleCustomerInputRef} />
+                <button type="button" onClick={() => setQuickAddCustomerOpen(true)} className="min-h-11 self-start rounded border border-primary px-3 py-2 text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">+ {t('pos.newCustomer')}</button>
               </label>
 
               <label className="flex flex-col gap-2 text-sm text-foreground/80">

@@ -42,7 +42,7 @@ const NO_SALE_REASON_KEYS: Record<NoSaleReasonCode, MessageKey> = {
   "other": "drawer.reasonOther",
 };
 
-export function RetailPOS({ scope, sale, products, customers, busy, owner, productNameFallback, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, clearSignal = 0, onScan, onAdd, onUnit, onCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onNotes, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect, onCustomizeReceipt }: {
+export function RetailPOS({ scope, sale, products, customers, busy, owner, productNameFallback, staffDirectSale = false, walkInState = "idle", onRetryWalkIn, scanUnit, cashReceived, focusSignal, clearSignal = 0, onScan, onAdd, onUnit, onCustomer, onQuickAddCustomer, onLine, onRemove, onSave, onCashReceived, onDiscount, onDiscountType, onNotes, onAdvanced, onRestore, onClear, onPaymentType, drawerNoSaleAllowed = false, onDrawerNoSale, onDrawerTestOpen, onDrawerConnect, onCustomizeReceipt }: {
   scope: string; sale: CounterSale; products: Product[]; customers: Customer[]; busy: boolean; owner: boolean;
   /** Names of products scanned/added while the products list was stale:
    * a line whose product is missing from `products` shows its scanned
@@ -60,6 +60,9 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
   scanUnit: "main" | "subunit"; cashReceived: string; focusSignal: number; /** Bumped by the parent when a receipt closes, so the barcode box erases for the next sale. */
   clearSignal?: number; onScan: (code: string, options?: { reportNotFound?: boolean }) => string | null; onAdd: (id: string) => void;
   onUnit: (unit: "main" | "subunit") => void; onCustomer: (id: string) => void;
+  /** Phase C (user-visit UX): opens the parent's quick-add customer
+   * dialog. Optional so older call sites keep working. */
+  onQuickAddCustomer?: () => void;
   onLine: (index: number, field: keyof BarcodeLine, value: string) => void; onRemove: (index: number) => void;
   onSave: () => void; onCashReceived: (amount: string) => void;
   onDiscount: (amount: string) => void; onDiscountType: (type: "flat" | "percent") => void;
@@ -636,6 +639,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
       }} onChange={id => { if (id) { const picked = products.find(item => String(item.id) === id); if (picked && hasSubunit(picked)) setFocusUnitFor(sale.lines.length); else setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} />
         <label className="flex items-center gap-3 text-sm">{t("pos.addOne")}<select data-pos-scan-unit value={scanUnit} onChange={event => onUnit(event.target.value as "main" | "subunit")} className="min-h-11 rounded border border-input bg-background px-3"><option value="subunit">{t("pos.scanUnitPiece")}</option><option value="main">{t("pos.scanUnitBox")}</option></select></label>
         <label className="block text-sm font-medium">{t("pos.customer")}</label><ProductSearchSelect label={t("pos.customer")} value={sale.customerId ?? ""} rankedFields={customerRankFields} products={customerOptions} onChange={onCustomer} />
+        {onQuickAddCustomer && <button type="button" onClick={onQuickAddCustomer} className="min-h-11 self-start rounded border border-primary px-3 py-2 text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">+ {t("pos.newCustomer")}</button>}
       </div>
     </fieldset>
     <div data-pos-desktop-table className="hidden overflow-x-auto rounded-xl border bg-card sm:block"><table className="w-full min-w-[680px] text-sm"><thead className="bg-muted text-left"><tr>{[t("sell.product"), t("pos.unit"), t("sell.quantity"), t("pos.price"), t("common.discount"), t("common.total"), ""].map((text, index) => <th key={index} className="p-3">{text}</th>)}</tr></thead>
