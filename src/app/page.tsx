@@ -4688,9 +4688,7 @@ setCustomerOrganizationName("");
             invoiceDiscountType: salesDiscountType,
             taxRate: parsedTaxRate,
             cashReceived: salesPaymentType === "cash"
-              ? (quickSaleMode
-                ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal ?? 0) : safeNumber(posCashReceived))
-                : null)
+              ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal ?? 0) : safeNumber(posCashReceived))
               : 0,
           }),
         });
@@ -4746,9 +4744,7 @@ setCustomerOrganizationName("");
         invoice_discount_type: salesDiscountType,
         tax_rate: parsedTaxRate,
         cash_received: salesPaymentType === "cash"
-          ? (quickSaleMode
-            ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal ?? 0) : safeNumber(posCashReceived))
-            : null)
+          ? (posCashReceived.trim() === "" ? roundMoney(currentSalesInvoiceTotal ?? 0) : safeNumber(posCashReceived))
           : 0,
         // Phase A: the sale note travels with the invoice. The atomic
         // RPC stores it in sales_transactions.notes once the Phase A
@@ -6581,6 +6577,10 @@ setCustomerOrganizationName("");
   const [draftReviewAction, setDraftReviewAction] = useState<"approve" | "reject" | null>(null);
   const [draftReviewReason, setDraftReviewReason] = useState("");
   const [draftReviewLoading, setDraftReviewLoading] = useState(false);
+  // Owner-confirmed cash tender at approval time. Defaults to the
+  // staff-entered tender on the draft (blank = use the invoice total,
+  // the same default approveDraft applies when no tender is stored).
+  const [draftReviewCashReceived, setDraftReviewCashReceived] = useState("");
   const [soCustomerId, setSoCustomerId] = useState("");
   const [soOrderDate, setSoOrderDate] = useState(toDateInputValue(new Date()));
   const [soExpectedDate, setSoExpectedDate] = useState("");
@@ -6619,6 +6619,7 @@ setCustomerOrganizationName("");
       setDraftReviewOrder(order);
       setDraftReviewAction("approve");
       setDraftReviewReason("");
+      setDraftReviewCashReceived(order.cash_received != null ? String(order.cash_received) : "");
       setSoError(null);
       setSoMessage(null);
     } else {
@@ -7836,7 +7837,7 @@ setCustomerOrganizationName("");
       async () => {
         let query = supabase
           .from("sales_transactions")
-          .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount, notes")
+          .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount, cash_received, change_due, notes")
           .eq("organization_id", orgId)
           .order("created_at", { ascending: false });
         if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
@@ -9745,6 +9746,7 @@ setCustomerOrganizationName("");
       setDraftReviewOrder(order);
       setDraftReviewAction("reject");
       setDraftReviewReason("");
+      setDraftReviewCashReceived(order.cash_received != null ? String(order.cash_received) : "");
       setSoError(null);
       setSoMessage(null);
       return;
@@ -9768,6 +9770,8 @@ setCustomerOrganizationName("");
       setSoMessage(t('page.soApprovedInvoice').replace('{number}', order.so_number).replace('{invoice}', data.invoiceNumber ?? ""));
       fetchSalesOrders();
       fetchSalesTransactions();
+      fetchCustomerPayments();
+      fetchCustomerPaymentAllocations();
       fetchRealNotifications();
     } catch (err) {
       setSoError(err instanceof Error ? err.message : t('page.actionFailed'));
@@ -9787,8 +9791,17 @@ setCustomerOrganizationName("");
     setDraftReviewLoading(true);
     setSoError(null);
     setSoMessage(null);
-    const body: Record<string, string> = { action: draftReviewAction ?? "approve" };
+    const body: { action: string; reason?: string; cashReceived?: number } = { action: draftReviewAction ?? "approve" };
     if (draftReviewAction === "reject") body.reason = draftReviewReason.trim();
+    if (draftReviewAction === "approve" && order.payment_type === "cash" && draftReviewCashReceived.trim() !== "") {
+      const tender = safeNumber(draftReviewCashReceived);
+      if (!Number.isFinite(tender) || tender < 0 || !hasAllowedPrecision(draftReviewCashReceived, SALE_MONEY_DECIMAL_PLACES)) {
+        setSoError("Invalid cash received amount.");
+        setDraftReviewLoading(false);
+        return;
+      }
+      body.cashReceived = tender;
+    }
 
     try {
       const res = await authorizedFetch(`/api/sales/drafts/${order.id}`, {
@@ -9807,6 +9820,7 @@ setCustomerOrganizationName("");
       setDraftReviewOrder(null);
       setDraftReviewAction(null);
       setDraftReviewReason("");
+      setDraftReviewCashReceived("");
       fetchSalesOrders();
       fetchSalesTransactions();
       // The approved invoice's line items live in sales_items. Without this
@@ -9814,6 +9828,11 @@ setCustomerOrganizationName("");
       // the ledger detail) for a just-approved draft renders "No line items
       // found" even though approveDraft inserted the rows.
       fetchSalesItems();
+      // The cash/card payment is recorded by approveDraft too; refresh the
+      // payments lists so the new payment is visible immediately instead
+      // of only after a reload.
+      fetchCustomerPayments();
+      fetchCustomerPaymentAllocations();
       fetchRealNotifications();
     } catch (err) {
       setSoError(err instanceof Error ? err.message : t('page.actionFailed'));
@@ -13518,6 +13537,16 @@ setCustomerOrganizationName("");
         ${
           Number(transaction.tax_amount) > 0
             ? `<p><strong>${t('common.tax')} (${escapeHtml(String(transaction.tax_rate ?? 0))}%):</strong> ${escapeHtml(formatBooksMoney(Number(transaction.tax_amount)))}</p>`
+            : ""
+        }
+        ${
+          (transaction.payment_type === "cash" || transaction.payment_type === "card") && Number(transaction.cash_received) > 0
+            ? `<p><strong>${t('pos.cashReceived')}:</strong> ${escapeHtml(formatBooksMoney(Number(transaction.cash_received)))}</p>`
+            : ""
+        }
+        ${
+          (transaction.payment_type === "cash" || transaction.payment_type === "card") && Number(transaction.change_due) > 0
+            ? `<p><strong>${t('pos.changeDueLabel')}</strong> ${escapeHtml(formatBooksMoney(Number(transaction.change_due)))}</p>`
             : ""
         }
         ${
@@ -20152,7 +20181,7 @@ setCustomerOrganizationName("");
               </label>
             </div>
 
-            <fieldset disabled={!isOwnerOrAdmin()} className="grid gap-4 sm:grid-cols-2 disabled:opacity-60">
+            <fieldset className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span className="flex items-center gap-2">
                   {t('sell.totalBillDiscount')}
@@ -20215,7 +20244,6 @@ setCustomerOrganizationName("");
               </label>
             </fieldset>
 
-            {!isOwnerOrAdmin() && <p className="text-sm text-muted-foreground">{t('sell.employeeDiscountNote')}</p>}
             {salesPaymentType === "credit" && selectedSalesCustomer && (
               <div className="rounded border border-primary/10 bg-primary/5 p-4 text-sm text-primary/90">
                 <h3 className="mb-2 text-base font-medium text-primary/90">{t('sell.creditSummary')}</h3>
@@ -20445,6 +20473,27 @@ setCustomerOrganizationName("");
                   <span>{t('sell.invoiceTotal')}</span>
                   <span>{currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : formatBooksMoney(currentSalesInvoiceTotal)}</span>
                 </div>
+                {salesPaymentType === "cash" && (
+                  <div className="mt-3">
+                    <label className="flex flex-col gap-1 text-sm text-foreground/80">
+                      <span>{t('pos.cashReceived')}</span>
+                      <input
+                        data-sale-cash-received
+                        type="text" inputMode="decimal"
+                        value={posCashReceived}
+                        onChange={(e) => setPosCashReceived(e.target.value)}
+                        placeholder={currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : String(currentSalesInvoiceTotal)}
+                        className="w-full rounded border border-border px-3 py-2 tabular-nums focus:border-ring focus:outline-none"
+                      />
+                    </label>
+                    {posCashReceived.trim() !== "" && currentSalesInvoiceTotal !== undefined && Number.isFinite(safeNumber(posCashReceived)) && (
+                      <div className="mt-1 flex justify-between text-sm">
+                        <span>{safeNumber(posCashReceived) >= currentSalesInvoiceTotal ? t('pos.changeDueLabel') : t('pos.cashShortBy')}</span>
+                        <span className="tabular-nums">{formatBooksMoney(Math.abs(safeNumber(posCashReceived) - currentSalesInvoiceTotal))}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -20578,14 +20627,13 @@ setCustomerOrganizationName("");
                 const customer = customers.find((c) => c.id === tx.customer_id);
                 const date = new Date(tx.created_at).toLocaleDateString();
                 const paymentType = tx.payment_type ?? "cash";
+                const txItems = salesItems.filter((item) => item.sales_transaction_id === tx.id);
                 const creditAllocation = creditAllocationByTransaction[tx.id];
                 const remainingUnpaidAmount = creditAllocation?.remainingUnpaidAmount ?? 0;
                 const creditDueDate = getDateOnly(tx.credit_due_date);
                 const creditStatus =
-                  paymentType === "cash"
-                    ? t('sell.paymentCash')
-                    : paymentType === "card"
-                      ? t('sell.paymentCard')
+                  paymentType === "cash" || paymentType === "card"
+                    ? t('sell.statusPaid')
                     : remainingUnpaidAmount <= 0
                       ? t('sell.statusPaid')
                       : creditDueDate && creditDueDate < todayDateValue
@@ -20616,6 +20664,40 @@ setCustomerOrganizationName("");
                     )}
                     {(tx.tax_amount != null && Number(tx.tax_amount) > 0) && (
                       <div>{t('sell.tax')} ({Number(tx.tax_rate || 0)}%): {formatBooksMoney(Number(tx.tax_amount || 0))}</div>
+                    )}
+                    {(paymentType === "cash" || paymentType === "card") && tx.cash_received != null && (
+                      <div>{t('pos.cashReceived')}: {formatBooksMoney(Number(tx.cash_received))}</div>
+                    )}
+                    {(paymentType === "cash" || paymentType === "card") && tx.change_due != null && Number(tx.change_due) > 0 && (
+                      <div>{t('pos.changeDueLabel')} {formatBooksMoney(Number(tx.change_due))}</div>
+                    )}
+                    {txItems.length > 0 && (
+                      <div className="sm:col-span-2">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="text-muted-foreground/80">
+                              <th className="py-1 pr-2 font-medium">{t('sell.product')}</th>
+                              <th className="py-1 pr-2 font-medium">{t('sell.quantity')}</th>
+                              <th className="py-1 pr-2 font-medium">{t('products.sellingPrice')}</th>
+                              <th className="py-1 font-medium">{t('buy.lineTotal')}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {txItems.map((item, itemIndex) => {
+                              const product = products.find((p) => String(p.id) === String(item.product_id));
+                              const lineTotal = safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount);
+                              return (
+                                <tr key={item.id ?? itemIndex} className="border-t border-border/60">
+                                  <td className="py-1 pr-2">{product?.name ?? t('sell.unknownProduct')}</td>
+                                  <td className="py-1 pr-2 tabular-nums">{safeNumber(item.quantity)}</td>
+                                  <td className="py-1 pr-2 tabular-nums">{formatBooksMoney(safeNumber(item.selling_price))}</td>
+                                  <td className="py-1 tabular-nums">{formatBooksMoney(lineTotal)}{safeNumber(item.discount) > 0 ? ` (${t('print.disc')}: ${formatBooksMoney(safeNumber(item.discount))})` : ""}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                     {paymentType === "credit" && (
                       <>
@@ -21015,6 +21097,7 @@ setCustomerOrganizationName("");
                                 setDraftReviewOrder(order);
                                 setDraftReviewAction("approve");
                                 setDraftReviewReason("");
+                                setDraftReviewCashReceived(order.cash_received != null ? String(order.cash_received) : "");
                                 setSoError(null);
                                 setSoMessage(null);
                               }}
@@ -28904,13 +28987,33 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                     <span>{t('common.total')}</span>
                     <span>{formatBooksMoney(total)}</span>
                   </div>
-                  {order.payment_type === "cash" && order.cash_received !== null && order.cash_received !== undefined && (
+                  {order.payment_type === "cash" && order.cash_received !== null && order.cash_received !== undefined && draftReviewAction !== "approve" && (
                     <div className="flex items-center justify-between px-3 py-2 text-sm text-foreground/90">
                       <span>{t('pos.cashReceived')}</span>
                       <span>{formatBooksMoney(Number(order.cash_received))}</span>
                     </div>
                   )}
                 </div>
+
+                {order.payment_type === "cash" && draftReviewAction === "approve" && order.status === "pending_approval" && (
+                  <div className="mt-3">
+                    <label className="mb-1 block text-xs font-medium text-foreground/80">{t('pos.cashReceived')}</label>
+                    <input
+                      type="text" inputMode="decimal"
+                      value={draftReviewCashReceived}
+                      onChange={(e) => setDraftReviewCashReceived(e.target.value)}
+                      placeholder={String(total)}
+                      className="w-full rounded border border-border bg-background px-3 py-2 text-sm tabular-nums text-foreground outline-none focus:border-primary"
+                    />
+                    {draftReviewCashReceived.trim() !== "" && Number.isFinite(safeNumber(draftReviewCashReceived)) && (
+                      <p className="mt-1 text-xs text-muted-foreground/80">
+                        {safeNumber(draftReviewCashReceived) >= total
+                          ? `${t('pos.changeDueLabel')} ${formatBooksMoney(safeNumber(draftReviewCashReceived) - total)}`
+                          : `${t('pos.cashShortBy')} ${formatBooksMoney(total - safeNumber(draftReviewCashReceived))}`}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {order.notes && <div className="mt-3 text-xs text-muted-foreground/80">{t('sell.notesLabel')}: {order.notes}</div>}
 

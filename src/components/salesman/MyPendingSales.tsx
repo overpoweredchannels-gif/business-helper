@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 export function MyPendingSales() {
@@ -22,6 +23,6 @@ export function MyPendingSales() {
     {error && <p role="alert">{error}</p>}
     {loading && <p className="text-sm" role="status">{t('salesman.pending.loading')}</p>}
     {!loading && !error && !rows.length && <p className="text-sm">{t('salesman.pending.empty')}</p>}
-    <ul className="grid gap-2">{rows.map(row => <li key={row.id} className="rounded border p-3 text-sm">{row.so_number} · {row.status === "pending_approval" ? t('salesman.pending.statusWaiting') : row.status === "rejected" ? t('salesman.pending.statusRejected') : t('salesman.drafts.status.draft')} · PKR {Number(row.total_amount || 0).toLocaleString()}</li>)}</ul>
+    <ul className="grid gap-2">{rows.map(row => <li key={row.id} className="rounded border p-3 text-sm">{row.so_number} · {row.status === "pending_approval" ? t('salesman.pending.statusWaiting') : row.status === "rejected" ? t('salesman.pending.statusRejected') : t('salesman.drafts.status.draft')} · {formatBooksMoney(row.total_amount)}</li>)}</ul>
   </section>;
 }

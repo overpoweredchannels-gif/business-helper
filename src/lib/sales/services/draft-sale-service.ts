@@ -374,7 +374,8 @@ export class DraftSaleService {
    */
   async approveDraft(
     actor: ActorContext,
-    draftId: string
+    draftId: string,
+    opts?: { cashReceived?: number | null }
   ): Promise<ApproveResult> {
     if (!actor.organizationId) {
       return { ok: false, error: "Organization context required" };
@@ -454,7 +455,16 @@ export class DraftSaleService {
     // Compute the total exactly like the normal save: line subtotal minus
     // the invoice discount, plus tax on the remainder. Cash tender defaults
     // to the total when the draft carries none (a non-quick-sale cash sale).
-    const approvalAmounts = buildApprovalSaleAmounts(draft, items);
+    // An owner-confirmed tender from the Review modal overrides the
+    // staff-entered tender when provided.
+    const overrideCash = opts?.cashReceived;
+    if (overrideCash !== undefined && overrideCash !== null && (!Number.isFinite(overrideCash) || overrideCash < 0 || Math.round(overrideCash * 100) !== overrideCash * 100)) {
+      return { ok: false, error: "Invalid cash received amount." };
+    }
+    const approvalAmounts = buildApprovalSaleAmounts(
+      overrideCash !== undefined && overrideCash !== null ? { ...draft, cash_received: overrideCash } : draft,
+      items,
+    );
     const totalAmount = approvalAmounts.total;
 
     const now = new Date().toISOString();
@@ -464,6 +474,9 @@ export class DraftSaleService {
     // (Mapping every non-cash value to credit would silently turn a card
     // sale into a receivable.)
     const paymentType = draft.payment_type === "card" ? "card" : draft.payment_type === "cash" ? "cash" : "credit";
+    if (paymentType === "cash" && approvalAmounts.cashReceived < totalAmount) {
+      return { ok: false, error: "Cash received is less than the sale total." };
+    }
     const creditDueDate =
       paymentType === "credit" && Number(draft.credit_days ?? 0) > 0
         ? addDaysToIsoDate(draft.order_date ?? now.split("T")[0], Number(draft.credit_days))

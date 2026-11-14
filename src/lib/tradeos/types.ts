@@ -126,6 +126,8 @@ export interface SalesTransaction {
   discount_amount?: number | null;
   tax_rate?: number | null;
   tax_amount?: number | null;
+  cash_received?: number | null;
+  change_due?: number | null;
 }
 
 // Sales Management (Phase 4) — sales orders, their line items, returns.

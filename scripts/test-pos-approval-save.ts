@@ -121,4 +121,34 @@ const items = [
   assert.equal(amounts.total, 30);
 }
 
-console.log("POS approval-save checks passed: flat/percent invoice discount, tax on the remainder, cash default/exact/over-tender change, card + credit zero cash, snake_case draft-row parity, percent rounding.");
+// QA scenario (S-100067): 1 x €0.65, flat invoice discount €0.05, 10% tax
+// on the remainder: subtotal 0.65, taxable 0.60, tax 0.06, total 0.66.
+// Exact cash tender 0.66 -> no change. This is the end-to-end figure set
+// the browser QA checks after the owner approves a staff draft.
+{
+  const amounts = buildApprovalSaleAmounts(
+    { invoiceDiscount: 0.05, invoiceDiscountType: "flat", taxRate: 10, cashReceived: 0.66, paymentType: "cash" },
+    [{ quantity_ordered: 1, unit_price: 0.65, discount: 0 }],
+  );
+  assert.equal(amounts.lineSubtotal, 0.65);
+  assert.equal(amounts.invoiceDiscount, 0.05);
+  assert.equal(amounts.tax, 0.06);
+  assert.equal(amounts.total, 0.66);
+  assert.equal(amounts.cashReceived, 0.66);
+  assert.equal(amounts.changeDue, 0);
+}
+
+// Owner-confirmed over-tender at approval time (Review modal): the tender
+// the owner enters replaces the staff-entered tender, so a 1.00 tender on
+// the same 0.66 total returns 0.34 change.
+{
+  const amounts = buildApprovalSaleAmounts(
+    { invoiceDiscount: 0.05, invoiceDiscountType: "flat", taxRate: 10, cashReceived: 1, paymentType: "cash" },
+    [{ quantity_ordered: 1, unit_price: 0.65, discount: 0 }],
+  );
+  assert.equal(amounts.total, 0.66);
+  assert.equal(amounts.cashReceived, 1);
+  assert.equal(amounts.changeDue, 0.34);
+}
+
+console.log("POS approval-save checks passed: flat/percent invoice discount, tax on the remainder, cash default/exact/over-tender change, card + credit zero cash, snake_case draft-row parity, percent rounding, QA S-100067 figures, owner-confirmed over-tender.");

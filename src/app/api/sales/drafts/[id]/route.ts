@@ -18,7 +18,7 @@ export async function POST(request: NextRequest, context: DraftContext) {
   }
 
   const draftId = await getDraftId(context);
-  let body: { action?: string; reason?: string };
+  let body: { action?: string; reason?: string; cashReceived?: number };
 
   try {
     body = await request.json();
@@ -26,13 +26,19 @@ export async function POST(request: NextRequest, context: DraftContext) {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { action, reason } = body;
+  const { action, reason, cashReceived } = body;
   const service = getDraftSaleService();
 
   if (action === "approve") {
+    // Owner-confirmed cash tender from the Review modal (optional): when
+    // present it overrides the staff-entered tender on the draft. The
+    // service validates it covers the invoice total.
+    if (cashReceived !== undefined && cashReceived !== null && (!Number.isFinite(cashReceived) || cashReceived < 0)) {
+      return NextResponse.json({ ok: false, error: "Invalid cash received amount." }, { status: 400 });
+    }
     // The cash/card tender is recorded with direct inserts (phase 13/16
     // pattern) — no user client is needed for approval.
-    const result = await service.approveDraft(permission.actor, draftId);
+    const result = await service.approveDraft(permission.actor, draftId, { cashReceived });
     if (!result.ok) {
       return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
     }
