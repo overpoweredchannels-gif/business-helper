@@ -493,7 +493,7 @@ export function POSReceipt({ receipt, autoPrint = false, autoOpen = false, onDon
               </select>
             </label>
             <button type="button" onClick={() => setCustomizing(true)} className="min-h-11 min-w-11 rounded border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('receipt.editTemplate')}</button>
-            <button type="button" ref={printButtonRef} onClick={() => void print()} disabled={!templateReady || printing} className="min-h-11 min-w-11 rounded bg-primary px-3 py-2 text-sm text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">{printing ? t('receipt.preparing') : t('receipt.printReceipt')}</button>
+            <button type="button" ref={printButtonRef} onClick={() => void print()} disabled={!templateReady || printing} className="min-h-11 min-w-11 rounded bg-primary px-3 py-2 text-sm text-primary-foreground focus:outline-none focus:ring-2 focus:ring-white disabled:opacity-60">{printing ? t('receipt.preparing') : t('receipt.printReceipt')}</button>
             {shareLink && (
               <a href={shareLink} target="_blank" rel="noreferrer" className="min-h-11 min-w-11 rounded border border-success px-3 py-2 text-sm text-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 {t('share.whatsapp')}
