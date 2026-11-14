@@ -137,7 +137,7 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
   </div>;
 }
 
-export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Receipt; autoPrint?: boolean; /** Runs once when the dialog closes, by any path (printed, closed, or escaped), so the parent can clear the printed receipt and reset the sale screen for the next customer. */
+export function POSReceipt({ receipt, autoPrint = false, autoOpen = false, onDone }: { receipt: Receipt; autoPrint?: boolean; autoOpen?: boolean; /** Runs once when the dialog closes, by any path (printed, closed, or escaped), so the parent can clear the printed receipt and reset the sale screen for the next customer. */
   onDone?: () => void }) {
   const { t } = useRegional();
   const labels = useReceiptSummaryLabels();
@@ -369,6 +369,24 @@ export function POSReceipt({ receipt, autoPrint = false, onDone }: { receipt: Re
       }
     }
   }, [receipt, template, templateReady, labels, chromeLabels, printRuns, printUiLock, t]);
+
+  // Auto-open (Phase B, POS speed): open the preview for each new receipt
+  // WITHOUT printing. window.print() is synchronous and blocks the main
+  // thread until the native dialog returns, so auto-printing on save
+  // wedged the tab on "Preparing receipt…" with Close/Escape dead
+  // (production, 2026-11-14 baseline: 10+ min stuck, fresh tab needed).
+  // The preview still opens so the cashier sees the receipt at once, and
+  // the Print button stays the explicit, user-chosen way to print. The
+  // receipt key is recorded before opening so a re-render or StrictMode
+  // double-effect cannot reopen the same receipt, and returning to the
+  // tab does not reopen a dismissed preview.
+  useEffect(() => {
+    if (!autoOpen) return;
+    const key = `${receipt.scope}:${receipt.number}`;
+    if (autoPrintedReceiptKeys.has(key)) return;
+    autoPrintedReceiptKeys.add(key);
+    setOpen(true);
+  }, [autoOpen, receipt.scope, receipt.number]);
 
   // Auto-print (POS quick sale): open the preview for each new receipt and
   // print it as soon as its template is ready. The receipt key is recorded

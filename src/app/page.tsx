@@ -4817,7 +4817,8 @@ setCustomerOrganizationName("");
       const transaction = result.transaction;
       const invoiceNumber = String(transaction.invoice_number ?? "");
       // Instant print (2g): wholesale saves build a receipt exactly like
-      // Retail POS — the dialog below auto-prints it on save.
+      // Retail POS — the dialog below auto-opens the preview on save
+      // (Phase B: no auto native print, so the tab never wedges).
       const saleCustomer = customers.find((c) => String(c.id) === String(transaction.customer_id));
       setLastPOSReceipt(buildAtomicSaleReceipt(result, {
         scope,
@@ -20460,7 +20461,7 @@ setCustomerOrganizationName("");
             </div>
             {drawerNotice && <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"><span>{drawerNotice}</span><button type="button" onClick={() => setDrawerNotice("")} className="min-h-11 rounded border border-input bg-background px-3 font-medium">{t('common.close')}</button></div>}
             {showPosReceiptCustomizer && <TemplateCustomizer docType="retail_receipt" previewRenderer={next => <POSReceiptPreview receipt={samplePosReceipt} template={next} />} onSaved={() => setShowPosReceiptCustomizer(false)} onClose={() => setShowPosReceiptCustomizer(false)} />}
-            {lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} autoPrint onDone={() => {
+            {lastPOSReceipt?.scope === `${currentOrganizationId}:${currentProfile?.id}` && isOwnerOrAdmin() && <POSReceipt receipt={lastPOSReceipt} autoOpen onDone={() => {
               // Next-sale reset (2026-10-26): the printed receipt clears,
               // the barcode box erases, and focus returns to it, so the
               // next product can be scanned immediately.
