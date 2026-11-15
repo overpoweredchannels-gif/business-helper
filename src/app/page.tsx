@@ -4474,7 +4474,15 @@ setCustomerOrganizationName("");
     const pendingScope = currentOrganizationId && currentProfile?.id
       ? `${currentOrganizationId}:${currentProfile.id}`
       : null;
-    if (isOwnerOrAdmin() && pendingScope && readPendingAtomicSale(pendingScope)) {
+    // Offline, the recovery gate must not run: reconcile can never reach
+    // the server while offline, so it would refuse every further offline
+    // sale with "Still waiting to sync" and the new basket would never
+    // enter the queue (E1 real-PC test 2026-11-15: sale 1 queued, sale 2
+    // refused). The queue already preserves order and dedupes by
+    // request_id, so the new sale safely queues behind the waiting one
+    // and syncs in order when the connection returns. Online, the gate
+    // stays: an ambiguous earlier sale is reconciled before a new one.
+    if (isOwnerOrAdmin() && pendingScope && navigator.onLine && readPendingAtomicSale(pendingScope)) {
       setSalesInvoiceLoading(true);
       try {
         const recovered = await reconcilePendingAtomicSale(supabase, pendingScope);
