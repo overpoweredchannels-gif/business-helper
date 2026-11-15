@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
         .order("created_at", { ascending: false }),
       supabase
         .from("customer_payments")
-        .select("id, customer_id, amount, payment_date, payment_method, notes, created_at")
+        .select("id, customer_id, amount, payment_date, payment_method, notes, created_at, voided_at")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false }),
       supabase

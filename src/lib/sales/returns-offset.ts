@@ -224,6 +224,8 @@ export interface HistoryTransactionRow {
 }
 
 export interface HistoryPaymentRow {
+  /** Payment id — used to match a payment against `voidedPaymentIds`. */
+  id?: string | null;
   customerId: string | null;
   amount: number;
 }
@@ -231,6 +233,8 @@ export interface HistoryPaymentRow {
 export interface HistoryAllocationRow {
   salesTransactionId: string;
   amount: number;
+  /** Owning payment — allocations of a voided payment are skipped. */
+  customerPaymentId?: string | null;
 }
 
 export interface CustomerRemainingResult {
@@ -245,6 +249,17 @@ export function computeCustomerRemainingByTransaction(input: {
   payments: readonly HistoryPaymentRow[];
   allocations: readonly HistoryAllocationRow[];
   returnedValueByTransaction: Readonly<Record<string, number>>;
+  /**
+   * Ids of voided payments. The void RPC marks a payment voided_at but
+   * does NOT delete its allocation rows (by design), so a voided payment's
+   * allocations must be skipped here — otherwise the voided payment stays
+   * counted as applied and its invoice never shows unpaid again (the same
+   * rule the receivables engine in page.tsx applies via
+   * voidedCustomerPaymentIds). A voided payment also leaves the FIFO pool:
+   * it contributes nothing to total payments. Omitted = no voided payments,
+   * behaviour unchanged.
+   */
+  voidedPaymentIds?: ReadonlySet<string>;
 }): Record<string, CustomerRemainingResult> {
   const visible = input.transactions.filter(
     (transaction) => !["cancelled", "void"].includes(String(transaction.status ?? ""))
@@ -254,10 +269,12 @@ export function computeCustomerRemainingByTransaction(input: {
   // per customer, computed before any status filtering). Only the FIFO set
   // and the returned remainings are restricted to visible documents.
   const allById = new Map(input.transactions.map((transaction) => [transaction.id, transaction]));
+  const voidedPaymentIds = input.voidedPaymentIds ?? new Set<string>();
 
   const explicitByTransaction: Record<string, number> = {};
   const explicitByCustomer: Record<string, number> = {};
   for (const allocation of input.allocations) {
+    if (voidedPaymentIds.has(String(allocation.customerPaymentId ?? ""))) continue;
     const transaction = allById.get(String(allocation.salesTransactionId));
     const amount = Math.max(0, safeNumber(allocation.amount));
     explicitByTransaction[String(allocation.salesTransactionId)] =
@@ -271,6 +288,7 @@ export function computeCustomerRemainingByTransaction(input: {
   const totalPaymentsByCustomer: Record<string, number> = {};
   for (const payment of input.payments) {
     if (!payment.customerId) continue;
+    if (payment.id != null && voidedPaymentIds.has(String(payment.id))) continue;
     totalPaymentsByCustomer[payment.customerId] =
       (totalPaymentsByCustomer[payment.customerId] ?? 0) + safeNumber(payment.amount);
   }

@@ -6,18 +6,19 @@ import HistoricalRecords from "@/components/import-export/HistoricalRecords";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { formatCalendarDate } from "@/lib/regional/dates";
 import { computeCustomerRemainingByTransaction, computeReturnedValueBySalesTransaction } from "@/lib/sales/returns-offset";
+import { isVoidedPayment } from "@/lib/payments/voided-payments";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Props { organizationId: string | null; customerId?: string | null }
 type CustomerRow = { id: string; customer_name: string; shop_name?: string | null; organization_name?: string | null; contact_person?: string | null; phone?: string | null; whatsapp?: string | null; city?: string | null; area?: string | null; address?: string | null; customer_type?: string | null; credit_policy?: string | null; assigned_salesman_id?: string | null; assigned_territory_id?: string | null };
 type TransactionRow = { id: string; customer_id: string | null; invoice_number: string; total_amount?: number | null; status?: string | null; sale_date?: string | null; created_at: string; created_by_profile_id?: string | null; payment_type?: string | null };
 type SalesItemRow = { sales_transaction_id: string; product_id: string; quantity: number; selling_price: number; discount?: number | null; created_at: string };
-type PaymentRow = { customer_id: string | null; amount: number; payment_date?: string | null; created_at: string };
+type PaymentRow = { id: string; customer_id: string | null; amount: number; payment_date?: string | null; created_at: string; voided_at?: string | null };
 type OrderRow = { id: string; customer_id: string | null; so_number: string; status: string; order_date?: string | null; expected_date?: string | null; created_at: string; created_by_profile_id?: string | null };
 type OrderItemRow = { sales_order_id: string; product_id: string };
 type ProductRow = { id: string; name: string };
 type ProfileRow = { id: string; display_name?: string | null; email?: string | null };
-type AllocationRow = { sales_transaction_id: string; amount: number };
+type AllocationRow = { customer_payment_id?: string | null; sales_transaction_id: string; amount: number };
 type SalesReturnRow = { id: string; customer_id: string | null; sales_transaction_id: string | null; status?: string | null };
 type SalesReturnItemRow = { sales_return_id: string; quantity: number; unit_price?: number | null; discount?: number | null };
 type Data = { customers: CustomerRow[]; transactions: TransactionRow[]; salesItems: SalesItemRow[]; payments: PaymentRow[]; allocations: AllocationRow[]; orders: OrderRow[]; orderItems: OrderItemRow[]; products: ProductRow[]; profiles: ProfileRow[]; salesReturns: SalesReturnRow[]; salesReturnItems: SalesReturnItemRow[] };
@@ -98,6 +99,23 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
       ),
     [data.salesReturns, data.salesReturnItems]
   );
+  // Voided payments keep their allocation rows (the void only marks the
+  // payment voided), so the remaining computation must skip allocations
+  // that belong to a voided payment and leave voided payments out of the
+  // FIFO pool — the same rule the receivables engine in page.tsx applies
+  // via voidedCustomerPaymentIds. Without it, a voided payment stays
+  // counted as applied and the dialog's Total paid / Outstanding disagree
+  // with the Customers list (live QA: voided €0.40 kept Total paid at
+  // €5.64 / Outstanding €0.62 instead of €5.24 / €1.02).
+  const voidedCustomerPaymentIds = useMemo(
+    () =>
+      new Set(
+        data.payments
+          .filter((payment) => isVoidedPayment(payment))
+          .map((payment) => String(payment.id))
+      ),
+    [data.payments]
+  );
   // Per-invoice remaining with RECEIVABLES-ENGINE semantics (M1 decision
   // 3): returns offset first, then explicit allocations, then the
   // customer's unallocated payments applied FIFO across open credit
@@ -120,16 +138,19 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
           createdAt: String(row.created_at ?? ""),
         })),
         payments: data.payments.map((row) => ({
+          id: String(row.id),
           customerId: row.customer_id ? String(row.customer_id) : null,
           amount: num(row.amount),
         })),
         allocations: data.allocations.map((row) => ({
           salesTransactionId: String(row.sales_transaction_id),
           amount: num(row.amount),
+          customerPaymentId: row.customer_payment_id ? String(row.customer_payment_id) : null,
         })),
         returnedValueByTransaction: Object.fromEntries(returnedByTransaction),
+        voidedPaymentIds: voidedCustomerPaymentIds,
       }),
-    [data.transactions, data.payments, data.allocations, returnedByTransaction]
+    [data.transactions, data.payments, data.allocations, returnedByTransaction, voidedCustomerPaymentIds]
   );
   const matchingCustomers = useMemo(() => {
     const term = search.trim().toLowerCase();
