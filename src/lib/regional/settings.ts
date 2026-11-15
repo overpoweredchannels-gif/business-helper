@@ -111,9 +111,3 @@ export function parseRegionalSettings(input: unknown): RegionalSettings {
   if (parseTimeZone(v.timeZone) === null) throw new Error('regional.timeZoneInvalid');
   return { language: v.language as Language, locale: v.locale as RegionalLocale, timeZone: v.timeZone as string, accountingCurrency: v.accountingCurrency };
 }
-
-/** Pure rule only. Persistence must enforce this atomically with transaction creation. */
-export function assertAccountingCurrencyUnchanged(current: Currency, next: Currency) {
-  if (!isCurrency(current) || !isCurrency(next)) throw new Error('regional.currencyInvalid');
-  if (current !== next) throw new Error('regional.currencyLocked');
-}

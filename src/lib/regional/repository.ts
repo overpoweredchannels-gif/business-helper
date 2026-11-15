@@ -2,9 +2,13 @@ import {createSupabaseService} from '@/lib/supabase/server';
 import type {RegionalRepository} from './service';
 export class RegionalPreferencesRepository implements RegionalRepository {
   async findById(id:string){
-    const {data,error}=await createSupabaseService().from('organizations').select('regional_preferences').eq('id',id).single();
+    // The accounting currency follows the header currency switch, so the
+    // read carries the org's books_currency alongside the stored
+    // regional_preferences — the panel shows the header-selected books
+    // currency, never a stale or forced value.
+    const {data,error}=await createSupabaseService().from('organizations').select('regional_preferences, books_currency').eq('id',id).single();
     if(error)throw new Error('regional.persistenceUnavailable');
-    return data?{settings:data.regional_preferences as Record<string,unknown>}:null;
+    return data?{settings:data.regional_preferences as Record<string,unknown>,booksCurrency:data.books_currency as unknown}:null;
   }
   async updateSettingsIfUnchanged(id:string,previous:Record<string,unknown>|null,next:Record<string,unknown>){
     // A SQL NULL stored value never equals anything — not even the JSON

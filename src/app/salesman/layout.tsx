@@ -62,7 +62,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
       }
-      }
       setNotStaff(true);
     })().finally(() => setLoading(false));
   }, []);

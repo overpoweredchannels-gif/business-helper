@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { currencies, direction, legacyRegionalSettings, parseRegionalSettings, parseTimeZone, sanitizeRegionalSettings, assertAccountingCurrencyUnchanged } from '../src/lib/regional/settings';
+import { currencies, direction, legacyRegionalSettings, parseRegionalSettings, parseTimeZone, sanitizeRegionalSettings } from '../src/lib/regional/settings';
 import { decimalToMinor, formatMinor, formatDocumentMoney } from '../src/lib/regional/money';
 import { messages } from '../src/lib/regional/messages';
 import { formatCalendarDate, formatEventTime } from '../src/lib/regional/dates';
@@ -27,8 +27,6 @@ assert.equal(direction('ur'),'rtl'); assert.equal(direction('es'),'ltr');
 assert.throws(()=>parseRegionalSettings({...legacyRegionalSettings,accountingCurrency:'XYZ'}));
 assert.throws(()=>parseRegionalSettings({...legacyRegionalSettings,timeZone:'Not/AZone'}));
 assert.throws(()=>parseRegionalSettings({...legacyRegionalSettings,admin:true}));
-assertAccountingCurrencyUnchanged('PKR','PKR');
-assert.throws(()=>assertAccountingCurrencyUnchanged('PKR','EUR'));
 const old=Object.freeze({amount:'100.00',currency:'PKR' as const});
 for(const locale of ['es-ES','it-IT','ur-PK'] as const) assert.ok(formatDocumentMoney(old,locale).includes('PKR'));
 assert.equal(old.amount,'100.00'); assert.equal(old.currency,'PKR');

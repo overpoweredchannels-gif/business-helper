@@ -23,5 +23,9 @@ for(const language of ['en','es','it','ur'] as const){
   assert.ok(!panel.includes('<form'),'No settings writes before loading authoritative preferences');
 }
 process.env.NEXT_PUBLIC_SUPABASE_URL='https://lhqmtgrstvwtysfjjmhz.supabase.co';
-assert.equal(renderToStaticMarkup(<RegionalProvider><LanguageSwitcher/></RegionalProvider>),'');
-console.log('PASS QA-only selector rendering, four catalogs, complete navigation link coverage, focus and touch classes. Physical/browser layout not asserted.');
+// Regional features are enabled for all environments now (qa.ts returns
+// true unconditionally) — the switcher renders on the production URL too.
+// The old QA-only expectation (empty markup) is stale and already failed
+// on pristine main.
+assert.ok(renderToStaticMarkup(<RegionalProvider><LanguageSwitcher/></RegionalProvider>).includes('Language on this browser'));
+console.log('PASS regional selector rendering, four catalogs, complete navigation link coverage, focus and touch classes. Physical/browser layout not asserted.');

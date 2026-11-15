@@ -75,7 +75,7 @@ export function RegionalSettingsPanel({request,canEdit}:Props){
         <label className="space-y-2 text-sm text-foreground"><span>{t('regional.timeZone')}</span><input className={control} dir="ltr" value={preferences.timeZone} onChange={e=>update('timeZone',e.target.value)} list="regional-timezones"/><datalist id="regional-timezones"><option value="Asia/Karachi"/><option value="Europe/Madrid"/><option value="Europe/Rome"/><option value="Europe/London"/><option value="America/New_York"/></datalist></label>
         <label className="space-y-2 text-sm text-foreground"><span>{t('regional.currency')}</span><input className={control} readOnly value={preferences.accountingCurrency} aria-describedby="regional-currency-note"/></label>
       </fieldset>
-      <p id="regional-currency-note" className="text-sm text-muted-foreground">{ui('currencyPending')}</p>
+      <p id="regional-currency-note" className="text-sm text-muted-foreground">{ui('currencyFollowsHeader')}</p>
       {canEdit?<button type="submit" disabled={busy} className="min-h-11 rounded bg-primary px-4 py-2 text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">{busy?ui('saving'):t('regional.save')}</button>:<p className="text-sm text-muted-foreground">{ui('ownerOnly')}</p>}
       {saved&&<p role="status" className="text-sm text-success">{ui('saved')}</p>}
     </form>}

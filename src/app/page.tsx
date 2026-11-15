@@ -175,7 +175,7 @@ import {
 import { buildSupplierExportRows } from "@/lib/suppliers/export";
 import { calendarDayOfRecord } from "@/lib/regional/dates";
 import { resolveBooksCurrency } from "@/lib/books/currency";
-import { currencies as booksCurrencyOptions, languages, parseCurrencyCookie, parseLanguageCookie, parseTimeZone, type Currency, type Language } from "@/lib/regional/settings";
+import { languages, parseCurrencyCookie, parseLanguageCookie, parseTimeZone, type Currency, type Language } from "@/lib/regional/settings";
 import type {
   AiActionDraft,
   AiActionMessage,
@@ -704,12 +704,6 @@ export default function Home() {
   // switch flow is owner-only and runs through POST /api/books/convert —
   // it is deliberately NOT part of the business-settings save payload.
   const [booksCurrency, setBooksCurrency] = useState<Currency>("PKR");
-  const [booksTargetCurrency, setBooksTargetCurrency] = useState<Currency>("PKR");
-  const [booksSwitchStep, setBooksSwitchStep] = useState<"warn" | "rate" | null>(null);
-  const [booksRateInput, setBooksRateInput] = useState("");
-  const [booksSwitchLoading, setBooksSwitchLoading] = useState(false);
-  const [booksSwitchMessage, setBooksSwitchMessage] = useState<string | null>(null);
-  const [booksSwitchError, setBooksSwitchError] = useState<string | null>(null);
   const [businessSettingsDutyStart, setBusinessSettingsDutyStart] = useState("08:00");
   const [businessSettingsDutyEnd, setBusinessSettingsDutyEnd] = useState("16:00");
   const [dutyScheduleLoading, setDutyScheduleLoading] = useState(false);
@@ -1901,7 +1895,6 @@ export default function Home() {
       organization?.regional_preferences,
     );
     setBooksCurrency(resolvedBooksCurrency);
-    setBooksTargetCurrency(resolvedBooksCurrency);
     setActiveBooksCurrency(resolvedBooksCurrency);
     // Regional preferences: the organisation's saved time zone drives
     // event-time display (formatDateTime/formatTime read it from the
@@ -1929,21 +1922,6 @@ export default function Home() {
     const liveDisplayCurrency = parseCurrencyCookie(document.cookie);
     if (liveDisplayCurrency !== resolvedBooksCurrency) {
       setCurrency(resolvedBooksCurrency);
-    }
-    // A completed currency switch reloads the page (every cached amount
-    // on screen was denominated in the old currency); the flag left in
-    // sessionStorage turns into the confirmation message here.
-    try {
-      const switchedTo = window.sessionStorage.getItem("tradeos-books-switched");
-      if (switchedTo && switchedTo === resolvedBooksCurrency) {
-        window.sessionStorage.removeItem("tradeos-books-switched");
-        setBooksSwitchMessage(
-          t('settings.booksSwitchDone').replace('{currency}', resolvedBooksCurrency),
-        );
-      }
-    } catch {
-      // sessionStorage unavailable (private mode): the card still shows
-      // the new books currency, which is the confirmation that matters.
     }
     setBusinessSettingsDutyStart(organization?.working_hours?.duty_start ?? "08:00");
     setBusinessSettingsDutyEnd(organization?.working_hours?.duty_end ?? "16:00");
@@ -17722,69 +17700,6 @@ setCustomerOrganizationName("");
     }
   };
 
-  // Books-currency switch (owner-only): warning step -> rate step ->
-  // POST /api/books/convert. The server runs ONE atomic conversion and
-  // flips the books currency only on success. On success this page
-  // reloads: every list and total already in memory is denominated in
-  // the OLD currency, and a reload is the only way to guarantee none of
-  // it is ever shown labelled with the new one. The sessionStorage flag
-  // becomes the confirmation message after the reload (see
-  // populateBusinessSettings).
-  const handleBooksCurrencyConvert = async () => {
-    setBooksSwitchError(null);
-    setBooksSwitchMessage(null);
-    if (booksTargetCurrency === booksCurrency) {
-      setBooksSwitchError(t('settings.booksErrorSame'));
-      return;
-    }
-    if (!requireOrganization("switch books currency")) {
-      setBooksSwitchError(t('settings.booksErrorGeneric'));
-      return;
-    }
-    setBooksSwitchLoading(true);
-    try {
-      const response = await authorizedFetch("/api/books/convert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          toCurrency: booksTargetCurrency,
-          rate: booksRateInput.trim(),
-        }),
-      });
-      const payload = (await response.json().catch(() => null)) as
-        | { ok?: boolean; code?: string }
-        | null;
-      if (!response.ok || !payload?.ok) {
-        const code = payload?.code ?? "";
-        setBooksSwitchError(
-          code === 'books.sameCurrency'
-            ? t('settings.booksErrorSame')
-            : code === 'books.invalidRate'
-              ? t('settings.booksErrorRate')
-              : code === 'books.migrationMissing'
-                ? t('settings.booksErrorMigration')
-                : code === 'books.reconciliationFailed' || code === 'books.reconciliationMismatch'
-                  ? t('settings.booksErrorReconciliation')
-                  : code.startsWith('books.unmappedColumn')
-                    ? t('settings.booksErrorUnmapped')
-                    : t('settings.booksErrorGeneric'),
-        );
-        return;
-      }
-      try {
-        window.sessionStorage.setItem("tradeos-books-switched", booksTargetCurrency);
-      } catch {
-        // The reload still applies; only the confirmation line is lost.
-      }
-      window.location.reload();
-    } catch (err) {
-      console.error("Books currency switch error:", err);
-      setBooksSwitchError(t('settings.booksErrorGeneric'));
-    } finally {
-      setBooksSwitchLoading(false);
-    }
-  };
-
   const handleSaveDutySchedule = async () => {
     setDutyScheduleMessage(null);
     setDutyScheduleError(null);
@@ -29092,51 +29007,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               </div>
             )}
 
-            {currentProfile?.role === "owner" && (
-              <div className="rounded-lg border border-border bg-background p-4">
-                <h3 className="text-base font-semibold text-foreground">{t('settings.booksCurrency')}</h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t('settings.booksCurrencyHint')}
-                </p>
-                <div className="mt-4 flex flex-wrap items-end gap-3">
-                  <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                    <span>{t('settings.booksCurrency')}</span>
-                    <select
-                      aria-label={t('settings.booksCurrency')}
-                      value={booksTargetCurrency}
-                      onChange={(e) => {
-                        setBooksTargetCurrency(e.target.value as Currency);
-                        setBooksSwitchError(null);
-                      }}
-                      className="min-h-11 rounded border border-input bg-background px-3 py-2"
-                    >
-                      {Object.entries(booksCurrencyOptions).map(([code, info]) => (
-                        <option key={code} value={code}>
-                          {code} — {info.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    disabled={booksTargetCurrency === booksCurrency || booksSwitchLoading}
-                    onClick={() => {
-                      setBooksSwitchError(null);
-                      setBooksRateInput("");
-                      setBooksSwitchStep("warn");
-                    }}
-                    className="min-h-11 rounded bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
-                  >
-                    {t('settings.booksSwitchButton')}
-                  </button>
-                </div>
-                {booksSwitchMessage && <p className="mt-3 text-sm text-success">{booksSwitchMessage}</p>}
-                {booksSwitchError && booksSwitchStep === null && (
-                  <p className="mt-3 text-sm text-destructive">{booksSwitchError}</p>
-                )}
-              </div>
-            )}
-
             <button
               type="button"
               onClick={handleSaveBusinessSettings}
@@ -29300,83 +29170,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
               >
                 <X className="size-4" />
               </button>
-            </div>
-          </div>
-        )}
-
-        {booksSwitchStep !== null && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-foreground/30 p-4">
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label={booksSwitchStep === "warn" ? t('settings.booksWarnTitle') : t('settings.booksRateTitle')}
-              className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-xl"
-            >
-              {booksSwitchStep === "warn" ? (
-                <>
-                  <h3 className="text-lg font-semibold text-foreground">{t('settings.booksWarnTitle')}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{t('settings.booksWarnBody')}</p>
-                  <div className="mt-4 flex flex-wrap justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setBooksSwitchStep(null)}
-                      className="min-h-11 rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
-                    >
-                      {t('common.cancel')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBooksSwitchStep("rate")}
-                      className="min-h-11 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-                    >
-                      {t('settings.booksWarnContinue')}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h3 className="text-lg font-semibold text-foreground">{t('settings.booksRateTitle')}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {t('settings.booksRatePrompt')
-                      .replace('{from}', booksCurrency)
-                      .replace('{to}', booksTargetCurrency)}
-                  </p>
-                  <label className="mt-4 flex flex-col gap-2 text-sm text-foreground/80">
-                    <span>{t('settings.booksRateLabel')}</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      autoFocus
-                      value={booksRateInput}
-                      onChange={(e) => setBooksRateInput(e.target.value)}
-                      className="min-h-11 rounded border border-input bg-background px-3 py-2 tabular-nums"
-                    />
-                  </label>
-                  <p className="mt-2 text-xs text-muted-foreground">{t('settings.booksRateHint')}</p>
-                  {booksSwitchError && <p className="mt-3 text-sm text-destructive">{booksSwitchError}</p>}
-                  <div className="mt-4 flex flex-wrap justify-end gap-2">
-                    <button
-                      type="button"
-                      disabled={booksSwitchLoading}
-                      onClick={() => {
-                        setBooksSwitchStep(null);
-                        setBooksSwitchError(null);
-                      }}
-                      className="min-h-11 rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30 disabled:opacity-40"
-                    >
-                      {t('common.cancel')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={booksSwitchLoading}
-                      onClick={() => void handleBooksCurrencyConvert()}
-                      className="min-h-11 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
-                    >
-                      {booksSwitchLoading ? t('settings.booksConverting') : t('settings.booksConvertButton')}
-                    </button>
-                  </div>
-                </>
-              )}
             </div>
           </div>
         )}
