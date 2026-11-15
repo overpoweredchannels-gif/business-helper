@@ -21077,7 +21077,7 @@ setCustomerOrganizationName("");
                   paymentBadgeKind === "paid"
                     ? t('sell.statusPaid')
                     : paymentBadgeKind === "partial"
-                      ? t('buy.statusPartiallyPaid')
+                      ? t('sell.statusPartial')
                       : paymentBadgeKind === "overdue"
                         ? t('sell.statusOverdue')
                         : t('buy.statusUnpaid');
@@ -21088,7 +21088,7 @@ setCustomerOrganizationName("");
                   }))
                 );
                 return (
-                  <li key={tx.id} className="rounded-lg border border-border bg-card text-sm"><details className="invoice-record"><summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 p-4"><div className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-semibold text-foreground">{tx.invoice_number}</span><span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(paymentBadgeKind)}`}>{paymentBadgeLabel}</span></span><span className="mt-1 block truncate text-xs text-muted-foreground">{customer?.customer_name ?? t('sell.unknown')} · {date}</span>{productsSummary !== "" && (<span className="mt-1 block truncate text-xs text-muted-foreground">{productsSummary}</span>)}</div><span className="shrink-0 text-right"><span className="block font-semibold tabular-nums">{formatBooksMoney(Number(tx.total_amount || 0))}</span>{remainingUnpaidAmount > 0 && (<span className="mt-1 block text-xs tabular-nums text-muted-foreground">{paidAmount > 0 ? `${t('buy.paidAmount')}: ${formatBooksMoney(paidAmount)} · ` : ""}{t('sell.remainingBalance')}: ${formatBooksMoney(remainingUnpaidAmount)}</span>)}</span></summary><div className="grid gap-2 border-t border-border p-4 text-body sm:grid-cols-2">
+                  <li key={tx.id} className="rounded-lg border border-border bg-card text-sm"><details className="invoice-record"><summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 p-4"><div className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-semibold text-foreground">{tx.invoice_number}</span><span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(paymentBadgeKind)}`}>{paymentBadgeLabel}</span></span><span className="mt-1 block truncate text-xs text-muted-foreground">{customer?.customer_name ?? t('sell.unknown')} · {date}</span>{productsSummary !== "" && (<span className="mt-1 block truncate text-xs text-muted-foreground">{productsSummary}</span>)}</div><span className="shrink-0 text-right"><span className="block font-semibold tabular-nums">{formatBooksMoney(Number(tx.total_amount || 0))}</span>{remainingUnpaidAmount > 0 && (<span className="mt-1 block text-xs tabular-nums text-muted-foreground">{paidAmount > 0 ? `${t('buy.paidAmount')}: ${formatBooksMoney(paidAmount)} · ` : ""}{t('sell.remainingBalance')}: {formatBooksMoney(remainingUnpaidAmount)}</span>)}</span></summary><div className="grid gap-2 border-t border-border p-4 text-body sm:grid-cols-2">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="font-medium text-foreground">{t('sell.invoiceLabel')}: {tx.invoice_number}</div>
                       <button
@@ -25472,7 +25472,7 @@ setCustomerOrganizationName("");
                   rawPurchasePaymentStatus === "paid"
                     ? t('money.paid')
                     : rawPurchasePaymentStatus === "partially_paid"
-                      ? t('buy.statusPartiallyPaid')
+                      ? t('buy.statusPartial')
                       : t('buy.statusUnpaid');
 
                 return (

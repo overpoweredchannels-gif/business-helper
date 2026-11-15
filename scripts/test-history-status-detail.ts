@@ -4,6 +4,8 @@ import {
   getPaymentStatusBadgeKind,
   paymentStatusBadgeClass,
 } from "../src/lib/history/payment-status";
+import { formatBooksAmount } from "../src/lib/books/format";
+import { messages } from "../src/lib/regional/messages";
 
 // Badge kind is a pure function of the numbers the allocation engines
 // already compute (src/lib/sales/returns-offset.ts,
@@ -170,6 +172,30 @@ const TODAY = "2026-11-15";
     ]),
     "COCA COLA 1L ×1"
   );
+}
+
+// Badge label is "Partial" (spec), not "Partially Paid": the keys exist
+// in all four locales (typecheck enforces the keys; assert the values
+// here so a label regression fails the slice test, not live QA).
+{
+  assert.equal(messages.en["sell.statusPartial"], "Partial");
+  assert.equal(messages.en["buy.statusPartial"], "Partial");
+  for (const language of Object.keys(messages) as Array<keyof typeof messages>) {
+    assert.equal(typeof messages[language]["sell.statusPartial"], "string");
+    assert.ok(messages[language]["sell.statusPartial"].length > 0);
+    assert.equal(typeof messages[language]["buy.statusPartial"], "string");
+    assert.ok(messages[language]["buy.statusPartial"].length > 0);
+  }
+}
+
+// The remaining-balance amount renders with a single currency symbol:
+// the books formatter never prefixes a "$" (live QA caught a stray "$"
+// literal in the sales-row JSX, not in the formatter — this guards the
+// formatter half, and the JSX is covered by the live re-QA).
+{
+  assert.equal(formatBooksAmount(0.41, "EUR", "en-PK"), "€0.41");
+  assert.equal(formatBooksAmount(0.81, "EUR", "en-PK"), "€0.81");
+  assert.ok(!formatBooksAmount(0.41, "EUR", "en-PK").includes("$"));
 }
 
 console.log(

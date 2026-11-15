@@ -11,9 +11,10 @@
 //   - Purchases: supplierPaymentAllocationByPurchaseTransaction
 //     (src/lib/purchases/returns-offset.ts) gives paidAmount and
 //     remainingPayableAmount the same way.
-// The badge LABELS come from existing translation keys
-// (sell.statusPaid, sell.statusOverdue, buy.statusPartiallyPaid,
-// buy.statusUnpaid, money.paid) — this module only decides the kind and
+// The badge LABELS come from translation keys
+// (sell.statusPaid, sell.statusPartial, sell.statusOverdue,
+// buy.statusPartial, buy.statusUnpaid, money.paid) — this module only
+// decides the kind and
 // the token-only badge classes (AGENTS.md: semantic tokens, never hex).
 // The established badge pattern in page.tsx is
 // `rounded px-2 py-1 text-xs font-semibold` + a tone pair.
