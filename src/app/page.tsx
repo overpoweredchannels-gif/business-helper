@@ -39,6 +39,7 @@ import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecis
 import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { loadOfflineCustomers, loadOfflineProducts, saveOfflineCustomers, saveOfflineProducts } from "@/lib/offline/offline-store";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
+import { formatProductsSummary, getPaymentStatusBadgeKind, paymentStatusBadgeClass } from "@/lib/history/payment-status";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { useScannerCapture } from "@/components/invoices/scanner-capture";
@@ -11210,9 +11211,14 @@ setCustomerOrganizationName("");
     const purchasePaymentTotal = summary?.purchaseTotal ?? purchaseValue;
     const purchasePaidAmount = summary?.paidAmount ?? 0;
     const purchaseRemainingPayable = summary?.remainingPayableAmount ?? purchasePaymentTotal;
-    if (purchaseRemainingPayable <= 0) return "paid";
-    if (purchasePaidAmount > 0) return "partially_paid";
-    return "unpaid";
+    // Same badge rule as the sales ledger (src/lib/history/payment-status):
+    // purchases carry no credit due date, so "overdue" can never arise here.
+    const kind = getPaymentStatusBadgeKind({
+      total: purchasePaymentTotal,
+      paid: purchasePaidAmount,
+      remaining: purchaseRemainingPayable,
+    });
+    return kind === "paid" ? "paid" : kind === "partial" ? "partially_paid" : "unpaid";
   };
 
   const hasActivePurchaseFilters = (filters: PurchaseListFilters) =>
@@ -21051,18 +21057,38 @@ setCustomerOrganizationName("");
                 const paymentType = tx.payment_type ?? "cash";
                 const txItems = salesItems.filter((item) => item.sales_transaction_id === tx.id);
                 const creditAllocation = creditAllocationByTransaction[tx.id];
-                const remainingUnpaidAmount = creditAllocation?.remainingUnpaidAmount ?? 0;
+                // Badge amounts come from the same allocation engine as the
+                // payment form (explicit allocations excl. voided payments,
+                // FIFO legacy pool, net of sales returns). Cash/card sales
+                // are paid in full by construction, so they report
+                // paid = invoice total, remaining = 0.
+                const invoiceTotal = creditAllocation?.invoiceTotal ?? salesInvoiceTotalsByTransaction[tx.id] ?? Number(tx.total_amount || 0);
+                const paidAmount = paymentType === "cash" || paymentType === "card" ? invoiceTotal : (creditAllocation?.allocatedAmount ?? 0);
+                const remainingUnpaidAmount = paymentType === "cash" || paymentType === "card" ? 0 : (creditAllocation?.remainingUnpaidAmount ?? 0);
                 const creditDueDate = getDateOnly(tx.credit_due_date);
-                const creditStatus =
-                  paymentType === "cash" || paymentType === "card"
+                const paymentBadgeKind = getPaymentStatusBadgeKind({
+                  total: invoiceTotal,
+                  paid: paidAmount,
+                  remaining: remainingUnpaidAmount,
+                  dueDate: creditDueDate,
+                  today: todayDateValue,
+                });
+                const paymentBadgeLabel =
+                  paymentBadgeKind === "paid"
                     ? t('sell.statusPaid')
-                    : remainingUnpaidAmount <= 0
-                      ? t('sell.statusPaid')
-                      : creditDueDate && creditDueDate < todayDateValue
+                    : paymentBadgeKind === "partial"
+                      ? t('buy.statusPartiallyPaid')
+                      : paymentBadgeKind === "overdue"
                         ? t('sell.statusOverdue')
-                        : t('sell.statusPaymentPending');
+                        : t('buy.statusUnpaid');
+                const productsSummary = formatProductsSummary(
+                  txItems.map((item) => ({
+                    name: products.find((p) => String(p.id) === String(item.product_id))?.name ?? t('sell.unknownProduct'),
+                    quantity: safeNumber(item.quantity),
+                  }))
+                );
                 return (
-                  <li key={tx.id} className="rounded-lg border border-border bg-card text-sm"><details className="invoice-record"><summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 p-4"><div className="min-w-0"><span className="block font-semibold text-foreground">{tx.invoice_number}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{customer?.customer_name ?? t('sell.unknown')} · {date}</span></div><span className="shrink-0 font-semibold tabular-nums">{formatBooksMoney(Number(tx.total_amount || 0))}</span></summary><div className="grid gap-2 border-t border-border p-4 text-body sm:grid-cols-2">
+                  <li key={tx.id} className="rounded-lg border border-border bg-card text-sm"><details className="invoice-record"><summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 p-4"><div className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-semibold text-foreground">{tx.invoice_number}</span><span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(paymentBadgeKind)}`}>{paymentBadgeLabel}</span></span><span className="mt-1 block truncate text-xs text-muted-foreground">{customer?.customer_name ?? t('sell.unknown')} · {date}</span>{productsSummary !== "" && (<span className="mt-1 block truncate text-xs text-muted-foreground">{productsSummary}</span>)}</div><span className="shrink-0 text-right"><span className="block font-semibold tabular-nums">{formatBooksMoney(Number(tx.total_amount || 0))}</span>{remainingUnpaidAmount > 0 && (<span className="mt-1 block text-xs tabular-nums text-muted-foreground">{paidAmount > 0 ? `${t('buy.paidAmount')}: ${formatBooksMoney(paidAmount)} · ` : ""}{t('sell.remainingBalance')}: ${formatBooksMoney(remainingUnpaidAmount)}</span>)}</span></summary><div className="grid gap-2 border-t border-border p-4 text-body sm:grid-cols-2">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="font-medium text-foreground">{t('sell.invoiceLabel')}: {tx.invoice_number}</div>
                       <button
@@ -21079,7 +21105,7 @@ setCustomerOrganizationName("");
                     {tx.notes && tx.notes.trim() !== "" && (
                       <div>{t('sell.notesLabel')}: {tx.notes}</div>
                     )}
-                    <div>{t('sell.statusLabel')}: {creditStatus}</div>
+                    <div className="flex flex-wrap items-center gap-2">{t('sell.statusLabel')}: <span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(paymentBadgeKind)}`}>{paymentBadgeLabel}</span></div>
                     {tx.total_amount != null && <div>{t('sell.totalAmount')}: {formatBooksMoney(Number(tx.total_amount || 0))}</div>}
                     {(tx.discount_amount != null && Number(tx.discount_amount) > 0) && (
                       <div>{t('sell.invoiceDiscountRow')}: {formatBooksMoney(Number(tx.discount_amount || 0))}</div>
@@ -25475,6 +25501,19 @@ setCustomerOrganizationName("");
                       </div>
                     </div>
 
+                    {lineItems.length > 0 && (
+                      <div className="mb-3 truncate text-xs text-muted-foreground">
+                        {formatProductsSummary(
+                          lineItems.map((item) => ({
+                            name: products.find((p) => String(p.id) === String(item.product_id))?.name ?? t('sell.unknown'),
+                            quantity: safeNumber(item.quantity),
+                            rate: safeNumber(item.purchase_price),
+                          })),
+                          formatBooksMoney
+                        )}
+                      </div>
+                    )}
+
                     <div className="mb-3 rounded border border-success/10 bg-success/5 p-4">
                       <h3 className="mb-2 text-sm font-medium text-success/90">{t('buy.paymentSummary')}</h3>
                       <div className="grid gap-2 text-xs text-success/90 sm:grid-cols-2 lg:grid-cols-4">
@@ -25492,7 +25531,7 @@ setCustomerOrganizationName("");
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-success">{t('buy.paymentStatus')}</div>
-                          <div className="font-medium">{purchasePaymentStatus}</div>
+                          <div className="font-medium"><span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(rawPurchasePaymentStatus === "paid" ? "paid" : rawPurchasePaymentStatus === "partially_paid" ? "partial" : "unpaid")}`}>{purchasePaymentStatus}</span></div>
                         </div>
                       </div>
                     </div>
