@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { CUSTOM_ROLE_PERMISSIONS } from "@/lib/identity/custom-role-edit";
@@ -72,8 +72,9 @@ export default function RoleManagement({
   // invalidate its own cached copy of the roles (the staff Role dropdown
   // in Staff & Permissions fetches the same list separately). Without
   // this signal the dropdown keeps the pre-change list until the user
-  // leaves and re-enters the section or reloads the page.
-  onRolesChanged?: () => void;
+  // leaves and re-enters the section or reloads the page. On a delete
+  // the deleted role id is passed, so the page can drop it at once.
+  onRolesChanged?: (deletedRoleId?: string) => void;
 }) {
   const { t } = useRegional();
   const permissionLabel = (p: string) => {
@@ -105,6 +106,14 @@ export default function RoleManagement({
     return labels[p] ?? p;
   };
   const [roles, setRoles] = useState<RoleView[]>([]);
+  // Tombstone for roles deleted in this session. The post-delete refetch
+  // (loadRoles) has returned a list that still contains the deleted role
+  // — the exact stale layer (browser/edge/Next cache or read timing) is
+  // unproven — and that stale list overwrote the optimistic removal.
+  // Filtering tombstoned ids out of every refetch result makes a stale
+  // read unable to resurrect a deleted role. The set lives in a ref and
+  // resets on remount/reload, when the server data is fresh again.
+  const deletedRoleIdsRef = useRef<Set<string>>(new Set());
   const [permissionMatrix, setPermissionMatrix] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   // One form serves both create and edit, exactly as the create form was:
@@ -120,10 +129,16 @@ export default function RoleManagement({
       // no-store: the list must reflect the latest create/edit/delete.
       // A cached GET here is what kept a deleted role visible (and a
       // just-created role out of the staff dropdown) until a reload.
-      const res = await authorizedFetch("/api/identity/roles", { cache: "no-store" });
+      // The cache-buster param defeats any layer that keys on the URL,
+      // and the tombstone below defeats any layer that still returns a
+      // stale list: a deleted role can never come back in this session.
+      const res = await authorizedFetch(`/api/identity/roles?_=${Date.now()}`, { cache: "no-store" });
       const data = await res.json();
       if (data.ok) {
-        setRoles(data.roles || []);
+        const freshRoles: RoleView[] = (data.roles || []).filter(
+          (role: RoleView) => !deletedRoleIdsRef.current.has(role.id),
+        );
+        setRoles(freshRoles);
         setPermissionMatrix(data.permissionMatrix || {});
         setError(null);
       } else {
@@ -207,11 +222,15 @@ export default function RoleManagement({
     });
     const data = await res.json();
     if (data.ok) {
+      // Tombstone FIRST: the refetch below may still return the deleted
+      // role, and without this the stale list would overwrite the
+      // optimistic removal.
+      deletedRoleIdsRef.current.add(roleId);
       // Drop the role from the list at once so it never lingers until the
       // refetch resolves; the refetch below confirms from the server.
       setRoles((prev) => prev.filter((role) => role.id !== roleId));
       loadRoles();
-      onRolesChanged?.();
+      onRolesChanged?.(roleId);
     } else {
       // This is where the staff-hold block surfaces: the server refuses
       // the delete and names how many staff still have the role.

@@ -837,6 +837,12 @@ export default function Home() {
   // so a custom role can be assigned to a staff member. Until the fetch
   // lands the dropdown falls back to built-in roles only.
   const [assignableCustomRoles, setAssignableCustomRoles] = useState<CustomRoleInput[]>([]);
+  // Tombstone for custom roles deleted in this session (mirrors the one
+  // in RoleManagement): the post-delete refetch can return a stale list
+  // that still contains the deleted role, so deleted ids are filtered
+  // out of every refetch result until a reload, when the server data is
+  // fresh again.
+  const deletedAssignableRoleIdsRef = useRef<Set<string>>(new Set());
   const [staffSectionDraft, setStaffSectionDraft] = useState<string[]>([]);
   // Per-action payment permissions (phase 17 columns). The draft mirrors the
   // selected staff member's stored booleans; owners/admins always have full
@@ -7198,14 +7204,18 @@ setCustomerOrganizationName("");
     try {
       // no-store: the dropdown must show a role created moments ago in
       // Role Management. A cached GET here is what left the dropdown
-      // showing only built-in roles until a page reload.
-      const res = await authorizedFetch("/api/identity/roles", { cache: "no-store" });
+      // showing only built-in roles until a page reload. The
+      // cache-buster param defeats any layer that keys on the URL, and
+      // the tombstone below defeats any layer that still returns a
+      // stale list after a delete.
+      const res = await authorizedFetch(`/api/identity/roles?_=${Date.now()}`, { cache: "no-store" });
       const data = await res.json();
       if (data.ok) {
         const custom: CustomRoleInput[] = (
           data.roles as Array<{ id: string; name: string; permissions: string[]; isBuiltIn: boolean }>
         )
           .filter((role) => !role.isBuiltIn)
+          .filter((role) => !deletedAssignableRoleIdsRef.current.has(role.id))
           .map((role) => ({ id: role.id, name: role.name, permissions: role.permissions }));
         setAssignableCustomRoles(custom);
       }
@@ -28335,12 +28345,19 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
           <div className="rounded border border-border bg-card">
             <RoleManagement
               onRequestConfirm={setConfirmDialog}
-              onRolesChanged={() => {
+              onRolesChanged={(deletedRoleId?: string) => {
                 // A role was created, edited or deleted in Role
                 // Management — refetch the assignable list at once so
                 // the Staff & Permissions dropdown is current when the
                 // owner opens it, instead of waiting for the next
-                // section entry or a manual reload.
+                // section entry or a manual reload. On a delete the id
+                // is tombstoned and dropped from the dropdown at once:
+                // the refetch can return a stale list that still holds
+                // the deleted role, and the tombstone stops it coming back.
+                if (deletedRoleId) {
+                  deletedAssignableRoleIdsRef.current.add(deletedRoleId);
+                  setAssignableCustomRoles((prev) => prev.filter((role) => role.id !== deletedRoleId));
+                }
                 void loadAssignableCustomRoles();
               }}
             />
