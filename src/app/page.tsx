@@ -7203,7 +7203,10 @@ setCustomerOrganizationName("");
   // non-fatal — the dropdown falls back to built-in roles only.
   const loadAssignableCustomRoles = async () => {
     try {
-      const res = await authorizedFetch("/api/identity/roles");
+      // no-store: the dropdown must show a role created moments ago in
+      // Role Management. A cached GET here is what left the dropdown
+      // showing only built-in roles until a page reload.
+      const res = await authorizedFetch("/api/identity/roles", { cache: "no-store" });
       const data = await res.json();
       if (data.ok) {
         const custom: CustomRoleInput[] = (
@@ -28400,7 +28403,17 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         {activeSectionAllowed && activeSection === "security-check" && (
         <div className="mt-8 grid gap-6 lg:grid-cols-2">
           <div className="rounded border border-border bg-card">
-            <RoleManagement onRequestConfirm={setConfirmDialog} />
+            <RoleManagement
+              onRequestConfirm={setConfirmDialog}
+              onRolesChanged={() => {
+                // A role was created, edited or deleted in Role
+                // Management — refetch the assignable list at once so
+                // the Staff & Permissions dropdown is current when the
+                // owner opens it, instead of waiting for the next
+                // section entry or a manual reload.
+                void loadAssignableCustomRoles();
+              }}
+            />
           </div>
           <div className="rounded border border-border bg-card">
             <InvitationPanel />
