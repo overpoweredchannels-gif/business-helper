@@ -40,6 +40,7 @@ import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingS
 import { loadOfflineCustomers, loadOfflineProducts, saveOfflineCustomers, saveOfflineProducts } from "@/lib/offline/offline-store";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { formatProductsSummary, getPaymentStatusBadgeKind, paymentStatusBadgeClass } from "@/lib/history/payment-status";
+import { excludeVoidedPayments, historyAmountsForPayment, isVoidedPayment } from "@/lib/payments/voided-payments";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { useScannerCapture } from "@/components/invoices/scanner-capture";
@@ -11010,19 +11011,26 @@ setCustomerOrganizationName("");
     .map((payment) => {
       const paymentId = String(payment.id ?? "");
       const paymentAmount = safeNumber(payment.amount);
-      const allocations = customerPaymentAllocations
-        .filter((allocation) => String(allocation.customer_payment_id ?? "") === paymentId)
-        .map((allocation) => {
-          const transaction = salesTransactionsById[String(allocation.sales_transaction_id ?? "")];
-          return {
-            allocation,
-            transaction,
-            amount: safeNumber(allocation.amount),
-          };
-        });
-      const explicitlyAllocatedAmount = allocations.reduce(
-        (sum, allocation) => sum + allocation.amount,
-        0
+      // A voided payment covers nothing: its allocation rows are hidden
+      // and both amounts are zero, so the card cannot present it as still
+      // covering invoices (the card keeps its "Voided" badge).
+      const {
+        allocations,
+        explicitlyAllocatedAmount,
+        unallocatedAmount,
+        allocationExceedsPayment,
+      } = historyAmountsForPayment(
+        payment,
+        customerPaymentAllocations
+          .filter((allocation) => String(allocation.customer_payment_id ?? "") === paymentId)
+          .map((allocation) => {
+            const transaction = salesTransactionsById[String(allocation.sales_transaction_id ?? "")];
+            return {
+              allocation,
+              transaction,
+              amount: safeNumber(allocation.amount),
+            };
+          })
       );
 
       return {
@@ -11031,8 +11039,8 @@ setCustomerOrganizationName("");
         paymentAmount,
         allocations,
         explicitlyAllocatedAmount,
-        unallocatedAmount: Math.max(0, paymentAmount - explicitlyAllocatedAmount),
-        allocationExceedsPayment: explicitlyAllocatedAmount > paymentAmount,
+        unallocatedAmount,
+        allocationExceedsPayment,
       };
     })
     .sort((a, b) => {
@@ -11668,19 +11676,26 @@ setCustomerOrganizationName("");
     .map((payment) => {
       const paymentId = String(payment.id ?? "");
       const paymentAmount = safeNumber(payment.amount);
-      const allocations = supplierPaymentAllocations
-        .filter((allocation) => String(allocation.supplier_payment_id ?? "") === paymentId)
-        .map((allocation) => {
-          const transaction = purchaseTransactionsById[String(allocation.purchase_transaction_id ?? "")];
-          return {
-            allocation,
-            transaction,
-            amount: safeNumber(allocation.amount),
-          };
-        });
-      const explicitlyAllocatedAmount = allocations.reduce(
-        (sum, allocation) => sum + allocation.amount,
-        0
+      // A voided payment covers nothing: its allocation rows are hidden
+      // and both amounts are zero, so the card cannot present it as still
+      // covering invoices (the card keeps its "Voided" badge).
+      const {
+        allocations,
+        explicitlyAllocatedAmount,
+        unallocatedAmount,
+        allocationExceedsPayment,
+      } = historyAmountsForPayment(
+        payment,
+        supplierPaymentAllocations
+          .filter((allocation) => String(allocation.supplier_payment_id ?? "") === paymentId)
+          .map((allocation) => {
+            const transaction = purchaseTransactionsById[String(allocation.purchase_transaction_id ?? "")];
+            return {
+              allocation,
+              transaction,
+              amount: safeNumber(allocation.amount),
+            };
+          })
       );
 
       return {
@@ -11689,8 +11704,8 @@ setCustomerOrganizationName("");
         paymentAmount,
         allocations,
         explicitlyAllocatedAmount,
-        unallocatedAmount: Math.max(0, paymentAmount - explicitlyAllocatedAmount),
-        allocationExceedsPayment: explicitlyAllocatedAmount > paymentAmount,
+        unallocatedAmount,
+        allocationExceedsPayment,
       };
     })
     .sort((a, b) => {
@@ -11987,8 +12002,13 @@ setCustomerOrganizationName("");
   const selectedSupplierLedgerPurchaseTransactions = purchaseTransactions.filter(
     (transaction) => transaction.supplier_id === selectedSupplierLedgerId
   );
-  const selectedSupplierLedgerPayments = supplierPayments.filter(
-    (payment) => payment.supplier_id === selectedSupplierLedgerId
+  // Voided payments keep their rows (the void only marks voided_at), so
+  // they must be excluded here or the ledger counts them as credits —
+  // the −€1.00 residue on a supplier whose payments were voided. This
+  // single filter fixes the raw entries, the unallocated total and the
+  // printed ledger, which all read this array.
+  const selectedSupplierLedgerPayments = excludeVoidedPayments(
+    supplierPayments.filter((payment) => payment.supplier_id === selectedSupplierLedgerId)
   );
   const selectedSupplierLedgerPurchaseReturns = purchaseReturns.filter(
     (purchaseReturn) => purchaseReturn.supplier_id === selectedSupplierLedgerId
@@ -14250,7 +14270,7 @@ setCustomerOrganizationName("");
           0
         );
         const unallocatedPayments = supplierPayments
-          .filter((payment) => payment.supplier_id === supplier.id)
+          .filter((payment) => payment.supplier_id === supplier.id && !isVoidedPayment(payment))
           .reduce((sum, payment) => {
             const paymentId = String(payment.id ?? "");
             return (
@@ -14576,10 +14596,10 @@ setCustomerOrganizationName("");
       };
     });
     const customerPaymentsInRange = customerPayments.filter((payment) =>
-      inRange(payment.payment_date ?? payment.created_at)
+      !isVoidedPayment(payment) && inRange(payment.payment_date ?? payment.created_at)
     );
     const supplierPaymentsInRange = supplierPayments.filter((payment) =>
-      inRange(payment.payment_date ?? payment.created_at)
+      !isVoidedPayment(payment) && inRange(payment.payment_date ?? payment.created_at)
     );
     const expensesInRange = expenses.filter((expense) => inRange(expense.expense_date ?? expense.created_at));
     const tasksInRange = tasks.filter((task) =>
@@ -18281,7 +18301,7 @@ setCustomerOrganizationName("");
           onOpen: () => handleSectionChange("customer-payments"),
           metrics: [
             { label: t('summary.payments'), value: String(customerPayments.length) },
-            { label: t('summary.totalReceived'), value: money(customerPayments.reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
+            { label: t('summary.totalReceived'), value: money(excludeVoidedPayments(customerPayments).reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
           ],
           rowsLabel: t('summary.recentPayments'),
           rows: [...customerPayments].reverse().slice(0, 4).map((payment) => ({ label: formatDateTime(payment?.payment_date ?? payment?.created_at), value: money(payment?.amount) })),
@@ -18294,7 +18314,7 @@ setCustomerOrganizationName("");
           onOpen: () => handleSectionChange("supplier-payments"),
           metrics: [
             { label: t('summary.payments'), value: String(supplierPayments.length) },
-            { label: t('summary.totalPaid'), value: money(supplierPayments.reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
+            { label: t('summary.totalPaid'), value: money(excludeVoidedPayments(supplierPayments).reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
           ],
           rowsLabel: t('summary.recentPayments'),
           rows: [...supplierPayments].reverse().slice(0, 4).map((payment) => ({ label: formatDateTime(payment?.payment_date ?? payment?.created_at), value: money(payment?.amount) })),
