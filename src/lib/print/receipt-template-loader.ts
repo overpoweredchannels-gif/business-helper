@@ -31,6 +31,33 @@ export interface ReceiptTemplateLoaderOptions {
 
 export const RECEIPT_TEMPLATE_LOAD_TIMEOUT_MS = 8000;
 
+/** Last successfully loaded org template, per scope, so an offline
+ * receipt preview can open instantly instead of waiting out the
+ * loader's timeout on a fetch that cannot succeed (2026-11-15). Only
+ * a "loaded" template is cached — the built-in default needs no cache. */
+const cachedTemplateKey = (scope: string) => `aankh:receipt-template:${scope}`;
+
+export function saveCachedReceiptTemplate(scope: string, template: PrintTemplate): void {
+  try {
+    window.localStorage.setItem(cachedTemplateKey(scope), JSON.stringify(template));
+  } catch { /* Storage unavailable: offline receipts fall back to the default. */ }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object";
+
+export function readCachedReceiptTemplate(scope: string): PrintTemplate | null {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(cachedTemplateKey(scope)) ?? "null");
+    if (!isRecord(parsed)) return null;
+    // Light shape guard: a corrupt cache must never crash the receipt
+    // render — the nested reads (header/columns/page) assume records.
+    if (!isRecord(parsed.header) || !isRecord(parsed.columns) || !isRecord(parsed.page)) return null;
+    return parsed as unknown as PrintTemplate;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadReceiptTemplate(
   options: ReceiptTemplateLoaderOptions
 ): Promise<ReceiptTemplateLoadResult> {

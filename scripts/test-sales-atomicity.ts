@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, reconcilePendingAtomicSale, type AtomicSaleInput, type AtomicSaleResult } from "../src/lib/sales/atomic-sale-client";
+import { createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, reconcilePendingAtomicSale, withSaleRequestTimeout, type AtomicSaleInput, type AtomicSaleResult } from "../src/lib/sales/atomic-sale-client";
 import { buildRetailDrawerSummary } from "../src/lib/sales/retail-summary";
 import { calculateSaleAmounts, roundMoney } from "../src/lib/sales/sale-amounts";
 import { buildAtomicSaleReceipt, getReceiptLineRows } from "../src/lib/print/retail-receipt";
@@ -117,6 +117,17 @@ async function testAtomicSaleClientRejectionSurfacesReason() {
     if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
     else Reflect.deleteProperty(globalThis, "window");
   }
+}
+
+/** Sale RPC timeout (2026-11-15): a hung network must never hold the
+ * queue mutex — and the Save button's "Saving…" state — indefinitely.
+ * A promise that never settles resolves as "timeout"; a fast value and
+ * a fast rejection pass through unchanged. */
+async function testSaleRequestTimeout() {
+  assert.equal(await withSaleRequestTimeout(new Promise(() => {}), 5), "timeout", "a hung request resolves as timeout");
+  assert.equal(await withSaleRequestTimeout(Promise.resolve("ok"), 5), "ok", "a fast value passes through");
+  await assert.rejects(withSaleRequestTimeout(Promise.reject(new Error("boom")), 5), /boom/, "a fast rejection still propagates");
+  console.log("Sale request timeout: hung requests resolve as timeout, values and rejections pass through.");
 }
 
 /** Offline queue order (2026-11-02): while the network is down, two sales
@@ -741,6 +752,7 @@ async function main() {
     await testAtomicSaleClientRejectionSurfacesReason();
     await testOfflineQueueOrder();
     await testOfflineIdenticalFreshSaleQueues();
+    await testSaleRequestTimeout();
     console.log("Atomic sales PostgreSQL tests passed: cash/credit, tender/change, stock conversions, discounts/tax, rollback, idempotency, authorization, tenant scope, and stock limits.");
   } finally {
     await db.close();

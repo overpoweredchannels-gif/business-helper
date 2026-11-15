@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { cloneDefaultTemplate } from "../src/lib/print/default-templates";
-import { loadReceiptTemplate } from "../src/lib/print/receipt-template-loader";
+import { loadReceiptTemplate, readCachedReceiptTemplate, saveCachedReceiptTemplate } from "../src/lib/print/receipt-template-loader";
 
 // The receipt dialog must ALWAYS settle: saved template when the API
 // answers, the built-in default otherwise — never an endless
@@ -112,6 +112,35 @@ async function main(): Promise<void> {
     assert.equal(result.status === "defaulted" && result.reason, "empty");
     assert.equal(result.template.docType, "retail_receipt", "the default template keeps the dialog usable");
     assert.equal(result.template.receiptWidthMm, 80, "the default template carries the default width");
+  }
+
+  // 8. Offline template cache (2026-11-15): the last loaded org template
+  // is cached per scope so an offline receipt opens instantly; a corrupt
+  // cache never crashes the read.
+  {
+    const values = new Map<string, string>();
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
+    } } });
+    try {
+      assert.equal(readCachedReceiptTemplate("org:actor"), null, "no cached template before any save");
+      const saved = { ...cloneDefaultTemplate("retail_receipt"), name: "Counter receipt", receiptWidthMm: 58 as const };
+      saveCachedReceiptTemplate("org:actor", saved);
+      const cached = readCachedReceiptTemplate("org:actor");
+      assert.equal(cached?.name, "Counter receipt");
+      assert.equal(cached?.receiptWidthMm, 58);
+      assert.equal(readCachedReceiptTemplate("org:other"), null, "the cache is scoped");
+      values.set("aankh:receipt-template:org:actor", "{not json");
+      assert.equal(readCachedReceiptTemplate("org:actor"), null, "corrupt JSON reads as no cache");
+      values.set("aankh:receipt-template:org:actor", JSON.stringify({ name: "no shape" }));
+      assert.equal(readCachedReceiptTemplate("org:actor"), null, "a shapeless cache reads as no cache");
+    } finally {
+      if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+      else Reflect.deleteProperty(globalThis, "window");
+    }
   }
 
   console.log("test-pos-receipt-template-loader: all assertions passed");

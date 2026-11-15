@@ -36,6 +36,28 @@ type SaleStatus = { status: "unknown" | "confirmed"; result?: AtomicSaleResult }
 /** A server rejection is final: the attempt is dropped, never retried. */
 class SaleRejectedError extends Error {}
 
+/** Bound on one sale RPC round-trip (2026-11-15). A hung network must
+ * never hold the queue mutex — and the Save button's "Saving…" state —
+ * indefinitely: on timeout the attempt stays queued and the server-side
+ * idempotency key reconciles it on the next drain, so a late
+ * confirmation can never double-post. */
+export const SALE_REQUEST_TIMEOUT_MS = 8000;
+
+/** Race one sale RPC against the timeout. A rejection still propagates
+ * (fast offline failure stays fast); only a promise that never settles
+ * resolves as "timeout". */
+export async function withSaleRequestTimeout<T>(promise: Promise<T>, timeoutMs: number = SALE_REQUEST_TIMEOUT_MS): Promise<T | "timeout"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /** Ordered queue, oldest first. Scope is `${organizationId}:${profileId}`. */
 const queueStorageKey = (scope: string) => `tradeos:pending-sales-queue:v1:${scope}`;
 const legacyStorageKey = (scope: string) => `tradeos:pending-sale:v1:${scope}`;
@@ -127,10 +149,14 @@ function inputsEqual(a: AtomicSaleInput, b: AtomicSaleInput): boolean {
 
 async function readSaleStatus(supabase: SupabaseClient, requestId: string) {
   try {
-    return await supabase.rpc("get_sales_invoice_request_status", { p_request_id: requestId }) as unknown as {
-      data: SaleStatus | null;
-      error: { code?: string; message?: string } | null;
-    };
+    const outcome = await withSaleRequestTimeout(
+      supabase.rpc("get_sales_invoice_request_status", { p_request_id: requestId }) as unknown as Promise<{
+        data: SaleStatus | null;
+        error: { code?: string; message?: string } | null;
+      }>,
+    );
+    if (outcome === "timeout") return { data: null, error: { message: "Request status timed out" } };
+    return outcome;
   } catch {
     return { data: null, error: { message: "Request status could not be reached" } };
   }
@@ -149,10 +175,17 @@ async function submitAtomicSale(
   let data: AtomicSaleResult | null = null;
   let error: { code?: string; message?: string } | null = null;
   try {
-    ({ data, error } = await supabase.rpc("create_sales_invoice_atomic", {
-      p_request_id: attempt.requestId,
-      p_input: attempt.input,
-    }) as unknown as { data: AtomicSaleResult | null; error: { code?: string; message?: string } | null });
+    const outcome = await withSaleRequestTimeout(
+      supabase.rpc("create_sales_invoice_atomic", {
+        p_request_id: attempt.requestId,
+        p_input: attempt.input,
+      }) as unknown as Promise<{ data: AtomicSaleResult | null; error: { code?: string; message?: string } | null }>,
+    );
+    if (outcome === "timeout") {
+      error = { message: "Sale request timed out" };
+    } else {
+      ({ data, error } = outcome);
+    }
   } catch (caught) {
     error = { message: caught instanceof Error ? caught.message : "Sale request connection failed" };
   }

@@ -6,7 +6,7 @@ import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { cloneDefaultTemplate } from "@/lib/print/default-templates";
 import type { PrintTemplate } from "@/lib/print/print-template-types";
 import { buildPrintableReceiptHtml, getReceiptLineRows, getReceiptPrintableWidthMm, getReceiptSummaryRows, getReceiptWidthMm, receiptStackedDetail, resolveReceiptChrome, resolveReceiptCustomerName, type Receipt, type ReceiptChromeLabels, type ReceiptSummaryLabels } from "@/lib/print/retail-receipt";
-import { loadReceiptTemplate } from "@/lib/print/receipt-template-loader";
+import { loadReceiptTemplate, readCachedReceiptTemplate, saveCachedReceiptTemplate } from "@/lib/print/receipt-template-loader";
 import { saveReceiptTemplate } from "@/lib/print/receipt-template-save";
 import { awaitPrintStage, dispatchNativePrint, PRINT_STAGE_ABORTED, PrintRunController, PrintRunUiLock, type PrintRunToken } from "@/lib/print/print-run";
 import { fillWhatsAppTemplate, firstWhatsAppLink, parseWhatsAppNumber } from "@/lib/share/whatsapp";
@@ -193,6 +193,19 @@ export function POSReceipt({ receipt, autoPrint = false, autoOpen = false, onDon
   useEffect(() => {
     let live = true;
     const scope = receipt.scope;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      // Offline (2026-11-15): the template fetch cannot succeed — do not
+      // make the first receipt wait out the loader's 8s timeout on
+      // "Preparing receipt…". Use the cached org template when one was
+      // saved online, else the built-in default.
+      const cached = readCachedReceiptTemplate(scope) ?? defaultTemplate;
+      queueMicrotask(() => {
+        if (!live) return;
+        setTemplate(cached);
+        setLoadedScope(scope);
+      });
+      return () => { live = false; };
+    }
     // The loader ALWAYS resolves in bounded time (saved template, or the
     // built-in default on empty / error / timeout), so templateReady can
     // never wait on a stalled fetch again — the previous chain awaited
@@ -204,6 +217,7 @@ export function POSReceipt({ receipt, autoPrint = false, autoOpen = false, onDon
         authorizedFetch("/api/print-templates?doc_type=retail_receipt", { signal }).then(response => response.json()),
     }).then(result => {
       if (!live) return;
+      if (result.status === "loaded") saveCachedReceiptTemplate(scope, result.template);
       setTemplate(result.template);
       setLoadedScope(scope);
     });

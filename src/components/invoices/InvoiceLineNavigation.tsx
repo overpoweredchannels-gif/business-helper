@@ -12,7 +12,10 @@ const focusField = (field?: Field) => {
 
 /** Enter advances within invoice lines; it never triggers invoice submission.
  * Escape on a line with no entered values (no product, no quantity, price,
- * discount or bonus typed) skips that line via onSkipLine instead. */
+ * discount or bonus typed) skips that line via onSkipLine instead.
+ * Enter on the last field of the last line does NOT auto-add a line
+ * (2026-11-15): it focuses the "+ Add Product Line" button, so one more
+ * Enter adds the line and Tab moves on toward Save. */
 export function InvoiceLineNavigation({ children, onAddLine, onSkipLine }: { children: ReactNode; onAddLine: () => void; onSkipLine?: (index: number) => void }) {
   const root = useRef<HTMLDivElement>(null);
   const pendingRow = useRef<number | null>(null);
@@ -68,7 +71,14 @@ export function InvoiceLineNavigation({ children, onAddLine, onSkipLine }: { chi
     const rows = Array.from(root.current?.querySelectorAll("[data-invoice-line]") ?? []);
     const nextIndex = rows.indexOf(row) + 1;
     if (rows[nextIndex]) focusField(fieldsIn(rows[nextIndex])[0]);
-    else { pendingRow.current = nextIndex; onAddLine(); }
+    else {
+      // Last field of the last line (2026-11-15): do not auto-add a line.
+      // Focus the "+ Add Product Line" button instead — one more Enter
+      // adds the line, Tab moves on toward the Save button.
+      const add = document.querySelector("[data-sale-add-line]");
+      if (add instanceof HTMLButtonElement) { add.focus(); return; }
+      pendingRow.current = nextIndex; onAddLine();
+    }
   };
   return <div ref={root} className="mb-4 space-y-3" onKeyDown={handleKeyDown}>{children}</div>;
 }

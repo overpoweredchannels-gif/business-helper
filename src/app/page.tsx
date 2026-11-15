@@ -6379,6 +6379,10 @@ setCustomerOrganizationName("");
     const drainAndRefresh = () => {
       void drainPendingSalesQueue(supabase, scope).then((drained) => {
         if (drained.confirmedCount > 0) {
+          // Sync visibility (2026-11-15): the cashier must see that the
+          // waiting sales actually synced — the queue clearing silently
+          // looked like the sales had vanished.
+          setSalesMessage(t('offline.syncedCount').replace('{count}', String(drained.confirmedCount)));
           fetchSalesTransactions();
           fetchSalesItems();
           fetchProducts();
@@ -20881,13 +20885,23 @@ setCustomerOrganizationName("");
                 </InvoiceLineNavigation>
               )}
 
-              <button
-                type="button"
-                data-entry-add data-sale-add-line onClick={handleAddSalesLine}
-                className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
-              >
-                {t('sell.addProductLine')}
-              </button>
+              <div className="mb-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  data-entry-add data-sale-add-line onClick={handleAddSalesLine}
+                  className="min-h-11 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
+                >
+                  {t('sell.addProductLine')}
+                </button>
+                <button
+                  type="button"
+                  data-sale-go-to-save
+                  onClick={() => { const save = document.querySelector("[data-sale-save]"); if (save instanceof HTMLButtonElement) save.focus(); }}
+                  className="min-h-11 rounded border border-input px-4 py-2 text-sm text-foreground transition hover:bg-muted"
+                >
+                  {t('sell.goToSave')}
+                </button>
+              </div>
             </div>
 
             {salesLines.length > 0 && (

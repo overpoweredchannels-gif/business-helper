@@ -69,7 +69,16 @@ export function ProductSearchSelect({ value, onChange, products, label, searchPl
     setResetState({ query, products, maxSuggestions });
     setVisibleCount(maxSuggestions);
   }
-  const matches = rankedAll.slice(0, visibleCount);
+  const visibleMatches = rankedAll.slice(0, visibleCount);
+  // Scanned-product highlight (2026-11-15): reopening a line whose product
+  // sits beyond the first page of matches used to highlight the first
+  // visible row instead — Enter then chose a stranger product. Keep the
+  // chosen record in the visible list so it stays highlighted and Enter
+  // selects it.
+  const selectedProduct = value ? rankedAll.find(product => product.id === value) : undefined;
+  const matches = selectedProduct && !visibleMatches.some(product => product.id === selectedProduct.id)
+    ? [selectedProduct, ...visibleMatches]
+    : visibleMatches;
   const activeIndex = activeSuggestionIndex(matches, value, active);
   const { anchorRef, placement, maxHeightPx } = useSuggestionPlacement(open);
   useLayoutEffect(() => {
