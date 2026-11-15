@@ -5830,7 +5830,7 @@ setCustomerOrganizationName("");
       async () => {
         const { data, error } = await supabase
           .from("purchase_transactions")
-          .select("id, supplier_id, invoice_number, created_at, purchase_date, expense_review_status, expense_reviewed_at")
+          .select("id, supplier_id, invoice_number, created_at, purchase_date, expense_review_status, expense_reviewed_at, total_amount")
           .eq("organization_id", orgId)
           .order("created_at", { ascending: false });
         if (error) throw error;

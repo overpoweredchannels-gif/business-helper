@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { buildRecentActivities, RECENT_ACTIVITY_LIMIT } from "../src/lib/dashboard/recent-activity";
 
 // Dashboard Recent Activity slice.
@@ -82,6 +84,29 @@ function main() {
   assert.equal("createdAt" in (only as Record<string, unknown>), false);
   assert.equal(only?.amount, "Rs100.00");
   assert.equal(input[0]?.id, "sale-1");
+
+  // 6. Regression guard for the dashboard purchase amount (15 Nov 2026):
+  // the Recent Activity feed renders a purchase's amount from
+  // `total_amount` (the invoice total), the same field sales use. The
+  // `fetchPurchaseTransactions` query that fills the purchase list MUST
+  // select total_amount — when it was missing, every purchase rendered
+  // €0.00 (safeNumber(undefined) = 0) while its invoice total was €1.00
+  // (live QA, P-50032). This reads the page source and asserts the
+  // select includes it, so a future edit that drops the column fails
+  // this test instead of silently zeroing every purchase amount.
+  {
+    const pagePath = fileURLToPath(new URL("../src/app/page.tsx", import.meta.url));
+    const pageSource = readFileSync(pagePath, "utf8");
+    const purchaseSelect = pageSource.match(
+      /\.from\("purchase_transactions"\)\s*\.select\("([^"]*)"\)/,
+    );
+    assert.ok(purchaseSelect, "fetchPurchaseTransactions must select from purchase_transactions");
+    const columns = (purchaseSelect[1] ?? "").split(",").map((c) => c.trim());
+    assert.ok(
+      columns.includes("total_amount"),
+      "fetchPurchaseTransactions must select total_amount so the dashboard shows the purchase invoice total",
+    );
+  }
 
   console.log("Dashboard Recent Activity tests passed: merged recency order, purchases survive the 5-row cap, createdAt never leaks.");
 }
