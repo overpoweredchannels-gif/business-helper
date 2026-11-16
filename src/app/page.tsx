@@ -38,6 +38,15 @@ import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
 import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecision, resolveSaleCashReceived, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { loadOfflineCustomers, loadOfflineProducts, saveOfflineCustomers, saveOfflineProducts } from "@/lib/offline/offline-store";
+import {
+  clearIdentityCache,
+  identityCacheForUser,
+  isDesktopApp,
+  isNetworkError,
+  readIdentityCache,
+  saveIdentityCache,
+  type CachedIdentity,
+} from "@/lib/offline/identity-cache";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { creditBalanceTimeline } from "@/lib/sales/credit-balance";
 import { formatProductsSummary, getPaymentStatusBadgeKind, getSalesPaymentStatusKind, paymentStatusBadgeClass } from "@/lib/history/payment-status";
@@ -2012,11 +2021,65 @@ export default function Home() {
 
     if (error) {
       console.error("Supabase fetch organization error:", JSON.stringify(error, null, 2));
+      // Slice S1 (desktop only): a network failure loading the org is an
+      // offline cold start, not a missing org — use the cached org row.
+      if (isDesktopApp() && isNetworkError(error)) {
+        const cached = readIdentityCache();
+        if (cached?.organizationRow && cached.organizationId === orgId) {
+          populateBusinessSettings(cached.organizationRow);
+          return;
+        }
+      }
       setBusinessSettingsError(t('page.bizSettingsLoadFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return;
     }
 
     populateBusinessSettings(data);
+    // Slice S1: keep the offline identity cache fresh on every successful
+    // online org load (the SQLite backend in S2 replaces the storage
+    // behind this call, not the call sites).
+    if (data) {
+      saveIdentityCache({
+        organizationId: data.id,
+        organizationRow: data,
+        booksCurrency: booksCurrencyRef.current,
+      });
+    }
+  };
+
+  // Slice S1 — offline cold start: restore the app identity from the
+  // cached profile + org without any network call. The cached profile row
+  // IS the profile (same shape as the live select), and the cached org row
+  // feeds populateBusinessSettings exactly like the live one, so currency,
+  // org name and policy all resolve the same way. The dashboard tracker is
+  // activated for this account first — readDashboardSource ignores every
+  // read until then — and only the two catalogue loaders run, because they
+  // are the ones with an offline cache fallback; every other list refreshes
+  // on reconnect (see the online-transition effect).
+  const restoreCachedIdentity = (cached: CachedIdentity) => {
+    dashboardReadTrackerRef.current!.activate(cached.profileId, cached.organizationId);
+    dashboardAccountIdRef.current = cached.profileId;
+    setAuthError(null);
+    setCurrentProfile(
+      cached.profileRow ?? {
+        id: cached.profileId,
+        organization_id: cached.organizationId,
+        display_name: cached.displayName,
+        email: cached.email,
+        role: cached.role,
+      },
+    );
+    setCurrentOrganizationId(cached.organizationId);
+    if (cached.organizationRow) {
+      populateBusinessSettings(cached.organizationRow);
+    } else if (cached.booksCurrency) {
+      setBooksCurrency(cached.booksCurrency);
+      booksCurrencyRef.current = cached.booksCurrency;
+      setActiveBooksCurrency(cached.booksCurrency);
+    }
+    offlineIdentityRestoredRef.current = true;
+    void fetchProducts(cached.organizationId);
+    void fetchCustomers(cached.organizationId);
   };
 
   const loadProfile = async (userId: string | null) => {
@@ -2043,6 +2106,16 @@ export default function Home() {
 
     if (profileError) {
       console.error("Profile load error details:", JSON.stringify(profileError, null, 2));
+      // Slice S1 (desktop only): a network failure loading the profile is
+      // an offline cold start, not a missing profile — restore the cached
+      // identity for this user instead of signing out.
+      if (isDesktopApp() && isNetworkError(profileError)) {
+        const cached = identityCacheForUser(readIdentityCache(), userId);
+        if (cached) {
+          restoreCachedIdentity(cached);
+          return;
+        }
+      }
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
       setAuthError(t('page.profileLoadFailed'));
@@ -2092,6 +2165,17 @@ export default function Home() {
     setAuthError(null);
     setCurrentProfile(resolvedProfile);
     setCurrentOrganizationId(resolvedProfile.organization_id);
+    // Slice S1: keep the offline identity cache fresh on every successful
+    // online profile load (the SQLite backend in S2 replaces the storage
+    // behind this call, not the call sites).
+    saveIdentityCache({
+      profileId: resolvedProfile.id,
+      organizationId: resolvedProfile.organization_id,
+      displayName: resolvedProfile.display_name ?? null,
+      email: resolvedProfile.email ?? null,
+      role: resolvedProfile.role ?? null,
+      profileRow: resolvedProfile,
+    });
     fetchCurrentOrganization(resolvedProfile.organization_id);
     fetchBrands(resolvedProfile.organization_id);
     fetchCategories(resolvedProfile.organization_id);
@@ -2186,6 +2270,23 @@ export default function Home() {
     if (authRequestId !== authCheckRequestRef.current) return;
     if (error) {
       console.error(`${logTag} getUser error:`, error);
+      // Slice S1 (desktop only): a NETWORK failure here must not sign the
+      // user out — the stored session is still valid, only unreachable.
+      // Trust the cached session + cached identity and continue offline.
+      // A non-network auth error (invalid token, 401) still signs out
+      // below. The cached identity is only restored for the session's own
+      // user, never for a different (stale) account.
+      if (isDesktopApp() && isNetworkError(error)) {
+        const sessionUser = sessionData.session?.user ?? null;
+        const cached = identityCacheForUser(readIdentityCache(), sessionUser?.id ?? null);
+        if (cached && sessionUser) {
+          console.log(`${logTag} offline cold start — restoring cached identity for ${sessionUser.id}`);
+          setCurrentUser(sessionUser);
+          lastResolvedAuthUserIdRef.current = sessionUser.id;
+          restoreCachedIdentity(cached);
+          return;
+        }
+      }
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
@@ -2198,12 +2299,24 @@ export default function Home() {
     invalidateDashboardSession();
     setCurrentUser(user);
     lastResolvedAuthUserIdRef.current = user?.id ?? null;
+    // Slice S1: live auth succeeded — we are no longer running on a
+    // cached identity (clears the reconnect re-validation flag).
+    offlineIdentityRestoredRef.current = false;
     if (user?.id) {
       try {
-        console.log(`${logTag} calling provisionWorkspace...`);
-        await provisionWorkspace();
-        if (authRequestId !== authCheckRequestRef.current) return;
-        console.log(`${logTag} provisionWorkspace succeeded, calling loadProfile...`);
+        // Slice S1: never attempt the provision POST while offline — it
+        // cannot succeed, and its throw used to null the profile. The
+        // call runs on the next online transition instead (see the
+        // online-transition effect). The web app is unchanged: provision
+        // always runs there.
+        if (!isDesktopApp() || typeof navigator === "undefined" || navigator.onLine) {
+          console.log(`${logTag} calling provisionWorkspace...`);
+          await provisionWorkspace();
+          if (authRequestId !== authCheckRequestRef.current) return;
+          console.log(`${logTag} provisionWorkspace succeeded, calling loadProfile...`);
+        } else {
+          console.log(`${logTag} provisionWorkspace skipped (offline), calling loadProfile...`);
+        }
         await loadProfile(user.id);
         console.log(`${logTag} loadProfile succeeded`);
       } catch (provisionErr) {
@@ -2211,6 +2324,18 @@ export default function Home() {
         console.error(`${logTag} CATCH: provisionErr is Error? ${provisionErr instanceof Error}`);
         console.error(`${logTag} CATCH: provisionErr.message =`, provisionErr instanceof Error ? provisionErr.message : String(provisionErr));
         console.error(`${logTag} CATCH: provisionErr.stack =`, provisionErr instanceof Error ? provisionErr.stack : "N/A");
+        // Slice S1 (desktop only): a network failure in provision while a
+        // cached identity exists is an offline cold start, not a sign-out.
+        if (isDesktopApp() && isNetworkError(provisionErr)) {
+          const cached = identityCacheForUser(readIdentityCache(), user.id);
+          if (cached) {
+            console.log(`${logTag} offline cold start after provision failure — restoring cached identity`);
+            setCurrentUser(user);
+            lastResolvedAuthUserIdRef.current = user.id;
+            restoreCachedIdentity(cached);
+            return;
+          }
+        }
         setAuthError(provisionErr instanceof Error ? provisionErr.message : t('page.workspaceProvisionFailed'));
         setCurrentProfile(null);
         setCurrentOrganizationId(null);
@@ -2388,6 +2513,9 @@ setCustomerOrganizationName("");
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
+      // Slice S1: a signed-out device must never restore the previous
+      // user from the identity cache on an offline cold start.
+      clearIdentityCache();
       setAuthMessage(t('page.loggedOut'));
       router.push("/login");
     } catch (err) {
@@ -5884,8 +6012,15 @@ setCustomerOrganizationName("");
 
   // Phase E1: the offline cache is scoped exactly like the sale queue
   // (org + profile), so one cashier never sees another's catalogue.
-  const offlineCacheScope = (orgId: string): string | null =>
-    currentProfile?.id ? `${orgId}:${currentProfile.id}` : null;
+  // Slice S1: when the live profile is absent (offline cold start), the
+  // cached profile scopes the cache exactly the same way — the restore
+  // sets the live profile a moment later, but the catalogue loaders run
+  // before that state lands.
+  const offlineCacheScope = (orgId: string): string | null => {
+    const profileId =
+      currentProfile?.id ?? (isDesktopApp() ? readIdentityCache()?.profileId ?? null : null);
+    return profileId ? `${orgId}:${profileId}` : null;
+  };
 
   const fetchProducts = async (organizationId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
@@ -6645,10 +6780,21 @@ setCustomerOrganizationName("");
   // drain effect above already syncs queued sales on "online"; this
   // covers the no-queue case, where nothing else would refetch.
   const wasOnlineRef = useRef(isOnline);
+  // Slice S1: true while the app runs on a cached identity (offline cold
+  // start). On the next online transition the live auth path re-validates
+  // (provision + live profile load) and this flag clears.
+  const offlineIdentityRestoredRef = useRef(false);
   useEffect(() => {
     if (isOnline && !wasOnlineRef.current) {
       void fetchProducts(currentOrganizationId);
       void fetchCustomers(currentOrganizationId);
+      // Slice S1: re-validate live now that the network is back — the
+      // re-run provisions the workspace and reloads the profile live,
+      // which refreshes the identity cache.
+      if (offlineIdentityRestoredRef.current) {
+        offlineIdentityRestoredRef.current = false;
+        void checkAuthUser();
+      }
     }
     wasOnlineRef.current = isOnline;
     // eslint-disable-next-line react-hooks/exhaustive-deps

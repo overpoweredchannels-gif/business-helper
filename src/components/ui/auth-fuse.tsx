@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useCallback, type ReactNode } from "react";
+import { useState, useCallback, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Mail, Lock, User, Eye, EyeOff, Loader2, Shield,
@@ -12,10 +12,38 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "@/lib/supabase/client";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { isDesktopApp } from "@/lib/offline/identity-cache";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { LanguageSwitcher } from "@/components/regional/LanguageSwitcher";
 
 type LoginMethod = "email" | "staff";
+
+// Slice S1 — offline sign-in: the installed desktop app shows a plain
+// "Internet connection required" message instead of letting the sign-in
+// attempt fail with a raw network error. The guard below (desktop only)
+// refuses every auth submit while offline; the web app is unchanged.
+function useOnlineStatus(): boolean {
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  return online;
+}
+
+/** Desktop-only offline guard for an auth submit. Returns true when the submit may proceed. */
+function authSubmitAllowed(online: boolean, setError: (message: string | null) => void, message: string): boolean {
+  if (isDesktopApp() && !online) {
+    setError(message);
+    return false;
+  }
+  return true;
+}
 
 type NativeWebViewBridge = {
   postMessage: (message: string) => void;
@@ -264,10 +292,14 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const online = useOnlineStatus();
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    // Slice S1 (desktop only): a new sign-in while offline is refused
+    // with a plain message — it cannot succeed without the server.
+    if (!authSubmitAllowed(online, setError, t('offline.internetRequired'))) return;
     setLoading(true);
     try {
       if (method === "staff") {
@@ -331,7 +363,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
     } finally {
       setLoading(false);
     }
-  }, [method, email, loginId, password, rememberMe, router, t]);
+  }, [method, email, loginId, password, rememberMe, router, t, online]);
 
   return (
     <form onSubmit={handleSubmit} autoComplete="on" className="animate-slideUp">
@@ -448,10 +480,13 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const online = useOnlineStatus();
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    // Slice S1 (desktop only): no auth action can succeed offline.
+    if (!authSubmitAllowed(online, setError, t('offline.internetRequired'))) return;
 
     if (password !== confirmPassword) {
       setError(t('auth.passwordsMismatch'));
@@ -477,7 +512,7 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
     } finally {
       setLoading(false);
     }
-  }, [fullName, email, password, confirmPassword, router, onNavigate, t]);
+  }, [fullName, email, password, confirmPassword, router, onNavigate, t, online]);
 
   return (
     <form onSubmit={handleSubmit} autoComplete="on" className="animate-slideUp">
@@ -558,10 +593,13 @@ function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: A
   const [email, setEmail] = useState(initialEmail || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const online = useOnlineStatus();
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    // Slice S1 (desktop only): no auth action can succeed offline.
+    if (!authSubmitAllowed(online, setError, t('offline.internetRequired'))) return;
     if (!email) { setError(t('auth.enterEmail')); return; }
     setLoading(true);
     try {
@@ -575,7 +613,7 @@ function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: A
     } finally {
       setLoading(false);
     }
-  }, [email, onNavigate, t]);
+  }, [email, onNavigate, t, online]);
 
   return (
     <form onSubmit={handleSubmit} className="animate-slideUp">
@@ -693,9 +731,13 @@ function GoogleButton() {
   const { t } = useRegional();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const online = useOnlineStatus();
 
   const handleClick = useCallback(async () => {
     setError(null);
+    // Slice S1 (desktop only): a new sign-in while offline is refused
+    // with a plain message — it cannot succeed without the server.
+    if (!authSubmitAllowed(online, setError, t('offline.internetRequired'))) return;
     setLoading(true);
     try {
       if (postToTradeOSMobile({ type: "tradeos-google-sign-in" })) {
@@ -711,7 +753,7 @@ function GoogleButton() {
       setError(err instanceof Error ? err.message : t('auth.googleFailed'));
       setLoading(false);
     }
-  }, [t]);
+  }, [t, online]);
 
   return (
     <div className="grid gap-2">
@@ -738,8 +780,10 @@ interface AuthUIProps {
 }
 
 export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
+  const { t } = useRegional();
   const [view, setView] = useState<AuthView>(defaultMode);
   const [email, setEmail] = useState<string>("");
+  const online = useOnlineStatus();
 
   const handleNavigate = useCallback((newView: AuthView, data?: { email?: string }) => {
     if (data?.email) setEmail(data.email);
@@ -771,6 +815,15 @@ export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
             key={view}
             className="bg-card rounded-[18px] border border-border p-6 sm:p-8 shadow-overlay"
           >
+            {/* Slice S1 (desktop only): a cold start with no prior sign-in
+                shows this instead of a sign-in form that cannot work —
+                signing in needs the server. The message clears itself when
+                the network returns. */}
+            {isDesktopApp() && !online && (
+              <div className="mb-4">
+                <Alert variant="warning">{t('offline.internetRequired')}</Alert>
+              </div>
+            )}
             {view === "signin" && <SignInForm onNavigate={handleNavigate} />}
             {view === "signup" && <SignUpForm onNavigate={handleNavigate} />}
             {view === "forgot" && <ForgotPasswordForm onNavigate={handleNavigate} initialEmail={email} />}
