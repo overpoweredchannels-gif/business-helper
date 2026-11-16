@@ -1,14 +1,17 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import { autoUpdater } from "electron-updater";
 import { spawn, type ChildProcess } from "node:child_process";
 import * as http from "node:http";
 import { createServer as createNetServer } from "node:net";
 import * as path from "node:path";
+import { createLocalStore, type LocalSaleRow, type LocalStore, type StoredIdentity } from "./store";
 
 // Slice S0 — desktop shell spike. Serves the Next.js standalone build from
 // the local disk: the main process spawns .next/standalone/server.js on a
-// random loopback port and opens a window at that URL. No SQLite, no sync,
-// no local store yet — the window shows the existing app in online mode.
+// random loopback port and opens a window at that URL. Slice S2 adds the
+// local-first SQLite store (electron/store.ts) over IPC — no sync engine
+// yet; the queue drain still runs in the renderer, pointed at SQLite in
+// the desktop build.
 
 const DEV_SERVER_URL = "http://localhost:3000";
 const MAX_SERVER_RESTARTS = 5;
@@ -23,6 +26,56 @@ let serverProcess: ChildProcess | null = null;
 let serverRestarts = 0;
 let mainWindow: BrowserWindow | null = null;
 let quitting = false;
+let localStore: LocalStore | null = null;
+
+function setupLocalStore(): void {
+  // Slice S2 — the local-first SQLite store. A failure here must never
+  // stop the app: the preload bridge simply omits the store methods and
+  // the renderer falls back to browser storage (same as the web app).
+  try {
+    localStore = createLocalStore(path.join(app.getPath("userData"), "aankh.db"));
+  } catch (error) {
+    console.error("Aankh local store unavailable — sales queue falls back to browser storage:", error);
+    localStore = null;
+    return;
+  }
+  const requireScope = (value: unknown): string => {
+    if (typeof value !== "string" || value.length === 0) throw new Error("Invalid scope");
+    return value;
+  };
+  const requireSaleRows = (value: unknown): LocalSaleRow[] => {
+    if (!Array.isArray(value)) throw new Error("Invalid sale rows");
+    return value.map((row): LocalSaleRow => {
+      const item = row as Partial<LocalSaleRow>;
+      if (typeof item.requestId !== "string" || item.requestId.length === 0) {
+        throw new Error("Invalid sale row: requestId");
+      }
+      if (typeof item.input !== "object" || item.input === null || Array.isArray(item.input)) {
+        throw new Error("Invalid sale row: input");
+      }
+      return {
+        requestId: item.requestId,
+        input: item.input as Record<string, unknown>,
+        provisionalNumber: typeof item.provisionalNumber === "string" ? item.provisionalNumber : null,
+      };
+    });
+  };
+  ipcMain.handle("aankh:local-sales:list", (_event, scope: unknown) =>
+    (localStore as LocalStore).listSales(requireScope(scope)),
+  );
+  ipcMain.handle("aankh:local-sales:replace", (_event, scope: unknown, rows: unknown) =>
+    (localStore as LocalStore).replaceSales(requireScope(scope), requireSaleRows(rows)),
+  );
+  ipcMain.handle("aankh:local-sales:remove", (_event, scope: unknown, requestId: unknown) => {
+    if (typeof requestId !== "string" || requestId.length === 0) throw new Error("Invalid requestId");
+    (localStore as LocalStore).removeSale(requireScope(scope), requestId);
+  });
+  ipcMain.handle("aankh:identity:get", () => (localStore as LocalStore).getIdentity());
+  ipcMain.handle("aankh:identity:set", (_event, entry: unknown) => {
+    (localStore as LocalStore).setIdentity(entry as StoredIdentity);
+  });
+  ipcMain.handle("aankh:identity:clear", () => (localStore as LocalStore).clearIdentity());
+}
 
 function standaloneServerPath(): string {
   if (app.isPackaged) {
@@ -188,6 +241,7 @@ function setupAutoUpdater(): void {
 }
 
 void app.whenReady().then(async () => {
+  setupLocalStore();
   setupAutoUpdater();
   const url = await resolveAppUrl();
   createWindow(url);
@@ -202,5 +256,13 @@ app.on("before-quit", () => {
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
     serverProcess = null;
+  }
+  if (localStore) {
+    try {
+      localStore.close();
+    } catch {
+      // Best-effort: the OS reclaims the handle on exit.
+    }
+    localStore = null;
   }
 });

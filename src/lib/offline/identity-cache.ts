@@ -9,9 +9,14 @@
  * Storage: localStorage for now — one small row, and the auth path needs a
  * synchronous read at cold start. In the Electron renderer this storage
  * lives in the `userData` Chromium profile on disk, so it survives restart
- * and app updates. Slice S2 migrates this backend to the SQLite
- * `identity_cache` table behind the SAME exported functions — callers must
- * only use the functions below, never the storage key directly.
+ * and app updates. Slice S2 added the SQLite `identity_cache` table
+ * (electron/store.ts) as the durable record behind the SAME exported
+ * functions: every write is mirrored to SQLite on desktop (fire-and-forget
+ * over IPC), and `readIdentityCacheAsync()` reads SQLite first — so the
+ * identity survives even a wiped browser profile. The synchronous
+ * `readIdentityCache()` keeps reading localStorage (the auth path needs a
+ * sync read); the async cold-start paths in `src/app/page.tsx` use the
+ * async read.
  *
  * Safety rules (same discipline as the offline catalogue cache):
  * - Every function soft-fails when storage is unavailable or the stored
@@ -58,6 +63,20 @@ function storage(): StorageLike | null {
   if (typeof globalThis === "undefined") return null;
   const g = globalThis as { localStorage?: StorageLike; window?: { localStorage?: StorageLike } };
   return g.localStorage ?? g.window?.localStorage ?? null;
+}
+
+/** The preload bridge's identity methods (SQLite), or null outside the desktop shell. */
+type DesktopIdentityBridge = {
+  get(): Promise<CachedIdentity | null>;
+  set(entry: CachedIdentity): Promise<void>;
+  clear(): Promise<void>;
+};
+
+function desktopIdentityBridge(): DesktopIdentityBridge | null {
+  if (typeof window === "undefined") return null;
+  const bridge = (window as unknown as { aankhDesktop?: { identity?: DesktopIdentityBridge } })
+    .aankhDesktop;
+  return bridge?.identity ?? null;
 }
 
 /** True when the app runs inside the installed desktop shell (or a desktop build). */
@@ -140,6 +159,26 @@ export function readIdentityCache(): CachedIdentity | null {
 }
 
 /**
+ * Slice S2 — async read of the cached identity. On desktop this reads the
+ * SQLite `identity_cache` table first (the durable record), falling back
+ * to the localStorage copy when the store is unavailable or empty; on web
+ * it is the localStorage read. The async cold-start paths use this so a
+ * wiped browser profile still restores from SQLite.
+ */
+export async function readIdentityCacheAsync(): Promise<CachedIdentity | null> {
+  const bridge = desktopIdentityBridge();
+  if (isDesktopApp() && bridge) {
+    try {
+      const entry = await bridge.get();
+      if (isValidCachedIdentity(entry)) return normalize(entry);
+    } catch {
+      /* Store unreachable — fall through to the local copy below. */
+    }
+  }
+  return readIdentityCache();
+}
+
+/**
  * Merge a partial write into the cached identity. The profile load writes
  * the profile part, the org load writes the org part; neither clobbers the
  * other. A write for a different user or organization resets the entry
@@ -174,16 +213,33 @@ export function saveIdentityCache(partial: Partial<CachedIdentity>): void {
   } catch {
     // Storage full / unavailable — the cache is best-effort, never fatal.
   }
+  // Slice S2: mirror the write to the durable SQLite record on desktop.
+  // Fire-and-forget — a store failure must never break sign-in.
+  const bridge = desktopIdentityBridge();
+  if (isDesktopApp() && bridge) {
+    void bridge.set(merged).catch(() => {
+      /* Best-effort mirror; the localStorage copy is the fallback. */
+    });
+  }
 }
 
 /** Drop the cached identity (sign-out). A signed-out device must never restore the previous user offline. */
 export function clearIdentityCache(): void {
   const store = storage();
-  if (!store) return;
-  try {
-    store.removeItem(IDENTITY_CACHE_STORAGE_KEY);
-  } catch {
-    // Best-effort.
+  if (store) {
+    try {
+      store.removeItem(IDENTITY_CACHE_STORAGE_KEY);
+    } catch {
+      // Best-effort.
+    }
+  }
+  // Slice S2: clear the durable SQLite record too, or a wiped profile
+  // would resurrect the signed-out user at the next cold start.
+  const bridge = desktopIdentityBridge();
+  if (isDesktopApp() && bridge) {
+    void bridge.clear().catch(() => {
+      /* Best-effort. */
+    });
   }
 }
 

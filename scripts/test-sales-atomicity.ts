@@ -112,7 +112,7 @@ async function testAtomicSaleClientRejectionSurfacesReason() {
     assert.ok(thrown instanceof Error, "a server rejection throws");
     assert.match(thrown.message, /Cash received is less than the sale total/, "a server rejection surfaces its real reason");
     assert.ok(!/could not be confirmed/i.test(thrown.message), "a rejection does not hide behind the ambiguous message");
-    assert.deepEqual(readPendingSalesQueue("org:actor"), [], "a rejected attempt is dropped from the queue");
+    assert.deepEqual(await readPendingSalesQueue("org:actor"), [], "a rejected attempt is dropped from the queue");
   } finally {
     if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
     else Reflect.deleteProperty(globalThis, "window");
@@ -169,19 +169,19 @@ async function testOfflineQueueOrder() {
     const second = await createAtomicSale(client, "org:actor", base(otherProduct));
     assert.ok("queued" in second, "Second offline sale is queued");
     assert.equal(second.position, 2);
-    assert.equal(readPendingSalesQueue("org:actor").length, 2);
+    assert.equal((await readPendingSalesQueue("org:actor")).length, 2);
 
     const retry = await createAtomicSale(client, "org:actor", base(cashProduct), { isRetry: true });
     assert.ok("queued" in retry, "Retry of the oldest waiting basket stays queued");
     assert.equal(retry.position, 1, "Retry does not become a third queued sale");
-    assert.equal(readPendingSalesQueue("org:actor").length, 2);
+    assert.equal((await readPendingSalesQueue("org:actor")).length, 2);
 
     online = true;
     const drained = await drainPendingSalesQueue(client, "org:actor");
     assert.equal(drained.confirmedCount, 2);
     assert.equal(drained.remaining, 0);
     assert.deepEqual(submitted, [first.attempt.requestId, second.attempt.requestId], "Drain confirms oldest-first, in queue order");
-    assert.equal(readPendingSalesQueue("org:actor").length, 0);
+    assert.equal((await readPendingSalesQueue("org:actor")).length, 0);
   } finally {
     if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
     else Reflect.deleteProperty(globalThis, "window");
@@ -227,7 +227,7 @@ async function testOfflineIdenticalFreshSaleQueues() {
     const second = await createAtomicSale(client, "org:actor", input);
     assert.ok("queued" in second, "Second identical offline sale is queued");
     assert.equal(second.position, 2);
-    assert.equal(readPendingSalesQueue("org:actor").length, 2);
+    assert.equal((await readPendingSalesQueue("org:actor")).length, 2);
     assert.notEqual(first.attempt.requestId, second.attempt.requestId, "Fresh identical sales carry distinct request identifiers");
 
     online = true;
@@ -235,7 +235,7 @@ async function testOfflineIdenticalFreshSaleQueues() {
     assert.equal(drained.confirmedCount, 2);
     assert.equal(drained.remaining, 0);
     assert.deepEqual(submitted, [first.attempt.requestId, second.attempt.requestId], "Drain confirms both identical sales, oldest-first");
-    assert.equal(readPendingSalesQueue("org:actor").length, 0);
+    assert.equal((await readPendingSalesQueue("org:actor")).length, 0);
   } finally {
     if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
     else Reflect.deleteProperty(globalThis, "window");
@@ -715,7 +715,7 @@ async function main() {
       const firstAttempt = await createAtomicSale(recoveryClient, `${org}:${owner}`, recoveryInput);
       assert.ok("queued" in firstAttempt, "An unconfirmed sale is queued instead of thrown");
       assert.equal(firstAttempt.attempt.requestId, recoveryRequestId);
-      const pendingAfterReload = readPendingAtomicSale(`${org}:${owner}`);
+      const pendingAfterReload = await readPendingAtomicSale(`${org}:${owner}`);
       assert.equal(pendingAfterReload?.requestId, recoveryRequestId);
       assert.equal(Number((await db.query<{ current_stock: string }>("select current_stock from products where id=$1", [cashProduct])).rows[0].current_stock), 0, "The first request consumed the last stock unit");
       await db.query("update products set is_active=false where id=$1", [cashProduct]);
@@ -732,7 +732,7 @@ async function main() {
       assert.equal(recovered?.previousPendingConfirmed, true);
       assert.equal(createCalls, 1, "A confirmed request is recovered without another sale RPC");
       assert.equal(statusCalls, 2, "The initial status response is lost and the reloaded page reconciles it");
-      assert.equal(readPendingAtomicSale(`${org}:${owner}`), null);
+      assert.equal(await readPendingAtomicSale(`${org}:${owner}`), null);
       const afterRecovery = await db.query<{ invoices: number; items: number; movements: number; stock: string }>(`select
         (select count(*)::int from sales_transactions where request_id=$1) invoices,
         (select count(*)::int from sales_items si join sales_transactions st on st.id=si.sales_transaction_id where st.request_id=$1) items,

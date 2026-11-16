@@ -95,6 +95,9 @@ export function POSReceiptPreview({ receipt, template }: { receipt: Receipt; tem
     {template.header.showOrgName && template.header.orgNamePosition === "top" && orgName}
     <p className="font-semibold" style={{ fontSize: template.header.headingSizePx }}>{chrome.headingText}</p>
     <p className="mb-2" style={{ fontSize: template.header.metaSizePx }}>{meta.join(" · ")}</p>
+    {/* Slice S2: a provisional receipt shows its "Pending sync" label under
+        the number, in the preview exactly as on the printed sheet. */}
+    {receipt.provisionalNote ? <p className="mb-2" style={{ fontSize: template.header.metaSizePx }}>{receipt.provisionalNote}</p> : null}
     {receipt.notes ? <p className="mb-2" style={{ fontSize: template.header.metaSizePx }}>{chromeLabels.notesLabel ?? "Notes"}: {receipt.notes}</p> : null}
     {/* 40mm cannot hold the table: same stacked lines as the printed sheet. */}
     {getReceiptWidthMm(template) === 40 ? (

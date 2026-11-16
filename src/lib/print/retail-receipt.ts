@@ -39,6 +39,12 @@ export type Receipt = {
   payment: string;
   /** Free-text sale note, printed on the receipt when present. */
   notes?: string | null;
+  /**
+   * Slice S2 (desktop only): the "Pending sync" label for a provisional
+   * receipt, printed under the invoice number. Set only when `number` is
+   * a local provisional number (`L-000123`); server receipts never carry it.
+   */
+  provisionalNote?: string | null;
   lines: ReceiptLine[];
 };
 
@@ -284,13 +290,20 @@ export function buildAtomicSaleReceipt(
  * server receipt (calculateSaleAmounts), but the number is a "Pending sync"
  * label, never an invented server invoice number. After the sale syncs, its
  * real invoice number appears in the sales history; this copy is
- * provisional. Customer/product names come from on-hand state. */
+ * provisional. Customer/product names come from on-hand state.
+ *
+ * Slice S2 (desktop only): when `details.provisionalNumber` is set, the
+ * receipt number IS that local number (`L-000123`) and the "Pending sync"
+ * label prints under it as `provisionalNote` — the paper copy a customer
+ * walks away with must show the number AND that it is provisional. */
 export function buildOfflineSaleReceipt(
   input: AtomicSaleInput,
   details: {
     scope: string;
     business: string;
     pendingLabel: string;
+    /** Slice S2: the local provisional number (`L-000123`), desktop only. */
+    provisionalNumber?: string | null;
     customerName: string;
     customerWhatsapp?: string | null;
     customerPhone?: string | null;
@@ -317,7 +330,8 @@ export function buildOfflineSaleReceipt(
   return {
     scope: details.scope,
     business: details.business,
-    number: details.pendingLabel,
+    number: details.provisionalNumber ?? details.pendingLabel,
+    provisionalNote: details.provisionalNumber ? details.pendingLabel : null,
     date: formatDate(calendarDateOf(input.sale_date) ?? input.sale_date),
     customer: details.customerName,
     customerWhatsapp: details.customerWhatsapp ?? null,
@@ -392,6 +406,11 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
   const notesLine = receipt.notes
     ? `<p>${escapeHtml(chrome.notesLabel ?? "Notes")}: ${escapeHtml(receipt.notes)}</p>`
     : "";
+  // Slice S2: a provisional receipt prints its "Pending sync" label under
+  // the number, so the paper copy is visibly provisional.
+  const provisionalLine = receipt.provisionalNote
+    ? `<p>${escapeHtml(receipt.provisionalNote)}</p>`
+    : "";
   const summary = summaryRows.map(row =>
     `<div class="summary-row${row.key === "total" ? " grand-total" : ""}"><span>${escapeHtml(row.label)}</span><strong>${formatBooksMoney(roundMoney(row.amount))}</strong></div>`,
   ).join("");
@@ -427,5 +446,5 @@ export function buildPrintableReceiptHtml(receipt: Receipt, template: PrintTempl
     .grand-total{border-top:1px solid ${template.page.rule};padding-top:1mm;font-size:${template.footer.valueSizePx}px}
     .footer{border-top:1px solid ${template.page.rule};margin-top:2mm;padding-top:1mm;font-size:${template.footer.footnoteSizePx}px}
     @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style></head><body data-receipt-paper-width="${width}mm" data-receipt-content-width="${contentWidth}mm">${template.header.showOrgName && template.header.orgNamePosition === "top" ? orgName : ""}<h2>${escapeHtml(resolved.headingText)}</h2><p>${meta}</p>${notesLine}${width === 40 ? stackedRows : `<table><thead><tr>${columns}</tr></thead><tbody>${rows}</tbody></table>`}<div class="summary">${summary}</div>${template.footer.showFootnote ? `<p class="footer">${escapeHtml(resolved.footnoteText)}</p>` : ""}${orgFooter}${template.header.showOrgName && template.header.orgNamePosition === "bottom" ? orgName : ""}</body></html>`;
+  </style></head><body data-receipt-paper-width="${width}mm" data-receipt-content-width="${contentWidth}mm">${template.header.showOrgName && template.header.orgNamePosition === "top" ? orgName : ""}<h2>${escapeHtml(resolved.headingText)}</h2><p>${meta}</p>${provisionalLine}${notesLine}${width === 40 ? stackedRows : `<table><thead><tr>${columns}</tr></thead><tbody>${rows}</tbody></table>`}<div class="summary">${summary}</div>${template.footer.showFootnote ? `<p class="footer">${escapeHtml(resolved.footnoteText)}</p>` : ""}${orgFooter}${template.header.showOrgName && template.header.orgNamePosition === "bottom" ? orgName : ""}</body></html>`;
 }

@@ -1,4 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  QUEUE_CHANGED_EVENT,
+  getSaleQueueBackend,
+  notifyQueueChanged,
+} from "@/lib/offline/local-store";
+
+export { QUEUE_CHANGED_EVENT };
 
 export type AtomicSaleInput = {
   customer_id: string;
@@ -30,7 +37,17 @@ export type AtomicSaleResult = {
   replayed: boolean;
 };
 
-export type PendingSale = { requestId: string; input: AtomicSaleInput };
+export type PendingSale = {
+  requestId: string;
+  input: AtomicSaleInput;
+  /**
+   * Slice S2 (desktop only): the local provisional receipt number
+   * (`L-000123`) allocated by the SQLite queue when the sale was saved.
+   * Undefined on the web build, where the receipt shows "Pending sync"
+   * with no number.
+   */
+  provisionalNumber?: string;
+};
 type SaleStatus = { status: "unknown" | "confirmed"; result?: AtomicSaleResult };
 
 /** A server rejection is final: the attempt is dropped, never retried. */
@@ -58,65 +75,42 @@ export async function withSaleRequestTimeout<T>(promise: Promise<T>, timeoutMs: 
   }
 }
 
-/** Ordered queue, oldest first. Scope is `${organizationId}:${profileId}`. */
-const queueStorageKey = (scope: string) => `tradeos:pending-sales-queue:v1:${scope}`;
-const legacyStorageKey = (scope: string) => `tradeos:pending-sale:v1:${scope}`;
-const noticesStorageKey = (scope: string) => `tradeos:queue-notices:v1:${scope}`;
-export const QUEUE_CHANGED_EVENT = "tradeos:pending-sales-changed";
-
-function notifyQueueChanged() {
-  try {
-    window.dispatchEvent(new Event(QUEUE_CHANGED_EVENT));
-  } catch { /* Non-browser or closed window: the next read still sees the queue. */ }
+/**
+ * Slice S2 — the queue lives behind a backend now (localStorage on web,
+ * SQLite on desktop; see `src/lib/offline/local-store.ts`). Queue reads
+ * are async because the desktop backend crosses IPC; the queue-notices
+ * helpers below stay synchronous localStorage — they are transient UI
+ * state, and S3 replaces them with the owner-only Sync issues list.
+ */
+async function readQueue(scope: string): Promise<PendingSale[]> {
+  return getSaleQueueBackend().list(scope);
 }
 
-function parseQueue(raw: string | null): PendingSale[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is PendingSale =>
-      !!item && typeof (item as PendingSale).requestId === "string" &&
-      !!(item as PendingSale).input && typeof (item as PendingSale).input === "object");
-  } catch {
-    return [];
-  }
+async function writeQueue(scope: string, queue: PendingSale[]): Promise<PendingSale[]> {
+  const stored = await getSaleQueueBackend().replace(scope, queue);
+  notifyQueueChanged();
+  return stored;
 }
 
-function writePendingSalesQueue(scope: string, queue: PendingSale[], notify = true) {
-  try {
-    if (queue.length === 0) window.localStorage.removeItem(queueStorageKey(scope));
-    else window.localStorage.setItem(queueStorageKey(scope), JSON.stringify(queue));
-  } catch { /* Storage full or blocked: the caller's in-memory copy still holds the attempt. */ }
-  if (notify) notifyQueueChanged();
+async function removeFromQueue(scope: string, requestId: string): Promise<void> {
+  await getSaleQueueBackend().remove(scope, requestId);
+  notifyQueueChanged();
 }
 
-export function readPendingSalesQueue(scope: string): PendingSale[] {
-  if (typeof window === "undefined") return [];
-  let queue = parseQueue(window.localStorage.getItem(queueStorageKey(scope)));
-  // One-time migration from the old single slot: it is the oldest sale.
-  const legacy = window.localStorage.getItem(legacyStorageKey(scope));
-  if (legacy) {
-    try {
-      const old = JSON.parse(legacy) as PendingSale;
-      if (old?.requestId && old.input && !queue.some(item => item.requestId === old.requestId)) {
-        queue = [old, ...queue];
-      }
-    } catch { /* A corrupt legacy slot is dropped with the key below. */ }
-    window.localStorage.removeItem(legacyStorageKey(scope));
-    writePendingSalesQueue(scope, queue, false);
-  }
-  return queue;
+/** The queue for a scope, oldest first. Async since S2 (SQLite over IPC). */
+export async function readPendingSalesQueue(scope: string): Promise<PendingSale[]> {
+  return readQueue(scope);
 }
 
 /** Backwards-compatible head read: the mount restore and the recovery
- * action both operate on the oldest waiting sale. */
-export function readPendingAtomicSale(scope: string): PendingSale | null {
-  return readPendingSalesQueue(scope)[0] ?? null;
+ * action both operate on the oldest waiting sale. Async since S2. */
+export async function readPendingAtomicSale(scope: string): Promise<PendingSale | null> {
+  return (await readQueue(scope))[0] ?? null;
 }
 
 /** Rejection notices for sales dropped from the queue: the shopkeeper must
  * see them, or a rejected older sale would vanish silently. */
+const noticesStorageKey = (scope: string) => `tradeos:queue-notices:v1:${scope}`;
 export function readQueueNotices(scope: string): string[] {
   if (typeof window === "undefined") return [];
   try {
@@ -162,8 +156,8 @@ async function readSaleStatus(supabase: SupabaseClient, requestId: string) {
   }
 }
 
-function removeAttempt(scope: string, requestId: string) {
-  writePendingSalesQueue(scope, readPendingSalesQueue(scope).filter(item => item.requestId !== requestId));
+async function removeAttempt(scope: string, requestId: string) {
+  await removeFromQueue(scope, requestId);
 }
 
 async function submitAtomicSale(
@@ -191,18 +185,18 @@ async function submitAtomicSale(
   }
 
   if (!error && data?.transaction) {
-    removeAttempt(scope, attempt.requestId);
+    await removeAttempt(scope, attempt.requestId);
     return { result: data, previousPendingConfirmed: isRecovery };
   }
 
   const status = await readSaleStatus(supabase, attempt.requestId);
   if (!status.error && status.data?.status === "confirmed" && status.data.result) {
-    removeAttempt(scope, attempt.requestId);
+    await removeAttempt(scope, attempt.requestId);
     return { result: status.data.result, previousPendingConfirmed: isRecovery };
   }
 
   if (!status.error && status.data?.status === "unknown" && /^[0-9A-Z]{5}$/.test(error?.code ?? "")) {
-    removeAttempt(scope, attempt.requestId);
+    await removeAttempt(scope, attempt.requestId);
     throw new SaleRejectedError(error?.message || "Sale was rejected. Correct the sale details and try again.");
   }
 
@@ -241,7 +235,7 @@ async function processQueueLocked(
   // identical offline sales queued as one, the second silently lost).
   isRetry = false,
 ): Promise<QueueOutcome> {
-  let queue = readPendingSalesQueue(scope);
+  let queue = await readQueue(scope);
   const preExistingIds = new Set(queue.map(item => item.requestId));
   let own: PendingSale | null = null;
   let ownPreExisting = false;
@@ -254,7 +248,10 @@ async function processQueueLocked(
     } else {
       own = { requestId: crypto.randomUUID(), input: newInput };
       queue = [...queue, own];
-      writePendingSalesQueue(scope, queue);
+      // Slice S2: the stored queue comes back with the provisional
+      // number allocated (desktop SQLite); the receipt shows it.
+      queue = await writeQueue(scope, queue);
+      own = queue.find(item => item.requestId === own!.requestId) ?? own;
     }
   }
 
@@ -273,10 +270,10 @@ async function processQueueLocked(
       // invariant). Only an unknown status falls through to a submit.
       const status = await readSaleStatus(supabase, head.requestId);
       if (!status.error && status.data?.status === "confirmed" && status.data.result) {
-        removeAttempt(scope, head.requestId);
+        await removeAttempt(scope, head.requestId);
         confirmedCount += 1;
         confirmedResults.push(status.data.result);
-        queue = readPendingSalesQueue(scope);
+        queue = await readQueue(scope);
         if (own && head.requestId === own.requestId) {
           ownResult = { result: status.data.result, previousPendingConfirmed: isRecovery || ownPreExisting };
           break;
@@ -289,13 +286,13 @@ async function processQueueLocked(
       const { result } = await submitAtomicSale(supabase, scope, head, isRecovery);
       confirmedCount += 1;
       confirmedResults.push(result);
-      queue = readPendingSalesQueue(scope);
+      queue = await readQueue(scope);
       if (own && head.requestId === own.requestId) {
         ownResult = { result, previousPendingConfirmed: isRecovery || ownPreExisting };
         break;
       }
     } catch (caught) {
-      queue = readPendingSalesQueue(scope);
+      queue = await readQueue(scope);
       if (caught instanceof SaleRejectedError) {
         rejectedMessages.push(caught.message);
         addQueueNotice(scope, caught.message);

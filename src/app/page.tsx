@@ -44,6 +44,7 @@ import {
   isDesktopApp,
   isNetworkError,
   readIdentityCache,
+  readIdentityCacheAsync,
   saveIdentityCache,
   type CachedIdentity,
 } from "@/lib/offline/identity-cache";
@@ -2023,8 +2024,10 @@ export default function Home() {
       console.error("Supabase fetch organization error:", JSON.stringify(error, null, 2));
       // Slice S1 (desktop only): a network failure loading the org is an
       // offline cold start, not a missing org — use the cached org row.
+      // Slice S2: the async read checks SQLite first, so a wiped browser
+      // profile still restores from the durable record.
       if (isDesktopApp() && isNetworkError(error)) {
-        const cached = readIdentityCache();
+        const cached = await readIdentityCacheAsync();
         if (cached?.organizationRow && cached.organizationId === orgId) {
           populateBusinessSettings(cached.organizationRow);
           return;
@@ -2108,9 +2111,10 @@ export default function Home() {
       console.error("Profile load error details:", JSON.stringify(profileError, null, 2));
       // Slice S1 (desktop only): a network failure loading the profile is
       // an offline cold start, not a missing profile — restore the cached
-      // identity for this user instead of signing out.
+      // identity for this user instead of signing out. Slice S2: the async
+      // read checks SQLite first, so a wiped browser profile still restores.
       if (isDesktopApp() && isNetworkError(profileError)) {
-        const cached = identityCacheForUser(readIdentityCache(), userId);
+        const cached = identityCacheForUser(await readIdentityCacheAsync(), userId);
         if (cached) {
           restoreCachedIdentity(cached);
           return;
@@ -2278,7 +2282,7 @@ export default function Home() {
       // user, never for a different (stale) account.
       if (isDesktopApp() && isNetworkError(error)) {
         const sessionUser = sessionData.session?.user ?? null;
-        const cached = identityCacheForUser(readIdentityCache(), sessionUser?.id ?? null);
+        const cached = identityCacheForUser(await readIdentityCacheAsync(), sessionUser?.id ?? null);
         if (cached && sessionUser) {
           console.log(`${logTag} offline cold start — restoring cached identity for ${sessionUser.id}`);
           setCurrentUser(sessionUser);
@@ -2326,8 +2330,9 @@ export default function Home() {
         console.error(`${logTag} CATCH: provisionErr.stack =`, provisionErr instanceof Error ? provisionErr.stack : "N/A");
         // Slice S1 (desktop only): a network failure in provision while a
         // cached identity exists is an offline cold start, not a sign-out.
+        // Slice S2: the async read checks SQLite first.
         if (isDesktopApp() && isNetworkError(provisionErr)) {
-          const cached = identityCacheForUser(readIdentityCache(), user.id);
+          const cached = identityCacheForUser(await readIdentityCacheAsync(), user.id);
           if (cached) {
             console.log(`${logTag} offline cold start after provision failure — restoring cached identity`);
             setCurrentUser(user);
@@ -4797,7 +4802,8 @@ setCustomerOrganizationName("");
     // request_id, so the new sale safely queues behind the waiting one
     // and syncs in order when the connection returns. Online, the gate
     // stays: an ambiguous earlier sale is reconciled before a new one.
-    if (isOwnerOrAdmin() && pendingScope && navigator.onLine && readPendingAtomicSale(pendingScope)) {
+    // Slice S2: the queue read is async (SQLite over IPC on desktop).
+    if (isOwnerOrAdmin() && pendingScope && navigator.onLine && (await readPendingAtomicSale(pendingScope))) {
       setSalesInvoiceLoading(true);
       try {
         const recovered = await reconcilePendingAtomicSale(supabase, pendingScope);
@@ -4829,7 +4835,7 @@ setCustomerOrganizationName("");
           fetchProducts();
           return;
         }
-        if (readPendingSalesQueue(pendingScope).length > 0) {
+        if ((await readPendingSalesQueue(pendingScope)).length > 0) {
           setSalesError(t('offline.stillWaiting'));
         } else {
           setSalesError(t('page.saleChangedElsewhere'));
@@ -5183,6 +5189,10 @@ setCustomerOrganizationName("");
           scope,
           business: currentOrganization?.name || "Aankh",
           pendingLabel: t('offline.pendingLabel'),
+          // Slice S2 (desktop only): the SQLite queue allocated a local
+          // provisional number (`L-000123`) for this sale — the receipt
+          // shows it, clearly marked provisional. Web has none.
+          provisionalNumber: saved.attempt.provisionalNumber ?? null,
           customerName: queuedCustomer?.customer_name ?? SEEDED_WALK_IN_CUSTOMER_NAME,
           customerWhatsapp: queuedCustomer?.whatsapp ?? null,
           customerPhone: queuedCustomer?.phone ?? null,
@@ -6727,10 +6737,16 @@ setCustomerOrganizationName("");
   const [pendingSyncNote, setPendingSyncNote] = useState<string | null>(null);
   const [pendingSyncError, setPendingSyncError] = useState<string | null>(null);
 
-  const refreshPendingSales = useCallback(() => {
+  const refreshPendingSales = useCallback(async () => {
     if (!currentOrganizationId || !currentProfile?.id) return;
     const scope = `${currentOrganizationId}:${currentProfile.id}`;
-    setPendingSalesCount(readPendingSalesQueue(scope).length);
+    // Slice S2: the queue read is async (SQLite over IPC on desktop).
+    // A failed read counts as empty — the drain effect re-checks.
+    try {
+      setPendingSalesCount((await readPendingSalesQueue(scope)).length);
+    } catch {
+      setPendingSalesCount(0);
+    }
     setPendingSalesNotices(readQueueNotices(scope));
   }, [currentOrganizationId, currentProfile?.id]);
 
@@ -6750,13 +6766,20 @@ setCustomerOrganizationName("");
           fetchCustomerPayments();
           fetchCustomerPaymentAllocations();
         }
-        refreshPendingSales();
-      }).catch(() => refreshPendingSales());
+        void refreshPendingSales();
+      }).catch(() => void refreshPendingSales());
     };
-    refreshPendingSales();
+    void refreshPendingSales();
     // Drain on mount too: a sale queued before a reload syncs itself.
-    if (readPendingSalesQueue(scope).length > 0) drainAndRefresh();
-    const handleQueueChanged = () => refreshPendingSales();
+    // Slice S2: the queue read is async (SQLite over IPC on desktop).
+    void readPendingSalesQueue(scope)
+      .then((queue) => {
+        if (queue.length > 0) drainAndRefresh();
+      })
+      .catch(() => {
+        /* A failed read counts as empty — the drain effect re-checks. */
+      });
+    const handleQueueChanged = () => void refreshPendingSales();
     window.addEventListener(QUEUE_CHANGED_EVENT, handleQueueChanged);
     window.addEventListener("online", drainAndRefresh);
     return () => {
@@ -7309,30 +7332,33 @@ setCustomerOrganizationName("");
 
   useEffect(() => {
     if (!currentOrganizationId || !currentProfile?.id) return;
-    try {
-      const pending = readPendingAtomicSale(`${currentOrganizationId}:${currentProfile.id}`);
-      if (!pending) return;
-      setSelectedCustomerIdForSale(pending.input.customer_id);
-      setSalesInvoiceDate(pending.input.sale_date);
-      setSalesPaymentType(pending.input.payment_type);
-      setSalesDiscountAmount(String(pending.input.invoice_discount));
-      setSalesDiscountType(pending.input.invoice_discount_type);
-      setSalesTaxRate(String(pending.input.tax_rate));
-      setPosCashReceived(pending.input.cash_received == null ? "" : String(pending.input.cash_received));
-      setSalesLines(pending.input.lines.map((line) => ({
-        product_id: line.product_id,
-        quantity: String(line.quantity),
-        selling_price: String(line.selling_price),
-        discount: String(line.discount),
-        bonus: String(line.bonus),
-        unit_mode: line.unit_mode,
-      })));
-      restoredPendingSaleRef.current = true;
-      setSalesError(t('page.savedSaleWaiting'));
-    } catch (error) {
-      console.error("Could not restore pending sale:", error);
-      setSalesError(t('page.savedSaleUnreadable'));
-    }
+    // Slice S2: the queue read is async (SQLite over IPC on desktop).
+    void (async () => {
+      try {
+        const pending = await readPendingAtomicSale(`${currentOrganizationId}:${currentProfile.id}`);
+        if (!pending) return;
+        setSelectedCustomerIdForSale(pending.input.customer_id);
+        setSalesInvoiceDate(pending.input.sale_date);
+        setSalesPaymentType(pending.input.payment_type);
+        setSalesDiscountAmount(String(pending.input.invoice_discount));
+        setSalesDiscountType(pending.input.invoice_discount_type);
+        setSalesTaxRate(String(pending.input.tax_rate));
+        setPosCashReceived(pending.input.cash_received == null ? "" : String(pending.input.cash_received));
+        setSalesLines(pending.input.lines.map((line) => ({
+          product_id: line.product_id,
+          quantity: String(line.quantity),
+          selling_price: String(line.selling_price),
+          discount: String(line.discount),
+          bonus: String(line.bonus),
+          unit_mode: line.unit_mode,
+        })));
+        restoredPendingSaleRef.current = true;
+        setSalesError(t('page.savedSaleWaiting'));
+      } catch (error) {
+        console.error("Could not restore pending sale:", error);
+        setSalesError(t('page.savedSaleUnreadable'));
+      }
+    })();
   }, [currentOrganizationId, currentProfile?.id, t]);
 
   // Sales Management (Phase 4) — sales orders + returns + reporting
@@ -21467,10 +21493,10 @@ setCustomerOrganizationName("");
                           }
                           if (drained.remaining > 0) setPendingSyncError(t('offline.syncFailed'));
                           else if (drained.confirmedCount > 0) setPendingSyncNote(t('offline.syncedAll'));
-                          refreshPendingSales();
+                          void refreshPendingSales();
                         }).catch(() => {
                           setPendingSyncError(t('offline.syncFailed'));
-                          refreshPendingSales();
+                          void refreshPendingSales();
                         }).finally(() => setPendingSyncing(false));
                       }}
                       className="min-h-11 rounded border border-input bg-background px-3 font-medium disabled:opacity-60"
