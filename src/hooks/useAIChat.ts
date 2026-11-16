@@ -16,6 +16,9 @@ export interface ChatMessage {
 export interface ChatContext {
   sessionId: string;
   conversationId?: string;
+  // Recent turns (oldest first, current message excluded) so the server
+  // route can answer follow-ups. Built from the messages already on screen.
+  history?: Array<{ role: "user" | "assistant"; text: string }>;
 }
 
 export interface UseAIChatReturn {
@@ -81,16 +84,26 @@ export function useAIChat(
   const pendingRef = useRef(false);
   const conversationIdRef = useRef<string | undefined>(undefined);
   const sessionIdRef = useRef<string>(loadSessionId());
+  // Mirrors `messages` after each commit, so buildContext() inside a send
+  // handler sees the turns already on screen — not the message that was
+  // just appended (that one travels as the request message itself).
+  const messagesRef = useRef<ChatMessage[]>(messages);
 
   // Persist messages whenever they change
   useEffect(() => {
     saveMessages(messages);
+    messagesRef.current = messages;
   }, [messages]);
 
   const buildContext = useCallback((): ChatContext => {
+    const history = messagesRef.current
+      .filter((m) => m.text.trim().length > 0)
+      .slice(-10)
+      .map((m) => ({ role: m.role, text: m.text }));
     return {
       sessionId: sessionIdRef.current,
       conversationId: conversationIdRef.current,
+      history,
     };
   }, []);
 

@@ -103,6 +103,8 @@ import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
 import { bootstrapOrganizationData } from "@/lib/brain/supabase-loader";
+import { getBusinessBrain } from "@/lib/brain";
+import { chatWithBusinessBrain, buildChatResponse } from "@/lib/ai/server-chat";
 import type { ChatResponse } from "@/lib/conversation";
 import type { ChatContext } from "@/hooks/useAIChat";
 import { AIAssistant } from "@/components/ai/AIAssistant";
@@ -935,13 +937,33 @@ export default function Home() {
   const [aiConversationError, setAiConversationError] = useState<string | null>(null);
   const [activeMissingField, setActiveMissingField] = useState("");
 
+  // Server-routed chat (AI chat fix, 2026-11-16): the browser must never call
+  // the LLM provider router directly — server-only API keys are invisible in
+  // the browser, so every provider came back unconfigured and every chat
+  // message failed. Route through /api/business-brain, which holds the keys
+  // server-side, sending the already-loaded business context + recent turns.
   const onBrainChat = useCallback(async (message: string, context?: ChatContext): Promise<ChatResponse> => {
-    return getGateway().chat({
+    const conversationId =
+      context?.conversationId ?? `conv_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const correlationId = `corr_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const brain = getBusinessBrain();
+    if (!brain) {
+      return buildChatResponse(
+        {
+          ok: false,
+          message: "",
+          error: "BRAIN_NOT_INITIALIZED: Business Brain is not initialized. Load business data first.",
+        },
+        { conversationId, correlationId }
+      );
+    }
+    const result = await chatWithBusinessBrain({
       message,
-      channel: "web",
-      sessionId: context?.sessionId,
-      conversationId: context?.conversationId,
+      organizationName: brain.getMemorySnapshot().organizationName,
+      businessContext: brain.getBusinessContext(),
+      conversationHistory: context?.history,
     });
+    return buildChatResponse(result, { conversationId, correlationId });
   }, []);
   const [isVoiceAnswerListening, setIsVoiceAnswerListening] = useState(false);
   const [voiceAnswerMessage, setVoiceAnswerMessage] = useState<string | null>(null);

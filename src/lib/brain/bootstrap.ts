@@ -125,13 +125,19 @@ export function initializeBusinessBrain(data: MemoryWriterRawData): BusinessBrai
         const orgId = store.meta.organizationId;
         const profileId = store.meta.ownerName ? "owner" : null;
 
-        // Skip runtime when no business data is loaded (gateway validation calls without data)
+        // No business data is loaded: never echo the user's message back as
+        // a successful reply (AI chat fix, 2026-11-16) — report the honest
+        // state instead, so the UI shows an error rather than a fake answer.
         const existingSession = conversationRuntime.getSession(sessionId);
         const hasNoData = !orgId || orgId === "";
         const isIdleOrMissing = !existingSession || ["idle", "completed", "cancelled"].includes(existingSession.state);
 
         if (hasNoData && isIdleOrMissing) {
-          return { ok: true, message: message };
+          return {
+            ok: false,
+            message: "",
+            error: "No business data is loaded yet. Please wait for your business data to load, then ask again.",
+          };
         }
 
         const runtimeResult = await conversationRuntime.processMessage(
