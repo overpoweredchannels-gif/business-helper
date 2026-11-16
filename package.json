@@ -2,12 +2,15 @@
   "name": "tradeos",
   "version": "0.1.0",
   "private": true,
+  "main": "dist-electron/main/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "desktop:dev": "tsc -p electron/tsconfig.json && concurrently \"next dev\" \"electron .\"",
+    "desktop:build": "next build && node electron/prepare-standalone.mjs && tsc -p electron/tsconfig.json && electron-builder",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "test:regional": "tsx scripts/test-regional-settings.ts && tsx scripts/test-regional-service.ts && tsx scripts/test-regional-schema.ts && tsx scripts/test-regional-ui.tsx && tsx scripts/test-regional-errors.ts && tsx scripts/test-regional-bootstrap.ts",
     "test:brain": "tsx scripts/run-brain-validation.ts",
     "test:gateway": "tsx scripts/run-gateway-validation.ts",
@@ -112,7 +115,8 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tailwind-merge": "^3.6.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "electron-updater": "^6.8.11"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
@@ -120,6 +124,9 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^10.0.7",
+    "electron": "^45.3.3",
+    "electron-builder": "^26.18.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "fake-indexeddb": "^6.2.8",

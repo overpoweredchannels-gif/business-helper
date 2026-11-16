@@ -1,0 +1,26 @@
+# Slice S0 — desktop shell spike. NSIS installer for Windows; the update
+# feed is the GitHub Releases of this repo (no release published yet — the
+# auto-updater check is best-effort and must not crash, see electron/main.ts).
+appId: site.oppresso.aankh
+productName: Aankh
+directories:
+  output: dist-electron
+files:
+  - dist-electron/main/**/*
+  - package.json
+extraResources:
+  # The standalone Next.js server, copied outside the asar so the main
+  # process can spawn it as a Node script.
+  - from: .next/standalone
+    to: standalone
+publish:
+  provider: github
+  owner: overpoweredchannels-gif
+  repo: business-helper
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

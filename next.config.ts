@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Standalone output for the desktop shell (slice S0): `next build`
+  // produces .next/standalone/server.js, a self-contained Node server the
+  // Electron main process spawns. Vercel deploy is unaffected — the web
+  // app keeps building and deploying as today.
+  output: "standalone",
   async headers() {
     return [
       {
