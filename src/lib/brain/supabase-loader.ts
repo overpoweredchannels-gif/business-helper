@@ -30,8 +30,8 @@ export async function loadRawBusinessData(
     supabase.from("purchase_transactions").select("id, supplier_id, invoice_number, created_at, purchase_date, payment_type").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("purchase_items").select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("expenses").select("id, expense_type, amount, notes, expense_date, created_at, supplier_id, customer_id").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-    supabase.from("customer_payments").select("id, customer_id, amount, payment_date, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-    supabase.from("supplier_payments").select("id, supplier_id, amount, payment_date, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
+    supabase.from("customer_payments").select("id, customer_id, amount, payment_date, voided_at, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
+    supabase.from("supplier_payments").select("id, supplier_id, amount, payment_date, voided_at, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("tasks").select("id, title, task_type, priority, status, due_date, created_at, completed_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("ai_alerts").select("id, alert_type, title, summary, severity, status, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
   ]);

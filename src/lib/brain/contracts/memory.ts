@@ -552,6 +552,7 @@ export interface MemoryWriterRawData {
     customer_id: string;
     amount: number;
     payment_date?: string;
+    voided_at?: string | null;
     created_at?: string;
   }>;
   supplierPayments?: Array<{
@@ -559,6 +560,7 @@ export interface MemoryWriterRawData {
     supplier_id: string;
     amount: number;
     payment_date?: string;
+    voided_at?: string | null;
     created_at?: string;
   }>;
 }

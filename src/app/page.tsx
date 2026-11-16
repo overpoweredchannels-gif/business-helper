@@ -338,6 +338,7 @@ const PURCHASE_INVOICE_PAYMENT_OPTIONS = [
   { value: "paid", label: "Paid" },
   { value: "partially_paid", label: "Partially paid" },
   { value: "unpaid", label: "Unpaid" },
+  { value: "returned", label: "Returned" },
 ];
 
 const PURCHASE_ORDER_STATUS_OPTIONS = [
@@ -11211,7 +11212,7 @@ setCustomerOrganizationName("");
   // ----- Purchase list search / filter / sort -----
   const getPurchaseTransactionPaymentStatus = (
     transaction: PurchaseTransaction
-  ): "paid" | "partially_paid" | "unpaid" => {
+  ): "paid" | "partially_paid" | "unpaid" | "returned" => {
     const transactionLineItems = purchaseItems.filter(
       (item) => item.purchase_transaction_id === transaction.id
     );
@@ -11225,12 +11226,21 @@ setCustomerOrganizationName("");
     const purchaseRemainingPayable = summary?.remainingPayableAmount ?? purchasePaymentTotal;
     // Same badge rule as the sales ledger (src/lib/history/payment-status):
     // purchases carry no credit due date, so "overdue" can never arise here.
+    // A fully returned purchase is "returned", never "paid" — its remaining
+    // is 0, which the plain paid rule would otherwise report as paid.
     const kind = getPaymentStatusBadgeKind({
       total: purchasePaymentTotal,
       paid: purchasePaidAmount,
       remaining: purchaseRemainingPayable,
+      returned: summary?.returnedAmount ?? 0,
     });
-    return kind === "paid" ? "paid" : kind === "partial" ? "partially_paid" : "unpaid";
+    return kind === "returned"
+      ? "returned"
+      : kind === "paid"
+        ? "paid"
+        : kind === "partial"
+          ? "partially_paid"
+          : "unpaid";
   };
 
   const hasActivePurchaseFilters = (filters: PurchaseListFilters) =>
@@ -11478,8 +11488,9 @@ setCustomerOrganizationName("");
     };
     const paymentLabelByValue: Record<string, string> = {
       paid: t('money.paid'),
-      partially_paid: t('buy.statusPartiallyPaid'),
+      partially_paid: t('buy.statusPartial'),
       unpaid: t('buy.statusUnpaid'),
+      returned: t('buy.returnedLabel'),
     };
     const sortLabelByValue: Record<string, string> = {
       date_desc: t('buy.sortNewestFirst'),
@@ -25507,7 +25518,9 @@ setCustomerOrganizationName("");
                     ? t('money.paid')
                     : rawPurchasePaymentStatus === "partially_paid"
                       ? t('buy.statusPartial')
-                      : t('buy.statusUnpaid');
+                      : rawPurchasePaymentStatus === "returned"
+                        ? t('buy.returnedLabel')
+                        : t('buy.statusUnpaid');
 
                 return (
                   <li
@@ -25565,7 +25578,7 @@ setCustomerOrganizationName("");
                         </div>
                         <div>
                           <div className="uppercase tracking-wide text-success">{t('buy.paymentStatus')}</div>
-                          <div className="font-medium"><span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(rawPurchasePaymentStatus === "paid" ? "paid" : rawPurchasePaymentStatus === "partially_paid" ? "partial" : "unpaid")}`}>{purchasePaymentStatus}</span></div>
+                          <div className="font-medium"><span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(rawPurchasePaymentStatus === "paid" ? "paid" : rawPurchasePaymentStatus === "partially_paid" ? "partial" : rawPurchasePaymentStatus === "returned" ? "returned" : "unpaid")}`}>{purchasePaymentStatus}</span></div>
                         </div>
                       </div>
                     </div>

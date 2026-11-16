@@ -1,4 +1,5 @@
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
+import { excludeVoidedPayments } from "../payments/voided-payments";
 import { buildCustomerLedger } from "./customer-ledger";
 import { buildSupplierLedger } from "./supplier-ledger";
 
@@ -296,10 +297,14 @@ export function buildFinancialLedger(data: MemoryWriterRawData, now: Date = new 
     periods[p].netProfit = periods[p].grossProfit - expenseByPeriod[p];
   }
 
-  for (const cp of customerPayments) {
+  // Voided payments count toward nothing: a voided customer payment is
+  // not cash in, and a voided supplier payment is not cash out. (The
+  // customer/supplier ledgers below apply the same exclusion to their
+  // FIFO pools, so the cash balance and the ledger balances agree.)
+  for (const cp of excludeVoidedPayments(customerPayments)) {
     cashIn += toNumber(cp.amount);
   }
-  for (const sp of supplierPayments) {
+  for (const sp of excludeVoidedPayments(supplierPayments)) {
     cashOut += toNumber(sp.amount);
   }
   for (const tx of purchaseTransactions) {

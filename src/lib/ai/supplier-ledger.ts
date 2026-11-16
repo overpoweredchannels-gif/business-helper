@@ -1,4 +1,5 @@
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
+import { excludeVoidedPayments } from "../payments/voided-payments";
 
 /**
  * Supplier ledger — derived financial view over the raw business data.
@@ -152,7 +153,12 @@ export function buildSupplierLedger(data: MemoryWriterRawData, now: Date = new D
   }
 
   const paymentsBySupplier = new Map<string, SupplierPaymentRecord[]>();
-  for (const payment of data.supplierPayments ?? []) {
+  // Voided payments count toward nothing: they must not feed the FIFO
+  // pool (or the payable/overdue figures derived from it), and they must
+  // not appear in the entry's payment history either. A voided payment's
+  // allocation rows stay in the database by design, but the allocation
+  // engine skips them — the AI ledger must do the same.
+  for (const payment of excludeVoidedPayments(data.supplierPayments ?? [])) {
     const supplierId = String(payment.supplier_id ?? "");
     if (!supplierId) continue;
     const list = paymentsBySupplier.get(supplierId) ?? [];

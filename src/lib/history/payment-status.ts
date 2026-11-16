@@ -13,13 +13,18 @@
 //     remainingPayableAmount the same way.
 // The badge LABELS come from translation keys
 // (sell.statusPaid, sell.statusPartial, sell.statusOverdue,
-// buy.statusPartial, buy.statusUnpaid, money.paid) — this module only
-// decides the kind and
+// buy.statusPartial, buy.statusUnpaid, buy.returnedLabel, money.paid) —
+// this module only decides the kind and
 // the token-only badge classes (AGENTS.md: semantic tokens, never hex).
 // The established badge pattern in page.tsx is
 // `rounded px-2 py-1 text-xs font-semibold` + a tone pair.
+//
+// The "returned" kind is purchase-only: a purchase whose goods were 100%
+// returned shows "Returned", never "Paid" (its remaining is 0, which the
+// plain paid rule would otherwise report as paid). Sales never pass a
+// `returned` value, so their badges are unchanged by it.
 
-export type PaymentStatusBadgeKind = "paid" | "partial" | "unpaid" | "overdue";
+export type PaymentStatusBadgeKind = "paid" | "partial" | "unpaid" | "overdue" | "returned";
 
 export interface PaymentStatusBadgeInput {
   /** Invoice total (books currency). */
@@ -32,16 +37,28 @@ export interface PaymentStatusBadgeInput {
   dueDate?: string | null;
   /** Today as "YYYY-MM-DD" (compared lexicographically, as in page.tsx). */
   today?: string;
+  /**
+   * Amount of the invoice's goods returned, from the allocation engine.
+   * Only the purchase path passes this. When it covers the whole invoice
+   * total, the invoice is "returned" — even when something was paid
+   * before the return, and even though the remaining is 0.
+   */
+  returned?: number;
 }
 
-// Paid wins over everything (a fully paid invoice is never overdue, even
-// when its due date passed before the last payment landed). Overdue keeps
-// its existing meaning from the sales history: a credit invoice still
-// owed past its due date. Partial is any invoice with something paid and
-// something still owed. Unpaid is a credit invoice with nothing paid yet.
+// Returned wins over everything (a fully returned invoice is neither
+// paid nor owed, even though its remaining is 0 and something may have
+// been paid before the return). Paid wins over everything else (a fully
+// paid invoice is never overdue, even when its due date passed before
+// the last payment landed). Overdue keeps its existing meaning from the
+// sales history: a credit invoice still owed past its due date. Partial
+// is any invoice with something paid and something still owed. Unpaid is
+// a credit invoice with nothing paid yet.
 export function getPaymentStatusBadgeKind(input: PaymentStatusBadgeInput): PaymentStatusBadgeKind {
   const paid = Math.max(0, input.paid);
   const remaining = Math.max(0, input.remaining);
+  const returned = input.returned === undefined ? 0 : Math.max(0, input.returned);
+  if (input.returned !== undefined && input.total > 0 && returned >= input.total) return "returned";
   if (remaining <= 0) return "paid";
   if (input.dueDate && input.today && input.dueDate < input.today) return "overdue";
   if (paid > 0) return "partial";
@@ -50,7 +67,9 @@ export function getPaymentStatusBadgeKind(input: PaymentStatusBadgeInput): Payme
 
 // Tone pairs already used for badges in page.tsx (success / warning /
 // destructive semantic tokens). Overdue shares the Unpaid red: it is an
-// unpaid invoice, only further past its due date.
+// unpaid invoice, only further past its due date. Returned is neutral:
+// a returned invoice is neither paid nor unpaid, so it takes the muted
+// tone, never green or red.
 export function paymentStatusBadgeClass(kind: PaymentStatusBadgeKind): string {
   switch (kind) {
     case "paid":
@@ -60,6 +79,8 @@ export function paymentStatusBadgeClass(kind: PaymentStatusBadgeKind): string {
     case "unpaid":
     case "overdue":
       return "bg-destructive/10 text-destructive";
+    case "returned":
+      return "bg-muted text-muted-foreground";
   }
 }
 

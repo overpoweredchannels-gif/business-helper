@@ -1,4 +1,5 @@
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
+import { excludeVoidedPayments } from "../payments/voided-payments";
 
 /**
  * Customer ledger — derived financial view over the raw business data.
@@ -138,7 +139,11 @@ export function buildCustomerLedger(data: MemoryWriterRawData, now: Date = new D
   }
 
   const paymentsByCustomer = new Map<string, number>();
-  for (const payment of data.customerPayments ?? []) {
+  // Voided payments count toward nothing: they must not feed the FIFO
+  // pool (or the outstanding/overdue figures derived from it). A voided
+  // payment's allocation rows stay in the database by design, but the
+  // allocation engine skips them — the AI ledger must do the same.
+  for (const payment of excludeVoidedPayments(data.customerPayments ?? [])) {
     const customerId = String(payment.customer_id ?? "");
     if (!customerId) continue;
     paymentsByCustomer.set(customerId, (paymentsByCustomer.get(customerId) ?? 0) + toNumber(payment.amount));
