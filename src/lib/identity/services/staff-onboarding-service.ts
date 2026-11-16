@@ -14,6 +14,14 @@ import { logAuditEvent } from "../audit";
 import type { ActorContext } from "../types";
 import type { Employee } from "@/lib/tradeos/types";
 import { getStaffProfileRole } from "../staff-roles";
+import {
+  buildLockoutMessage,
+  checkLoginAllowed,
+  clearFailedLogins,
+  normalizeLockoutIdentifier,
+  recordFailedLogin,
+  SupabaseLoginAttemptStore,
+} from "../login-lockout";
 
 export interface StaffInviteResult {
   ok: boolean;
@@ -48,6 +56,10 @@ export interface StaffLoginResult {
   error?: string;
   accessToken?: string;
   refreshToken?: string;
+  // Set when the sign-in was refused because the identifier is locked
+  // after 5 failed attempts (15-minute lock). The route maps this to 429.
+  locked?: boolean;
+  retryAfterSeconds?: number;
 }
 
 const HIDDEN_EMAIL_DOMAIN = "staff.tradeos.internal";
@@ -408,13 +420,37 @@ export class StaffOnboardingService {
     }
 
     const supabase = createSupabaseService();
+    const lockoutStore = new SupabaseLoginAttemptStore(supabase);
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, email, is_active")
+      .select("id, email, is_active, organization_id")
       .eq("login_id", normalized)
       .maybeSingle();
 
+    // Brute-force lockout (phase 23): the key is the resolved staff email
+    // when the Profile ID maps to an account, otherwise the entered
+    // Profile ID itself — so guessing non-existent Profile IDs is throttled
+    // too. The lock is checked BEFORE the password is tested, so a locked
+    // attempt never reaches signInWithPassword.
+    const lockoutKey = profile?.email
+      ? normalizeLockoutIdentifier(profile.email)
+      : normalized.toLowerCase();
+    const allowed = await checkLoginAllowed(lockoutStore, lockoutKey);
+    if (!allowed.allowed) {
+      const retryAfterSeconds = allowed.retryAfterSeconds ?? 0;
+      return {
+        ok: false,
+        error: buildLockoutMessage(retryAfterSeconds),
+        locked: true,
+        retryAfterSeconds,
+      };
+    }
+
     if (profileError || !profile) {
+      // Unknown Profile ID: record the attempt under the entered ID so
+      // enumeration guessing is throttled per ID. The message stays the
+      // same generic one — it never reveals whether the lock engaged.
+      await recordFailedLogin(lockoutStore, lockoutKey, null);
       return { ok: false, error: "No account found for this Profile ID." };
     }
     if (profile.is_active === false) {
@@ -443,6 +479,14 @@ export class StaffOnboardingService {
       password,
     });
     if (signInError || !session.session) {
+      // Wrong password: record the failure. The attempt that trips the
+      // lock still returns the generic error; the lock message appears on
+      // the NEXT attempt (via the check above).
+      await recordFailedLogin(
+        lockoutStore,
+        lockoutKey,
+        profile.organization_id ?? null,
+      );
       return {
         ok: false,
         error: signInError?.message === "Invalid login credentials"
@@ -450,6 +494,9 @@ export class StaffOnboardingService {
           : signInError?.message ?? "Sign in failed.",
       };
     }
+
+    // Successful sign-in clears the failed-attempt count for this email.
+    await clearFailedLogins(lockoutStore, lockoutKey);
 
     return {
       ok: true,

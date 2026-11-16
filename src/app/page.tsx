@@ -118,6 +118,7 @@ import RoleManagement from "@/components/identity/RoleManagement";
 import PermissionMatrix from "@/components/identity/PermissionMatrix";
 import InvitationPanel from "@/components/identity/InvitationPanel";
 import SessionManagement from "@/components/identity/SessionManagement";
+import LoginLockoutPanel from "@/components/identity/LoginLockoutPanel";
 import AuditLogPanel from "@/components/identity/AuditLogPanel";
 import { SetupReview } from "@/components/import-export/SetupReview";
 import { BusinessRecordsExport } from "@/components/dashboard/BusinessRecordsExport";
@@ -28775,6 +28776,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
           </div>
           <div className="rounded border border-border bg-card">
             <SessionManagement />
+          </div>
+          <div className="rounded border border-border bg-card">
+            <LoginLockoutPanel />
           </div>
           <div className="rounded border border-border bg-card">
             <PermissionMatrix />

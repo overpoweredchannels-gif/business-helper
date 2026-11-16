@@ -14,6 +14,19 @@ export async function POST(request: NextRequest) {
   const service = new StaffOnboardingService();
   const result = await service.staffLogin(body.loginId ?? "", body.password ?? "");
   if (!result.ok) {
+    // A locked identifier is a rate-limit refusal (429), not a bad
+    // credential (401), so the client can surface the wait time.
+    if (result.locked) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: result.error ?? "Sign in failed.",
+          locked: true,
+          retryAfterSeconds: result.retryAfterSeconds ?? 0,
+        },
+        { status: 429 },
+      );
+    }
     return NextResponse.json({ ok: false, error: result.error ?? "Sign in failed." }, { status: 401 });
   }
 
