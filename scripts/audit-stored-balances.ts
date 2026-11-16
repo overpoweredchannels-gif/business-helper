@@ -42,7 +42,7 @@ interface CustomerRow {
   outstanding_balance: number | null;
 }
 
-async function fetchAll<T>(fetchPage: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+async function fetchAll<T>(fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
   const rows: T[] = [];
   let from = 0;
   for (;;) {
