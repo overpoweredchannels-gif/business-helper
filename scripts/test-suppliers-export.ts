@@ -5,9 +5,9 @@ import type { Supplier } from "../src/lib/tradeos/types";
 // Suppliers export slice.
 //
 // Rule under test: the CSV rows mirror the suppliers list row-for-row —
-// name, contact, phone, city, outstanding (raw number, like the balances
-// exports), last purchase (the list's displayed date), credit summary —
-// plus a Status column for the Archived badge the list renders on
+// name, contact, phone, city, area, outstanding (raw number, like the balances
+// exports), last purchase (the list's displayed date), credit summary,
+// over-limit flags — plus a Status column for the Archived badge the list renders on
 // inactive rows. Missing values show the list's "None" label; the export
 // covers exactly the suppliers the list shows (the caller passes the
 // already-filtered list), so this helper takes the array as given.
@@ -17,6 +17,7 @@ const options = {
   noneLabel,
   formatDate: (value: string) => `formatted:${value}`,
   creditSummary: (supplier: Supplier) => `credit:${supplier.supplier_name}`,
+  overLimitSummary: (supplier: Supplier) => `overlimit:${supplier.supplier_name}`,
 };
 
 const supplierBase: Supplier = {
@@ -26,6 +27,7 @@ const supplierBase: Supplier = {
   phone: "03001234567",
   whatsapp: null,
   city: "Lahore",
+  area: "Gulberg",
   notes: null,
   credit_limit: 50000,
   credit_days: 30,
@@ -48,9 +50,11 @@ function main() {
     "Contact Person",
     "Phone",
     "City",
+    "Area",
     "Outstanding Balance",
     "Last Purchase",
     "Credit",
+    "Over-limit",
     "Status",
   ]);
   assert.deepEqual(rows[0], {
@@ -58,9 +62,11 @@ function main() {
     "Contact Person": "Ali Raza",
     Phone: "03001234567",
     City: "Lahore",
+    Area: "Gulberg",
     "Outstanding Balance": 1234.5,
     "Last Purchase": "formatted:2026-11-10",
     Credit: "credit:Acme Traders",
+    "Over-limit": "overlimit:Acme Traders",
     Status: "Active",
   });
 
@@ -74,6 +80,7 @@ function main() {
         contact_person: null,
         phone: null,
         city: null,
+        area: null,
         outstanding_balance: null,
         last_purchase_date: null,
       },
@@ -85,9 +92,11 @@ function main() {
     "Contact Person": "None",
     Phone: "None",
     City: "None",
+    Area: "None",
     "Outstanding Balance": 0,
     "Last Purchase": "None",
     Credit: "credit:Bare Supplier",
+    "Over-limit": "overlimit:Bare Supplier",
     Status: "Active",
   });
 
@@ -119,7 +128,7 @@ function main() {
   );
 
   console.log(
-    "Suppliers export tests passed: list-mirroring columns, None labels, Archived status, raw outstanding, empty list.",
+    "Suppliers export tests passed: list-mirroring columns (incl. Area + Over-limit), None labels, Archived status, raw outstanding, empty list.",
   );
 }
 

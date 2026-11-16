@@ -178,6 +178,11 @@ import {
   toDateInputValue,
 } from "@/lib/tradeos/formatters";
 import { buildSupplierExportRows } from "@/lib/suppliers/export";
+import {
+  supplierCreditSummary,
+  supplierOverLimitSummary,
+  validateSupplierCreditFields,
+} from "@/lib/suppliers/display";
 import { calendarDayOfRecord } from "@/lib/regional/dates";
 import { resolveBooksCurrency } from "@/lib/books/currency";
 import { languages, parseCurrencyCookie, parseLanguageCookie, parseTimeZone, type Currency, type Language } from "@/lib/regional/settings";
@@ -9109,6 +9114,17 @@ setCustomerOrganizationName("");
       return;
     }
 
+    // Client-side guard for the credit number fields: without it a
+    // non-numeric string becomes NaN, JSON.stringify turns NaN into null,
+    // and the value the user typed is silently dropped. Mirrors the server
+    // rule in validateSupplierInput (finite, >= 0).
+    const creditErrorKey = validateSupplierCreditFields(supplierCreditLimit, supplierCreditDays);
+    if (creditErrorKey) {
+      setSupplierError(t(creditErrorKey));
+      setSupplierMessage(null);
+      return;
+    }
+
     if (!requireOrganization("save supplier")) {
       setSupplierError(orgNotLoadedMessage);
       setSupplierMessage(null);
@@ -9377,21 +9393,6 @@ setCustomerOrganizationName("");
   const supplierBinDaysLeft = (deletedAt: string | null | undefined): number => {
     if (!deletedAt) return 0;
     return Math.max(0, 7 - Math.floor((Date.now() - new Date(deletedAt).getTime()) / 86400000));
-  };
-
-  // One-line credit summary for the list; unset parts show as "None", never invented.
-  const supplierCreditSummary = (supplier: Supplier): string => {
-    const limit = supplier.credit_limit != null ? formatBooksMoney(supplier.credit_limit) : t('common.none');
-    const days = supplier.credit_days != null ? `${supplier.credit_days} ${t('suppliers.creditDaysSuffix')}` : t('common.none');
-    let policy = t('common.none');
-    if (supplier.credit_policy === "cash_only") policy = t('page.creditCashOnly');
-    if (supplier.credit_policy === "unrestricted") policy = t('page.creditUnrestricted');
-    let method = t('common.none');
-    if (supplier.preferred_payment_method === "cash") method = t('money.cash');
-    if (supplier.preferred_payment_method === "bank") method = t('money.bank');
-    if (supplier.preferred_payment_method === "card") method = t('money.card');
-    if (supplier.preferred_payment_method === "cheque") method = t('money.cheque');
-    return `${limit} · ${days} · ${policy} · ${method}`;
   };
 
   const activeSuppliers = useMemo(
@@ -14606,7 +14607,8 @@ setCustomerOrganizationName("");
       buildSupplierExportRows(filteredSuppliers, {
         noneLabel: t('common.none'),
         formatDate,
-        creditSummary: supplierCreditSummary,
+        creditSummary: (supplier) => supplierCreditSummary(supplier, t),
+        overLimitSummary: (supplier) => supplierOverLimitSummary(supplier, t),
       })
     );
   };
@@ -25408,9 +25410,11 @@ setCustomerOrganizationName("");
                             <div>{t('suppliers.contactPrefix')} {supplier.contact_person ?? t('common.none')}</div>
                             <div>{t('customers.phonePrefix')} {supplier.phone ?? t('common.none')}</div>
                             <div>{t('customers.cityPrefix')} {supplier.city ?? t('common.none')}</div>
+                            <div>{t('suppliers.areaLabel')}: {supplier.area ?? t('common.none')}</div>
                             <div>{t('suppliers.outstandingPrefix')} {formatBooksMoney(supplier.outstanding_balance ?? 0)}</div>
                             <div>{t('suppliers.lastPurchasePrefix')} {supplier.last_purchase_date ? formatDate(supplier.last_purchase_date) : t('common.none')}</div>
-                            <div>{t('suppliers.creditPrefix')} {supplierCreditSummary(supplier)}</div>
+                            <div>{t('suppliers.creditPrefix')} {supplierCreditSummary(supplier, t)}</div>
+                            <div>{supplierOverLimitSummary(supplier, t)}</div>
                           </div>
                           <div className="flex shrink-0 flex-wrap gap-2">
                             <button
