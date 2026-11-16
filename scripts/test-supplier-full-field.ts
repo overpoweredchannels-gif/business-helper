@@ -20,6 +20,7 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   supplierCreditSummary,
   supplierOverLimitSummary,
@@ -404,6 +405,91 @@ function testExportColumns() {
   check(
     sparse[0]?.["Over-limit"] === "Allow over credit limit: No · Allow sales with overdue balance: No",
     "Export shows No for null flags",
+  );
+}
+
+// ─── 7. Credit inputs are text inputs so the guard can fire ──────────────
+//
+// Follow-up fix (live QA 2026-11-16): the guard in §3 already rejected
+// "abc" and "x", but the inputs were type="number", and a number input
+// swallows non-numeric keystrokes in the browser — the typed text never
+// reached the guard, the state stayed "", and the save proceeded with an
+// empty credit limit. These inputs must stay type="text" (with inputMode
+// for the mobile numeric keyboard) so the raw string reaches the guard.
+// This section proves the wiring: the input type in page.tsx, and the
+// save decision (blocked vs allowed) for each raw typed string.
+
+console.log("\n=== Credit inputs reach the guard (text, not number) ===\n");
+
+function inputTagFor(source: string, valueAttr: string): string | null {
+  const valueIndex = source.indexOf(valueAttr);
+  if (valueIndex === -1) return null;
+  const inputStart = source.lastIndexOf("<input", valueIndex);
+  if (inputStart === -1) return null;
+  return source.slice(inputStart, valueIndex);
+}
+
+{
+  const pageSource = readFileSync(new URL("../src/app/page.tsx", import.meta.url), "utf8");
+
+  const limitInput = inputTagFor(pageSource, "value={supplierCreditLimit}");
+  check(limitInput !== null, "Credit Limit input exists in the supplier form");
+  check(
+    limitInput?.includes('type="text"') === true,
+    'Credit Limit input is type="text" so non-numeric keystrokes reach the guard',
+  );
+  check(
+    limitInput?.includes('inputMode="decimal"') === true,
+    "Credit Limit input keeps the numeric keyboard on mobile",
+  );
+  check(
+    limitInput?.includes('type="number"') === false,
+    'Credit Limit input is not type="number" (which swallows non-numeric text)',
+  );
+
+  const daysInput = inputTagFor(pageSource, "value={supplierCreditDays}");
+  check(daysInput !== null, "Credit Days input exists in the supplier form");
+  check(
+    daysInput?.includes('type="text"') === true,
+    'Credit Days input is type="text" so non-numeric keystrokes reach the guard',
+  );
+  check(
+    daysInput?.includes('inputMode="decimal"') === true,
+    "Credit Days input keeps the numeric keyboard on mobile",
+  );
+  check(
+    daysInput?.includes('type="number"') === false,
+    'Credit Days input is not type="number" (which swallows non-numeric text)',
+  );
+
+  // The save decision in handleSaveSupplier: the guard runs on the raw
+  // typed strings; a returned key blocks the save with that error, null
+  // lets it proceed. This is the exact flow a user typing "abc" takes.
+  const saveBlocked = (limitRaw: string, daysRaw: string): string | null =>
+    validateSupplierCreditFields(limitRaw, daysRaw);
+  check(
+    saveBlocked("abc", "30") === "suppliers.creditLimitInvalid",
+    'Typing "abc" in Credit Limit blocks the save with the credit-limit error',
+  );
+  check(
+    saveBlocked("50000", "x") === "suppliers.creditDaysInvalid",
+    'Typing "x" in Credit Days blocks the save with the credit-days error',
+  );
+  check(
+    saveBlocked("-5", "30") === "suppliers.creditLimitInvalid",
+    "Typing -5 in Credit Limit blocks the save",
+  );
+  check(
+    saveBlocked("50000", "-1") === "suppliers.creditDaysInvalid",
+    "Typing -1 in Credit Days blocks the save",
+  );
+  check(
+    saveBlocked("", "") === null,
+    "Blank credit fields still allow the save (the fields are optional)",
+  );
+  check(
+    saveBlocked("50000", "30") === null,
+    "Valid credit numbers still allow the save",
   );
 }
 

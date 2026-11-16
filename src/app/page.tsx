@@ -25178,13 +25178,16 @@ setCustomerOrganizationName("");
               />
             </label>
 
+            {/* Credit numbers are text inputs, not number inputs: a number
+                input swallows non-numeric keystrokes ("abc") so the credit
+                guard in handleSaveSupplier never sees them; inputMode keeps
+                the numeric keyboard on mobile. */}
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('suppliers.creditLimitLabel')}</span>
                 <input
-                  type="number"
-                  min="0"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={supplierCreditLimit}
                   onChange={(e) => setSupplierCreditLimit(e.target.value)}
                   className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -25194,9 +25197,8 @@ setCustomerOrganizationName("");
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('suppliers.creditDaysLabel')}</span>
                 <input
-                  type="number"
-                  min="0"
-                  step="1"
+                  type="text"
+                  inputMode="decimal"
                   value={supplierCreditDays}
                   onChange={(e) => setSupplierCreditDays(e.target.value)}
                   className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
