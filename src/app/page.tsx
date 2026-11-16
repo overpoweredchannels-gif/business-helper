@@ -38,6 +38,9 @@ import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
 import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecision, resolveSaleCashReceived, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
 import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { loadOfflineCustomers, loadOfflineProducts, saveOfflineCustomers, saveOfflineProducts } from "@/lib/offline/offline-store";
+import { retrySyncIssue, startSilentSyncEngine } from "@/lib/offline/sync-engine";
+import { SYNC_ISSUES_CHANGED_EVENT, getSyncIssuesBackend, openSyncIssues, type SyncIssue } from "@/lib/offline/sync-issues";
+import { SyncIssuesPanel } from "@/components/sales/SyncIssuesPanel";
 import {
   clearIdentityCache,
   identityCacheForUser,
@@ -5179,11 +5182,15 @@ setCustomerOrganizationName("");
       const isRestoredRetry = restoredPendingSaleRef.current;
       restoredPendingSaleRef.current = false;
       const saved = await createAtomicSale(supabase, scope, input, { isRetry: isRestoredRetry });
-      if ("queued" in saved) {
+      if ("queued" in saved || "parked" in saved) {
         // Offline (or still unconfirmed): the basket is safe in the queue.
         // Show a provisional receipt, clear the form like a confirmed save,
         // and let the queue sync it when the connection returns. No drawer
         // kick here: the drawer opens for live cash sales only.
+        // Slice S3 (desktop only): a "parked" sale is the same shape — the
+        // server refused it and it now waits in Sync issues with its
+        // provisional number — so it gets the same receipt and form
+        // clear, but the message names Sync issues instead of "offline".
         const queuedCustomer = customers.find((c) => String(c.id) === String(input.customer_id));
         setLastPOSReceipt(buildOfflineSaleReceipt(input, {
           scope,
@@ -5208,9 +5215,14 @@ setCustomerOrganizationName("");
           fetchProducts();
         }
         setSalesMessage(
-          t('offline.savedOffline')
-            + (saved.confirmedCount > 0 ? " " + t('offline.syncedCount').replace('{count}', String(saved.confirmedCount)) : "")
-            + (saved.rejectedMessages.length > 0 ? " " + saved.rejectedMessages.join(" ") : ""),
+          "parked" in saved
+            ? t('syncIssues.saleParked')
+                .replace('{number}', saved.attempt.provisionalNumber ?? t('offline.pendingLabel'))
+                .replace('{reason}', saved.reason)
+              + (saved.confirmedCount > 0 ? " " + t('offline.syncedCount').replace('{count}', String(saved.confirmedCount)) : "")
+            : (isDesktopApp() ? t('offline.savedDesktop') : t('offline.savedOffline'))
+              + (saved.confirmedCount > 0 ? " " + t('offline.syncedCount').replace('{count}', String(saved.confirmedCount)) : "")
+              + (saved.rejectedMessages.length > 0 ? " " + saved.rejectedMessages.join(" ") : ""),
         );
         if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
         setSaleScanFocus(value => value + 1);
@@ -6720,6 +6732,11 @@ setCustomerOrganizationName("");
   const [lastPOSReceipt, setLastPOSReceipt] = useState<Receipt | null>(null);
   const [pendingSalesCount, setPendingSalesCount] = useState(0);
   const [pendingSalesNotices, setPendingSalesNotices] = useState<string[]>([]);
+  // Slice S3 — owner-only Sync issues (desktop build): sales the server
+  // refused, parked with their payload instead of dropped. The web build
+  // keeps its queue notices; this list only renders on desktop.
+  const [syncIssues, setSyncIssues] = useState<SyncIssue[]>([]);
+  const [retryingSyncIssueId, setRetryingSyncIssueId] = useState<string | null>(null);
   // Phase E1 offline mode: true while the browser reports no network.
   // The sale form reads this (not the queue) so the cashier sees the
   // offline state even before any sale is queued.
@@ -6750,11 +6767,80 @@ setCustomerOrganizationName("");
     setPendingSalesNotices(readQueueNotices(scope));
   }, [currentOrganizationId, currentProfile?.id]);
 
+  // Slice S3: refresh the owner-only Sync issues list (open issues
+  // only; silent provisional-link rows stay hidden until they fail).
+  const refreshSyncIssues = useCallback(async () => {
+    if (!currentOrganizationId || !currentProfile?.id) return;
+    const scope = `${currentOrganizationId}:${currentProfile.id}`;
+    try {
+      setSyncIssues(openSyncIssues(await getSyncIssuesBackend().list(scope)));
+    } catch {
+      setSyncIssues([]);
+    }
+  }, [currentOrganizationId, currentProfile?.id]);
+
+  useEffect(() => {
+    if (!currentOrganizationId || !currentProfile?.id) return;
+    void refreshSyncIssues();
+    const handleIssuesChanged = () => void refreshSyncIssues();
+    window.addEventListener(SYNC_ISSUES_CHANGED_EVENT, handleIssuesChanged);
+    return () => {
+      window.removeEventListener(SYNC_ISSUES_CHANGED_EVENT, handleIssuesChanged);
+    };
+  }, [refreshSyncIssues, currentOrganizationId, currentProfile?.id]);
+
+  // Slice S3: owner Retry / Discard for one parked sale. Retry re-queues
+  // the sale with its ORIGINAL idempotency key and drains — the drain
+  // status-checks first, so an already-confirmed sale replays instead
+  // of double-posting. Discard only marks the row discarded.
+  const handleRetrySyncIssue = useCallback(async (issue: SyncIssue) => {
+    if (!currentOrganizationId || !currentProfile?.id) return;
+    const scope = `${currentOrganizationId}:${currentProfile.id}`;
+    setRetryingSyncIssueId(issue.id);
+    try {
+      const outcome = await retrySyncIssue(supabase, scope, issue.id);
+      if (outcome.confirmed) {
+        setSalesMessage(t('syncIssues.retryConfirmed'));
+        fetchSalesTransactions();
+        fetchSalesItems();
+        fetchProducts();
+      } else if (outcome.notRetryable) {
+        setSalesError(t('syncIssues.notRetryable'));
+      } else if (outcome.reason) {
+        setSalesError(outcome.reason);
+      }
+      await refreshSyncIssues();
+      await refreshPendingSales();
+    } finally {
+      setRetryingSyncIssueId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentOrganizationId, currentProfile?.id, refreshSyncIssues, refreshPendingSales]);
+
+  const handleDiscardSyncIssue = useCallback(async (issue: SyncIssue) => {
+    if (!currentOrganizationId || !currentProfile?.id) return;
+    const scope = `${currentOrganizationId}:${currentProfile.id}`;
+    try {
+      await getSyncIssuesBackend().setStatus(scope, issue.id, "discarded");
+    } catch {
+      /* A failed discard leaves the row open — the panel still shows it. */
+    }
+    await refreshSyncIssues();
+  }, [currentOrganizationId, currentProfile?.id, refreshSyncIssues]);
+
   useEffect(() => {
     if (!currentOrganizationId || !currentProfile?.id) return;
     const scope = `${currentOrganizationId}:${currentProfile.id}`;
-    const drainAndRefresh = () => {
-      void drainPendingSalesQueue(supabase, scope).then((drained) => {
+    void refreshPendingSales();
+    // Slice S3 — silent sync engine (sales only): launch run + `online`
+    // event + 5-minute timer + debounced run after a save. The engine
+    // never throws; a failed run stays local and the next trigger
+    // retries. The web build keeps the same drain behaviour — only the
+    // trigger wiring moved here from the inline effect below.
+    const engine = startSilentSyncEngine({
+      supabase,
+      getScope: () => (currentOrganizationId && currentProfile?.id ? `${currentOrganizationId}:${currentProfile.id}` : null),
+      onDrained: (drained) => {
         if (drained.confirmedCount > 0) {
           // Sync visibility (2026-11-15): the cashier must see that the
           // waiting sales actually synced — the queue clearing silently
@@ -6767,24 +6853,13 @@ setCustomerOrganizationName("");
           fetchCustomerPaymentAllocations();
         }
         void refreshPendingSales();
-      }).catch(() => void refreshPendingSales());
-    };
-    void refreshPendingSales();
-    // Drain on mount too: a sale queued before a reload syncs itself.
-    // Slice S2: the queue read is async (SQLite over IPC on desktop).
-    void readPendingSalesQueue(scope)
-      .then((queue) => {
-        if (queue.length > 0) drainAndRefresh();
-      })
-      .catch(() => {
-        /* A failed read counts as empty — the drain effect re-checks. */
-      });
+      },
+    });
     const handleQueueChanged = () => void refreshPendingSales();
     window.addEventListener(QUEUE_CHANGED_EVENT, handleQueueChanged);
-    window.addEventListener("online", drainAndRefresh);
     return () => {
+      engine.stop();
       window.removeEventListener(QUEUE_CHANGED_EVENT, handleQueueChanged);
-      window.removeEventListener("online", drainAndRefresh);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshPendingSales, currentOrganizationId, currentProfile?.id]);
@@ -21458,8 +21533,12 @@ setCustomerOrganizationName("");
             {salesError && <p className="mt-4 text-sm text-destructive">{salesError}</p>}
             {(!isOnline || productsFromCache || customersFromCache) && (
               <div role="status" className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
-                {!isOnline && <p className="font-medium">{t('offline.mode')}</p>}
-                {pendingSalesCount > 0 && (
+                {/* Slice S3: desktop says only "saved on this device" —
+                    no "will sync" wording for the cashier. */}
+                {!isOnline && <p className="font-medium">{isDesktopApp() ? t('offline.modeDesktop') : t('offline.mode')}</p>}
+                {/* Slice S3: the desktop build has no queue-count language
+                    — a saved sale is saved; the cloud copy is invisible. */}
+                {!isDesktopApp() && pendingSalesCount > 0 && (
                   <p className={!isOnline ? "mt-1" : undefined}>{t('offline.waiting').replace('{count}', String(pendingSalesCount))}</p>
                 )}
                 {(productsFromCache || customersFromCache) && (
@@ -21469,7 +21548,10 @@ setCustomerOrganizationName("");
                 )}
               </div>
             )}
-            {(pendingSalesCount > 0 || pendingSalesNotices.length > 0) && (
+            {/* Slice S3: the desktop build has no manual "Sync now" button
+                and no queue-count / "waiting to sync" box — sync is silent.
+                The web build keeps this box exactly as-is. */}
+            {!isDesktopApp() && (pendingSalesCount > 0 || pendingSalesNotices.length > 0) && (
               <div role="status" className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
                 {pendingSalesCount > 0 && (
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -21522,6 +21604,18 @@ setCustomerOrganizationName("");
                   </button>
                 )}
               </div>
+            )}
+            {/* Slice S3: owner-only Sync issues (desktop build only) — sales
+                the server refused, parked with their payload. Renders only
+                while open issues exist. */}
+            {isDesktopApp() && isOwnerOrAdmin() && syncIssues.length > 0 && (
+              <SyncIssuesPanel
+                issues={syncIssues}
+                formatAmount={formatBooksMoney}
+                retryingId={retryingSyncIssueId}
+                onRetry={(issue) => void handleRetrySyncIssue(issue)}
+                onDiscard={(issue) => void handleDiscardSyncIssue(issue)}
+              />
             )}
             {!isOwnerOrAdmin() && <MyPendingSales key={salesMessage ?? "pending"} />}
           </div>

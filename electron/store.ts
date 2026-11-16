@@ -23,6 +23,13 @@
  *   renderer keeps its localStorage copy as a synchronous read cache;
  *   this table is the durable record behind it (see
  *   `src/lib/offline/identity-cache.ts`).
+ * - `sync_issues` — Slice S3 owner-visible sync problems: a sale the
+ *   server refused (stock conflict, fingerprint mismatch, any other
+ *   rejection) is PARKED here with its full payload instead of being
+ *   dropped, so the owner can retry it (same idempotency key) or
+ *   discard it — and a provisional number that could not yet be linked
+ *   to its cloud invoice waits here as a `provisional-link` row until
+ *   the link succeeds. Rows are never deleted; discard is a status.
  * - `meta` — key/value counters; today only `last_provisional_number`.
  *
  * Provisional numbers are allocated inside the same transaction as the
@@ -56,6 +63,36 @@ export interface StoredIdentity {
   cachedAt: string;
 }
 
+/** One owner-visible sync problem, as the renderer sees it over IPC. */
+export interface SyncIssueRow {
+  /** Client-generated id (`crypto.randomUUID()` at park time). */
+  id: string;
+  scope: string;
+  /** `stock-conflict` | `fingerprint-mismatch` | `rejected` | `provisional-link`. */
+  kind: string;
+  /** The sale's idempotency key, for sale kinds; null for provisional-link rows keyed by server id. */
+  requestId: string | null;
+  /** Local provisional number (`L-000123`) of the parked sale, if it had one. */
+  provisionalNumber: string | null;
+  /** Server invoice number (`S-100xxx`) once the sale is confirmed. */
+  serverInvoiceNumber: string | null;
+  /** Server `sales_transactions.id` once the sale is confirmed. */
+  serverId: string | null;
+  customerName: string | null;
+  /** Sale total in books currency, for the issue list. */
+  total: number | null;
+  /** Human-readable reason (the server message, or the link failure). */
+  reason: string;
+  /** Full `AtomicSaleInput` JSON for a parked sale (Retry re-submits it). */
+  payloadJson: string | null;
+  /** `open` | `resolved` | `discarded`. Never deleted. */
+  status: string;
+  /** Last link/sync error text; provisional-link rows stay silent in the UI while this is null. */
+  syncError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface LocalStore {
   /** Queued sales for a scope (`${organizationId}:${profileId}`), oldest first. */
   listSales(scope: string): LocalSaleRow[];
@@ -74,6 +111,20 @@ export interface LocalStore {
   setIdentity(entry: StoredIdentity): void;
   /** Drop the cached identity (sign-out). */
   clearIdentity(): void;
+  /** Sync issues for a scope, oldest first (open, resolved and discarded). */
+  listIssues(scope: string): SyncIssueRow[];
+  /**
+   * Insert an issue, or update the already-open one for the same sale
+   * (matched by `requestId` for sale kinds, by `serverId` for
+   * provisional-link rows) so a re-park never duplicates it. The kept
+   * row's `id` and `createdAt` survive; `updatedAt` refreshes.
+   * Throws on an invalid entry. Returns the stored row.
+   */
+  upsertIssue(issue: SyncIssueRow): SyncIssueRow;
+  /** Set one issue's status (`open` | `resolved` | `discarded`). */
+  setIssueStatus(scope: string, id: string, status: string): void;
+  /** Update one issue's reason / sync error text. */
+  updateIssue(scope: string, id: string, patch: { reason?: string; syncError?: string | null }): void;
   /** Close the database handle (app quit). */
   close(): void;
 }
@@ -105,6 +156,24 @@ CREATE TABLE IF NOT EXISTS identity_cache (
   organization_row_json TEXT,
   cached_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sync_issues (
+  id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  request_id TEXT,
+  provisional_number TEXT,
+  server_invoice_number TEXT,
+  server_id TEXT,
+  customer_name TEXT,
+  total REAL,
+  reason TEXT NOT NULL,
+  payload_json TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  sync_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sync_issues_scope ON sync_issues (scope, status, created_at);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -143,6 +212,30 @@ function isValidIdentity(entry: unknown): entry is StoredIdentity {
   );
 }
 
+const SYNC_ISSUE_KINDS = new Set(["stock-conflict", "fingerprint-mismatch", "rejected", "provisional-link"]);
+const SYNC_ISSUE_STATUSES = new Set(["open", "resolved", "discarded"]);
+
+function isValidIssue(entry: unknown): entry is SyncIssueRow {
+  if (typeof entry !== "object" || entry === null) return false;
+  const row = entry as Record<string, unknown>;
+  return (
+    typeof row.id === "string" &&
+    row.id.length > 0 &&
+    typeof row.scope === "string" &&
+    row.scope.length > 0 &&
+    typeof row.kind === "string" &&
+    SYNC_ISSUE_KINDS.has(row.kind) &&
+    typeof row.reason === "string" &&
+    row.reason.length > 0 &&
+    typeof row.status === "string" &&
+    SYNC_ISSUE_STATUSES.has(row.status) &&
+    typeof row.createdAt === "string" &&
+    row.createdAt.length > 0 &&
+    typeof row.updatedAt === "string" &&
+    row.updatedAt.length > 0
+  );
+}
+
 export function createLocalStore(dbPath: string): LocalStore {
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
@@ -162,6 +255,27 @@ export function createLocalStore(dbPath: string): LocalStore {
     "INSERT INTO identity_cache (id, profile_id, organization_id, display_name, email, role, books_currency, profile_row_json, organization_row_json, cached_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET profile_id = excluded.profile_id, organization_id = excluded.organization_id, display_name = excluded.display_name, email = excluded.email, role = excluded.role, books_currency = excluded.books_currency, profile_row_json = excluded.profile_row_json, organization_row_json = excluded.organization_row_json, cached_at = excluded.cached_at",
   );
   const deleteIdentity = db.prepare("DELETE FROM identity_cache WHERE id = 1");
+  const selectIssues = db.prepare(
+    "SELECT * FROM sync_issues WHERE scope = ? ORDER BY created_at ASC, id ASC",
+  );
+  const selectOpenIssueByRequest = db.prepare(
+    "SELECT * FROM sync_issues WHERE scope = ? AND status = 'open' AND request_id = ? LIMIT 1",
+  );
+  const selectOpenIssueByServer = db.prepare(
+    "SELECT * FROM sync_issues WHERE scope = ? AND status = 'open' AND server_id = ? LIMIT 1",
+  );
+  const insertIssue = db.prepare(
+    "INSERT INTO sync_issues (id, scope, kind, request_id, provisional_number, server_invoice_number, server_id, customer_name, total, reason, payload_json, status, sync_error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  const updateIssueRow = db.prepare(
+    "UPDATE sync_issues SET kind = ?, request_id = ?, provisional_number = ?, server_invoice_number = ?, server_id = ?, customer_name = ?, total = ?, reason = ?, payload_json = ?, status = ?, sync_error = ?, updated_at = ? WHERE scope = ? AND id = ?",
+  );
+  const updateIssueStatus = db.prepare(
+    "UPDATE sync_issues SET status = ?, updated_at = ? WHERE scope = ? AND id = ?",
+  );
+  const updateIssueText = db.prepare(
+    "UPDATE sync_issues SET reason = ?, sync_error = ?, updated_at = ? WHERE scope = ? AND id = ?",
+  );
   const selectCounter = db.prepare("SELECT value FROM meta WHERE key = ?");
   const upsertCounter = db.prepare(
     "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -193,6 +307,94 @@ export function createLocalStore(dbPath: string): LocalStore {
       provisionalNumber: row.provisional_number,
     };
   }
+
+  function rowToIssue(row: {
+    id: string;
+    scope: string;
+    kind: string;
+    request_id: string | null;
+    provisional_number: string | null;
+    server_invoice_number: string | null;
+    server_id: string | null;
+    customer_name: string | null;
+    total: number | null;
+    reason: string;
+    payload_json: string | null;
+    status: string;
+    sync_error: string | null;
+    created_at: string;
+    updated_at: string;
+  }): SyncIssueRow {
+    return {
+      id: row.id,
+      scope: row.scope,
+      kind: row.kind,
+      requestId: row.request_id,
+      provisionalNumber: row.provisional_number,
+      serverInvoiceNumber: row.server_invoice_number,
+      serverId: row.server_id,
+      customerName: row.customer_name,
+      total: row.total,
+      reason: row.reason,
+      payloadJson: row.payload_json,
+      status: row.status,
+      syncError: row.sync_error,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  const upsertIssueTx = db.transaction((issue: SyncIssueRow): SyncIssueRow => {
+    // A re-park of the same sale (or a re-recorded link for the same
+    // server row) updates the open row instead of duplicating it.
+    // A resolved/discarded row never matches: a later problem with the
+    // same sale is a new issue, not a resurrection.
+    const existing =
+      issue.requestId != null
+        ? (selectOpenIssueByRequest.get(issue.scope, issue.requestId) as Parameters<typeof rowToIssue>[0] | undefined)
+        : issue.serverId != null
+          ? (selectOpenIssueByServer.get(issue.scope, issue.serverId) as Parameters<typeof rowToIssue>[0] | undefined)
+          : undefined;
+    const now = new Date().toISOString();
+    if (existing) {
+      const kept = rowToIssue(existing);
+      updateIssueRow.run(
+        issue.kind,
+        issue.requestId,
+        issue.provisionalNumber,
+        issue.serverInvoiceNumber,
+        issue.serverId,
+        issue.customerName,
+        issue.total,
+        issue.reason,
+        issue.payloadJson,
+        issue.status,
+        issue.syncError,
+        now,
+        issue.scope,
+        kept.id,
+      );
+      return { ...issue, id: kept.id, createdAt: kept.createdAt, updatedAt: now };
+    }
+    insertIssue.run(
+      issue.id,
+      issue.scope,
+      issue.kind,
+      issue.requestId,
+      issue.provisionalNumber,
+      issue.serverInvoiceNumber,
+      issue.serverId,
+      issue.customerName,
+      issue.total,
+      issue.reason,
+      issue.payloadJson,
+      issue.status,
+      issue.syncError,
+      issue.createdAt,
+      issue.updatedAt,
+    );
+    return issue;
+  });
 
   const replaceSalesTx = db.transaction((scope: string, rows: LocalSaleRow[]): LocalSaleRow[] => {
     // Preserve what the queue already knows (provisional numbers and the
@@ -313,6 +515,35 @@ export function createLocalStore(dbPath: string): LocalStore {
 
     clearIdentity(): void {
       deleteIdentity.run();
+    },
+
+    listIssues(scope: string): SyncIssueRow[] {
+      const rows = selectIssues.all(scope) as Array<Parameters<typeof rowToIssue>[0]>;
+      return rows.map(rowToIssue);
+    },
+
+    upsertIssue(issue: SyncIssueRow): SyncIssueRow {
+      if (!isValidIssue(issue)) throw new Error("Invalid sync issue entry");
+      return upsertIssueTx(issue);
+    },
+
+    setIssueStatus(scope: string, id: string, status: string): void {
+      if (!SYNC_ISSUE_STATUSES.has(status)) throw new Error("Invalid sync issue status");
+      updateIssueStatus.run(status, new Date().toISOString(), scope, id);
+    },
+
+    updateIssue(scope: string, id: string, patch: { reason?: string; syncError?: string | null }): void {
+      const current = (selectIssues.all(scope) as Array<Parameters<typeof rowToIssue>[0]>).find(
+        (row) => row.id === id,
+      );
+      if (!current) return;
+      updateIssueText.run(
+        patch.reason ?? current.reason,
+        patch.syncError === undefined ? current.sync_error : patch.syncError,
+        new Date().toISOString(),
+        scope,
+        id,
+      );
     },
 
     close(): void {

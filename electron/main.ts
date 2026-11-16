@@ -75,6 +75,55 @@ function setupLocalStore(): void {
     (localStore as LocalStore).setIdentity(entry as StoredIdentity);
   });
   ipcMain.handle("aankh:identity:clear", () => (localStore as LocalStore).clearIdentity());
+  // Slice S3 — owner-only Sync issues (parked sales + unlinked
+  // provisional numbers). Same validation discipline as the sale rows:
+  // the renderer sends plain JSON and the main process refuses anything
+  // malformed before it reaches SQLite.
+  const requireIssue = (value: unknown): import("./store").SyncIssueRow => {
+    const row = value as Partial<import("./store").SyncIssueRow>;
+    if (typeof row !== "object" || row === null) throw new Error("Invalid sync issue");
+    if (typeof row.id !== "string" || row.id.length === 0) throw new Error("Invalid sync issue: id");
+    if (typeof row.scope !== "string" || row.scope.length === 0) throw new Error("Invalid sync issue: scope");
+    if (typeof row.kind !== "string" || row.kind.length === 0) throw new Error("Invalid sync issue: kind");
+    if (typeof row.reason !== "string" || row.reason.length === 0) throw new Error("Invalid sync issue: reason");
+    if (typeof row.status !== "string" || row.status.length === 0) throw new Error("Invalid sync issue: status");
+    return {
+      id: row.id,
+      scope: row.scope,
+      kind: row.kind,
+      requestId: typeof row.requestId === "string" ? row.requestId : null,
+      provisionalNumber: typeof row.provisionalNumber === "string" ? row.provisionalNumber : null,
+      serverInvoiceNumber: typeof row.serverInvoiceNumber === "string" ? row.serverInvoiceNumber : null,
+      serverId: typeof row.serverId === "string" ? row.serverId : null,
+      customerName: typeof row.customerName === "string" ? row.customerName : null,
+      total: typeof row.total === "number" ? row.total : null,
+      reason: row.reason,
+      payloadJson: typeof row.payloadJson === "string" ? row.payloadJson : null,
+      status: row.status,
+      syncError: typeof row.syncError === "string" ? row.syncError : null,
+      createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date().toISOString(),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  };
+  ipcMain.handle("aankh:sync-issues:list", (_event, scope: unknown) =>
+    (localStore as LocalStore).listIssues(requireScope(scope)),
+  );
+  ipcMain.handle("aankh:sync-issues:upsert", (_event, issue: unknown) =>
+    (localStore as LocalStore).upsertIssue(requireIssue(issue)),
+  );
+  ipcMain.handle("aankh:sync-issues:set-status", (_event, scope: unknown, id: unknown, status: unknown) => {
+    if (typeof id !== "string" || id.length === 0) throw new Error("Invalid sync issue id");
+    if (typeof status !== "string" || status.length === 0) throw new Error("Invalid sync issue status");
+    (localStore as LocalStore).setIssueStatus(requireScope(scope), id, status);
+  });
+  ipcMain.handle("aankh:sync-issues:update", (_event, scope: unknown, id: unknown, patch: unknown) => {
+    if (typeof id !== "string" || id.length === 0) throw new Error("Invalid sync issue id");
+    const text = patch as { reason?: unknown; syncError?: unknown };
+    (localStore as LocalStore).updateIssue(requireScope(scope), id, {
+      reason: typeof text?.reason === "string" ? text.reason : undefined,
+      syncError: typeof text?.syncError === "string" ? text.syncError : text?.syncError === null ? null : undefined,
+    });
+  });
 }
 
 function standaloneServerPath(): string {

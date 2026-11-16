@@ -1,9 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isDesktopApp } from "@/lib/offline/identity-cache";
 import {
   QUEUE_CHANGED_EVENT,
   getSaleQueueBackend,
   notifyQueueChanged,
 } from "@/lib/offline/local-store";
+import { parkSaleAsSyncIssue } from "@/lib/offline/sync-issues";
+import { afterSaleConfirmed } from "@/lib/offline/provisional-link";
 
 export { QUEUE_CHANGED_EVENT };
 
@@ -186,12 +189,17 @@ async function submitAtomicSale(
 
   if (!error && data?.transaction) {
     await removeAttempt(scope, attempt.requestId);
+    // Slice S3: link the provisional number to the confirmed cloud row
+    // and resolve the issue when a retried parked sale confirms. Never
+    // throws — the sale is confirmed either way.
+    await afterSaleConfirmed(supabase, scope, attempt, data);
     return { result: data, previousPendingConfirmed: isRecovery };
   }
 
   const status = await readSaleStatus(supabase, attempt.requestId);
   if (!status.error && status.data?.status === "confirmed" && status.data.result) {
     await removeAttempt(scope, attempt.requestId);
+    await afterSaleConfirmed(supabase, scope, attempt, status.data.result);
     return { result: status.data.result, previousPendingConfirmed: isRecovery };
   }
 
@@ -207,6 +215,11 @@ type QueueOutcome = {
   ownResult: { result: AtomicSaleResult; previousPendingConfirmed: boolean } | null;
   ownQueued: PendingSale | null;
   ownPosition: number;
+  /** Slice S3 (desktop only): the own sale was refused and parked in
+   * Sync issues instead of being dropped — the caller shows the
+   * provisional receipt for it, like a queued sale. */
+  parkedOwn: PendingSale | null;
+  parkedReason: string | null;
   confirmedCount: number;
   confirmedResults: AtomicSaleResult[];
   rejectedMessages: string[];
@@ -259,6 +272,8 @@ async function processQueueLocked(
   const confirmedResults: AtomicSaleResult[] = [];
   let confirmedCount = 0;
   let ownResult: QueueOutcome["ownResult"] = null;
+  let parkedOwn: PendingSale | null = null;
+  let parkedReason: string | null = null;
   // Walk from the head; an ambiguous head stops the drain and keeps the
   // rest queued, in order. A rejected head is final and skipped.
   while (queue.length > 0) {
@@ -294,6 +309,23 @@ async function processQueueLocked(
     } catch (caught) {
       queue = await readQueue(scope);
       if (caught instanceof SaleRejectedError) {
+        // Slice S3 (desktop only): a refused sale is PARKED in Sync
+        // issues with its full payload — never dropped, never lost —
+        // and the drain continues to the next sale (a parked head must
+        // not block the queue behind it). The web build keeps its
+        // existing behaviour: drop + queue notice.
+        if (isDesktopApp()) {
+          const parked = await parkSaleAsSyncIssue(supabase, scope, head, caught.message);
+          if (parked) {
+            if (own && head.requestId === own.requestId) {
+              parkedOwn = head;
+              parkedReason = caught.message;
+            }
+            continue;
+          }
+          // The park itself failed: fall through to the notice path so
+          // the refusal still surfaces instead of vanishing.
+        }
         rejectedMessages.push(caught.message);
         addQueueNotice(scope, caught.message);
         continue;
@@ -307,6 +339,8 @@ async function processQueueLocked(
     ownResult,
     ownQueued: own && ownPosition > 0 ? own : null,
     ownPosition,
+    parkedOwn,
+    parkedReason,
     confirmedCount,
     confirmedResults,
     rejectedMessages,
@@ -316,7 +350,12 @@ async function processQueueLocked(
 
 export type CreateAtomicSaleResult =
   | { result: AtomicSaleResult; previousPendingConfirmed: boolean }
-  | { queued: true; attempt: PendingSale; position: number; confirmedCount: number; rejectedMessages: string[] };
+  | { queued: true; attempt: PendingSale; position: number; confirmedCount: number; rejectedMessages: string[] }
+  /** Slice S3 (desktop only): the server refused the sale and it was
+   * parked in Sync issues. The sale is safe on this device with its
+   * provisional number — the caller shows the provisional receipt for
+   * it, like a queued sale, and never invites a retype. */
+  | { parked: true; attempt: PendingSale; reason: string; confirmedCount: number; rejectedMessages: string[] };
 
 export async function createAtomicSale(
   supabase: SupabaseClient,
@@ -326,6 +365,15 @@ export async function createAtomicSale(
 ): Promise<CreateAtomicSaleResult> {
   const outcome = await runSerialized(scope, () => processQueueLocked(supabase, scope, input, false, opts?.isRetry ?? false));
   if (outcome.ownResult) return outcome.ownResult;
+  if (outcome.parkedOwn) {
+    return {
+      parked: true,
+      attempt: outcome.parkedOwn,
+      reason: outcome.parkedReason ?? "Sale was rejected.",
+      confirmedCount: outcome.confirmedCount,
+      rejectedMessages: outcome.rejectedMessages,
+    };
+  }
   if (outcome.ownQueued) {
     return {
       queued: true,
@@ -372,4 +420,34 @@ export async function drainPendingSalesQueue(
     rejectedMessages: outcome.rejectedMessages,
     remaining: outcome.remaining,
   };
+}
+
+/**
+ * Slice S3 — re-submit a parked sale with its ORIGINAL idempotency key
+ * (owner Retry from Sync issues). The attempt goes back at the FRONT of
+ * the queue — it is older than anything queued after it — and the drain
+ * status-checks it first: if the server already holds it, the original
+ * invoice replays; only an unknown status re-posts. A sale that still
+ * fails is parked again (upsert — never a duplicate issue) and the
+ * drain continues. Already inside the per-scope chain: this calls
+ * `processQueueLocked` directly, never `drainPendingSalesQueue` (a
+ * nested `runSerialized` would deadlock on its own chain).
+ */
+export async function requeueParkedSale(
+  supabase: SupabaseClient,
+  scope: string,
+  attempt: PendingSale,
+): Promise<DrainResult> {
+  return runSerialized(scope, async () => {
+    const queue = await readQueue(scope);
+    if (!queue.some((item) => item.requestId === attempt.requestId)) {
+      await writeQueue(scope, [attempt, ...queue]);
+    }
+    const outcome = await processQueueLocked(supabase, scope, null, true);
+    return {
+      confirmedCount: outcome.confirmedCount,
+      rejectedMessages: outcome.rejectedMessages,
+      remaining: outcome.remaining,
+    };
+  });
 }
