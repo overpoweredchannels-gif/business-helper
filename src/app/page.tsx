@@ -5123,7 +5123,7 @@ setCustomerOrganizationName("");
   };
 
   const handleSaveCustomerPayment = async () => {
-    if (customerPaymentLoading) {
+    if (customerPaymentLoading || customerPaymentSavingRef.current) {
       return;
     }
     if (!selectedCustomerPaymentId) {
@@ -5131,7 +5131,12 @@ setCustomerOrganizationName("");
       setCustomerPaymentMessage(null);
       return;
     }
-    const paymentAmount = Number(customerPaymentAmount);
+    // Money is rounded to 2 decimals BEFORE validation: the atomic RPC
+    // rejects any amount with more than two decimals, so an unrounded
+    // value (a typed 10.005, or a 0.1 + 0.2 float artifact) would fail
+    // the save instead of saving. Rounding first also makes validation
+    // compare exactly the values the RPC receives.
+    const paymentAmount = roundMoney(Number(customerPaymentAmount));
     if (!customerPaymentAmount || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
       setCustomerPaymentError(t('page.validAmount'));
       setCustomerPaymentMessage(null);
@@ -5139,7 +5144,10 @@ setCustomerOrganizationName("");
     }
     const allocationRows = unpaidCreditInvoicesForSelectedPaymentCustomer
       .map((invoice) => {
-        const allocationAmount = Number(customerPaymentAllocationsByInvoice[invoice.transaction.id] || 0);
+        // Rounded like the payment amount, for the same reason: the RPC
+        // rejects allocations with more than two decimals, and the
+        // total-vs-payment check below must compare the values sent.
+        const allocationAmount = roundMoney(Number(customerPaymentAllocationsByInvoice[invoice.transaction.id] || 0));
         return {
           invoice,
           allocationAmount,
@@ -5172,6 +5180,13 @@ setCustomerOrganizationName("");
       return;
     }
 
+    // The ref guard is set here, after validation: a second invocation
+    // while a save is in flight returns at the entry check above, and a
+    // failed validation never leaves the flag set.
+    if (customerPaymentSavingRef.current) {
+      return;
+    }
+    customerPaymentSavingRef.current = true;
     setCustomerPaymentError(null);
     setCustomerPaymentMessage(null);
     setCustomerPaymentLoading(true);
@@ -5247,12 +5262,13 @@ setCustomerOrganizationName("");
       setCustomerPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
       console.error("Error saving customer payment:", err);
     } finally {
+      customerPaymentSavingRef.current = false;
       setCustomerPaymentLoading(false);
     }
   };
 
   const handleSaveSupplierPayment = async () => {
-    if (supplierPaymentLoading) {
+    if (supplierPaymentLoading || supplierPaymentSavingRef.current) {
       return;
     }
 
@@ -5261,7 +5277,11 @@ setCustomerOrganizationName("");
       setSupplierPaymentMessage(null);
       return;
     }
-    const paymentAmount = Number(supplierPaymentAmount);
+    // Money is rounded to 2 decimals BEFORE validation, exactly like
+    // the customer payment handler: the atomic RPC rejects any amount
+    // with more than two decimals, so an unrounded value would fail the
+    // save instead of saving.
+    const paymentAmount = roundMoney(Number(supplierPaymentAmount));
     if (!supplierPaymentAmount || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
       setSupplierPaymentError(t('page.validAmount'));
       setSupplierPaymentMessage(null);
@@ -5269,7 +5289,10 @@ setCustomerOrganizationName("");
     }
     const allocationRows = unpaidPurchaseInvoicesForSelectedPaymentSupplier
       .map((invoice) => {
-        const allocationAmount = Number(supplierPaymentAllocationsByInvoice[invoice.transaction.id] || 0);
+        // Rounded like the payment amount, for the same reason: the RPC
+        // rejects allocations with more than two decimals, and the
+        // total-vs-payment check below must compare the values sent.
+        const allocationAmount = roundMoney(Number(supplierPaymentAllocationsByInvoice[invoice.transaction.id] || 0));
         return {
           invoice,
           allocationAmount,
@@ -5302,6 +5325,13 @@ setCustomerOrganizationName("");
       return;
     }
 
+    // The ref guard is set here, after validation: a second invocation
+    // while a save is in flight returns at the entry check above, and a
+    // failed validation never leaves the flag set.
+    if (supplierPaymentSavingRef.current) {
+      return;
+    }
+    supplierPaymentSavingRef.current = true;
     setSupplierPaymentError(null);
     setSupplierPaymentMessage(null);
     setSupplierPaymentLoading(true);
@@ -5376,6 +5406,7 @@ setCustomerOrganizationName("");
       setSupplierPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
       console.error("Error saving supplier payment:", err);
     } finally {
+      supplierPaymentSavingRef.current = false;
       setSupplierPaymentLoading(false);
     }
   };
@@ -6362,6 +6393,13 @@ setCustomerOrganizationName("");
   // replays instead of duplicating, cleared on success or a definitive
   // rejection so the next save is a fresh attempt.
   const customerPaymentAttemptKeyRef = useRef<string | null>(null);
+  // Synchronous in-flight flag for the customer payment save: the
+  // customerPaymentLoading state above can be stale until React
+  // re-renders, so a second click before the re-render would pass the
+  // state guard — the ref blocks that entry outright. Set after
+  // validation (a failed validation never leaves it set) and cleared in
+  // the handler's finally, on every exit path.
+  const customerPaymentSavingRef = useRef(false);
   const [customerPaymentAllocationsByInvoice, setCustomerPaymentAllocationsByInvoice] =
     useState<Record<string, string>>({});
 
@@ -6376,6 +6414,8 @@ setCustomerOrganizationName("");
   const [supplierPaymentError, setSupplierPaymentError] = useState<string | null>(null);
   // Same attempt-key contract as the customer payment form.
   const supplierPaymentAttemptKeyRef = useRef<string | null>(null);
+  // Same synchronous in-flight flag as the customer payment form.
+  const supplierPaymentSavingRef = useRef(false);
   const [supplierPaymentAllocationsByInvoice, setSupplierPaymentAllocationsByInvoice] =
     useState<Record<string, string>>({});
   // Void + balance-check state, shared by the customer and supplier
