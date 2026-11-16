@@ -76,12 +76,16 @@
 --      always the formula's value.
 --   4. The 5-customer correction (OP TRADERS org): AL FAZL → 97.14,
 --      amir → 34.01, maaz → 1.59, MUBEEN → 46.63,
---      QA-20260826-CustomerB → 1.94. The old stored value is logged
---      (RAISE NOTICE + audit_logs row) BEFORE updating. The derived value
---      is computed first and MUST equal the approved target — if it does
---      not, the whole migration FAILS LOUDLY (raise exception) and nothing
---      is written, so a stale target can never be stored. If that happens,
---      send the derived values back for re-approval.
+--      QA-20260826-CustomerB → 2.59 (RE-APPROVED 2026-11-16 ~20:19 by UMAIR;
+--      the 2026-11-16 ~20:14 run failed as designed: derived was 2.59, not
+--      the originally approved 1.94 — data moved since the target was approved.
+--      The other 4 targets were verified exact by that run.)
+--      The old stored value is logged (RAISE NOTICE + audit_logs row)
+--      BEFORE updating. The derived value is computed first and MUST equal
+--      the approved target — if it does not, the whole migration FAILS
+--      LOUDLY (raise exception) and nothing is written, so a stale target
+--      can never be stored. If that happens, send the derived values back
+--      for re-approval.
 --   5. A verification SELECT listing the five customers with stored,
 --      derived and status.
 --
@@ -369,7 +373,7 @@ begin
       ('amir', 34.01::numeric),
       ('maaz', 1.59::numeric),
       ('MUBEEN', 46.63::numeric),
-      ('QA-20260826-CustomerB', 1.94::numeric)
+      ('QA-20260826-CustomerB', 2.59::numeric)
     ) as t(customer_name, target_balance)
   loop
     select count(*) into v_name_count from public.customers
