@@ -282,6 +282,7 @@ import {
   productInsightsStatusFor,
   queryLedger,
   reorderTableStatusFor,
+  stockStatusFor,
 } from "@/lib/inventory/service";
 import {
   validatePurchaseOrderInput,
@@ -14411,8 +14412,15 @@ setCustomerOrganizationName("");
   // surfaced separately below as a flagged estimate.
   const inventoryValuation = computeInventoryValuation(inventoryStats);
   const inventoryValue = inventoryValuation.totalValue;
+  // Low stock comes from the ONE shared classifier (stockStatusFor, M1
+  // decision 2): only "urgent_reorder" counts — stock above zero but at or
+  // below a set reorder level. The old inline rule counted any item with
+  // currentStock <= reorderLevel, and inventoryStats defaults a missing
+  // level to 0, so out-of-stock products with no level set (0 <= 0) were
+  // counted as low stock. Those belong under "Out of Stock" / "Missing
+  // Reorder Level", never here.
   const lowStockProducts = inventoryStats.filter(
-    (item) => typeof item.reorderLevel === "number" && item.currentStock <= item.reorderLevel
+    (item) => stockStatusFor(item.currentStock, item.reorderLevel).status === "urgent_reorder"
   );
   const pendingTasks = tasks.filter((t) => t.status === "pending");
   // True "today" KPIs for the dashboard hero cards (independent of the BI
@@ -14932,7 +14940,13 @@ setCustomerOrganizationName("");
       .sort((a, b) => b.currentStock - a.currentStock)
       .slice(0, 10);
     const outOfStockProducts = productAnalytics.filter((product) => product.currentStock <= 0);
-    const lowStockProducts = productAnalytics.filter((product) => product.currentStock > 0 && product.currentStock <= product.reorderLevel);
+    // Same ONE shared classifier as the dashboard (stockStatusFor, M1
+    // decision 2). The old inline rule was already equivalent to
+    // "urgent_reorder"; this aligns BI to the classifier so the two
+    // surfaces can never drift apart again.
+    const lowStockProducts = productAnalytics.filter(
+      (product) => stockStatusFor(product.currentStock, product.reorderLevel).status === "urgent_reorder"
+    );
     const fastMovingProducts = productAnalytics
       .filter((product) => product.quantitySold > 0)
       .sort((a, b) => b.quantitySold - a.quantitySold)
