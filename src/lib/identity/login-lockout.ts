@@ -134,10 +134,15 @@ export class InMemoryLoginAttemptStore implements LoginAttemptStore {
     organizationId: string,
     now: Date = new Date(),
   ): Promise<LoginAttemptRecord[]> {
+    // Mirrors the Supabase store: the org's locked rows PLUS locked rows
+    // with organization_id NULL (unknown Profile IDs, recorded with no
+    // org to resolve). Other orgs' non-NULL rows stay excluded.
     return [...this.rows.values()]
       .filter(
         (row) =>
-          row.organizationId === organizationId && isLoginLocked(row, now),
+          (row.organizationId === organizationId ||
+            row.organizationId === null) &&
+          isLoginLocked(row, now),
       )
       .sort((a, b) => a.email.localeCompare(b.email));
   }
@@ -224,21 +229,42 @@ export class SupabaseLoginAttemptStore implements LoginAttemptStore {
     organizationId: string,
     now: Date = new Date(),
   ): Promise<LoginAttemptRecord[]> {
-    const { data, error } = await this.supabase
-      .from("login_attempts")
-      .select(
-        "email, organization_id, failed_attempts, locked_until, last_attempt_at",
-      )
-      .eq("organization_id", organizationId)
-      .gt("locked_until", now.toISOString())
-      .order("email", { ascending: true });
-    if (error || !data) {
-      if (error) {
-        throw error;
-      }
-      return [];
+    const columns =
+      "email, organization_id, failed_attempts, locked_until, last_attempt_at";
+    const lockedAfter = now.toISOString();
+    // Unknown Profile IDs are recorded with organization_id NULL (there
+    // is no account/org to resolve), and NULL never equals anything in
+    // SQL — so an .eq("organization_id", orgId) filter alone hides those
+    // locks from the owner panel. Return the org's locked rows PLUS the
+    // NULL-org locked rows (an unknown ID belongs to no org, so it is
+    // visible to every owner); other orgs' non-NULL rows stay excluded.
+    // Two parallel queries instead of a string-built .or() filter, so the
+    // org id is never interpolated into filter text.
+    const [orgResult, nullResult] = await Promise.all([
+      this.supabase
+        .from("login_attempts")
+        .select(columns)
+        .eq("organization_id", organizationId)
+        .gt("locked_until", lockedAfter)
+        .order("email", { ascending: true }),
+      this.supabase
+        .from("login_attempts")
+        .select(columns)
+        .is("organization_id", null)
+        .gt("locked_until", lockedAfter)
+        .order("email", { ascending: true }),
+    ]);
+    const error = orgResult.error ?? nullResult.error;
+    if (error) {
+      throw error;
     }
-    return (data as LoginAttemptRow[]).map(toRecord);
+    const rows = [
+      ...((orgResult.data ?? []) as LoginAttemptRow[]),
+      ...((nullResult.data ?? []) as LoginAttemptRow[]),
+    ];
+    return rows
+      .map(toRecord)
+      .sort((a, b) => a.email.localeCompare(b.email));
   }
 }
 

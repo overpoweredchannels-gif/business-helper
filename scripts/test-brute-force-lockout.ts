@@ -28,6 +28,10 @@ import {
 // 10. Fail-open: a broken store never blocks sign-in.
 // 11. Lock message wording (minutes, singular/plural).
 // 12. Identifier normalisation (trim + lowercase).
+// 13. listLocked: a locked row with organization_id NULL (unknown
+//     Profile ID) appears for any org; a locked row for a different org
+//     does not appear; a locked row for the caller's org appears; an
+//     expired lock does not appear.
 
 const MINUTE_MS = 60 * 1000;
 
@@ -407,6 +411,57 @@ async function main() {
     assert.equal(recorded.locked, false);
     // Clearing must not throw either.
     await clearFailedLogins(broken, "anyone@example.com");
+  }
+
+  // ─── 13. listLocked: NULL-org locks visible, other orgs hidden ────
+  {
+    const store = new InMemoryLoginAttemptStore();
+    const orgA = "11111111-1111-1111-1111-111111111111";
+    const orgB = "22222222-2222-2222-2222-222222222222";
+
+    // Lock a NULL-org key (unknown Profile ID, e.g. MU99): 5 failures,
+    // recorded with no organisation to resolve.
+    for (let i = 0; i < 5; i++) {
+      await recordFailedLogin(store, "mu99", null, t0);
+    }
+    // Lock a key belonging to org A (real staff, e.g. MU04).
+    for (let i = 0; i < 5; i++) {
+      await recordFailedLogin(
+        store,
+        "muse@staff.tradeos.internal",
+        orgA,
+        t0,
+      );
+    }
+    // Lock a key belonging to a DIFFERENT org B.
+    for (let i = 0; i < 5; i++) {
+      await recordFailedLogin(
+        store,
+        "other@staff.tradeos.internal",
+        orgB,
+        t0,
+      );
+    }
+
+    // (a) NULL-org lock appears for org A; (c) org-A lock appears for
+    // org A; (b) org-B lock does NOT appear for org A. Sorted by email.
+    const forA = await store.listLocked(orgA, t0);
+    assert.deepEqual(
+      forA.map((row) => row.email),
+      ["mu99", "muse@staff.tradeos.internal"],
+    );
+    // The NULL-org lock also appears for org B (it belongs to no org),
+    // alongside org B's own lock.
+    const forB = await store.listLocked(orgB, t0);
+    assert.deepEqual(
+      forB.map((row) => row.email),
+      ["mu99", "other@staff.tradeos.internal"],
+    );
+
+    // (d) Expired locks do not appear: 16 minutes later, past the
+    // 15-minute lock, the list is empty for both orgs.
+    assert.deepEqual(await store.listLocked(orgA, minutesAfter(t0, 16)), []);
+    assert.deepEqual(await store.listLocked(orgB, minutesAfter(t0, 16)), []);
   }
 
   console.log("test-brute-force-lockout: all assertions passed");
