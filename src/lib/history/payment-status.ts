@@ -19,10 +19,14 @@
 // The established badge pattern in page.tsx is
 // `rounded px-2 py-1 text-xs font-semibold` + a tone pair.
 //
-// The "returned" kind is purchase-only: a purchase whose goods were 100%
-// returned shows "Returned", never "Paid" (its remaining is 0, which the
-// plain paid rule would otherwise report as paid). Sales never pass a
-// `returned` value, so their badges are unchanged by it.
+// The "returned" kind is for any invoice whose goods were 100%
+// returned — purchase or sale. It shows "Returned", never "Paid"
+// (its remaining is 0, which the plain paid rule would otherwise
+// report as paid). Purchases pass `returned` from the purchase
+// allocation engine; sales pass it from returnedValueBySalesTransaction
+// (src/lib/sales/returns-offset.ts), which covers every payment type,
+// not just credit — so a fully returned cash/card sale is "Returned"
+// too, not "Paid".
 
 export type PaymentStatusBadgeKind = "paid" | "partial" | "unpaid" | "overdue" | "returned";
 
@@ -38,10 +42,12 @@ export interface PaymentStatusBadgeInput {
   /** Today as "YYYY-MM-DD" (compared lexicographically, as in page.tsx). */
   today?: string;
   /**
-   * Amount of the invoice's goods returned, from the allocation engine.
-   * Only the purchase path passes this. When it covers the whole invoice
-   * total, the invoice is "returned" — even when something was paid
-   * before the return, and even though the remaining is 0.
+   * Amount of the invoice's goods returned. Purchases pass this from
+   * the purchase allocation engine; sales pass it from
+   * returnedValueBySalesTransaction (all payment types). When it
+   * covers the whole invoice total, the invoice is "returned" — even
+   * when something was paid before the return, and even though the
+   * remaining is 0.
    */
   returned?: number;
 }
@@ -63,6 +69,45 @@ export function getPaymentStatusBadgeKind(input: PaymentStatusBadgeInput): Payme
   if (input.dueDate && input.today && input.dueDate < input.today) return "overdue";
   if (paid > 0) return "partial";
   return "unpaid";
+}
+
+export interface SalesPaymentStatusInput {
+  /** "cash" | "card" | "credit" (any other value behaves like credit). */
+  paymentType: string | null | undefined;
+  /** Invoice total (books currency). */
+  total: number;
+  /** Amount already paid, from the credit allocation engine (credit sales only). */
+  allocatedAmount: number;
+  /** Amount still owed, from the credit allocation engine (credit sales only, floored at 0). */
+  remainingUnpaidAmount: number;
+  /** Amount of the invoice's goods returned, from
+   * returnedValueBySalesTransaction (all payment types). */
+  returnedAmount: number;
+  /** Credit due date as "YYYY-MM-DD", or null when there is none. */
+  dueDate?: string | null;
+  /** Today as "YYYY-MM-DD" (compared lexicographically, as in page.tsx). */
+  today?: string;
+}
+
+// Sales payment status — the single source of truth for both the Sales
+// History row badge and the payment-status filter, so the two can never
+// disagree. Cash/card sales are paid in full by construction (paid =
+// total, remaining = 0), but a fully returned cash/card sale is still
+// "Returned": the returned amount comes from
+// returnedValueBySalesTransaction, which covers every payment type —
+// not from the credit-only allocation engine. The "returned" check in
+// getPaymentStatusBadgeKind runs first, so a fully returned invoice is
+// "Returned" even though its remaining is 0.
+export function getSalesPaymentStatusKind(input: SalesPaymentStatusInput): PaymentStatusBadgeKind {
+  const isCashOrCard = input.paymentType === "cash" || input.paymentType === "card";
+  return getPaymentStatusBadgeKind({
+    total: input.total,
+    paid: isCashOrCard ? input.total : input.allocatedAmount,
+    remaining: isCashOrCard ? 0 : input.remainingUnpaidAmount,
+    dueDate: input.dueDate,
+    today: input.today,
+    returned: input.returnedAmount,
+  });
 }
 
 // Tone pairs already used for badges in page.tsx (success / warning /

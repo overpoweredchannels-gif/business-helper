@@ -228,10 +228,12 @@ const fixture: MemoryWriterRawData = {
   );
 }
 
-// --- Item 2e: sales are unchanged — the quirk is observed, not fixed. ---
-// A fully-returned SALE still reports "Paid": the sales path never
-// passes a `returned` value, so remaining 0 reads as paid. UMAIR asked
-// about purchases only; this locks in that sales behaviour is untouched.
+// --- Item 2e: the helper without a `returned` value still reads "paid". ---
+// This locks in getPaymentStatusBadgeKind's behaviour when no `returned`
+// value is passed (remaining 0 → paid). The SALES path now passes
+// `returned` (sales-returned-badge slice, getSalesPaymentStatusKind), so
+// a fully-returned sale in the app shows "Returned" — the helper itself
+// is unchanged, only its sales caller now supplies the value.
 {
   assert.equal(
     getPaymentStatusBadgeKind({ total: 0.81, paid: 0, remaining: 0 }),

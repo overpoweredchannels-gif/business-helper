@@ -40,7 +40,7 @@ import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingS
 import { loadOfflineCustomers, loadOfflineProducts, saveOfflineCustomers, saveOfflineProducts } from "@/lib/offline/offline-store";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { creditBalanceTimeline } from "@/lib/sales/credit-balance";
-import { formatProductsSummary, getPaymentStatusBadgeKind, paymentStatusBadgeClass } from "@/lib/history/payment-status";
+import { formatProductsSummary, getPaymentStatusBadgeKind, getSalesPaymentStatusKind, paymentStatusBadgeClass } from "@/lib/history/payment-status";
 import { excludeVoidedPayments, historyAmountsForPayment, isVoidedPayment } from "@/lib/payments/voided-payments";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
@@ -339,6 +339,21 @@ const PURCHASE_INVOICE_PAYMENT_OPTIONS = [
   { value: "paid", label: "Paid" },
   { value: "partially_paid", label: "Partially paid" },
   { value: "unpaid", label: "Unpaid" },
+  { value: "returned", label: "Returned" },
+];
+
+// Sales History payment-status filter options, mirroring the purchase
+// filter. Values are the sales badge kinds (paid / partial / unpaid /
+// overdue / returned) so the filter compares the same value the row
+// badge renders — a fully returned sale matches "returned" and never
+// "paid". Labels come from salesPaymentLabelByValue in the component
+// (sell.statusPaid / sell.statusPartial / sell.statusOverdue /
+// buy.statusUnpaid / buy.returnedLabel); no new translation keys.
+const SALES_INVOICE_PAYMENT_OPTIONS = [
+  { value: "paid", label: "Paid" },
+  { value: "partial", label: "Partial" },
+  { value: "unpaid", label: "Unpaid" },
+  { value: "overdue", label: "Overdue" },
   { value: "returned", label: "Returned" },
 ];
 
@@ -6404,6 +6419,7 @@ setCustomerOrganizationName("");
   const [salesHistoryDateFrom, setSalesHistoryDateFrom] = useState("");
   const [salesHistoryDateTo, setSalesHistoryDateTo] = useState("");
   const [salesHistoryProductSearch, setSalesHistoryProductSearch] = useState("");
+  const [salesHistoryPaymentFilter, setSalesHistoryPaymentFilter] = useState("all");
   const [creditWarning, setCreditWarning] = useState<string | null>(null);
   const [creditOverrideConfirmation, setCreditOverrideConfirmation] = useState<{
     overLimit: boolean;
@@ -10942,6 +10958,77 @@ setCustomerOrganizationName("");
   const currentSaleAmounts = currentSaleDraft.amounts;
   const currentSalesInvoiceTotal = currentSaleAmounts?.total;
   const todayDateValue = toDateInputValue(new Date());
+  // Confirmed sales returns linked to an invoice offset what the customer
+  // still owes on it (the goods came back, so that part of the invoice is no
+  // longer a receivable). Return lines carry the invoice line's price and
+  // discount, so a line's returned value mirrors the sales-line value
+  // formula (quantity × unit price − discount). Cancelled returns and
+  // returns not linked to an invoice offset nothing. The computation lives
+  // in src/lib/sales/returns-offset.ts so it is unit-testable.
+  // The returned value covers ALL payment types (cash, card and credit):
+  // a fully returned cash/card sale is "Returned", not "Paid" — the goods
+  // went back, so the invoice is neither paid nor owed.
+  // (These two maps live above filteredSalesTransactions: the
+  // payment-status filter predicate needs them, and the filter IIFE runs
+  // when it is defined.)
+  const returnedValueBySalesTransaction = computeReturnedValueBySalesTransaction(
+    salesReturns,
+    salesReturnItems
+  );
+  // FIFO allocation of each customer's unallocated-payment pool across
+  // their credit invoices (oldest first) — the shared engine in
+  // src/lib/sales/returns-offset.ts, also used by Customer History so the
+  // two surfaces can never disagree about what a customer owes (M1
+  // decision 3).
+  const creditAllocationByTransaction = computeCreditAllocationsByTransaction(
+    salesTransactions
+      .filter((transaction) => transaction.payment_type === "credit")
+      .map((transaction) => ({
+        id: transaction.id,
+        customerId: transaction.customer_id,
+        invoiceTotal: salesInvoiceTotalsByTransaction[transaction.id] ?? 0,
+        returnedAmount: returnedValueBySalesTransaction[transaction.id] ?? 0,
+        explicitAllocatedAmount:
+          explicitAllocatedAmountsBySalesTransaction[transaction.id] ?? 0,
+        sortDate:
+          getDateOnly(transaction.sale_date) ?? getDateOnly(transaction.created_at) ?? "",
+        createdAt: transaction.created_at,
+      })),
+    legacyUnallocatedPaymentPoolByCustomer
+  );
+  // Payment status for one sales invoice — the single source of truth for
+  // both the History row badge and the payment-status filter, so the two
+  // can never disagree. Mirrors getPurchaseTransactionPaymentStatus: the
+  // badge rule is "remaining ≤ 0 → Paid", but a fully returned invoice
+  // (returned ≥ total, total > 0) is "Returned" first — its remaining is 0,
+  // which the plain paid rule would otherwise report as paid.
+  const getSalesTransactionPaymentStatus = (
+    transaction: SalesTransaction
+  ): "paid" | "partial" | "unpaid" | "overdue" | "returned" => {
+    const creditAllocation = creditAllocationByTransaction[transaction.id];
+    return getSalesPaymentStatusKind({
+      paymentType: transaction.payment_type,
+      total:
+        creditAllocation?.invoiceTotal ??
+        salesInvoiceTotalsByTransaction[transaction.id] ??
+        Number(transaction.total_amount || 0),
+      allocatedAmount: creditAllocation?.allocatedAmount ?? 0,
+      remainingUnpaidAmount: creditAllocation?.remainingUnpaidAmount ?? 0,
+      returnedAmount: returnedValueBySalesTransaction[transaction.id] ?? 0,
+      dueDate: getDateOnly(transaction.credit_due_date),
+      today: todayDateValue,
+    });
+  };
+  // Labels for the Sales History payment-status filter dropdown, mirroring
+  // the row badge labels. No new translation keys: "Returned" reuses
+  // buy.returnedLabel, which already exists in all 4 locales.
+  const salesPaymentLabelByValue: Record<string, string> = {
+    paid: t('sell.statusPaid'),
+    partial: t('sell.statusPartial'),
+    unpaid: t('buy.statusUnpaid'),
+    overdue: t('sell.statusOverdue'),
+    returned: t('buy.returnedLabel'),
+  };
   const filteredSalesTransactions = (() => {
     const searchTerm = salesHistorySearch.trim().toLowerCase();
     return salesTransactions
@@ -10969,6 +11056,15 @@ setCustomerOrganizationName("");
           });
           if (!matches) return false;
         }
+        // Payment status uses the same single source of truth as the row
+        // badge (getSalesTransactionPaymentStatus), so a fully returned
+        // sale matches "returned" and never "paid" here.
+        if (
+          salesHistoryPaymentFilter !== "all" &&
+          getSalesTransactionPaymentStatus(tx) !== salesHistoryPaymentFilter
+        ) {
+          return false;
+        }
         return true;
       })
       .sort((a, b) => {
@@ -10978,43 +11074,14 @@ setCustomerOrganizationName("");
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
   })();
-  // Confirmed sales returns linked to an invoice offset what the customer
-  // still owes on it (the goods came back, so that part of the invoice is no
-  // longer a receivable). Return lines carry the invoice line's price and
-  // discount, so a line's returned value mirrors the sales-line value
-  // formula (quantity × unit price − discount). Cancelled returns and
-  // returns not linked to an invoice offset nothing. The computation lives
-  // in src/lib/sales/returns-offset.ts so it is unit-testable.
-  const returnedValueBySalesTransaction = computeReturnedValueBySalesTransaction(
-    salesReturns,
-    salesReturnItems
-  );
-  // FIFO allocation of each customer's unallocated-payment pool across
-  // their credit invoices (oldest first) — the shared engine in
-  // src/lib/sales/returns-offset.ts, also used by Customer History so the
-  // two surfaces can never disagree about what a customer owes (M1
-  // decision 3).
-  const creditAllocationByTransaction = computeCreditAllocationsByTransaction(
-    salesTransactions
-      .filter((transaction) => transaction.payment_type === "credit")
-      .map((transaction) => ({
-        id: transaction.id,
-        customerId: transaction.customer_id,
-        invoiceTotal: salesInvoiceTotalsByTransaction[transaction.id] ?? 0,
-        returnedAmount: returnedValueBySalesTransaction[transaction.id] ?? 0,
-        explicitAllocatedAmount:
-          explicitAllocatedAmountsBySalesTransaction[transaction.id] ?? 0,
-        sortDate:
-          getDateOnly(transaction.sale_date) ?? getDateOnly(transaction.created_at) ?? "",
-        createdAt: transaction.created_at,
-      })),
-    legacyUnallocatedPaymentPoolByCustomer
-  );
   // Credit balance timeline (2026-11-16): per customer, what they owed
   // before each credit invoice and what they owe after it. The
   // remainder per invoice is the same figure the history badge shows
   // (allocation engine, net of returns); the timeline runs over the
   // full fetched set so a paged card still reads its true balance.
+  // (returnedValueBySalesTransaction and creditAllocationByTransaction
+  // live above filteredSalesTransactions — see the note there — so this
+  // timeline reads them from there, not from a duplicate definition.)
   const creditBalanceTimelineByTransaction = creditBalanceTimeline(
     salesTransactions.map((transaction) => ({
       id: String(transaction.id),
@@ -21177,7 +21244,7 @@ setCustomerOrganizationName("");
 
         )}
         {isOwnerOrAdmin() && (!quickSaleMode || salesTab === "history") && (
-<RecordHistoryPanel key={`${searchScopeKey}:${salesTab}`} title={t('sell.salesHistory')} count={filteredSalesTransactions.length} defaultOpen={salesTab === "history"} filterKey={`${salesHistorySearch}|${salesHistoryProductSearch}|${salesHistoryDateFrom}|${salesHistoryDateTo}`} filters={
+<RecordHistoryPanel key={`${searchScopeKey}:${salesTab}`} title={t('sell.salesHistory')} count={filteredSalesTransactions.length} defaultOpen={salesTab === "history"} filterKey={`${salesHistorySearch}|${salesHistoryProductSearch}|${salesHistoryDateFrom}|${salesHistoryDateTo}|${salesHistoryPaymentFilter}`} filters={
 <><p className="mb-3 text-xs text-muted-foreground">{t('sell.unallocatedNote')}</p>
 <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <input
@@ -21208,6 +21275,19 @@ setCustomerOrganizationName("");
               className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
               aria-label={t('sell.dateTo')}
             />
+            <select
+              value={salesHistoryPaymentFilter}
+              onChange={(e) => setSalesHistoryPaymentFilter(e.target.value)}
+              aria-label={t('buy.filterByPaymentStatus')}
+              className="rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+            >
+              <option value="all">{t('buy.allPaymentStatuses')}</option>
+              {SALES_INVOICE_PAYMENT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {salesPaymentLabelByValue[option.value] ?? option.label}
+                </option>
+              ))}
+            </select>
           </div>
 </>
 }>
@@ -21231,19 +21311,17 @@ setCustomerOrganizationName("");
                 // payment form (explicit allocations excl. voided payments,
                 // FIFO legacy pool, net of sales returns). Cash/card sales
                 // are paid in full by construction, so they report
-                // paid = invoice total, remaining = 0.
+                // paid = invoice total, remaining = 0. The badge KIND comes
+                // from getSalesTransactionPaymentStatus — the same single
+                // source of truth the payment-status filter uses — so a
+                // fully returned sale is "Returned" here and in the filter,
+                // never green "Paid".
                 const invoiceTotal = creditAllocation?.invoiceTotal ?? salesInvoiceTotalsByTransaction[tx.id] ?? Number(tx.total_amount || 0);
                 const paidAmount = paymentType === "cash" || paymentType === "card" ? invoiceTotal : (creditAllocation?.allocatedAmount ?? 0);
                 const remainingUnpaidAmount = paymentType === "cash" || paymentType === "card" ? 0 : (creditAllocation?.remainingUnpaidAmount ?? 0);
                 const creditBalance = creditBalanceTimelineByTransaction[tx.id];
                 const creditDueDate = getDateOnly(tx.credit_due_date);
-                const paymentBadgeKind = getPaymentStatusBadgeKind({
-                  total: invoiceTotal,
-                  paid: paidAmount,
-                  remaining: remainingUnpaidAmount,
-                  dueDate: creditDueDate,
-                  today: todayDateValue,
-                });
+                const paymentBadgeKind = getSalesTransactionPaymentStatus(tx);
                 const paymentBadgeLabel =
                   paymentBadgeKind === "paid"
                     ? t('sell.statusPaid')
@@ -21251,7 +21329,9 @@ setCustomerOrganizationName("");
                       ? t('sell.statusPartial')
                       : paymentBadgeKind === "overdue"
                         ? t('sell.statusOverdue')
-                        : t('buy.statusUnpaid');
+                        : paymentBadgeKind === "returned"
+                          ? t('buy.returnedLabel')
+                          : t('buy.statusUnpaid');
                 const productsSummary = formatProductsSummary(
                   txItems.map((item) => ({
                     name: products.find((p) => String(p.id) === String(item.product_id))?.name ?? t('sell.unknownProduct'),
