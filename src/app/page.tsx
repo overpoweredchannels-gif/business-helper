@@ -725,6 +725,9 @@ export default function Home() {
   // switch flow is owner-only and runs through POST /api/books/convert —
   // it is deliberately NOT part of the business-settings save payload.
   const [booksCurrency, setBooksCurrency] = useState<Currency>("PKR");
+  // Live mirror of booksCurrency for callbacks with [] deps (onBrainChat):
+  // reading the state there would capture the initial "PKR" forever.
+  const booksCurrencyRef = useRef<Currency>("PKR");
   const [businessSettingsDutyStart, setBusinessSettingsDutyStart] = useState("08:00");
   const [businessSettingsDutyEnd, setBusinessSettingsDutyEnd] = useState("16:00");
   const [dutyScheduleLoading, setDutyScheduleLoading] = useState(false);
@@ -962,6 +965,7 @@ export default function Home() {
       organizationName: brain.getMemorySnapshot().organizationName,
       businessContext: brain.getBusinessContext(),
       conversationHistory: context?.history,
+      booksCurrency: booksCurrencyRef.current,
     });
     return buildChatResponse(result, { conversationId, correlationId });
   }, []);
@@ -1942,6 +1946,7 @@ export default function Home() {
       organization?.regional_preferences,
     );
     setBooksCurrency(resolvedBooksCurrency);
+    booksCurrencyRef.current = resolvedBooksCurrency;
     setActiveBooksCurrency(resolvedBooksCurrency);
     // Regional preferences: the organisation's saved time zone drives
     // event-time display (formatDateTime/formatTime read it from the

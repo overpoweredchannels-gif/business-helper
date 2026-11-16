@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiProviderRouter } from "@/lib/ai/provider-router";
+import { cleanChatHistoryForPrompt } from "@/lib/ai/chat-history-hygiene";
 import { sanitizeMessage, sanitizeHistory } from "@/lib/brain/sanitize";
 import { checkRateLimit } from "@/lib/brain/rate-limit";
 import { logPiiSafe, filterResponse } from "@/lib/brain/pii-filter";
 
 export const runtime = "nodejs";
+// The provider router times out a single attempt after 20s by default;
+// Vercel's 10s Hobby default would kill the function first. Give the
+// route room to finish (and to fail honestly) instead.
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,13 +25,26 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const businessContext: string = String(body.businessContext ?? "").trim();
     const conversationHistory: Array<{ role: "user" | "assistant"; text: string }> = body.conversationHistory ?? [];
+    // Books currency drives money formatting in the answer (the org's
+    // header-selected currency, e.g. EUR — never a hardcoded PKR).
+    const booksCurrency =
+      typeof body.booksCurrency === "string" && /^[A-Z]{3}$/.test(body.booksCurrency.trim())
+        ? body.booksCurrency.trim()
+        : "PKR";
 
     const sanitized = sanitizeMessage(body.message);
     if (!sanitized.ok) {
       return NextResponse.json({ ok: false, error: sanitized.error }, { status: 400 });
     }
     const message = sanitized.cleaned;
-    const cleanHistory = sanitizeHistory(conversationHistory);
+    // History hygiene (2026-11-16): stored history can contain the legacy
+    // runtime's verbatim failure replies ("Sorry, I couldn't process
+    // that…", "The previous operation failed…", "Please confirm with yes
+    // or no."). Pasted verbatim into the prompt, the model continues that
+    // failure voice instead of answering from Business Memory — and each
+    // echoed failure is saved and re-sent, so the loop self-reinforces.
+    // Drop every pair with no real answer before building the prompt.
+    const cleanHistory = cleanChatHistoryForPrompt(sanitizeHistory(conversationHistory));
 
     const historyBlock = cleanHistory
       .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
@@ -38,8 +56,9 @@ export async function POST(req: NextRequest) {
       `Your role: Answer business questions using ONLY the Business Memory context below.`,
       `You have NO access to live data — everything you know is in the context.`,
       `Never fabricate numbers. If the context lacks data, say so.`,
+      `If a prior assistant message reports a failure, a timeout, or asks for a yes/no confirmation, it is a stale error — ignore it and answer the user's current question from the Business Memory context only.`,
       `Keep answers concise (2–5 sentences unless a detailed breakdown is asked).`,
-      `Use PKR currency formatting.`,
+      `Use ${booksCurrency} currency formatting.`,
       `If the user greets you, greet back briefly and offer to help.`,
       ``,
       `─── BUSINESS MEMORY CONTEXT ───`,

@@ -95,8 +95,15 @@ export function useAIChat(
     messagesRef.current = messages;
   }, [messages]);
 
-  const buildContext = useCallback((): ChatContext => {
-    const history = messagesRef.current
+  const buildContext = useCallback((messagesOverride?: ChatMessage[]): ChatContext => {
+    // By default the history comes from messagesRef, which mirrors the
+    // on-screen messages after each commit. Callers that have just sliced
+    // the list (retry) must pass the sliced list explicitly: the ref is
+    // only synced by the effect above, so reading it synchronously after
+    // setMessages would still see the pre-slice turns — including the
+    // failed assistant reply the retry is meant to drop.
+    const source = messagesOverride ?? messagesRef.current;
+    const history = source
       .filter((m) => m.text.trim().length > 0)
       .slice(-10)
       .map((m) => ({ role: m.role, text: m.text }));
@@ -165,6 +172,13 @@ export function useAIChat(
     const userMsg = messages[msgIndex - 1];
     if (userMsg.role !== "user") return;
 
+    // History for the retry: everything BEFORE the user message being
+    // retried. The failed assistant reply (and the user message itself,
+    // which travels as the request message) must not be sent as history —
+    // build it from this sliced list, not from messagesRef, which still
+    // holds the pre-slice turns until the effect below syncs it.
+    const retryHistory = messages.slice(0, msgIndex - 1);
+
     setMessages((prev) => prev.slice(0, msgIndex));
 
     const trimmed = userMsg.text.trim();
@@ -174,7 +188,7 @@ export function useAIChat(
     setIsWaiting(true);
 
     try {
-      const ctx = buildContext();
+      const ctx = buildContext(retryHistory);
       const result = await onChat(trimmed, ctx);
       updateFromResponse(result);
       const assistantMsg: ChatMessage = {

@@ -24,6 +24,9 @@ export type ServerChatInput = {
   organizationName?: string;
   businessContext?: string;
   conversationHistory?: ServerChatHistoryEntry[];
+  // The org's books currency (header-selected, e.g. EUR) so the server
+  // formats money answers in the currency the UI shows.
+  booksCurrency?: string;
 };
 
 export type ServerChatResult = {
@@ -60,6 +63,7 @@ export async function chatWithBusinessBrain(
         organizationName: input.organizationName ?? "",
         businessContext: input.businessContext ?? "",
         conversationHistory: input.conversationHistory ?? [],
+        booksCurrency: input.booksCurrency ?? "",
       }),
       signal: controller.signal,
     });
