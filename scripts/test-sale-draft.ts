@@ -89,4 +89,16 @@ result = calculate([draftLine({ selling_price: "100.00" })], { cashReceived: "12
 assert.equal(result.valid, true);
 assert.equal(result.cashSummary?.closingMessage, "Cash drawer is ready. Change due is €25.00.");
 
+// Full-invoice cash validation (2026-11-16): a cash sale whose tender
+// is short of the total is invalid on the full form too, not only in
+// Retail POS — previously validateCash was quick-sale-only, so a short
+// full-form save reached the RPC, was rejected, and the sale was
+// dropped with only a queue notice to show for it.
+result = calculate([draftLine({ selling_price: "80.60" })], { cashReceived: "10.00" });
+assert.equal(result.valid, false, "Cash received below the total is an invalid draft");
+assert.equal(result.issues.some(issue => issue.field === "cash_received"), true);
+assert.equal(result.cashSummary?.shortfall, 70.6, "The shortfall is the exact amount still to collect");
+result = calculate([draftLine({ selling_price: "80.60" })], { cashReceived: "10.00", validateCash: false });
+assert.equal(result.valid, true, "Cash validation stays opt-in for callers that do not ask for it");
+
 console.log("Sale draft interaction logic passed: quantity, precision correction, price, cash, discounts, line removal, and books-currency threading.");

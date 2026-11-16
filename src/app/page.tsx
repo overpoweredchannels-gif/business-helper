@@ -39,6 +39,7 @@ import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecis
 import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
 import { loadOfflineCustomers, loadOfflineProducts, saveOfflineCustomers, saveOfflineProducts } from "@/lib/offline/offline-store";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
+import { creditBalanceTimeline } from "@/lib/sales/credit-balance";
 import { formatProductsSummary, getPaymentStatusBadgeKind, paymentStatusBadgeClass } from "@/lib/history/payment-status";
 import { excludeVoidedPayments, historyAmountsForPayment, isVoidedPayment } from "@/lib/payments/voided-payments";
 import { computeInventoryValuation } from "@/lib/inventory/valuation";
@@ -2504,6 +2505,75 @@ setCustomerOrganizationName("");
     setSalesLines(newLines);
   };
 
+  // Keyboard-only path from the last product line to Save (2026-11-16):
+  // Enter on the last line field focuses "+ Add Product Line"; from
+  // there the Right arrow walks Add -> Go to Save -> Discount type, and
+  // the Left arrow walks back. On the Discount type itself the arrows
+  // switch Flat/% (radiogroup); at the ends they move on — Left on
+  // Flat returns to Go to Save, Right on % moves to the discount
+  // amount — and Enter on the type jumps straight to the amount.
+  const handleSaleActionArrowKeys = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.currentTarget;
+    const focusElement = (selector: string) => {
+      const el = document.querySelector(selector);
+      if (el instanceof HTMLElement) el.focus();
+    };
+    if (event.key === "ArrowRight") {
+      if (target.hasAttribute("data-sale-add-line")) {
+        event.preventDefault();
+        focusElement("[data-sale-go-to-save]");
+      } else if (target.hasAttribute("data-sale-go-to-save")) {
+        event.preventDefault();
+        focusElement("[data-sale-discount-type][aria-checked='true']");
+      } else if (target.getAttribute("data-sale-discount-type") === "flat") {
+        event.preventDefault();
+        clearCreditOverrideState();
+        setSalesDiscountType("percent");
+        focusElement("[data-sale-discount-type='percent']");
+      } else if (target.getAttribute("data-sale-discount-type") === "percent") {
+        event.preventDefault();
+        focusElement("[data-sale-invoice-discount]");
+      }
+    } else if (event.key === "ArrowLeft") {
+      if (target.hasAttribute("data-sale-go-to-save")) {
+        event.preventDefault();
+        focusElement("[data-sale-add-line]");
+      } else if (target.getAttribute("data-sale-discount-type") === "percent") {
+        event.preventDefault();
+        clearCreditOverrideState();
+        setSalesDiscountType("flat");
+        focusElement("[data-sale-discount-type='flat']");
+      } else if (target.getAttribute("data-sale-discount-type") === "flat") {
+        event.preventDefault();
+        focusElement("[data-sale-go-to-save]");
+      }
+    } else if (event.key === "Enter" && target.hasAttribute("data-sale-discount-type")) {
+      event.preventDefault();
+      focusElement("[data-sale-invoice-discount]");
+    }
+  };
+
+  // Enter on Tax Rate / Cash Received finishes the totals block: Tax
+  // moves to Cash Received when cash is selected, otherwise straight
+  // to Save; Cash Received always moves to Save. Without this the
+  // shared chain would fall back to adding a product line here.
+  const handleSaleTotalsEnter = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const focusElement = (selector: string) => {
+      const el = document.querySelector(selector);
+      if (el instanceof HTMLElement) el.focus();
+    };
+    if (event.currentTarget.hasAttribute("data-sale-cash-received")) {
+      focusElement("[data-sale-save]");
+      return;
+    }
+    if (document.querySelector("[data-sale-cash-received]")) focusElement("[data-sale-cash-received]");
+    else focusElement("[data-sale-save]");
+  };
+
   const handleSalesCustomerChange = async (customerId: string) => {
     const requestVersion = ++salesPricingRequest.current;
     const unchangedLines = new Set(salesLines);
@@ -2511,6 +2581,27 @@ setCustomerOrganizationName("");
     setSalesPaymentType("cash");
     clearCreditOverrideState();
     if (!customerId) return;
+    // Payment-type step (2026-11-16): a cash-only customer is cash by
+    // definition, so nothing is asked. A customer who may take credit
+    // is asked Cash or Credit right here — the payment-type select is
+    // focused and opened, and choosing advances the chain. Retail POS
+    // has its own payment picker, so this only runs on the full form.
+    if (!quickSaleMode) {
+      const pickedCustomer = customers.find((customer) => String(customer.id) === String(customerId));
+      if (pickedCustomer && pickedCustomer.credit_policy !== "cash_only") {
+        requestAnimationFrame(() => {
+          const paymentTypeSelect = document.querySelector("[data-sale-payment-type]");
+          if (!(paymentTypeSelect instanceof HTMLSelectElement)) return;
+          paymentTypeSelect.focus();
+          try {
+            paymentTypeSelect.showPicker();
+          } catch {
+            // showPicker is unavailable in some browsers; focus alone
+            // still lands the cashier on the payment-type question.
+          }
+        });
+      }
+    }
     const prices = await loadRecentCustomerPrices(customerId);
     if (requestVersion !== salesPricingRequest.current) return;
     setSalesLines((current) => current.map((line) => {
@@ -4533,7 +4624,15 @@ setCustomerOrganizationName("");
     const invoiceLines = enteredInvoiceLines(salesLines);
 
     if (!currentSaleDraft.valid) {
-      setSalesError(currentSaleDraft.issues[0]?.message ?? t('page.correctSaleFields'));
+      // A cash-short draft names the shortfall, so the cashier knows the
+      // exact amount to collect instead of a bare "less than the total".
+      const firstIssue = currentSaleDraft.issues[0];
+      const cashShortfall = firstIssue?.field === "cash_received" ? currentSaleDraft.cashSummary?.shortfall : undefined;
+      setSalesError(
+        cashShortfall !== undefined && cashShortfall > 0
+          ? t('page.cashShort').replace('{amount}', formatBooksMoney(cashShortfall))
+          : firstIssue?.message ?? t('page.correctSaleFields'),
+      );
       setSalesMessage(null);
       return;
     }
@@ -4550,20 +4649,6 @@ setCustomerOrganizationName("");
       setSalesError(t('page.addProductLine'));
       setSalesMessage(null);
       return;
-    }
-
-    if (quickSaleMode && salesPaymentType === "cash") {
-      if (posCashReceived.trim() !== "" && !hasAllowedPrecision(posCashReceived, SALE_MONEY_DECIMAL_PLACES)) {
-        setSalesError(t('page.cashTwoDecimals'));
-        setSalesMessage(null);
-        return;
-      }
-      const cashSummary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal ?? 0, received: posCashReceived, currency: getActiveBooksCurrency() });
-      if (cashSummary.status === "cash-short") {
-        setSalesError(t('page.cashShort').replace('{amount}', formatBooksMoney(cashSummary.shortfall)));
-        setSalesMessage(null);
-        return;
-      }
     }
 
     const requestedByProduct = new Map<string, number>();
@@ -4956,7 +5041,9 @@ setCustomerOrganizationName("");
       // cashier must be told the change to hand over, in the same
       // message as the save confirmation (drawer kick + receipt
       // auto-open already fire above/below via the existing paths).
-      const cashChangeMessage = quickSaleMode && isOwnerOrAdmin() && salesPaymentType === "cash"
+      // This runs on the full invoice form too, not just Retail POS
+      // (2026-11-16): the wholesale counter needs the same answer.
+      const cashChangeMessage = isOwnerOrAdmin() && salesPaymentType === "cash"
         ? (() => {
           const summary = buildRetailDrawerSummary({ total: currentSalesInvoiceTotal ?? 0, received: posCashReceived, currency: getActiveBooksCurrency() });
           return summary.change > 0 ? t('page.changeDue').replace('{amount}', formatBooksMoney(summary.change)) : "";
@@ -10849,7 +10936,7 @@ setCustomerOrganizationName("");
     paymentType: salesPaymentType,
     currency: getActiveBooksCurrency(),
     cashReceived: posCashReceived,
-    validateCash: quickSaleMode,
+    validateCash: true,
     allowInvoiceAdjustments: true,
   });
   const currentSaleAmounts = currentSaleDraft.amounts;
@@ -10922,6 +11009,24 @@ setCustomerOrganizationName("");
         createdAt: transaction.created_at,
       })),
     legacyUnallocatedPaymentPoolByCustomer
+  );
+  // Credit balance timeline (2026-11-16): per customer, what they owed
+  // before each credit invoice and what they owe after it. The
+  // remainder per invoice is the same figure the history badge shows
+  // (allocation engine, net of returns); the timeline runs over the
+  // full fetched set so a paged card still reads its true balance.
+  const creditBalanceTimelineByTransaction = creditBalanceTimeline(
+    salesTransactions.map((transaction) => ({
+      id: String(transaction.id),
+      customerId: String(transaction.customer_id ?? ""),
+      paymentType: transaction.payment_type ?? "cash",
+      createdAt: String(transaction.created_at ?? ""),
+      invoiceNumber: String(transaction.invoice_number ?? ""),
+      remaining:
+        transaction.payment_type === "credit"
+          ? (creditAllocationByTransaction[transaction.id]?.remainingUnpaidAmount ?? 0)
+          : 0,
+    })),
   );
   const selectedCustomerOutstandingBalance = selectedCustomerCreditTransactionIds.reduce(
     (sum, transactionId) =>
@@ -20609,6 +20714,7 @@ setCustomerOrganizationName("");
                 <span>{t('sell.saleDate')}</span>
                 <input
                   type="date"
+                  data-entry-skip
                   value={salesInvoiceDate}
                   onChange={(e) => handleSalesInvoiceDateChange(e.target.value)}
                   required
@@ -20631,68 +20737,6 @@ setCustomerOrganizationName("");
               </label>
             </div>
 
-            <fieldset className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span className="flex items-center gap-2">
-                  {t('sell.totalBillDiscount')}
-                  <span className="flex rounded border border-border overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearCreditOverrideState();
-                        setSalesDiscountType("flat");
-                      }}
-                      className={`px-2 py-0.5 text-xs ${salesDiscountType === "flat" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
-                    >
-                      {t('sell.discountFlat')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearCreditOverrideState();
-                        setSalesDiscountType("percent");
-                      }}
-                      className={`px-2 py-0.5 text-xs ${salesDiscountType === "percent" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
-                    >
-                      %
-                    </button>
-                  </span>
-                </span>
-                <input
-                  data-sale-invoice-discount
-                  type="text" inputMode="decimal"
-                  value={salesDiscountAmount}
-                  onChange={(e) => {
-                    clearCreditOverrideState();
-                    setSalesDiscountAmount(e.target.value);
-                  }}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-                {currentSaleDraft.issues.find(issue => issue.field === "invoice_discount") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "invoice_discount")?.message}</span>}
-                <span className="text-xs text-muted-foreground/80">
-                  {salesDiscountType === "percent"
-                    ? t('sell.discountPercentHint')
-                    : t('sell.discountFlatHint')}
-                </span>
-              </label>
-
-              <label className="flex flex-col gap-2 text-sm text-foreground/80">
-                <span>{t('sell.taxRate')}</span>
-                <input
-                  type="text" inputMode="decimal"
-                  value={salesTaxRate}
-                  onChange={(e) => {
-                    clearCreditOverrideState();
-                    setSalesTaxRate(e.target.value);
-                  }}
-                  className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
-                />
-                {currentSaleDraft.issues.find(issue => issue.field === "tax") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "tax")?.message}</span>}
-                <span className="text-xs text-muted-foreground/80">
-                  {t('sell.taxHint')}
-                </span>
-              </label>
-            </fieldset>
 
             {salesPaymentType === "credit" && selectedSalesCustomer && (
               <div className="rounded border border-primary/10 bg-primary/5 p-4 text-sm text-primary/90">
@@ -20900,6 +20944,7 @@ setCustomerOrganizationName("");
                 <button
                   type="button"
                   data-entry-add data-sale-add-line onClick={handleAddSalesLine}
+                  onKeyDown={handleSaleActionArrowKeys}
                   className="min-h-11 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
                 >
                   {t('sell.addProductLine')}
@@ -20908,6 +20953,7 @@ setCustomerOrganizationName("");
                   type="button"
                   data-sale-go-to-save
                   onClick={() => { const save = document.querySelector("[data-sale-save]"); if (save instanceof HTMLButtonElement) save.focus(); }}
+                  onKeyDown={handleSaleActionArrowKeys}
                   className="min-h-11 rounded border border-input px-4 py-2 text-sm text-foreground transition hover:bg-muted"
                 >
                   {t('sell.goToSave')}
@@ -20918,6 +20964,83 @@ setCustomerOrganizationName("");
             {salesLines.length > 0 && (
               <div className="workspace-panel rounded-xl border border-border bg-card p-4 text-sm text-foreground/80">
                 {currentSaleDraft.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received").map(issue => <p key={issue.field + issue.message} className="mb-2 text-destructive" role="alert">{issue.message}</p>)}
+                {/* Discount + Tax live below the product lines (2026-11-16):
+                    the discount and tax only make sense once products are
+                    on the invoice, so they are asked after the lines —
+                    like Retail POS — instead of in the header. */}
+                <fieldset className="mb-3 grid gap-4 sm:grid-cols-2">
+                  <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                    <span className="flex items-center gap-2">
+                      {t('sell.totalBillDiscount')}
+                      <span role="radiogroup" aria-label={t('sell.totalBillDiscount')} className="flex rounded border border-border overflow-hidden">
+                        <button
+                          type="button"
+                          data-sale-discount-type="flat"
+                          role="radio"
+                          aria-checked={salesDiscountType === "flat"}
+                          tabIndex={salesDiscountType === "flat" ? 0 : -1}
+                          onClick={() => {
+                            clearCreditOverrideState();
+                            setSalesDiscountType("flat");
+                          }}
+                          onKeyDown={handleSaleActionArrowKeys}
+                          className={`min-h-11 min-w-11 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${salesDiscountType === "flat" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
+                        >
+                          {t('sell.discountFlat')}
+                        </button>
+                        <button
+                          type="button"
+                          data-sale-discount-type="percent"
+                          role="radio"
+                          aria-checked={salesDiscountType === "percent"}
+                          tabIndex={salesDiscountType === "percent" ? 0 : -1}
+                          onClick={() => {
+                            clearCreditOverrideState();
+                            setSalesDiscountType("percent");
+                          }}
+                          onKeyDown={handleSaleActionArrowKeys}
+                          className={`min-h-11 min-w-11 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${salesDiscountType === "percent" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted/30"}`}
+                        >
+                          %
+                        </button>
+                      </span>
+                    </span>
+                    <input
+                      data-sale-invoice-discount
+                      type="text" inputMode="decimal"
+                      value={salesDiscountAmount}
+                      onChange={(e) => {
+                        clearCreditOverrideState();
+                        setSalesDiscountAmount(e.target.value);
+                      }}
+                      className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                    />
+                    {currentSaleDraft.issues.find(issue => issue.field === "invoice_discount") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "invoice_discount")?.message}</span>}
+                    <span className="text-xs text-muted-foreground/80">
+                      {salesDiscountType === "percent"
+                        ? t('sell.discountPercentHint')
+                        : t('sell.discountFlatHint')}
+                    </span>
+                  </label>
+
+                  <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                    <span>{t('sell.taxRate')}</span>
+                    <input
+                      type="text" inputMode="decimal"
+                      value={salesTaxRate}
+                      onChange={(e) => {
+                        clearCreditOverrideState();
+                        setSalesTaxRate(e.target.value);
+                      }}
+                      onKeyDown={handleSaleTotalsEnter}
+                      className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
+                    />
+                    {currentSaleDraft.issues.find(issue => issue.field === "tax") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "tax")?.message}</span>}
+                    <span className="text-xs text-muted-foreground/80">
+                      {t('sell.taxHint')}
+                    </span>
+                  </label>
+                </fieldset>
                 {!currentSaleAmounts && <p className="mb-2 text-destructive" role="status">{t('sell.totalsUnavailable')}</p>}
                 <div className="flex justify-between"><span>{t('sell.lineSubtotal')}</span><span>{currentSaleAmounts ? formatBooksMoney(currentSaleAmounts.lineSubtotal) : t('sell.unavailable')}</span></div>
                 {(salesLines.some((line) => Number(line.discount) > 0) || salesDiscountAmount.trim() !== "") && (
@@ -20942,6 +21065,7 @@ setCustomerOrganizationName("");
                         type="text" inputMode="decimal"
                         value={posCashReceived}
                         onChange={(e) => setPosCashReceived(e.target.value)}
+                        onKeyDown={handleSaleTotalsEnter}
                         placeholder={currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : String(currentSalesInvoiceTotal)}
                         className="w-full rounded border border-border px-3 py-2 tabular-nums focus:border-ring focus:outline-none"
                       />
@@ -21099,6 +21223,7 @@ setCustomerOrganizationName("");
               {filteredSalesTransactions.slice(start, end).map((tx) => {
                 const customer = customers.find((c) => c.id === tx.customer_id);
                 const date = new Date(tx.created_at).toLocaleDateString();
+                const time = new Date(tx.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
                 const paymentType = tx.payment_type ?? "cash";
                 const txItems = salesItems.filter((item) => item.sales_transaction_id === tx.id);
                 const creditAllocation = creditAllocationByTransaction[tx.id];
@@ -21110,6 +21235,7 @@ setCustomerOrganizationName("");
                 const invoiceTotal = creditAllocation?.invoiceTotal ?? salesInvoiceTotalsByTransaction[tx.id] ?? Number(tx.total_amount || 0);
                 const paidAmount = paymentType === "cash" || paymentType === "card" ? invoiceTotal : (creditAllocation?.allocatedAmount ?? 0);
                 const remainingUnpaidAmount = paymentType === "cash" || paymentType === "card" ? 0 : (creditAllocation?.remainingUnpaidAmount ?? 0);
+                const creditBalance = creditBalanceTimelineByTransaction[tx.id];
                 const creditDueDate = getDateOnly(tx.credit_due_date);
                 const paymentBadgeKind = getPaymentStatusBadgeKind({
                   total: invoiceTotal,
@@ -21133,7 +21259,7 @@ setCustomerOrganizationName("");
                   }))
                 );
                 return (
-                  <li key={tx.id} className="rounded-lg border border-border bg-card text-sm"><details className="invoice-record"><summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 p-4"><div className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-semibold text-foreground">{tx.invoice_number}</span><span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(paymentBadgeKind)}`}>{paymentBadgeLabel}</span></span><span className="mt-1 block truncate text-xs text-muted-foreground">{customer?.customer_name ?? t('sell.unknown')} · {date}</span>{productsSummary !== "" && (<span className="mt-1 block truncate text-xs text-muted-foreground">{productsSummary}</span>)}</div><span className="shrink-0 text-right"><span className="block font-semibold tabular-nums">{formatBooksMoney(Number(tx.total_amount || 0))}</span>{remainingUnpaidAmount > 0 && (<span className="mt-1 block text-xs tabular-nums text-muted-foreground">{paidAmount > 0 ? `${t('buy.paidAmount')}: ${formatBooksMoney(paidAmount)} · ` : ""}{t('sell.remainingBalance')}: {formatBooksMoney(remainingUnpaidAmount)}</span>)}</span></summary><div className="grid gap-2 border-t border-border p-4 text-body sm:grid-cols-2">
+                  <li key={tx.id} className="rounded-lg border border-border bg-card text-sm"><details className="invoice-record"><summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 p-4"><div className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-semibold text-foreground">{tx.invoice_number}</span><span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(paymentBadgeKind)}`}>{paymentBadgeLabel}</span></span><span className="mt-1 block truncate text-xs text-muted-foreground">{customer?.customer_name ?? t('sell.unknown')} · {date} · {time}</span>{productsSummary !== "" && (<span className="mt-1 block truncate text-xs text-muted-foreground">{productsSummary}</span>)}</div><span className="shrink-0 text-right"><span className="block font-semibold tabular-nums">{formatBooksMoney(Number(tx.total_amount || 0))}</span>{remainingUnpaidAmount > 0 && (<span className="mt-1 block text-xs tabular-nums text-muted-foreground">{paidAmount > 0 ? `${t('buy.paidAmount')}: ${formatBooksMoney(paidAmount)} · ` : ""}{t('sell.remainingBalance')}: {formatBooksMoney(remainingUnpaidAmount)}</span>)}</span></summary><div className="grid gap-2 border-t border-border p-4 text-body sm:grid-cols-2">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="font-medium text-foreground">{t('sell.invoiceLabel')}: {tx.invoice_number}</div>
                       <button
@@ -21145,7 +21271,7 @@ setCustomerOrganizationName("");
                       </button>
                     </div>
                     <div>{t('sell.customer')}: {customer?.customer_name ?? t('sell.unknown')}</div>
-                    <div className="text-xs text-muted-foreground/80">{t('sell.dateLabel')}: {date}</div>
+                    <div className="text-xs text-muted-foreground/80">{t('sell.dateLabel')}: {date} · {time}</div>
                     <div>{t('sell.paymentType')}: {paymentType === "credit" ? t('sell.paymentCredit') : paymentType === "card" ? t('sell.paymentCard') : t('sell.paymentCash')}</div>
                     {tx.notes && tx.notes.trim() !== "" && (
                       <div>{t('sell.notesLabel')}: {tx.notes}</div>
@@ -21197,6 +21323,8 @@ setCustomerOrganizationName("");
                         <div>{t('sell.invoiceTotal')}: {formatBooksMoney(creditAllocation?.invoiceTotal ?? 0)}</div>
                         <div>{t('sell.allocatedPayment')}: {formatBooksMoney(creditAllocation?.allocatedAmount ?? 0)}</div>
                         <div>{t('sell.remainingBalance')}: {formatBooksMoney(remainingUnpaidAmount)}</div>
+                        <div>{t('sell.previousCredit')}: {formatBooksMoney(creditBalance?.previous ?? 0)}</div>
+                        <div>{t('sell.newCredit')}: {formatBooksMoney(creditBalance?.next ?? 0)}</div>
                       </>
                     )}
                     {creditDueDate && <div>{t('sell.creditDueDate')}: {creditDueDate}</div>}
