@@ -71,6 +71,33 @@ export async function requireOrganization(request: Request): Promise<Authorizati
   }
 }
 
+/**
+ * Route-level auth for AI endpoints (P0-5, 2026-11-16): any signed-in user
+ * with an organization may call them — owner or staff. The AI chat is used
+ * by staff as well as the owner, so this is deliberately NOT owner-only;
+ * the conversation runtime's own permission checks still gate any action
+ * the chat tries to perform. Returns the actor, or a failure carrying the
+ * HTTP status the route should answer with: 401 when there is no session
+ * at all, 403 when the session has no organization, 500 when the actor
+ * context itself cannot be resolved. Fail closed in every case.
+ */
+export async function requireAuthenticatedOrg(request: Request): Promise<
+  | { ok: true; actor: ActorContext }
+  | { ok: false; status: 401 | 403 | 500; error: string }
+> {
+  const result = await requireOrganization(request);
+  if (result.allowed && result.actor) {
+    return { ok: true, actor: result.actor };
+  }
+  if (!result.actor) {
+    if (result.reason === "Unable to resolve organization context") {
+      return { ok: false, status: 500, error: result.reason };
+    }
+    return { ok: false, status: 401, error: "Authentication required" };
+  }
+  return { ok: false, status: 403, error: result.reason ?? "Organization context required" };
+}
+
 export function requireOwnerDirect(actor: ActorContext): AuthorizationResult {
   if (!actor) {
     return asAuthorizationResult(false, "Authentication required");

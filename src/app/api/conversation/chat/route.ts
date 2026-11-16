@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGateway } from "@/lib/conversation";
 import type { ChatRequest } from "@/lib/conversation";
+import { requireAuthenticatedOrg } from "@/lib/identity/authorization";
+
+function authErrorResponse(error: string, status: number) {
+  return NextResponse.json(
+    { ok: false, message: "", conversationId: "", requestId: "", version: "1.0", correlationId: "", timestamp: new Date().toISOString(), error },
+    { status },
+  );
+}
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth first (P0-5): the gateway can spend LLM calls and drive
+    // actions, so it must never answer an unauthenticated request. Any
+    // signed-in user with an org (owner or staff) may chat; the
+    // conversation client sends its session token as a Bearer header.
+    const auth = await requireAuthenticatedOrg(request);
+    if (!auth.ok) {
+      return authErrorResponse(auth.error, auth.status);
+    }
+
     const body: ChatRequest = await request.json();
 
     if (!body || typeof body !== "object") {

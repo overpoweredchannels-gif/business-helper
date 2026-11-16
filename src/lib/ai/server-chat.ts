@@ -11,8 +11,15 @@
 // It POSTs to /api/business-brain, the server route that holds the keys and
 // already carries rate limiting, input sanitisation and PII filtering.
 // It deliberately never imports the provider router.
+//
+// Auth (P0-5, 2026-11-16): /api/business-brain now requires a signed-in
+// user, so the default transport is authorizedFetch, which attaches the
+// browser session's access token as a Bearer header. A caller may still
+// inject its own fetch (tests do) — an unauthenticated request is
+// answered 401 by the route and surfaces here as an honest error.
 
 import type { ChatResponse } from "@/lib/conversation/contracts";
+import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 
 export type ServerChatHistoryEntry = {
   role: "user" | "assistant";
@@ -50,7 +57,7 @@ function asNonEmptyString(value: unknown): string | undefined {
 
 export async function chatWithBusinessBrain(
   input: ServerChatInput,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: (input: string, init?: RequestInit) => Promise<Response> = authorizedFetch
 ): Promise<ServerChatResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SERVER_CHAT_TIMEOUT_MS);

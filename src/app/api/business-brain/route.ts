@@ -4,6 +4,7 @@ import { cleanChatHistoryForPrompt } from "@/lib/ai/chat-history-hygiene";
 import { sanitizeMessage, sanitizeHistory } from "@/lib/brain/sanitize";
 import { checkRateLimit } from "@/lib/brain/rate-limit";
 import { logPiiSafe, filterResponse } from "@/lib/brain/pii-filter";
+import { requireAuthenticatedOrg } from "@/lib/identity/authorization";
 
 export const runtime = "nodejs";
 // The provider router times out a single attempt after 20s by default;
@@ -13,6 +14,15 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
+    // Auth first (P0-5): this route spends LLM calls and reads business
+    // data, so it must never answer an unauthenticated request. Any
+    // signed-in user with an org (owner or staff) may chat; the browser
+    // sends its session token via authorizedFetch.
+    const auth = await requireAuthenticatedOrg(req);
+    if (!auth.ok) {
+      return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+    }
+
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "anonymous";
     const rl = checkRateLimit(`brain_chat_${ip}`);
     if (!rl.allowed) {
