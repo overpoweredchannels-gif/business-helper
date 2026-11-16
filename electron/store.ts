@@ -48,6 +48,13 @@ export interface LocalSaleRow {
   input: Record<string, unknown>;
   /** Local provisional number (`L-000123`), or null until allocated. */
   provisionalNumber: string | null;
+  /**
+   * Slice S4 — when the sale was first queued (ISO timestamp). The
+   * history shows this as the sale time; it is preserved across queue
+   * rewrites, never re-stamped (a rewrite must not move a sale in time).
+   * Null for rows written before this field existed.
+   */
+  createdAt: string | null;
 }
 
 /** The cached identity row, same JSON shape as `CachedIdentity`. */
@@ -93,6 +100,27 @@ export interface SyncIssueRow {
   updatedAt: string;
 }
 
+/**
+ * Slice S4 — one mirrored server row, as the renderer sees it over IPC.
+ * Mirrors are a READ cache for the desktop history + inventory: whole
+ * server rows as fetched (never merged, never edited), keyed by kind +
+ * scope + server id. The mirror never carries balances — it stores the
+ * rows the fetch functions already return; every figure the UI derives
+ * (paid/remaining, stock) is computed from them exactly as from live
+ * rows, and `outstanding_balance` is never written here (the stored
+ * balance engine owns it server-side; the client derives it).
+ */
+export type MirrorKind = "sales_transaction" | "sales_item" | "product";
+
+export interface MirrorRow {
+  /** Server row id (`sales_transactions.id`, `sales_items.id`, `products.id`). */
+  id: string;
+  /** The whole server row as fetched, as plain JSON. */
+  data: Record<string, unknown>;
+  /** ISO timestamp of the fetch that wrote this snapshot. */
+  savedAt: string;
+}
+
 export interface LocalStore {
   /** Queued sales for a scope (`${organizationId}:${profileId}`), oldest first. */
   listSales(scope: string): LocalSaleRow[];
@@ -125,6 +153,19 @@ export interface LocalStore {
   setIssueStatus(scope: string, id: string, status: string): void;
   /** Update one issue's reason / sync error text. */
   updateIssue(scope: string, id: string, patch: { reason?: string; syncError?: string | null }): void;
+  /** Mirrored server rows for a kind + scope (Slice S4). */
+  listMirror(kind: MirrorKind, scope: string): MirrorRow[];
+  /**
+   * Replace the whole mirror snapshot for a kind + scope (one successful
+   * online fetch writes the full list). Returns the stored rows.
+   */
+  replaceMirror(kind: MirrorKind, scope: string, rows: Array<{ id: string; data: Record<string, unknown> }>): MirrorRow[];
+  /**
+   * Insert or replace one mirrored row (a confirmed sale lands here at
+   * sync time, before the next fetch refreshes the snapshot). Returns
+   * the stored row.
+   */
+  upsertMirror(kind: MirrorKind, scope: string, row: { id: string; data: Record<string, unknown> }): MirrorRow;
   /** Close the database handle (app quit). */
   close(): void;
 }
@@ -178,6 +219,15 @@ CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS mirrors (
+  kind TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  id TEXT NOT NULL,
+  data_json TEXT NOT NULL,
+  saved_at TEXT NOT NULL,
+  PRIMARY KEY (kind, scope, id)
+);
+CREATE INDEX IF NOT EXISTS idx_mirrors_scope ON mirrors (kind, scope, saved_at);
 `;
 
 const PROVISIONAL_COUNTER_KEY = "last_provisional_number";
@@ -243,7 +293,7 @@ export function createLocalStore(dbPath: string): LocalStore {
   db.exec(SCHEMA);
 
   const selectSales = db.prepare(
-    "SELECT idempotency_key, input_json, provisional_number, synced, server_id, sync_status, sync_error FROM local_sales WHERE scope = ? ORDER BY id ASC",
+    "SELECT idempotency_key, input_json, provisional_number, created_at, synced, server_id, sync_status, sync_error FROM local_sales WHERE scope = ? ORDER BY id ASC",
   );
   const deleteScopeSales = db.prepare("DELETE FROM local_sales WHERE scope = ?");
   const insertSale = db.prepare(
@@ -280,6 +330,13 @@ export function createLocalStore(dbPath: string): LocalStore {
   const upsertCounter = db.prepare(
     "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
   );
+  const selectMirror = db.prepare(
+    "SELECT id, data_json, saved_at FROM mirrors WHERE kind = ? AND scope = ? ORDER BY saved_at ASC, id ASC",
+  );
+  const deleteMirrorScope = db.prepare("DELETE FROM mirrors WHERE kind = ? AND scope = ?");
+  const upsertMirrorRow = db.prepare(
+    "INSERT INTO mirrors (kind, scope, id, data_json, saved_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(kind, scope, id) DO UPDATE SET data_json = excluded.data_json, saved_at = excluded.saved_at",
+  );
 
   function nextProvisionalNumber(): string {
     const row = selectCounter.get(PROVISIONAL_COUNTER_KEY) as { value: string } | undefined;
@@ -292,6 +349,7 @@ export function createLocalStore(dbPath: string): LocalStore {
     idempotency_key: string;
     input_json: string;
     provisional_number: string | null;
+    created_at: string | null;
   }): LocalSaleRow | null {
     const input = parseJsonObject(row.input_json);
     if (!input) {
@@ -305,7 +363,18 @@ export function createLocalStore(dbPath: string): LocalStore {
       requestId: row.idempotency_key,
       input,
       provisionalNumber: row.provisional_number,
+      createdAt: row.created_at,
     };
+  }
+
+  function rowToMirror(row: { id: string; data_json: string; saved_at: string }): MirrorRow | null {
+    const data = parseJsonObject(row.data_json);
+    if (!data) {
+      // Same discipline as a corrupt queue row: skip it, keep the rest.
+      console.error(`Aankh local store: skipping corrupt mirror row ${row.id}`);
+      return null;
+    }
+    return { id: row.id, data, savedAt: row.saved_at };
   }
 
   function rowToIssue(row: {
@@ -397,12 +466,16 @@ export function createLocalStore(dbPath: string): LocalStore {
   });
 
   const replaceSalesTx = db.transaction((scope: string, rows: LocalSaleRow[]): LocalSaleRow[] => {
-    // Preserve what the queue already knows (provisional numbers and the
-    // sync columns S3 fills in) so a replace never downgrades a row.
-    const kept = new Map<string, { provisionalNumber: string | null; synced: number; serverId: string | null; syncStatus: string; syncError: string | null }>();
+    // Preserve what the queue already knows (provisional numbers, the
+    // first-queued time and the sync columns S3 fills in) so a replace
+    // never downgrades a row. Slice S4: created_at is preserved — a
+    // rewrite on every queue mutation used to re-stamp it, moving a
+    // sale's history time to the last drain instead of its save time.
+    const kept = new Map<string, { provisionalNumber: string | null; createdAt: string | null; synced: number; serverId: string | null; syncStatus: string; syncError: string | null }>();
     for (const existing of selectSales.all(scope) as Array<{
       idempotency_key: string;
       provisional_number: string | null;
+      created_at: string | null;
       synced: number;
       server_id: string | null;
       sync_status: string;
@@ -410,6 +483,7 @@ export function createLocalStore(dbPath: string): LocalStore {
     }>) {
       kept.set(existing.idempotency_key, {
         provisionalNumber: existing.provisional_number,
+        createdAt: existing.created_at,
         synced: existing.synced,
         serverId: existing.server_id,
         syncStatus: existing.sync_status,
@@ -429,6 +503,7 @@ export function createLocalStore(dbPath: string): LocalStore {
       const previous = kept.get(row.requestId);
       const provisionalNumber =
         previous?.provisionalNumber ?? row.provisionalNumber ?? nextProvisionalNumber();
+      const createdAt = previous?.createdAt ?? row.createdAt ?? now;
       insertSale.run(
         row.requestId,
         scope,
@@ -438,13 +513,29 @@ export function createLocalStore(dbPath: string): LocalStore {
         previous?.serverId ?? null,
         previous?.syncStatus ?? "pending",
         previous?.syncError ?? null,
-        now,
+        createdAt,
         now,
       );
-      stored.push({ requestId: row.requestId, input: row.input, provisionalNumber });
+      stored.push({ requestId: row.requestId, input: row.input, provisionalNumber, createdAt });
     }
     return stored;
   });
+
+  const replaceMirrorTx = db.transaction(
+    (kind: MirrorKind, scope: string, rows: Array<{ id: string; data: Record<string, unknown> }>): MirrorRow[] => {
+      deleteMirrorScope.run(kind, scope);
+      const savedAt = new Date().toISOString();
+      const stored: MirrorRow[] = [];
+      const seen = new Set<string>();
+      for (const row of rows) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        upsertMirrorRow.run(kind, scope, row.id, JSON.stringify(row.data), savedAt);
+        stored.push({ id: row.id, data: row.data, savedAt });
+      }
+      return stored;
+    },
+  );
 
   return {
     listSales(scope: string): LocalSaleRow[] {
@@ -452,6 +543,7 @@ export function createLocalStore(dbPath: string): LocalStore {
         idempotency_key: string;
         input_json: string;
         provisional_number: string | null;
+        created_at: string | null;
       }>;
       const sales: LocalSaleRow[] = [];
       for (const row of rows) {
@@ -544,6 +636,38 @@ export function createLocalStore(dbPath: string): LocalStore {
         scope,
         id,
       );
+    },
+
+    listMirror(kind: MirrorKind, scope: string): MirrorRow[] {
+      const rows = selectMirror.all(kind, scope) as Array<{
+        id: string;
+        data_json: string;
+        saved_at: string;
+      }>;
+      const mirror: MirrorRow[] = [];
+      for (const row of rows) {
+        const parsed = rowToMirror(row);
+        if (parsed) mirror.push(parsed);
+      }
+      return mirror;
+    },
+
+    replaceMirror(
+      kind: MirrorKind,
+      scope: string,
+      rows: Array<{ id: string; data: Record<string, unknown> }>,
+    ): MirrorRow[] {
+      return replaceMirrorTx(kind, scope, rows);
+    },
+
+    upsertMirror(
+      kind: MirrorKind,
+      scope: string,
+      row: { id: string; data: Record<string, unknown> },
+    ): MirrorRow {
+      const savedAt = new Date().toISOString();
+      upsertMirrorRow.run(kind, scope, row.id, JSON.stringify(row.data), savedAt);
+      return { id: row.id, data: row.data, savedAt };
     },
 
     close(): void {

@@ -50,6 +50,13 @@ export type PendingSale = {
    * with no number.
    */
   provisionalNumber?: string;
+  /**
+   * Slice S4: when the sale was first queued (ISO timestamp, stamped
+   * by the SQLite store). The history shows this as the sale time.
+   * Undefined for rows written before this field existed (web
+   * localStorage rows never carry it).
+   */
+  createdAt?: string;
 };
 type SaleStatus = { status: "unknown" | "confirmed"; result?: AtomicSaleResult };
 

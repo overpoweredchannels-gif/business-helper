@@ -36,8 +36,10 @@ import { QuickAddCustomerDialog, type QuickAddCustomerFields } from "@/component
 import { validateSaleDraft } from "@/lib/sales/sale-draft";
 import { buildRetailDrawerSummary } from "@/lib/sales/retail-summary";
 import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecision, resolveSaleCashReceived, roundMoney, SALE_MONEY_DECIMAL_PLACES, SALE_QUANTITY_DECIMAL_PLACES } from "@/lib/sales/sale-amounts";
-import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale } from "@/lib/sales/atomic-sale-client";
+import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale, type PendingSale } from "@/lib/sales/atomic-sale-client";
 import { loadOfflineCustomers, loadOfflineProducts, saveOfflineCustomers, saveOfflineProducts } from "@/lib/offline/offline-store";
+import { loadHistoryMirror, saveHistoryMirror } from "@/lib/offline/history-mirror";
+import { isPendingHistoryId, mergePendingHistory } from "@/lib/sales/pending-history";
 import { retrySyncIssue, startSilentSyncEngine } from "@/lib/offline/sync-engine";
 import { SYNC_ISSUES_CHANGED_EVENT, getSyncIssuesBackend, openSyncIssues, type SyncIssue } from "@/lib/offline/sync-issues";
 import { SyncIssuesPanel } from "@/components/sales/SyncIssuesPanel";
@@ -6066,10 +6068,23 @@ setCustomerOrganizationName("");
           setProductsFromCache(cached.savedAt);
           return cached.rows;
         };
+        // Slice S4 — desktop reads the SQLite product mirror first: it
+        // is the desktop read path (the IndexedDB cache stays as the
+        // fallback when the store is unavailable, and the web build
+        // never touches the mirror).
+        const loadMirror = async (): Promise<Product[] | null> => {
+          if (!scope || !isDesktopApp()) return null;
+          const mirror = await loadHistoryMirror<Product>("product", scope);
+          if (mirror.rows.length === 0) return null;
+          setProductsFromCache(mirror.savedAt);
+          return mirror.rows;
+        };
         // Skip the network round-trip entirely while offline: the live
         // fetch would hang until it times out, and the cache is the only
         // catalogue the cashier can use.
         if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mirrored;
           const cached = await loadCached();
           if (cached) return cached;
           throw new Error("Offline and no cached products");
@@ -6084,10 +6099,15 @@ setCustomerOrganizationName("");
           const rows = data ?? [];
           setProductsFromCache(null);
           if (scope) void saveOfflineProducts(scope, rows);
+          // Slice S4: the same successful fetch refreshes the desktop
+          // product mirror (the inventory snapshot offline).
+          if (scope && isDesktopApp()) void saveHistoryMirror("product", scope, rows);
           return rows;
         } catch (caught) {
           // Live fetch failed (flappy network, server error): fall back
           // to the cached catalogue instead of an empty product list.
+          const mirrored = await loadMirror();
+          if (mirrored) return mirrored;
           const cached = await loadCached();
           if (cached) return cached;
           throw caught;
@@ -6746,6 +6766,14 @@ setCustomerOrganizationName("");
   // so the cashier knows the list may be older than the server.
   const [productsFromCache, setProductsFromCache] = useState<string | null>(null);
   const [customersFromCache, setCustomersFromCache] = useState<string | null>(null);
+  // Slice S4 — ISO savedAt of the sales-history mirror currently shown,
+  // or null when the history rows came from a live fetch. The history
+  // panel names the mirror time the same way the catalogue banner does.
+  const [salesHistoryFromCache, setSalesHistoryFromCache] = useState<string | null>(null);
+  // Slice S4 — the pending (unsynced) sales for the history display.
+  // Refreshed with the queue count; the merge into the history lists is
+  // desktop-gated, so the web build never shows a pending row here.
+  const [pendingHistorySales, setPendingHistorySales] = useState<PendingSale[]>([]);
   // True only while the form holds a basket restored from the queue (mount
   // restore). The save handler reads and clears it, so only the first save
   // after a restore can count as that basket's retry.
@@ -6759,10 +6787,15 @@ setCustomerOrganizationName("");
     const scope = `${currentOrganizationId}:${currentProfile.id}`;
     // Slice S2: the queue read is async (SQLite over IPC on desktop).
     // A failed read counts as empty — the drain effect re-checks.
+    // Slice S4: the full queue rows feed the history merge (pending
+    // sales show with their provisional number), not just the count.
     try {
-      setPendingSalesCount((await readPendingSalesQueue(scope)).length);
+      const queue = await readPendingSalesQueue(scope);
+      setPendingSalesCount(queue.length);
+      setPendingHistorySales(queue);
     } catch {
       setPendingSalesCount(0);
+      setPendingHistorySales([]);
     }
     setPendingSalesNotices(readQueueNotices(scope));
   }, [currentOrganizationId, currentProfile?.id]);
@@ -8520,9 +8553,33 @@ setCustomerOrganizationName("");
       "sales-items",
       orgId,
       async () => {
-        const { data, error } = await query;
-        if (error) throw error;
-        return data ?? [];
+        // Slice S4 — desktop history reads the SQLite mirror when the
+        // network is gone (or the live fetch fails), exactly like the
+        // product catalogue does. The web build keeps its live-only
+        // fetch: the mirror backend is null there, so loadMirror always
+        // returns null and the live path runs unchanged.
+        const scope = offlineCacheScope(orgId);
+        const loadMirror = async (): Promise<any[] | null> => {
+          if (!scope || !isDesktopApp()) return null;
+          const mirror = await loadHistoryMirror<any>("sales_item", scope);
+          return mirror.rows.length === 0 ? null : mirror.rows;
+        };
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mirrored;
+          throw new Error("Offline and no cached sales items");
+        }
+        try {
+          const { data, error } = await query;
+          if (error) throw error;
+          const rows = data ?? [];
+          if (scope && isDesktopApp()) void saveHistoryMirror("sales_item", scope, rows);
+          return rows;
+        } catch (caught) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mirrored;
+          throw caught;
+        }
       },
       setSalesItems,
       (error) => console.error("Supabase fetch sales items error:", error),
@@ -8780,13 +8837,41 @@ setCustomerOrganizationName("");
       async () => {
         let query = supabase
           .from("sales_transactions")
-          .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount, cash_received, change_due, notes")
+          .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount, cash_received, change_due, notes, request_id, provisional_receipt_number")
           .eq("organization_id", orgId)
           .order("created_at", { ascending: false });
         if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
-        const { data, error } = await query;
-        if (error) throw error;
-        return data ?? [];
+        // Slice S4 — desktop history reads the SQLite mirror when the
+        // network is gone (or the live fetch fails), exactly like the
+        // product catalogue does. A mirrored history is stamped with
+        // its saved time (`salesHistoryFromCache`) so the panel can
+        // label it. On the web build the mirror backend is null, so the
+        // live path runs unchanged and the mirror timestamp is cleared.
+        const scope = offlineCacheScope(orgId);
+        const loadMirror = async (): Promise<any[] | null> => {
+          if (!scope || !isDesktopApp()) return null;
+          const mirror = await loadHistoryMirror<any>("sales_transaction", scope);
+          if (mirror.rows.length === 0) return null;
+          setSalesHistoryFromCache(mirror.savedAt);
+          return mirror.rows;
+        };
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mirrored;
+          throw new Error("Offline and no cached sales history");
+        }
+        try {
+          const { data, error } = await query;
+          if (error) throw error;
+          const rows = data ?? [];
+          setSalesHistoryFromCache(null);
+          if (scope && isDesktopApp()) void saveHistoryMirror("sales_transaction", scope, rows);
+          return rows;
+        } catch (caught) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mirrored;
+          throw caught;
+        }
       },
       setSalesTransactions,
       (error) => console.error("Supabase fetch sales transactions error:", error),
@@ -11340,6 +11425,25 @@ setCustomerOrganizationName("");
     salesReturns,
     salesReturnItems
   );
+  // Slice S4 — the history display lists. On desktop the live/mirrored
+  // rows merge with the pending (unsynced) sales from the S2 queue, so a
+  // sale saved offline shows at once with its provisional L-number and a
+  // pending marker. The merge is history-scoped: `salesTransactions`
+  // state (dashboard, ledgers, payments, inventory) never sees a pending
+  // row, and a synced row's idempotency key / provisional number drops
+  // its pending twin, so one sale never renders twice. On web the queue
+  // merge is skipped entirely.
+  const historyMerge = useMemo(() => {
+    if (!isDesktopApp()) return { transactions: salesTransactions, items: salesItems };
+    return mergePendingHistory(
+      salesTransactions,
+      salesItems,
+      pendingHistorySales,
+      t('offline.pendingLabel'),
+    );
+  }, [isDesktopApp, salesTransactions, salesItems, pendingHistorySales]);
+  const historyTransactions = historyMerge.transactions;
+  const historyItems = historyMerge.items;
   // FIFO allocation of each customer's unallocated-payment pool across
   // their credit invoices (oldest first) — the shared engine in
   // src/lib/sales/returns-offset.ts, also used by Customer History so the
@@ -11361,6 +11465,29 @@ setCustomerOrganizationName("");
       })),
     legacyUnallocatedPaymentPoolByCustomer
   );
+  // Slice S4 — the allocation figure the history reads. A pending credit
+  // sale has no allocation row yet, so the shared map has no entry for
+  // it; it owes its full total. The helper returns the shared entry for
+  // a synced row and a synthetic full-total entry for a pending row, so
+  // the badge and the credit block read the same figure. It is used ONLY
+  // in history contexts (badge + detail) — the shared map still feeds
+  // the dashboard, ledgers and payments.
+  const historyCreditAllocation = (transaction: SalesTransaction) => {
+    const shared = creditAllocationByTransaction[transaction.id];
+    if (shared) return shared;
+    if (!isPendingHistoryId(transaction.id)) return undefined;
+    const invoiceTotal =
+      salesInvoiceTotalsByTransaction[transaction.id] ?? Number(transaction.total_amount || 0);
+    return {
+      invoiceTotal,
+      allocatedAmount: 0,
+      remainingUnpaidAmount: invoiceTotal,
+      returnedAmount: 0,
+      explicitAllocatedAmount: 0,
+      fallbackAllocatedAmount: 0,
+      legacyPoolRemaining: 0,
+    };
+  };
   // Payment status for one sales invoice — the single source of truth for
   // both the History row badge and the payment-status filter, so the two
   // can never disagree. Mirrors getPurchaseTransactionPaymentStatus: the
@@ -11370,7 +11497,10 @@ setCustomerOrganizationName("");
   const getSalesTransactionPaymentStatus = (
     transaction: SalesTransaction
   ): "paid" | "partial" | "unpaid" | "overdue" | "returned" => {
-    const creditAllocation = creditAllocationByTransaction[transaction.id];
+    // Slice S4: the history-scoped allocation (a pending credit sale
+    // owes its full total — see historyCreditAllocation). A pending row
+    // never has a return, so the returned rule below cannot fire for it.
+    const creditAllocation = historyCreditAllocation(transaction);
     return getSalesPaymentStatusKind({
       paymentType: transaction.payment_type,
       total:
@@ -11396,15 +11526,23 @@ setCustomerOrganizationName("");
   };
   const filteredSalesTransactions = (() => {
     const searchTerm = salesHistorySearch.trim().toLowerCase();
-    return salesTransactions
+    // Slice S4: the history display list (live/mirrored rows + pending
+    // queue sales on desktop). The filter and sort are the same as
+    // before — only the source list changed.
+    return historyTransactions
       .filter((tx) => {
         if (searchTerm) {
           const customer = customers.find((c) => c.id === tx.customer_id);
           const customerName = (customer?.customer_name ?? "").toLowerCase();
           const invoiceNumber = (tx.invoice_number ?? "").toLowerCase();
+          // Slice S4: the search also matches a synced row's linked
+          // provisional number, so a bill is findable by its L-number
+          // after sync (decision 2).
+          const provisionalNumber = (tx.provisional_receipt_number ?? "").toLowerCase();
           if (
             !customerName.includes(searchTerm) &&
-            !invoiceNumber.includes(searchTerm)
+            !invoiceNumber.includes(searchTerm) &&
+            !provisionalNumber.includes(searchTerm)
           ) {
             return false;
           }
@@ -11414,7 +11552,7 @@ setCustomerOrganizationName("");
         if (salesHistoryDateTo && saleDate && saleDate > salesHistoryDateTo) return false;
         if (salesHistoryProductSearch.trim()) {
           const productName = (salesHistoryProductSearch.trim().toLowerCase());
-          const txItems = salesItems.filter((item) => item.sales_transaction_id === tx.id);
+          const txItems = historyItems.filter((item) => item.sales_transaction_id === tx.id);
           const matches = txItems.some((item) => {
             const product = products.find((p) => String(p.id) === String(item.product_id));
             return (product?.name ?? "").toLowerCase().includes(productName);
@@ -11448,7 +11586,11 @@ setCustomerOrganizationName("");
   // live above filteredSalesTransactions — see the note there — so this
   // timeline reads them from there, not from a duplicate definition.)
   const creditBalanceTimelineByTransaction = creditBalanceTimeline(
-    salesTransactions.map((transaction) => ({
+    // Slice S4: the history display list, so a pending credit sale
+    // counts in the timeline at once (it owes its full total — see
+    // historyCreditAllocation). The full fetched set is still the base
+    // on web, where the merge is the live list unchanged.
+    historyTransactions.map((transaction) => ({
       id: String(transaction.id),
       customerId: String(transaction.customer_id ?? ""),
       paymentType: transaction.payment_type ?? "cash",
@@ -11456,7 +11598,7 @@ setCustomerOrganizationName("");
       invoiceNumber: String(transaction.invoice_number ?? ""),
       remaining:
         transaction.payment_type === "credit"
-          ? (creditAllocationByTransaction[transaction.id]?.remainingUnpaidAmount ?? 0)
+          ? (historyCreditAllocation(transaction)?.remainingUnpaidAmount ?? 0)
           : 0,
     })),
   );
@@ -20338,6 +20480,9 @@ setCustomerOrganizationName("");
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('inventory.subtitle')}
               </p>
+              {productsFromCache && (
+                <p className="mt-1 text-xs text-muted-foreground">{t('offline.inventoryFromCache').replace("{time}", new Date(productsFromCache).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</p>
+              )}
             </div>
             <button
               type="button"
@@ -21673,19 +21818,29 @@ setCustomerOrganizationName("");
 {(start, end) => <>
 {salesLoading ? (
             <p className="text-sm text-muted-foreground">{t('sell.loadingHistory')}</p>
-          ) : salesTransactions.length === 0 ? (
+          ) : historyTransactions.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('sell.noInvoicesFound')}</p>
           ) : filteredSalesTransactions.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('sell.noInvoicesMatch')}</p>
           ) : (
+            <>
+              {salesHistoryFromCache && (
+                <p className="mb-2 text-xs text-muted-foreground">{t('offline.historyFromCache').replace("{time}", new Date(salesHistoryFromCache).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</p>
+              )}
             <ul className="space-y-2">
               {filteredSalesTransactions.slice(start, end).map((tx) => {
                 const customer = customers.find((c) => c.id === tx.customer_id);
                 const date = new Date(tx.created_at).toLocaleDateString();
                 const time = new Date(tx.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
                 const paymentType = tx.payment_type ?? "cash";
-                const txItems = salesItems.filter((item) => item.sales_transaction_id === tx.id);
-                const creditAllocation = creditAllocationByTransaction[tx.id];
+                // Slice S4: the row is pending when its id is synthetic
+                // (`pending:<requestId>`) — it shows a Pending chip
+                // beside the status badge and has no Print button: the
+                // provisional receipt was already issued at save, and
+                // reprinting it from a synthetic row is out of scope.
+                const isPendingHistory = isPendingHistoryId(tx.id);
+                const txItems = historyItems.filter((item) => item.sales_transaction_id === tx.id);
+                const creditAllocation = historyCreditAllocation(tx);
                 // Badge amounts come from the same allocation engine as the
                 // payment form (explicit allocations excl. voided payments,
                 // FIFO legacy pool, net of sales returns). Cash/card sales
@@ -21718,9 +21873,10 @@ setCustomerOrganizationName("");
                   }))
                 );
                 return (
-                  <li key={tx.id} className="rounded-lg border border-border bg-card text-sm"><details className="invoice-record"><summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 p-4"><div className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-semibold text-foreground">{tx.invoice_number}</span><span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(paymentBadgeKind)}`}>{paymentBadgeLabel}</span></span><span className="mt-1 block truncate text-xs text-muted-foreground">{customer?.customer_name ?? t('sell.unknown')} · {date} · {time}</span>{productsSummary !== "" && (<span className="mt-1 block truncate text-xs text-muted-foreground">{productsSummary}</span>)}</div><span className="shrink-0 text-right"><span className="block font-semibold tabular-nums">{formatBooksMoney(Number(tx.total_amount || 0))}</span>{remainingUnpaidAmount > 0 && (<span className="mt-1 block text-xs tabular-nums text-muted-foreground">{paidAmount > 0 ? `${t('buy.paidAmount')}: ${formatBooksMoney(paidAmount)} · ` : ""}{t('sell.remainingBalance')}: {formatBooksMoney(remainingUnpaidAmount)}</span>)}</span></summary><div className="grid gap-2 border-t border-border p-4 text-body sm:grid-cols-2">
+                  <li key={tx.id} className="rounded-lg border border-border bg-card text-sm"><details className="invoice-record"><summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 p-4"><div className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-semibold text-foreground">{tx.invoice_number}</span><span className={`rounded px-2 py-1 text-xs font-semibold ${paymentStatusBadgeClass(paymentBadgeKind)}`}>{paymentBadgeLabel}</span>{isPendingHistory && (<span className="rounded bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">{t('offline.pendingSale')}</span>)}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{customer?.customer_name ?? t('sell.unknown')} · {date} · {time}</span>{productsSummary !== "" && (<span className="mt-1 block truncate text-xs text-muted-foreground">{productsSummary}</span>)}</div><span className="shrink-0 text-right"><span className="block font-semibold tabular-nums">{formatBooksMoney(Number(tx.total_amount || 0))}</span>{remainingUnpaidAmount > 0 && (<span className="mt-1 block text-xs tabular-nums text-muted-foreground">{paidAmount > 0 ? `${t('buy.paidAmount')}: ${formatBooksMoney(paidAmount)} · ` : ""}{t('sell.remainingBalance')}: {formatBooksMoney(remainingUnpaidAmount)}</span>)}</span></summary><div className="grid gap-2 border-t border-border p-4 text-body sm:grid-cols-2">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="font-medium text-foreground">{t('sell.invoiceLabel')}: {tx.invoice_number}</div>
+                      {!isPendingHistory && (
                       <button
                         type="button"
                         onClick={() => handlePrintSalesInvoice(tx)}
@@ -21728,6 +21884,7 @@ setCustomerOrganizationName("");
                       >
                         {t('sell.printInvoice')}
                       </button>
+                      )}
                     </div>
                     <div>{t('sell.customer')}: {customer?.customer_name ?? t('sell.unknown')}</div>
                     <div className="text-xs text-muted-foreground/80">{t('sell.dateLabel')}: {date} · {time}</div>
@@ -21797,6 +21954,7 @@ setCustomerOrganizationName("");
                 );
               })}
             </ul>
+            </>
           )}
 </>}
 </RecordHistoryPanel>

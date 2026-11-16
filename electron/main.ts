@@ -57,6 +57,9 @@ function setupLocalStore(): void {
         requestId: item.requestId,
         input: item.input as Record<string, unknown>,
         provisionalNumber: typeof item.provisionalNumber === "string" ? item.provisionalNumber : null,
+        // Slice S4: the first-queued time crosses IPC with the row — the
+        // history shows it as the sale time.
+        createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
       };
     });
   };
@@ -124,6 +127,38 @@ function setupLocalStore(): void {
       syncError: typeof text?.syncError === "string" ? text.syncError : text?.syncError === null ? null : undefined,
     });
   });
+  // Slice S4 — Sales History + Inventory mirrors (read cache for the
+  // desktop history + inventory). Same validation discipline: the
+  // renderer sends plain JSON and the main process refuses anything
+  // malformed before it reaches SQLite. The mirror never carries
+  // balances — it stores the rows the fetch functions already return.
+  const MIRROR_KINDS = new Set(["sales_transaction", "sales_item", "product"]);
+  const requireMirrorKind = (value: unknown): import("./store").MirrorKind => {
+    if (typeof value !== "string" || !MIRROR_KINDS.has(value)) throw new Error("Invalid mirror kind");
+    return value as import("./store").MirrorKind;
+  };
+  const requireMirrorRow = (value: unknown): { id: string; data: Record<string, unknown> } => {
+    const row = value as Partial<{ id: unknown; data: unknown }>;
+    if (typeof row !== "object" || row === null) throw new Error("Invalid mirror row");
+    if (typeof row.id !== "string" || row.id.length === 0) throw new Error("Invalid mirror row: id");
+    if (typeof row.data !== "object" || row.data === null || Array.isArray(row.data)) {
+      throw new Error("Invalid mirror row: data");
+    }
+    return { id: row.id, data: row.data as Record<string, unknown> };
+  };
+  const requireMirrorRows = (value: unknown): Array<{ id: string; data: Record<string, unknown> }> => {
+    if (!Array.isArray(value)) throw new Error("Invalid mirror rows");
+    return value.map(requireMirrorRow);
+  };
+  ipcMain.handle("aankh:mirror:list", (_event, kind: unknown, scope: unknown) =>
+    (localStore as LocalStore).listMirror(requireMirrorKind(kind), requireScope(scope)),
+  );
+  ipcMain.handle("aankh:mirror:replace", (_event, kind: unknown, scope: unknown, rows: unknown) =>
+    (localStore as LocalStore).replaceMirror(requireMirrorKind(kind), requireScope(scope), requireMirrorRows(rows)),
+  );
+  ipcMain.handle("aankh:mirror:upsert", (_event, kind: unknown, scope: unknown, row: unknown) =>
+    (localStore as LocalStore).upsertMirror(requireMirrorKind(kind), requireScope(scope), requireMirrorRow(row)),
+  );
 }
 
 function standaloneServerPath(): string {

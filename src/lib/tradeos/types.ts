@@ -115,6 +115,13 @@ export interface SalesTransaction {
   credit_due_date: string | null;
   credit_limit_snapshot: number | null;
   credit_days_snapshot: number | null;
+  // Slice S4 — dedupe + search keys for the history mirror: the sale
+  // RPC stores the idempotency key on the row, and the provisional
+  // number is linked at sync (provisional_receipt_number.sql). Both
+  // are optional: older rows and rows fetched before this select
+  // change do not carry them.
+  request_id?: string | null;
+  provisional_receipt_number?: string | null;
   // Invoice Management Foundation (ERP V2 Sprint 1) — additive metadata.
   organization_id?: string;
   total_amount?: number | null;

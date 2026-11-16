@@ -33,6 +33,7 @@ import {
   resolveIssueByRequestId,
   type SyncIssue,
 } from "@/lib/offline/sync-issues";
+import { upsertConfirmedSaleMirror } from "@/lib/offline/history-mirror";
 import type { AtomicSaleResult, PendingSale } from "@/lib/sales/atomic-sale-client";
 
 export type ProvisionalLinkResult =
@@ -173,6 +174,11 @@ export async function afterSaleConfirmed(
       );
     }
   }
+  // Slice S4 — the confirmed sale lands in the history mirror now, so
+  // the desktop history stays correct even if the app quits before the
+  // refetch runs. Never throws; a failed upsert is healed by the next
+  // fetch. (On web there is no mirror backend, so this is a no-op.)
+  await upsertConfirmedSaleMirror(scope, attempt, result);
   if (attempt.requestId) {
     await resolveIssueByRequestId(scope, attempt.requestId);
   }

@@ -51,8 +51,12 @@ const PROFILE: CachedIdentity = {
   cachedAt: new Date().toISOString(),
 };
 
-function saleRow(requestId: string, input: AtomicSaleInput = SALE_INPUT): LocalSaleRow {
-  return { requestId, input: input as unknown as Record<string, unknown>, provisionalNumber: null };
+function saleRow(
+  requestId: string,
+  input: AtomicSaleInput = SALE_INPUT,
+  createdAt: string | null = null,
+): LocalSaleRow {
+  return { requestId, input: input as unknown as Record<string, unknown>, provisionalNumber: null, createdAt };
 }
 
 /**
@@ -158,10 +162,33 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(reopened.getIdentity(), PROFILE, "identity survives close + reopen");
     const afterReopen = reopened.replaceSales("org-1:profile-1", [
-      { requestId: "req-2", input: SALE_INPUT as unknown as Record<string, unknown>, provisionalNumber: "L-000002" },
+      { requestId: "req-2", input: SALE_INPUT as unknown as Record<string, unknown>, provisionalNumber: "L-000002", createdAt: null },
       saleRow("req-4"),
     ]);
     assert.equal(afterReopen[1].provisionalNumber, "L-000004", "the counter survives reopen — no number is reused");
+
+    // Slice S4 — createdAt is stamped on first queue and preserved by
+    // every later replace (the history shows the save time, not the
+    // last drain time). Placed after the number assertions: the
+    // provisional counter is global, so these rows consume numbers.
+    // A separate scope keeps them out of the queue above. Rows that
+    // already exist keep the stamp they were first given, so an
+    // explicit later time is ignored.
+    const firstQueuedAt = "2026-11-17T02:00:00.000Z";
+    const stamped = reopened.replaceSales("org-1:profile-2", [
+      saleRow("req-5", SALE_INPUT, firstQueuedAt),
+      saleRow("req-6", SALE_INPUT, firstQueuedAt),
+    ]);
+    assert.equal(stamped[0].createdAt, firstQueuedAt, "replace stamps the first-queued time");
+    const restamped = reopened.replaceSales("org-1:profile-2", [
+      saleRow("req-5", SALE_INPUT, "2026-11-17T03:00:00.000Z"),
+      saleRow("req-6", SALE_INPUT, "2026-11-17T03:00:00.000Z"),
+    ]);
+    assert.equal(
+      restamped[0].createdAt,
+      firstQueuedAt,
+      "a later replace does not move the first-queued time",
+    );
     reopened.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });

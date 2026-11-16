@@ -119,6 +119,8 @@ export interface LocalSaleIpcRow {
   requestId: string;
   input: Record<string, unknown>;
   provisionalNumber: string | null;
+  /** Slice S4: when the sale was first queued (ISO timestamp), or null. */
+  createdAt: string | null;
 }
 
 type DesktopLocalSalesBridge = {
@@ -140,6 +142,7 @@ function toIpcRow(sale: PendingSale): LocalSaleIpcRow {
     requestId: sale.requestId,
     input: sale.input as unknown as Record<string, unknown>,
     provisionalNumber: sale.provisionalNumber ?? null,
+    createdAt: sale.createdAt ?? null,
   };
 }
 
@@ -148,6 +151,7 @@ function fromIpcRow(row: LocalSaleIpcRow): PendingSale {
     requestId: row.requestId,
     input: row.input as unknown as PendingSale["input"],
     provisionalNumber: row.provisionalNumber ?? undefined,
+    createdAt: row.createdAt ?? undefined,
   };
 }
 

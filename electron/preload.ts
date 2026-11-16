@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { LocalSaleRow, StoredIdentity, SyncIssueRow } from "./store";
+import type { LocalSaleRow, MirrorKind, MirrorRow, StoredIdentity, SyncIssueRow } from "./store";
 
 // Slice S0 — minimal, context-isolated bridge. Slice S2 adds the
 // local-first store: the main process owns the SQLite database
@@ -7,7 +7,9 @@ import type { LocalSaleRow, StoredIdentity, SyncIssueRow } from "./store";
 // below is one invoke round-trip; a rejection means the store is
 // unavailable and the renderer falls back to browser storage (see
 // src/lib/offline/local-store.ts). Slice S3 adds the Sync issues bridge
-// on the same pattern (see src/lib/offline/sync-issues.ts).
+// on the same pattern (see src/lib/offline/sync-issues.ts). Slice S4
+// adds the history + inventory mirror bridge the same way (see
+// src/lib/offline/history-mirror.ts).
 
 /** IPC channels for the local store. The renderer (src/lib/offline/…)
  * uses the same literal strings — keep them in sync when renaming. */
@@ -22,6 +24,9 @@ const CHANNELS = {
   upsertIssue: "aankh:sync-issues:upsert",
   setIssueStatus: "aankh:sync-issues:set-status",
   updateIssue: "aankh:sync-issues:update",
+  listMirror: "aankh:mirror:list",
+  replaceMirror: "aankh:mirror:replace",
+  upsertMirror: "aankh:mirror:upsert",
 } as const;
 
 export interface AankhLocalSalesBridge {
@@ -53,6 +58,15 @@ export interface AankhSyncIssuesBridge {
   update(scope: string, id: string, patch: { reason?: string; syncError?: string | null }): Promise<void>;
 }
 
+export interface AankhMirrorBridge {
+  /** Mirrored server rows for a kind + scope (Slice S4). */
+  list(kind: MirrorKind, scope: string): Promise<MirrorRow[]>;
+  /** Replace the whole mirror snapshot for a kind + scope; returns the stored rows. */
+  replace(kind: MirrorKind, scope: string, rows: Array<{ id: string; data: Record<string, unknown> }>): Promise<MirrorRow[]>;
+  /** Insert or replace one mirrored row; returns the stored row. */
+  upsert(kind: MirrorKind, scope: string, row: { id: string; data: Record<string, unknown> }): Promise<MirrorRow>;
+}
+
 export interface AankhDesktopBridge {
   /** True when the app runs inside the installed desktop shell. */
   isDesktop: true;
@@ -64,6 +78,8 @@ export interface AankhDesktopBridge {
   identity?: AankhIdentityBridge;
   /** The SQLite-backed Sync issues list (S3). Absent when the store failed to open. */
   syncIssues?: AankhSyncIssuesBridge;
+  /** The SQLite-backed history + inventory mirrors (S4). Absent when the store failed to open. */
+  mirror?: AankhMirrorBridge;
 }
 
 const bridge: AankhDesktopBridge = {
@@ -84,6 +100,11 @@ const bridge: AankhDesktopBridge = {
     upsert: (issue) => ipcRenderer.invoke(CHANNELS.upsertIssue, issue),
     setStatus: (scope, id, status) => ipcRenderer.invoke(CHANNELS.setIssueStatus, scope, id, status),
     update: (scope, id, patch) => ipcRenderer.invoke(CHANNELS.updateIssue, scope, id, patch),
+  },
+  mirror: {
+    list: (kind, scope) => ipcRenderer.invoke(CHANNELS.listMirror, kind, scope),
+    replace: (kind, scope, rows) => ipcRenderer.invoke(CHANNELS.replaceMirror, kind, scope, rows),
+    upsert: (kind, scope, row) => ipcRenderer.invoke(CHANNELS.upsertMirror, kind, scope, row),
   },
 };
 
