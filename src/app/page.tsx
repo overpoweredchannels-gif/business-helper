@@ -2544,11 +2544,16 @@ setCustomerOrganizationName("");
 
   // Keyboard-only path from the last product line to Save (2026-11-16):
   // Enter on the last line field focuses "+ Add Product Line"; from
-  // there the Right arrow walks Add -> Go to Save -> Discount type, and
-  // the Left arrow walks back. On the Discount type itself the arrows
-  // switch Flat/% (radiogroup); at the ends they move on — Left on
-  // Flat returns to Go to Save, Right on % moves to the discount
-  // amount — and Enter on the type jumps straight to the amount.
+  // Universal keyboard rule (2026-11-16, UMAIR approved): one sequential
+  // chain for the sale form — Add Product Line -> Discount type ->
+  // Discount amount -> Tax Rate -> Cash Received -> Save. Enter confirms
+  // the current step (native click on Add/Save, jump to the amount on
+  // the toggle); Right/Down moves to the next step, Left/Up moves to
+  // the previous step to edit. There is no "Go to Save" button any
+  // more — Save is the last step of the chain, never beside the
+  // product lines. On the Discount type the arrows switch Flat/% (a
+  // radiogroup); at the ends they move on — Left on Flat returns to
+  // Add Product Line, Right on % moves to the discount amount.
   const handleSaleActionArrowKeys = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
     const target = event.currentTarget;
@@ -2556,11 +2561,10 @@ setCustomerOrganizationName("");
       const el = document.querySelector(selector);
       if (el instanceof HTMLElement) el.focus();
     };
-    if (event.key === "ArrowRight") {
+    const isNext = event.key === "ArrowRight" || event.key === "ArrowDown";
+    const isPrev = event.key === "ArrowLeft" || event.key === "ArrowUp";
+    if (isNext) {
       if (target.hasAttribute("data-sale-add-line")) {
-        event.preventDefault();
-        focusElement("[data-sale-go-to-save]");
-      } else if (target.hasAttribute("data-sale-go-to-save")) {
         event.preventDefault();
         focusElement("[data-sale-discount-type][aria-checked='true']");
       } else if (target.getAttribute("data-sale-discount-type") === "flat") {
@@ -2572,10 +2576,12 @@ setCustomerOrganizationName("");
         event.preventDefault();
         focusElement("[data-sale-invoice-discount]");
       }
-    } else if (event.key === "ArrowLeft") {
-      if (target.hasAttribute("data-sale-go-to-save")) {
+    } else if (isPrev) {
+      if (target.hasAttribute("data-sale-add-line")) {
+        // Back to the last field of the last product line (Bonus) so the
+        // cashier can edit the line they just finished.
         event.preventDefault();
-        focusElement("[data-sale-add-line]");
+        if (salesLines.length > 0) focusElement(`[data-sale-bonus="${salesLines.length - 1}"]`);
       } else if (target.getAttribute("data-sale-discount-type") === "percent") {
         event.preventDefault();
         clearCreditOverrideState();
@@ -2583,7 +2589,11 @@ setCustomerOrganizationName("");
         focusElement("[data-sale-discount-type='flat']");
       } else if (target.getAttribute("data-sale-discount-type") === "flat") {
         event.preventDefault();
-        focusElement("[data-sale-go-to-save]");
+        focusElement("[data-sale-add-line]");
+      } else if (target.hasAttribute("data-sale-save")) {
+        event.preventDefault();
+        if (document.querySelector("[data-sale-cash-received]")) focusElement("[data-sale-cash-received]");
+        else focusElement("[data-sale-tax-rate]");
       }
     } else if (event.key === "Enter" && target.hasAttribute("data-sale-discount-type")) {
       event.preventDefault();
@@ -2591,24 +2601,60 @@ setCustomerOrganizationName("");
     }
   };
 
-  // Enter on Tax Rate / Cash Received finishes the totals block: Tax
-  // moves to Cash Received when cash is selected, otherwise straight
-  // to Save; Cash Received always moves to Save. Without this the
+  // Totals-block keys (2026-11-16, universal rule): Enter confirms the
+  // value and moves to the next step; Right/Down skips to the next step;
+  // Left/Up goes back to the previous step to edit. Left/Right only
+  // navigate at the caret edges of a text input, so the cashier can
+  // still move the caret inside a value; Up/Down always navigate
+  // (single-line inputs have no native Up/Down). Without this the
   // shared chain would fall back to adding a product line here.
-  const handleSaleTotalsEnter = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (event.key !== "Enter" || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
-    event.preventDefault();
-    event.stopPropagation();
+  const handleSaleTotalsKeys = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.currentTarget;
     const focusElement = (selector: string) => {
       const el = document.querySelector(selector);
       if (el instanceof HTMLElement) el.focus();
     };
-    if (event.currentTarget.hasAttribute("data-sale-cash-received")) {
-      focusElement("[data-sale-save]");
+    const isAmount = target.hasAttribute("data-sale-invoice-discount");
+    const isTax = target.hasAttribute("data-sale-tax-rate");
+    const isCash = target.hasAttribute("data-sale-cash-received");
+    if (!isAmount && !isTax && !isCash) return;
+    const hasCash = document.querySelector("[data-sale-cash-received]") !== null;
+    const atCaretEdge = (key: string) => {
+      if (!(target instanceof HTMLInputElement)) return true;
+      if (key === "ArrowLeft") return target.selectionStart === 0 && target.selectionEnd === 0;
+      if (key === "ArrowRight") return target.selectionStart === target.value.length && target.selectionEnd === target.value.length;
+      return true;
+    };
+    const next = () => {
+      if (isAmount) focusElement("[data-sale-tax-rate]");
+      else if (isTax) focusElement(hasCash ? "[data-sale-cash-received]" : "[data-sale-save]");
+      else focusElement("[data-sale-save]");
+    };
+    const prev = () => {
+      if (isAmount) focusElement("[data-sale-discount-type][aria-checked='true']");
+      else if (isTax) focusElement("[data-sale-invoice-discount]");
+      else focusElement("[data-sale-tax-rate]");
+    };
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      next();
       return;
     }
-    if (document.querySelector("[data-sale-cash-received]")) focusElement("[data-sale-cash-received]");
-    else focusElement("[data-sale-save]");
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      if (!atCaretEdge(event.key)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      next();
+      return;
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      if (!atCaretEdge(event.key)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      prev();
+    }
   };
 
   const handleSalesCustomerChange = async (customerId: string) => {
@@ -4635,11 +4681,13 @@ setCustomerOrganizationName("");
           setSalesError(null);
           setCreditWarning(null);
           setSalesMessage(t('page.earlierSaleConfirmed').replace('{number}', invoiceNumber));
+          // Speed fix 2026-11-16: refresh only the lists the Sales screen
+          // shows — transactions + items (the new card's products summary)
+          // + products (stock + overselling check). Payment ledgers and
+          // purchase lists refresh on page reload instead of every save.
           fetchSalesTransactions();
           fetchSalesItems();
           fetchProducts();
-          fetchCustomerPayments();
-          fetchCustomerPaymentAllocations();
           return;
         }
         if (readPendingSalesQueue(pendingScope).length > 0) {
@@ -5004,11 +5052,11 @@ setCustomerOrganizationName("");
           productById: (id) => products.find((p) => String(p.id) === id),
         }));
         if (saved.confirmedCount > 0) {
+          // Speed fix 2026-11-16: refresh only Sales History
+          // (transactions + items) + Products; ledgers refresh on reload.
           fetchSalesTransactions();
           fetchSalesItems();
           fetchProducts();
-          fetchCustomerPayments();
-          fetchCustomerPaymentAllocations();
         }
         setSalesMessage(
           t('offline.savedOffline')
@@ -5050,11 +5098,11 @@ setCustomerOrganizationName("");
       }));
       if (previousPendingConfirmed) {
         setSalesMessage(t('page.earlierSaleConfirmed').replace('{number}', invoiceNumber));
+        // Speed fix 2026-11-16: refresh only Sales History
+        // (transactions + items) + Products; ledgers refresh on reload.
         fetchSalesTransactions();
         fetchSalesItems();
         fetchProducts();
-        fetchCustomerPayments();
-        fetchCustomerPaymentAllocations();
         // Phase D: the earlier sale was confirmed, so this tab is done.
         completeActiveMiniTab();
         return;
@@ -5102,14 +5150,15 @@ setCustomerOrganizationName("");
       // Phase D: the saved invoice completes this tab; load the next.
       completeActiveMiniTab();
 
+      // Speed fix 2026-11-16: refresh only the lists the Sales screen
+      // shows — transactions + items (the new card's products summary)
+      // + products (stock + overselling check). The 5 dropped fetches
+      // (purchase items, customer/supplier payments + allocations) feed
+      // other sections, which refresh on page reload; firing all 8
+      // after every save was the post-save re-render storm (INP 807ms).
       fetchSalesTransactions();
       fetchSalesItems();
-      fetchPurchaseItems();
       fetchProducts();
-      fetchCustomerPayments();
-      fetchCustomerPaymentAllocations();
-      fetchSupplierPayments();
-      fetchSupplierPaymentAllocations();
     } catch (err) {
       // Until the card database update runs, the atomic-sale RPC rejects
       // payment_type 'card' with "Invalid payment type": surface a clear
@@ -21078,15 +21127,6 @@ setCustomerOrganizationName("");
                 >
                   {t('sell.addProductLine')}
                 </button>
-                <button
-                  type="button"
-                  data-sale-go-to-save
-                  onClick={() => { const save = document.querySelector("[data-sale-save]"); if (save instanceof HTMLButtonElement) save.focus(); }}
-                  onKeyDown={handleSaleActionArrowKeys}
-                  className="min-h-11 rounded border border-input px-4 py-2 text-sm text-foreground transition hover:bg-muted"
-                >
-                  {t('sell.goToSave')}
-                </button>
               </div>
             </div>
 
@@ -21142,6 +21182,7 @@ setCustomerOrganizationName("");
                         clearCreditOverrideState();
                         setSalesDiscountAmount(e.target.value);
                       }}
+                      onKeyDown={handleSaleTotalsKeys}
                       className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                     />
                     {currentSaleDraft.issues.find(issue => issue.field === "invoice_discount") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "invoice_discount")?.message}</span>}
@@ -21155,13 +21196,14 @@ setCustomerOrganizationName("");
                   <label className="flex flex-col gap-2 text-sm text-foreground/80">
                     <span>{t('sell.taxRate')}</span>
                     <input
+                      data-sale-tax-rate
                       type="text" inputMode="decimal"
                       value={salesTaxRate}
                       onChange={(e) => {
                         clearCreditOverrideState();
                         setSalesTaxRate(e.target.value);
                       }}
-                      onKeyDown={handleSaleTotalsEnter}
+                      onKeyDown={handleSaleTotalsKeys}
                       className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
                     />
                     {currentSaleDraft.issues.find(issue => issue.field === "tax") && <span className="text-xs text-destructive" role="alert">{currentSaleDraft.issues.find(issue => issue.field === "tax")?.message}</span>}
@@ -21194,7 +21236,7 @@ setCustomerOrganizationName("");
                         type="text" inputMode="decimal"
                         value={posCashReceived}
                         onChange={(e) => setPosCashReceived(e.target.value)}
-                        onKeyDown={handleSaleTotalsEnter}
+                        onKeyDown={handleSaleTotalsKeys}
                         placeholder={currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : String(currentSalesInvoiceTotal)}
                         className="w-full rounded border border-border px-3 py-2 tabular-nums focus:border-ring focus:outline-none"
                       />
@@ -21214,6 +21256,7 @@ setCustomerOrganizationName("");
               type="button"
               data-sale-save
               onClick={() => handleCreateSalesInvoice()}
+              onKeyDown={handleSaleActionArrowKeys}
               disabled={salesInvoiceLoading || !salesLines.length || !selectedCustomerIdForSale || !currentSaleDraft.valid}
               className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
             >
