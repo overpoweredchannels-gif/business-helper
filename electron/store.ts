@@ -30,6 +30,13 @@
  *   discard it — and a provisional number that could not yet be linked
  *   to its cloud invoice waits here as a `provisional-link` row until
  *   the link succeeds. Rows are never deleted; discard is a status.
+ *   Slice S5 adds `customer_id` so a customer-conflict issue can find
+ *   its local customer row for Retry.
+ * - `local_customers` — Slice S5 offline-created / offline-edited
+ *   customers: the full customer record + a client-generated UUID as
+ *   the row `id` (the same UUID becomes the server id on sync) +
+ *   the sync columns. A row is deleted only after the server
+ *   confirms it — never on send.
  * - `meta` — key/value counters; today only `last_provisional_number`.
  *
  * Provisional numbers are allocated inside the same transaction as the
@@ -75,7 +82,7 @@ export interface SyncIssueRow {
   /** Client-generated id (`crypto.randomUUID()` at park time). */
   id: string;
   scope: string;
-  /** `stock-conflict` | `fingerprint-mismatch` | `rejected` | `provisional-link`. */
+  /** `stock-conflict` | `fingerprint-mismatch` | `rejected` | `provisional-link` | `customer-conflict`. */
   kind: string;
   /** The sale's idempotency key, for sale kinds; null for provisional-link rows keyed by server id. */
   requestId: string | null;
@@ -98,6 +105,48 @@ export interface SyncIssueRow {
   syncError: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Slice S5 — the local customer row id for a customer issue
+   * (`customer-conflict` / customer `rejected`). Retry finds the row
+   * by this id; null for sale issues.
+   */
+  customerId: string | null;
+}
+
+/**
+ * Slice S5 — one offline-created / offline-edited customer, as the
+ * renderer sees it over IPC. The row `id` is a client-generated UUID:
+ * for a create it BECOMES the server id on sync (the route accepts a
+ * client-supplied id), so sales that already reference it need no
+ * rewrite; for an edit it is the existing server id. `kind` is
+ * "create" until the row confirms on the server — an edit of an
+ * unsynced create stays a create, so the sync sends one insert, not
+ * an insert plus an update. `data` is the full customer record (the
+ * fields the Quick-Add dialog and the edit form write), exactly as
+ * the customers list renders it. The balance is NEVER stored here:
+ * it is always derived from ledger transactions (see
+ * `src/lib/offline/customer-balance-offline.ts`).
+ */
+export type LocalCustomerKind = "create" | "edit";
+
+export interface LocalCustomerRow {
+  /** Client UUID (create) or server id (edit). */
+  id: string;
+  kind: LocalCustomerKind;
+  /** Full customer record as plain JSON. */
+  data: Record<string, unknown>;
+  /** The idempotency key (`crypto.randomUUID()` at creation). */
+  idempotencyKey: string;
+  /** 0 = local only, 1 = confirmed on server. */
+  synced: number;
+  /** Server id once synced (same UUID as `id` for customers). */
+  serverId: string | null;
+  /** `pending` | `synced` | `rejected`. */
+  syncStatus: string;
+  /** Server rejection message, if any. */
+  syncError: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -109,8 +158,18 @@ export interface SyncIssueRow {
  * (paid/remaining, stock) is computed from them exactly as from live
  * rows, and `outstanding_balance` is never written here (the stored
  * balance engine owns it server-side; the client derives it).
+ * Slice S5 adds the customer list + the ledger inputs the offline
+ * balance derivation reads (payments, allocations, returns).
  */
-export type MirrorKind = "sales_transaction" | "sales_item" | "product";
+export type MirrorKind =
+  | "sales_transaction"
+  | "sales_item"
+  | "product"
+  | "customer"
+  | "customer_payment"
+  | "customer_payment_allocation"
+  | "sales_return"
+  | "sales_return_item";
 
 export interface MirrorRow {
   /** Server row id (`sales_transactions.id`, `sales_items.id`, `products.id`). */
@@ -166,6 +225,19 @@ export interface LocalStore {
    * the stored row.
    */
   upsertMirror(kind: MirrorKind, scope: string, row: { id: string; data: Record<string, unknown> }): MirrorRow;
+  /** Offline-created / offline-edited customers for a scope, oldest first (Slice S5). */
+  listCustomers(scope: string): LocalCustomerRow[];
+  /**
+   * Insert or replace one local customer row. An edit of an unsynced
+   * create stays a create (one insert on sync, not insert + update);
+   * the idempotency key and first-created time survive a rewrite.
+   * The caller owns the sync columns: a UI edit resets the row to
+   * pending, the sync engine parks it as rejected with its reason.
+   * Throws on an invalid entry. Returns the stored row.
+   */
+  upsertCustomer(scope: string, row: LocalCustomerRow): LocalCustomerRow;
+  /** Delete one local customer row (server confirmed it). */
+  removeCustomer(scope: string, id: string): void;
   /** Close the database handle (app quit). */
   close(): void;
 }
@@ -212,9 +284,24 @@ CREATE TABLE IF NOT EXISTS sync_issues (
   status TEXT NOT NULL DEFAULT 'open',
   sync_error TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  customer_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sync_issues_scope ON sync_issues (scope, status, created_at);
+CREATE TABLE IF NOT EXISTS local_customers (
+  id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  data_json TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  synced INTEGER NOT NULL DEFAULT 0,
+  server_id TEXT,
+  sync_status TEXT NOT NULL DEFAULT 'pending',
+  sync_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_local_customers_scope ON local_customers (scope, created_at, id);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -262,8 +349,30 @@ function isValidIdentity(entry: unknown): entry is StoredIdentity {
   );
 }
 
-const SYNC_ISSUE_KINDS = new Set(["stock-conflict", "fingerprint-mismatch", "rejected", "provisional-link"]);
+const SYNC_ISSUE_KINDS = new Set(["stock-conflict", "fingerprint-mismatch", "rejected", "provisional-link", "customer-conflict"]);
 const SYNC_ISSUE_STATUSES = new Set(["open", "resolved", "discarded"]);
+const LOCAL_CUSTOMER_KINDS = new Set(["create", "edit"]);
+const LOCAL_CUSTOMER_SYNC_STATUSES = new Set(["pending", "synced", "rejected"]);
+
+function isValidCustomerRow(entry: unknown): entry is LocalCustomerRow {
+  if (typeof entry !== "object" || entry === null) return false;
+  const row = entry as Record<string, unknown>;
+  return (
+    typeof row.id === "string" &&
+    row.id.length > 0 &&
+    typeof row.kind === "string" &&
+    LOCAL_CUSTOMER_KINDS.has(row.kind) &&
+    typeof row.data === "object" &&
+    row.data !== null &&
+    !Array.isArray(row.data) &&
+    typeof row.idempotencyKey === "string" &&
+    row.idempotencyKey.length > 0 &&
+    typeof row.createdAt === "string" &&
+    row.createdAt.length > 0 &&
+    typeof row.updatedAt === "string" &&
+    row.updatedAt.length > 0
+  );
+}
 
 function isValidIssue(entry: unknown): entry is SyncIssueRow {
   if (typeof entry !== "object" || entry === null) return false;
@@ -292,6 +401,15 @@ export function createLocalStore(dbPath: string): LocalStore {
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
 
+  // Slice S5 — the sync_issues table gained a customer_id column for
+  // customer-conflict issues. CREATE TABLE IF NOT EXISTS does not add
+  // a column to a database created by S3, so existing databases get it
+  // here; new databases already have it from the schema above.
+  const issueColumns = db.prepare("PRAGMA table_info(sync_issues)").all() as Array<{ name: string }>;
+  if (!issueColumns.some((column) => column.name === "customer_id")) {
+    db.exec("ALTER TABLE sync_issues ADD COLUMN customer_id TEXT");
+  }
+
   const selectSales = db.prepare(
     "SELECT idempotency_key, input_json, provisional_number, created_at, synced, server_id, sync_status, sync_error FROM local_sales WHERE scope = ? ORDER BY id ASC",
   );
@@ -315,10 +433,10 @@ export function createLocalStore(dbPath: string): LocalStore {
     "SELECT * FROM sync_issues WHERE scope = ? AND status = 'open' AND server_id = ? LIMIT 1",
   );
   const insertIssue = db.prepare(
-    "INSERT INTO sync_issues (id, scope, kind, request_id, provisional_number, server_invoice_number, server_id, customer_name, total, reason, payload_json, status, sync_error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO sync_issues (id, scope, kind, request_id, provisional_number, server_invoice_number, server_id, customer_name, total, reason, payload_json, status, sync_error, created_at, updated_at, customer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   const updateIssueRow = db.prepare(
-    "UPDATE sync_issues SET kind = ?, request_id = ?, provisional_number = ?, server_invoice_number = ?, server_id = ?, customer_name = ?, total = ?, reason = ?, payload_json = ?, status = ?, sync_error = ?, updated_at = ? WHERE scope = ? AND id = ?",
+    "UPDATE sync_issues SET kind = ?, request_id = ?, provisional_number = ?, server_invoice_number = ?, server_id = ?, customer_name = ?, total = ?, reason = ?, payload_json = ?, status = ?, sync_error = ?, updated_at = ?, customer_id = ? WHERE scope = ? AND id = ?",
   );
   const updateIssueStatus = db.prepare(
     "UPDATE sync_issues SET status = ?, updated_at = ? WHERE scope = ? AND id = ?",
@@ -337,6 +455,19 @@ export function createLocalStore(dbPath: string): LocalStore {
   const upsertMirrorRow = db.prepare(
     "INSERT INTO mirrors (kind, scope, id, data_json, saved_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(kind, scope, id) DO UPDATE SET data_json = excluded.data_json, saved_at = excluded.saved_at",
   );
+  const selectCustomers = db.prepare(
+    "SELECT id, kind, data_json, idempotency_key, synced, server_id, sync_status, sync_error, created_at, updated_at FROM local_customers WHERE scope = ? ORDER BY created_at ASC, id ASC",
+  );
+  const selectCustomerById = db.prepare(
+    "SELECT id, kind, data_json, idempotency_key, synced, server_id, sync_status, sync_error, created_at, updated_at FROM local_customers WHERE scope = ? AND id = ?",
+  );
+  const insertCustomer = db.prepare(
+    "INSERT INTO local_customers (id, scope, kind, data_json, idempotency_key, synced, server_id, sync_status, sync_error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  const updateCustomerRow = db.prepare(
+    "UPDATE local_customers SET kind = ?, data_json = ?, synced = ?, server_id = ?, sync_status = ?, sync_error = ?, updated_at = ? WHERE scope = ? AND id = ?",
+  );
+  const deleteCustomer = db.prepare("DELETE FROM local_customers WHERE scope = ? AND id = ?");
 
   function nextProvisionalNumber(): string {
     const row = selectCounter.get(PROVISIONAL_COUNTER_KEY) as { value: string } | undefined;
@@ -393,6 +524,7 @@ export function createLocalStore(dbPath: string): LocalStore {
     sync_error: string | null;
     created_at: string;
     updated_at: string;
+    customer_id: string | null;
   }): SyncIssueRow {
     return {
       id: row.id,
@@ -407,6 +539,39 @@ export function createLocalStore(dbPath: string): LocalStore {
       reason: row.reason,
       payloadJson: row.payload_json,
       status: row.status,
+      syncError: row.sync_error,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      customerId: row.customer_id,
+    };
+  }
+
+  function rowToCustomer(row: {
+    id: string;
+    kind: string;
+    data_json: string;
+    idempotency_key: string;
+    synced: number;
+    server_id: string | null;
+    sync_status: string;
+    sync_error: string | null;
+    created_at: string;
+    updated_at: string;
+  }): LocalCustomerRow | null {
+    const data = parseJsonObject(row.data_json);
+    if (!data) {
+      // Same discipline as a corrupt queue row: skip it, keep the rest.
+      console.error(`Aankh local store: skipping corrupt local_customers row ${row.id}`);
+      return null;
+    }
+    return {
+      id: row.id,
+      kind: row.kind as LocalCustomerKind,
+      data,
+      idempotencyKey: row.idempotency_key,
+      synced: row.synced,
+      serverId: row.server_id,
+      syncStatus: row.sync_status,
       syncError: row.sync_error,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -440,6 +605,7 @@ export function createLocalStore(dbPath: string): LocalStore {
         issue.status,
         issue.syncError,
         now,
+        issue.customerId,
         issue.scope,
         kept.id,
       );
@@ -461,6 +627,7 @@ export function createLocalStore(dbPath: string): LocalStore {
       issue.syncError,
       issue.createdAt,
       issue.updatedAt,
+      issue.customerId,
     );
     return issue;
   });
@@ -536,6 +703,70 @@ export function createLocalStore(dbPath: string): LocalStore {
       return stored;
     },
   );
+
+  const upsertCustomerTx = db.transaction((scope: string, row: LocalCustomerRow): LocalCustomerRow => {
+    // An edit of an unsynced create stays a create (one insert on sync,
+    // not insert + update). The idempotency key and the first-created
+    // time survive a rewrite; the caller owns the sync columns — a UI
+    // edit resets the row to pending (a corrected record retries), the
+    // sync engine parks it as rejected with its reason.
+    const existing = selectCustomerById.get(scope, row.id) as
+      | {
+          id: string;
+          kind: string;
+          data_json: string;
+          idempotency_key: string;
+          synced: number;
+          server_id: string | null;
+          sync_status: string;
+          sync_error: string | null;
+          created_at: string;
+          updated_at: string;
+        }
+      | undefined;
+    const now = new Date().toISOString();
+    if (!existing) {
+      insertCustomer.run(
+        row.id,
+        scope,
+        row.kind,
+        JSON.stringify(row.data),
+        row.idempotencyKey,
+        row.synced ?? 0,
+        row.serverId ?? null,
+        row.syncStatus ?? "pending",
+        row.syncError ?? null,
+        row.createdAt,
+        row.updatedAt,
+      );
+      return row;
+    }
+    const kept = rowToCustomer(existing);
+    if (!kept) throw new Error("Invalid local customer entry");
+    const kind: LocalCustomerKind = kept.kind === "create" ? "create" : row.kind;
+    updateCustomerRow.run(
+      kind,
+      JSON.stringify(row.data),
+      row.synced ?? kept.synced,
+      row.serverId ?? kept.serverId,
+      row.syncStatus ?? kept.syncStatus,
+      row.syncError === undefined ? kept.syncError : row.syncError,
+      now,
+      scope,
+      row.id,
+    );
+    return {
+      ...row,
+      kind,
+      idempotencyKey: kept.idempotencyKey,
+      synced: row.synced ?? kept.synced,
+      serverId: row.serverId ?? kept.serverId,
+      syncStatus: row.syncStatus ?? kept.syncStatus,
+      syncError: row.syncError === undefined ? kept.syncError : row.syncError,
+      createdAt: kept.createdAt,
+      updatedAt: now,
+    };
+  });
 
   return {
     listSales(scope: string): LocalSaleRow[] {
@@ -668,6 +899,39 @@ export function createLocalStore(dbPath: string): LocalStore {
       const savedAt = new Date().toISOString();
       upsertMirrorRow.run(kind, scope, row.id, JSON.stringify(row.data), savedAt);
       return { id: row.id, data: row.data, savedAt };
+    },
+
+    listCustomers(scope: string): LocalCustomerRow[] {
+      const rows = selectCustomers.all(scope) as Array<{
+        id: string;
+        kind: string;
+        data_json: string;
+        idempotency_key: string;
+        synced: number;
+        server_id: string | null;
+        sync_status: string;
+        sync_error: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+      const customers: LocalCustomerRow[] = [];
+      for (const row of rows) {
+        const customer = rowToCustomer(row);
+        if (customer) customers.push(customer);
+      }
+      return customers;
+    },
+
+    upsertCustomer(scope: string, row: LocalCustomerRow): LocalCustomerRow {
+      if (!isValidCustomerRow(row)) throw new Error("Invalid local customer entry");
+      if (!LOCAL_CUSTOMER_SYNC_STATUSES.has(row.syncStatus ?? "pending")) {
+        throw new Error("Invalid local customer sync status");
+      }
+      return upsertCustomerTx(scope, row);
+    },
+
+    removeCustomer(scope: string, id: string): void {
+      deleteCustomer.run(scope, id);
     },
 
     close(): void {

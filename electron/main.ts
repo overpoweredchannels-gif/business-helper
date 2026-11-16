@@ -106,6 +106,8 @@ function setupLocalStore(): void {
       syncError: typeof row.syncError === "string" ? row.syncError : null,
       createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date().toISOString(),
       updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+      // Slice S5 — the local customer row id for a customer issue.
+      customerId: typeof row.customerId === "string" ? row.customerId : null,
     };
   };
   ipcMain.handle("aankh:sync-issues:list", (_event, scope: unknown) =>
@@ -127,12 +129,63 @@ function setupLocalStore(): void {
       syncError: typeof text?.syncError === "string" ? text.syncError : text?.syncError === null ? null : undefined,
     });
   });
+  // Slice S5 — offline-created / offline-edited customers (local
+  // first, cloud id is the same client UUID). Same validation
+  // discipline as the sale rows: the renderer sends plain JSON and
+  // the main process refuses anything malformed before it reaches
+  // SQLite. The balance is never stored here — it is derived from
+  // ledger rows (see src/lib/offline/customer-balance-offline.ts).
+  const requireCustomerRow = (value: unknown): import("./store").LocalCustomerRow => {
+    const row = value as Partial<import("./store").LocalCustomerRow>;
+    if (typeof row !== "object" || row === null) throw new Error("Invalid local customer");
+    if (typeof row.id !== "string" || row.id.length === 0) throw new Error("Invalid local customer: id");
+    if (row.kind !== "create" && row.kind !== "edit") throw new Error("Invalid local customer: kind");
+    if (typeof row.data !== "object" || row.data === null || Array.isArray(row.data)) {
+      throw new Error("Invalid local customer: data");
+    }
+    if (typeof row.idempotencyKey !== "string" || row.idempotencyKey.length === 0) {
+      throw new Error("Invalid local customer: idempotencyKey");
+    }
+    return {
+      id: row.id,
+      kind: row.kind,
+      data: row.data as Record<string, unknown>,
+      idempotencyKey: row.idempotencyKey,
+      synced: typeof row.synced === "number" ? row.synced : 0,
+      serverId: typeof row.serverId === "string" ? row.serverId : null,
+      syncStatus: typeof row.syncStatus === "string" ? row.syncStatus : "pending",
+      syncError: typeof row.syncError === "string" ? row.syncError : null,
+      createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date().toISOString(),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  };
+  ipcMain.handle("aankh:local-customers:list", (_event, scope: unknown) =>
+    (localStore as LocalStore).listCustomers(requireScope(scope)),
+  );
+  ipcMain.handle("aankh:local-customers:upsert", (_event, scope: unknown, row: unknown) =>
+    (localStore as LocalStore).upsertCustomer(requireScope(scope), requireCustomerRow(row)),
+  );
+  ipcMain.handle("aankh:local-customers:remove", (_event, scope: unknown, id: unknown) => {
+    if (typeof id !== "string" || id.length === 0) throw new Error("Invalid local customer id");
+    (localStore as LocalStore).removeCustomer(requireScope(scope), id);
+  });
   // Slice S4 — Sales History + Inventory mirrors (read cache for the
   // desktop history + inventory). Same validation discipline: the
   // renderer sends plain JSON and the main process refuses anything
   // malformed before it reaches SQLite. The mirror never carries
   // balances — it stores the rows the fetch functions already return.
-  const MIRROR_KINDS = new Set(["sales_transaction", "sales_item", "product"]);
+  const MIRROR_KINDS = new Set([
+    "sales_transaction",
+    "sales_item",
+    "product",
+    // Slice S5 — the customer list + the ledger inputs the offline
+    // balance derivation reads (payments, allocations, returns).
+    "customer",
+    "customer_payment",
+    "customer_payment_allocation",
+    "sales_return",
+    "sales_return_item",
+  ]);
   const requireMirrorKind = (value: unknown): import("./store").MirrorKind => {
     if (typeof value !== "string" || !MIRROR_KINDS.has(value)) throw new Error("Invalid mirror kind");
     return value as import("./store").MirrorKind;

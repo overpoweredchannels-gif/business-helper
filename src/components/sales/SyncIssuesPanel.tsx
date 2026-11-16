@@ -39,6 +39,8 @@ export function SyncIssuesPanel({
         return t("syncIssues.kindFingerprintMismatch");
       case "provisional-link":
         return t("syncIssues.kindProvisionalLink");
+      case "customer-conflict":
+        return t("syncIssues.kindCustomerConflict");
       default:
         return t("syncIssues.kindRejected");
     }

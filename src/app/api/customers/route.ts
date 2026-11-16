@@ -16,6 +16,22 @@ const CREDIT_POLICIES = ["cash_only", "limit_only", "days_only", "limit_and_days
 const VISIT_FREQUENCIES = ["daily", "weekly", "monthly", "none"];
 const PRIORITIES = ["high", "medium", "low"];
 
+/**
+ * Slice S5 — a client-generated UUID (offline Quick-Add) is accepted
+ * as the row id, so the offline row and the server row are the same
+ * row and sales that already reference it need no rewrite. A
+ * server-generated id is a UUID too, so the format check alone cannot
+ * tell them apart — the replay check below is the dedup: the same id
+ * re-posted returns the existing row instead of a duplicate. A
+ * non-UUID id is refused (a caller inventing ids could otherwise
+ * collide with server-generated ones).
+ */
+const CLIENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidCustomerClientId(value: unknown): value is string {
+  return typeof value === "string" && CLIENT_ID_PATTERN.test(value);
+}
+
 export async function GET(request: NextRequest) {
   const permission = await requirePermission(request, "customers_view");
   if (!permission.allowed || !permission.actor) {
@@ -110,9 +126,27 @@ export async function POST(request: NextRequest) {
       const { data: territory } = await supabase.from("territories").select("id").eq("id", assignedTerritoryId).eq("organization_id", organizationId).maybeSingle();
       if (!territory) return NextResponse.json({ ok: false, error: "Assigned territory does not belong to this organization." }, { status: 400 });
     }
+    // Slice S5 — client-supplied id (offline Quick-Add): replay-safe.
+    // A re-post of the same id returns the existing row (the sync
+    // engine compares fields and reconciles when they differ), so a
+    // lost response can never double-create the customer.
+    const clientId = body?.id !== undefined && body?.id !== null ? String(body.id) : null;
+    if (body?.id !== undefined && body?.id !== null && !isValidCustomerClientId(clientId)) {
+      return NextResponse.json({ ok: false, error: "Customer id must be a valid UUID." }, { status: 400 });
+    }
+    if (clientId) {
+      const { data: existing } = await supabase
+        .from("customers")
+        .select("id, customer_name, is_active")
+        .eq("id", clientId)
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      if (existing) return NextResponse.json({ ok: true, customer: existing });
+    }
     const { data, error } = await supabase
       .from("customers")
       .insert({
+        ...(clientId ? { id: clientId } : {}),
         organization_id: organizationId,
         customer_name,
         shop_name: normalizeOptionalText(body?.shop_name),

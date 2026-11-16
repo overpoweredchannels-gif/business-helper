@@ -87,6 +87,7 @@ function pendingLinkIssue(
     serverInvoiceNumber,
     serverId,
     customerName: null,
+    customerId: null,
     total: null,
     reason: `Provisional number ${provisionalNumber} is not yet linked to invoice ${serverInvoiceNumber}.`,
     payload: null,

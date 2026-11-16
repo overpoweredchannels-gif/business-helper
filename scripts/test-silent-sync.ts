@@ -139,6 +139,7 @@ function memoryIssuesBridge() {
     serverInvoiceNumber: issue.serverInvoiceNumber,
     serverId: issue.serverId,
     customerName: issue.customerName,
+    customerId: issue.customerId ?? null,
     total: issue.total,
     reason: issue.reason,
     payloadJson: issue.payload ? JSON.stringify(issue.payload) : null,
@@ -156,6 +157,7 @@ function memoryIssuesBridge() {
     serverInvoiceNumber: row.serverInvoiceNumber,
     serverId: row.serverId,
     customerName: row.customerName,
+    customerId: row.customerId,
     total: row.total,
     reason: row.reason,
     payload: row.payloadJson ? (JSON.parse(row.payloadJson) as AtomicSaleInput) : null,
@@ -275,6 +277,9 @@ async function seedQueue(input: AtomicSaleInput = SALE_INPUT) {
 
 function issueRow(overrides: Partial<SyncIssueRow> = {}): SyncIssueRow {
   const now = new Date().toISOString();
+  // Slice S5 — customerId is required on the row; an override that
+  // omits it (or sets undefined) reads as null, never undefined.
+  const { customerId, ...rest } = overrides;
   return {
     id: crypto.randomUUID(),
     scope: SCOPE,
@@ -284,6 +289,7 @@ function issueRow(overrides: Partial<SyncIssueRow> = {}): SyncIssueRow {
     serverInvoiceNumber: null,
     serverId: null,
     customerName: "Cash Customer",
+    customerId: customerId ?? null,
     total: 10,
     reason: "Insufficient stock, including bonus units, for product p1",
     payloadJson: JSON.stringify(SALE_INPUT),
@@ -291,7 +297,7 @@ function issueRow(overrides: Partial<SyncIssueRow> = {}): SyncIssueRow {
     syncError: null,
     createdAt: now,
     updatedAt: now,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -364,7 +370,7 @@ async function testClassifySaleRejection(): Promise<void> {
   assert.equal(classifySaleRejection("Customer credit limit exceeded"), "rejected", "anything else is a plain rejection");
   const fingerprint: SyncIssue = {
     id: "i-1", scope: SCOPE, kind: "fingerprint-mismatch", requestId: "req-1",
-    provisionalNumber: null, serverInvoiceNumber: null, serverId: null, customerName: null,
+    provisionalNumber: null, serverInvoiceNumber: null, serverId: null, customerName: null, customerId: null,
     total: null, reason: "x", payload: SALE_INPUT, status: "open", syncError: null,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
@@ -644,7 +650,7 @@ async function testSyncIssuesPersistLocalStorage(): Promise<void> {
     const issue: SyncIssue = {
       id: "issue-1", scope: SCOPE, kind: "rejected", requestId: "req-1",
       provisionalNumber: "L-000001", serverInvoiceNumber: null, serverId: null,
-      customerName: "Cash Customer", total: 10, reason: "Customer credit limit exceeded",
+      customerName: "Cash Customer", customerId: null, total: 10, reason: "Customer credit limit exceeded",
       payload: SALE_INPUT, status: "open", syncError: null,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };

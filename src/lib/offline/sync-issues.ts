@@ -37,6 +37,13 @@
  * normally and stock goes negative, with no flag to raise). The sale
  * is never lost, never double-posted, and the cashier's cash record
  * is not broken.
+ *
+ * Slice S5 adds customer issues (`customer-conflict`): two counters
+ * can edit the same customer offline; the server keeps the newer
+ * copy (last-write-wins on `updated_at`) and the superseded edit is
+ * parked here with the local row id, so the owner can Retry it
+ * (re-applies the parked copy with a fresh timestamp) or discard it.
+ * A customer issue never auto-retries and is never auto-deleted.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -55,7 +62,12 @@ export function notifySyncIssuesChanged(): void {
   }
 }
 
-export type SyncIssueKind = "stock-conflict" | "fingerprint-mismatch" | "rejected" | "provisional-link";
+export type SyncIssueKind =
+  | "stock-conflict"
+  | "fingerprint-mismatch"
+  | "rejected"
+  | "provisional-link"
+  | "customer-conflict";
 export type SyncIssueStatus = "open" | "resolved" | "discarded";
 
 export interface SyncIssue {
@@ -82,6 +94,12 @@ export interface SyncIssue {
   syncError: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Slice S5 — the local customer row id for a customer issue
+   * (`customer-conflict` / customer `rejected`). Retry finds the row
+   * by this id; null for sale issues.
+   */
+  customerId: string | null;
 }
 
 export interface SyncIssuesBackend {
@@ -194,6 +212,8 @@ export interface SyncIssueIpcRow {
   syncError: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Slice S5 — the local customer row id for a customer issue. */
+  customerId: string | null;
 }
 
 type DesktopSyncIssuesBridge = {
@@ -227,6 +247,7 @@ function toIpcRow(issue: SyncIssue): SyncIssueIpcRow {
     syncError: issue.syncError,
     createdAt: issue.createdAt,
     updatedAt: issue.updatedAt,
+    customerId: issue.customerId ?? null,
   };
 }
 
@@ -256,6 +277,7 @@ function fromIpcRow(row: SyncIssueIpcRow): SyncIssue {
     syncError: row.syncError,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    customerId: row.customerId ?? null,
   };
 }
 
@@ -337,8 +359,12 @@ export function classifySaleRejection(message: string): Exclude<SyncIssueKind, "
 }
 
 /** Retry is safe only when the same key + same payload can succeed: a
- * fingerprint mismatch fails the same way forever, so it has no Retry. */
+ * fingerprint mismatch fails the same way forever, so it has no Retry.
+ * A customer issue retries by its local row (the owner re-applies the
+ * parked copy with a fresh timestamp — see `retryCustomerSyncIssue`),
+ * so it can retry whenever the row id is known. */
 export function syncIssueCanRetry(issue: SyncIssue): boolean {
+  if (issue.customerId) return true;
   return issue.kind !== "fingerprint-mismatch" && issue.kind !== "provisional-link" && issue.payload !== null;
 }
 
@@ -398,6 +424,7 @@ export async function parkSaleAsSyncIssue(
     syncError: null,
     createdAt: now,
     updatedAt: now,
+    customerId: null,
   };
   try {
     const stored = await getSyncIssuesBackend().upsert(scope, issue);

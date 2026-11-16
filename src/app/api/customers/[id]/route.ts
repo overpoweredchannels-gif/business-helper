@@ -91,6 +91,36 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (!territory) return NextResponse.json({ ok: false, error: "Assigned territory does not belong to this organization." }, { status: 400 });
     }
 
+    // Slice S5 — last-write-wins guard (offline edit sync, UMAIR's
+    // decision 5): the caller sends the edit time; when the server
+    // copy is newer, the edit is refused as superseded instead of
+    // silently overwriting it, and the sync engine parks it as a
+    // customer-conflict issue. An owner Retry passes force: true —
+    // the explicit decision that this copy wins. A call without
+    // updated_at (the web edit form) updates exactly as before.
+    const clientUpdatedAt = typeof body?.updated_at === "string" ? body.updated_at : null;
+    const forceUpdate = body?.force === true;
+    if (clientUpdatedAt && !forceUpdate) {
+      const clientTime = Date.parse(clientUpdatedAt);
+      if (Number.isFinite(clientTime)) {
+        const { data: current } = await supabase
+          .from("customers")
+          .select("id, customer_name, is_active, updated_at")
+          .eq("id", id)
+          .eq("organization_id", organizationId)
+          .maybeSingle();
+        const serverTime =
+          current && typeof current.updated_at === "string" ? Date.parse(current.updated_at) : NaN;
+        if (current && Number.isFinite(serverTime) && clientTime < serverTime) {
+          return NextResponse.json({
+            ok: true,
+            customer: { id: current.id, customer_name: current.customer_name, is_active: current.is_active },
+            superseded: true,
+          });
+        }
+      }
+    }
+
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     const optionalTextFields = [
       "shop_name", "organization_name", "contact_person", "phone", "whatsapp",

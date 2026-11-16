@@ -20,6 +20,9 @@
  * never overlap: an in-flight run is shared, and the drain itself is
  * serialized per scope (`runSerialized` in the atomic sale client).
  *
+ * Slice S5 — the customer drain runs FIRST (design §4 order step 1:
+ * customers are parents of sales), then the sales drain.
+ *
  * Owner Retry of a parked sale also lives here: `retrySyncIssue`
  * re-queues the parked attempt with its ORIGINAL idempotency key at
  * the front of the queue and drains. The drain status-checks it
@@ -39,6 +42,11 @@ import {
   type PendingSale,
 } from "@/lib/sales/atomic-sale-client";
 import {
+  drainPendingCustomers,
+  retryCustomerSyncIssue,
+  type CustomerDrainResult,
+} from "@/lib/offline/customer-sync";
+import {
   getSyncIssuesBackend,
   notifySyncIssuesChanged,
   syncIssueCanRetry,
@@ -55,6 +63,8 @@ export interface SilentSyncEngineOptions {
   getScope: () => string | null;
   /** Called after every drain (also when nothing confirmed), so the page can refetch + refresh counts. */
   onDrained?: (drained: DrainResult) => void;
+  /** Called after the customer drain (step 1 of the sync order), so the page can refetch customers. */
+  onCustomersDrained?: (drained: CustomerDrainResult) => void;
   /** Test seam: override the timer intervals. Defaults are the constants above. */
   timers?: { intervalMs?: number; debounceMs?: number };
 }
@@ -85,6 +95,13 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
     if (inFlight) return inFlight;
     inFlight = (async () => {
       try {
+        // Slice S5 — customers first (design §4 order): a sale
+        // referencing an unsynced customer cannot confirm server-side,
+        // so the customer drain runs before the sales drain. A
+        // customer failure never blocks the sales drain — the drain
+        // handles its own failures and parks what it cannot sync.
+        const customersDrained = await drainPendingCustomers(options.supabase, scope);
+        options.onCustomersDrained?.(customersDrained);
         const drained = await drainPendingSalesQueue(options.supabase, scope);
         await retryPendingLinks(options.supabase, scope);
         options.onDrained?.(drained);
@@ -158,20 +175,27 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
  * Owner Retry of one parked sale. Returns whether the sale confirmed.
  * A fingerprint mismatch is refused without submitting — the same key
  * with different contents can never succeed.
+ * A customer issue dispatches to the customer retry (re-applies the
+ * parked copy with a fresh timestamp) and reports kind "customer" so
+ * the caller can show the right message.
  */
 export async function retrySyncIssue(
   supabase: SupabaseClient,
   scope: string,
   issueId: string,
-): Promise<{ confirmed: boolean; notRetryable: boolean; reason: string | null }> {
+): Promise<{ confirmed: boolean; notRetryable: boolean; reason: string | null; kind: "sale" | "customer" }> {
   const backend = getSyncIssuesBackend();
   const issues = await backend.list(scope);
   const issue = issues.find((item) => item.id === issueId);
+  if (issue && issue.customerId) {
+    const outcome = await retryCustomerSyncIssue(supabase, scope, issueId);
+    return { ...outcome, kind: "customer" as const };
+  }
   if (!issue || issue.status !== "open" || !issue.payload || !issue.requestId) {
-    return { confirmed: false, notRetryable: false, reason: null };
+    return { confirmed: false, notRetryable: false, reason: null, kind: "sale" as const };
   }
   if (!syncIssueCanRetry(issue)) {
-    return { confirmed: false, notRetryable: true, reason: null };
+    return { confirmed: false, notRetryable: true, reason: null, kind: "sale" as const };
   }
   const attempt: PendingSale = {
     requestId: issue.requestId,
@@ -183,5 +207,5 @@ export async function retrySyncIssue(
   const updated = after.find((item) => item.id === issueId);
   const confirmed = !!updated && updated.status === "resolved";
   notifySyncIssuesChanged();
-  return { confirmed, notRetryable: false, reason: confirmed ? null : updated?.reason ?? null };
+  return { confirmed, notRetryable: false, reason: confirmed ? null : updated?.reason ?? null, kind: "sale" as const };
 }

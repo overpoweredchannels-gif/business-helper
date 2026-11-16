@@ -26,8 +26,16 @@
 import { isDesktopApp } from "@/lib/offline/identity-cache";
 import type { AtomicSaleResult, PendingSale } from "@/lib/sales/atomic-sale-client";
 
-/** Mirror kinds: the two history reads + the product catalogue snapshot. */
-export type MirrorKind = "sales_transaction" | "sales_item" | "product";
+/** Mirror kinds: the two history reads + the product catalogue snapshot. Slice S5 adds the customer list + the ledger inputs the offline balance derivation reads. */
+export type MirrorKind =
+  | "sales_transaction"
+  | "sales_item"
+  | "product"
+  | "customer"
+  | "customer_payment"
+  | "customer_payment_allocation"
+  | "sales_return"
+  | "sales_return_item";
 
 /** One mirrored server row, as it crosses the IPC bridge (plain JSON). */
 export interface MirrorRow {
