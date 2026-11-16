@@ -44,7 +44,19 @@ export class SupplierService {
       throw new Error(validation.errors.join("; "));
     }
 
+    // Slice S6 — client-supplied id (offline supplier create): a
+    // re-post of the same id returns the existing row (the sync
+    // engine compares fields and reconciles when they differ), so a
+    // lost response can never double-create the supplier. The route
+    // validates the id is a UUID; the service only replays it.
+    const clientId = typeof input.id === "string" && input.id.length > 0 ? input.id : null;
+    if (clientId) {
+      const existing = await this.repository.findById(actor.organizationId, clientId);
+      if (existing) return existing;
+    }
+
     const supplier = await this.repository.create({
+      ...(clientId ? { id: clientId } : {}),
       organization_id: actor.organizationId,
       supplier_name: normalizeOptionalText(input.supplier_name) as string,
       contact_person: normalizeOptionalText(input.contact_person),

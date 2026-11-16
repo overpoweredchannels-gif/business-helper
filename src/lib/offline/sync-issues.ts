@@ -67,7 +67,8 @@ export type SyncIssueKind =
   | "fingerprint-mismatch"
   | "rejected"
   | "provisional-link"
-  | "customer-conflict";
+  | "customer-conflict"
+  | "supplier-conflict";
 export type SyncIssueStatus = "open" | "resolved" | "discarded";
 
 export interface SyncIssue {
@@ -100,6 +101,19 @@ export interface SyncIssue {
    * by this id; null for sale issues.
    */
   customerId: string | null;
+  /**
+   * Slice S6 — the local supplier row id for a supplier issue
+   * (`supplier-conflict` / supplier `rejected`). Retry finds the row
+   * by this id; null for every other issue.
+   */
+  supplierId: string | null;
+  /**
+   * Slice S6 — the local purchase row id (= the client request key)
+   * for a purchase issue (`fingerprint-mismatch` / purchase
+   * `rejected`). Retry finds the row by this id; null for every
+   * other issue.
+   */
+  purchaseId: string | null;
 }
 
 export interface SyncIssuesBackend {
@@ -214,6 +228,10 @@ export interface SyncIssueIpcRow {
   updatedAt: string;
   /** Slice S5 — the local customer row id for a customer issue. */
   customerId: string | null;
+  /** Slice S6 — the local supplier row id for a supplier issue. */
+  supplierId: string | null;
+  /** Slice S6 — the local purchase row id for a purchase issue. */
+  purchaseId: string | null;
 }
 
 type DesktopSyncIssuesBridge = {
@@ -248,6 +266,8 @@ function toIpcRow(issue: SyncIssue): SyncIssueIpcRow {
     createdAt: issue.createdAt,
     updatedAt: issue.updatedAt,
     customerId: issue.customerId ?? null,
+    supplierId: issue.supplierId ?? null,
+    purchaseId: issue.purchaseId ?? null,
   };
 }
 
@@ -278,6 +298,8 @@ function fromIpcRow(row: SyncIssueIpcRow): SyncIssue {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     customerId: row.customerId ?? null,
+    supplierId: row.supplierId ?? null,
+    purchaseId: row.purchaseId ?? null,
   };
 }
 
@@ -360,11 +382,15 @@ export function classifySaleRejection(message: string): Exclude<SyncIssueKind, "
 
 /** Retry is safe only when the same key + same payload can succeed: a
  * fingerprint mismatch fails the same way forever, so it has no Retry.
- * A customer issue retries by its local row (the owner re-applies the
- * parked copy with a fresh timestamp — see `retryCustomerSyncIssue`),
- * so it can retry whenever the row id is known. */
+ * A customer / supplier / purchase issue retries by its local row
+ * (the owner re-applies the parked copy with a fresh timestamp — see
+ * `retryCustomerSyncIssue` / `retrySupplierSyncIssue` /
+ * `retryPurchaseSyncIssue`), so it can retry whenever the row id is
+ * known — except a fingerprint mismatch, which can never succeed. */
 export function syncIssueCanRetry(issue: SyncIssue): boolean {
   if (issue.customerId) return true;
+  if (issue.supplierId) return true;
+  if (issue.purchaseId) return issue.kind !== "fingerprint-mismatch";
   return issue.kind !== "fingerprint-mismatch" && issue.kind !== "provisional-link" && issue.payload !== null;
 }
 
@@ -425,6 +451,8 @@ export async function parkSaleAsSyncIssue(
     createdAt: now,
     updatedAt: now,
     customerId: null,
+    supplierId: null,
+    purchaseId: null,
   };
   try {
     const stored = await getSyncIssuesBackend().upsert(scope, issue);

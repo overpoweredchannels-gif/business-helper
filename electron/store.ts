@@ -31,13 +31,26 @@
  *   to its cloud invoice waits here as a `provisional-link` row until
  *   the link succeeds. Rows are never deleted; discard is a status.
  *   Slice S5 adds `customer_id` so a customer-conflict issue can find
- *   its local customer row for Retry.
+ *   its local customer row for Retry. Slice S6 adds `supplier_id` the
+ *   same way, for supplier-conflict issues, and `purchase_id` for
+ *   purchase fingerprint-mismatch / rejected issues.
  * - `local_customers` — Slice S5 offline-created / offline-edited
  *   customers: the full customer record + a client-generated UUID as
  *   the row `id` (the same UUID becomes the server id on sync) +
  *   the sync columns. A row is deleted only after the server
  *   confirms it — never on send.
- * - `meta` — key/value counters; today only `last_provisional_number`.
+ * - `local_purchases` — Slice S6 offline-created purchases: the full
+ *   purchase input JSON + the client `request_key` as the row id +
+ *   a local provisional number (`LP-000123`, sequential per device)
+ *   for the history until the server assigns `P-500xx` at sync.
+ *   A row is deleted only after the server confirms it — never on send.
+ * - `local_suppliers` — Slice S6 offline-created / offline-edited
+ *   suppliers: same shape as `local_customers` (client UUID as the
+ *   row `id`, last-write-wins on `updated_at`). The balance is NEVER
+ *   stored here — supplier outstanding is derived on read, exactly
+ *   as server-side (`payment_derived_outstanding`).
+ * - `meta` — key/value counters; today `last_provisional_number`
+ *   (sales) and `last_provisional_purchase_number` (purchases).
  *
  * Provisional numbers are allocated inside the same transaction as the
  * queue write, so a number is never handed out without its sale row.
@@ -111,6 +124,19 @@ export interface SyncIssueRow {
    * by this id; null for sale issues.
    */
   customerId: string | null;
+  /**
+   * Slice S6 — the local supplier row id for a supplier issue
+   * (`supplier-conflict` / supplier `rejected`). Retry finds the row
+   * by this id; null for every other issue.
+   */
+  supplierId: string | null;
+  /**
+   * Slice S6 — the local purchase row id (= the client request key)
+   * for a purchase issue (`fingerprint-mismatch` / purchase
+   * `rejected`). Retry finds the row by this id; null for every
+   * other issue.
+   */
+  purchaseId: string | null;
 }
 
 /**
@@ -150,6 +176,72 @@ export interface LocalCustomerRow {
 }
 
 /**
+ * Slice S6 — one offline-created purchase, as the renderer sees it
+ * over IPC. The row `id` is the client `request_key`
+ * (`crypto.randomUUID()` at creation): the server dedupes on it
+ * (`purchase_transactions.request_key` unique per org), so a retry
+ * with the same key replays the original purchase instead of
+ * double-posting or double-stocking. `input` is the full purchase
+ * input exactly as `POST /api/purchases` takes it (supplier,
+ * payment terms, lines). The provisional number is local-only: the
+ * server assigns `P-500xx` at sync and the history then shows the
+ * server number (the provisional number is never written to the
+ * cloud row — there is no provisional column on purchases).
+ */
+export interface LocalPurchaseRow {
+  /** The client request key — also the idempotency key and the row id. */
+  id: string;
+  /** Full purchase input (supplier, terms, lines) as plain JSON. */
+  input: Record<string, unknown>;
+  /** Local provisional number (`LP-000123`), or null until allocated. */
+  provisionalNumber: string | null;
+  /** 0 = local only, 1 = confirmed on server. */
+  synced: number;
+  /** Server `purchase_transactions.id` once synced. */
+  serverId: string | null;
+  /** `pending` | `synced` | `rejected`. */
+  syncStatus: string;
+  /** Server rejection message, if any. */
+  syncError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Slice S6 — one offline-created / offline-edited supplier, as the
+ * renderer sees it over IPC. Same shape as `LocalCustomerRow`: the
+ * row `id` is a client-generated UUID (a create's id BECOMES the
+ * server id on sync — the route accepts a client-supplied id — so
+ * purchases that already reference it need no rewrite; an edit
+ * carries the existing server id). `kind` is "create" until the row
+ * confirms — an edit of an unsynced create stays a create. The
+ * balance is NEVER stored here: supplier outstanding is derived on
+ * read, exactly as server-side.
+ */
+export type LocalSupplierKind = "create" | "edit";
+
+export interface LocalSupplierRow {
+  /** Client UUID (create) or server id (edit). */
+  id: string;
+  kind: LocalSupplierKind;
+  /** Full supplier record as plain JSON. */
+  data: Record<string, unknown>;
+  /** The idempotency key (`crypto.randomUUID()` at creation). */
+  idempotencyKey: string;
+  /** 0 = local only, 1 = confirmed on server. */
+  synced: number;
+  /** Server id once synced (same UUID as `id` for suppliers). */
+  serverId: string | null;
+  /** `pending` | `synced` | `rejected`. */
+  syncStatus: string;
+  /** Server rejection message, if any. */
+  syncError: string | null;
+  createdAt: string;
+  /** Last local write — the last-write-wins timestamp sent on sync. */
+  updatedAt: string;
+}
+
+/**
  * Slice S4 — one mirrored server row, as the renderer sees it over IPC.
  * Mirrors are a READ cache for the desktop history + inventory: whole
  * server rows as fetched (never merged, never edited), keyed by kind +
@@ -169,7 +261,11 @@ export type MirrorKind =
   | "customer_payment"
   | "customer_payment_allocation"
   | "sales_return"
-  | "sales_return_item";
+  | "sales_return_item"
+  // Slice S6 — the purchase history + suppliers reads.
+  | "purchase_transaction"
+  | "purchase_item"
+  | "supplier";
 
 export interface MirrorRow {
   /** Server row id (`sales_transactions.id`, `sales_items.id`, `products.id`). */
@@ -238,6 +334,28 @@ export interface LocalStore {
   upsertCustomer(scope: string, row: LocalCustomerRow): LocalCustomerRow;
   /** Delete one local customer row (server confirmed it). */
   removeCustomer(scope: string, id: string): void;
+  /** Offline-created purchases for a scope, oldest first (Slice S6). */
+  listPurchases(scope: string): LocalPurchaseRow[];
+  /**
+   * Insert or replace one local purchase row. The provisional number
+   * is allocated here (inside the same transaction as the row write)
+   * and survives a rewrite; a row that already has one keeps it.
+   * Throws on an invalid entry. Returns the stored row.
+   */
+  upsertPurchase(scope: string, row: LocalPurchaseRow): LocalPurchaseRow;
+  /** Delete one local purchase row (server confirmed it). */
+  removePurchase(scope: string, id: string): void;
+  /** Offline-created / offline-edited suppliers for a scope, oldest first (Slice S6). */
+  listSuppliers(scope: string): LocalSupplierRow[];
+  /**
+   * Insert or replace one local supplier row. Same discipline as
+   * upsertCustomer: an edit of an unsynced create stays a create;
+   * the idempotency key and first-created time survive a rewrite.
+   * Throws on an invalid entry. Returns the stored row.
+   */
+  upsertSupplier(scope: string, row: LocalSupplierRow): LocalSupplierRow;
+  /** Delete one local supplier row (server confirmed it). */
+  removeSupplier(scope: string, id: string): void;
   /** Close the database handle (app quit). */
   close(): void;
 }
@@ -285,7 +403,9 @@ CREATE TABLE IF NOT EXISTS sync_issues (
   sync_error TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  customer_id TEXT
+  customer_id TEXT,
+  supplier_id TEXT,
+  purchase_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sync_issues_scope ON sync_issues (scope, status, created_at);
 CREATE TABLE IF NOT EXISTS local_customers (
@@ -302,6 +422,33 @@ CREATE TABLE IF NOT EXISTS local_customers (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_local_customers_scope ON local_customers (scope, created_at, id);
+CREATE TABLE IF NOT EXISTS local_purchases (
+  id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  input_json TEXT NOT NULL,
+  provisional_number TEXT UNIQUE,
+  synced INTEGER NOT NULL DEFAULT 0,
+  server_id TEXT,
+  sync_status TEXT NOT NULL DEFAULT 'pending',
+  sync_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_local_purchases_scope ON local_purchases (scope, created_at, id);
+CREATE TABLE IF NOT EXISTS local_suppliers (
+  id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  data_json TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  synced INTEGER NOT NULL DEFAULT 0,
+  server_id TEXT,
+  sync_status TEXT NOT NULL DEFAULT 'pending',
+  sync_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_local_suppliers_scope ON local_suppliers (scope, created_at, id);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -318,10 +465,16 @@ CREATE INDEX IF NOT EXISTS idx_mirrors_scope ON mirrors (kind, scope, saved_at);
 `;
 
 const PROVISIONAL_COUNTER_KEY = "last_provisional_number";
+const PROVISIONAL_PURCHASE_COUNTER_KEY = "last_provisional_purchase_number";
 
 /** `L-000123`: the `L` marks a local number; the receipt says provisional. */
 export function formatProvisionalNumber(sequence: number): string {
   return `L-${String(sequence).padStart(6, "0")}`;
+}
+
+/** `LP-000123`: the `LP` marks a local purchase number; the history says provisional. */
+export function formatProvisionalPurchaseNumber(sequence: number): string {
+  return `LP-${String(sequence).padStart(6, "0")}`;
 }
 
 function parseJsonObject(raw: string | null): Record<string, unknown> | null {
@@ -349,10 +502,13 @@ function isValidIdentity(entry: unknown): entry is StoredIdentity {
   );
 }
 
-const SYNC_ISSUE_KINDS = new Set(["stock-conflict", "fingerprint-mismatch", "rejected", "provisional-link", "customer-conflict"]);
+const SYNC_ISSUE_KINDS = new Set(["stock-conflict", "fingerprint-mismatch", "rejected", "provisional-link", "customer-conflict", "supplier-conflict"]);
 const SYNC_ISSUE_STATUSES = new Set(["open", "resolved", "discarded"]);
 const LOCAL_CUSTOMER_KINDS = new Set(["create", "edit"]);
 const LOCAL_CUSTOMER_SYNC_STATUSES = new Set(["pending", "synced", "rejected"]);
+const LOCAL_SUPPLIER_KINDS = new Set(["create", "edit"]);
+const LOCAL_SUPPLIER_SYNC_STATUSES = new Set(["pending", "synced", "rejected"]);
+const LOCAL_PURCHASE_SYNC_STATUSES = new Set(["pending", "synced", "rejected"]);
 
 function isValidCustomerRow(entry: unknown): entry is LocalCustomerRow {
   if (typeof entry !== "object" || entry === null) return false;
@@ -362,6 +518,42 @@ function isValidCustomerRow(entry: unknown): entry is LocalCustomerRow {
     row.id.length > 0 &&
     typeof row.kind === "string" &&
     LOCAL_CUSTOMER_KINDS.has(row.kind) &&
+    typeof row.data === "object" &&
+    row.data !== null &&
+    !Array.isArray(row.data) &&
+    typeof row.idempotencyKey === "string" &&
+    row.idempotencyKey.length > 0 &&
+    typeof row.createdAt === "string" &&
+    row.createdAt.length > 0 &&
+    typeof row.updatedAt === "string" &&
+    row.updatedAt.length > 0
+  );
+}
+
+function isValidPurchaseRow(entry: unknown): entry is LocalPurchaseRow {
+  if (typeof entry !== "object" || entry === null) return false;
+  const row = entry as Record<string, unknown>;
+  return (
+    typeof row.id === "string" &&
+    row.id.length > 0 &&
+    typeof row.input === "object" &&
+    row.input !== null &&
+    !Array.isArray(row.input) &&
+    typeof row.createdAt === "string" &&
+    row.createdAt.length > 0 &&
+    typeof row.updatedAt === "string" &&
+    row.updatedAt.length > 0
+  );
+}
+
+function isValidSupplierRow(entry: unknown): entry is LocalSupplierRow {
+  if (typeof entry !== "object" || entry === null) return false;
+  const row = entry as Record<string, unknown>;
+  return (
+    typeof row.id === "string" &&
+    row.id.length > 0 &&
+    typeof row.kind === "string" &&
+    LOCAL_SUPPLIER_KINDS.has(row.kind) &&
     typeof row.data === "object" &&
     row.data !== null &&
     !Array.isArray(row.data) &&
@@ -409,6 +601,17 @@ export function createLocalStore(dbPath: string): LocalStore {
   if (!issueColumns.some((column) => column.name === "customer_id")) {
     db.exec("ALTER TABLE sync_issues ADD COLUMN customer_id TEXT");
   }
+  // Slice S6 — same discipline for the supplier_id column
+  // (supplier-conflict issues). Pre-S6 databases get it here.
+  if (!issueColumns.some((column) => column.name === "supplier_id")) {
+    db.exec("ALTER TABLE sync_issues ADD COLUMN supplier_id TEXT");
+  }
+  // Slice S6 — same discipline for the purchase_id column (purchase
+  // fingerprint-mismatch / rejected issues). Pre-S6 databases get it
+  // here.
+  if (!issueColumns.some((column) => column.name === "purchase_id")) {
+    db.exec("ALTER TABLE sync_issues ADD COLUMN purchase_id TEXT");
+  }
 
   const selectSales = db.prepare(
     "SELECT idempotency_key, input_json, provisional_number, created_at, synced, server_id, sync_status, sync_error FROM local_sales WHERE scope = ? ORDER BY id ASC",
@@ -433,10 +636,10 @@ export function createLocalStore(dbPath: string): LocalStore {
     "SELECT * FROM sync_issues WHERE scope = ? AND status = 'open' AND server_id = ? LIMIT 1",
   );
   const insertIssue = db.prepare(
-    "INSERT INTO sync_issues (id, scope, kind, request_id, provisional_number, server_invoice_number, server_id, customer_name, total, reason, payload_json, status, sync_error, created_at, updated_at, customer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO sync_issues (id, scope, kind, request_id, provisional_number, server_invoice_number, server_id, customer_name, total, reason, payload_json, status, sync_error, created_at, updated_at, customer_id, supplier_id, purchase_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   const updateIssueRow = db.prepare(
-    "UPDATE sync_issues SET kind = ?, request_id = ?, provisional_number = ?, server_invoice_number = ?, server_id = ?, customer_name = ?, total = ?, reason = ?, payload_json = ?, status = ?, sync_error = ?, updated_at = ?, customer_id = ? WHERE scope = ? AND id = ?",
+    "UPDATE sync_issues SET kind = ?, request_id = ?, provisional_number = ?, server_invoice_number = ?, server_id = ?, customer_name = ?, total = ?, reason = ?, payload_json = ?, status = ?, sync_error = ?, updated_at = ?, customer_id = ?, supplier_id = ?, purchase_id = ? WHERE scope = ? AND id = ?",
   );
   const updateIssueStatus = db.prepare(
     "UPDATE sync_issues SET status = ?, updated_at = ? WHERE scope = ? AND id = ?",
@@ -468,12 +671,49 @@ export function createLocalStore(dbPath: string): LocalStore {
     "UPDATE local_customers SET kind = ?, data_json = ?, synced = ?, server_id = ?, sync_status = ?, sync_error = ?, updated_at = ? WHERE scope = ? AND id = ?",
   );
   const deleteCustomer = db.prepare("DELETE FROM local_customers WHERE scope = ? AND id = ?");
+  const selectPurchases = db.prepare(
+    "SELECT id, input_json, provisional_number, synced, server_id, sync_status, sync_error, created_at, updated_at FROM local_purchases WHERE scope = ? ORDER BY created_at ASC, id ASC",
+  );
+  const selectPurchaseById = db.prepare(
+    "SELECT id, input_json, provisional_number, synced, server_id, sync_status, sync_error, created_at, updated_at FROM local_purchases WHERE scope = ? AND id = ?",
+  );
+  const insertPurchase = db.prepare(
+    "INSERT INTO local_purchases (id, scope, input_json, provisional_number, synced, server_id, sync_status, sync_error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  const updatePurchaseRow = db.prepare(
+    "UPDATE local_purchases SET input_json = ?, provisional_number = ?, synced = ?, server_id = ?, sync_status = ?, sync_error = ?, updated_at = ? WHERE scope = ? AND id = ?",
+  );
+  const deletePurchase = db.prepare("DELETE FROM local_purchases WHERE scope = ? AND id = ?");
+  const selectSuppliers = db.prepare(
+    "SELECT id, kind, data_json, idempotency_key, synced, server_id, sync_status, sync_error, created_at, updated_at FROM local_suppliers WHERE scope = ? ORDER BY created_at ASC, id ASC",
+  );
+  const selectSupplierById = db.prepare(
+    "SELECT id, kind, data_json, idempotency_key, synced, server_id, sync_status, sync_error, created_at, updated_at FROM local_suppliers WHERE scope = ? AND id = ?",
+  );
+  const insertSupplier = db.prepare(
+    "INSERT INTO local_suppliers (id, scope, kind, data_json, idempotency_key, synced, server_id, sync_status, sync_error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  const updateSupplierRow = db.prepare(
+    "UPDATE local_suppliers SET kind = ?, data_json = ?, synced = ?, server_id = ?, sync_status = ?, sync_error = ?, updated_at = ? WHERE scope = ? AND id = ?",
+  );
+  const deleteSupplier = db.prepare("DELETE FROM local_suppliers WHERE scope = ? AND id = ?");
 
   function nextProvisionalNumber(): string {
     const row = selectCounter.get(PROVISIONAL_COUNTER_KEY) as { value: string } | undefined;
     const next = (row ? Number.parseInt(row.value, 10) || 0 : 0) + 1;
     upsertCounter.run(PROVISIONAL_COUNTER_KEY, String(next));
     return formatProvisionalNumber(next);
+  }
+
+  // Slice S6 — purchase provisional numbers have their own counter
+  // (a purchase must never take a sale's number, and vice versa).
+  // Same discipline as sales: allocated inside the same transaction
+  // as the row write, never reused.
+  function nextProvisionalPurchaseNumber(): string {
+    const row = selectCounter.get(PROVISIONAL_PURCHASE_COUNTER_KEY) as { value: string } | undefined;
+    const next = (row ? Number.parseInt(row.value, 10) || 0 : 0) + 1;
+    upsertCounter.run(PROVISIONAL_PURCHASE_COUNTER_KEY, String(next));
+    return formatProvisionalPurchaseNumber(next);
   }
 
   function rowToSale(row: {
@@ -525,6 +765,8 @@ export function createLocalStore(dbPath: string): LocalStore {
     created_at: string;
     updated_at: string;
     customer_id: string | null;
+    supplier_id: string | null;
+    purchase_id: string | null;
   }): SyncIssueRow {
     return {
       id: row.id,
@@ -543,6 +785,70 @@ export function createLocalStore(dbPath: string): LocalStore {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       customerId: row.customer_id,
+      supplierId: row.supplier_id,
+      purchaseId: row.purchase_id,
+    };
+  }
+
+  function rowToPurchase(row: {
+    id: string;
+    input_json: string;
+    provisional_number: string | null;
+    synced: number;
+    server_id: string | null;
+    sync_status: string;
+    sync_error: string | null;
+    created_at: string;
+    updated_at: string;
+  }): LocalPurchaseRow | null {
+    const input = parseJsonObject(row.input_json);
+    if (!input) {
+      // Same discipline as a corrupt queue row: skip it, keep the rest.
+      console.error(`Aankh local store: skipping corrupt local_purchases row ${row.id}`);
+      return null;
+    }
+    return {
+      id: row.id,
+      input,
+      provisionalNumber: row.provisional_number,
+      synced: row.synced,
+      serverId: row.server_id,
+      syncStatus: row.sync_status,
+      syncError: row.sync_error,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  function rowToSupplier(row: {
+    id: string;
+    kind: string;
+    data_json: string;
+    idempotency_key: string;
+    synced: number;
+    server_id: string | null;
+    sync_status: string;
+    sync_error: string | null;
+    created_at: string;
+    updated_at: string;
+  }): LocalSupplierRow | null {
+    const data = parseJsonObject(row.data_json);
+    if (!data) {
+      // Same discipline as a corrupt queue row: skip it, keep the rest.
+      console.error(`Aankh local store: skipping corrupt local_suppliers row ${row.id}`);
+      return null;
+    }
+    return {
+      id: row.id,
+      kind: row.kind as LocalSupplierKind,
+      data,
+      idempotencyKey: row.idempotency_key,
+      synced: row.synced,
+      serverId: row.server_id,
+      syncStatus: row.sync_status,
+      syncError: row.sync_error,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     };
   }
 
@@ -606,6 +912,8 @@ export function createLocalStore(dbPath: string): LocalStore {
         issue.syncError,
         now,
         issue.customerId,
+        issue.supplierId ?? null,
+        issue.purchaseId ?? null,
         issue.scope,
         kept.id,
       );
@@ -628,6 +936,8 @@ export function createLocalStore(dbPath: string): LocalStore {
       issue.createdAt,
       issue.updatedAt,
       issue.customerId,
+      issue.supplierId ?? null,
+      issue.purchaseId ?? null,
     );
     return issue;
   });
@@ -745,6 +1055,131 @@ export function createLocalStore(dbPath: string): LocalStore {
     if (!kept) throw new Error("Invalid local customer entry");
     const kind: LocalCustomerKind = kept.kind === "create" ? "create" : row.kind;
     updateCustomerRow.run(
+      kind,
+      JSON.stringify(row.data),
+      row.synced ?? kept.synced,
+      row.serverId ?? kept.serverId,
+      row.syncStatus ?? kept.syncStatus,
+      row.syncError === undefined ? kept.syncError : row.syncError,
+      now,
+      scope,
+      row.id,
+    );
+    return {
+      ...row,
+      kind,
+      idempotencyKey: kept.idempotencyKey,
+      synced: row.synced ?? kept.synced,
+      serverId: row.serverId ?? kept.serverId,
+      syncStatus: row.syncStatus ?? kept.syncStatus,
+      syncError: row.syncError === undefined ? kept.syncError : row.syncError,
+      createdAt: kept.createdAt,
+      updatedAt: now,
+    };
+  });
+
+  const upsertPurchaseTx = db.transaction((scope: string, row: LocalPurchaseRow): LocalPurchaseRow => {
+    // The provisional number is allocated once, inside the same
+    // transaction as the row write, and survives a rewrite — a retry
+    // must not move a purchase's history number. Numbers are never
+    // reused: a failed write leaves a gap, never a duplicate (like
+    // server invoice numbers skipping on a failed save).
+    const existing = selectPurchaseById.get(scope, row.id) as
+      | {
+          id: string;
+          input_json: string;
+          provisional_number: string | null;
+          synced: number;
+          server_id: string | null;
+          sync_status: string;
+          sync_error: string | null;
+          created_at: string;
+          updated_at: string;
+        }
+      | undefined;
+    const now = new Date().toISOString();
+    if (!existing) {
+      const provisionalNumber = row.provisionalNumber ?? nextProvisionalPurchaseNumber();
+      insertPurchase.run(
+        row.id,
+        scope,
+        JSON.stringify(row.input),
+        provisionalNumber,
+        row.synced ?? 0,
+        row.serverId ?? null,
+        row.syncStatus ?? "pending",
+        row.syncError ?? null,
+        row.createdAt,
+        row.updatedAt,
+      );
+      return { ...row, provisionalNumber };
+    }
+    const kept = rowToPurchase(existing);
+    if (!kept) throw new Error("Invalid local purchase entry");
+    const provisionalNumber = kept.provisionalNumber ?? row.provisionalNumber ?? nextProvisionalPurchaseNumber();
+    updatePurchaseRow.run(
+      JSON.stringify(row.input),
+      provisionalNumber,
+      row.synced ?? kept.synced,
+      row.serverId ?? kept.serverId,
+      row.syncStatus ?? kept.syncStatus,
+      row.syncError === undefined ? kept.syncError : row.syncError,
+      now,
+      scope,
+      row.id,
+    );
+    return {
+      ...row,
+      provisionalNumber,
+      synced: row.synced ?? kept.synced,
+      serverId: row.serverId ?? kept.serverId,
+      syncStatus: row.syncStatus ?? kept.syncStatus,
+      syncError: row.syncError === undefined ? kept.syncError : row.syncError,
+      createdAt: kept.createdAt,
+      updatedAt: now,
+    };
+  });
+
+  const upsertSupplierTx = db.transaction((scope: string, row: LocalSupplierRow): LocalSupplierRow => {
+    // Same discipline as upsertCustomerTx: an edit of an unsynced
+    // create stays a create (one insert on sync, not insert + update).
+    // The idempotency key and the first-created time survive a
+    // rewrite; the caller owns the sync columns.
+    const existing = selectSupplierById.get(scope, row.id) as
+      | {
+          id: string;
+          kind: string;
+          data_json: string;
+          idempotency_key: string;
+          synced: number;
+          server_id: string | null;
+          sync_status: string;
+          sync_error: string | null;
+          created_at: string;
+          updated_at: string;
+        }
+      | undefined;
+    const now = new Date().toISOString();
+    if (!existing) {
+      insertSupplier.run(
+        row.id,
+        scope,
+        row.kind,
+        JSON.stringify(row.data),
+        row.idempotencyKey,
+        row.synced ?? 0,
+        row.serverId ?? null,
+        row.syncStatus ?? "pending",
+        row.syncError ?? null,
+        row.createdAt,
+        row.updatedAt,
+      );
+      return row;
+    }
+    const kept = rowToSupplier(existing);
+    if (!kept) throw new Error("Invalid local supplier entry");
+    const kind: LocalSupplierKind = kept.kind === "create" ? "create" : row.kind;
+    updateSupplierRow.run(
       kind,
       JSON.stringify(row.data),
       row.synced ?? kept.synced,
@@ -932,6 +1367,71 @@ export function createLocalStore(dbPath: string): LocalStore {
 
     removeCustomer(scope: string, id: string): void {
       deleteCustomer.run(scope, id);
+    },
+
+    listPurchases(scope: string): LocalPurchaseRow[] {
+      const rows = selectPurchases.all(scope) as Array<{
+        id: string;
+        input_json: string;
+        provisional_number: string | null;
+        synced: number;
+        server_id: string | null;
+        sync_status: string;
+        sync_error: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+      const purchases: LocalPurchaseRow[] = [];
+      for (const row of rows) {
+        const purchase = rowToPurchase(row);
+        if (purchase) purchases.push(purchase);
+      }
+      return purchases;
+    },
+
+    upsertPurchase(scope: string, row: LocalPurchaseRow): LocalPurchaseRow {
+      if (!isValidPurchaseRow(row)) throw new Error("Invalid local purchase entry");
+      if (!LOCAL_PURCHASE_SYNC_STATUSES.has(row.syncStatus ?? "pending")) {
+        throw new Error("Invalid local purchase sync status");
+      }
+      return upsertPurchaseTx(scope, row);
+    },
+
+    removePurchase(scope: string, id: string): void {
+      deletePurchase.run(scope, id);
+    },
+
+    listSuppliers(scope: string): LocalSupplierRow[] {
+      const rows = selectSuppliers.all(scope) as Array<{
+        id: string;
+        kind: string;
+        data_json: string;
+        idempotency_key: string;
+        synced: number;
+        server_id: string | null;
+        sync_status: string;
+        sync_error: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+      const suppliers: LocalSupplierRow[] = [];
+      for (const row of rows) {
+        const supplier = rowToSupplier(row);
+        if (supplier) suppliers.push(supplier);
+      }
+      return suppliers;
+    },
+
+    upsertSupplier(scope: string, row: LocalSupplierRow): LocalSupplierRow {
+      if (!isValidSupplierRow(row)) throw new Error("Invalid local supplier entry");
+      if (!LOCAL_SUPPLIER_SYNC_STATUSES.has(row.syncStatus ?? "pending")) {
+        throw new Error("Invalid local supplier sync status");
+      }
+      return upsertSupplierTx(scope, row);
+    },
+
+    removeSupplier(scope: string, id: string): void {
+      deleteSupplier.run(scope, id);
     },
 
     close(): void {

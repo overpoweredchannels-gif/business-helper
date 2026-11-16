@@ -40,6 +40,9 @@ import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingS
 import { loadOfflineCustomers, loadOfflineProducts, saveOfflineCustomers, saveOfflineProducts } from "@/lib/offline/offline-store";
 import { loadHistoryMirror, saveHistoryMirror } from "@/lib/offline/history-mirror";
 import { editLocalCustomerRow, getLocalCustomersBackend, mergeLocalCustomers, newLocalCustomerCreateRow, notifyLocalCustomersChanged, type LocalCustomerRow } from "@/lib/offline/local-customers";
+import { LOCAL_PURCHASES_CHANGED_EVENT, getLocalPurchasesBackend, newLocalPurchaseRow, notifyLocalPurchasesChanged, type LocalPurchaseRow } from "@/lib/offline/local-purchases";
+import { LOCAL_SUPPLIERS_CHANGED_EVENT, editLocalSupplierRow, getLocalSuppliersBackend, mergeLocalSuppliers, newLocalSupplierCreateRow, notifyLocalSuppliersChanged, type LocalSupplierRow } from "@/lib/offline/local-suppliers";
+import { isPendingPurchaseHistoryId, mergePendingPurchases, pendingPurchaseToItems } from "@/lib/purchases/pending-purchase-history";
 import { deriveOfflineCustomerBalance } from "@/lib/offline/customer-balance-offline";
 import { isPendingHistoryId, mergePendingHistory } from "@/lib/sales/pending-history";
 import { retrySyncIssue, startSilentSyncEngine } from "@/lib/offline/sync-engine";
@@ -6296,13 +6299,50 @@ setCustomerOrganizationName("");
       "suppliers",
       orgId,
       async () => {
-        const { data, error } = await supabase
-          .from("suppliers")
-          .select("id, supplier_name, contact_person, phone, whatsapp, city, area, notes, credit_limit, credit_days, credit_policy, preferred_payment_method, allow_over_limit, allow_overdue_sales, outstanding_balance, last_purchase_date, deleted_at, is_active")
-          .eq("organization_id", orgId)
-          .order("supplier_name", { ascending: true });
-        if (error) throw error;
-        return data ?? [];
+        // Slice S6 — desktop reads the SQLite suppliers mirror when
+        // the network is gone (or the live fetch fails): the suppliers
+        // list and the purchase form's supplier picker both need the
+        // rows offline. The web build keeps its live-only fetch. An
+        // offline-created / offline-edited supplier lives in the
+        // local store until it syncs; the list shows it now (the
+        // local row wins per id, creates appended), so the cashier
+        // can buy from it before it reaches the cloud.
+        const scope = offlineCacheScope(orgId);
+        const loadMirror = async (): Promise<any[] | null> => {
+          if (!scope || !isDesktopApp()) return null;
+          const mirror = await loadHistoryMirror<any>("supplier", scope);
+          if (mirror.rows.length === 0) return null;
+          return mirror.rows;
+        };
+        const mergeLocal = async (rows: any[]): Promise<any[]> => {
+          if (!scope || !isDesktopApp()) return rows;
+          try {
+            const localRows = await getLocalSuppliersBackend().list(scope);
+            return mergeLocalSuppliers(rows, localRows);
+          } catch {
+            return rows;
+          }
+        };
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mergeLocal(mirrored);
+          throw new Error("Offline and no cached suppliers");
+        }
+        try {
+          const { data, error } = await supabase
+            .from("suppliers")
+            .select("id, supplier_name, contact_person, phone, whatsapp, city, area, notes, credit_limit, credit_days, credit_policy, preferred_payment_method, allow_over_limit, allow_overdue_sales, outstanding_balance, last_purchase_date, deleted_at, is_active")
+            .eq("organization_id", orgId)
+            .order("supplier_name", { ascending: true });
+          if (error) throw error;
+          const rows = data ?? [];
+          if (scope && isDesktopApp()) void saveHistoryMirror("supplier", scope, rows);
+          return mergeLocal(rows);
+        } catch (caught) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mergeLocal(mirrored);
+          throw caught;
+        }
       },
       setSuppliers,
       (error) => console.error("Supabase fetch suppliers error:", error),
@@ -6324,13 +6364,41 @@ setCustomerOrganizationName("");
       "purchase-transactions",
       orgId,
       async () => {
-        const { data, error } = await supabase
-          .from("purchase_transactions")
-          .select("id, supplier_id, invoice_number, created_at, purchase_date, expense_review_status, expense_reviewed_at, total_amount")
-          .eq("organization_id", orgId)
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        return data ?? [];
+        // Slice S6 — desktop reads the SQLite purchase-transaction
+        // mirror when the network is gone (or the live fetch fails),
+        // the same pattern as S4's sales-history mirror. The web
+        // build keeps its live-only fetch. The select carries
+        // request_key so the history merge can dedupe a pending
+        // purchase against its confirmed row after sync.
+        const scope = offlineCacheScope(orgId);
+        const loadMirror = async (): Promise<any[] | null> => {
+          if (!scope || !isDesktopApp()) return null;
+          const mirror = await loadHistoryMirror<any>("purchase_transaction", scope);
+          if (mirror.rows.length === 0) return null;
+          setPurchaseHistoryFromCache(mirror.savedAt);
+          return mirror.rows;
+        };
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mirrored;
+          throw new Error("Offline and no cached purchase transactions");
+        }
+        try {
+          const { data, error } = await supabase
+            .from("purchase_transactions")
+            .select("id, supplier_id, invoice_number, created_at, purchase_date, expense_review_status, expense_reviewed_at, total_amount, request_key")
+            .eq("organization_id", orgId)
+            .order("created_at", { ascending: false });
+          if (error) throw error;
+          const rows = data ?? [];
+          if (scope && isDesktopApp()) void saveHistoryMirror("purchase_transaction", scope, rows);
+          setPurchaseHistoryFromCache(null);
+          return rows;
+        } catch (caught) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mirrored;
+          throw caught;
+        }
       },
       setPurchaseTransactions,
       (error) => console.error("Supabase fetch purchase transactions error:", error),
@@ -6934,6 +7002,9 @@ setCustomerOrganizationName("");
   // or null when the history rows came from a live fetch. The history
   // panel names the mirror time the same way the catalogue banner does.
   const [salesHistoryFromCache, setSalesHistoryFromCache] = useState<string | null>(null);
+  // Slice S6 — the same, for the purchase-history mirror. Null when
+  // the purchase rows came from a live fetch.
+  const [purchaseHistoryFromCache, setPurchaseHistoryFromCache] = useState<string | null>(null);
   // Slice S5 — per-kind ledger-mirror provenance for the offline
   // credit-balance label. A kind records its mirror's saved time when
   // the balance inputs were read from the mirror, and drops out when a
@@ -6987,6 +7058,21 @@ setCustomerOrganizationName("");
     setPendingSalesNotices(readQueueNotices(scope));
   }, [currentOrganizationId, currentProfile?.id]);
 
+  // Slice S6 — the pending (unsynced) purchases for the history
+  // display. Mirrors refreshPendingSales: the merge into the purchase
+  // history lists is desktop-gated, so the web build never shows a
+  // pending row here.
+  const [pendingHistoryPurchases, setPendingHistoryPurchases] = useState<LocalPurchaseRow[]>([]);
+  const refreshPendingPurchases = useCallback(async () => {
+    if (!currentOrganizationId || !currentProfile?.id) return;
+    const scope = `${currentOrganizationId}:${currentProfile.id}`;
+    try {
+      setPendingHistoryPurchases(await getLocalPurchasesBackend().list(scope));
+    } catch {
+      setPendingHistoryPurchases([]);
+    }
+  }, [currentOrganizationId, currentProfile?.id]);
+
   // Slice S3: refresh the owner-only Sync issues list (open issues
   // only; silent provisional-link rows stay hidden until they fail).
   const refreshSyncIssues = useCallback(async () => {
@@ -7016,6 +7102,10 @@ setCustomerOrganizationName("");
   // Slice S5: a customer issue retries by re-applying the parked copy
   // with a fresh timestamp (the owner's explicit decision that this
   // copy wins) and refreshes the customer list on success.
+  // Slice S6: a supplier issue does the same for the supplier list; a
+  // purchase issue re-queues the parked purchase with its original
+  // key and refreshes the purchase history + products on success
+  // (a synced purchase raises stock).
   const handleRetrySyncIssue = useCallback(async (issue: SyncIssue) => {
     if (!currentOrganizationId || !currentProfile?.id) return;
     const scope = `${currentOrganizationId}:${currentProfile.id}`;
@@ -7026,6 +7116,15 @@ setCustomerOrganizationName("");
         if (outcome.kind === "customer") {
           setSalesMessage(t('syncIssues.customerRetryConfirmed'));
           fetchCustomers();
+        } else if (outcome.kind === "supplier") {
+          setSalesMessage(t('syncIssues.supplierRetryConfirmed'));
+          fetchSuppliers();
+        } else if (outcome.kind === "purchase") {
+          setSalesMessage(t('syncIssues.purchaseRetryConfirmed'));
+          fetchPurchaseTransactions();
+          fetchPurchaseItems();
+          fetchProducts();
+          await refreshPendingPurchases();
         } else {
           setSalesMessage(t('syncIssues.retryConfirmed'));
           fetchSalesTransactions();
@@ -7039,11 +7138,12 @@ setCustomerOrganizationName("");
       }
       await refreshSyncIssues();
       await refreshPendingSales();
+      await refreshPendingPurchases();
     } finally {
       setRetryingSyncIssueId(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentOrganizationId, currentProfile?.id, refreshSyncIssues, refreshPendingSales]);
+  }, [currentOrganizationId, currentProfile?.id, refreshSyncIssues, refreshPendingSales, refreshPendingPurchases]);
 
   const handleDiscardSyncIssue = useCallback(async (issue: SyncIssue) => {
     if (!currentOrganizationId || !currentProfile?.id) return;
@@ -7060,6 +7160,9 @@ setCustomerOrganizationName("");
     if (!currentOrganizationId || !currentProfile?.id) return;
     const scope = `${currentOrganizationId}:${currentProfile.id}`;
     void refreshPendingSales();
+    // Slice S6 — the pending purchases for the history merge, the
+    // same as the pending sales above.
+    void refreshPendingPurchases();
     // Slice S3 — silent sync engine (customers first, then sales):
     // launch run + `online` event + 5-minute timer + debounced run
     // after a save. The engine never throws; a failed run stays local
@@ -7091,12 +7194,39 @@ setCustomerOrganizationName("");
         }
         void refreshPendingSales();
       },
+      // Slice S6 — the supplier drain runs first (design §4 order
+      // step 1); a confirmed supplier refreshes the list so the
+      // purchase form can use it at once.
+      onSuppliersDrained: (suppliersDrained) => {
+        if (suppliersDrained.confirmedCount > 0) {
+          void fetchSuppliers();
+        }
+      },
+      // Slice S6 — the purchase drain runs last (design §4 order
+      // step 5); a confirmed purchase refreshes the history and the
+      // products (a synced purchase raises stock).
+      onPurchasesDrained: (purchasesDrained) => {
+        if (purchasesDrained.confirmedCount > 0) {
+          fetchPurchaseTransactions();
+          fetchPurchaseItems();
+          fetchProducts();
+        }
+        void refreshPendingPurchases();
+      },
     });
     const handleQueueChanged = () => void refreshPendingSales();
     window.addEventListener(QUEUE_CHANGED_EVENT, handleQueueChanged);
+    // Slice S6 — a local purchase / supplier save (or a sync drain
+    // that removed one) refreshes the pending-purchase display.
+    const handleLocalPurchasesChanged = () => void refreshPendingPurchases();
+    window.addEventListener(LOCAL_PURCHASES_CHANGED_EVENT, handleLocalPurchasesChanged);
+    const handleLocalSuppliersChanged = () => void fetchSuppliers();
+    window.addEventListener(LOCAL_SUPPLIERS_CHANGED_EVENT, handleLocalSuppliersChanged);
     return () => {
       engine.stop();
       window.removeEventListener(QUEUE_CHANGED_EVENT, handleQueueChanged);
+      window.removeEventListener(LOCAL_PURCHASES_CHANGED_EVENT, handleLocalPurchasesChanged);
+      window.removeEventListener(LOCAL_SUPPLIERS_CHANGED_EVENT, handleLocalSuppliersChanged);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshPendingSales, currentOrganizationId, currentProfile?.id]);
@@ -7123,6 +7253,11 @@ setCustomerOrganizationName("");
     if (isOnline && !wasOnlineRef.current) {
       void fetchProducts(currentOrganizationId);
       void fetchCustomers(currentOrganizationId);
+      // Slice S6 — the same, for suppliers and purchases: a cached
+      // copy is replaced by live rows (and the cached banner clears).
+      void fetchSuppliers(currentOrganizationId);
+      void fetchPurchaseTransactions(currentOrganizationId);
+      void fetchPurchaseItems(currentOrganizationId);
       // Slice S1: re-validate live now that the network is back — the
       // re-run provisions the workspace and reloads the profile live,
       // which refreshes the identity cache.
@@ -8631,13 +8766,37 @@ setCustomerOrganizationName("");
       "purchase-items",
       orgId,
       async () => {
-        const { data, error } = await supabase
-          .from("purchase_items")
-          .select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, unit_mode, batch_number, expiry_date")
-          .eq("organization_id", orgId)
-          .order("id", { ascending: true });
-        if (error) throw error;
-        return data ?? [];
+        // Slice S6 — desktop reads the SQLite purchase-item mirror
+        // when the network is gone (or the live fetch fails): the
+        // purchase history cards and the payment-status math read
+        // these rows. The web build keeps its live-only fetch.
+        const scope = offlineCacheScope(orgId);
+        const loadMirror = async (): Promise<any[] | null> => {
+          if (!scope || !isDesktopApp()) return null;
+          const mirror = await loadHistoryMirror<any>("purchase_item", scope);
+          if (mirror.rows.length === 0) return null;
+          return mirror.rows;
+        };
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mirrored;
+          throw new Error("Offline and no cached purchase items");
+        }
+        try {
+          const { data, error } = await supabase
+            .from("purchase_items")
+            .select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, unit_mode, batch_number, expiry_date")
+            .eq("organization_id", orgId)
+            .order("id", { ascending: true });
+          if (error) throw error;
+          const rows = data ?? [];
+          if (scope && isDesktopApp()) void saveHistoryMirror("purchase_item", scope, rows);
+          return rows;
+        } catch (caught) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mirrored;
+          throw caught;
+        }
       },
       setPurchaseItems,
       (error) => console.error("Supabase fetch purchase items error:", error),
@@ -9832,9 +9991,88 @@ setCustomerOrganizationName("");
       allow_overdue_sales: supplierAllowOverdueSales,
     };
 
+    // Slice S6 — desktop offline (or a POST/PATCH that never reaches
+    // the server): park the supplier on this device instead of
+    // failing it. A create keeps its client-generated id (the server
+    // row will have the same id); an edit of an unsynced create stays
+    // a create; an edit of a server row becomes kind "edit" with the
+    // full merged profile. Last-write-wins: the newest edit wins on
+    // sync, fields are never merged. The balance is never written —
+    // it stays derived on read. The web build keeps the API flow
+    // exactly as-is.
+    const saveSupplierLocally = async (): Promise<boolean> => {
+      if (!isDesktopApp() || !currentOrganizationId || !currentProfile?.id) return false;
+      const scope = `${currentOrganizationId}:${currentProfile.id}`;
+      const supplierId = supplierEditingId ?? crypto.randomUUID();
+      const existing = suppliers.find((supplier) => supplier.id === supplierId);
+      const merged: Supplier = {
+        ...(existing ?? {
+          id: supplierId,
+          supplier_name: supplierName.trim(),
+          contact_person: null,
+          phone: null,
+          whatsapp: null,
+          city: null,
+          area: null,
+          notes: null,
+          credit_limit: null,
+          credit_days: null,
+          credit_policy: null,
+          preferred_payment_method: null,
+          allow_over_limit: false,
+          allow_overdue_sales: false,
+          outstanding_balance: 0,
+          is_active: true,
+        }),
+        ...payload,
+        id: supplierId,
+      };
+      try {
+        const rows = await getLocalSuppliersBackend().list(scope);
+        const current = rows.find((row) => row.id === supplierId);
+        const row: LocalSupplierRow = current
+          ? editLocalSupplierRow(current, supplierId, merged as unknown as Record<string, unknown>)
+          : supplierEditingId
+            ? {
+                id: supplierId,
+                kind: "edit",
+                data: merged as unknown as Record<string, unknown>,
+                idempotencyKey: crypto.randomUUID(),
+                synced: 0,
+                serverId: supplierId,
+                syncStatus: "pending",
+                syncError: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }
+            : newLocalSupplierCreateRow(merged as unknown as Record<string, unknown>);
+        await getLocalSuppliersBackend().upsert(scope, row);
+      } catch {
+        return false;
+      }
+      notifyLocalSuppliersChanged();
+      await fetchSuppliers();
+      setSupplierMessage(t('offline.supplierSavedOffline').replace('{name}', merged.supplier_name));
+      return true;
+    };
+    const supplierOffline =
+      isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine;
+    if (supplierOffline) {
+      const savedOffline = await saveSupplierLocally();
+      setSuppliersLoading(false);
+      if (savedOffline) {
+        resetSupplierFormFields();
+      } else {
+        setSupplierError(t('page.supplierSaveFailed'));
+      }
+      return;
+    }
+
+    const isEditing = Boolean(supplierEditingId);
+    let response: Response | null = null;
+    let result: { error?: unknown } | null = null;
     try {
-      const isEditing = Boolean(supplierEditingId);
-      const response = await authorizedFetch(
+      response = await authorizedFetch(
         isEditing ? `/api/suppliers/${supplierEditingId}` : "/api/suppliers",
         {
           method: isEditing ? "PATCH" : "POST",
@@ -9842,23 +10080,34 @@ setCustomerOrganizationName("");
           body: JSON.stringify(payload),
         },
       );
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          typeof (result as { error?: unknown })?.error === "string"
-            ? (result as { error: string }).error
-            : t('page.supplierSaveFailed'),
-        );
-      }
-      setSupplierMessage(isEditing ? t('page.supplierUpdated') : t('page.supplierSaved'));
-      resetSupplierFormFields();
-      fetchSuppliers();
-    } catch (err) {
-      setSupplierError(err instanceof Error ? err.message : t('page.supplierSaveFailed'));
-      console.error("Save supplier error:", err);
-    } finally {
+      result = await response.json().catch(() => ({}));
+    } catch {
+      // The request never reached the server — park it locally on
+      // desktop instead of failing the save. A server refusal
+      // (!response.ok below) is a real error and is never parked:
+      // the request DID reach the server, so the local row would
+      // disagree with it.
+      const savedOffline = isDesktopApp() ? await saveSupplierLocally() : false;
       setSuppliersLoading(false);
+      if (savedOffline) {
+        resetSupplierFormFields();
+      } else {
+        setSupplierError(t('page.supplierSaveFailed'));
+      }
+      return;
     }
+    if (!response!.ok) {
+      setSupplierError(
+        typeof result?.error === "string" ? result.error : t('page.supplierSaveFailed'),
+      );
+      console.error("Save supplier error:", result?.error ?? t('page.supplierSaveFailed'));
+      setSuppliersLoading(false);
+      return;
+    }
+    setSupplierMessage(isEditing ? t('page.supplierUpdated') : t('page.supplierSaved'));
+    resetSupplierFormFields();
+    fetchSuppliers();
+    setSuppliersLoading(false);
   };
 
   const handleEditSupplier = (supplier: Supplier) => {
@@ -10193,11 +10442,70 @@ setCustomerOrganizationName("");
         return;
       }
 
-      const result = await createPurchase({
+      const purchaseInput = {
         supplier_id: selectedSupplierId,
         supplier_invoice_number: supplierInvoiceNumber.trim() || null,
-        purchase_date: toDateInputValue(new Date()), payment_type: "cash", lines: invoiceLines,
-      });
+        purchase_date: toDateInputValue(new Date()),
+        payment_type: "cash",
+        lines: invoiceLines,
+      };
+
+      // Slice S6 — desktop offline (or a POST that never reaches the
+      // server): save the purchase on this device instead of failing
+      // it. The local row carries the client idempotency key and gets
+      // its provisional LP-number from the store; the silent sync
+      // engine drains it through POST /api/purchases when the network
+      // returns. The web build keeps the live create exactly as-is.
+      // (The expense-review reminder is not set for an offline save —
+      // it needs the confirmed transaction id, which only exists
+      // after sync; the synced purchase still lands in the history
+      // list for review.)
+      const savePurchaseLocally = async (): Promise<boolean> => {
+        if (!isDesktopApp() || !currentOrganizationId || !currentProfile?.id) return false;
+        const scope = `${currentOrganizationId}:${currentProfile.id}`;
+        try {
+          const row = newLocalPurchaseRow(purchaseInput as unknown as Record<string, unknown>);
+          await getLocalPurchasesBackend().upsert(scope, row);
+        } catch {
+          return false;
+        }
+        notifyLocalPurchasesChanged();
+        setInvoiceMessage(t('offline.purchaseSavedOffline'));
+        setSelectedSupplierId(null);
+        setSupplierInvoiceNumber("");
+        setPurchaseLines([]);
+        await refreshPendingPurchases();
+        return true;
+      };
+      const purchaseOffline =
+        isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine;
+      if (purchaseOffline) {
+        const savedOffline = await savePurchaseLocally();
+        setInvoiceLoading(false);
+        if (!savedOffline) {
+          setInvoiceError(t('page.failedCreatePurchaseInvoice'));
+        }
+        return;
+      }
+
+      let result: Awaited<ReturnType<typeof createPurchase>>;
+      try {
+        result = await createPurchase(purchaseInput);
+      } catch (caught) {
+        // The POST never reached the server — park it locally on
+        // desktop instead of failing the save. A server refusal
+        // (createPurchase throws the server message) is a real error
+        // and is never parked.
+        if (isDesktopApp() && isNetworkError(caught)) {
+          const savedOffline = await savePurchaseLocally();
+          setInvoiceLoading(false);
+          if (!savedOffline) {
+            setInvoiceError(t('page.failedCreatePurchaseInvoice'));
+          }
+          return;
+        }
+        throw caught;
+      }
       const transactionId = result.transaction.id;
       const systemInvoiceNumber = result.transaction.invoice_number;
 
@@ -11786,6 +12094,24 @@ setCustomerOrganizationName("");
   }, [isDesktopApp, salesTransactions, salesItems, pendingHistorySales]);
   const historyTransactions = historyMerge.transactions;
   const historyItems = historyMerge.items;
+  // Slice S6 — the purchase-history display lists: the same
+  // history-scoped merge as the sales history. On desktop the
+  // live/mirrored rows merge with the pending (unsynced) purchases
+  // from the local store, so a purchase saved offline shows at once
+  // with its provisional LP-number and a pending marker. A synced
+  // row's request key drops its pending twin, so one purchase never
+  // renders twice. On web the merge is skipped entirely.
+  const purchaseHistoryMerge = useMemo(() => {
+    if (!isDesktopApp()) return { transactions: purchaseTransactions, items: purchaseItems };
+    return mergePendingPurchases(
+      purchaseTransactions,
+      purchaseItems,
+      pendingHistoryPurchases,
+      t('offline.pendingLabel'),
+    );
+  }, [isDesktopApp, purchaseTransactions, purchaseItems, pendingHistoryPurchases]);
+  const purchaseHistoryTransactions = purchaseHistoryMerge.transactions;
+  const purchaseHistoryItems = purchaseHistoryMerge.items;
   // FIFO allocation of each customer's unallocated-payment pool across
   // their credit invoices (oldest first) — the shared engine in
   // src/lib/sales/returns-offset.ts, also used by Customer History so the
@@ -12255,7 +12581,11 @@ setCustomerOrganizationName("");
   const getPurchaseTransactionPaymentStatus = (
     transaction: PurchaseTransaction
   ): "paid" | "partially_paid" | "unpaid" | "returned" => {
-    const transactionLineItems = purchaseItems.filter(
+    // Slice S6 — the merged items, so a pending (unsynced) purchase
+    // computes its value from its own lines: total > 0, paid 0,
+    // remaining = total, so it badges Unpaid — never Paid. On web the
+    // merge returns the live lists unchanged, so this is identical.
+    const transactionLineItems = purchaseHistoryItems.filter(
       (item) => item.purchase_transaction_id === transaction.id
     );
     const purchaseValue = transactionLineItems.reduce(
@@ -12312,9 +12642,12 @@ setCustomerOrganizationName("");
 
   const filteredPurchaseTransactions = (() => {
     const f = purchaseInvoiceFilters;
-    const list = purchaseTransactions.filter((transaction) => {
+    // Slice S6 — the merged lists, so a pending (unsynced) purchase
+    // is searchable and filterable the same way a synced one is. On
+    // web the merge returns the live lists unchanged.
+    const list = purchaseHistoryTransactions.filter((transaction) => {
       const supplier = suppliers.find((s) => s.id === transaction.supplier_id);
-      const lineItems = purchaseItems.filter(
+      const lineItems = purchaseHistoryItems.filter(
         (item) => item.purchase_transaction_id === transaction.id
       );
       const searchTerm = f.search.trim().toLowerCase();
@@ -26548,10 +26881,15 @@ setCustomerOrganizationName("");
           <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.history')}</h2>
           {purchaseLoading ? (
             <p className="text-sm text-muted-foreground">{t('buy.loadingHistory')}</p>
-          ) : purchaseTransactions.length === 0 ? (
+          ) : purchaseHistoryTransactions.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('buy.noInvoicesFound')}</p>
           ) : (
             <>
+              {/* Slice S6 — the mirror's saved time, the same way the
+                  sales history names its mirror (page.tsx ~22214). */}
+              {purchaseHistoryFromCache && (
+                <p className="mb-2 text-xs text-muted-foreground">{t('offline.purchaseHistoryFromCache').replace("{time}", new Date(purchaseHistoryFromCache).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</p>
+              )}
               {renderPurchaseListFilterBar(
                 purchaseInvoiceFilters,
                 setPurchaseInvoiceFilters,
@@ -26580,7 +26918,7 @@ setCustomerOrganizationName("");
                       : expenseReviewStatus === "review_later"
                         ? t('buy.reviewLater')
                         : t('buy.expenseReviewPending');
-                const lineItems = purchaseItems.filter(
+                const lineItems = purchaseHistoryItems.filter(
                   (item) => item.purchase_transaction_id === transaction.id
                 );
                 const linkedPurchaseExpenses = expenses.filter(
@@ -26648,7 +26986,17 @@ setCustomerOrganizationName("");
                     <div className="mb-3 grid gap-4 text-sm tabular-nums sm:grid-cols-4">
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.invoiceLabel')}</div>
-                        <div className="font-medium text-foreground">{transaction.invoice_number}</div>
+                        <div className="font-medium text-foreground">
+                          {transaction.invoice_number}
+                          {/* Slice S6 — a pending (unsynced) purchase
+                              carries its provisional LP-number and this
+                              chip, the same marker as the sales history
+                              (page.tsx ~22245). It is not a confirmed
+                              invoice yet. */}
+                          {isPendingPurchaseHistoryId(transaction.id) && (
+                            <span className="ml-2 rounded bg-warning/10 px-2 py-1 text-xs font-semibold text-warning">{t('offline.pendingSale')}</span>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('buy.supplier')}</div>

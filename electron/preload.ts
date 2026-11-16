@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { LocalCustomerRow, LocalSaleRow, MirrorKind, MirrorRow, StoredIdentity, SyncIssueRow } from "./store";
+import type { LocalCustomerRow, LocalPurchaseRow, LocalSaleRow, LocalSupplierRow, MirrorKind, MirrorRow, StoredIdentity, SyncIssueRow } from "./store";
 
 // Slice S0 — minimal, context-isolated bridge. Slice S2 adds the
 // local-first store: the main process owns the SQLite database
@@ -11,6 +11,8 @@ import type { LocalCustomerRow, LocalSaleRow, MirrorKind, MirrorRow, StoredIdent
 // adds the history + inventory mirror bridge the same way (see
 // src/lib/offline/history-mirror.ts). Slice S5 adds the offline
 // customers bridge the same way (see src/lib/offline/local-customers.ts).
+// Slice S6 adds the offline purchases + suppliers bridges the same way
+// (see src/lib/offline/local-purchases.ts and local-suppliers.ts).
 
 /** IPC channels for the local store. The renderer (src/lib/offline/…)
  * uses the same literal strings — keep them in sync when renaming. */
@@ -31,6 +33,12 @@ const CHANNELS = {
   listCustomers: "aankh:local-customers:list",
   upsertCustomer: "aankh:local-customers:upsert",
   removeCustomer: "aankh:local-customers:remove",
+  listPurchases: "aankh:local-purchases:list",
+  upsertPurchase: "aankh:local-purchases:upsert",
+  removePurchase: "aankh:local-purchases:remove",
+  listSuppliers: "aankh:local-suppliers:list",
+  upsertSupplier: "aankh:local-suppliers:upsert",
+  removeSupplier: "aankh:local-suppliers:remove",
 } as const;
 
 export interface AankhLocalSalesBridge {
@@ -80,6 +88,24 @@ export interface AankhLocalCustomersBridge {
   remove(scope: string, id: string): Promise<void>;
 }
 
+export interface AankhLocalPurchasesBridge {
+  /** Offline-created purchases for a scope, oldest first. */
+  list(scope: string): Promise<LocalPurchaseRow[]>;
+  /** Insert or replace one local purchase row; returns the stored row (with provisional number assigned). */
+  upsert(scope: string, row: LocalPurchaseRow): Promise<LocalPurchaseRow>;
+  /** Delete one local purchase row (server confirmed it). */
+  remove(scope: string, id: string): Promise<void>;
+}
+
+export interface AankhLocalSuppliersBridge {
+  /** Offline-created / offline-edited suppliers for a scope, oldest first. */
+  list(scope: string): Promise<LocalSupplierRow[]>;
+  /** Insert or replace one local supplier row; returns the stored row. */
+  upsert(scope: string, row: LocalSupplierRow): Promise<LocalSupplierRow>;
+  /** Delete one local supplier row (server confirmed it). */
+  remove(scope: string, id: string): Promise<void>;
+}
+
 export interface AankhDesktopBridge {
   /** True when the app runs inside the installed desktop shell. */
   isDesktop: true;
@@ -95,6 +121,10 @@ export interface AankhDesktopBridge {
   mirror?: AankhMirrorBridge;
   /** The SQLite-backed offline customers (S5). Absent when the store failed to open. */
   localCustomers?: AankhLocalCustomersBridge;
+  /** The SQLite-backed offline purchases (S6). Absent when the store failed to open. */
+  localPurchases?: AankhLocalPurchasesBridge;
+  /** The SQLite-backed offline suppliers (S6). Absent when the store failed to open. */
+  localSuppliers?: AankhLocalSuppliersBridge;
 }
 
 const bridge: AankhDesktopBridge = {
@@ -125,6 +155,16 @@ const bridge: AankhDesktopBridge = {
     list: (scope) => ipcRenderer.invoke(CHANNELS.listCustomers, scope),
     upsert: (scope, row) => ipcRenderer.invoke(CHANNELS.upsertCustomer, scope, row),
     remove: (scope, id) => ipcRenderer.invoke(CHANNELS.removeCustomer, scope, id),
+  },
+  localPurchases: {
+    list: (scope) => ipcRenderer.invoke(CHANNELS.listPurchases, scope),
+    upsert: (scope, row) => ipcRenderer.invoke(CHANNELS.upsertPurchase, scope, row),
+    remove: (scope, id) => ipcRenderer.invoke(CHANNELS.removePurchase, scope, id),
+  },
+  localSuppliers: {
+    list: (scope) => ipcRenderer.invoke(CHANNELS.listSuppliers, scope),
+    upsert: (scope, row) => ipcRenderer.invoke(CHANNELS.upsertSupplier, scope, row),
+    remove: (scope, id) => ipcRenderer.invoke(CHANNELS.removeSupplier, scope, id),
   },
 };
 

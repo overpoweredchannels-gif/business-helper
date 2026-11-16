@@ -94,6 +94,10 @@ export interface PurchaseTransaction {
   purchase_date?: string | null;
   expense_review_status: string | null;
   expense_reviewed_at: string | null;
+  // Slice S6 — dedupe key for the history merge: the purchase RPC
+  // stores the client idempotency key on the row. Optional: older
+  // rows and rows fetched before this select change do not carry it.
+  request_key?: string | null;
   // Invoice Management Foundation (ERP V2 Sprint 1) — additive metadata.
   organization_id?: string;
   total_amount?: number | null;

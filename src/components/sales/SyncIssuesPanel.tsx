@@ -41,6 +41,8 @@ export function SyncIssuesPanel({
         return t("syncIssues.kindProvisionalLink");
       case "customer-conflict":
         return t("syncIssues.kindCustomerConflict");
+      case "supplier-conflict":
+        return t("syncIssues.kindSupplierConflict");
       default:
         return t("syncIssues.kindRejected");
     }

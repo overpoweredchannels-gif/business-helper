@@ -108,6 +108,10 @@ function setupLocalStore(): void {
       updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
       // Slice S5 — the local customer row id for a customer issue.
       customerId: typeof row.customerId === "string" ? row.customerId : null,
+      // Slice S6 — the local supplier row id for a supplier issue.
+      supplierId: typeof row.supplierId === "string" ? row.supplierId : null,
+      // Slice S6 — the local purchase row id for a purchase issue.
+      purchaseId: typeof row.purchaseId === "string" ? row.purchaseId : null,
     };
   };
   ipcMain.handle("aankh:sync-issues:list", (_event, scope: unknown) =>
@@ -169,6 +173,76 @@ function setupLocalStore(): void {
     if (typeof id !== "string" || id.length === 0) throw new Error("Invalid local customer id");
     (localStore as LocalStore).removeCustomer(requireScope(scope), id);
   });
+  // Slice S6 — offline-created purchases (local first, cloud
+  // `P-500xx` at sync) and offline-created / offline-edited
+  // suppliers (local first, cloud id is the same client UUID). Same
+  // validation discipline as the customer rows: the renderer sends
+  // plain JSON and the main process refuses anything malformed
+  // before it reaches SQLite. A supplier balance is never stored
+  // here — it is derived on read, exactly as server-side.
+  const requirePurchaseRow = (value: unknown): import("./store").LocalPurchaseRow => {
+    const row = value as Partial<import("./store").LocalPurchaseRow>;
+    if (typeof row !== "object" || row === null) throw new Error("Invalid local purchase");
+    if (typeof row.id !== "string" || row.id.length === 0) throw new Error("Invalid local purchase: id");
+    if (typeof row.input !== "object" || row.input === null || Array.isArray(row.input)) {
+      throw new Error("Invalid local purchase: input");
+    }
+    return {
+      id: row.id,
+      input: row.input as Record<string, unknown>,
+      provisionalNumber: typeof row.provisionalNumber === "string" ? row.provisionalNumber : null,
+      synced: typeof row.synced === "number" ? row.synced : 0,
+      serverId: typeof row.serverId === "string" ? row.serverId : null,
+      syncStatus: typeof row.syncStatus === "string" ? row.syncStatus : "pending",
+      syncError: typeof row.syncError === "string" ? row.syncError : null,
+      createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date().toISOString(),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  };
+  ipcMain.handle("aankh:local-purchases:list", (_event, scope: unknown) =>
+    (localStore as LocalStore).listPurchases(requireScope(scope)),
+  );
+  ipcMain.handle("aankh:local-purchases:upsert", (_event, scope: unknown, row: unknown) =>
+    (localStore as LocalStore).upsertPurchase(requireScope(scope), requirePurchaseRow(row)),
+  );
+  ipcMain.handle("aankh:local-purchases:remove", (_event, scope: unknown, id: unknown) => {
+    if (typeof id !== "string" || id.length === 0) throw new Error("Invalid local purchase id");
+    (localStore as LocalStore).removePurchase(requireScope(scope), id);
+  });
+  const requireSupplierRow = (value: unknown): import("./store").LocalSupplierRow => {
+    const row = value as Partial<import("./store").LocalSupplierRow>;
+    if (typeof row !== "object" || row === null) throw new Error("Invalid local supplier");
+    if (typeof row.id !== "string" || row.id.length === 0) throw new Error("Invalid local supplier: id");
+    if (row.kind !== "create" && row.kind !== "edit") throw new Error("Invalid local supplier: kind");
+    if (typeof row.data !== "object" || row.data === null || Array.isArray(row.data)) {
+      throw new Error("Invalid local supplier: data");
+    }
+    if (typeof row.idempotencyKey !== "string" || row.idempotencyKey.length === 0) {
+      throw new Error("Invalid local supplier: idempotencyKey");
+    }
+    return {
+      id: row.id,
+      kind: row.kind,
+      data: row.data as Record<string, unknown>,
+      idempotencyKey: row.idempotencyKey,
+      synced: typeof row.synced === "number" ? row.synced : 0,
+      serverId: typeof row.serverId === "string" ? row.serverId : null,
+      syncStatus: typeof row.syncStatus === "string" ? row.syncStatus : "pending",
+      syncError: typeof row.syncError === "string" ? row.syncError : null,
+      createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date().toISOString(),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  };
+  ipcMain.handle("aankh:local-suppliers:list", (_event, scope: unknown) =>
+    (localStore as LocalStore).listSuppliers(requireScope(scope)),
+  );
+  ipcMain.handle("aankh:local-suppliers:upsert", (_event, scope: unknown, row: unknown) =>
+    (localStore as LocalStore).upsertSupplier(requireScope(scope), requireSupplierRow(row)),
+  );
+  ipcMain.handle("aankh:local-suppliers:remove", (_event, scope: unknown, id: unknown) => {
+    if (typeof id !== "string" || id.length === 0) throw new Error("Invalid local supplier id");
+    (localStore as LocalStore).removeSupplier(requireScope(scope), id);
+  });
   // Slice S4 — Sales History + Inventory mirrors (read cache for the
   // desktop history + inventory). Same validation discipline: the
   // renderer sends plain JSON and the main process refuses anything
@@ -185,6 +259,10 @@ function setupLocalStore(): void {
     "customer_payment_allocation",
     "sales_return",
     "sales_return_item",
+    // Slice S6 — the purchase history + suppliers reads.
+    "purchase_transaction",
+    "purchase_item",
+    "supplier",
   ]);
   const requireMirrorKind = (value: unknown): import("./store").MirrorKind => {
     if (typeof value !== "string" || !MIRROR_KINDS.has(value)) throw new Error("Invalid mirror kind");

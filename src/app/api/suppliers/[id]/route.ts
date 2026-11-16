@@ -41,6 +41,31 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const body = await request.json().catch(() => ({}));
   const service = getService(request);
 
+  // Slice S6 — last-write-wins guard (offline edit sync, UMAIR's
+  // decision 5): the caller sends the edit time; when the server
+  // copy is newer, the edit is refused as superseded instead of
+  // silently overwriting it, and the sync engine parks it as a
+  // supplier-conflict issue. An owner Retry passes force: true — the
+  // explicit decision that this copy wins. A call without updated_at
+  // (the web edit form) updates exactly as before.
+  const clientUpdatedAt = typeof body?.updated_at === "string" ? body.updated_at : null;
+  const forceUpdate = body?.force === true;
+  if (clientUpdatedAt && !forceUpdate) {
+    const clientTime = Date.parse(clientUpdatedAt);
+    if (Number.isFinite(clientTime)) {
+      try {
+        const current = await service.getSupplier(auth.actor, id);
+        const serverTime =
+          current && typeof current.updated_at === "string" ? Date.parse(current.updated_at) : NaN;
+        if (current && Number.isFinite(serverTime) && clientTime < serverTime) {
+          return NextResponse.json({ supplier: current, superseded: true });
+        }
+      } catch {
+        /* No current row (or no access): the update below reports it. */
+      }
+    }
+  }
+
   try {
     const supplier = await service.updateSupplier(auth.actor, id, body);
     return NextResponse.json({ supplier });

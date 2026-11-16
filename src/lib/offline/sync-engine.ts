@@ -23,6 +23,11 @@
  * Slice S5 — the customer drain runs FIRST (design §4 order step 1:
  * customers are parents of sales), then the sales drain.
  *
+ * Slice S6 — the supplier drain runs FIRST too (design §4 order step
+ * 1: suppliers are parents of purchases), and the purchase drain runs
+ * AFTER the sales drain (design §4 order step 5: purchases reference
+ * suppliers already synced in step 1).
+ *
  * Owner Retry of a parked sale also lives here: `retrySyncIssue`
  * re-queues the parked attempt with its ORIGINAL idempotency key at
  * the front of the queue and drains. The drain status-checks it
@@ -47,6 +52,16 @@ import {
   type CustomerDrainResult,
 } from "@/lib/offline/customer-sync";
 import {
+  drainPendingPurchases,
+  retryPurchaseSyncIssue,
+  type PurchaseDrainResult,
+} from "@/lib/offline/purchase-sync";
+import {
+  drainPendingSuppliers,
+  retrySupplierSyncIssue,
+  type SupplierDrainResult,
+} from "@/lib/offline/supplier-sync";
+import {
   getSyncIssuesBackend,
   notifySyncIssuesChanged,
   syncIssueCanRetry,
@@ -65,6 +80,10 @@ export interface SilentSyncEngineOptions {
   onDrained?: (drained: DrainResult) => void;
   /** Called after the customer drain (step 1 of the sync order), so the page can refetch customers. */
   onCustomersDrained?: (drained: CustomerDrainResult) => void;
+  /** Called after the supplier drain (step 1 of the sync order), so the page can refetch suppliers. */
+  onSuppliersDrained?: (drained: SupplierDrainResult) => void;
+  /** Called after the purchase drain (step 5 of the sync order), so the page can refetch purchases. */
+  onPurchasesDrained?: (drained: PurchaseDrainResult) => void;
   /** Test seam: override the timer intervals. Defaults are the constants above. */
   timers?: { intervalMs?: number; debounceMs?: number };
 }
@@ -102,9 +121,21 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
         // handles its own failures and parks what it cannot sync.
         const customersDrained = await drainPendingCustomers(options.supabase, scope);
         options.onCustomersDrained?.(customersDrained);
+        // Slice S6 — suppliers first too (design §4 order step 1): a
+        // purchase referencing an unsynced supplier cannot confirm
+        // server-side. Same discipline as customers: a supplier
+        // failure never blocks the later drains.
+        const suppliersDrained = await drainPendingSuppliers(options.supabase, scope);
+        options.onSuppliersDrained?.(suppliersDrained);
         const drained = await drainPendingSalesQueue(options.supabase, scope);
         await retryPendingLinks(options.supabase, scope);
         options.onDrained?.(drained);
+        // Slice S6 — purchases last of the writes (design §4 order
+        // step 5): suppliers are already synced, so a purchase can
+        // confirm. A purchase failure never blocks the pull — the
+        // next trigger retries it.
+        const purchasesDrained = await drainPendingPurchases(options.supabase, scope);
+        options.onPurchasesDrained?.(purchasesDrained);
       } catch {
         /* A failed run stays local; the next trigger retries. Never throw. */
       }
@@ -177,19 +208,28 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
  * with different contents can never succeed.
  * A customer issue dispatches to the customer retry (re-applies the
  * parked copy with a fresh timestamp) and reports kind "customer" so
- * the caller can show the right message.
+ * the caller can show the right message. A supplier / purchase issue
+ * dispatches the same way and reports kind "supplier" / "purchase".
  */
 export async function retrySyncIssue(
   supabase: SupabaseClient,
   scope: string,
   issueId: string,
-): Promise<{ confirmed: boolean; notRetryable: boolean; reason: string | null; kind: "sale" | "customer" }> {
+): Promise<{ confirmed: boolean; notRetryable: boolean; reason: string | null; kind: "sale" | "customer" | "supplier" | "purchase" }> {
   const backend = getSyncIssuesBackend();
   const issues = await backend.list(scope);
   const issue = issues.find((item) => item.id === issueId);
   if (issue && issue.customerId) {
     const outcome = await retryCustomerSyncIssue(supabase, scope, issueId);
     return { ...outcome, kind: "customer" as const };
+  }
+  if (issue && issue.supplierId) {
+    const outcome = await retrySupplierSyncIssue(supabase, scope, issueId);
+    return { ...outcome, kind: "supplier" as const };
+  }
+  if (issue && issue.purchaseId) {
+    const outcome = await retryPurchaseSyncIssue(supabase, scope, issueId);
+    return { ...outcome, kind: "purchase" as const };
   }
   if (!issue || issue.status !== "open" || !issue.payload || !issue.requestId) {
     return { confirmed: false, notRetryable: false, reason: null, kind: "sale" as const };

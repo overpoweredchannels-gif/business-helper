@@ -61,7 +61,7 @@ export class SupplierRepository {
     return data as SupplierRecord | null;
   }
 
-  async create(input: Omit<SupplierRecord, "id" | "created_at" | "updated_at">) {
+  async create(input: Omit<SupplierRecord, "id" | "created_at" | "updated_at"> & { id?: string }) {
     const now = new Date().toISOString();
     const { data, error } = await this.supabase
       .from("suppliers")

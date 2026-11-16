@@ -140,6 +140,8 @@ function memoryIssuesBridge() {
     serverId: issue.serverId,
     customerName: issue.customerName,
     customerId: issue.customerId ?? null,
+    supplierId: issue.supplierId ?? null,
+    purchaseId: issue.purchaseId ?? null,
     total: issue.total,
     reason: issue.reason,
     payloadJson: issue.payload ? JSON.stringify(issue.payload) : null,
@@ -158,6 +160,8 @@ function memoryIssuesBridge() {
     serverId: row.serverId,
     customerName: row.customerName,
     customerId: row.customerId,
+    supplierId: row.supplierId,
+    purchaseId: row.purchaseId,
     total: row.total,
     reason: row.reason,
     payload: row.payloadJson ? (JSON.parse(row.payloadJson) as AtomicSaleInput) : null,
@@ -279,7 +283,8 @@ function issueRow(overrides: Partial<SyncIssueRow> = {}): SyncIssueRow {
   const now = new Date().toISOString();
   // Slice S5 — customerId is required on the row; an override that
   // omits it (or sets undefined) reads as null, never undefined.
-  const { customerId, ...rest } = overrides;
+  // Slice S6 — same for supplierId and purchaseId.
+  const { customerId, supplierId, purchaseId, ...rest } = overrides;
   return {
     id: crypto.randomUUID(),
     scope: SCOPE,
@@ -290,6 +295,8 @@ function issueRow(overrides: Partial<SyncIssueRow> = {}): SyncIssueRow {
     serverId: null,
     customerName: "Cash Customer",
     customerId: customerId ?? null,
+    supplierId: supplierId ?? null,
+    purchaseId: purchaseId ?? null,
     total: 10,
     reason: "Insufficient stock, including bonus units, for product p1",
     payloadJson: JSON.stringify(SALE_INPUT),
@@ -371,6 +378,7 @@ async function testClassifySaleRejection(): Promise<void> {
   const fingerprint: SyncIssue = {
     id: "i-1", scope: SCOPE, kind: "fingerprint-mismatch", requestId: "req-1",
     provisionalNumber: null, serverInvoiceNumber: null, serverId: null, customerName: null, customerId: null,
+    supplierId: null, purchaseId: null,
     total: null, reason: "x", payload: SALE_INPUT, status: "open", syncError: null,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
@@ -650,7 +658,7 @@ async function testSyncIssuesPersistLocalStorage(): Promise<void> {
     const issue: SyncIssue = {
       id: "issue-1", scope: SCOPE, kind: "rejected", requestId: "req-1",
       provisionalNumber: "L-000001", serverInvoiceNumber: null, serverId: null,
-      customerName: "Cash Customer", customerId: null, total: 10, reason: "Customer credit limit exceeded",
+      customerName: "Cash Customer", customerId: null, supplierId: null, purchaseId: null, total: 10, reason: "Customer credit limit exceeded",
       payload: SALE_INPUT, status: "open", syncError: null,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
