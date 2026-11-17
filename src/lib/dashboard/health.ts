@@ -17,6 +17,15 @@
  * thresholds moved. Both the label (page.tsx) and the ring
  * (BusinessHealthCard) read from this file, so they cannot drift apart
  * again.
+ *
+ * P1 Area B, metric-row statuses: the Business Health card's metric rows
+ * also derived their statuses here, because two of them were wrong —
+ * Profit Margin was hardcoded "good" (a negative margin showed a green
+ * dot) and Cash Flow showed "warning" when receivables and payables were
+ * both 0 (0 > 0 is false, so empty data looked unhealthy). Both now
+ * derive from their values (businessHealthProfitMarginStatus and
+ * businessHealthCashFlowStatus below), so a row's dot can never
+ * contradict its value.
  */
 
 export type BusinessHealthLabel =
@@ -44,4 +53,33 @@ export function businessHealthRingColor(score: number): BusinessHealthRingColor 
   if (score >= 70) return "var(--color-success)";
   if (score >= 50) return "var(--color-warning-text)";
   return "var(--color-destructive)";
+}
+
+export type BusinessHealthMetricStatus = "good" | "warning" | "critical";
+
+/**
+ * Status dot for the Profit Margin metric row, derived from the margin
+ * percentage ((estimatedNetProfit / totalSalesAmount) * 100, or 0 when
+ * there are no sales). A negative margin is a loss, so it is "critical"
+ * and must never show a green dot; zero margin is "warning"; a positive
+ * margin is "good".
+ */
+export function businessHealthProfitMarginStatus(marginPercent: number): BusinessHealthMetricStatus {
+  if (marginPercent < 0) return "critical";
+  if (marginPercent === 0) return "warning";
+  return "good";
+}
+
+/**
+ * Status dot for the Cash Flow metric row, derived from outstanding
+ * receivables vs payables. Receivables at or above payables is "good" —
+ * that includes both being 0, which means nothing is outstanding and
+ * must not look unhealthy. Receivables below payables is "warning".
+ */
+export function businessHealthCashFlowStatus(
+  receivables: number,
+  payables: number,
+): BusinessHealthMetricStatus {
+  if (receivables >= payables) return "good";
+  return "warning";
 }
