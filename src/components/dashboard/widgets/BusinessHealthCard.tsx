@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { DashboardReadStatus } from "@/lib/dashboard/data-read-state";
+import { businessHealthRingColor } from "@/lib/dashboard/health";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface Metric {
@@ -23,7 +24,7 @@ function CircularScore({ score }: { score: number }) {
   const r = 44;
   const circ = 2 * Math.PI * r;
   const offset = circ - (score / 100) * circ;
-  const color = score >= 80 ? "var(--color-success)" : score >= 60 ? "var(--color-warning-text)" : "var(--color-destructive)";
+  const color = businessHealthRingColor(score);
   return (
     <div className="relative size-24 shrink-0">
       <svg className="size-full -rotate-90" viewBox="0 0 100 100">

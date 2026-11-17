@@ -123,6 +123,7 @@ import { useDashboardWidgets } from "@/lib/preferences/use-dashboard-widgets";
 import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardSectionWidgetId } from "@/lib/dashboard/section-cards";
 import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
 import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
+import { businessHealthLabel } from "@/lib/dashboard/health";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -15227,16 +15228,7 @@ setCustomerOrganizationName("");
       reasons.push(t('page.expensesNotHigher'));
     }
     const boundedScore = Math.max(0, Math.min(100, score));
-    const label =
-      boundedScore >= 85
-        ? "Excellent"
-        : boundedScore >= 70
-          ? "Good"
-          : boundedScore >= 50
-            ? "Average"
-            : boundedScore >= 30
-              ? "Needs Attention"
-              : "Critical";
+    const label = businessHealthLabel(boundedScore);
     return { score: boundedScore, label, reasons };
   };
   const businessHealthScore = getBusinessHealthScore();
