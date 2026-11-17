@@ -45,7 +45,7 @@ interface DashboardViewProps {
   metricLastSuccessfulAt?: Partial<Record<DashboardMetricKey, string>>;
   onRetryFailedReads?: () => void;
   todaySales?: { value: string; trend?: { value: number; label: string }; sparkline?: number[] };
-  todayProfit?: { value: string; trend?: { value: number; label: string }; sparkline?: number[] };
+  todayProfit?: { value: string; trend?: { value: number; label: string }; sparkline?: number[]; unknownCostLines?: number; unknownCostAmount?: string };
   inventoryValue?: { value: string; trend?: { value: number; label: string } };
   outstandingReceivables?: { value: string };
   outstandingPayables?: { value: string };
@@ -163,6 +163,12 @@ export function DashboardView({
   // KPI definition line: period + source, with the display currency when the
   // caller supplies it. t() has no interpolation, so compose the string here.
   const definitionFor = (key: Parameters<typeof t>[0]) => currencyCode ? `${t(key)} · ${currencyCode}` : t(key);
+  // Today's Profit excludes lines with an unknown cost; when any exist the
+  // definition line discloses the excluded revenue and line count. With no
+  // unknown-cost lines the definition stays the plain base string.
+  const todayProfitDefinition = todayProfit?.unknownCostLines != null && todayProfit.unknownCostLines > 0 && todayProfit.unknownCostAmount
+    ? definitionFor('kpi.definitionTodayProfitExcludesUnknownCost').replace('{amount}', todayProfit.unknownCostAmount).replace('{count}', String(todayProfit.unknownCostLines))
+    : definitionFor('kpi.definitionTodayProfit');
   const isReadSuccessful = (status: DashboardReadStatus) => status === "successful-empty" || status === "successful-populated";
   const effectiveHealthReadStatus = healthReadStatus ?? getMetricStatus("business-health");
   // `key` is the stable English routing string passed to onKPIClick (page.tsx matches
@@ -192,7 +198,7 @@ export function DashboardView({
     }] : []),
     ...(todayProfit ? [{
       id: "kpi-today-profit" as DashboardWidgetId,
-      node: <KPICard title={t('kpi.todayProfit')} value={todayProfit.value} readStatus={getMetricStatus("today-profit")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-profit"]} onRetry={onRetryFailedReads} trend={todayProfit.trend} icon={<TrendingDown className="size-4" />} sparklineData={todayProfit.sparkline} definition={definitionFor('kpi.definitionTodayProfit')} onClick={() => onKPIClick?.("Today's Profit")} />,
+      node: <KPICard title={t('kpi.todayProfit')} value={todayProfit.value} readStatus={getMetricStatus("today-profit")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-profit"]} onRetry={onRetryFailedReads} trend={todayProfit.trend} icon={<TrendingDown className="size-4" />} sparklineData={todayProfit.sparkline} definition={todayProfitDefinition} onClick={() => onKPIClick?.("Today's Profit")} />,
     }] : []),
     ...(inventoryValue ? [{
       id: "kpi-inventory-value" as DashboardWidgetId,

@@ -14438,12 +14438,28 @@ setCustomerOrganizationName("");
     (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount),
     0
   );
-  const todayProfitAmount = todaySalesItems.reduce((sum, item) => {
-    const product = products.find((p) => String(p.id) === String(item.product_id));
-    const cogs = salesLineCogsInMainUnits(item, product);
-    const revenue = safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount);
-    return sum + revenue - (cogs ?? 0);
-  }, 0);
+  // Today's Profit uses the same honest split as BI (salesLineTotals): only
+  // lines with a known cost contribute profit (costedRevenue - knownCogs).
+  // Lines with an unknown cost (no purchase snapshot and no last purchase
+  // price) are excluded from the figure and disclosed in the KPI definition
+  // line instead of silently counting their full revenue as profit.
+  const todayProfitTotals = todaySalesItems.reduce(
+    (totals, item) => {
+      const product = products.find((p) => String(p.id) === String(item.product_id));
+      const cogs = salesLineCogsInMainUnits(item, product);
+      const revenue = safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount);
+      if (cogs !== null) {
+        totals.costedRevenue += revenue;
+        totals.knownCogs += cogs;
+      } else {
+        totals.unknownCostRevenue += revenue;
+        totals.unknownCostLines += 1;
+      }
+      return totals;
+    },
+    { costedRevenue: 0, knownCogs: 0, unknownCostRevenue: 0, unknownCostLines: 0 }
+  );
+  const todayProfitAmount = todayProfitTotals.costedRevenue - todayProfitTotals.knownCogs;
   const invoicesDue = pendingTasks.filter((t) => t.task_type === "payment_collection").length || 0;
   // Payments due = supplier purchases with an outstanding payable (overdue or
   // not yet paid). Uses the same allocation engine as the payables ledger.
@@ -21063,7 +21079,7 @@ setCustomerOrganizationName("");
             droppedCards={droppedSectionCards}
             userName={currentProfile?.full_name ?? currentUser.email}
             todaySales={{ value: formatDashboardMoney(displayCurrency, displayFxRate, todaySalesAmount) }}
-            todayProfit={{ value: formatDashboardMoney(displayCurrency, displayFxRate, todayProfitAmount) }}
+            todayProfit={{ value: formatDashboardMoney(displayCurrency, displayFxRate, todayProfitAmount), unknownCostLines: todayProfitTotals.unknownCostLines, unknownCostAmount: formatDashboardMoney(displayCurrency, displayFxRate, todayProfitTotals.unknownCostRevenue) }}
             inventoryValue={{ value: formatDashboardMoney(displayCurrency, displayFxRate, inventoryValue) }}
             outstandingReceivables={{ value: formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables) }}
             outstandingPayables={{ value: formatDashboardMoney(displayCurrency, displayFxRate, totalPayables) }}
