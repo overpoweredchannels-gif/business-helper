@@ -124,6 +124,7 @@ import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardS
 import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
 import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
 import { businessHealthCashFlowStatus, businessHealthLabel, businessHealthProfitMarginStatus } from "@/lib/dashboard/health";
+import { buildRevenueTrendData } from "@/lib/dashboard/trends";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -21173,8 +21174,9 @@ setCustomerOrganizationName("");
                 onLearnMore: () => handleSectionChange("inventory"),
               } : undefined;
             })()}
-            revenueData={businessIntelligenceAnalytics.monthlySales.slice(-6)}
+            revenueData={buildRevenueTrendData(businessIntelligenceAnalytics.dailyTrends)}
             profitData={businessIntelligenceAnalytics.dailyTrends.slice(-14).map((d) => ({ label: d.date.slice(5), value: d.profit }))}
+            formatChartValue={(value: number) => formatDashboardMoney(displayCurrency, displayFxRate, value)}
             topCustomers={businessIntelligenceAnalytics.topCustomersBySales.slice(0, 5).map((c) => ({ name: c.customerName, value: formatDashboardMoney(displayCurrency, displayFxRate, c.totalSales) }))}
             onViewAllActivity={() => handleSectionChange("activity-logs")}
             topProducts={topSellingProducts.slice(0, 5).map((p) => ({ name: p.productName, value: String(p.quantitySold) }))}

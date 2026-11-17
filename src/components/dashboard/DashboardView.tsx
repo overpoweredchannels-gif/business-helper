@@ -80,6 +80,8 @@ interface DashboardViewProps {
   smartModules?: SmartModuleConfig[];
   revenueData?: Array<{ label: string; value: number }>;
   profitData?: Array<{ label: string; value: number }>;
+  /** Formats the trend-chart bar values and axis ticks (dashboard money). */
+  formatChartValue?: (value: number) => string;
   topProducts?: Array<{ name: string; value: string; trend?: "up" | "down" | "flat" }>;
   topCustomers?: Array<{ name: string; value: string; trend?: "up" | "down" | "flat" }>;
   onQuickAction?: (label: string) => void;
@@ -130,6 +132,7 @@ export function DashboardView({
   smartModules = [],
   revenueData,
   profitData,
+  formatChartValue,
   topProducts,
   topCustomers,
   onQuickAction,
@@ -231,8 +234,11 @@ export function DashboardView({
   ].filter((card) => !widgetHidden(card.id));
 
   const chartCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
-    ...(revenueData && revenueData.length > 0 ? [{ id: "chart-revenue" as DashboardWidgetId, node: <RevenueTrendCard data={revenueData} /> }] : []),
-    ...(profitData && profitData.length > 0 ? [{ id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData} /> }] : []),
+    // The Revenue card is always on the dashboard: with no revenue data
+    // it shows its empty state instead of vanishing (the Profit card
+    // keeps its old include-when-non-empty behaviour — next slice).
+    { id: "chart-revenue" as DashboardWidgetId, node: <RevenueTrendCard data={revenueData ?? []} formatValue={formatChartValue} /> },
+    ...(profitData && profitData.length > 0 ? [{ id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData} formatValue={formatChartValue} /> }] : []),
     ...(topProducts && topProducts.length > 0 ? [{ id: "chart-top-products" as DashboardWidgetId, node: <TopProductsCard items={topProducts} /> }] : []),
     ...(topCustomers && topCustomers.length > 0 ? [{ id: "chart-top-customers" as DashboardWidgetId, node: <TopCustomersCard items={topCustomers} /> }] : []),
   ].filter((chart) => !widgetHidden(chart.id));
