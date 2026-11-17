@@ -27,7 +27,41 @@ const DEV_HEALTH_TIMEOUT_MS = 5_000;
 const HEALTH_POLL_INTERVAL_MS = 250;
 const SERVER_RESTART_DELAY_MS = 1_000;
 
-const ERROR_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Aankh</title></head><body style="font-family:sans-serif;padding:40px;color:#222"><h1>Aankh could not start</h1><p>The local app server did not start. Please close the app and open it again. If the problem continues, reinstall Aankh.</p></body></html>`;
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// The server child's last stderr lines, kept so a failed launch can say
+// WHY it failed instead of only showing the generic error page (the
+// first real PC launch, 2026-11-17, died with MODULE_NOT_FOUND and
+// left no trace anywhere — stdio was "ignore"). The same lines are
+// appended to %APPDATA%\Aankh\server.log for later inspection.
+const SERVER_ERROR_TAIL_LINES = 20;
+let lastServerError = "";
+function serverLogPath(): string {
+  return path.join(app.getPath("userData"), "server.log");
+}
+function logServerOutput(chunk: string): void {
+  const lines = chunk.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length === 0) return;
+  const tail = [...lastServerError.split("\n").filter(Boolean), ...lines].slice(
+    -SERVER_ERROR_TAIL_LINES,
+  );
+  lastServerError = tail.join("\n");
+  try {
+    fs.appendFileSync(serverLogPath(), `${lines.join("\n")}\n`);
+  } catch {
+    // Logging must never stop the app.
+  }
+}
+
+function errorHtml(reason: string | null): string {
+  const detail =
+    reason && reason.trim().length > 0
+      ? `<p>The local app server reported:<br><pre style="background:#f3f3f3;padding:12px;overflow:auto;white-space:pre-wrap">${escapeHtml(reason)}</pre></p><p>The full log is in the Aankh data folder (server.log).</p>`
+      : "";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Aankh</title></head><body style="font-family:sans-serif;padding:40px;color:#222"><h1>Aankh could not start</h1><p>The local app server did not start. Please close the app and open it again. If the problem continues, reinstall Aankh.</p>${detail}</body></html>`;
+}
 
 let serverProcess: ChildProcess | null = null;
 let serverRestarts = 0;
@@ -525,8 +559,13 @@ function startStandaloneServer(port: number): ChildProcess {
       HOSTNAME: "127.0.0.1",
       NODE_ENV: "production",
     },
-    stdio: "ignore",
+    // Pipe stderr so a failed launch leaves a trace (see logServerOutput).
+    // stdout stays ignored — the server's normal log lines are noise.
+    stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,
+  });
+  child.stderr?.on("data", (data: Buffer | string) => {
+    logServerOutput(data.toString());
   });
   child.once("error", () => {
     serverProcess = null;
@@ -543,7 +582,7 @@ function startStandaloneServer(port: number): ChildProcess {
 async function showErrorPage(): Promise<void> {
   if (mainWindow && !mainWindow.isDestroyed()) {
     await mainWindow.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(ERROR_HTML)}`,
+      `data:text/html;charset=utf-8,${encodeURIComponent(errorHtml(lastServerError || null))}`,
     );
   }
 }
@@ -608,7 +647,7 @@ function createWindow(url: string | null): void {
     void mainWindow.loadURL(url);
   } else {
     void mainWindow.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(ERROR_HTML)}`,
+      `data:text/html;charset=utf-8,${encodeURIComponent(errorHtml(lastServerError || null))}`,
     );
   }
 }
