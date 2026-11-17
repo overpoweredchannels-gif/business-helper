@@ -112,6 +112,11 @@ function setupLocalStore(): void {
       supplierId: typeof row.supplierId === "string" ? row.supplierId : null,
       // Slice S6 — the local purchase row id for a purchase issue.
       purchaseId: typeof row.purchaseId === "string" ? row.purchaseId : null,
+      // Slice S7 — the local return / payment / expense row id for a
+      // return / payment / expense issue.
+      returnId: typeof row.returnId === "string" ? row.returnId : null,
+      paymentId: typeof row.paymentId === "string" ? row.paymentId : null,
+      expenseId: typeof row.expenseId === "string" ? row.expenseId : null,
     };
   };
   ipcMain.handle("aankh:sync-issues:list", (_event, scope: unknown) =>
@@ -243,6 +248,104 @@ function setupLocalStore(): void {
     if (typeof id !== "string" || id.length === 0) throw new Error("Invalid local supplier id");
     (localStore as LocalStore).removeSupplier(requireScope(scope), id);
   });
+  // Slice S7 — offline-created returns, payments (+ voids) and
+  // expenses (local first, cloud ids at sync). Same validation
+  // discipline as the purchase rows: the renderer sends plain JSON
+  // and the main process refuses anything malformed before it
+  // reaches SQLite. A balance is never stored here — returns and
+  // payments only ever change derived figures (see
+  // src/lib/offline/customer-balance-offline.ts).
+  const requireReturnRow = (value: unknown): import("./store").LocalReturnRow => {
+    const row = value as Partial<import("./store").LocalReturnRow>;
+    if (typeof row !== "object" || row === null) throw new Error("Invalid local return");
+    if (typeof row.id !== "string" || row.id.length === 0) throw new Error("Invalid local return: id");
+    if (row.kind !== "sales" && row.kind !== "purchase") throw new Error("Invalid local return: kind");
+    if (typeof row.input !== "object" || row.input === null || Array.isArray(row.input)) {
+      throw new Error("Invalid local return: input");
+    }
+    return {
+      id: row.id,
+      kind: row.kind,
+      input: row.input as Record<string, unknown>,
+      provisionalNumber: typeof row.provisionalNumber === "string" ? row.provisionalNumber : null,
+      synced: typeof row.synced === "number" ? row.synced : 0,
+      serverId: typeof row.serverId === "string" ? row.serverId : null,
+      syncStatus: typeof row.syncStatus === "string" ? row.syncStatus : "pending",
+      syncError: typeof row.syncError === "string" ? row.syncError : null,
+      createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date().toISOString(),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  };
+  ipcMain.handle("aankh:local-returns:list", (_event, scope: unknown) =>
+    (localStore as LocalStore).listReturns(requireScope(scope)),
+  );
+  ipcMain.handle("aankh:local-returns:upsert", (_event, scope: unknown, row: unknown) =>
+    (localStore as LocalStore).upsertReturn(requireScope(scope), requireReturnRow(row)),
+  );
+  ipcMain.handle("aankh:local-returns:remove", (_event, scope: unknown, id: unknown) => {
+    if (typeof id !== "string" || id.length === 0) throw new Error("Invalid local return id");
+    (localStore as LocalStore).removeReturn(requireScope(scope), id);
+  });
+  const requirePaymentRow = (value: unknown): import("./store").LocalPaymentRow => {
+    const row = value as Partial<import("./store").LocalPaymentRow>;
+    if (typeof row !== "object" || row === null) throw new Error("Invalid local payment");
+    if (typeof row.id !== "string" || row.id.length === 0) throw new Error("Invalid local payment: id");
+    if (row.action !== "pay" && row.action !== "void") throw new Error("Invalid local payment: action");
+    if (typeof row.input !== "object" || row.input === null || Array.isArray(row.input)) {
+      throw new Error("Invalid local payment: input");
+    }
+    return {
+      id: row.id,
+      action: row.action,
+      input: row.input as Record<string, unknown>,
+      provisionalNumber: typeof row.provisionalNumber === "string" ? row.provisionalNumber : null,
+      synced: typeof row.synced === "number" ? row.synced : 0,
+      serverId: typeof row.serverId === "string" ? row.serverId : null,
+      syncStatus: typeof row.syncStatus === "string" ? row.syncStatus : "pending",
+      syncError: typeof row.syncError === "string" ? row.syncError : null,
+      createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date().toISOString(),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  };
+  ipcMain.handle("aankh:local-payments:list", (_event, scope: unknown) =>
+    (localStore as LocalStore).listPayments(requireScope(scope)),
+  );
+  ipcMain.handle("aankh:local-payments:upsert", (_event, scope: unknown, row: unknown) =>
+    (localStore as LocalStore).upsertPayment(requireScope(scope), requirePaymentRow(row)),
+  );
+  ipcMain.handle("aankh:local-payments:remove", (_event, scope: unknown, id: unknown) => {
+    if (typeof id !== "string" || id.length === 0) throw new Error("Invalid local payment id");
+    (localStore as LocalStore).removePayment(requireScope(scope), id);
+  });
+  const requireExpenseRow = (value: unknown): import("./store").LocalExpenseRow => {
+    const row = value as Partial<import("./store").LocalExpenseRow>;
+    if (typeof row !== "object" || row === null) throw new Error("Invalid local expense");
+    if (typeof row.id !== "string" || row.id.length === 0) throw new Error("Invalid local expense: id");
+    if (typeof row.input !== "object" || row.input === null || Array.isArray(row.input)) {
+      throw new Error("Invalid local expense: input");
+    }
+    return {
+      id: row.id,
+      input: row.input as Record<string, unknown>,
+      provisionalNumber: typeof row.provisionalNumber === "string" ? row.provisionalNumber : null,
+      synced: typeof row.synced === "number" ? row.synced : 0,
+      serverId: typeof row.serverId === "string" ? row.serverId : null,
+      syncStatus: typeof row.syncStatus === "string" ? row.syncStatus : "pending",
+      syncError: typeof row.syncError === "string" ? row.syncError : null,
+      createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date().toISOString(),
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : new Date().toISOString(),
+    };
+  };
+  ipcMain.handle("aankh:local-expenses:list", (_event, scope: unknown) =>
+    (localStore as LocalStore).listExpenses(requireScope(scope)),
+  );
+  ipcMain.handle("aankh:local-expenses:upsert", (_event, scope: unknown, row: unknown) =>
+    (localStore as LocalStore).upsertExpense(requireScope(scope), requireExpenseRow(row)),
+  );
+  ipcMain.handle("aankh:local-expenses:remove", (_event, scope: unknown, id: unknown) => {
+    if (typeof id !== "string" || id.length === 0) throw new Error("Invalid local expense id");
+    (localStore as LocalStore).removeExpense(requireScope(scope), id);
+  });
   // Slice S4 — Sales History + Inventory mirrors (read cache for the
   // desktop history + inventory). Same validation discipline: the
   // renderer sends plain JSON and the main process refuses anything
@@ -263,6 +366,12 @@ function setupLocalStore(): void {
     "purchase_transaction",
     "purchase_item",
     "supplier",
+    // Slice S7 — the purchase-return + supplier-payment + expense reads.
+    "purchase_return",
+    "purchase_return_item",
+    "supplier_payment",
+    "supplier_payment_allocation",
+    "expense",
   ]);
   const requireMirrorKind = (value: unknown): import("./store").MirrorKind => {
     if (typeof value !== "string" || !MIRROR_KINDS.has(value)) throw new Error("Invalid mirror kind");

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { LocalCustomerRow, LocalPurchaseRow, LocalSaleRow, LocalSupplierRow, MirrorKind, MirrorRow, StoredIdentity, SyncIssueRow } from "./store";
+import type { LocalCustomerRow, LocalExpenseRow, LocalPaymentRow, LocalPurchaseRow, LocalReturnRow, LocalSaleRow, LocalSupplierRow, MirrorKind, MirrorRow, StoredIdentity, SyncIssueRow } from "./store";
 
 // Slice S0 — minimal, context-isolated bridge. Slice S2 adds the
 // local-first store: the main process owns the SQLite database
@@ -13,6 +13,9 @@ import type { LocalCustomerRow, LocalPurchaseRow, LocalSaleRow, LocalSupplierRow
 // customers bridge the same way (see src/lib/offline/local-customers.ts).
 // Slice S6 adds the offline purchases + suppliers bridges the same way
 // (see src/lib/offline/local-purchases.ts and local-suppliers.ts).
+// Slice S7 adds the offline returns + payments + expenses bridges the
+// same way (see src/lib/offline/local-returns.ts, local-payments.ts
+// and local-expenses.ts).
 
 /** IPC channels for the local store. The renderer (src/lib/offline/…)
  * uses the same literal strings — keep them in sync when renaming. */
@@ -39,6 +42,15 @@ const CHANNELS = {
   listSuppliers: "aankh:local-suppliers:list",
   upsertSupplier: "aankh:local-suppliers:upsert",
   removeSupplier: "aankh:local-suppliers:remove",
+  listReturns: "aankh:local-returns:list",
+  upsertReturn: "aankh:local-returns:upsert",
+  removeReturn: "aankh:local-returns:remove",
+  listPayments: "aankh:local-payments:list",
+  upsertPayment: "aankh:local-payments:upsert",
+  removePayment: "aankh:local-payments:remove",
+  listExpenses: "aankh:local-expenses:list",
+  upsertExpense: "aankh:local-expenses:upsert",
+  removeExpense: "aankh:local-expenses:remove",
 } as const;
 
 export interface AankhLocalSalesBridge {
@@ -106,6 +118,33 @@ export interface AankhLocalSuppliersBridge {
   remove(scope: string, id: string): Promise<void>;
 }
 
+export interface AankhLocalReturnsBridge {
+  /** Offline-created returns for a scope, oldest first. */
+  list(scope: string): Promise<LocalReturnRow[]>;
+  /** Insert or replace one local return row; returns the stored row (with provisional number assigned). */
+  upsert(scope: string, row: LocalReturnRow): Promise<LocalReturnRow>;
+  /** Delete one local return row (server confirmed it). */
+  remove(scope: string, id: string): Promise<void>;
+}
+
+export interface AankhLocalPaymentsBridge {
+  /** Offline-created payments / voids for a scope, oldest first. */
+  list(scope: string): Promise<LocalPaymentRow[]>;
+  /** Insert or replace one local payment row; returns the stored row (with provisional number assigned). */
+  upsert(scope: string, row: LocalPaymentRow): Promise<LocalPaymentRow>;
+  /** Delete one local payment row (server confirmed it). */
+  remove(scope: string, id: string): Promise<void>;
+}
+
+export interface AankhLocalExpensesBridge {
+  /** Offline-created expenses for a scope, oldest first. */
+  list(scope: string): Promise<LocalExpenseRow[]>;
+  /** Insert or replace one local expense row; returns the stored row (with provisional number assigned). */
+  upsert(scope: string, row: LocalExpenseRow): Promise<LocalExpenseRow>;
+  /** Delete one local expense row (server confirmed it). */
+  remove(scope: string, id: string): Promise<void>;
+}
+
 export interface AankhDesktopBridge {
   /** True when the app runs inside the installed desktop shell. */
   isDesktop: true;
@@ -125,6 +164,12 @@ export interface AankhDesktopBridge {
   localPurchases?: AankhLocalPurchasesBridge;
   /** The SQLite-backed offline suppliers (S6). Absent when the store failed to open. */
   localSuppliers?: AankhLocalSuppliersBridge;
+  /** The SQLite-backed offline returns (S7). Absent when the store failed to open. */
+  localReturns?: AankhLocalReturnsBridge;
+  /** The SQLite-backed offline payments + voids (S7). Absent when the store failed to open. */
+  localPayments?: AankhLocalPaymentsBridge;
+  /** The SQLite-backed offline expenses (S7). Absent when the store failed to open. */
+  localExpenses?: AankhLocalExpensesBridge;
 }
 
 const bridge: AankhDesktopBridge = {
@@ -165,6 +210,21 @@ const bridge: AankhDesktopBridge = {
     list: (scope) => ipcRenderer.invoke(CHANNELS.listSuppliers, scope),
     upsert: (scope, row) => ipcRenderer.invoke(CHANNELS.upsertSupplier, scope, row),
     remove: (scope, id) => ipcRenderer.invoke(CHANNELS.removeSupplier, scope, id),
+  },
+  localReturns: {
+    list: (scope) => ipcRenderer.invoke(CHANNELS.listReturns, scope),
+    upsert: (scope, row) => ipcRenderer.invoke(CHANNELS.upsertReturn, scope, row),
+    remove: (scope, id) => ipcRenderer.invoke(CHANNELS.removeReturn, scope, id),
+  },
+  localPayments: {
+    list: (scope) => ipcRenderer.invoke(CHANNELS.listPayments, scope),
+    upsert: (scope, row) => ipcRenderer.invoke(CHANNELS.upsertPayment, scope, row),
+    remove: (scope, id) => ipcRenderer.invoke(CHANNELS.removePayment, scope, id),
+  },
+  localExpenses: {
+    list: (scope) => ipcRenderer.invoke(CHANNELS.listExpenses, scope),
+    upsert: (scope, row) => ipcRenderer.invoke(CHANNELS.upsertExpense, scope, row),
+    remove: (scope, id) => ipcRenderer.invoke(CHANNELS.removeExpense, scope, id),
   },
 };
 

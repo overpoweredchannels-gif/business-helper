@@ -187,6 +187,8 @@ export interface SalesReturn {
   created_by_profile_id: string | null;
   created_at: string;
   updated_at: string;
+  /** Slice S7 — client idempotency key (null on rows created before the S7 SQL ran). */
+  request_key?: string | null;
 }
 
 export interface SalesReturnItem {
@@ -243,6 +245,8 @@ export interface PurchaseReturn {
   created_by_profile_id: string | null;
   created_at: string;
   updated_at: string;
+  /** Slice S7 — client idempotency key (null on rows created before the S7 SQL ran). */
+  request_key?: string | null;
 }
 
 export interface PurchaseReturnItem {

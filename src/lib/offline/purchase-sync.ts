@@ -217,6 +217,9 @@ export async function parkPurchaseAsSyncIssue(
     customerId: null,
     supplierId: null,
     purchaseId: row.id,
+    returnId: null,
+    paymentId: null,
+    expenseId: null,
   };
   try {
     const stored = await getSyncIssuesBackend().upsert(scope, issue);
@@ -232,6 +235,13 @@ export type PurchaseSyncOutcome = "synced" | "parked" | "queued";
 export interface PurchaseSyncOptions {
   fetchImpl?: FetchImpl;
   server?: PurchaseServer;
+  /**
+   * Slice S7 — called for every purchase that confirms, with the
+   * server transaction. The engine passes it through so the caller
+   * (page.tsx) can attach the expense-review reminder to a synced
+   * purchase that has no linked expense yet — the S6 gap.
+   */
+  onConfirmed?: (row: LocalPurchaseRow, transaction: Record<string, unknown>) => void;
 }
 
 /**
@@ -264,6 +274,14 @@ export async function syncOnePurchase(
     items: Array<Record<string, unknown>>,
   ): Promise<PurchaseSyncOutcome> => {
     await landConfirmedPurchaseMirror(scope, transaction, items);
+    // Slice S7 — the confirmed purchase is reported to the caller
+    // before the local row is removed, so the expense-review
+    // reminder can be attached to the synced purchase (S6 gap).
+    try {
+      options.onConfirmed?.(row, transaction);
+    } catch {
+      /* The reminder is advisory; the purchase is already synced. */
+    }
     try {
       await backend.remove(scope, row.id);
     } catch {
@@ -316,6 +334,17 @@ export interface PurchaseDrainResult {
   queuedCount: number;
   /** True when a network failure stopped the loop early. */
   stoppedEarly: boolean;
+  /**
+   * Slice S7 — confirmed purchases, so the caller can attach the
+   * expense-review reminder to a synced purchase that has no linked
+   * expense yet (the S6 gap).
+   */
+  confirmed: Array<{
+    localId: string;
+    serverId: string;
+    invoiceNumber: string | null;
+    supplierId: string | null;
+  }>;
 }
 
 /**
@@ -333,6 +362,7 @@ export async function drainPendingPurchases(
     parkedCount: 0,
     queuedCount: 0,
     stoppedEarly: false,
+    confirmed: [],
   };
   let rows: LocalPurchaseRow[];
   try {
@@ -341,9 +371,28 @@ export async function drainPendingPurchases(
     return result;
   }
   let changed = false;
+  const drainOptions: PurchaseSyncOptions = {
+    ...options,
+    onConfirmed: (row, transaction) => {
+      // Slice S7 — collect the confirmed purchases for the
+      // expense-review reminder (S6 gap), then still call the
+      // caller's own hook, if any.
+      const serverId = typeof transaction.id === "string" ? transaction.id : "";
+      if (serverId) {
+        result.confirmed.push({
+          localId: row.id,
+          serverId,
+          invoiceNumber:
+            typeof transaction.invoice_number === "string" ? transaction.invoice_number : null,
+          supplierId: typeof transaction.supplier_id === "string" ? transaction.supplier_id : null,
+        });
+      }
+      options.onConfirmed?.(row, transaction);
+    },
+  };
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
-    const outcome = await syncOnePurchase(supabase, scope, row, options);
+    const outcome = await syncOnePurchase(supabase, scope, row, drainOptions);
     if (outcome === "synced") {
       result.confirmedCount += 1;
       changed = true;

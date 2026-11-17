@@ -42,6 +42,9 @@ import { loadHistoryMirror, saveHistoryMirror } from "@/lib/offline/history-mirr
 import { editLocalCustomerRow, getLocalCustomersBackend, mergeLocalCustomers, newLocalCustomerCreateRow, notifyLocalCustomersChanged, type LocalCustomerRow } from "@/lib/offline/local-customers";
 import { LOCAL_PURCHASES_CHANGED_EVENT, getLocalPurchasesBackend, newLocalPurchaseRow, notifyLocalPurchasesChanged, type LocalPurchaseRow } from "@/lib/offline/local-purchases";
 import { LOCAL_SUPPLIERS_CHANGED_EVENT, editLocalSupplierRow, getLocalSuppliersBackend, mergeLocalSuppliers, newLocalSupplierCreateRow, notifyLocalSuppliersChanged, type LocalSupplierRow } from "@/lib/offline/local-suppliers";
+import { getLocalReturnsBackend, isPendingReturnHistoryId, mergePendingPurchaseReturnItems, mergePendingPurchaseReturns, mergePendingSalesReturnItems, mergePendingSalesReturns, newLocalReturnRow, notifyLocalReturnsChanged, pendingReturnRequestKey, type LocalReturnRow } from "@/lib/offline/local-returns";
+import { getLocalPaymentsBackend, isPendingPaymentHistoryId, mergePendingCustomerAllocations, mergePendingCustomerPayments, mergePendingSupplierAllocations, mergePendingSupplierPayments, newLocalPaymentRow, newLocalVoidRow, notifyLocalPaymentsChanged, type LocalPaymentRow } from "@/lib/offline/local-payments";
+import { getLocalExpensesBackend, mergePendingExpenses, newLocalExpenseRow, notifyLocalExpensesChanged, type LocalExpenseRow } from "@/lib/offline/local-expenses";
 import { isPendingPurchaseHistoryId, mergePendingPurchases, pendingPurchaseToItems } from "@/lib/purchases/pending-purchase-history";
 import { deriveOfflineCustomerBalance } from "@/lib/offline/customer-balance-offline";
 import { isPendingHistoryId, mergePendingHistory } from "@/lib/sales/pending-history";
@@ -1349,13 +1352,64 @@ export default function Home() {
     }
     const accountId = dashboardAccountIdRef.current;
     if (!accountId) return;
-    await loadDashboardExpenses(
+    // Slice S7 — desktop merges the pending (unsynced) expenses
+    // from the local store into the list, and reads the SQLite
+    // expenses mirror when the network is gone (or the live fetch
+    // fails), so an expense saved offline shows at once. A synced
+    // row's `request_key` drops its pending twin, so one expense
+    // never renders twice. The mirror always stores server rows
+    // only. The web build keeps its live-only fetch.
+    const scope = offlineCacheScope(organizationId);
+    let pendingExpenses: LocalExpenseRow[] = [];
+    if (scope && isDesktopApp()) {
+      try {
+        pendingExpenses = await getLocalExpensesBackend().list(scope);
+      } catch {
+        pendingExpenses = [];
+      }
+    }
+    const mergeLocal = (rows: any[]): any[] => {
+      if (!scope || !isDesktopApp()) return rows;
+      try {
+        return mergePendingExpenses(rows, pendingExpenses);
+      } catch {
+        return rows;
+      }
+    };
+    const loadMirror = async (): Promise<any[] | null> => {
+      if (!scope || !isDesktopApp()) return null;
+      const mirror = await loadHistoryMirror<any>("expense", scope);
+      if (mirror.rows.length === 0) return null;
+      return mirror.rows;
+    };
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const mirrored = await loadMirror();
+      if (mirrored) {
+        setExpenses(mergeLocal(mirrored));
+        return;
+      }
+      if (pendingExpenses.length > 0) {
+        setExpenses(mergeLocal([]));
+        return;
+      }
+    }
+    await loadDashboardExpenses<{ id: string | number } & Record<string, unknown>>(
       supabase,
       dashboardReadTrackerRef.current!,
       accountId,
       organizationId,
-      setExpenses,
-      (error) => console.error("Error fetching expenses:", error),
+      (rows) => {
+        if (scope && isDesktopApp()) void saveHistoryMirror("expense", scope, rows);
+        setExpenses(mergeLocal(rows));
+      },
+      (error) => {
+        console.error("Error fetching expenses:", error);
+        // Live fetch failed: fall back to the mirror + pending rows.
+        void loadMirror().then((mirrored) => {
+          if (mirrored) setExpenses(mergeLocal(mirrored));
+          else if (pendingExpenses.length > 0) setExpenses(mergeLocal([]));
+        });
+      },
     );
   };
 
@@ -5499,7 +5553,45 @@ setCustomerOrganizationName("");
           invoice_id: row.invoice.transaction.id,
           amount: row.allocationAmount,
         }));
+      const customerPaymentInput = {
+        kind: "customer" as const,
+        partyId: selectedCustomerPaymentId,
+        amount: paymentAmount,
+        paymentDate: customerPaymentDate || null,
+        paymentMethod: customerPaymentMethod,
+        reference: customerPaymentReference.trim() || null,
+        notes: customerPaymentNotes || null,
+        allocations: customerAllocationsPayload,
+      };
+      // Slice S7 — desktop offline (or an RPC that never reaches the
+      // server): save the payment on this device instead of failing
+      // it. The local row carries the attempt key as its id (the
+      // server idempotency key) and gets its provisional PY-number
+      // from the store; the silent sync engine drains it through
+      // create_payment_atomic when the network returns. The web build
+      // keeps the live RPC exactly as-is. Edits are online-only: an
+      // edit while offline shows the internet-required message
+      // instead of parking an edit (see the branch below).
+      const saveCustomerPaymentLocally = async (): Promise<boolean> => {
+        if (!isDesktopApp() || !currentOrganizationId || !currentProfile?.id) return false;
+        const scope = `${currentOrganizationId}:${currentProfile.id}`;
+        try {
+          const row = newLocalPaymentRow(customerPaymentInput as unknown as Record<string, unknown>);
+          row.id = customerPaymentAttemptKeyRef.current ?? row.id;
+          await getLocalPaymentsBackend().upsert(scope, row);
+        } catch {
+          return false;
+        }
+        notifyLocalPaymentsChanged();
+        return true;
+      };
+      let customerPaymentSavedOffline = false;
       if (isEditingCustomerPayment && editingPayment) {
+        if (isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine) {
+          setCustomerPaymentError(t('offline.internetRequired'));
+          setCustomerPaymentLoading(false);
+          return;
+        }
         await editPaymentAtomic(supabase, {
           kind: "customer",
           paymentId: editingPayment.id,
@@ -5511,21 +5603,29 @@ setCustomerOrganizationName("");
           notes: customerPaymentNotes || null,
           allocations: customerAllocationsPayload,
         }, customerPaymentAttemptKeyRef.current);
+      } else if (isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine) {
+        customerPaymentSavedOffline = await saveCustomerPaymentLocally();
+        if (!customerPaymentSavedOffline) {
+          throw new Error(t('page.savePaymentFailed'));
+        }
       } else {
-        await submitPaymentAtomic(supabase, {
-          kind: "customer",
-          partyId: selectedCustomerPaymentId,
-          amount: paymentAmount,
-          paymentDate: customerPaymentDate || null,
-          paymentMethod: customerPaymentMethod,
-          reference: customerPaymentReference.trim() || null,
-          notes: customerPaymentNotes || null,
-          allocations: customerAllocationsPayload,
-        }, customerPaymentAttemptKeyRef.current);
+        try {
+          await submitPaymentAtomic(supabase, customerPaymentInput, customerPaymentAttemptKeyRef.current);
+        } catch (caught) {
+          // The RPC never reached the server — park it locally on
+          // desktop instead of failing the save. A server refusal is
+          // a real error and is never parked.
+          if (isDesktopApp() && isUncertainPaymentError(caught)) {
+            customerPaymentSavedOffline = await saveCustomerPaymentLocally();
+            if (!customerPaymentSavedOffline) throw caught;
+          } else {
+            throw caught;
+          }
+        }
       }
       customerPaymentAttemptKeyRef.current = null;
 
-      setCustomerPaymentMessage(isEditingCustomerPayment ? t('payments.paymentUpdated') : t('page.paymentSaved'));
+      setCustomerPaymentMessage(customerPaymentSavedOffline ? t('offline.paymentSavedOffline') : isEditingCustomerPayment ? t('payments.paymentUpdated') : t('page.paymentSaved'));
       if (isEditingCustomerPayment) setEditingPayment(null);
       setSelectedCustomerPaymentId(null);
       setCustomerPaymentAmount("");
@@ -5537,7 +5637,7 @@ setCustomerOrganizationName("");
       await fetchCustomerPayments(currentOrganizationId);
       await fetchCustomerPaymentAllocations(currentOrganizationId);
       await fetchSalesTransactions(currentOrganizationId);
-      await fetchAuditLogs(currentOrganizationId);
+      if (!customerPaymentSavedOffline) await fetchAuditLogs(currentOrganizationId);
     } catch (err) {
       // A lost response leaves the outcome unknown: keep the attempt key
       // so the next save replays the committed payment. A definitive RPC
@@ -5644,7 +5744,42 @@ setCustomerOrganizationName("");
           invoice_id: row.invoice.transaction.id,
           amount: row.allocationAmount,
         }));
+      const supplierPaymentInput = {
+        kind: "supplier" as const,
+        partyId: selectedSupplierPaymentId,
+        amount: paymentAmount,
+        paymentDate: supplierPaymentDate || null,
+        paymentMethod: supplierPaymentMethod,
+        reference: supplierPaymentReference.trim() || null,
+        notes: supplierPaymentNotes || null,
+        allocations: supplierAllocationsPayload,
+      };
+      // Slice S7 — desktop offline (or an RPC that never reaches the
+      // server): save the payment on this device instead of failing
+      // it. Same discipline as the customer payment above: the local
+      // row carries the attempt key as its id, and the silent sync
+      // engine drains it through create_payment_atomic when the
+      // network returns. Edits are online-only.
+      const saveSupplierPaymentLocally = async (): Promise<boolean> => {
+        if (!isDesktopApp() || !currentOrganizationId || !currentProfile?.id) return false;
+        const scope = `${currentOrganizationId}:${currentProfile.id}`;
+        try {
+          const row = newLocalPaymentRow(supplierPaymentInput as unknown as Record<string, unknown>);
+          row.id = supplierPaymentAttemptKeyRef.current ?? row.id;
+          await getLocalPaymentsBackend().upsert(scope, row);
+        } catch {
+          return false;
+        }
+        notifyLocalPaymentsChanged();
+        return true;
+      };
+      let supplierPaymentSavedOffline = false;
       if (isEditingSupplierPayment && editingPayment) {
+        if (isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine) {
+          setSupplierPaymentError(t('offline.internetRequired'));
+          setSupplierPaymentLoading(false);
+          return;
+        }
         await editPaymentAtomic(supabase, {
           kind: "supplier",
           paymentId: editingPayment.id,
@@ -5656,21 +5791,29 @@ setCustomerOrganizationName("");
           notes: supplierPaymentNotes || null,
           allocations: supplierAllocationsPayload,
         }, supplierPaymentAttemptKeyRef.current);
+      } else if (isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine) {
+        supplierPaymentSavedOffline = await saveSupplierPaymentLocally();
+        if (!supplierPaymentSavedOffline) {
+          throw new Error(t('page.savePaymentFailed'));
+        }
       } else {
-        await submitPaymentAtomic(supabase, {
-          kind: "supplier",
-          partyId: selectedSupplierPaymentId,
-          amount: paymentAmount,
-          paymentDate: supplierPaymentDate || null,
-          paymentMethod: supplierPaymentMethod,
-          reference: supplierPaymentReference.trim() || null,
-          notes: supplierPaymentNotes || null,
-          allocations: supplierAllocationsPayload,
-        }, supplierPaymentAttemptKeyRef.current);
+        try {
+          await submitPaymentAtomic(supabase, supplierPaymentInput, supplierPaymentAttemptKeyRef.current);
+        } catch (caught) {
+          // The RPC never reached the server — park it locally on
+          // desktop instead of failing the save. A server refusal is
+          // a real error and is never parked.
+          if (isDesktopApp() && isUncertainPaymentError(caught)) {
+            supplierPaymentSavedOffline = await saveSupplierPaymentLocally();
+            if (!supplierPaymentSavedOffline) throw caught;
+          } else {
+            throw caught;
+          }
+        }
       }
       supplierPaymentAttemptKeyRef.current = null;
 
-      setSupplierPaymentMessage(isEditingSupplierPayment ? t('payments.paymentUpdated') : t('page.paymentSaved'));
+      setSupplierPaymentMessage(supplierPaymentSavedOffline ? t('offline.paymentSavedOffline') : isEditingSupplierPayment ? t('payments.paymentUpdated') : t('page.paymentSaved'));
       if (isEditingSupplierPayment) setEditingPayment(null);
       setSelectedSupplierPaymentId(null);
       setSupplierPaymentAmount("");
@@ -5681,7 +5824,7 @@ setCustomerOrganizationName("");
       setSupplierPaymentAllocationsByInvoice({});
       await fetchSupplierPayments(currentOrganizationId);
       await fetchSupplierPaymentAllocations(currentOrganizationId);
-      await fetchAuditLogs(currentOrganizationId);
+      if (!supplierPaymentSavedOffline) await fetchAuditLogs(currentOrganizationId);
     } catch (err) {
       // A lost response leaves the outcome unknown: keep the attempt key
       // so the next save replays the committed payment. A definitive RPC
@@ -5821,19 +5964,81 @@ setCustomerOrganizationName("");
       return;
     }
     setVoidingPaymentId(paymentId);
-    try {
-      await voidPaymentAtomic(supabase, { kind, paymentId, reason: null }, createPaymentAttemptKey());
+    const setVoidedMessage = () => {
       if (kind === "customer") {
         setCustomerPaymentMessage(t('payments.paymentVoided'));
       } else {
         setSupplierPaymentMessage(t('payments.paymentVoided'));
       }
+    };
+    const refreshAfterVoid = async (withAudit: boolean) => {
       await fetchCustomerPayments(currentOrganizationId);
       await fetchSupplierPayments(currentOrganizationId);
       await fetchCustomerPaymentAllocations(currentOrganizationId);
       await fetchSupplierPaymentAllocations(currentOrganizationId);
       await fetchSalesTransactions(currentOrganizationId);
-      await fetchAuditLogs(currentOrganizationId);
+      if (withAudit) await fetchAuditLogs(currentOrganizationId);
+    };
+    try {
+      // Slice S7 — desktop: a void of an UNSYNCED local payment never
+      // becomes a row — the payment simply leaves the queue, because
+      // it never existed server-side. A void of a synced payment is
+      // parked locally (action "void") when offline or when the RPC
+      // never reaches the server; the silent sync engine drains it
+      // through void_payment_atomic when the network returns. The
+      // merged payment lists mark the payment voided at once, so the
+      // derived balance is restored immediately. The web build keeps
+      // the live RPC exactly as-is.
+      if (isDesktopApp()) {
+        const scope = offlineCacheScope(currentOrganizationId ?? "");
+        const localRows = scope ? await getLocalPaymentsBackend().list(scope).catch(() => []) : [];
+        const unsyncedPayment = localRows.find(
+          (row) => row.action === "pay" && row.id === paymentId,
+        );
+        if (unsyncedPayment && scope) {
+          // The payment never reached the cloud — drop it from the
+          // queue. There is nothing to void server-side.
+          await getLocalPaymentsBackend().remove(scope, paymentId);
+          notifyLocalPaymentsChanged();
+          setVoidedMessage();
+          await refreshAfterVoid(false);
+          return;
+        }
+        if (isPendingPaymentHistoryId(paymentId)) {
+          // A synthetic pending row with no queue row: nothing to void.
+          setVoidedMessage();
+          await refreshAfterVoid(false);
+          return;
+        }
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          if (!scope) throw new Error(t('page.savePaymentFailed'));
+          await getLocalPaymentsBackend().upsert(scope, newLocalVoidRow({ kind, paymentId, reason: null }));
+          notifyLocalPaymentsChanged();
+          setVoidedMessage();
+          await refreshAfterVoid(false);
+          return;
+        }
+        // Online: try the live void; a network failure parks the void
+        // locally instead of failing it.
+        try {
+          await voidPaymentAtomic(supabase, { kind, paymentId, reason: null }, createPaymentAttemptKey());
+        } catch (caught) {
+          if (isUncertainPaymentError(caught) && scope) {
+            await getLocalPaymentsBackend().upsert(scope, newLocalVoidRow({ kind, paymentId, reason: null }));
+            notifyLocalPaymentsChanged();
+            setVoidedMessage();
+            await refreshAfterVoid(false);
+            return;
+          }
+          throw caught;
+        }
+        setVoidedMessage();
+        await refreshAfterVoid(true);
+        return;
+      }
+      await voidPaymentAtomic(supabase, { kind, paymentId, reason: null }, createPaymentAttemptKey());
+      setVoidedMessage();
+      await refreshAfterVoid(true);
     } catch (err) {
       if (kind === "customer") {
         setCustomerPaymentError(err instanceof Error ? err.message : t('page.savePaymentFailed'));
@@ -5930,7 +6135,12 @@ setCustomerOrganizationName("");
     setExpenseLoading(true);
     setExpenseMessage(null);
 
-    const { data: expenseData, error } = await supabase.from("expenses").insert({
+    // Slice S7 — the client request key for this expense: one key per
+    // save attempt, retained only while the outcome is uncertain, so
+    // a retry replays instead of duplicating. The same key is the
+    // local row id when the expense is saved offline.
+    const expenseRequestKey = crypto.randomUUID();
+    const expensePayload = {
       organization_id: currentOrganizationId,
       expense_type: expenseType,
       amount,
@@ -5940,12 +6150,96 @@ setCustomerOrganizationName("");
       customer_id: selectedExpenseCustomerId || null,
       purchase_transaction_id: selectedExpensePurchaseId || null,
       sales_transaction_id: selectedExpenseSaleId || null,
-    }).select("id").single();
-
-    if (error) {
-      setExpenseMessage(t('page.expenseSaveErr').replace('{error}', JSON.stringify(error, null, 2)));
+    };
+    // Desktop offline (or an insert that never reaches the server):
+    // save the expense on this device instead of failing it. The
+    // silent sync engine drains it through the same direct insert
+    // when the network returns. The web build keeps the live insert
+    // exactly as-is.
+    const saveExpenseLocally = async (): Promise<boolean> => {
+      if (!isDesktopApp() || !currentOrganizationId || !currentProfile?.id) return false;
+      const scope = `${currentOrganizationId}:${currentProfile.id}`;
+      try {
+        const row = newLocalExpenseRow(expensePayload as unknown as Record<string, unknown>);
+        row.id = expenseRequestKey;
+        await getLocalExpensesBackend().upsert(scope, row);
+      } catch {
+        return false;
+      }
+      notifyLocalExpensesChanged();
+      return true;
+    };
+    const expenseOffline =
+      isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine;
+    if (expenseOffline) {
+      const savedOffline = await saveExpenseLocally();
+      if (savedOffline) {
+        setExpenseMessage(t('offline.expenseSavedOffline'));
+        setExpenseType("");
+        setExpenseAmount("");
+        setExpenseNotes("");
+        setSelectedExpenseSupplierId("");
+        setSelectedExpenseCustomerId("");
+        setSelectedExpensePurchaseId("");
+        setSelectedExpenseSaleId("");
+        await fetchExpenses(currentOrganizationId);
+      } else {
+        setExpenseMessage(t('page.expenseSaveErr').replace('{error}', t('page.savePaymentFailed')));
+      }
       setExpenseLoading(false);
       return;
+    }
+
+    let expenseData: { id?: string } | null = null;
+    try {
+      const { data, error } = await supabase.from("expenses").insert({
+        ...expensePayload,
+        request_key: expenseRequestKey,
+      }).select("id").single();
+      if (error) throw error;
+      expenseData = data;
+    } catch (caught) {
+      const code = (caught as { code?: unknown } | null)?.code;
+      // The insert never reached the server (or the column does not
+      // exist yet — the S7 SQL has not run): park it locally on
+      // desktop instead of failing the save. A server refusal is a
+      // real error and is never parked.
+      if (isDesktopApp() && (isNetworkError(caught) || code === "42703")) {
+        const savedOffline = await saveExpenseLocally();
+        if (savedOffline) {
+          setExpenseMessage(t('offline.expenseSavedOffline'));
+          setExpenseType("");
+          setExpenseAmount("");
+          setExpenseNotes("");
+          setSelectedExpenseSupplierId("");
+          setSelectedExpenseCustomerId("");
+          setSelectedExpensePurchaseId("");
+          setSelectedExpenseSaleId("");
+          await fetchExpenses(currentOrganizationId);
+          setExpenseLoading(false);
+          return;
+        }
+      }
+      // A unique-violation on the key means the expense is already
+      // there (a lost response): select it and treat it as a replay.
+      if (code === "23505") {
+        const { data: existing } = await supabase
+          .from("expenses")
+          .select("id")
+          .eq("request_key", expenseRequestKey)
+          .maybeSingle();
+        if (existing && typeof (existing as { id?: unknown }).id === "string") {
+          expenseData = existing as { id: string };
+        } else {
+          setExpenseMessage(t('page.expenseSaveErr').replace('{error}', JSON.stringify(caught, null, 2)));
+          setExpenseLoading(false);
+          return;
+        }
+      } else {
+        setExpenseMessage(t('page.expenseSaveErr').replace('{error}', JSON.stringify(caught, null, 2)));
+        setExpenseLoading(false);
+        return;
+      }
     }
 
     let statusUpdateWarning: string | null = null;
@@ -6487,20 +6781,61 @@ setCustomerOrganizationName("");
       return;
     }
 
+    // Slice S7 — desktop reads the SQLite purchase-returns mirror
+    // when the network is gone (or the live fetch fails), and merges
+    // the pending (unsynced) purchase returns from the local store
+    // into the list, so a return saved offline shows at once. A
+    // synced row's `request_key` drops its pending twin, so one
+    // return never renders twice. The mirror always stores server
+    // rows only. The web build keeps its live-only fetch.
+    const scope = offlineCacheScope(orgId);
+    const loadMirror = async (): Promise<PurchaseReturn[] | null> => {
+      if (!scope || !isDesktopApp()) return null;
+      const mirror = await loadHistoryMirror<PurchaseReturn>("purchase_return", scope);
+      if (mirror.rows.length === 0) return null;
+      return mirror.rows;
+    };
+    const mergeLocal = async (rows: PurchaseReturn[]): Promise<PurchaseReturn[]> => {
+      if (!scope || !isDesktopApp()) return rows;
+      try {
+        const localRows = await getLocalReturnsBackend().list(scope);
+        return mergePendingPurchaseReturns(rows, [], localRows, t("offline.pendingLabel")).returns;
+      } catch {
+        return rows;
+      }
+    };
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const mirrored = await loadMirror();
+      setPurchaseReturnsLoading(false);
+      if (mirrored) {
+        setPurchaseReturns(await mergeLocal(mirrored));
+        return;
+      }
+      console.error("Supabase fetch purchase returns error:", new Error("Offline and no cached purchase returns"));
+      return;
+    }
+
     const { data, error } = await supabase
       .from("purchase_returns")
-      .select("id, organization_id, return_number, supplier_id, purchase_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at")
+      .select("id, organization_id, return_number, supplier_id, purchase_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at, request_key")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
     setPurchaseReturnsLoading(false);
 
     if (error) {
+      const mirrored = await loadMirror();
+      if (mirrored) {
+        setPurchaseReturns(await mergeLocal(mirrored));
+        return;
+      }
       console.error("Supabase fetch purchase returns error:", error);
       return;
     }
 
-    setPurchaseReturns(data ?? []);
+    const rows = data ?? [];
+    if (scope && isDesktopApp()) void saveHistoryMirror("purchase_return", scope, rows);
+    setPurchaseReturns(await mergeLocal(rows));
   };
 
   const fetchPurchaseReturnItems = async (
@@ -6513,7 +6848,41 @@ setCustomerOrganizationName("");
       return;
     }
 
+    // Slice S7 — desktop reads the SQLite purchase-return-items
+    // mirror on the full-fetch path only (a scoped fetch is a live
+    // detail view), and merges the pending (unsynced) purchase
+    // return lines into the list. A synced return's `request_key`
+    // drops its pending twin. The mirror always stores server rows
+    // only. The web build keeps its live-only fetch.
+    const scope = offlineCacheScope(orgId);
+    const loadMirror = async (): Promise<PurchaseReturnItem[] | null> => {
+      if (!scope || !isDesktopApp()) return null;
+      const mirror = await loadHistoryMirror<PurchaseReturnItem>("purchase_return_item", scope);
+      if (mirror.rows.length === 0) return null;
+      return mirror.rows;
+    };
+    const mergeLocalItems = async (
+      rows: PurchaseReturnItem[],
+      syncedRequestKeys: ReadonlySet<string>,
+    ): Promise<PurchaseReturnItem[]> => {
+      if (!scope || !isDesktopApp()) return rows;
+      try {
+        const localRows = await getLocalReturnsBackend().list(scope);
+        return mergePendingPurchaseReturnItems(rows, syncedRequestKeys, localRows);
+      } catch {
+        return rows;
+      }
+    };
+    if (returnIds === undefined && typeof navigator !== "undefined" && !navigator.onLine) {
+      const mirrored = await loadMirror();
+      if (mirrored) {
+        setPurchaseReturnItems(await mergeLocalItems(mirrored, new Set()));
+        return;
+      }
+    }
+
     let ids = returnIds;
+    let syncedRequestKeys = new Set<string>();
     if (!ids || ids.length === 0) {
       if (returnIds !== undefined) {
         setPurchaseReturnItems([]);
@@ -6521,17 +6890,22 @@ setCustomerOrganizationName("");
       }
       const { data: returnRows, error: returnsError } = await supabase
         .from("purchase_returns")
-        .select("id")
+        .select("id, request_key")
         .eq("organization_id", orgId);
       if (returnsError) {
         console.error("Supabase fetch purchase return ids error:", returnsError);
         return;
       }
       ids = (returnRows ?? []).map((row) => row.id);
+      syncedRequestKeys = new Set(
+        (returnRows ?? [])
+          .map((row) => (typeof row.request_key === "string" ? row.request_key : ""))
+          .filter((key) => key.length > 0),
+      );
     }
 
     if (ids.length === 0) {
-      setPurchaseReturnItems([]);
+      setPurchaseReturnItems(returnIds === undefined ? await mergeLocalItems([], new Set()) : []);
       return;
     }
 
@@ -6542,11 +6916,24 @@ setCustomerOrganizationName("");
       .order("created_at", { ascending: true });
 
     if (error) {
+      if (returnIds === undefined) {
+        const mirrored = await loadMirror();
+        if (mirrored) {
+          setPurchaseReturnItems(await mergeLocalItems(mirrored, syncedRequestKeys));
+          return;
+        }
+      }
       console.error("Supabase fetch purchase return items error:", error);
       return;
     }
 
-    setPurchaseReturnItems(data ?? []);
+    const rows = data ?? [];
+    if (returnIds === undefined) {
+      if (scope && isDesktopApp()) void saveHistoryMirror("purchase_return_item", scope, rows);
+      setPurchaseReturnItems(await mergeLocalItems(rows, syncedRequestKeys));
+      return;
+    }
+    setPurchaseReturnItems(rows);
   };
 
   const fetchSalesOrders = async (organizationId?: string | null, actor = currentProfile) => {
@@ -6647,6 +7034,14 @@ setCustomerOrganizationName("");
     // the network is gone (or the live fetch fails): the offline
     // credit-balance derivation needs the returns rows. The web build
     // keeps its live-only fetch.
+    // Slice S7 — desktop merges the pending (unsynced) sales returns
+    // from the local store into the list, so a return saved offline
+    // flips the sale's history badge to Returned and drops the
+    // customer's derived outstanding at once. A synced row's
+    // `request_key` drops its pending twin, so one return never
+    // renders twice. The mirror always stores server rows only —
+    // never the merged list — or a pending row would duplicate on
+    // the next mirror load.
     const scope = offlineCacheScope(orgId);
     const loadMirror = async (): Promise<SalesReturn[] | null> => {
       if (!scope || !isDesktopApp()) return null;
@@ -6655,11 +7050,20 @@ setCustomerOrganizationName("");
       noteLedgerMirror("sales_return", mirror.savedAt, true);
       return mirror.rows;
     };
+    const mergeLocal = async (rows: SalesReturn[]): Promise<SalesReturn[]> => {
+      if (!scope || !isDesktopApp()) return rows;
+      try {
+        const localRows = await getLocalReturnsBackend().list(scope);
+        return mergePendingSalesReturns(rows, [], localRows, t("offline.pendingLabel")).returns;
+      } catch {
+        return rows;
+      }
+    };
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       const mirrored = await loadMirror();
       setSalesReturnsLoading(false);
       if (mirrored) {
-        setSalesReturns(mirrored);
+        setSalesReturns(await mergeLocal(mirrored));
         return;
       }
       console.error("Supabase fetch sales returns error:", new Error("Offline and no cached sales returns"));
@@ -6668,7 +7072,7 @@ setCustomerOrganizationName("");
 
     const { data, error } = await supabase
       .from("sales_returns")
-      .select("id, organization_id, return_number, customer_id, sales_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at")
+      .select("id, organization_id, return_number, customer_id, sales_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at, request_key")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -6677,7 +7081,7 @@ setCustomerOrganizationName("");
     if (error) {
       const mirrored = await loadMirror();
       if (mirrored) {
-        setSalesReturns(mirrored);
+        setSalesReturns(await mergeLocal(mirrored));
         return;
       }
       console.error("Supabase fetch sales returns error:", error);
@@ -6687,7 +7091,7 @@ setCustomerOrganizationName("");
     const rows = data ?? [];
     if (scope && isDesktopApp()) void saveHistoryMirror("sales_return", scope, rows);
     noteLedgerMirror("sales_return", null, false);
-    setSalesReturns(rows);
+    setSalesReturns(await mergeLocal(rows));
   };
 
   const fetchSalesReturnItems = async (
@@ -6703,6 +7107,10 @@ setCustomerOrganizationName("");
     // Slice S5 — desktop reads the SQLite sales-return-items mirror on
     // the full-fetch path only (a scoped fetch is a live detail view).
     // The offline credit-balance derivation needs the return lines.
+    // Slice S7 — desktop merges the pending (unsynced) sales return
+    // lines into the list on the full-fetch path, so the history badge
+    // math reads them. A synced return's `request_key` drops its
+    // pending twin. The mirror always stores server rows only.
     const scope = offlineCacheScope(orgId);
     const loadMirror = async (): Promise<SalesReturnItem[] | null> => {
       if (!scope || !isDesktopApp()) return null;
@@ -6711,15 +7119,28 @@ setCustomerOrganizationName("");
       noteLedgerMirror("sales_return_item", mirror.savedAt, true);
       return mirror.rows;
     };
+    const mergeLocalItems = async (
+      rows: SalesReturnItem[],
+      syncedRequestKeys: ReadonlySet<string>,
+    ): Promise<SalesReturnItem[]> => {
+      if (!scope || !isDesktopApp()) return rows;
+      try {
+        const localRows = await getLocalReturnsBackend().list(scope);
+        return mergePendingSalesReturnItems(rows, syncedRequestKeys, localRows);
+      } catch {
+        return rows;
+      }
+    };
     if (returnIds === undefined && typeof navigator !== "undefined" && !navigator.onLine) {
       const mirrored = await loadMirror();
       if (mirrored) {
-        setSalesReturnItems(mirrored);
+        setSalesReturnItems(await mergeLocalItems(mirrored, new Set()));
         return;
       }
     }
 
     let ids = returnIds;
+    let syncedRequestKeys = new Set<string>();
     if (!ids || ids.length === 0) {
       if (returnIds !== undefined) {
         setSalesReturnItems([]);
@@ -6727,17 +7148,22 @@ setCustomerOrganizationName("");
       }
       const { data: returnRows, error: returnsError } = await supabase
         .from("sales_returns")
-        .select("id")
+        .select("id, request_key")
         .eq("organization_id", orgId);
       if (returnsError) {
         console.error("Supabase fetch sales return ids error:", returnsError);
         return;
       }
       ids = (returnRows ?? []).map((row) => row.id);
+      syncedRequestKeys = new Set(
+        (returnRows ?? [])
+          .map((row) => (typeof row.request_key === "string" ? row.request_key : ""))
+          .filter((key) => key.length > 0),
+      );
     }
 
     if (ids.length === 0) {
-      setSalesReturnItems([]);
+      setSalesReturnItems(returnIds === undefined ? await mergeLocalItems([], new Set()) : []);
       return;
     }
 
@@ -6751,7 +7177,7 @@ setCustomerOrganizationName("");
       if (returnIds === undefined) {
         const mirrored = await loadMirror();
         if (mirrored) {
-          setSalesReturnItems(mirrored);
+          setSalesReturnItems(await mergeLocalItems(mirrored, syncedRequestKeys));
           return;
         }
       }
@@ -6763,6 +7189,8 @@ setCustomerOrganizationName("");
     if (returnIds === undefined) {
       if (scope && isDesktopApp()) void saveHistoryMirror("sales_return_item", scope, rows);
       noteLedgerMirror("sales_return_item", null, false);
+      setSalesReturnItems(await mergeLocalItems(rows, syncedRequestKeys));
+      return;
     }
     setSalesReturnItems(rows);
   };
@@ -7125,6 +7553,23 @@ setCustomerOrganizationName("");
           fetchPurchaseItems();
           fetchProducts();
           await refreshPendingPurchases();
+        } else if (outcome.kind === "return") {
+          setSalesMessage(t('syncIssues.returnRetryConfirmed'));
+          fetchSalesReturns();
+          fetchSalesReturnItems();
+          fetchPurchaseReturns();
+          fetchPurchaseReturnItems();
+          fetchSalesTransactions();
+        } else if (outcome.kind === "payment") {
+          setSalesMessage(t('syncIssues.paymentRetryConfirmed'));
+          fetchCustomerPayments();
+          fetchSupplierPayments();
+          fetchCustomerPaymentAllocations();
+          fetchSupplierPaymentAllocations();
+          fetchSalesTransactions();
+        } else if (outcome.kind === "expense") {
+          setSalesMessage(t('syncIssues.expenseRetryConfirmed'));
+          fetchExpenses(currentOrganizationId);
         } else {
           setSalesMessage(t('syncIssues.retryConfirmed'));
           fetchSalesTransactions();
@@ -7210,8 +7655,72 @@ setCustomerOrganizationName("");
           fetchPurchaseTransactions();
           fetchPurchaseItems();
           fetchProducts();
+          // Slice S7 — the S6 expense-review gap: an offline purchase
+          // gets its reminder now that its server id exists. Only the
+          // first confirmed purchase without a linked expense (server
+          // or still-pending local) raises the reminder, the same as
+          // the online save; one at a time keeps the prompt honest.
+          const linkedPurchaseIds = new Set(
+            (expenses as Array<{ purchase_transaction_id?: unknown }>)
+              .map((row) => row.purchase_transaction_id)
+              .filter((id): id is string => typeof id === "string"),
+          );
+          void (async () => {
+            const scope = currentOrganizationId && currentProfile?.id
+              ? `${currentOrganizationId}:${currentProfile.id}`
+              : null;
+            const pendingExpenseLinks = scope
+              ? await getLocalExpensesBackend().list(scope).catch(() => [])
+              : [];
+            for (const link of pendingExpenseLinks) {
+              const linked = (link.input as { purchase_transaction_id?: unknown } | null)?.purchase_transaction_id;
+              if (typeof linked === "string") linkedPurchaseIds.add(linked);
+            }
+            const unreviewed = purchasesDrained.confirmed.find(
+              (purchase) => !linkedPurchaseIds.has(purchase.serverId),
+            );
+            if (unreviewed && unreviewed.invoiceNumber && unreviewed.supplierId) {
+              setNewPurchaseExpenseReminder({
+                id: unreviewed.serverId,
+                invoiceNumber: unreviewed.invoiceNumber,
+                supplierId: unreviewed.supplierId,
+              });
+              setPurchaseExpenseStatusMessage(null);
+            }
+          })();
         }
         void refreshPendingPurchases();
+      },
+      // Slice S7 — returns drain after sales (design §4 order step
+      // 3); a confirmed return refreshes the returns lists and the
+      // sales history (the Returned badge follows the state).
+      onReturnsDrained: (returnsDrained) => {
+        if (returnsDrained.confirmedCount > 0) {
+          fetchSalesReturns();
+          fetchSalesReturnItems();
+          fetchPurchaseReturns();
+          fetchPurchaseReturnItems();
+          fetchSalesTransactions();
+        }
+      },
+      // Slice S7 — payments drain after sales returns (design §4
+      // order step 4); a confirmed payment or void refreshes the
+      // payment lists so the derived balances follow at once.
+      onPaymentsDrained: (paymentsDrained) => {
+        if (paymentsDrained.confirmedCount > 0) {
+          fetchCustomerPayments();
+          fetchSupplierPayments();
+          fetchCustomerPaymentAllocations();
+          fetchSupplierPaymentAllocations();
+          fetchSalesTransactions();
+        }
+      },
+      // Slice S7 — expenses drain last (design §4 order step 6).
+      onExpensesDrained: (expensesDrained) => {
+        if (expensesDrained.confirmedCount > 0) {
+          fetchExpenses(currentOrganizationId);
+          fetchPurchaseTransactions();
+        }
       },
     });
     const handleQueueChanged = () => void refreshPendingSales();
@@ -8818,6 +9327,13 @@ setCustomerOrganizationName("");
         // when the network is gone (or the live fetch fails): the
         // offline credit-balance derivation needs the payment rows.
         // The web build keeps its live-only fetch.
+        // Slice S7 — desktop merges the pending (unsynced) customer
+        // payments from the local store into the list, and marks a
+        // payment with a pending void as voided, so the derived
+        // outstanding drops at once and a voided payment never
+        // counts. A synced row's `request_key` drops its pending
+        // twin, so one payment never renders twice. The mirror
+        // always stores server rows only.
         const scope = offlineCacheScope(orgId);
         const loadMirror = async (): Promise<any[] | null> => {
           if (!scope || !isDesktopApp()) return null;
@@ -8826,25 +9342,34 @@ setCustomerOrganizationName("");
           noteLedgerMirror("customer_payment", mirror.savedAt, true);
           return mirror.rows;
         };
+        const mergeLocal = async (rows: any[]): Promise<any[]> => {
+          if (!scope || !isDesktopApp()) return rows;
+          try {
+            const localRows = await getLocalPaymentsBackend().list(scope);
+            return mergePendingCustomerPayments(rows, localRows);
+          } catch {
+            return rows;
+          }
+        };
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           const mirrored = await loadMirror();
-          if (mirrored) return mirrored;
+          if (mirrored) return mergeLocal(mirrored);
           throw new Error("Offline and no cached customer payments");
         }
         try {
           const { data, error } = await supabase
             .from("customer_payments")
-            .select("id, customer_id, amount, notes, created_at, payment_date, payment_method, reference, voided_at, void_reason, edited_at")
+            .select("id, customer_id, amount, notes, created_at, payment_date, payment_method, reference, voided_at, void_reason, edited_at, request_key")
             .eq("organization_id", orgId)
             .order("id", { ascending: true });
           if (error) throw error;
           const rows = data ?? [];
           if (scope && isDesktopApp()) void saveHistoryMirror("customer_payment", scope, rows);
           noteLedgerMirror("customer_payment", null, false);
-          return rows;
+          return mergeLocal(rows);
         } catch (caught) {
           const mirrored = await loadMirror();
-          if (mirrored) return mirrored;
+          if (mirrored) return mergeLocal(mirrored);
           throw caught;
         }
       },
@@ -8868,6 +9393,12 @@ setCustomerOrganizationName("");
         // the network is gone (or the live fetch fails): the offline
         // credit-balance derivation needs the allocation rows. The web
         // build keeps its live-only fetch.
+        // Slice S7 — desktop merges the pending (unsynced) payment
+        // allocations from the local store into the list, so the
+        // derived outstanding reads them at once. The merge reads the
+        // same queue list as the payments merge, so a payment that
+        // synced (and left the queue) never leaves its allocations
+        // behind. The mirror always stores server rows only.
         const scope = offlineCacheScope(orgId);
         const loadMirror = async (): Promise<any[] | null> => {
           if (!scope || !isDesktopApp()) return null;
@@ -8876,9 +9407,18 @@ setCustomerOrganizationName("");
           noteLedgerMirror("customer_payment_allocation", mirror.savedAt, true);
           return mirror.rows;
         };
+        const mergeLocal = async (rows: any[]): Promise<any[]> => {
+          if (!scope || !isDesktopApp()) return rows;
+          try {
+            const localRows = await getLocalPaymentsBackend().list(scope);
+            return mergePendingCustomerAllocations(rows, localRows);
+          } catch {
+            return rows;
+          }
+        };
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           const mirrored = await loadMirror();
-          if (mirrored) return mirrored;
+          if (mirrored) return mergeLocal(mirrored);
           throw new Error("Offline and no cached customer payment allocations");
         }
         try {
@@ -8891,10 +9431,10 @@ setCustomerOrganizationName("");
           const rows = data ?? [];
           if (scope && isDesktopApp()) void saveHistoryMirror("customer_payment_allocation", scope, rows);
           noteLedgerMirror("customer_payment_allocation", null, false);
-          return rows;
+          return mergeLocal(rows);
         } catch (caught) {
           const mirrored = await loadMirror();
-          if (mirrored) return mirrored;
+          if (mirrored) return mergeLocal(mirrored);
           throw caught;
         }
       },
@@ -8914,13 +9454,50 @@ setCustomerOrganizationName("");
       "supplier-payments",
       orgId,
       async () => {
-        const { data, error } = await supabase
-          .from("supplier_payments")
-          .select("id, supplier_id, amount, notes, payment_date, created_at, payment_method, reference, voided_at, void_reason, edited_at")
-          .eq("organization_id", orgId)
-          .order("id", { ascending: true });
-        if (error) throw error;
-        return data ?? [];
+        // Slice S7 — desktop reads the SQLite supplier-payments
+        // mirror when the network is gone (or the live fetch fails),
+        // and merges the pending (unsynced) supplier payments from
+        // the local store into the list, marking a payment with a
+        // pending void as voided. A synced row's `request_key` drops
+        // its pending twin, so one payment never renders twice. The
+        // mirror always stores server rows only. The web build keeps
+        // its live-only fetch.
+        const scope = offlineCacheScope(orgId);
+        const loadMirror = async (): Promise<any[] | null> => {
+          if (!scope || !isDesktopApp()) return null;
+          const mirror = await loadHistoryMirror<any>("supplier_payment", scope);
+          if (mirror.rows.length === 0) return null;
+          return mirror.rows;
+        };
+        const mergeLocal = async (rows: any[]): Promise<any[]> => {
+          if (!scope || !isDesktopApp()) return rows;
+          try {
+            const localRows = await getLocalPaymentsBackend().list(scope);
+            return mergePendingSupplierPayments(rows, localRows);
+          } catch {
+            return rows;
+          }
+        };
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mergeLocal(mirrored);
+          throw new Error("Offline and no cached supplier payments");
+        }
+        try {
+          const { data, error } = await supabase
+            .from("supplier_payments")
+            .select("id, supplier_id, amount, notes, payment_date, created_at, payment_method, reference, voided_at, void_reason, edited_at, request_key")
+            .eq("organization_id", orgId)
+            .order("id", { ascending: true });
+          if (error) throw error;
+          const rows = data ?? [];
+          if (scope && isDesktopApp()) void saveHistoryMirror("supplier_payment", scope, rows);
+          return mergeLocal(rows);
+        } catch (caught) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mergeLocal(mirrored);
+          throw caught;
+        }
       },
       setSupplierPayments,
       (error) => console.error("Supabase fetch supplier payments error:", error),
@@ -8938,13 +9515,50 @@ setCustomerOrganizationName("");
       "supplier-payment-allocations",
       orgId,
       async () => {
-        const { data, error } = await supabase
-          .from("supplier_payment_allocations")
-          .select("*")
-          .eq("organization_id", orgId)
-          .order("created_at", { ascending: true });
-        if (error) throw error;
-        return data ?? [];
+        // Slice S7 — desktop reads the SQLite supplier-payment
+        // allocations mirror when the network is gone (or the live
+        // fetch fails), and merges the pending (unsynced) payment
+        // allocations from the local store into the list. Same
+        // discipline as the customer allocations: the merge reads
+        // the same queue list as the payments merge. The mirror
+        // always stores server rows only. The web build keeps its
+        // live-only fetch.
+        const scope = offlineCacheScope(orgId);
+        const loadMirror = async (): Promise<any[] | null> => {
+          if (!scope || !isDesktopApp()) return null;
+          const mirror = await loadHistoryMirror<any>("supplier_payment_allocation", scope);
+          if (mirror.rows.length === 0) return null;
+          return mirror.rows;
+        };
+        const mergeLocal = async (rows: any[]): Promise<any[]> => {
+          if (!scope || !isDesktopApp()) return rows;
+          try {
+            const localRows = await getLocalPaymentsBackend().list(scope);
+            return mergePendingSupplierAllocations(rows, localRows);
+          } catch {
+            return rows;
+          }
+        };
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mergeLocal(mirrored);
+          throw new Error("Offline and no cached supplier payment allocations");
+        }
+        try {
+          const { data, error } = await supabase
+            .from("supplier_payment_allocations")
+            .select("*")
+            .eq("organization_id", orgId)
+            .order("created_at", { ascending: true });
+          if (error) throw error;
+          const rows = data ?? [];
+          if (scope && isDesktopApp()) void saveHistoryMirror("supplier_payment_allocation", scope, rows);
+          return mergeLocal(rows);
+        } catch (caught) {
+          const mirrored = await loadMirror();
+          if (mirrored) return mergeLocal(mirrored);
+          throw caught;
+        }
       },
       setSupplierPaymentAllocations,
       (error) => console.error("Supabase fetch supplier payment allocations error:", error),
@@ -11028,27 +11642,98 @@ setCustomerOrganizationName("");
       return;
     }
 
+    const purchaseReturnInput = {
+      supplierId: returnSupplierId,
+      purchaseTransactionId: returnPurchaseTransactionId || null,
+      returnDate: returnDate || null,
+      reason: returnReason,
+      lines: returnLines.map((line) => ({
+        productId: line.product_id,
+        quantity: line.quantity,
+        unitPrice: line.purchase_price,
+        unitMode: line.unit_mode,
+        batchNumber: line.batch_number || null,
+        expiryDate: line.expiry_date || null,
+      })),
+    };
+    // Slice S7 — desktop offline (or a POST that never reaches the
+    // server): save the return on this device instead of failing it.
+    // The local row carries the client idempotency key and gets its
+    // provisional PR-number from the store; the silent sync engine
+    // drains it through POST /api/purchases/returns when the network
+    // returns. The web build keeps the live POST exactly as-is.
+    const savePurchaseReturnLocally = async (): Promise<LocalReturnRow | null> => {
+      if (!isDesktopApp() || !currentOrganizationId || !currentProfile?.id) return null;
+      const scope = `${currentOrganizationId}:${currentProfile.id}`;
+      try {
+        const row = await getLocalReturnsBackend().upsert(
+          scope,
+          newLocalReturnRow("purchase", purchaseReturnInput as unknown as Record<string, unknown>),
+        );
+        notifyLocalReturnsChanged();
+        return row;
+      } catch {
+        return null;
+      }
+    };
+    const resetPurchaseReturnForm = async () => {
+      setReturnSupplierId("");
+      setReturnDate(toDateInputValue(new Date()));
+      setReturnReason("");
+      setReturnPurchaseTransactionId("");
+      setReturnLines([]);
+      await fetchPurchaseReturns();
+      await fetchPurchaseReturnItems();
+    };
+    if (isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine) {
+      const savedRow = await savePurchaseReturnLocally();
+      if (!savedRow) {
+        setReturnError(t('page.createPurchaseReturnFailed'));
+        setReturnLoading(false);
+        return;
+      }
+      setReturnMessage(t('offline.purchaseReturnSavedOffline'));
+      await resetPurchaseReturnForm();
+      setReturnLoading(false);
+      return;
+    }
+
     try {
-      const response = await authorizedFetch("/api/purchases/returns", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organizationId: currentOrganizationId,
-          supplierId: returnSupplierId,
-          purchaseTransactionId: returnPurchaseTransactionId || null,
-          returnDate: returnDate || null,
-          reason: returnReason,
-          lines: returnLines.map((line) => ({
-            productId: line.product_id,
-            quantity: line.quantity,
-            unitPrice: line.purchase_price,
-            unitMode: line.unit_mode,
-            batchNumber: line.batch_number || null,
-            expiryDate: line.expiry_date || null,
-          })),
-          createdByProfileId: currentProfile?.id ?? null,
-        }),
-      });
+      let response: Response;
+      try {
+        response = await authorizedFetch("/api/purchases/returns", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            organizationId: currentOrganizationId,
+            supplierId: returnSupplierId,
+            purchaseTransactionId: returnPurchaseTransactionId || null,
+            returnDate: returnDate || null,
+            reason: returnReason,
+            lines: returnLines.map((line) => ({
+              productId: line.product_id,
+              quantity: line.quantity,
+              unitPrice: line.purchase_price,
+              unitMode: line.unit_mode,
+              batchNumber: line.batch_number || null,
+              expiryDate: line.expiry_date || null,
+            })),
+            createdByProfileId: currentProfile?.id ?? null,
+          }),
+        });
+      } catch (caught) {
+        // The POST never reached the server — park it locally on
+        // desktop instead of failing the save. A server refusal is a
+        // real error and is never parked.
+        if (isDesktopApp() && isNetworkError(caught)) {
+          const savedRow = await savePurchaseReturnLocally();
+          if (!savedRow) throw caught;
+          setReturnMessage(t('offline.purchaseReturnSavedOffline'));
+          await resetPurchaseReturnForm();
+          return;
+        }
+        throw caught;
+      }
 
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.ok) {
@@ -11112,6 +11797,21 @@ setCustomerOrganizationName("");
     const purchaseReturn = purchaseReturns.find((item) => item.id === returnId);
     if (!purchaseReturn || purchaseReturn.status !== "confirmed") return;
     if (cancellingReturnId) return;
+
+    // Slice S7 — cancelling a PENDING (unsynced) return just drops
+    // the local row; it never existed server-side.
+    if (isPendingReturnHistoryId(returnId)) {
+      const scope = offlineCacheScope(currentOrganizationId ?? "");
+      if (scope) {
+        await getLocalReturnsBackend().remove(scope, pendingReturnRequestKey(returnId));
+        notifyLocalReturnsChanged();
+      }
+      setReturnMessage(t('page.purchaseReturnCancelled'));
+      setReturnError(null);
+      await fetchPurchaseReturns();
+      await fetchPurchaseReturnItems();
+      return;
+    }
 
     setCancellingReturnId(returnId);
     try {
@@ -11753,30 +12453,126 @@ setCustomerOrganizationName("");
     setSrMessage(null);
     setSrLoading(true);
 
+    const salesReturnInput = {
+      customerId: srCustomerId,
+      salesTransactionId: srSalesTransactionId || null,
+      returnDate: srReturnDate || null,
+      reason: srReturnReason.trim() || null,
+      lines: srLines
+        .filter((line) => line.product_id)
+        .map((line) => ({
+          productId: line.product_id,
+          quantity: Number(line.quantity),
+          unitPrice: line.selling_price === "" ? null : Number(line.selling_price),
+          discount: line.discount === "" ? 0 : Number(line.discount),
+          unitMode: line.unit_mode ?? "main",
+          batchNumber: line.batch_number?.trim() || null,
+          expiryDate: line.expiry_date || null,
+        })),
+    };
+    // Slice S7 — desktop offline (or a POST that never reaches the
+    // server): save the return on this device instead of failing it.
+    // The local row carries the client idempotency key and gets its
+    // provisional SR-number from the store; the silent sync engine
+    // drains it through POST /api/sales/returns when the network
+    // returns. The web build keeps the live POST exactly as-is. A
+    // cash refund still kicks the drawer, with the local row id as
+    // the linked movement id.
+    const saveSalesReturnLocally = async (): Promise<LocalReturnRow | null> => {
+      if (!isDesktopApp() || !currentOrganizationId || !currentProfile?.id) return null;
+      const scope = `${currentOrganizationId}:${currentProfile.id}`;
+      try {
+        const row = await getLocalReturnsBackend().upsert(
+          scope,
+          newLocalReturnRow("sales", salesReturnInput as unknown as Record<string, unknown>),
+        );
+        notifyLocalReturnsChanged();
+        return row;
+      } catch {
+        return null;
+      }
+    };
+    const kickReturnDrawer = (linkedMovementId: string | null) => {
+      const linkedReturnSale = srSalesTransactionId
+        ? salesTransactions.find((item) => String(item.id) === String(srSalesTransactionId))
+        : undefined;
+      const returnDrawerEvent = drawerEventTypeForReturn({ linkedPaymentType: linkedReturnSale?.payment_type ?? null });
+      if (returnDrawerEvent) {
+        const refundAmount = srLines.reduce(
+          (sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - safeNumber(line.discount),
+          0,
+        );
+        void fireDrawerKick({
+          eventType: returnDrawerEvent,
+          linkedSaleId: srSalesTransactionId || null,
+          linkedMovementId,
+          amount: Math.max(0, roundMoney(refundAmount)),
+        });
+      }
+    };
+    const resetSalesReturnForm = async () => {
+      setSrCustomerId("");
+      setSrSalesTransactionId("");
+      setSrReturnDate(toDateInputValue(new Date()));
+      setSrReturnReason("");
+      setSrLines([]);
+      await fetchSalesReturns();
+      await fetchSalesReturnItems();
+    };
+    if (isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine) {
+      const savedRow = await saveSalesReturnLocally();
+      if (!savedRow) {
+        setSrError(t('page.createSalesReturnFailed'));
+        setSrLoading(false);
+        return;
+      }
+      kickReturnDrawer(savedRow.id);
+      setSrMessage(t('offline.salesReturnSavedOffline'));
+      await resetSalesReturnForm();
+      setSrLoading(false);
+      return;
+    }
+
     try {
-      const response = await authorizedFetch("/api/sales/returns", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organizationId: currentOrganizationId,
-          customerId: srCustomerId,
-          salesTransactionId: srSalesTransactionId || null,
-          returnDate: srReturnDate || null,
-          reason: srReturnReason.trim() || null,
-          createdByProfileId: currentProfile?.id ?? null,
-          lines: srLines
-            .filter((line) => line.product_id)
-            .map((line) => ({
-              productId: line.product_id,
-              quantity: Number(line.quantity),
-              unitPrice: line.selling_price === "" ? null : Number(line.selling_price),
-              discount: line.discount === "" ? 0 : Number(line.discount),
-              unitMode: line.unit_mode ?? "main",
-              batchNumber: line.batch_number?.trim() || null,
-              expiryDate: line.expiry_date || null,
-            })),
-        }),
-      });
+      let response: Response;
+      try {
+        response = await authorizedFetch("/api/sales/returns", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            organizationId: currentOrganizationId,
+            customerId: srCustomerId,
+            salesTransactionId: srSalesTransactionId || null,
+            returnDate: srReturnDate || null,
+            reason: srReturnReason.trim() || null,
+            createdByProfileId: currentProfile?.id ?? null,
+            lines: srLines
+              .filter((line) => line.product_id)
+              .map((line) => ({
+                productId: line.product_id,
+                quantity: Number(line.quantity),
+                unitPrice: line.selling_price === "" ? null : Number(line.selling_price),
+                discount: line.discount === "" ? 0 : Number(line.discount),
+                unitMode: line.unit_mode ?? "main",
+                batchNumber: line.batch_number?.trim() || null,
+                expiryDate: line.expiry_date || null,
+              })),
+          }),
+        });
+      } catch (caught) {
+        // The POST never reached the server — park it locally on
+        // desktop instead of failing the save. A server refusal is a
+        // real error and is never parked.
+        if (isDesktopApp() && isNetworkError(caught)) {
+          const savedRow = await saveSalesReturnLocally();
+          if (!savedRow) throw caught;
+          kickReturnDrawer(savedRow.id);
+          setSrMessage(t('offline.salesReturnSavedOffline'));
+          await resetSalesReturnForm();
+          return;
+        }
+        throw caught;
+      }
       const result = await response.json();
       if (!response.ok || !result.ok) {
         setSrError(result.error ?? t('page.createSalesReturnFailed'));
@@ -11801,22 +12597,7 @@ setCustomerOrganizationName("");
       // rule A.2). A return linked to a credit invoice only offsets
       // the receivable, and a card refund goes back to the card —
       // neither moves cash, so neither kicks.
-      const linkedReturnSale = srSalesTransactionId
-        ? salesTransactions.find((item) => String(item.id) === String(srSalesTransactionId))
-        : undefined;
-      const returnDrawerEvent = drawerEventTypeForReturn({ linkedPaymentType: linkedReturnSale?.payment_type ?? null });
-      if (returnDrawerEvent) {
-        const refundAmount = srLines.reduce(
-          (sum, line) => sum + safeNumber(line.quantity) * safeNumber(line.selling_price) - safeNumber(line.discount),
-          0,
-        );
-        void fireDrawerKick({
-          eventType: returnDrawerEvent,
-          linkedSaleId: srSalesTransactionId || null,
-          linkedMovementId: result.returnId ?? null,
-          amount: Math.max(0, roundMoney(refundAmount)),
-        });
-      }
+      kickReturnDrawer(result.returnId ?? null);
 
       setSrMessage(t('page.salesReturnSaved').replace('{number}', result.returnNumber));
       setSrCustomerId("");
@@ -11861,6 +12642,21 @@ setCustomerOrganizationName("");
     const salesReturn = salesReturns.find((item) => item.id === returnId);
     if (!salesReturn || salesReturn.status !== "confirmed") return;
     if (cancellingReturnId) return;
+
+    // Slice S7 — cancelling a PENDING (unsynced) return just drops
+    // the local row; it never existed server-side.
+    if (isPendingReturnHistoryId(returnId)) {
+      const scope = offlineCacheScope(currentOrganizationId ?? "");
+      if (scope) {
+        await getLocalReturnsBackend().remove(scope, pendingReturnRequestKey(returnId));
+        notifyLocalReturnsChanged();
+      }
+      setSrMessage(t('page.salesReturnCancelled'));
+      setSrError(null);
+      await fetchSalesReturns();
+      await fetchSalesReturnItems();
+      return;
+    }
 
     setCancellingReturnId(returnId);
     try {

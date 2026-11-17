@@ -28,6 +28,15 @@
  * AFTER the sales drain (design §4 order step 5: purchases reference
  * suppliers already synced in step 1).
  *
+ * Slice S7 — the full design §4 order: customers + suppliers first,
+ * then sales, then sales returns (step 3), then payments (step 4),
+ * then purchases (step 5), then purchase returns + expenses (step
+ * 6), then pull. A return references the invoice that must already
+ * be synced, and a payment allocates against invoices that must
+ * already be synced, so each drain waits for its parents. The
+ * debounced run fires on any queue change (sales, returns,
+ * payments, expenses), not just the sales queue.
+ *
  * Owner Retry of a parked sale also lives here: `retrySyncIssue`
  * re-queues the parked attempt with its ORIGINAL idempotency key at
  * the front of the queue and drains. The drain status-checks it
@@ -62,11 +71,38 @@ import {
   type SupplierDrainResult,
 } from "@/lib/offline/supplier-sync";
 import {
+  drainPendingReturns,
+  retryReturnSyncIssue,
+  type ReturnDrainResult,
+} from "@/lib/offline/return-sync";
+import {
+  drainPendingPayments,
+  retryPaymentSyncIssue,
+  type PaymentDrainResult,
+} from "@/lib/offline/payment-sync";
+import {
+  drainPendingExpenses,
+  retryExpenseSyncIssue,
+  type ExpenseDrainResult,
+} from "@/lib/offline/expense-sync";
+import {
   getSyncIssuesBackend,
   notifySyncIssuesChanged,
   syncIssueCanRetry,
 } from "@/lib/offline/sync-issues";
 import { retryPendingLinks } from "@/lib/offline/provisional-link";
+import {
+  LOCAL_RETURNS_CHANGED_EVENT,
+  getLocalReturnsBackend,
+} from "@/lib/offline/local-returns";
+import {
+  LOCAL_PAYMENTS_CHANGED_EVENT,
+  getLocalPaymentsBackend,
+} from "@/lib/offline/local-payments";
+import {
+  LOCAL_EXPENSES_CHANGED_EVENT,
+  getLocalExpensesBackend,
+} from "@/lib/offline/local-expenses";
 
 /** A run every 5 minutes while online (design §4). */
 export const SILENT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
@@ -84,6 +120,12 @@ export interface SilentSyncEngineOptions {
   onSuppliersDrained?: (drained: SupplierDrainResult) => void;
   /** Called after the purchase drain (step 5 of the sync order), so the page can refetch purchases. */
   onPurchasesDrained?: (drained: PurchaseDrainResult) => void;
+  /** Called after each returns drain (sales returns step 3, purchase returns step 6), so the page can refetch returns. */
+  onReturnsDrained?: (drained: ReturnDrainResult) => void;
+  /** Called after the payments drain (step 4 of the sync order), so the page can refetch payments. */
+  onPaymentsDrained?: (drained: PaymentDrainResult) => void;
+  /** Called after the expenses drain (step 6 of the sync order), so the page can refetch expenses. */
+  onExpensesDrained?: (drained: ExpenseDrainResult) => void;
   /** Test seam: override the timer intervals. Defaults are the constants above. */
   timers?: { intervalMs?: number; debounceMs?: number };
 }
@@ -130,12 +172,30 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
         const drained = await drainPendingSalesQueue(options.supabase, scope);
         await retryPendingLinks(options.supabase, scope);
         options.onDrained?.(drained);
+        // Slice S7 — sales returns next (design §4 order step 3): a
+        // return references a sale that must already be synced. A
+        // return failure never blocks the later drains — the drain
+        // handles its own failures and parks what it cannot sync.
+        const salesReturnsDrained = await drainPendingReturns(options.supabase, scope, { kind: "sales" });
+        options.onReturnsDrained?.(salesReturnsDrained);
+        // Slice S7 — payments next (design §4 order step 4): a
+        // payment allocates against invoices that must already be
+        // synced. Same discipline as the returns drain.
+        const paymentsDrained = await drainPendingPayments(options.supabase, scope);
+        options.onPaymentsDrained?.(paymentsDrained);
         // Slice S6 — purchases last of the writes (design §4 order
         // step 5): suppliers are already synced, so a purchase can
         // confirm. A purchase failure never blocks the pull — the
         // next trigger retries it.
         const purchasesDrained = await drainPendingPurchases(options.supabase, scope);
         options.onPurchasesDrained?.(purchasesDrained);
+        // Slice S7 — purchase returns + expenses last (design §4
+        // order step 6): a purchase return references a purchase
+        // that must already be synced, and an expense can link one.
+        const purchaseReturnsDrained = await drainPendingReturns(options.supabase, scope, { kind: "purchase" });
+        options.onReturnsDrained?.(purchaseReturnsDrained);
+        const expensesDrained = await drainPendingExpenses(options.supabase, scope);
+        options.onExpensesDrained?.(expensesDrained);
       } catch {
         /* A failed run stays local; the next trigger retries. Never throw. */
       }
@@ -155,12 +215,28 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
       if (stopped || !isOnline()) return;
       const scope = options.getScope();
       if (!scope) return;
-      // Only run when the queue is actually non-empty: a drain that
-      // already cleared the queue fires this same event on its own
-      // removals, and must not loop.
-      void readPendingSalesQueue(scope)
-        .then((queue) => {
-          if (queue.length > 0) void run();
+      // Only run when a queue is actually non-empty: a drain that
+      // already cleared the queues fires these same events on its
+      // own removals, and must not loop. Slice S7 — any of the
+      // queues (sales, returns, payments, expenses) can trigger it.
+      void Promise.all([
+        readPendingSalesQueue(scope),
+        getLocalReturnsBackend().list(scope),
+        getLocalPaymentsBackend().list(scope),
+        getLocalExpensesBackend().list(scope),
+      ])
+        .then(([salesQueue, returns, payments, expenses]) => {
+          const pendingReturns = returns.filter((row) => row.syncStatus === "pending");
+          const pendingPayments = payments.filter((row) => row.syncStatus === "pending");
+          const pendingExpenses = expenses.filter((row) => row.syncStatus === "pending");
+          if (
+            salesQueue.length > 0 ||
+            pendingReturns.length > 0 ||
+            pendingPayments.length > 0 ||
+            pendingExpenses.length > 0
+          ) {
+            void run();
+          }
         })
         .catch(() => {
           /* A failed read counts as empty — the timer retries. */
@@ -181,6 +257,11 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
   if (typeof window !== "undefined") {
     window.addEventListener("online", onOnline);
     window.addEventListener(QUEUE_CHANGED_EVENT, onQueueChanged);
+    // Slice S7 — a saved return / payment / expense nudges the
+    // engine the same way a saved sale does.
+    window.addEventListener(LOCAL_RETURNS_CHANGED_EVENT, onQueueChanged);
+    window.addEventListener(LOCAL_PAYMENTS_CHANGED_EVENT, onQueueChanged);
+    window.addEventListener(LOCAL_EXPENSES_CHANGED_EVENT, onQueueChanged);
   }
   if (typeof setInterval !== "undefined") {
     interval = setInterval(() => void run(), intervalMs);
@@ -194,6 +275,9 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
       if (typeof window !== "undefined") {
         window.removeEventListener("online", onOnline);
         window.removeEventListener(QUEUE_CHANGED_EVENT, onQueueChanged);
+        window.removeEventListener(LOCAL_RETURNS_CHANGED_EVENT, onQueueChanged);
+        window.removeEventListener(LOCAL_PAYMENTS_CHANGED_EVENT, onQueueChanged);
+        window.removeEventListener(LOCAL_EXPENSES_CHANGED_EVENT, onQueueChanged);
       }
     },
     requestSync(): void {
@@ -208,14 +292,16 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
  * with different contents can never succeed.
  * A customer issue dispatches to the customer retry (re-applies the
  * parked copy with a fresh timestamp) and reports kind "customer" so
- * the caller can show the right message. A supplier / purchase issue
- * dispatches the same way and reports kind "supplier" / "purchase".
+ * the caller can show the right message. A supplier / purchase /
+ * return / payment / expense issue dispatches the same way and
+ * reports kind "supplier" / "purchase" / "return" / "payment" /
+ * "expense".
  */
 export async function retrySyncIssue(
   supabase: SupabaseClient,
   scope: string,
   issueId: string,
-): Promise<{ confirmed: boolean; notRetryable: boolean; reason: string | null; kind: "sale" | "customer" | "supplier" | "purchase" }> {
+): Promise<{ confirmed: boolean; notRetryable: boolean; reason: string | null; kind: "sale" | "customer" | "supplier" | "purchase" | "return" | "payment" | "expense" }> {
   const backend = getSyncIssuesBackend();
   const issues = await backend.list(scope);
   const issue = issues.find((item) => item.id === issueId);
@@ -230,6 +316,18 @@ export async function retrySyncIssue(
   if (issue && issue.purchaseId) {
     const outcome = await retryPurchaseSyncIssue(supabase, scope, issueId);
     return { ...outcome, kind: "purchase" as const };
+  }
+  if (issue && issue.returnId) {
+    const outcome = await retryReturnSyncIssue(supabase, scope, issueId);
+    return { ...outcome, kind: "return" as const };
+  }
+  if (issue && issue.paymentId) {
+    const outcome = await retryPaymentSyncIssue(supabase, scope, issueId);
+    return { ...outcome, kind: "payment" as const };
+  }
+  if (issue && issue.expenseId) {
+    const outcome = await retryExpenseSyncIssue(supabase, scope, issueId);
+    return { ...outcome, kind: "expense" as const };
   }
   if (!issue || issue.status !== "open" || !issue.payload || !issue.requestId) {
     return { confirmed: false, notRetryable: false, reason: null, kind: "sale" as const };

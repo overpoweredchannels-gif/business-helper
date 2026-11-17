@@ -170,6 +170,9 @@ export async function parkSupplierAsSyncIssue(
     customerId: null,
     supplierId: row.id,
     purchaseId: null,
+    returnId: null,
+    paymentId: null,
+    expenseId: null,
   };
   try {
     const stored = await getSyncIssuesBackend().upsert(scope, issue);

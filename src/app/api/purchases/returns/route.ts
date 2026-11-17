@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { createSupabaseUserClient } from "@/lib/supabase/server";
 import { buildOrganizationContext } from "@/lib/identity/api-context";
 import { requirePermission } from "@/lib/identity/authorization";
@@ -72,6 +73,72 @@ export async function POST(request: NextRequest) {
     const supabase = createSupabaseUserClient(getAccessToken(request));
     const supplierId = String(body?.supplierId ?? "");
     const purchaseTransactionId = body?.purchaseTransactionId || null;
+    const requestKey =
+      typeof body?.requestKey === "string" && body.requestKey.length > 0 ? body.requestKey : null;
+    // A PostgREST error for a column that does not exist yet
+    // (Postgres 42703): the `request_key` column lands with the S7
+    // SQL (`src/lib/migrations/returns_expenses_idempotency.sql`,
+    // UMAIR runs it disposable-first). Until then, dedup is
+    // degraded and the insert below retries without the key.
+    const isUndefinedColumnError = (error: unknown): boolean =>
+      (error as { code?: unknown } | null)?.code === "42703" ||
+      /column .*request_key.* does not exist/i.test(
+        (error as { message?: unknown } | null)?.message != null
+          ? String((error as { message: unknown }).message)
+          : "",
+      );
+
+    // Slice S7 — the fingerprint is an md5 of the canonical return
+    // body (the normalized lines + party + linked purchase + date +
+    // reason). The replay check below compares it, so the same key
+    // with different contents is a 400 instead of a silent replay.
+    const fingerprint = createHash("md5")
+      .update(
+        JSON.stringify({
+          supplierId,
+          purchaseTransactionId,
+          returnDate: body?.returnDate || null,
+          reason: typeof body?.reason === "string" ? body.reason.trim() || null : null,
+          lines,
+        }),
+      )
+      .digest("hex");
+
+    // Slice S7 — idempotency (same discipline as the sale queue):
+    // the client request key is the row's `request_key`. A replay of
+    // the same key returns the original return instead of a second
+    // return (or a second stock movement). The check runs BEFORE
+    // the stock guards below — a replay must not re-run a guard,
+    // since the quantity is already returned.
+    if (requestKey) {
+      const { data: existing, error: existingError } = await supabase
+        .from("purchase_returns")
+        .select("id, return_number, request_fingerprint")
+        .eq("organization_id", organizationId)
+        .eq("request_key", requestKey)
+        .maybeSingle();
+      if (!existingError && existing) {
+        if (existing.request_fingerprint && existing.request_fingerprint !== fingerprint) {
+          return NextResponse.json(
+            { ok: false, error: "Request key was already used for a different return" },
+            { status: 400 },
+          );
+        }
+        return NextResponse.json({
+          ok: true,
+          returnId: existing.id,
+          returnNumber: existing.return_number,
+          replayed: true,
+        });
+      }
+      if (existingError && !isUndefinedColumnError(existingError)) {
+        return NextResponse.json({ ok: false, error: existingError.message }, { status: 500 });
+      }
+      // An undefined-column error means the S7 SQL has not run yet
+      // — fall through to the plain insert (no key stored, no dedup
+      // until the SQL runs).
+    }
+
     const { data: supplier } = await supabase.from("suppliers").select("id").eq("id", supplierId).eq("organization_id", organizationId).maybeSingle();
     if (!supplier) return NextResponse.json({ ok: false, error: "Supplier not found in this organization" }, { status: 400 });
 
@@ -159,20 +226,58 @@ export async function POST(request: NextRequest) {
 
     const returnNumber = await generateInvoiceNumberWithClient(supabase, organizationId, "purchase_return");
 
-    const { data: returnData, error: returnError } = await supabase
+    const returnInsert = {
+      organization_id: organizationId,
+      return_number: returnNumber,
+      supplier_id: supplierId,
+      purchase_transaction_id: purchaseTransactionId,
+      return_date: body?.returnDate || null,
+      reason: typeof body?.reason === "string" ? body.reason.trim() || null : null,
+      status: "confirmed",
+      created_by_profile_id: actor.profileId,
+      // Slice S7 — the client request key (see the replay check
+      // above). Omitted while the S7 SQL has not run yet.
+      ...(requestKey ? { request_key: requestKey, request_fingerprint: fingerprint } : {}),
+    };
+    let { data: returnData, error: returnError } = await supabase
       .from("purchase_returns")
-      .insert({
-        organization_id: organizationId,
-        return_number: returnNumber,
-        supplier_id: supplierId,
-        purchase_transaction_id: purchaseTransactionId,
-        return_date: body?.returnDate || null,
-        reason: typeof body?.reason === "string" ? body.reason.trim() || null : null,
-        status: "confirmed",
-        created_by_profile_id: actor.profileId,
-      })
+      .insert(returnInsert)
       .select("id")
       .single();
+
+    if (returnError && requestKey && isUndefinedColumnError(returnError)) {
+      // Transitional fallback: the `request_key` column does not
+      // exist yet — retry the insert without the key (and without
+      // the fingerprint, which lands in the same SQL) so the return
+      // still saves (dedup is degraded until the SQL runs).
+      const { request_key: _requestKey, request_fingerprint: _requestFingerprint, ...insertWithoutKey } = returnInsert;
+      void _requestKey;
+      void _requestFingerprint;
+      ({ data: returnData, error: returnError } = await supabase
+        .from("purchase_returns")
+        .insert(insertWithoutKey)
+        .select("id")
+        .single());
+    }
+
+    if (returnError && requestKey && (returnError as { code?: unknown }).code === "23505") {
+      // A concurrent replay already inserted this key: return the
+      // original return instead of a second one.
+      const { data: existing } = await supabase
+        .from("purchase_returns")
+        .select("id, return_number")
+        .eq("organization_id", organizationId)
+        .eq("request_key", requestKey)
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json({
+          ok: true,
+          returnId: existing.id,
+          returnNumber: existing.return_number,
+          replayed: true,
+        });
+      }
+    }
 
     if (returnError) {
       return NextResponse.json({ ok: false, error: returnError.message }, { status: 400 });

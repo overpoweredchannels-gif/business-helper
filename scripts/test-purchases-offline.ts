@@ -626,7 +626,22 @@ async function main(): Promise<void> {
     const drained = await drainPendingPurchases(supabase, SCOPE, { fetchImpl });
     assert.deepEqual(
       drained,
-      { confirmedCount: 1, parkedCount: 0, queuedCount: 0, stoppedEarly: false },
+      {
+        confirmedCount: 1,
+        parkedCount: 0,
+        queuedCount: 0,
+        stoppedEarly: false,
+        // Slice S7 — the drain reports the confirmed purchases so
+        // the caller can attach the expense-review reminder (S6 gap).
+        confirmed: [
+          {
+            localId: "key-purchase-sync-1",
+            serverId: "tx-server-1",
+            invoiceNumber: "P-50099",
+            supplierId: "00000000-0000-4000-8000-000000000010",
+          },
+        ],
+      },
       "a status-confirmed purchase confirms",
     );
     assert.equal(fetchCalls.length, 0, "the confirmed status posts nothing — the drain never blind re-posts");

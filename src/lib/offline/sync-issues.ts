@@ -44,6 +44,17 @@
  * parked here with the local row id, so the owner can Retry it
  * (re-applies the parked copy with a fresh timestamp) or discard it.
  * A customer issue never auto-retries and is never auto-deleted.
+ *
+ * Slice S7 adds return / payment / expense issues: a return or
+ * expense whose `request_key` is already used for different contents,
+ * or a payment the server refuses, is parked here with the local row
+ * id (`returnId` / `paymentId` / `expenseId`). Retry re-submits the
+ * parked row with its ORIGINAL key — the same key + same payload
+ * replays the original record, never a duplicate — so a retry after
+ * the cause is fixed (stock / server state) succeeds exactly once.
+ * A fingerprint mismatch has no Retry: the same key + different
+ * contents fails the same way forever, and a corrected record is a
+ * NEW row with a NEW key, never an edit of the parked row.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -114,6 +125,27 @@ export interface SyncIssue {
    * other issue.
    */
   purchaseId: string | null;
+  /**
+   * Slice S7 — the local return row id (= the client request key)
+   * for a return issue (`fingerprint-mismatch` / return
+   * `rejected`). Retry finds the row by this id; null for every
+   * other issue.
+   */
+  returnId: string | null;
+  /**
+   * Slice S7 — the local payment row id (= the client request key)
+   * for a payment / void issue (`fingerprint-mismatch` / payment
+   * `rejected`). Retry finds the row by this id; null for every
+   * other issue.
+   */
+  paymentId: string | null;
+  /**
+   * Slice S7 — the local expense row id (= the client request key)
+   * for an expense issue (`fingerprint-mismatch` / expense
+   * `rejected`). Retry finds the row by this id; null for every
+   * other issue.
+   */
+  expenseId: string | null;
 }
 
 export interface SyncIssuesBackend {
@@ -232,6 +264,12 @@ export interface SyncIssueIpcRow {
   supplierId: string | null;
   /** Slice S6 — the local purchase row id for a purchase issue. */
   purchaseId: string | null;
+  /** Slice S7 — the local return row id for a return issue. */
+  returnId: string | null;
+  /** Slice S7 — the local payment row id for a payment / void issue. */
+  paymentId: string | null;
+  /** Slice S7 — the local expense row id for an expense issue. */
+  expenseId: string | null;
 }
 
 type DesktopSyncIssuesBridge = {
@@ -268,6 +306,9 @@ function toIpcRow(issue: SyncIssue): SyncIssueIpcRow {
     customerId: issue.customerId ?? null,
     supplierId: issue.supplierId ?? null,
     purchaseId: issue.purchaseId ?? null,
+    returnId: issue.returnId ?? null,
+    paymentId: issue.paymentId ?? null,
+    expenseId: issue.expenseId ?? null,
   };
 }
 
@@ -300,6 +341,9 @@ function fromIpcRow(row: SyncIssueIpcRow): SyncIssue {
     customerId: row.customerId ?? null,
     supplierId: row.supplierId ?? null,
     purchaseId: row.purchaseId ?? null,
+    returnId: row.returnId ?? null,
+    paymentId: row.paymentId ?? null,
+    expenseId: row.expenseId ?? null,
   };
 }
 
@@ -382,15 +426,20 @@ export function classifySaleRejection(message: string): Exclude<SyncIssueKind, "
 
 /** Retry is safe only when the same key + same payload can succeed: a
  * fingerprint mismatch fails the same way forever, so it has no Retry.
- * A customer / supplier / purchase issue retries by its local row
- * (the owner re-applies the parked copy with a fresh timestamp — see
- * `retryCustomerSyncIssue` / `retrySupplierSyncIssue` /
- * `retryPurchaseSyncIssue`), so it can retry whenever the row id is
- * known — except a fingerprint mismatch, which can never succeed. */
+ * A customer / supplier / purchase / return / payment / expense issue
+ * retries by its local row (the owner re-applies the parked copy —
+ * see `retryCustomerSyncIssue` / `retrySupplierSyncIssue` /
+ * `retryPurchaseSyncIssue` / `retryReturnSyncIssue` /
+ * `retryPaymentSyncIssue` / `retryExpenseSyncIssue`), so it can retry
+ * whenever the row id is known — except a fingerprint mismatch,
+ * which can never succeed. */
 export function syncIssueCanRetry(issue: SyncIssue): boolean {
   if (issue.customerId) return true;
   if (issue.supplierId) return true;
   if (issue.purchaseId) return issue.kind !== "fingerprint-mismatch";
+  if (issue.returnId) return issue.kind !== "fingerprint-mismatch";
+  if (issue.paymentId) return issue.kind !== "fingerprint-mismatch";
+  if (issue.expenseId) return issue.kind !== "fingerprint-mismatch";
   return issue.kind !== "fingerprint-mismatch" && issue.kind !== "provisional-link" && issue.payload !== null;
 }
 
@@ -453,6 +502,9 @@ export async function parkSaleAsSyncIssue(
     customerId: null,
     supplierId: null,
     purchaseId: null,
+    returnId: null,
+    paymentId: null,
+    expenseId: null,
   };
   try {
     const stored = await getSyncIssuesBackend().upsert(scope, issue);
