@@ -50,6 +50,7 @@ import { deriveOfflineCustomerBalance } from "@/lib/offline/customer-balance-off
 import { isPendingHistoryId, mergePendingHistory } from "@/lib/sales/pending-history";
 import { retrySyncIssue, startSilentSyncEngine } from "@/lib/offline/sync-engine";
 import { SYNC_ISSUES_CHANGED_EVENT, getSyncIssuesBackend, openSyncIssues, type SyncIssue } from "@/lib/offline/sync-issues";
+import { desktopBackupBridge, exportDesktopBackup, restoreDesktopBackup } from "@/lib/offline/backup";
 import { SyncIssuesPanel } from "@/components/sales/SyncIssuesPanel";
 import {
   clearIdentityCache,
@@ -765,6 +766,8 @@ export default function Home() {
   const [businessSettingsLoading, setBusinessSettingsLoading] = useState(false);
   const [businessSettingsMessage, setBusinessSettingsMessage] = useState<string | null>(null);
   const [businessSettingsError, setBusinessSettingsError] = useState<string | null>(null);
+  // Slice S8 — a backup Export / Restore is in flight (desktop shell only).
+  const [backupBusy, setBackupBusy] = useState(false);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [currentProfile, setCurrentProfile] = useState<any | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
@@ -7739,6 +7742,77 @@ setCustomerOrganizationName("");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshPendingSales, currentOrganizationId, currentProfile?.id]);
+
+  // Slice S8 — desktop Backup (Export / Restore). Owner-only,
+  // desktop only: the Settings section itself is owner/admin-gated
+  // and the buttons render only in the desktop shell. The desktop
+  // Backup menu items call these same handlers, so the gate lives
+  // here — the main process cannot know the signed-in role. Results
+  // land on the Settings message states, the same as a settings save.
+  const handleExportBackup = async (): Promise<void> => {
+    if (!isDesktopApp() || !isOwnerOrAdmin() || backupBusy) return;
+    setBackupBusy(true);
+    setBusinessSettingsError(null);
+    try {
+      const result = await exportDesktopBackup();
+      if (result.ok && result.path) {
+        setBusinessSettingsMessage(t('backup.exported').replace('{path}', result.path));
+      } else if (!result.cancelled) {
+        setBusinessSettingsError(
+          result.error === "store-unavailable" ? t('backup.storeUnavailable') : t('backup.exportFailed'),
+        );
+      }
+    } catch {
+      setBusinessSettingsError(t('backup.exportFailed'));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleRestoreBackup = async (): Promise<void> => {
+    if (!isDesktopApp() || !isOwnerOrAdmin() || backupBusy) return;
+    setBackupBusy(true);
+    setBusinessSettingsError(null);
+    try {
+      const result = await restoreDesktopBackup();
+      if (result.ok) {
+        setBusinessSettingsMessage(t('backup.restored'));
+      } else if (!result.cancelled) {
+        setBusinessSettingsError(
+          result.error === "invalid-file"
+            ? t('backup.invalidFile')
+            : result.error === "store-unavailable"
+              ? t('backup.storeUnavailable')
+              : t('backup.restoreFailed'),
+        );
+      }
+    } catch {
+      setBusinessSettingsError(t('backup.restoreFailed'));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  // Slice S8 — the desktop Backup menu (Export / Restore) arrives
+  // from the main process. The handlers above are plain functions
+  // (recreated each render), so the subscription holds a ref to the
+  // latest pair and is registered once.
+  const backupMenuHandlersRef = useRef({ onExport: handleExportBackup, onRestore: handleRestoreBackup });
+  useEffect(() => {
+    backupMenuHandlersRef.current = { onExport: handleExportBackup, onRestore: handleRestoreBackup };
+  });
+  useEffect(() => {
+    if (!isDesktopApp()) return;
+    const bridge = desktopBackupBridge();
+    if (!bridge) return;
+    const offExport = bridge.onMenuExportBackup(() => void backupMenuHandlersRef.current.onExport());
+    const offRestore = bridge.onMenuRestoreBackup(() => void backupMenuHandlersRef.current.onRestore());
+    return () => {
+      offExport();
+      offRestore();
+    };
+  }, []);
+
   // Phase E1: track the browser's online state for the offline banner.
   useEffect(() => {
     const update = () => setIsOnline(navigator.onLine);
@@ -31372,6 +31446,38 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                 </button>
                 {dutyScheduleMessage && <p className="mt-3 text-sm text-success">{dutyScheduleMessage}</p>}
                 {dutyScheduleError && <p className="mt-3 text-sm text-destructive">{dutyScheduleError}</p>}
+              </div>
+            )}
+
+            {/* Slice S8 — desktop Backup (Export / Restore). The
+                Settings section is online-only, so the desktop Backup
+                menu is the offline-reachable spot; these buttons are
+                the same actions, here for the owner while online. */}
+            {isDesktopApp() && isOwnerOrAdmin() && (
+              <div className="rounded-lg border border-border bg-background p-4">
+                <h3 className="text-base font-semibold text-foreground">{t('backup.title')}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('backup.description')}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleExportBackup()}
+                    disabled={backupBusy}
+                    className="min-h-11 rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
+                  >
+                    {t('backup.export')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRestoreBackup()}
+                    disabled={backupBusy}
+                    className="min-h-11 rounded border border-input bg-background px-4 py-2 text-foreground hover:bg-muted disabled:opacity-50"
+                  >
+                    {t('backup.restore')}
+                  </button>
+                </div>
+                {backupBusy && <p className="mt-3 text-sm text-muted-foreground">{t('backup.working')}</p>}
               </div>
             )}
 

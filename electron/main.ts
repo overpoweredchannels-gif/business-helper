@@ -1,9 +1,16 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import { autoUpdater } from "electron-updater";
 import { spawn, type ChildProcess } from "node:child_process";
+import * as fs from "node:fs";
 import * as http from "node:http";
 import { createServer as createNetServer } from "node:net";
 import * as path from "node:path";
+import {
+  backupDirFor,
+  backupFileName,
+  restoreFromBackup,
+  runDailyBackup,
+} from "./backup";
 import { createLocalStore, type LocalSaleRow, type LocalStore, type StoredIdentity } from "./store";
 
 // Slice S0 — desktop shell spike. Serves the Next.js standalone build from
@@ -399,6 +406,61 @@ function setupLocalStore(): void {
   ipcMain.handle("aankh:mirror:upsert", (_event, kind: unknown, scope: unknown, row: unknown) =>
     (localStore as LocalStore).upsertMirror(requireMirrorKind(kind), requireScope(scope), requireMirrorRow(row)),
   );
+  // Slice S8 — daily auto backup + Export / Restore (see
+  // electron/backup.ts). The dialogs run in the main process; the
+  // renderer owns the owner-only gate (the main process cannot know
+  // the signed-in role) and shows the result message. A failed
+  // backup never throws out of the handler — the renderer gets a
+  // plain { ok: false } and reports it.
+  ipcMain.handle("aankh:backup:export", async () => {
+    if (!localStore) return { ok: false, error: "store-unavailable" };
+    const picked = await dialog.showSaveDialog({
+      title: "Export Aankh backup",
+      defaultPath: backupFileName(new Date()),
+      filters: [{ name: "Aankh backup", extensions: ["db"] }],
+    });
+    if (picked.canceled || !picked.filePath) return { ok: false, cancelled: true };
+    try {
+      await (localStore as LocalStore).backup(picked.filePath);
+      return { ok: true, path: picked.filePath };
+    } catch (error) {
+      console.error("Aankh backup export failed:", error);
+      return { ok: false, error: "failed" };
+    }
+  });
+  ipcMain.handle("aankh:backup:restore", async () => {
+    if (!localStore) return { ok: false, error: "store-unavailable" };
+    const picked = await dialog.showOpenDialog({
+      title: "Restore Aankh backup",
+      filters: [{ name: "Aankh backup", extensions: ["db"] }],
+      properties: ["openFile"],
+    });
+    if (picked.canceled || picked.filePaths.length === 0) return { ok: false, cancelled: true };
+    const userDataPath = app.getPath("userData");
+    const dbPath = path.join(userDataPath, "aankh.db");
+    const store = localStore as LocalStore;
+    const result = await restoreFromBackup({
+      store,
+      dbPath,
+      userDataPath,
+      sourcePath: picked.filePaths[0],
+      restart: () => {
+        // Let the IPC reply reach the renderer first, then restart
+        // so the restored database takes effect.
+        setTimeout(() => {
+          app.relaunch();
+          app.quit();
+        }, 400);
+      },
+    });
+    if (result.ok) {
+      // The store is closed and the app is about to restart — never
+      // serve another query from the old handle.
+      localStore = null;
+      return { ok: true, path: picked.filePaths[0], restarting: true };
+    }
+    return { ok: false, error: result.error ?? "failed" };
+  });
 }
 
 function standaloneServerPath(): string {
@@ -564,9 +626,76 @@ function setupAutoUpdater(): void {
   });
 }
 
+// Slice S8 — daily auto backup (UMAIR's decision 1): one dated copy
+// per day in %APPDATA%\Aankh\backups\, 30-day retention. Runs once at
+// launch (first launch of the day creates the copy) and re-checks
+// every hour while the app stays open, so a copy is never missed
+// because the app was already running at midnight. Best-effort: a
+// failed backup is logged and never stops the app or blocks a sale.
+const BACKUP_RECHECK_INTERVAL_MS = 60 * 60 * 1000;
+
+async function runDailyBackupIfDue(): Promise<void> {
+  if (!localStore) return;
+  try {
+    const result = await runDailyBackup(localStore, app.getPath("userData"));
+    if (result.created) console.log(`Aankh daily backup saved: ${result.path}`);
+    if (result.pruned.length > 0) {
+      console.log(`Aankh backup retention removed ${result.pruned.length} old file(s)`);
+    }
+  } catch (error) {
+    console.error("Aankh daily backup failed:", error);
+  }
+}
+
+// Slice S8 — desktop Backup menu. The menu itself is reachable
+// offline (it is the offline-reachable Export / Restore spot the
+// Settings section cannot be, since Settings is online-only); the
+// clicks are sent to the renderer, which owns the owner-only gate
+// and the result message — the main process cannot know the
+// signed-in role.
+function setupBackupMenu(): void {
+  const sendBackupMenuEvent = (action: "export" | "restore"): void => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(
+        action === "export" ? "aankh:menu:backup-export" : "aankh:menu:backup-restore",
+      );
+    }
+  };
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: "File",
+      submenu: [{ label: "Quit Aankh", role: "quit" }],
+    },
+    {
+      label: "Backup",
+      submenu: [
+        { label: "Export Backup File…", click: () => sendBackupMenuEvent("export") },
+        { label: "Restore Backup File…", click: () => sendBackupMenuEvent("restore") },
+        { type: "separator" },
+        {
+          label: "Open Backup Folder",
+          click: () => {
+            const dir = backupDirFor(app.getPath("userData"));
+            try {
+              fs.mkdirSync(dir, { recursive: true });
+            } catch {
+              // Opening a missing folder fails visibly below; keep going.
+            }
+            void shell.openPath(dir);
+          },
+        },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 void app.whenReady().then(async () => {
   setupLocalStore();
   setupAutoUpdater();
+  setupBackupMenu();
+  void runDailyBackupIfDue();
+  setInterval(() => void runDailyBackupIfDue(), BACKUP_RECHECK_INTERVAL_MS);
   const url = await resolveAppUrl();
   createWindow(url);
 });

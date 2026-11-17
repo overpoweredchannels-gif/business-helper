@@ -1,0 +1,55 @@
+# Slice S8 — Windows installer build (Offline Tier-1).
+#
+# The Windows installer cannot be built on the Linux dev box:
+# electron-builder needs Windows for the NSIS target, and
+# better-sqlite3 is compiled for the Electron ABI on the runner.
+# This workflow builds it on a Windows runner instead.
+#
+# Triggers:
+# - Manually (workflow_dispatch): builds the installer and uploads
+#   it as an artifact. Publishes nothing.
+# - A version tag (v*): builds the installer and publishes it to the
+#   GitHub Release for that tag (`--publish onTag`), which is the
+#   feed electron-updater reads for auto-update on launch.
+#
+# UNTESTED until it first runs on GitHub: the first run will confirm
+# the Next.js build passes on the runner. It needs two repository
+# variables set first (public keys, safe to store as variables):
+# NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.
+name: Desktop (Windows installer)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the Windows installer
+        run: npm run desktop:build -- --publish onTag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: aankh-windows-installer
+          path: dist-electron/*.exe
+          if-no-files-found: error

@@ -546,6 +546,14 @@ export interface LocalStore {
   removeExpense(scope: string, id: string): void;
   /** Close the database handle (app quit). */
   close(): void;
+  /**
+   * Write a consistent snapshot of the live database to
+   * `destinationPath` (Slice S8 — daily auto backup + Export).
+   * Uses SQLite's own online backup API, so the copy includes WAL
+   * content and no write can tear it — no explicit WAL checkpoint
+   * is needed. The caller creates the destination directory first.
+   */
+  backup(destinationPath: string): Promise<void>;
 }
 
 const SCHEMA = `
@@ -2219,6 +2227,14 @@ export function createLocalStore(dbPath: string): LocalStore {
 
     removeExpense(scope: string, id: string): void {
       deleteExpense.run(scope, id);
+    },
+
+    backup(destinationPath: string): Promise<void> {
+      // Slice S8 — better-sqlite3's online backup API: a consistent
+      // snapshot of the live database, WAL content included. The
+      // API resolves with backup metadata; the store only promises
+      // completion.
+      return db.backup(destinationPath).then(() => undefined);
     },
 
     close(): void {

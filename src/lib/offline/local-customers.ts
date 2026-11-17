@@ -268,7 +268,12 @@ export function mergeLocalCustomers<T extends { id: string | number; customer_na
     .filter((row) => !localById.has(String(row.id)))
     .concat(
       localRows.map(
-        (row) => row.data as unknown as T,
+        // Slice S8 — the row id is authoritative (the client UUID for
+        // a create, the server id for an edit). The stored `data`
+        // predates the client-UUID scheme on some rows, so trusting
+        // `data.id` renders a stale id — the same latent shape S6
+        // fixed for suppliers (mergeLocalSuppliers).
+        (row) => ({ ...(row.data as Record<string, unknown>), id: row.id }) as unknown as T,
       ),
     );
   merged.sort((a, b) =>

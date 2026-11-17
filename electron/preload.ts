@@ -15,7 +15,9 @@ import type { LocalCustomerRow, LocalExpenseRow, LocalPaymentRow, LocalPurchaseR
 // (see src/lib/offline/local-purchases.ts and local-suppliers.ts).
 // Slice S7 adds the offline returns + payments + expenses bridges the
 // same way (see src/lib/offline/local-returns.ts, local-payments.ts
-// and local-expenses.ts).
+// and local-expenses.ts). Slice S8 adds the daily auto backup +
+// Export / Restore bridge the same way (see src/lib/offline/backup.ts),
+// plus the main-process Backup menu events.
 
 /** IPC channels for the local store. The renderer (src/lib/offline/…)
  * uses the same literal strings — keep them in sync when renaming. */
@@ -51,6 +53,8 @@ const CHANNELS = {
   listExpenses: "aankh:local-expenses:list",
   upsertExpense: "aankh:local-expenses:upsert",
   removeExpense: "aankh:local-expenses:remove",
+  exportBackup: "aankh:backup:export",
+  restoreBackup: "aankh:backup:restore",
 } as const;
 
 export interface AankhLocalSalesBridge {
@@ -145,6 +149,30 @@ export interface AankhLocalExpensesBridge {
   remove(scope: string, id: string): Promise<void>;
 }
 
+/** One Export / Restore result from the main process (Slice S8). */
+export interface DesktopBackupResult {
+  ok: boolean;
+  /** File the backup was written to (export) or restored from. */
+  path?: string;
+  /** True when the user cancelled the native file dialog. */
+  cancelled?: boolean;
+  /** True when the app is about to restart on the restored database. */
+  restarting?: boolean;
+  /** `store-unavailable` | `invalid-file` | `failed` — see src/lib/offline/backup.ts. */
+  error?: string;
+}
+
+export interface AankhBackupBridge {
+  /** Export the live database to a user-chosen file (native save dialog). */
+  exportBackup(): Promise<DesktopBackupResult>;
+  /** Restore a backup file over the live database (native open dialog); restarts the app on success. */
+  restoreBackup(): Promise<DesktopBackupResult>;
+  /** Desktop Backup menu: Export Backup File… (the renderer owns the owner-only gate). */
+  onMenuExportBackup(handler: () => void): () => void;
+  /** Desktop Backup menu: Restore Backup File… (the renderer owns the owner-only gate). */
+  onMenuRestoreBackup(handler: () => void): () => void;
+}
+
 export interface AankhDesktopBridge {
   /** True when the app runs inside the installed desktop shell. */
   isDesktop: true;
@@ -170,6 +198,8 @@ export interface AankhDesktopBridge {
   localPayments?: AankhLocalPaymentsBridge;
   /** The SQLite-backed offline expenses (S7). Absent when the store failed to open. */
   localExpenses?: AankhLocalExpensesBridge;
+  /** Daily auto backup + Export / Restore (S8). Absent when the store failed to open. */
+  backup?: AankhBackupBridge;
 }
 
 const bridge: AankhDesktopBridge = {
@@ -225,6 +255,20 @@ const bridge: AankhDesktopBridge = {
     list: (scope) => ipcRenderer.invoke(CHANNELS.listExpenses, scope),
     upsert: (scope, row) => ipcRenderer.invoke(CHANNELS.upsertExpense, scope, row),
     remove: (scope, id) => ipcRenderer.invoke(CHANNELS.removeExpense, scope, id),
+  },
+  backup: {
+    exportBackup: () => ipcRenderer.invoke(CHANNELS.exportBackup),
+    restoreBackup: () => ipcRenderer.invoke(CHANNELS.restoreBackup),
+    onMenuExportBackup: (handler) => {
+      const listener = () => handler();
+      ipcRenderer.on("aankh:menu:backup-export", listener);
+      return () => ipcRenderer.removeListener("aankh:menu:backup-export", listener);
+    },
+    onMenuRestoreBackup: (handler) => {
+      const listener = () => handler();
+      ipcRenderer.on("aankh:menu:backup-restore", listener);
+      return () => ipcRenderer.removeListener("aankh:menu:backup-restore", listener);
+    },
   },
 };
 

@@ -300,6 +300,21 @@ async function main(): Promise<void> {
       ["Alpha", "Beta Renamed", "Gamma"],
       "the merge keeps the local edit, appends the create, and sorts by name",
     );
+    // Slice S8 — the merge carries the authoritative row id. The
+    // stored `data` below still carries the stale id
+    // 00000000-0000-4000-8000-000000000001 for every row (that is
+    // what customerData writes); trusting it rendered the edit and
+    // the create under Alpha's id — the same latent shape S6 fixed
+    // for suppliers.
+    assert.deepEqual(
+      merged.map((customer) => String(customer.id)),
+      [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+      ],
+      "the merge overrides the stored data id with the row id",
+    );
     assert.deepEqual(
       mergeLocalCustomers(serverCustomers, []),
       serverCustomers,
