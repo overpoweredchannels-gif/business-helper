@@ -1,11 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Standalone output for the desktop shell (slice S0): `next build`
+  // Standalone output ONLY for desktop builds (slice S0): `next build`
   // produces .next/standalone/server.js, a self-contained Node server the
-  // Electron main process spawns. Vercel deploy is unaffected — the web
-  // app keeps building and deploying as today.
-  output: "standalone",
+  // Electron main process spawns. It must stay off on Vercel: standalone
+  // output does not produce .next/next-server.js.nft.json, and Vercel's
+  // onBuildComplete step fails with ENOENT trying to read it, so every
+  // Vercel deployment errors after a successful compile. Vercel builds
+  // run without AANKH_DESKTOP_BUILD set, so they get the default output;
+  // desktop builds set it via the desktop:build script.
+  output: process.env.AANKH_DESKTOP_BUILD === "1" ? "standalone" : undefined,
   async headers() {
     return [
       {
