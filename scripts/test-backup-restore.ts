@@ -57,18 +57,26 @@ function daysAgo(now: Date, days: number): Date {
 }
 
 async function main(): Promise<void> {
+  // Local calendar date — NOT toISOString(): local midnight on a PKT
+  // box is the previous day in UTC, so an ISO slice would be off by
+  // one. The backup code itself is local-consistent throughout.
+  const localDate = (date: Date | null | undefined): string | null =>
+    date
+      ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+      : null;
+
   // 1. File names: dated daily name, timestamped safety name, parsing.
   {
     assert.equal(backupFileName(new Date(2026, 10, 17)), "aankh-2026-11-17.db", "the daily name is dated");
     const safety = safetyBackupFileName(new Date(2026, 10, 17, 4, 30, 15));
     assert.equal(safety, "aankh-before-restore-2026-11-17-043015.db", "the safety name carries date + time");
-    assert.deepEqual(
-      parseBackupFileName("aankh-2026-11-17.db")?.toISOString().slice(0, 10),
+    assert.equal(
+      localDate(parseBackupFileName("aankh-2026-11-17.db")),
       "2026-11-17",
       "a daily name parses back to its date",
     );
-    assert.deepEqual(
-      parseBackupFileName(safety)?.toISOString().slice(0, 10),
+    assert.equal(
+      localDate(parseBackupFileName(safety)),
       "2026-11-17",
       "a safety name parses back to its date",
     );
