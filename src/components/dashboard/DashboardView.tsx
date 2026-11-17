@@ -80,6 +80,10 @@ interface DashboardViewProps {
   smartModules?: SmartModuleConfig[];
   revenueData?: Array<{ label: string; value: number }>;
   profitData?: Array<{ label: string; value: number }>;
+  /** Unknown-cost lines excluded from the Profit Trend (plotted window). */
+  profitUnknownCostLines?: number;
+  /** Their revenue, already formatted as dashboard money. */
+  profitUnknownCostAmount?: string;
   /** Formats the trend-chart bar values and axis ticks (dashboard money). */
   formatChartValue?: (value: number) => string;
   topProducts?: Array<{ name: string; value: string; trend?: "up" | "down" | "flat" }>;
@@ -132,6 +136,8 @@ export function DashboardView({
   smartModules = [],
   revenueData,
   profitData,
+  profitUnknownCostLines,
+  profitUnknownCostAmount,
   formatChartValue,
   topProducts,
   topCustomers,
@@ -234,11 +240,10 @@ export function DashboardView({
   ].filter((card) => !widgetHidden(card.id));
 
   const chartCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
-    // The Revenue card is always on the dashboard: with no revenue data
-    // it shows its empty state instead of vanishing (the Profit card
-    // keeps its old include-when-non-empty behaviour — next slice).
+    // Both trend cards are always on the dashboard: with no data they
+    // show their empty state instead of vanishing.
     { id: "chart-revenue" as DashboardWidgetId, node: <RevenueTrendCard data={revenueData ?? []} formatValue={formatChartValue} /> },
-    ...(profitData && profitData.length > 0 ? [{ id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData} formatValue={formatChartValue} /> }] : []),
+    { id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData ?? []} formatValue={formatChartValue} unknownCostLines={profitUnknownCostLines} unknownCostAmount={profitUnknownCostAmount} /> },
     ...(topProducts && topProducts.length > 0 ? [{ id: "chart-top-products" as DashboardWidgetId, node: <TopProductsCard items={topProducts} /> }] : []),
     ...(topCustomers && topCustomers.length > 0 ? [{ id: "chart-top-customers" as DashboardWidgetId, node: <TopCustomersCard items={topCustomers} /> }] : []),
   ].filter((chart) => !widgetHidden(chart.id));

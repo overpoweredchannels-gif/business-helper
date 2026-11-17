@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
-import { trendAxisTicks } from "@/lib/dashboard/trends";
+import { CHART_VALUE_LABEL_CLASS, trendAxisTicks } from "@/lib/dashboard/trends";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
 
 interface BarChartProps {
@@ -26,11 +26,15 @@ function BarChart({ data, height = 144, formatValue = formatBooksMoney }: BarCha
     <div className="grid" style={{ gridTemplateColumns: "auto minmax(0, 1fr)" }}>
     {/* Value labels, one per bar, in the same evenly-spaced cells as the
         date labels below — the SVG's preserveAspectRatio="none" would
-        distort text drawn inside it, so values stay in HTML. */}
+        distort text drawn inside it, so values stay in HTML. No gap and
+        no truncation: with gap-2 the cells were narrower than the bar
+        slots (and misaligned with them), so the longest values clipped
+        to "€13…" / "€14…". With gap-0 each cell is exactly one bar slot
+        wide, centred on its bar, and the text never truncates. */}
     <span aria-hidden="true" />
-    <div aria-hidden="true" className="flex gap-2">
+    <div aria-hidden="true" className="flex">
       {data.map((d) => (
-        <span key={d.label} title={formatValue(d.value)} className="min-w-0 flex-1 truncate text-center text-[11px] tabular-nums text-foreground">{formatValue(d.value)}</span>
+        <span key={d.label} title={formatValue(d.value)} className={CHART_VALUE_LABEL_CLASS}>{formatValue(d.value)}</span>
       ))}
     </div>
     {/* Simple y-axis: max / half / 0, exactly plotHeight tall so the top
@@ -110,12 +114,21 @@ export function RevenueTrendCard({ data, formatValue }: { data: TrendPoint[]; fo
   );
 }
 
-export function ProfitTrendCard({ data, formatValue }: { data: TrendPoint[]; formatValue?: (value: number) => string }) {
+export function ProfitTrendCard({ data, formatValue, unknownCostLines, unknownCostAmount }: { data: TrendPoint[]; formatValue?: (value: number) => string; unknownCostLines?: number; unknownCostAmount?: string }) {
   const { t } = useRegional();
   return (
     <div className={card}>
       <h3 className="text-base font-semibold text-foreground mb-4">{t('dashboard.profitTrend')}</h3>
-      <BarChart data={data} formatValue={formatValue} />
+      {data.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t('dashboard.profitTrendNoData')}</p>
+      ) : (
+        <>
+          <BarChart data={data} formatValue={formatValue} />
+          {unknownCostLines != null && unknownCostLines > 0 && unknownCostAmount && (
+            <p className="mt-2 text-sm text-muted-foreground">{t('dashboard.profitTrendExcludesUnknownCost').replace('{amount}', unknownCostAmount).replace('{count}', String(unknownCostLines))}</p>
+          )}
+        </>
+      )}
     </div>
   );
 }

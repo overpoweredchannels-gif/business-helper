@@ -124,7 +124,7 @@ import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardS
 import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
 import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
 import { businessHealthCashFlowStatus, businessHealthLabel, businessHealthProfitMarginStatus } from "@/lib/dashboard/health";
-import { buildRevenueTrendData } from "@/lib/dashboard/trends";
+import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } from "@/lib/dashboard/trends";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -14873,21 +14873,32 @@ setCustomerOrganizationName("");
     const salesLinkedExpenseCount = selectedExpenses.filter((expense) => Boolean(expense.sales_transaction_id)).length;
     const operatingExpenseCount = selectedExpenses.filter((expense) => !expense.purchase_transaction_id && !expense.sales_transaction_id).length;
 
-    const dailyGroups: Record<string, { date: string; sales: number; purchases: number; collections: number; expenses: number; profit: number }> = {};
+    const dailyGroups: Record<string, { date: string; sales: number; purchases: number; collections: number; expenses: number; profit: number; unknownCostRevenue: number; unknownCostLines: number }> = {};
     const ensureDay = (dateValue: string | null | undefined) => {
       const date = getDateOnly(dateValue) ?? t('page.noDate');
-      if (!dailyGroups[date]) dailyGroups[date] = { date, sales: 0, purchases: 0, collections: 0, expenses: 0, profit: 0 };
+      if (!dailyGroups[date]) dailyGroups[date] = { date, sales: 0, purchases: 0, collections: 0, expenses: 0, profit: 0, unknownCostRevenue: 0, unknownCostLines: 0 };
       return dailyGroups[date];
     };
     selectedSalesItems.forEach((item) => {
       const transaction = salesById[String(item.sales_transaction_id)];
       const group = ensureDay(getDateOnly(getUsableTimestamp(transaction?.sale_date, transaction?.created_at).value));
-      const quantity = safeNumber(item.quantity);
-      const revenue = quantity * safeNumber(item.selling_price);
       const product = productById[String(item.product_id)];
-      const lineCogs = salesLineCogsInMainUnits(item, product);
-      group.sales += revenue;
-      group.profit += lineCogs === null ? 0 : revenue - lineCogs;
+      // Profit uses the same honest split as the Today's Profit KPI
+      // (todayProfitTotals) and the BI line totals (salesLineTotals):
+      // net of the line discount, and unknown-cost lines excluded from
+      // profit and counted for disclosure instead of silently counting
+      // as zero. `group.sales` stays on GROSS revenue — it is the
+      // Revenue Trend's data (QA'd live, 3a56292).
+      const contribution = profitLineContribution({
+        quantity: safeNumber(item.quantity),
+        sellingPrice: safeNumber(item.selling_price),
+        discount: safeNumber(item.discount),
+        cogs: salesLineCogsInMainUnits(item, product),
+      });
+      group.sales += contribution.grossRevenue;
+      group.profit += contribution.profitContribution;
+      group.unknownCostRevenue += contribution.unknownCostRevenue;
+      group.unknownCostLines += contribution.unknownCostLines;
     });
     selectedPurchaseItems.forEach((item) => {
       const transaction = purchasesById[String(item.purchase_transaction_id)];
@@ -20797,6 +20808,11 @@ setCustomerOrganizationName("");
     }
   };
 
+  // Profit Trend data for the dashboard (last 14 days): daily profit net
+  // of line discounts, unknown-cost lines excluded and disclosed — the
+  // same honest split as the Today's Profit KPI (todayProfitTotals).
+  const profitTrend = buildProfitTrendData(businessIntelligenceAnalytics.dailyTrends);
+
   return (
     <DashboardLayout
         navigationItems={orderedNavItems}
@@ -21175,7 +21191,9 @@ setCustomerOrganizationName("");
               } : undefined;
             })()}
             revenueData={buildRevenueTrendData(businessIntelligenceAnalytics.dailyTrends)}
-            profitData={businessIntelligenceAnalytics.dailyTrends.slice(-14).map((d) => ({ label: d.date.slice(5), value: d.profit }))}
+            profitData={profitTrend.points}
+            profitUnknownCostLines={profitTrend.unknownCostLines}
+            profitUnknownCostAmount={formatDashboardMoney(displayCurrency, displayFxRate, profitTrend.unknownCostRevenue)}
             formatChartValue={(value: number) => formatDashboardMoney(displayCurrency, displayFxRate, value)}
             topCustomers={businessIntelligenceAnalytics.topCustomersBySales.slice(0, 5).map((c) => ({ name: c.customerName, value: formatDashboardMoney(displayCurrency, displayFxRate, c.totalSales) }))}
             onViewAllActivity={() => handleSectionChange("activity-logs")}
