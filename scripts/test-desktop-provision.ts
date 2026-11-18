@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { shouldRunProvision } from "../src/lib/offline/desktop-provision";
+import { resolveDesktopCallbackRoute, shouldRunProvision } from "../src/lib/offline/desktop-provision";
 
 // 1. Web always provisions — online and offline alike (unchanged behaviour).
 assert.equal(
@@ -37,6 +37,27 @@ assert.notEqual(
   shouldRunProvision({ isDesktop: true, isOnline: true }),
   shouldRunProvision({ isDesktop: false, isOnline: true }),
   "6. Only the desktop flag flips the answer when online",
+);
+
+// 4. Desktop auth-callback routing: a profile with an organization goes
+// home; a profile without one (new user) goes to onboarding.
+assert.equal(
+  resolveDesktopCallbackRoute(true),
+  "/",
+  "7. Desktop callback with an organization routes home",
+);
+assert.equal(
+  resolveDesktopCallbackRoute(false),
+  "/onboarding",
+  "8. Desktop callback without an organization routes to onboarding",
+);
+
+// 5. The routing decision is a pure function of its input — same input,
+// same route.
+assert.equal(
+  resolveDesktopCallbackRoute(false),
+  resolveDesktopCallbackRoute(false),
+  "9. Same organization flag gives the same route",
 );
 
 console.log("test-desktop-provision: all assertions passed");

@@ -31,3 +31,22 @@ export function shouldRunProvision(input: { isDesktop: boolean; isOnline: boolea
   // provision route 500s whether online or offline — never call it.
   return false;
 }
+
+/**
+ * Desktop auth-callback routing (2026-11-19).
+ *
+ * `src/app/auth/callback/page.tsx` used to POST /api/auth/provision after
+ * every Google sign-in / email verification and, on ANY non-OK response
+ * (including the desktop 500 — same missing service-role key as above),
+ * pushed the user back to /login. So on desktop a user who had just
+ * completed sign-in was bounced to login and never reached the dashboard
+ * or onboarding, even after the checkAuthUser provision skip. The fix:
+ * on desktop the callback skips the provision POST and routes by reading
+ * the user's own profile row with the browser client instead.
+ *
+ * Pure mapping so it is unit-testable: a profile with an organization
+ * goes home; a profile without one (new user) goes to onboarding.
+ */
+export function resolveDesktopCallbackRoute(hasOrganization: boolean): "/" | "/onboarding" {
+  return hasOrganization ? "/" : "/onboarding";
+}
