@@ -1,11 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateEmail, validatePassword } from "@/lib/identity/invitations";
 import { createSupabaseService } from "@/lib/supabase/server";
+import { DESKTOP_AUTH_RECOVERY_CALLBACK_URL } from "@/lib/offline/desktop-auth-callback";
 
 export const runtime = "nodejs";
 
+/**
+ * The password-reset redirect for this request. The desktop app
+ * passes the aankh:// deep link (its local server binds a random
+ * loopback port per launch, so the request origin is not a usable
+ * redirect target); anything else must be this request's own origin
+ * at /auth/callback, otherwise the request origin is used. No caller
+ * in the app passes redirectTo today — the client forgot-password form
+ * calls Supabase directly — this seam exists for the desktop flow.
+ */
+function resolveResetRedirect(request: NextRequest, requested: unknown): string {
+  const fallback = `${request.nextUrl.origin}/auth/callback?type=recovery`;
+  if (requested === DESKTOP_AUTH_RECOVERY_CALLBACK_URL) return requested;
+  if (typeof requested === "string") {
+    try {
+      const url = new URL(requested);
+      if (url.origin === request.nextUrl.origin && url.pathname === "/auth/callback") {
+        return requested;
+      }
+    } catch {
+      // Not a URL — fall through to the request origin.
+    }
+  }
+  return fallback;
+}
+
 export async function POST(request: NextRequest) {
-  let body: { email?: string; newPassword?: string };
+  let body: { email?: string; newPassword?: string; redirectTo?: string };
   try {
     body = await request.json();
   } catch {
@@ -30,7 +56,7 @@ export async function POST(request: NextRequest) {
     if (emailError) return NextResponse.json({ ok: false, error: emailError }, { status: 400 });
     const supabase = createSupabaseService();
     await supabase.auth.resetPasswordForEmail(body.email.trim().toLowerCase(), {
-      redirectTo: `${request.nextUrl.origin}/auth/callback?type=recovery`,
+      redirectTo: resolveResetRedirect(request, body.redirectTo),
     });
     return NextResponse.json({
       ok: true,

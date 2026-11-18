@@ -23,9 +23,17 @@ import { createLocalStore, type LocalSaleRow, type LocalStore, type StoredIdenti
 const DEV_SERVER_URL = "http://localhost:3000";
 const MAX_SERVER_RESTARTS = 5;
 const SERVER_HEALTH_TIMEOUT_MS = 30_000;
+// Packaged first launch on a real PC runs past 30s (Windows Defender
+// scans the standalone files on cold start — seen 2026-11-18: first
+// launch failed, second launch opened). The packaged server gets 90s;
+// the dev timeouts below are unchanged.
+const PACKAGED_HEALTH_TIMEOUT_MS = 90_000;
 const DEV_HEALTH_TIMEOUT_MS = 5_000;
 const HEALTH_POLL_INTERVAL_MS = 250;
 const SERVER_RESTART_DELAY_MS = 1_000;
+// After the error page is shown, re-check this often and open the app
+// automatically when the server finally answers (no dead end).
+const ERROR_PAGE_RECOVERY_POLL_MS = 1_000;
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -60,7 +68,7 @@ function errorHtml(reason: string | null): string {
     reason && reason.trim().length > 0
       ? `<p>The local app server reported:<br><pre style="background:#f3f3f3;padding:12px;overflow:auto;white-space:pre-wrap">${escapeHtml(reason)}</pre></p><p>The full log is in the Aankh data folder (server.log).</p>`
       : "";
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Aankh</title></head><body style="font-family:sans-serif;padding:40px;color:#222"><h1>Aankh could not start</h1><p>The local app server did not start. Please close the app and open it again. If the problem continues, reinstall Aankh.</p>${detail}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Aankh</title></head><body style="font-family:sans-serif;padding:40px;color:#222"><h1>Aankh could not start</h1><p>The local app server did not start. Please close the app and open it again. If the problem continues, reinstall Aankh.</p><p>The app will open automatically once the local server is ready.</p>${detail}</body></html>`;
 }
 
 let serverProcess: ChildProcess | null = null;
@@ -68,6 +76,128 @@ let serverRestarts = 0;
 let mainWindow: BrowserWindow | null = null;
 let quitting = false;
 let localStore: LocalStore | null = null;
+
+// Desktop deep-link auth (aankh://auth/callback): Google OAuth, email
+// verification and password recovery all return to the app through
+// this custom protocol, because the local server binds a random port
+// per launch and no http(s) origin is stable enough for Supabase to
+// redirect to. The URL must be allowlisted in the Supabase project
+// (Authentication → URL Configuration → Redirect URLs):
+//   aankh://auth/callback
+const DESKTOP_AUTH_PROTOCOL = "aankh";
+const DESKTOP_AUTH_CALLBACK_PREFIX = "aankh://auth/callback";
+// A deep link that arrives before the window exists (cold start) or
+// before the renderer asks for it — held here, single-consume.
+let pendingAuthCallback: string | null = null;
+
+function isDesktopAuthCallbackUrl(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    (value === DESKTOP_AUTH_CALLBACK_PREFIX ||
+      value.startsWith(`${DESKTOP_AUTH_CALLBACK_PREFIX}?`) ||
+      value.startsWith(`${DESKTOP_AUTH_CALLBACK_PREFIX}#`))
+  );
+}
+
+function forwardAuthCallback(url: string): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("aankh:auth-callback", url);
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  } else {
+    pendingAuthCallback = url;
+  }
+}
+
+function handlePossibleAuthCallback(argv: readonly string[]): void {
+  const url = argv.find((arg) => isDesktopAuthCallbackUrl(arg));
+  if (url) forwardAuthCallback(url);
+}
+
+// Single instance: a deep link opens a SECOND copy of the app, which
+// hands its URL to the running instance and exits. The lock is taken
+// at module load, before app.whenReady.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, argv) => handlePossibleAuthCallback(argv));
+  // macOS delivers custom-protocol links here.
+  app.on("open-url", (_event, url) => {
+    if (isDesktopAuthCallbackUrl(url)) forwardAuthCallback(url);
+  });
+}
+
+function setupDesktopAuth(): void {
+  ipcMain.handle("aankh:auth:pending", () => {
+    const url = pendingAuthCallback;
+    pendingAuthCallback = null;
+    return url;
+  });
+  ipcMain.handle("aankh:open-external", async (_event, url: unknown) => {
+    // The renderer only ever opens the Supabase OAuth URL — accept
+    // https URLs and nothing else.
+    if (typeof url !== "string" || !/^https:\/\//i.test(url)) {
+      throw new Error("Invalid external URL");
+    }
+    await shell.openExternal(url);
+  });
+}
+
+// The local server URL the error page is waiting on, if any. The
+// recovery poll below keeps checking it after the error page is shown
+// and opens the app as soon as the server answers.
+let pendingAppUrl: string | null = null;
+let errorPagePollTimer: NodeJS.Timeout | null = null;
+
+function stopErrorPageRecoveryPoll(): void {
+  if (errorPagePollTimer) {
+    clearTimeout(errorPagePollTimer);
+    errorPagePollTimer = null;
+  }
+}
+
+function scheduleErrorPageRecoveryPoll(): void {
+  stopErrorPageRecoveryPoll();
+  if (!pendingAppUrl) return;
+  const tick = async (): Promise<void> => {
+    if (quitting || !mainWindow || mainWindow.isDestroyed()) {
+      errorPagePollTimer = null;
+      return;
+    }
+    const url = pendingAppUrl;
+    if (!url) {
+      errorPagePollTimer = null;
+      return;
+    }
+    if (await checkHealth(url)) {
+      errorPagePollTimer = null;
+      pendingAppUrl = null;
+      if (mainWindow && !mainWindow.isDestroyed()) await mainWindow.loadURL(url);
+      return;
+    }
+    if (!quitting && mainWindow && !mainWindow.isDestroyed()) {
+      errorPagePollTimer = setTimeout(() => void tick(), ERROR_PAGE_RECOVERY_POLL_MS);
+    } else {
+      errorPagePollTimer = null;
+    }
+  };
+  errorPagePollTimer = setTimeout(() => void tick(), ERROR_PAGE_RECOVERY_POLL_MS);
+}
+
+// The Aankh eye icon (electron/assets/aankh.ico, generated from
+// public/aankh-app-eye.png — never recoloured). electron-builder copies
+// it to resources/ (extraResources); in dev it is read from the repo.
+function desktopIconPath(): string | undefined {
+  const candidate = app.isPackaged
+    ? path.join(process.resourcesPath, "aankh.ico")
+    : path.join(app.getAppPath(), "electron", "assets", "aankh.ico");
+  try {
+    return fs.existsSync(candidate) ? candidate : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function setupLocalStore(): void {
   // Slice S2 — the local-first SQLite store. A failure here must never
@@ -584,6 +714,10 @@ async function showErrorPage(): Promise<void> {
     await mainWindow.loadURL(
       `data:text/html;charset=utf-8,${encodeURIComponent(errorHtml(lastServerError || null))}`,
     );
+    // The server may still be starting (slow cold start) — keep
+    // polling and open the app when it answers instead of leaving a
+    // dead end.
+    scheduleErrorPageRecoveryPoll();
   }
 }
 
@@ -598,12 +732,15 @@ async function restartStandaloneServer(): Promise<void> {
   const port = await pickFreePort();
   serverProcess = startStandaloneServer(port);
   const url = `http://127.0.0.1:${port}/`;
-  const healthy = await waitForHealth(url, SERVER_HEALTH_TIMEOUT_MS);
+  pendingAppUrl = url;
+  const healthy = await waitForHealth(url, PACKAGED_HEALTH_TIMEOUT_MS);
   if (!healthy) {
     await restartStandaloneServer();
     return;
   }
   serverRestarts = 0;
+  pendingAppUrl = null;
+  stopErrorPageRecoveryPoll();
   if (mainWindow && !mainWindow.isDestroyed()) {
     await mainWindow.loadURL(url);
   }
@@ -624,8 +761,12 @@ async function resolveAppUrl(): Promise<string | null> {
   const port = await pickFreePort();
   serverProcess = startStandaloneServer(port);
   const url = `http://127.0.0.1:${port}/`;
-  const healthy = await waitForHealth(url, SERVER_HEALTH_TIMEOUT_MS);
-  if (healthy) serverRestarts = 0;
+  pendingAppUrl = url;
+  const healthy = await waitForHealth(url, PACKAGED_HEALTH_TIMEOUT_MS);
+  if (healthy) {
+    serverRestarts = 0;
+    pendingAppUrl = null;
+  }
   return healthy ? url : null;
 }
 
@@ -634,6 +775,7 @@ function createWindow(url: string | null): void {
     width: 1280,
     height: 800,
     show: false,
+    icon: desktopIconPath(),
     webPreferences: {
       preload: preloadPath(),
       contextIsolation: true,
@@ -649,6 +791,7 @@ function createWindow(url: string | null): void {
     void mainWindow.loadURL(
       `data:text/html;charset=utf-8,${encodeURIComponent(errorHtml(lastServerError || null))}`,
     );
+    scheduleErrorPageRecoveryPoll();
   }
 }
 
@@ -730,11 +873,22 @@ function setupBackupMenu(): void {
 }
 
 void app.whenReady().then(async () => {
+  // Registering in dev would hijack the user's aankh:// links for a
+  // throwaway dev shell — packaged builds only. In dev the cold-start
+  // argv scan below still works if a link is passed by hand.
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient(DESKTOP_AUTH_PROTOCOL);
+  }
   setupLocalStore();
+  setupDesktopAuth();
   setupAutoUpdater();
   setupBackupMenu();
   void runDailyBackupIfDue();
   setInterval(() => void runDailyBackupIfDue(), BACKUP_RECHECK_INTERVAL_MS);
+  // Cold start via a deep link (user clicked the sign-in link in their
+  // mail app while Aankh was closed): hold the URL until the renderer
+  // asks for it.
+  handlePossibleAuthCallback(process.argv);
   const url = await resolveAppUrl();
   createWindow(url);
 });
@@ -745,6 +899,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   quitting = true;
+  stopErrorPageRecoveryPoll();
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
     serverProcess = null;

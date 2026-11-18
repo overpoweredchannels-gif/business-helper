@@ -173,11 +173,27 @@ export interface AankhBackupBridge {
   onMenuRestoreBackup(handler: () => void): () => void;
 }
 
+/** Desktop deep-link auth (aankh://auth/callback). The main process
+ * registers the protocol, captures the link (cold start via argv, or
+ * second-instance / open-url while running) and forwards it here; the
+ * renderer exchanges the code for a session (see
+ * src/lib/offline/desktop-auth-callback.ts). */
+export interface AankhDesktopAuthBridge {
+  /** Live deep-link callback while the app runs. Returns the unsubscribe. */
+  onAuthCallback(handler: (url: string) => void): () => void;
+  /** The deep-link URL the app was cold-started with, once, or null. */
+  getPendingAuthCallback(): Promise<string | null>;
+  /** Open an https URL in the system browser (OAuth sign-in). */
+  openExternal(url: string): Promise<void>;
+}
+
 export interface AankhDesktopBridge {
   /** True when the app runs inside the installed desktop shell. */
   isDesktop: true;
   /** Operating system the shell runs on (win32, darwin, linux). */
   platform: NodeJS.Platform;
+  /** Deep-link auth callbacks + system-browser opener (desktop auth). */
+  auth: AankhDesktopAuthBridge;
   /** The local-first SQLite store (S2). Absent when the store failed to open. */
   localSales?: AankhLocalSalesBridge;
   /** The SQLite-backed identity cache (S2). Absent when the store failed to open. */
@@ -205,6 +221,15 @@ export interface AankhDesktopBridge {
 const bridge: AankhDesktopBridge = {
   isDesktop: true,
   platform: process.platform,
+  auth: {
+    onAuthCallback: (handler) => {
+      const listener = (_event: unknown, url: string) => handler(url);
+      ipcRenderer.on("aankh:auth-callback", listener);
+      return () => ipcRenderer.removeListener("aankh:auth-callback", listener);
+    },
+    getPendingAuthCallback: () => ipcRenderer.invoke("aankh:auth:pending"),
+    openExternal: (url) => ipcRenderer.invoke("aankh:open-external", url),
+  },
   localSales: {
     list: (scope) => ipcRenderer.invoke(CHANNELS.listSales, scope),
     replace: (scope, rows) => ipcRenderer.invoke(CHANNELS.replaceSales, scope, rows),

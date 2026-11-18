@@ -19,14 +19,24 @@ extraResources:
   # not start") with MODULE_NOT_FOUND without it. Copy it explicitly.
   - from: .next/standalone/node_modules
     to: standalone/node_modules
+  # The Aankh eye icon (electron/assets/aankh.ico, generated from
+  # public/aankh-app-eye.png) — the BrowserWindow reads it from
+  # resources/ at runtime (see electron/main.ts desktopIconPath).
+  - from: electron/assets/aankh.ico
+    to: aankh.ico
 publish:
   provider: github
   owner: overpoweredchannels-gif
   repo: business-helper
 win:
   target: nsis
+  # Without this the installer, taskbar and window show the default
+  # Electron icon. Generated from the Aankh eye logo, never recoloured.
+  icon: electron/assets/aankh.ico
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  installerIcon: electron/assets/aankh.ico
+  uninstallerIcon: electron/assets/aankh.ico

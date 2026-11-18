@@ -13,6 +13,11 @@ import { twMerge } from "tailwind-merge";
 import { supabase } from "@/lib/supabase/client";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { isDesktopApp } from "@/lib/offline/identity-cache";
+import {
+  DESKTOP_AUTH_CALLBACK_URL,
+  DESKTOP_AUTH_RECOVERY_CALLBACK_URL,
+  desktopAuthBridge,
+} from "@/lib/offline/desktop-auth-callback";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { LanguageSwitcher } from "@/components/regional/LanguageSwitcher";
 
@@ -503,6 +508,13 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
             full_name: fullName.trim(),
             organization_name: `${fullName.trim().split(" ")[0]}'s Business`,
           },
+          // Desktop only: without this Supabase uses the Site URL (the
+          // web app), so the verification link opens the browser and
+          // the desktop app stays stuck on the verify screen. The web
+          // flow passes undefined — unchanged.
+          emailRedirectTo: isDesktopApp()
+            ? DESKTOP_AUTH_CALLBACK_URL
+            : undefined,
         },
       });
       if (signUpError) throw signUpError;
@@ -604,7 +616,12 @@ function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: A
     setLoading(true);
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
+        // Desktop only: the web origin is a random loopback port per
+        // launch, so the recovery link must come back through the
+        // aankh:// deep link instead. Web flow unchanged.
+        redirectTo: isDesktopApp()
+          ? DESKTOP_AUTH_RECOVERY_CALLBACK_URL
+          : `${window.location.origin}/auth/callback?type=recovery`,
       });
       if (resetError) throw resetError;
       onNavigate("reset-sent", { email });
@@ -661,7 +678,17 @@ function VerifyEmail({ email, onNavigate }: { email?: string; onNavigate: (view:
     if (!email) return;
     setResending(true);
     try {
-      await supabase.auth.resend({ type: "signup", email });
+      // Same desktop seam as sign-up: the resent link must come back
+      // to the app, not the web Site URL.
+      await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: {
+          emailRedirectTo: isDesktopApp()
+            ? DESKTOP_AUTH_CALLBACK_URL
+            : undefined,
+        },
+      });
       setResent(true);
     } catch {
       // silently fail
@@ -741,6 +768,33 @@ function GoogleButton() {
     setLoading(true);
     try {
       if (postToTradeOSMobile({ type: "tradeos-google-sign-in" })) {
+        setLoading(false);
+        return;
+      }
+      // Desktop only: the local server binds a random loopback port
+      // per launch, so the web redirectTo (window.location.origin) is
+      // a per-launch origin Supabase cannot match — after Google the
+      // app returned to the login page with no session. Instead the
+      // provider URL opens in the SYSTEM browser (skipBrowserRedirect
+      // keeps the PKCE verifier in this renderer) and Supabase
+      // redirects to aankh://auth/callback, which the shell forwards
+      // to the listener for the code exchange. Web flow unchanged.
+      if (isDesktopApp()) {
+        const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: DESKTOP_AUTH_CALLBACK_URL,
+            skipBrowserRedirect: true,
+          },
+        });
+        if (oauthError) throw oauthError;
+        if (!data?.url) throw new Error(t("auth.googleFailed"));
+        const bridge = desktopAuthBridge();
+        if (!bridge) throw new Error(t("auth.googleFailed"));
+        await bridge.openExternal(data.url);
+        // Back to idle: the user completes sign-in in the browser and
+        // returns via the deep link; if they cancel instead, the
+        // button must be usable again.
         setLoading(false);
         return;
       }
