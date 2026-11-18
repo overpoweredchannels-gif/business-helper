@@ -66,10 +66,12 @@ interface TopItemProps {
   rank: number;
   name: string;
   value: string;
+  /** Secondary figure under the value (Top Products revenue). */
+  detail?: string;
   trend?: "up" | "down" | "flat";
 }
 
-function TopItem({ rank, name, value, trend }: TopItemProps) {
+function TopItem({ rank, name, value, detail, trend }: TopItemProps) {
   return (
     <div className="flex items-center justify-between py-2 first:pt-0 last:pb-0">
       <div className="flex items-center gap-2.5 min-w-0">
@@ -84,18 +86,21 @@ function TopItem({ rank, name, value, trend }: TopItemProps) {
         </span>
         <span className="text-sm text-foreground truncate"><bdi>{name}</bdi></span>
       </div>
-      <div className="flex items-center gap-1.5 shrink-0 ml-3">
-        <span className="text-sm font-semibold tabular-nums text-foreground"><bdi>{value}</bdi></span>
-        {trend === "up" && <TrendingUp className="size-3 text-success" />}
-        {trend === "down" && <TrendingDown className="size-3 text-destructive" />}
-        {trend === "flat" && <Minus className="size-3 text-light-text" />}
+      <div className="flex flex-col items-end shrink-0 ml-3">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-semibold tabular-nums text-foreground"><bdi>{value}</bdi></span>
+          {trend === "up" && <TrendingUp className="size-3 text-success" />}
+          {trend === "down" && <TrendingDown className="size-3 text-destructive" />}
+          {trend === "flat" && <Minus className="size-3 text-light-text" />}
+        </div>
+        {detail && <span className="text-xs tabular-nums text-muted-foreground"><bdi>{detail}</bdi></span>}
       </div>
     </div>
   );
 }
 
 type TrendPoint = { label: string; value: number };
-type RankedItem = { name: string; value: string; trend?: "up" | "down" | "flat" };
+type RankedItem = { name: string; value: string; detail?: string; trend?: "up" | "down" | "flat" };
 
 const card = "aankh-card rounded-xl border border-border bg-card p-6 h-full";
 
@@ -138,11 +143,15 @@ export function TopProductsCard({ items }: { items: RankedItem[] }) {
   return (
     <div className={card}>
       <h3 className="text-base font-semibold text-foreground mb-4">{t('dashboard.topProducts')}</h3>
-      <div className="divide-y divide-border">
-        {items.map((item, index) => (
-          <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} trend={item.trend} />
-        ))}
-      </div>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t('dashboard.topProductsNoData')}</p>
+      ) : (
+        <div className="divide-y divide-border">
+          {items.map((item, index) => (
+            <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} detail={item.detail} trend={item.trend} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

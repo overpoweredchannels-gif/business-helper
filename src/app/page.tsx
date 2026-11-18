@@ -125,6 +125,7 @@ import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSu
 import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
 import { businessHealthCashFlowStatus, businessHealthLabel, businessHealthProfitMarginStatus } from "@/lib/dashboard/health";
 import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } from "@/lib/dashboard/trends";
+import { buildTopProductRows, previousPeriodRange, topProductLineNetRevenue } from "@/lib/dashboard/top-products";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -14471,19 +14472,6 @@ setCustomerOrganizationName("");
   }).length || 0;
   const customersToFollowUp = pendingTasks.filter((t) => t.task_type === "customer_follow_up" || t.task_type === "sales_follow_up").length || 0;
   const expiringProducts = pendingTasks.filter((t) => t.task_type === "stock_check" && t.title.toLowerCase().includes("expir")).length || 0;
-  const topSellingProducts = products
-    .map((product) => {
-      const quantitySold = filteredSalesItems
-        .filter((si) => String(si.product_id) === String(product.id))
-        .reduce((sum, si) => sum + Number(si.quantity || 0), 0);
-      return {
-        productId: product.id,
-        productName: product.name,
-        quantitySold,
-      };
-    })
-    .sort((a, b) => b.quantitySold - a.quantitySold)
-    .slice(0, 10);
   const getBusinessIntelligenceDateRange = () => {
     const today = new Date();
     const startOfWeek = new Date(today);
@@ -14530,6 +14518,16 @@ setCustomerOrganizationName("");
     const dateOnly = getDateOnly(timestamp.value);
     return isDateInRange(dateOnly, biResolvedDateRange.start, biResolvedDateRange.end);
   };
+  // The previous equivalent period (same length, immediately before the
+  // current BI range) — the Top Products trend baseline. Null for the
+  // all-time range, which has no previous period to compare against.
+  const previousBiRange = previousPeriodRange(biResolvedDateRange);
+  const isInPreviousBiRange = (...dateValues: Array<unknown>) => {
+    if (!previousBiRange) return false;
+    const timestamp = getUsableTimestamp(...dateValues);
+    const dateOnly = getDateOnly(timestamp.value);
+    return isDateInRange(dateOnly, previousBiRange.start, previousBiRange.end);
+  };
   const isCurrentOrganizationRecord = (record: any) =>
     !record?.organization_id || !currentOrganizationId || record.organization_id === currentOrganizationId;
   const getBiProfileLabel = (profileId: unknown) => {
@@ -14575,25 +14573,36 @@ setCustomerOrganizationName("");
     const matchesSearch = (values: Array<unknown>) =>
       !search || values.filter(Boolean).some((value) => String(value).toLowerCase().includes(search));
 
-    const selectedSalesTransactions = salesTransactions.filter((transaction) => {
-      if (!isCurrentOrganizationRecord(transaction)) return false;
-      if (!isInBiRange(transaction.sale_date, transaction.created_at)) return false;
-      const customer = customerById[String(transaction.customer_id)];
-      if (biCustomerFilter !== "all" && transaction.customer_id !== biCustomerFilter) return false;
-      const profileId = getRecordProfileId(transaction);
-      if (biStaffFilter !== "all" && String(profileId) !== biStaffFilter) return false;
-      return matchesSearch([transaction.invoice_number, customer?.customer_name, customer?.shop_name]);
-    });
+    // The sales selection is parameterised by its date predicate so the
+    // Top Products trend can select the previous equivalent period with
+    // exactly the same customer/staff/product/search filters — the
+    // comparison is like-for-like, never a differently-filtered past.
+    const selectSalesTransactionsInRange = (inRange: (...dateValues: Array<unknown>) => boolean) =>
+      salesTransactions.filter((transaction) => {
+        if (!isCurrentOrganizationRecord(transaction)) return false;
+        if (!inRange(transaction.sale_date, transaction.created_at)) return false;
+        const customer = customerById[String(transaction.customer_id)];
+        if (biCustomerFilter !== "all" && transaction.customer_id !== biCustomerFilter) return false;
+        const profileId = getRecordProfileId(transaction);
+        if (biStaffFilter !== "all" && String(profileId) !== biStaffFilter) return false;
+        return matchesSearch([transaction.invoice_number, customer?.customer_name, customer?.shop_name]);
+      });
+    const selectedSalesTransactions = selectSalesTransactionsInRange(isInBiRange);
+    const previousSalesTransactions = previousBiRange ? selectSalesTransactionsInRange(isInPreviousBiRange) : [];
+    const selectSalesItemsForTransactions = (saleIds: Set<string>) =>
+      salesItems.filter((item) => {
+        const transaction = salesById[String(item.sales_transaction_id)];
+        if (!saleIds.has(String(item.sales_transaction_id))) return false;
+        const product = productById[String(item.product_id)];
+        const category = product?.category_id ? categoryById[String(product.category_id)] : null;
+        if (biProductFilter !== "all" && String(item.product_id) !== biProductFilter) return false;
+        if (biCategoryFilter !== "all" && String(product?.category_id ?? "") !== biCategoryFilter) return false;
+        return matchesSearch([product?.name, category?.name, transaction?.invoice_number]);
+      });
     const selectedSaleIds = new Set(selectedSalesTransactions.map((transaction) => String(transaction.id)));
-    const selectedSalesItems = salesItems.filter((item) => {
-      const transaction = salesById[String(item.sales_transaction_id)];
-      if (!selectedSaleIds.has(String(item.sales_transaction_id))) return false;
-      const product = productById[String(item.product_id)];
-      const category = product?.category_id ? categoryById[String(product.category_id)] : null;
-      if (biProductFilter !== "all" && String(item.product_id) !== biProductFilter) return false;
-      if (biCategoryFilter !== "all" && String(product?.category_id ?? "") !== biCategoryFilter) return false;
-      return matchesSearch([product?.name, category?.name, transaction?.invoice_number]);
-    });
+    const selectedSalesItems = selectSalesItemsForTransactions(selectedSaleIds);
+    const previousSaleIds = new Set(previousSalesTransactions.map((transaction) => String(transaction.id)));
+    const previousSalesItems = selectSalesItemsForTransactions(previousSaleIds);
     const selectedPurchaseTransactions = purchaseTransactions.filter((transaction) => {
       if (!isCurrentOrganizationRecord(transaction)) return false;
       if (!isInBiRange(transaction.purchase_date, transaction.created_at)) return false;
@@ -14714,6 +14723,25 @@ setCustomerOrganizationName("");
           (sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price),
           0
         );
+        // Net revenue (line discounts subtracted, like the Today's Profit
+        // KPI) and the previous-period quantity in main units — the Top
+        // Products card's money figure and trend baseline.
+        const netRevenue = productSalesItems.reduce(
+          (sum, item) =>
+            sum +
+            topProductLineNetRevenue({
+              quantity: safeNumber(item.quantity),
+              sellingPrice: safeNumber(item.selling_price),
+              discount: safeNumber(item.discount),
+            }),
+          0
+        );
+        const previousQuantitySold = previousSalesItems
+          .filter((item) => String(item.product_id) === productId)
+          .reduce(
+            (sum, item) => sum + quantityToMainUnits(safeNumber(item.quantity), item.unit_mode ?? "main", product.units_per_pack),
+            0
+          );
         const knownCogs = productSalesItems.reduce((sum, item) => {
           const lineCogs = salesLineCogsInMainUnits(item, product);
           return lineCogs === null ? sum : sum + lineCogs;
@@ -14735,6 +14763,8 @@ setCustomerOrganizationName("");
           categoryId: product.category_id ?? "",
           quantitySold,
           salesValue,
+          netRevenue,
+          previousQuantitySold,
           knownCogs,
           grossProfit,
           profitMargin: salesValue > 0 && knownCogs > 0 ? ((salesValue - knownCogs) / salesValue) * 100 : 0,
@@ -21197,7 +21227,16 @@ setCustomerOrganizationName("");
             formatChartValue={(value: number) => formatDashboardMoney(displayCurrency, displayFxRate, value)}
             topCustomers={businessIntelligenceAnalytics.topCustomersBySales.slice(0, 5).map((c) => ({ name: c.customerName, value: formatDashboardMoney(displayCurrency, displayFxRate, c.totalSales) }))}
             onViewAllActivity={() => handleSectionChange("activity-logs")}
-            topProducts={topSellingProducts.slice(0, 5).map((p) => ({ name: p.productName, value: String(p.quantitySold) }))}
+            topProducts={buildTopProductRows(
+              businessIntelligenceAnalytics.topByQuantity.map((p) => ({
+                name: p.productName,
+                unitType: products.find((product) => String(product.id) === p.productId)?.unit_type ?? null,
+                quantitySold: p.quantitySold,
+                netRevenue: p.netRevenue,
+                previousQuantitySold: previousBiRange ? p.previousQuantitySold : null,
+              })),
+              (value) => formatDashboardMoney(displayCurrency, displayFxRate, value),
+            )}
             onQuickAction={(label) => {
               if (label === "New Sale") { setSalesTab("invoice"); setQuickSaleMode(true); handleSectionChange("sales"); }
               else if (label === "New Purchase") handleSectionChange("purchases");

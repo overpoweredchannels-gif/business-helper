@@ -86,7 +86,7 @@ interface DashboardViewProps {
   profitUnknownCostAmount?: string;
   /** Formats the trend-chart bar values and axis ticks (dashboard money). */
   formatChartValue?: (value: number) => string;
-  topProducts?: Array<{ name: string; value: string; trend?: "up" | "down" | "flat" }>;
+  topProducts?: Array<{ name: string; value: string; detail?: string; trend?: "up" | "down" | "flat" }>;
   topCustomers?: Array<{ name: string; value: string; trend?: "up" | "down" | "flat" }>;
   onQuickAction?: (label: string) => void;
   onQuickSale?: () => void;
@@ -244,7 +244,9 @@ export function DashboardView({
     // show their empty state instead of vanishing.
     { id: "chart-revenue" as DashboardWidgetId, node: <RevenueTrendCard data={revenueData ?? []} formatValue={formatChartValue} /> },
     { id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData ?? []} formatValue={formatChartValue} unknownCostLines={profitUnknownCostLines} unknownCostAmount={profitUnknownCostAmount} /> },
-    ...(topProducts && topProducts.length > 0 ? [{ id: "chart-top-products" as DashboardWidgetId, node: <TopProductsCard items={topProducts} /> }] : []),
+    // The Top Products card is always on the dashboard too: with no
+    // selling products it shows its empty state instead of vanishing.
+    { id: "chart-top-products" as DashboardWidgetId, node: <TopProductsCard items={topProducts ?? []} /> },
     ...(topCustomers && topCustomers.length > 0 ? [{ id: "chart-top-customers" as DashboardWidgetId, node: <TopCustomersCard items={topCustomers} /> }] : []),
   ].filter((chart) => !widgetHidden(chart.id));
 
