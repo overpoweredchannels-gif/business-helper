@@ -1,5 +1,7 @@
 export { ConversationGateway, getGateway } from "./gateway";
 export type { GatewayMetrics } from "./gateway";
+export { ensureServerBusinessBrain } from "./server-brain";
+export type { ServerBrainInitResult } from "./server-brain";
 
 export type {
   ChatRequest,
