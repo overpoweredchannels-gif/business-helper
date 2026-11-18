@@ -132,6 +132,7 @@ import { dashboardAiInsightKind } from "@/lib/dashboard/ai-insight";
 import { smartModuleRows, urgentReorderRows } from "@/lib/dashboard/smart-modules";
 import { countExpiringStockChecks, isUnpaidPurchase, matchesPurchasePaymentFilter, NEEDS_ATTENTION_OUTSTANDING_PAYMENT_FILTER, NEEDS_ATTENTION_URGENT_REORDER_FILTER, reorderRecommendationMatchesFilter, taskFilterForNeedsAttentionTile, taskMatchesTypeFilter } from "@/lib/dashboard/needs-attention";
 import { accumulateVoiceTranscript, aiSectionKind, floatingAiDestination, voiceListenEndOutcome, voiceListenStartDecision, voiceOperatorCleanupOnLeave, type VoiceRecognitionResult } from "@/lib/ai/voice-operator";
+import { AI_ALERT_SYNC_SAVE_KIND_LABEL, shouldRegenerateAiAlertsAfterSave, staleAiAlertIdsForSave, type AiAlertSyncSave } from "@/lib/ai/ai-alert-sync";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -1597,11 +1598,13 @@ export default function Home() {
     return data ?? [];
   };
 
-  const fetchAiAlerts = async (organizationId?: string | null) => {
+  // Returns the fetched rows so the AI-alert sync hook can decide on
+  // fresh server data instead of the (possibly stale) rendered state.
+  const fetchAiAlerts = async (organizationId?: string | null): Promise<AiAlert[]> => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setAiAlerts([]);
-      return;
+      return [];
     }
 
     const { data, error } = await supabase
@@ -1613,10 +1616,11 @@ export default function Home() {
 
     if (error) {
       console.error("Supabase fetch AI alerts error:", JSON.stringify(error, null, 2));
-      return;
+      return [];
     }
 
     setAiAlerts(data ?? []);
+    return data ?? [];
   };
 
   const fetchRealNotifications = async (organizationId?: string | null) => {
@@ -5401,6 +5405,14 @@ setCustomerOrganizationName("");
       }
       const { result, previousPendingConfirmed } = saved;
       const transaction = result.transaction;
+      // AI Insight cache sync: the confirmed sale changed this customer's
+      // overdue figures — invalidate the stale alerts (regenerate if owner).
+      // The queued/parked branch above returns before this line, so an
+      // unconfirmed (offline/parked) sale never invalidates: its figures
+      // have not reached the server yet. (The RPC result types the id as
+      // unknown — narrow it before passing it to the sync helper.)
+      const saleCustomerId = typeof transaction.customer_id === "string" ? transaction.customer_id : null;
+      refreshAiAlertsAfterSave({ kind: "sale", customerId: saleCustomerId });
       const invoiceNumber = String(transaction.invoice_number ?? "");
       // Instant print (2g): wholesale saves build a receipt exactly like
       // Retail POS — the dialog below auto-opens the preview on save
@@ -5654,6 +5666,13 @@ setCustomerOrganizationName("");
       }
       customerPaymentAttemptKeyRef.current = null;
 
+      // AI Insight cache sync: the confirmed payment changed this
+      // customer's overdue figures. Skipped for an offline-parked
+      // payment — its figures have not reached the server yet.
+      if (!customerPaymentSavedOffline) {
+        refreshAiAlertsAfterSave({ kind: "customer_payment", customerId: selectedCustomerPaymentId });
+      }
+
       setCustomerPaymentMessage(customerPaymentSavedOffline ? t('offline.paymentSavedOffline') : isEditingCustomerPayment ? t('payments.paymentUpdated') : t('page.paymentSaved'));
       if (isEditingCustomerPayment) setEditingPayment(null);
       setSelectedCustomerPaymentId(null);
@@ -5841,6 +5860,13 @@ setCustomerOrganizationName("");
         }
       }
       supplierPaymentAttemptKeyRef.current = null;
+
+      // AI Insight cache sync: the confirmed payment changed this
+      // supplier's payable figures. Skipped for an offline-parked
+      // payment — its figures have not reached the server yet.
+      if (!supplierPaymentSavedOffline) {
+        refreshAiAlertsAfterSave({ kind: "supplier_payment", supplierId: selectedSupplierPaymentId });
+      }
 
       setSupplierPaymentMessage(supplierPaymentSavedOffline ? t('offline.paymentSavedOffline') : isEditingSupplierPayment ? t('payments.paymentUpdated') : t('page.paymentSaved'));
       if (isEditingSupplierPayment) setEditingPayment(null);
@@ -11224,6 +11250,10 @@ setCustomerOrganizationName("");
       const systemInvoiceNumber = result.transaction.invoice_number;
 
       setInvoiceMessage(t('page.purchaseInvoiceCreated'));
+      // AI Insight cache sync: the confirmed purchase changed this
+      // supplier's payable figures. (The offline path returns before
+      // this line, so an unconfirmed purchase never invalidates.)
+      refreshAiAlertsAfterSave({ kind: "purchase", supplierId: selectedSupplierId });
       setNewPurchaseExpenseReminder({
         id: transactionId,
         invoiceNumber: systemInvoiceNumber,
@@ -12288,6 +12318,9 @@ setCustomerOrganizationName("");
 
       if (draftReviewAction === "approve") {
         setSoMessage(t('page.soApprovedInvoice').replace('{number}', order.so_number).replace('{invoice}', data.invoiceNumber ?? ""));
+        // AI Insight cache sync: the approved invoice is a confirmed sale
+        // for this customer — its overdue figures changed.
+        refreshAiAlertsAfterSave({ kind: "sale", customerId: order.customer_id });
       } else {
         setSoMessage(t('page.soRejected').replace('{number}', order.so_number));
       }
@@ -17224,16 +17257,23 @@ setCustomerOrganizationName("");
     return lines.join("\n");
   };
 
-  const generateAiBusinessAlerts = async () => {
-    setAiBriefingMessage(null);
-    setAiBriefingError(null);
+  // `silent` is for the automatic post-save sync (`refreshAiAlertsAfterSave`):
+  // regeneration must not flash briefing messages/toasts at the user
+  // while they are saving a sale, purchase or payment. Failures are
+  // still logged to the console in both modes.
+  const generateAiBusinessAlerts = async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (!silent) {
+      setAiBriefingMessage(null);
+      setAiBriefingError(null);
+    }
 
     if (!requireOrganization("generate AI business alerts")) {
-      setAiBriefingError(orgNotLoadedMessage);
+      if (!silent) setAiBriefingError(orgNotLoadedMessage);
       return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
     }
     if (!isOwnerOrAdmin()) {
-      setAiBriefingError(t('page.aiAlertsOwnerOnly'));
+      if (!silent) setAiBriefingError(t('page.aiAlertsOwnerOnly'));
       return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
     }
 
@@ -17410,7 +17450,7 @@ setCustomerOrganizationName("");
 
     if (newCandidates.length === 0) {
       const message = t('page.noNewAlerts');
-      setAiBriefingMessage(message);
+      if (!silent) setAiBriefingMessage(message);
       return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
     }
 
@@ -17435,7 +17475,7 @@ setCustomerOrganizationName("");
 
     if (error) {
       console.error("Supabase AI alerts insert error:", JSON.stringify(error, null, 2));
-      setAiBriefingError(t('page.alertsGenerateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
+      if (!silent) setAiBriefingError(t('page.alertsGenerateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
       return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
     }
 
@@ -17448,8 +17488,71 @@ setCustomerOrganizationName("");
       new_values: { count: newCandidates.length, alerts: newCandidates.map((item) => item.title) },
     });
     await fetchAiAlerts(currentOrganizationId);
-    setAiBriefingMessage(t('page.alertsGenerated').replace('{count}', String(newCandidates.length)));
+    if (!silent) setAiBriefingMessage(t('page.alertsGenerated').replace('{count}', String(newCandidates.length)));
     return { createdCount: newCandidates.length, activeCount: activeAiAlerts.length + newCandidates.length, createdAlerts: newCandidates };
+  };
+
+  // AI Insight cache sync (P1 Area J — live vs stale AI data sync):
+  // a sale / purchase / customer-payment / supplier-payment save must
+  // invalidate the stored alerts that depend on the changed figures,
+  // otherwise the AI Insight card keeps showing the latest STORED alert
+  // with its generation-time figures and currency (e.g. the live
+  // "Current payable is Rs204,000." alert, generated while the books
+  // currency was PKR). The generator's dedupe lock means regenerating
+  // alone can never fix a stale figure — an active alert with the same
+  // title is skipped — so the stale alert is resolved FIRST and only
+  // then are fresh alerts regenerated from live data (in the ACTIVE
+  // books currency, via `formatBooksMoney`). Fire-and-forget and
+  // fail-open by design: this must NEVER fail, delay or change a save.
+  // Staff saves invalidate only (the generator is owner-gated); owner /
+  // admin saves invalidate AND regenerate. Offline-parked saves never
+  // call this — their figures have not reached the server yet.
+  const refreshAiAlertsAfterSave = (save: AiAlertSyncSave): void => {
+    void (async () => {
+      try {
+        if (!currentOrganizationId) return;
+        // Fresh server rows, not the rendered state: the state may not
+        // include alerts created since the last fetch, and the generator
+        // dedupes against state — deciding on stale state could both
+        // miss a stale alert and recreate a duplicate.
+        const freshAlerts = await fetchAiAlerts(currentOrganizationId);
+        const staleIds = staleAiAlertIdsForSave(save, freshAlerts);
+        if (staleIds.length > 0) {
+          const now = new Date().toISOString();
+          const { error } = await supabase
+            .from("ai_alerts")
+            .update({ status: "resolved", updated_at: now, resolved_at: now })
+            .in("id", staleIds)
+            .eq("organization_id", currentOrganizationId);
+          if (error) {
+            console.error("Supabase AI alert sync after save error:", JSON.stringify(error, null, 2));
+            return;
+          }
+          // One audit entry for the batch (best-effort: never blocks).
+          try {
+            await createAuditLog({
+              action: "updated",
+              entity_type: "ai_alert",
+              entity_id: null,
+              entity_label: t('page.aiAlertsInvalidatedAfterSave').replace('{kind}', AI_ALERT_SYNC_SAVE_KIND_LABEL[save.kind]).replace('{count}', String(staleIds.length)),
+              description: t('page.aiAlertsInvalidatedAfterSave').replace('{kind}', AI_ALERT_SYNC_SAVE_KIND_LABEL[save.kind]).replace('{count}', String(staleIds.length)),
+              new_values: { count: staleIds.length, alert_ids: staleIds },
+            });
+          } catch (auditError) {
+            console.error("AI alert sync audit log failed (non-fatal):", auditError);
+          }
+          // Re-read state so the generator's dedupe sees the resolved
+          // rows; otherwise it would skip recreating them.
+          await fetchAiAlerts(currentOrganizationId);
+        }
+        if (shouldRegenerateAiAlertsAfterSave(currentProfile?.role ?? null)) {
+          await generateAiBusinessAlerts({ silent: true });
+        }
+      } catch (err) {
+        // Fail-open: a sync failure must never surface in the save flow.
+        console.error("AI alert sync after save failed (non-fatal):", err);
+      }
+    })();
   };
 
   const updateAiAlertStatus = async (alert: AiAlert, nextStatus: "active" | "resolved" | "archived") => {
