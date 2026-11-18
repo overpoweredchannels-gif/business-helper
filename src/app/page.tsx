@@ -20849,7 +20849,7 @@ setCustomerOrganizationName("");
       <section className="aankh-card h-full rounded-xl border border-border bg-card p-5">
         <h2 className="text-lg font-semibold">{t('records.title')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('records.widgetHint')}</p>
-        <details className="mt-3"><summary className="workspace-button-secondary w-fit cursor-pointer">{t('records.title')}</summary><div className="mt-4"><BusinessRecordsExport /></div></details>
+        <div className="mt-4"><BusinessRecordsExport /></div>
       </section>
   ) : null;
 
