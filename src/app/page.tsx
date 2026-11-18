@@ -128,6 +128,7 @@ import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } f
 import { buildTopProductRows, previousPeriodRange, topProductLineNetRevenue } from "@/lib/dashboard/top-products";
 import { buildTopCustomerRows } from "@/lib/dashboard/top-customers";
 import { dashboardAiInsightKind } from "@/lib/dashboard/ai-insight";
+import { smartModuleRows, urgentReorderRows } from "@/lib/dashboard/smart-modules";
 import { isUnpaidPurchase, matchesPurchasePaymentFilter, NEEDS_ATTENTION_OUTSTANDING_PAYMENT_FILTER, NEEDS_ATTENTION_URGENT_REORDER_FILTER, reorderRecommendationMatchesFilter, taskFilterForNeedsAttentionTile, taskMatchesTypeFilter } from "@/lib/dashboard/needs-attention";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
@@ -14123,6 +14124,12 @@ setCustomerOrganizationName("");
       missingReorderLevelCount: 0,
     }
   );
+  // Smart Module Inventory: the summary count and the listed rows come
+  // from this one set — the recommendations' own urgent rows — so they
+  // can never disagree. (Previously the summary counted the
+  // recommendations while the list came from lowStockProducts, whose
+  // reorderLevel has no minimum_stock_level fallback.)
+  const urgentReorderModule = urgentReorderRows(reorderRecommendations);
   const filteredReorderRecommendations = reorderRecommendations.filter((recommendation) => {
     const matchesFilter = reorderRecommendationMatchesFilter(
       recommendation,
@@ -15528,6 +15535,11 @@ setCustomerOrganizationName("");
     .slice()
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 10);
+  // Smart Module Sales / Purchases: the summary count and the listed
+  // rows come from these same arrays — previously the summaries counted
+  // all 10 recent invoices while the modules listed only slice(0, 5).
+  const recentSalesModule = smartModuleRows(recentSalesInvoices);
+  const recentPurchasesModule = smartModuleRows(recentPurchaseInvoices);
   // Recent Activity is one recency-ordered merge of both kinds, capped at
   // the 5 rows the widget shows — purchases compete on recency instead of
   // being appended after the sales and cut off by the widget's slice(0, 5).
@@ -21176,13 +21188,13 @@ setCustomerOrganizationName("");
               {
                 id: "sales",
                 title: t('sell.salesColumn'),
-                summary: t('dashboard.recentSalesTransactions').replace('{count}', String(recentSalesInvoices.length)),
+                summary: t('dashboard.recentSalesTransactions').replace('{count}', String(recentSalesModule.count)),
                 readStatus: dashboardReadStatusFor("sales-transactions"),
                 lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions"),
                 onOpen: () => handleSectionChange("sales"),
-                children: recentSalesInvoices.length > 0 ? (
+                children: recentSalesModule.rows.length > 0 ? (
                   <div className="space-y-1 mt-1">
-                    {recentSalesInvoices.slice(0, 5).map((inv) => (
+                    {recentSalesModule.rows.map((inv) => (
                       <div key={inv.id} className="flex items-center justify-between text-xs">
                         <span className="text-foreground/80 truncate">#{inv.invoice_number}</span>
                         <span className="text-light-text shrink-0">{formatDateTime(inv.created_at)}</span>
@@ -21194,13 +21206,13 @@ setCustomerOrganizationName("");
               {
                 id: "purchases",
                 title: t('buy.purchases'),
-                summary: t('dashboard.recentPurchasesCount').replace('{count}', String(recentPurchaseInvoices.length)),
+                summary: t('dashboard.recentPurchasesCount').replace('{count}', String(recentPurchasesModule.count)),
                 readStatus: dashboardReadStatusFor("purchase-transactions"),
                 lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions"),
                 onOpen: () => handleSectionChange("purchases"),
-                children: recentPurchaseInvoices.length > 0 ? (
+                children: recentPurchasesModule.rows.length > 0 ? (
                   <div className="space-y-1 mt-1">
-                    {recentPurchaseInvoices.slice(0, 5).map((inv) => (
+                    {recentPurchasesModule.rows.map((inv) => (
                       <div key={inv.id} className="flex items-center justify-between text-xs">
                         <span className="text-foreground/80 truncate">#{inv.invoice_number}</span>
                         <span className="text-light-text shrink-0">{formatDateTime(inv.created_at)}</span>
@@ -21212,15 +21224,15 @@ setCustomerOrganizationName("");
               {
                 id: "inventory",
                 title: t('stock.inventory'),
-                summary: t('dashboard.itemsNeedReorder').replace('{count}', String(reorderRecommendationSummary.urgentReorderCount)),
+                summary: t('dashboard.itemsNeedReorder').replace('{count}', String(urgentReorderModule.count)),
                 readStatus: dashboardReadStatusFor("products"),
                 lastSuccessfulAt: dashboardLastSuccessFor("products"),
-                badge: reorderRecommendationSummary.urgentReorderCount > 0 ? t('dashboard.actionNeeded') : undefined,
+                badge: urgentReorderModule.count > 0 ? t('dashboard.actionNeeded') : undefined,
                 badgeColor: "warning" as const,
                 onOpen: () => handleSectionChange("inventory"),
-                children: lowStockProducts.length > 0 ? (
+                children: urgentReorderModule.rows.length > 0 ? (
                   <div className="space-y-1 mt-1">
-                    {lowStockProducts.slice(0, 10).map((item) => (
+                    {urgentReorderModule.rows.map((item) => (
                       <div key={item.productId} className="flex items-center justify-between text-xs">
                         <span className="text-foreground/80 truncate">{item.productName}</span>
                         <span className={cn(
