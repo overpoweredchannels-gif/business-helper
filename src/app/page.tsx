@@ -127,6 +127,7 @@ import { businessHealthCashFlowStatus, businessHealthLabel, businessHealthProfit
 import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } from "@/lib/dashboard/trends";
 import { buildTopProductRows, previousPeriodRange, topProductLineNetRevenue } from "@/lib/dashboard/top-products";
 import { buildTopCustomerRows } from "@/lib/dashboard/top-customers";
+import { dashboardAiInsightKind } from "@/lib/dashboard/ai-insight";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -21223,19 +21224,30 @@ setCustomerOrganizationName("");
             ]}
             aiInsight={(() => {
               const latestAlert = aiAlerts.filter((a) => a.status === "active" || a.status === "new").sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-              return latestAlert ? {
-                insight: latestAlert.summary || latestAlert.title,
-                confidence: 85,
-                action: latestAlert.recommended_action ?? undefined,
-                reason: t('dashboard.basedOn').replace('{source}', latestAlert.source_type || t('dashboard.recentData')),
-                onLearnMore: () => handleSectionChange("ai-analytics"),
-              } : businessIntelligenceAnalytics.insights.lowStockWarning ? {
-                insight: businessIntelligenceAnalytics.insights.lowStockWarning,
-                confidence: 90,
-                action: t('dashboard.reviewInventory'),
-                reason: t('dashboard.stockAnalysisReason'),
-                onLearnMore: () => handleSectionChange("inventory"),
-              } : undefined;
+              const kind = dashboardAiInsightKind({
+                hasActiveAlert: latestAlert !== undefined,
+                outOfStockCount: businessIntelligenceAnalytics.outOfStockProducts.length,
+                lowStockCount: businessIntelligenceAnalytics.lowStockProducts.length,
+              });
+              if (kind === "alert" && latestAlert) {
+                return {
+                  insight: latestAlert.summary || latestAlert.title,
+                  confidence: 85,
+                  action: latestAlert.recommended_action ?? undefined,
+                  reason: t('dashboard.basedOn').replace('{source}', latestAlert.source_type || t('dashboard.recentData')),
+                  onLearnMore: () => handleSectionChange("ai-analytics"),
+                };
+              }
+              if (kind === "fallback") {
+                return {
+                  insight: businessIntelligenceAnalytics.insights.lowStockWarning,
+                  confidence: 90,
+                  action: t('dashboard.reviewInventory'),
+                  reason: t('dashboard.stockAnalysisReason'),
+                  onLearnMore: () => handleSectionChange("inventory"),
+                };
+              }
+              return undefined;
             })()}
             revenueData={buildRevenueTrendData(businessIntelligenceAnalytics.dailyTrends)}
             profitData={profitTrend.points}
