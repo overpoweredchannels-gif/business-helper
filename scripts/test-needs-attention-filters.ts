@@ -34,17 +34,15 @@
  * The count itself is unchanged (the strict urgent count was already
  * correct after the low-stock unification slice, cc2a1c3).
  *
- * (4) EXPIRING STOCK CHECKS FRAGILE TITLE MATCH — BLOCKED, NOT built
- * in this slice and NOT covered by this test: the count is
- * `task_type === "stock_check" && title.toLowerCase().includes("expir")`,
- * and there is NO structured field that distinguishes an "expiring"
- * stock check from any other stock check (the Task interface has no
- * subtype/metadata column; no suggestion creates stock_check tasks;
- * stock_check tasks are created only via the manual form with a
- * free-text title). Adding a structured marker needs a DB
- * column/migration. The count (page.tsx:14476) is left UNCHANGED; the
- * tile still gets its stock_check deep filter from (1), which is
- * independent of the count. See the parent report for the options.
+ * (4) EXPIRING STOCK CHECKS FRAGILE TITLE MATCH — BUILT in the
+ * expiry-check-type slice (Option A, UMAIR-approved 2026-11-18) and
+ * covered by scripts/test-expiry-check-type.ts: the count was
+ * `task_type === "stock_check" && title.toLowerCase().includes("expir")`.
+ * A structured task type "expiry_check" now exists (taskTypes), the
+ * count is `countExpiringStockChecks` (pending tasks of that type, no
+ * title matching), and the tile deep-links to "expiry_check" (see the
+ * updated assertion below). No DB migration was needed: task_type is
+ * a plain string with no enum/check constraint.
  *
  * This test imports the production helpers directly (no mirroring).
  *
@@ -84,8 +82,8 @@ function main(): void {
     '"Customer Follow-ups" -> "follow_ups" (not "all")',
   );
   check(
-    taskFilterForNeedsAttentionTile("Expiring Stock Checks") === "stock_check",
-    '"Expiring Stock Checks" -> "stock_check" (not "all")',
+    taskFilterForNeedsAttentionTile("Expiring Stock Checks") === "expiry_check",
+    '"Expiring Stock Checks" -> "expiry_check" (not "all")',
   );
   check(
     taskFilterForNeedsAttentionTile("Pending Approvals") === null,

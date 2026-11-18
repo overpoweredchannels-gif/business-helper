@@ -129,7 +129,7 @@ import { buildTopProductRows, previousPeriodRange, topProductLineNetRevenue } fr
 import { buildTopCustomerRows } from "@/lib/dashboard/top-customers";
 import { dashboardAiInsightKind } from "@/lib/dashboard/ai-insight";
 import { smartModuleRows, urgentReorderRows } from "@/lib/dashboard/smart-modules";
-import { isUnpaidPurchase, matchesPurchasePaymentFilter, NEEDS_ATTENTION_OUTSTANDING_PAYMENT_FILTER, NEEDS_ATTENTION_URGENT_REORDER_FILTER, reorderRecommendationMatchesFilter, taskFilterForNeedsAttentionTile, taskMatchesTypeFilter } from "@/lib/dashboard/needs-attention";
+import { countExpiringStockChecks, isUnpaidPurchase, matchesPurchasePaymentFilter, NEEDS_ATTENTION_OUTSTANDING_PAYMENT_FILTER, NEEDS_ATTENTION_URGENT_REORDER_FILTER, reorderRecommendationMatchesFilter, taskFilterForNeedsAttentionTile, taskMatchesTypeFilter } from "@/lib/dashboard/needs-attention";
 import { accumulateVoiceTranscript, aiSectionKind, floatingAiDestination, voiceListenEndOutcome, voiceListenStartDecision, voiceOperatorCleanupOnLeave, type VoiceRecognitionResult } from "@/lib/ai/voice-operator";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
@@ -14494,7 +14494,7 @@ setCustomerOrganizationName("");
     isUnpaidPurchase(supplierPaymentAllocationByPurchaseTransaction[tx.id]?.remainingPayableAmount)
   ).length || 0;
   const customersToFollowUp = pendingTasks.filter((t) => t.task_type === "customer_follow_up" || t.task_type === "sales_follow_up").length || 0;
-  const expiringProducts = pendingTasks.filter((t) => t.task_type === "stock_check" && t.title.toLowerCase().includes("expir")).length || 0;
+  const expiringProducts = countExpiringStockChecks(pendingTasks);
   const getBusinessIntelligenceDateRange = () => {
     const today = new Date();
     const startOfWeek = new Date(today);
@@ -31407,7 +31407,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   <option value="high_urgent">{t('tasks.filterHighUrgent')}</option>
                   <option value="payment_collection">{t('task.collectionTasks')}</option>
                   <option value="follow_ups">{t('task.customerFollowUps')}</option>
-                  <option value="stock_check">{t('task.expiringStockChecks')}</option>
+                  <option value="stock_check">{t('task.stockChecks')}</option>
+                  <option value="expiry_check">{t('task.expiringStockChecks')}</option>
                 </select>
                 <input
                   type="search"

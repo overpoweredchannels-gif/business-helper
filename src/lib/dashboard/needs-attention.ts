@@ -14,7 +14,9 @@
  * + `taskMatchesTypeFilter`), wired into the Task Manager select and
  * into `filteredTasks`. Each tile now lands on its own type:
  * payment_collection / follow_ups (customer_follow_up OR
- * sales_follow_up — the same two types the tile counts) / stock_check.
+ * sales_follow_up — the same two types the tile counts) / expiry_check
+ * (the Expiring Stock Checks tile's own structured type; it used to
+ * land on stock_check, which was the pre-Option-A arrival).
  * The filter is a single select, so it filters by type only: the
  * tile's number is the PENDING count for that type while the arrival
  * list shows the type's tasks in every status. That is an honest
@@ -57,24 +59,24 @@
  * low-stock unification slice, cc2a1c3). "Low Stock Alerts" (KPI) gets
  * the same arrival: its value IS the urgent count.
  *
- * (4) EXPIRING STOCK CHECKS FRAGILE TITLE MATCH — BLOCKED, not built
- * in this slice. The count is `task_type === "stock_check" &&
- * title.toLowerCase().includes("expir")`, i.e. derived from the task
- * TITLE. There is NO structured field that distinguishes an "expiring"
- * stock check from any other stock check: the Task interface has no
- * subtype/metadata column, no suggestion creates stock_check tasks
- * (suggestions only create payment_collection / expense_review /
- * reorder), and stock_check tasks are created ONLY via the manual form
- * with a free-text title. Adding a structured marker needs a DB
- * column/migration, which this slice must not invent. The count
- * (page.tsx:14476) is left UNCHANGED; the tile still gets its
- * stock_check deep filter from (1), which is independent of the count.
- * Options for the parent: (a) a migration adding a structured marker
- * (e.g. a dedicated task_type such as "expiry_check"); (b) redefine
- * the tile as "Stock Checks" counting all pending stock_check tasks
- * (label change in 4 locales, no migration); (c) compute "expiring
- * stock" from batch expiry dates instead of tasks (different meaning
- * — products, not tasks — a scope decision).
+ * (4) EXPIRING STOCK CHECKS FRAGILE TITLE MATCH — DONE (Option A,
+ * UMAIR-approved 2026-11-18): the count was `task_type ===
+ * "stock_check" && title.toLowerCase().includes("expir")`, i.e.
+ * derived from the task TITLE. Fix: a structured task type
+ * "expiry_check" now exists in `taskTypes` (constants.ts), so the
+ * manual task form offers it and stores it as a plain string — no DB
+ * migration (task_type has no enum/check constraint anywhere; the
+ * form already stores arbitrary taskTypes values). The count is
+ * `countExpiringStockChecks` — pending tasks whose task_type is
+ * "expiry_check", with NO title matching anywhere in the count path.
+ * Existing stock_check tasks are NOT re-typed (including any with
+ * "expir" in the title): they stay stock_check and simply do not
+ * count. The Task Manager filter gained its own "expiry_check"
+ * option (labelled Expiring Stock Checks) and the old "stock_check"
+ * option is now honestly labelled "Stock Checks" (new key
+ * `task.stockChecks` ×4); the tile deep-links to "expiry_check".
+ * The filter still matches "stock_check" tasks when that value is
+ * selected directly (`taskMatchesTypeFilter` keeps the case).
  *
  * Out of scope: "Pending Approvals" already deep-links to sales orders
  * pending_approval (unchanged); "Outstanding Payables" (KPI) keeps its
@@ -94,7 +96,7 @@ export type NeedsAttentionTileKey =
 export type NeedsAttentionTaskFilter =
   | "payment_collection"
   | "follow_ups"
-  | "stock_check";
+  | "expiry_check";
 
 /**
  * The Task Manager filter value a Needs Attention tile lands on, or
@@ -112,21 +114,24 @@ export function taskFilterForNeedsAttentionTile(
     case "Customer Follow-ups":
       return "follow_ups";
     case "Expiring Stock Checks":
-      return "stock_check";
+      return "expiry_check";
     default:
       return null;
   }
 }
 
 /**
- * Whether a task's type matches a Task Manager filter value. The three
- * type values are the ones the Needs Attention tiles deep-link to:
+ * Whether a task's type matches a Task Manager filter value. The type
+ * values are the ones the Needs Attention tiles deep-link to plus the
+ * "stock_check" value the Task Manager select still offers directly:
  * "payment_collection" matches only payment_collection tasks;
  * "follow_ups" matches customer_follow_up OR sales_follow_up (the same
- * two types the Customer Follow-ups tile counts); "stock_check"
- * matches only stock_check tasks. Any other filter value (status
- * values, "all", …) is NOT a type filter and never matches here — the
- * status branches of `filteredTasks` own those.
+ * two types the Customer Follow-ups tile counts); "expiry_check"
+ * matches only expiry_check tasks (the Expiring Stock Checks tile's
+ * set); "stock_check" matches only stock_check tasks. Any other
+ * filter value (status values, "all", …) is NOT a type filter and
+ * never matches here — the status branches of `filteredTasks` own
+ * those.
  */
 export function taskMatchesTypeFilter(
   taskType: string,
@@ -137,11 +142,31 @@ export function taskMatchesTypeFilter(
       return taskType === "payment_collection";
     case "follow_ups":
       return taskType === "customer_follow_up" || taskType === "sales_follow_up";
+    case "expiry_check":
+      return taskType === "expiry_check";
     case "stock_check":
       return taskType === "stock_check";
     default:
       return false;
   }
+}
+
+/**
+ * The Expiring Stock Checks tile count: the number of PENDING tasks
+ * whose structured type is "expiry_check". The caller passes the
+ * pending-only list (page.tsx `pendingTasks`), so this helper checks
+ * the type only — the status is already settled. There is NO title
+ * matching here by design: a stock_check task whose title mentions
+ * "expir" does NOT count, and an expiry_check task counts whatever
+ * its title says. Existing stock_check tasks are never re-typed.
+ */
+export function countExpiringStockChecks(
+  pendingTasks: ReadonlyArray<{ task_type: string }>,
+): number {
+  return (
+    pendingTasks.filter((task) => task.task_type === "expiry_check")
+      .length || 0
+  );
 }
 
 /**
