@@ -128,6 +128,7 @@ import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } f
 import { buildTopProductRows, previousPeriodRange, topProductLineNetRevenue } from "@/lib/dashboard/top-products";
 import { buildTopCustomerRows } from "@/lib/dashboard/top-customers";
 import { dashboardAiInsightKind } from "@/lib/dashboard/ai-insight";
+import { isUnpaidPurchase, matchesPurchasePaymentFilter, NEEDS_ATTENTION_OUTSTANDING_PAYMENT_FILTER, NEEDS_ATTENTION_URGENT_REORDER_FILTER, reorderRecommendationMatchesFilter, taskFilterForNeedsAttentionTile, taskMatchesTypeFilter } from "@/lib/dashboard/needs-attention";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -377,6 +378,11 @@ const PURCHASE_INVOICE_PAYMENT_OPTIONS = [
   { value: "paid", label: "Paid" },
   { value: "partially_paid", label: "Partially paid" },
   { value: "unpaid", label: "Unpaid" },
+  // "outstanding" is the union the Unpaid Purchases tile counts —
+  // remaining > 0, i.e. unpaid OR partially paid. The plain "unpaid"
+  // value would drop partially paid rows, so the tile's deep link
+  // needs this value for the arrival list to match the tile's count.
+  { value: "outstanding", label: "Outstanding" },
   { value: "returned", label: "Returned" },
 ];
 
@@ -13552,7 +13558,10 @@ setCustomerOrganizationName("");
       }
       if (
         purchaseInvoicePaymentFilter !== "all" &&
-        getPurchaseTransactionPaymentStatus(transaction) !== purchaseInvoicePaymentFilter
+        !matchesPurchasePaymentFilter(
+          getPurchaseTransactionPaymentStatus(transaction),
+          purchaseInvoicePaymentFilter,
+        )
       ) {
         return false;
       }
@@ -13741,6 +13750,7 @@ setCustomerOrganizationName("");
       paid: t('money.paid'),
       partially_paid: t('buy.statusPartial'),
       unpaid: t('buy.statusUnpaid'),
+      outstanding: t('buy.statusOutstanding'),
       returned: t('buy.returnedLabel'),
     };
     const sortLabelByValue: Record<string, string> = {
@@ -14114,11 +14124,10 @@ setCustomerOrganizationName("");
     }
   );
   const filteredReorderRecommendations = reorderRecommendations.filter((recommendation) => {
-    const matchesFilter =
-      reorderRecommendationFilter === "all" ||
-      (reorderRecommendationFilter === "missing-reorder-level" &&
-        recommendation.missingReorderLevel) ||
-      recommendation.status === reorderRecommendationFilter;
+    const matchesFilter = reorderRecommendationMatchesFilter(
+      recommendation,
+      reorderRecommendationFilter,
+    );
     const searchTerm = reorderRecommendationSearch.trim().toLowerCase();
     const matchesSearch =
       !searchTerm ||
@@ -14468,10 +14477,13 @@ setCustomerOrganizationName("");
   const invoicesDue = pendingTasks.filter((t) => t.task_type === "payment_collection").length || 0;
   // Payments due = supplier purchases with an outstanding payable (overdue or
   // not yet paid). Uses the same allocation engine as the payables ledger.
-  const paymentsDue = purchaseTransactions.filter((tx) => {
-    const remaining = supplierPaymentAllocationByPurchaseTransaction[tx.id]?.remainingPayableAmount;
-    return Number.isFinite(remaining) ? remaining > 0 : true;
-  }).length || 0;
+  // A purchase with no allocation record (or a non-finite remaining) is NOT
+  // counted — the old `: true` fallback counted unseen rows as due and
+  // overstated the tile. The map covers every purchase transaction in
+  // normal operation, so the live count is unchanged.
+  const paymentsDue = purchaseTransactions.filter((tx) =>
+    isUnpaidPurchase(supplierPaymentAllocationByPurchaseTransaction[tx.id]?.remainingPayableAmount)
+  ).length || 0;
   const customersToFollowUp = pendingTasks.filter((t) => t.task_type === "customer_follow_up" || t.task_type === "sales_follow_up").length || 0;
   const expiringProducts = pendingTasks.filter((t) => t.task_type === "stock_check" && t.title.toLowerCase().includes("expir")).length || 0;
   const getBusinessIntelligenceDateRange = () => {
@@ -16123,6 +16135,7 @@ setCustomerOrganizationName("");
     const matchesFilter =
       taskFilter === "all" ||
       task.status === taskFilter ||
+      taskMatchesTypeFilter(task.task_type, taskFilter) ||
       (taskFilter === "overdue" && active && Boolean(dueDate && dueDate < todayDateValue)) ||
       (taskFilter === "due_today" && active && dueDate === todayDateValue) ||
       (taskFilter === "high_urgent" && (task.priority === "high" || task.priority === "urgent"));
@@ -21282,21 +21295,45 @@ setCustomerOrganizationName("");
               else if (label === "View Inventory") handleSectionChange("inventory");
             }}
             onKPIClick={(title) => {
+              const taskTileFilter = taskFilterForNeedsAttentionTile(title);
               if (title === "Pending Approvals") {
                 setSalesTab("orders");
                 setSalesOrderStatusFilter("pending_approval");
                 refreshSalesOrders();
                 handleSectionChange("sales");
               }
-              else if (title === "Collection Tasks" || title === "Customer Follow-ups" || title === "Expiring Stock Checks") {
-                setTaskFilter("all");
+              // Needs Attention task tiles land on the Task Manager
+              // filtered to their own type — never "all".
+              else if (taskTileFilter !== null) {
+                setTaskFilter(taskTileFilter);
                 setTaskSearch("");
                 handleSectionChange("task-manager");
               }
-              else if (title === "Unpaid Purchases" || title === "Outstanding Payables") handleSectionChange("supplier-payments");
+              // Unpaid Purchases lands on Purchase History filtered to
+              // the "outstanding" payment set (remaining > 0) — the
+              // per-invoice list behind the tile's count. The other
+              // purchase filters are reset so the list matches the count.
+              else if (title === "Unpaid Purchases") {
+                setPurchaseInvoiceFilters(() => DEFAULT_PURCHASE_LIST_FILTERS);
+                setPurchaseInvoicePaymentFilter(NEEDS_ATTENTION_OUTSTANDING_PAYMENT_FILTER);
+                setPurchaseTab("invoice");
+                handleSectionChange("purchases");
+              }
+              else if (title === "Outstanding Payables") handleSectionChange("supplier-payments");
               else if (title === "Today's Sales" || title === "Orders Today") handleSectionChange("sales");
               else if (title === "Today's Profit" || title === "Profit Margin") handleSectionChange("profit-loss");
-              else if (title === "Inventory Value" || title === "Low Stock Alerts" || title === "Urgent Reorders") handleSectionChange("inventory");
+              // Urgent Reorders — and Low Stock Alerts, whose value IS
+              // the urgent count — land on inventory with the reorder
+              // filter set to "Urgent Reorder", so the list is exactly
+              // the tile's set. Inventory Value keeps its plain
+              // destination (it is about all products, not the urgent set).
+              else if (title === "Urgent Reorders" || title === "Low Stock Alerts") {
+                setInventoryTab("dashboard");
+                setReorderRecommendationFilter(NEEDS_ATTENTION_URGENT_REORDER_FILTER);
+                setReorderRecommendationSearch("");
+                handleSectionChange("inventory");
+              }
+              else if (title === "Inventory Value") handleSectionChange("inventory");
               else if (title === "Outstanding Receivables" || title === "Customers Today") handleSectionChange("customers");
             }}
           />
@@ -31296,6 +31333,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                   <option value="overdue">{t('tasks.filterOverdue')}</option>
                   <option value="due_today">{t('tasks.filterDueToday')}</option>
                   <option value="high_urgent">{t('tasks.filterHighUrgent')}</option>
+                  <option value="payment_collection">{t('task.collectionTasks')}</option>
+                  <option value="follow_ups">{t('task.customerFollowUps')}</option>
+                  <option value="stock_check">{t('task.expiringStockChecks')}</option>
                 </select>
                 <input
                   type="search"
