@@ -1,5 +1,11 @@
 import { callAiProviderRouter } from "./provider-router";
 import {
+  buildBusinessQueryDirectPrompt,
+  resolveBusinessQueryLanguage,
+  resolveBusinessQueryQuestion,
+  shouldAnswerBusinessQueryDirectly,
+} from "./business-query-direct";
+import {
   ConversationContext,
   ConversationState,
   ActionType,
@@ -373,6 +379,25 @@ export class ConversationRuntime {
     if (entities.credit_days && entities.payment_type === "credit") context.collectedData["credit_days"] = entities.credit_days;
     if (entities.notes) context.collectedData.notes = entities.notes;
 
+    if (shouldAnswerBusinessQueryDirectly(classification.intent)) {
+      // A business question is answered directly: it is not a record to
+      // create, so it never goes through field collection ("What would you
+      // like to know about your business?") or confirmation ("Please
+      // confirm with yes or no."). The user's message IS the question.
+      const question = resolveBusinessQueryQuestion(message);
+      if (question) {
+        return await this.answerBusinessQuestionDirectly(
+          question,
+          context,
+          sessionId,
+          organizationId,
+          profileId,
+          classification.language
+        );
+      }
+      return await this.fallbackToChat(message, context, sessionId, organizationId, profileId);
+    }
+
     if (classification.intent === "inventory_query") {
       if (!this.store) {
         context = updateConversationState(context, "idle");
@@ -443,12 +468,21 @@ export class ConversationRuntime {
     return { response: question, state: context.state, actionType: context.actionType };
   }
 
-  private async fallbackToChat(
+  /**
+   * Direct business-question answer: the runtime's existing business-chat
+   * path (`callAiProviderRouter`, task "business_chat", grounded on the
+   * store's business context). Returns to idle with actionType null —
+   * a question is never a pending action. The classifier's detected
+   * language is preserved into the prompt so Roman Urdu / Urdu
+   * questions get answers in kind.
+   */
+  private async answerBusinessQuestionDirectly(
     message: string,
     context: ConversationContext,
     sessionId: string,
     organizationId: string,
-    profileId: string | null
+    profileId: string | null,
+    language?: string
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
     const ctx = this.store ? this.getBusinessContextText() : "";
     const recentConv = this.store ? this.store.getConversationContext(5) : [];
@@ -456,22 +490,12 @@ export class ConversationRuntime {
 
     const result = await callAiProviderRouter({
       task: "business_chat",
-      prompt: [
-        `You are the AI assistant for a Pakistani retail/wholesale business called Aankh.`,
-        `Answer the user's question concisely using the business context below.`,
-        `If the user greets you, greet back and ask how you can help.`,
-        `Use PKR currency formatting.`,
-        ``,
-        `BUSINESS CONTEXT:`,
-        ctx || "(No business data loaded)",
-        ``,
-        history ? `RECENT CONVERSATION:\n${history}\n` : "",
-        `USER: ${message}`,
-        ``,
-        `You can help with: creating sales, purchases, expenses, checking analytics, inventory status, etc.`,
-        `If the user wants to create something, guide them to provide the details.`,
-        `Response:`,
-      ].join("\n"),
+      prompt: buildBusinessQueryDirectPrompt({
+        question: message,
+        language: resolveBusinessQueryLanguage(language),
+        businessContext: ctx,
+        history,
+      }),
       temperature: 0.3,
     });
 
@@ -507,6 +531,19 @@ export class ConversationRuntime {
     }
 
     return { response, state: "idle", actionType: null };
+  }
+
+  private async fallbackToChat(
+    message: string,
+    context: ConversationContext,
+    sessionId: string,
+    organizationId: string,
+    profileId: string | null
+  ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
+    // Unknown intent: answer the message directly with the same
+    // business-chat path the business_query branch uses (language "auto"
+    // mirrors the question's own language style).
+    return await this.answerBusinessQuestionDirectly(message, context, sessionId, organizationId, profileId);
   }
 
   private async classifyIntent(message: string, context: ConversationContext): Promise<{
