@@ -161,11 +161,15 @@ export function TopCustomersCard({ items }: { items: RankedItem[] }) {
   return (
     <div className={card}>
       <h3 className="text-base font-semibold text-foreground mb-4">{t('dashboard.topCustomers')}</h3>
-      <div className="divide-y divide-border">
-        {items.map((item, index) => (
-          <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} trend={item.trend} />
-        ))}
-      </div>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t('dashboard.topCustomersNoData')}</p>
+      ) : (
+        <div className="divide-y divide-border">
+          {items.map((item, index) => (
+            <TopItem key={item.name} rank={index + 1} name={item.name} value={item.value} trend={item.trend} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

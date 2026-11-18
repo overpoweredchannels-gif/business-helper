@@ -247,7 +247,9 @@ export function DashboardView({
     // The Top Products card is always on the dashboard too: with no
     // selling products it shows its empty state instead of vanishing.
     { id: "chart-top-products" as DashboardWidgetId, node: <TopProductsCard items={topProducts ?? []} /> },
-    ...(topCustomers && topCustomers.length > 0 ? [{ id: "chart-top-customers" as DashboardWidgetId, node: <TopCustomersCard items={topCustomers} /> }] : []),
+    // The Top Customers card is always on the dashboard too: with no
+    // buying customers it shows its empty state instead of vanishing.
+    { id: "chart-top-customers" as DashboardWidgetId, node: <TopCustomersCard items={topCustomers ?? []} /> },
   ].filter((chart) => !widgetHidden(chart.id));
 
 

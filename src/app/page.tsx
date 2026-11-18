@@ -126,6 +126,7 @@ import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
 import { businessHealthCashFlowStatus, businessHealthLabel, businessHealthProfitMarginStatus } from "@/lib/dashboard/health";
 import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } from "@/lib/dashboard/trends";
 import { buildTopProductRows, previousPeriodRange, topProductLineNetRevenue } from "@/lib/dashboard/top-products";
+import { buildTopCustomerRows } from "@/lib/dashboard/top-customers";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -14633,6 +14634,13 @@ setCustomerOrganizationName("");
     const countedPurchaseTransactions = itemFilterActive
       ? selectedPurchaseTransactions.filter((transaction) => purchaseTransactionIdsWithSelectedItems.has(String(transaction.id)))
       : selectedPurchaseTransactions;
+    // The previous period's counted transactions — the Top Customers
+    // trend baseline, mirroring countedSalesTransactions exactly so the
+    // comparison is like-for-like under a product/category filter.
+    const previousSalesTransactionIdsWithSelectedItems = new Set(previousSalesItems.map((item) => String(item.sales_transaction_id)));
+    const previousCountedSalesTransactions = itemFilterActive
+      ? previousSalesTransactions.filter((transaction) => previousSalesTransactionIdsWithSelectedItems.has(String(transaction.id)))
+      : previousSalesTransactions;
     const selectedCustomerPayments = customerPayments.filter((payment) => {
       if (!isCurrentOrganizationRecord(payment)) return false;
       if (!isInBiRange(payment.payment_date, payment.created_at)) return false;
@@ -14792,6 +14800,14 @@ setCustomerOrganizationName("");
         const totalSales = selectedSalesItems
           .filter((item) => customerSaleIds.has(String(item.sales_transaction_id)))
           .reduce((sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price), 0);
+        // Previous-period total sales, computed exactly the same way
+        // (gross, same filters, same counted-transaction rule) — the Top
+        // Customers card's trend baseline.
+        const previousCustomerSales = previousCountedSalesTransactions.filter((transaction) => transaction.customer_id === customer.id);
+        const previousCustomerSaleIds = new Set(previousCustomerSales.map((transaction) => String(transaction.id)));
+        const previousTotalSales = previousSalesItems
+          .filter((item) => previousCustomerSaleIds.has(String(item.sales_transaction_id)))
+          .reduce((sum, item) => sum + safeNumber(item.quantity) * safeNumber(item.selling_price), 0);
         const paymentsReceived = selectedCustomerPayments
           .filter((payment) => payment.customer_id === customer.id)
           .reduce((sum, payment) => sum + safeNumber(payment.amount), 0);
@@ -14824,6 +14840,7 @@ setCustomerOrganizationName("");
           customerName: customer.customer_name,
           shopName: customer.shop_name ?? "",
           totalSales,
+          previousTotalSales,
           invoiceCount: customerSales.length,
           averageInvoiceValue: customerSales.length > 0 ? totalSales / customerSales.length : 0,
           paymentsReceived,
@@ -21225,7 +21242,14 @@ setCustomerOrganizationName("");
             profitUnknownCostLines={profitTrend.unknownCostLines}
             profitUnknownCostAmount={formatDashboardMoney(displayCurrency, displayFxRate, profitTrend.unknownCostRevenue)}
             formatChartValue={(value: number) => formatDashboardMoney(displayCurrency, displayFxRate, value)}
-            topCustomers={businessIntelligenceAnalytics.topCustomersBySales.slice(0, 5).map((c) => ({ name: c.customerName, value: formatDashboardMoney(displayCurrency, displayFxRate, c.totalSales) }))}
+            topCustomers={buildTopCustomerRows(
+              businessIntelligenceAnalytics.topCustomersBySales.map((c) => ({
+                name: c.customerName,
+                totalSales: c.totalSales,
+                previousTotalSales: previousBiRange ? c.previousTotalSales : null,
+              })),
+              (value) => formatDashboardMoney(displayCurrency, displayFxRate, value),
+            )}
             onViewAllActivity={() => handleSectionChange("activity-logs")}
             topProducts={buildTopProductRows(
               businessIntelligenceAnalytics.topByQuantity.map((p) => ({
