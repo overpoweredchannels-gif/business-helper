@@ -62,6 +62,7 @@ import {
   saveIdentityCache,
   type CachedIdentity,
 } from "@/lib/offline/identity-cache";
+import { shouldRunProvision } from "@/lib/offline/desktop-provision";
 import { computeCreditAllocationsByTransaction, computeReturnedValueBySalesTransaction, summarizeCustomerCredit } from "@/lib/sales/returns-offset";
 import { creditBalanceTimeline } from "@/lib/sales/credit-balance";
 import { formatProductsSummary, getPaymentStatusBadgeKind, getSalesPaymentStatusKind, paymentStatusBadgeClass } from "@/lib/history/payment-status";
@@ -2390,18 +2391,22 @@ export default function Home() {
     offlineIdentityRestoredRef.current = false;
     if (user?.id) {
       try {
-        // Slice S1: never attempt the provision POST while offline — it
-        // cannot succeed, and its throw used to null the profile. The
-        // call runs on the next online transition instead (see the
-        // online-transition effect). The web app is unchanged: provision
+        // Desktop provision skip (2026-11-19): the provision POST can
+        // never succeed on desktop — the local standalone server has no
+        // SUPABASE_SERVICE_ROLE_KEY, so /api/auth/provision always 500s
+        // and the catch below used to null the profile/org and invalidate
+        // the dashboard session, leaving every card "Not loaded". Skip
+        // it on desktop and load the profile directly instead (its JWT
+        // read works on desktop). Slice S1's offline skip is preserved
+        // inside shouldRunProvision. The web app is unchanged: provision
         // always runs there.
-        if (!isDesktopApp() || typeof navigator === "undefined" || navigator.onLine) {
+        if (shouldRunProvision({ isDesktop: isDesktopApp(), isOnline: typeof navigator === "undefined" || navigator.onLine })) {
           console.log(`${logTag} calling provisionWorkspace...`);
           await provisionWorkspace();
           if (authRequestId !== authCheckRequestRef.current) return;
           console.log(`${logTag} provisionWorkspace succeeded, calling loadProfile...`);
         } else {
-          console.log(`${logTag} provisionWorkspace skipped (offline), calling loadProfile...`);
+          console.log(`${logTag} provisionWorkspace skipped (desktop), calling loadProfile...`);
         }
         await loadProfile(user.id);
         console.log(`${logTag} loadProfile succeeded`);
@@ -2569,7 +2574,13 @@ setCustomerOrganizationName("");
       invalidateDashboardSession();
       setCurrentUser(user ?? null);
       if (user?.id) {
-        await provisionWorkspace();
+        // Desktop provision skip (2026-11-19): same as checkAuthUser —
+        // the provision POST 500s on the local server (no service-role
+        // key), so skip it on desktop and load the profile directly.
+        // Web is unchanged: provision still runs.
+        if (shouldRunProvision({ isDesktop: isDesktopApp(), isOnline: typeof navigator === "undefined" || navigator.onLine })) {
+          await provisionWorkspace();
+        }
         await loadProfile(user.id);
       } else {
         setCurrentProfile(null);
