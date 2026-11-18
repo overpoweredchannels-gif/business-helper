@@ -130,6 +130,7 @@ import { buildTopCustomerRows } from "@/lib/dashboard/top-customers";
 import { dashboardAiInsightKind } from "@/lib/dashboard/ai-insight";
 import { smartModuleRows, urgentReorderRows } from "@/lib/dashboard/smart-modules";
 import { isUnpaidPurchase, matchesPurchasePaymentFilter, NEEDS_ATTENTION_OUTSTANDING_PAYMENT_FILTER, NEEDS_ATTENTION_URGENT_REORDER_FILTER, reorderRecommendationMatchesFilter, taskFilterForNeedsAttentionTile, taskMatchesTypeFilter } from "@/lib/dashboard/needs-attention";
+import { accumulateVoiceTranscript, aiSectionKind, floatingAiDestination, voiceListenEndOutcome, voiceListenStartDecision, voiceOperatorCleanupOnLeave, type VoiceRecognitionResult } from "@/lib/ai/voice-operator";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -139,6 +140,7 @@ import { chatWithBusinessBrain, buildChatResponse } from "@/lib/ai/server-chat";
 import type { ChatResponse } from "@/lib/conversation";
 import type { ChatContext } from "@/hooks/useAIChat";
 import { AIAssistant } from "@/components/ai/AIAssistant";
+import { AiVoiceOperator } from "@/components/ai/AiVoiceOperator";
 import {
   buildAssignableRoles,
   hasAssignableRolePermission,
@@ -17917,6 +17919,20 @@ setCustomerOrganizationName("");
     setAiVoiceOperatorMessage(t('page.aiVoiceOpEnded'));
   };
 
+  const handleSelectAiVoiceSession = (sessionId: string) => {
+    setSelectedAiVoiceSessionId(sessionId);
+    if (sessionId) {
+      void fetchAiVoiceOperatorMessages(sessionId, currentOrganizationId);
+    } else {
+      setAiVoiceMessages([]);
+    }
+  };
+
+  const handleRefreshAiVoiceHistory = () => {
+    void fetchAiVoiceOperatorSessions(currentOrganizationId);
+    void fetchAiVoiceOperatorMessages();
+  };
+
   const getAiVoiceActionQuestionText = (field: string) => {
     const romanUrduQuestions: Record<string, string> = {
       supplier_id: "Konsa supplier?",
@@ -18441,7 +18457,10 @@ setCustomerOrganizationName("");
     setAiVoiceHandsFreeMessage(t('page.aiListening'));
     cancelAiVoiceAutoSend(t('page.voiceCancelListen'));
     const Recognition = getSpeechRecognitionConstructor();
-    if (!Recognition) {
+    // voiceListenStartDecision is the single rule for "can we listen";
+    // the `!Recognition` disjunct is the type guard so `new Recognition()`
+    // below is known non-null.
+    if (voiceListenStartDecision(Recognition !== null) === "not-supported" || !Recognition) {
       setAiVoiceOperatorError(t('page.aiVoiceInputNotSupported'));
       return;
     }
@@ -18454,17 +18473,15 @@ setCustomerOrganizationName("");
     recognition.continuous = false;
     aiVoiceFinalTranscriptRef.current = "";
     recognition.onresult = (event) => {
-      let transcript = "";
-      let finalTranscript = "";
+      const mapped: VoiceRecognitionResult[] = [];
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const resultText = event.results[index][0].transcript;
-        transcript += resultText;
-        if (event.results[index].isFinal) {
-          finalTranscript += resultText;
-        }
+        mapped.push({
+          transcript: event.results[index][0].transcript,
+          isFinal: event.results[index].isFinal,
+        });
       }
-      const cleanTranscript = transcript.trim();
-      const cleanFinalTranscript = finalTranscript.trim();
+      const { transcript: cleanTranscript, finalTranscript: cleanFinalTranscript } =
+        accumulateVoiceTranscript(mapped);
       setAiVoiceTranscriptPreview(cleanTranscript);
       if (cleanTranscript) setAiVoiceInput(cleanTranscript);
       if (cleanFinalTranscript) {
@@ -18478,10 +18495,15 @@ setCustomerOrganizationName("");
     };
     recognition.onend = () => {
       setIsAiVoiceListening(false);
-      const transcript = (aiVoiceFinalTranscriptRef.current || aiVoiceTranscriptPreview || aiVoiceInput).trim();
-      if (aiVoiceAutoSendEnabled && transcript) {
-        scheduleAiVoiceAutoSend(transcript);
-      } else if (transcript) {
+      const outcome = voiceListenEndOutcome({
+        finalTranscript: aiVoiceFinalTranscriptRef.current,
+        preview: aiVoiceTranscriptPreview,
+        input: aiVoiceInput,
+        autoSendEnabled: aiVoiceAutoSendEnabled,
+      });
+      if (outcome.action === "schedule-auto-send") {
+        scheduleAiVoiceAutoSend(outcome.transcript);
+      } else if (outcome.action === "captured") {
         setAiVoiceHandsFreeMessage(t('page.aiVoiceCaptured'));
       } else {
         setAiVoiceHandsFreeMessage(t('page.aiListeningEnded'));
@@ -19209,7 +19231,7 @@ setCustomerOrganizationName("");
     if (sectionId !== "ai-business-query") {
       stopAiBusinessVoice();
     }
-    if (sectionId !== "ai-voice-operator") {
+    if (voiceOperatorCleanupOnLeave(sectionId)) {
       stopAiVoiceListening();
       stopAiVoiceOperatorReply();
       cancelAiVoiceAutoSend(t('page.autoSendCancelled'));
@@ -20895,8 +20917,8 @@ setCustomerOrganizationName("");
         userName={currentProfile?.full_name ?? currentUser.email}
         onLogout={handleLogout}
         onOpenAiAssistant={() => handleSectionChange("ai-assistant")}
-        onAiVoice={() => handleSectionChange("ai-voice-operator")}
-        onAiChat={() => handleSectionChange("ai-assistant")}
+        onAiVoice={() => handleSectionChange(floatingAiDestination("voice"))}
+        onAiChat={() => handleSectionChange(floatingAiDestination("chat"))}
         customizeMode={navCustomizeMode}
         hiddenNavIds={navHidden ?? []}
         canCustomize={isOwnerOrAdmin()}
@@ -30238,7 +30260,45 @@ setCustomerOrganizationName("");
 
 {activeSectionAllowed && (activeSection === "ai-voice-operator" || activeSection === "ai-analytics" || activeSection === "ai-business-query" || activeSection === "ai-assistant") && (
         <section className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <AIAssistant onChat={onBrainChat} brainAvailable={brainReady} />
+          {aiSectionKind(activeSection) === "voice" ? (
+            <AiVoiceOperator
+              isListening={isAiVoiceListening}
+              isSpeaking={isAiVoiceSpeaking}
+              isLoading={aiVoiceOperatorLoading}
+              transcriptPreview={aiVoiceTranscriptPreview}
+              input={aiVoiceInput}
+              onInputChange={setAiVoiceInput}
+              inputRef={aiVoiceInputRef}
+              operatorMessage={aiVoiceOperatorMessage}
+              operatorError={aiVoiceOperatorError}
+              handsFreeMessage={aiVoiceHandsFreeMessage}
+              handsFreeError={aiVoiceHandsFreeError}
+              autoSpeak={aiVoiceAutoSpeak}
+              onAutoSpeakChange={setAiVoiceAutoSpeak}
+              autoSendEnabled={aiVoiceAutoSendEnabled}
+              onAutoSendEnabledChange={setAiVoiceAutoSendEnabled}
+              autoSendTimerActive={aiVoiceAutoSendTimerActive}
+              pendingAutoSendText={aiVoicePendingAutoSendText}
+              language={aiVoiceLanguage}
+              onLanguageChange={setAiVoiceLanguage}
+              sessions={aiVoiceSessions}
+              selectedSessionId={selectedAiVoiceSessionId}
+              onSelectSession={handleSelectAiVoiceSession}
+              messages={aiVoiceMessages}
+              actionMessage={aiVoiceActionConversationMessage}
+              actionError={aiVoiceActionConversationError}
+              awaitingConfirmation={aiVoiceAwaitingConfirmation}
+              onStartListening={startAiVoiceListening}
+              onStopListening={stopAiVoiceListening}
+              onSend={sendToAiVoiceOperator}
+              onStopReply={stopAiVoiceOperatorReply}
+              onCancelAutoSend={() => cancelAiVoiceAutoSend(t('page.autoSendCancelled'))}
+              onEditBeforeSend={editAiVoiceBeforeSending}
+              onRefreshHistory={handleRefreshAiVoiceHistory}
+            />
+          ) : (
+            <AIAssistant onChat={onBrainChat} brainAvailable={brainReady} />
+          )}
         </section>
         )}
 
