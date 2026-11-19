@@ -1,0 +1,763 @@
+{
+  "tip": "33da41262556228fe669132afc4e19b3bd2e2d07",
+  "tip_short": "33da412",
+  "date": "2026-11-19",
+  "counts": {
+    "CLOUD": 37,
+    "LOCAL": 16,
+    "USER-JWT": 72
+  },
+  "routes": {
+    "/api/ai-business-query": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "provider-router (Gemini/LLM, server AI key) + resolveActor"
+    },
+    "/api/ai/business-intelligence/dashboard": {
+      "methods": "GET",
+      "classification": "CLOUD",
+      "called_from_desktop": "no",
+      "access_today": "createSupabaseService + resolveActor"
+    },
+    "/api/ai/business-intelligence/query": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "no",
+      "access_today": "createSupabaseService + resolveActor"
+    },
+    "/api/ai/customers/create": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService + resolveActor"
+    },
+    "/api/ai/customers/delete": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService + resolveActor"
+    },
+    "/api/ai/customers/update": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService + resolveActor"
+    },
+    "/api/ai/executive": {
+      "methods": "GET, POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "no",
+      "access_today": "createSupabaseService"
+    },
+    "/api/ai/financial/query": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "no",
+      "access_today": "createSupabaseService"
+    },
+    "/api/ai/financial/summary": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "no",
+      "access_today": "createSupabaseService"
+    },
+    "/api/ai/purchases/create": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "PurchaseService default -> PurchaseRepository (service default ctor); create_purchase_atomic is service_role-only"
+    },
+    "/api/ai/sales/create": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService + resolveActor"
+    },
+    "/api/ai/suppliers/create": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService + resolveActor"
+    },
+    "/api/ai/suppliers/delete": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService + resolveActor"
+    },
+    "/api/ai/suppliers/update": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService + resolveActor"
+    },
+    "/api/business-brain": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "provider-router (server AI key, process.env lookup)"
+    },
+    "/api/conversation/chat": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "no (static grep; UI uses /api/ai-business-query)",
+      "access_today": "createSupabaseService (route.ts:44) + ensureServerBusinessBrain"
+    },
+    "/api/conversation/chat/stream": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "no (static grep)",
+      "access_today": "getGateway() (in-memory brain + LLM); no direct service call in this file"
+    },
+    "/api/conversation/status": {
+      "methods": "GET",
+      "classification": "LOCAL",
+      "called_from_desktop": "no",
+      "access_today": "getGateway().getStatus(); no DB, no service key"
+    },
+    "/api/market-intelligence/analyze": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "provider-router (server AI key)"
+    },
+    "/api/maps/eta": {
+      "methods": "GET",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "google-maps lib; GOOGLE_MAPS_API_KEY (server env, google-maps.ts:3)"
+    },
+    "/api/maps/reverse-geocode": {
+      "methods": "GET",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "google-maps lib; GOOGLE_MAPS_API_KEY (server env)"
+    },
+    "/api/auth/mobile-session": {
+      "methods": "POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "no (mobile only)",
+      "access_today": "createServerClient from @supabase/ssr (anon key); no service key"
+    },
+    "/api/auth/provision": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes (4 files)",
+      "access_today": "createSupabaseService via module helper getSupabaseService (route.ts:9-10); auth.admin updateUserById (route.ts:62)"
+    },
+    "/api/identity/employees": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (7 files)",
+      "access_today": "EmployeeService -> EmployeeRepository (service, default ctor)"
+    },
+    "/api/identity/employees/[id]": {
+      "methods": "DELETE, GET, PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "EmployeeService -> EmployeeRepository (service)"
+    },
+    "/api/identity/employees/[id]/assignment": {
+      "methods": "PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/identity/employees/[id]/ledger": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/identity/employees/[id]/reset-password": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct; auth.admin)"
+    },
+    "/api/identity/employees/summaries": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/identity/invitations/accept": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "no",
+      "access_today": "createSupabaseService (direct; updateUserById claim write)"
+    },
+    "/api/identity/invite": {
+      "methods": "GET, POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "resolveActor + InvitationService + RoleRepository (service)"
+    },
+    "/api/identity/organization/current": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "resolveActor + OrganizationService -> OrganizationRepository (service)"
+    },
+    "/api/identity/organization/regional": {
+      "methods": "GET, PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "RegionalPreferencesRepository (service) + ProfileRepository (service, PATCH owner check)"
+    },
+    "/api/identity/organization/settings": {
+      "methods": "GET, PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "no",
+      "access_today": "GET: resolveActor only; PATCH: OrganizationService -> OrganizationRepository (service)"
+    },
+    "/api/identity/organization/working-hours": {
+      "methods": "PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct) + resolveActor"
+    },
+    "/api/identity/profile/current": {
+      "methods": "GET, PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "GET: resolveActor only; PATCH: ProfileService -> ProfileRepository (service)"
+    },
+    "/api/identity/profiles": {
+      "methods": "GET, PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "ProfileService -> ProfileRepository (service)"
+    },
+    "/api/identity/reset-password": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "no",
+      "access_today": "createSupabaseService (direct; both branches)"
+    },
+    "/api/identity/roles": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (4 files)",
+      "access_today": "RoleRepository (service)"
+    },
+    "/api/identity/roles/[id]": {
+      "methods": "DELETE, PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "no",
+      "access_today": "RoleRepository (service)"
+    },
+    "/api/identity/sessions": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct) + resolveActor"
+    },
+    "/api/identity/staff/accept": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "StaffOnboardingService (service; claim write at staff-onboarding-service.ts:191)"
+    },
+    "/api/identity/staff/invite": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "StaffOnboardingService (service)"
+    },
+    "/api/identity/staff/invite-info": {
+      "methods": "GET",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "StaffOnboardingService (service)"
+    },
+    "/api/identity/staff/login": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "StaffOnboardingService.staffLogin (service, staff-onboarding-service.ts:416-422)"
+    },
+    "/api/identity/staff/me": {
+      "methods": "GET",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes (11 files \u2014 most-called route)",
+      "access_today": "createSupabaseService (direct: profiles, employees, organizations, staff_permissions) + resolveActor"
+    },
+    "/api/identity/staff/overview": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "resolveActor + salesman-workspace-service (service)"
+    },
+    "/api/identity/staff/performance": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct) + resolveActor"
+    },
+    "/api/identity/staff/sales-options": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct) + resolveActor + salesman-workspace-service"
+    },
+    "/api/identity/staff/unlock": {
+      "methods": "GET, POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/purchases": {
+      "methods": "GET, POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService -> PurchaseService.withSupabase(service); create_purchase_atomic is service_role-only"
+    },
+    "/api/purchases/[id]": {
+      "methods": "DELETE, GET",
+      "classification": "CLOUD",
+      "called_from_desktop": "no",
+      "access_today": "PurchaseService default -> PurchaseRepository (service default ctor, purchase-repository.ts:50)"
+    },
+    "/api/purchases/returns": {
+      "methods": "POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "createSupabaseUserClient (caller JWT) + generateInvoiceNumberWithClient(user client, route.ts:73,227)"
+    },
+    "/api/suppliers": {
+      "methods": "GET, POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "createSupabaseUserClient (caller JWT)"
+    },
+    "/api/suppliers/[id]": {
+      "methods": "DELETE, GET, PATCH",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseUserClient via module-level getService helper"
+    },
+    "/api/suppliers/[id]/recycle-bin": {
+      "methods": "POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseUserClient"
+    },
+    "/api/suppliers/[id]/restore": {
+      "methods": "POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseUserClient"
+    },
+    "/api/customers": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (11 files)",
+      "access_today": "GET: createSupabaseService; POST: createSupabaseUserClient"
+    },
+    "/api/customers/[id]": {
+      "methods": "DELETE, PUT",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "createSupabaseUserClient"
+    },
+    "/api/customers/[id]/assignment": {
+      "methods": "PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/customers/[id]/pricing": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "createSupabaseService (direct) + resolveActor"
+    },
+    "/api/customers/assignment-options": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/customers/history": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/sales/drafts": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (5 files)",
+      "access_today": "resolveActor + draft-sale-service (service)"
+    },
+    "/api/sales/drafts/mine": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "resolveActor + draft-sale-service (service)"
+    },
+    "/api/sales/drafts/[id]": {
+      "methods": "POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "draft-sale-service (service)"
+    },
+    "/api/sales/invoices/options": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/sales/invoices/query": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/sales/load-form": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/sales/load-form/options": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/sales/returns": {
+      "methods": "POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "createSupabaseUserClient (caller JWT) + generateInvoiceNumberWithClient(user client, route.ts:72,218)"
+    },
+    "/api/sales/walk-in": {
+      "methods": "POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct, in try/catch -> JSON 500)",
+      "pending": "slice-5-seed"
+    },
+    "/api/inventory/adjust": {
+      "methods": "POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseUserClient (caller JWT)"
+    },
+    "/api/products/list": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/products/validate": {
+      "methods": "POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseUserClient + resolveActor"
+    },
+    "/api/fx/rates": {
+      "methods": "GET, POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "createSupabaseService (direct, unguarded)"
+    },
+    "/api/books/convert": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct, caught -> books.conversionFailed)"
+    },
+    "/api/eur/invoices": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/eur/quotes": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/reports/business-records": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/invoices/sales": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "no",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/invoices/purchases": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "no",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/import-export/export": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "Dead service import in the route file; real access is entity fetchData -> createSupabaseService (13 entity files, dynamic import)"
+    },
+    "/api/import-export/guidance": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "yes",
+      "access_today": "Gemini API direct (GEMINI_API_KEY, server env; ai-guidance.ts:14-19)"
+    },
+    "/api/import-export/history": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/import-export/history/archive": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/import-export/import": {
+      "methods": "POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/import-export/templates": {
+      "methods": "DELETE, GET, PATCH, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/org/branding": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/print-templates": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (4 files)",
+      "access_today": "PrintTemplateRepository (service)"
+    },
+    "/api/print-templates/[id]": {
+      "methods": "DELETE",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "PrintTemplateRepository (service)"
+    },
+    "/api/print-templates/reference": {
+      "methods": "POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes",
+      "access_today": "Pure local parsing (xlsx + template review); no DB, no AI"
+    },
+    "/api/visits/today": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "customer-visit-service (service)"
+    },
+    "/api/visits/start": {
+      "methods": "POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "customer-visit-service (service)"
+    },
+    "/api/visits/owner": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "customer-visit-service (service)"
+    },
+    "/api/visits/notes": {
+      "methods": "POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "customer-visit-service (service)"
+    },
+    "/api/visits/missed": {
+      "methods": "POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "no",
+      "access_today": "customer-visit-service (service)"
+    },
+    "/api/visits/finish": {
+      "methods": "POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "customer-visit-service (service)"
+    },
+    "/api/visits/[id]": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/visits/photos": {
+      "methods": "POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/territories": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "TerritoryRepository (service) + salesman-workspace-service (service)"
+    },
+    "/api/territories/[id]/customers": {
+      "methods": "GET, PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/routes": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "resolveActor + SalesRouteRepository (service) + salesman-workspace-service (service)"
+    },
+    "/api/routes/[id]": {
+      "methods": "DELETE, GET, PATCH, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "resolveActor + SalesRouteRepository (service); POST direct service"
+    },
+    "/api/routes/dashboard": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/routes/[id]/optimize": {
+      "methods": "POST",
+      "classification": "CLOUD",
+      "called_from_desktop": "no",
+      "access_today": "RouteOptimizerService -> SalesRouteRepository (service) + direct service read + Google Maps key"
+    },
+    "/api/attendance": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/leave": {
+      "methods": "GET, PATCH, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/targets": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/collections": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/collections/[id]": {
+      "methods": "PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/feedback": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/data-quality": {
+      "methods": "GET, PATCH",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/audit": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/location/current": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY (NOT via createSupabaseService); RPC close_expired_duty_sessions + reads staff_location_points, employees, staff_duty_sessions"
+    },
+    "/api/location/device-session": {
+      "methods": "POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY; RPC start_employee_duty"
+    },
+    "/api/location/upload": {
+      "methods": "POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY (createClient, not createSupabaseService)"
+    },
+    "/api/location/history": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/location/live": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/supervisor/team": {
+      "methods": "GET",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes (3 files)",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/staff/delete-inactive": {
+      "methods": "POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "createSupabaseService (direct)"
+    },
+    "/api/notifications": {
+      "methods": "DELETE, GET, PATCH",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes (5 files)",
+      "access_today": "createSupabaseUserClient (caller JWT)"
+    },
+    "/api/monitoring/client-error": {
+      "methods": "POST",
+      "classification": "LOCAL",
+      "called_from_desktop": "yes",
+      "access_today": "resolveActor only; reportProductionError (no DB write in the route)"
+    },
+    "/api/performance": {
+      "methods": "GET, POST",
+      "classification": "USER-JWT",
+      "called_from_desktop": "yes",
+      "access_today": "GET: createSupabaseService; POST: returns 501 Not implemented (no DB)"
+    },
+    "/api/pos-release-environment": {
+      "methods": "GET",
+      "classification": "LOCAL",
+      "called_from_desktop": "no",
+      "access_today": "No DB; reads process.env only; 404 unless NODE_ENV != production and POS_RELEASE_TEST_TARGET=disposable-pos-atomic-sales"
+    }
+  }
+}

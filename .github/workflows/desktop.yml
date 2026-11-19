@@ -27,6 +27,9 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    # Slice 0 gate (audit M10): the publish step creates GitHub Releases.
+    permissions:
+      contents: write
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -40,12 +43,31 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Slice 0 — desktop route classification gate. Fails the build on an
+      # unclassified route, a LOCAL/converted route using the service key,
+      # the service-key name in desktop packaging, a non-allowlisted desktop
+      # env var, a direct renderer fetch of a migrated CLOUD route, a
+      # version/tag mismatch, or wildcard CORS. See
+      # scripts/check-desktop-routes.mjs and DESKTOP_ROUTE_CLASSIFICATION.md.
+      - name: Check desktop route classification (Slice 0 gate)
+        run: node scripts/check-desktop-routes.mjs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
       - name: Build the Windows installer
         run: npm run desktop:build -- --publish onTag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+      # Slice 0 — smoke-test the packaged server before the artifact is
+      # uploaded: the packaged build must contain no service key (a CLOUD
+      # route must 500 on service-client creation) and LOCAL routes must not
+      # 500 on the missing key. Runs on the Windows runner with node.
+      - name: Smoke-test packaged server (no service key)
+        run: node scripts/check-desktop-routes.mjs --smoke --standalone dist-electron/win-unpacked/resources/standalone/server.js --port 3101
 
       - name: Upload the installer
         uses: actions/upload-artifact@v4
