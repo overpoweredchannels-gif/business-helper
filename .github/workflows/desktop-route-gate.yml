@@ -1,0 +1,81 @@
+# Desktop route classification gate on normal PR/push CI.
+#
+# The desktop (Electron) build has no SUPABASE_SERVICE_ROLE_KEY, so every
+# /api route that needs it must be classified CLOUD (Vercel endpoint) and
+# every new route must enter the manifest before it can ship. This workflow
+# runs the Slice 0 gate (scripts/check-desktop-routes.mjs) on every push
+# and pull request to main that touches the API surface, the gate script, or
+# the manifest — so a new route cannot merge unclassified. Main Chat adds
+# routes daily; the manifest rule applies to them too.
+#
+# The gate itself is wired into .github/workflows/desktop.yml as well (it
+# runs there before packaging); this workflow is the early signal on PRs.
+#
+# Triggers: push / pull_request to main (paths-filtered, see below), plus
+# manual runs (workflow_dispatch) — e.g. `gh workflow run
+# desktop-route-gate.yml --ref main`.
+#
+# Fork PRs: repo variables (vars.NEXT_PUBLIC_*) are not available to forks,
+# so the env-value part of gate check (4) cannot run meaningfully there. For
+# pull_request from a fork ONLY, the fork step below warns and runs the gate
+# with the env-value check skipped (static checks — manifest coverage,
+# service-key grep, env allowlist, direct-fetch, tag guard, Bearer check,
+# CORS — still run and still fail the job). Push and in-repo PRs always run
+# the full gate, and an empty variable fails them.
+name: Desktop route classification gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/app/api/**"
+      - "scripts/check-desktop-routes.mjs"
+      - "DESKTOP_ROUTE_CLASSIFICATION.json"
+      - ".github/workflows/desktop-route-gate.yml"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/app/api/**"
+      - "scripts/check-desktop-routes.mjs"
+      - "DESKTOP_ROUTE_CLASSIFICATION.json"
+      - ".github/workflows/desktop-route-gate.yml"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  route-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # Full gate: push, workflow_dispatch, and in-repo PRs. The two repo
+      # variables are passed in env; the gate fails if either is empty
+      # (check 4). Never skipped for push.
+      - name: Check desktop route classification
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        run: node scripts/check-desktop-routes.mjs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+      # Fork PRs only: warn and run the static checks with the env-value
+      # check skipped (see the header comment). Unsetting GITHUB_ACTIONS for
+      # this one command makes the gate take its "not in CI, vars unset"
+      # branch; the repo variables are not in the environment at all here,
+      # so no empty value can trip the check.
+      - name: Check desktop route classification (fork PR, env-value check skipped)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true
+        run: |
+          echo "::warning::Repo variables are unavailable on fork PRs; the NEXT_PUBLIC_* env-value check is skipped. Static checks still run and can fail this job."
+          env -u GITHUB_ACTIONS node scripts/check-desktop-routes.mjs

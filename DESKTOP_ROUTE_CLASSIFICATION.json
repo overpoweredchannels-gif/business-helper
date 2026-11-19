@@ -1,763 +1,1150 @@
 {
-  "tip": "33da41262556228fe669132afc4e19b3bd2e2d07",
-  "tip_short": "33da412",
+  "tip": "d813dc937c54def26fe427ec9082f554beb30aeb",
+  "tip_short": "d813dc9",
   "date": "2026-11-19",
   "counts": {
-    "CLOUD": 37,
+    "CLOUD": 41,
     "LOCAL": 16,
-    "USER-JWT": 72
+    "USER-JWT": 68
   },
   "routes": {
     "/api/ai-business-query": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "provider-router (Gemini/LLM, server AI key) + resolveActor"
+      "access_today": "provider-router (Gemini/LLM, server AI key) + resolveActor",
+      "purpose": "Business Query: direct answer from the business brain (no yes/no round-trip)",
+      "desktop_today": "Fails \u2014 no server AI key in desktop env",
+      "notes": "User rule: Business Query/AI -> Vercel endpoint; offline must show a clear 'Internet chahiye' message, never a 500."
     },
     "/api/ai/business-intelligence/dashboard": {
       "methods": "GET",
       "classification": "CLOUD",
       "called_from_desktop": "no",
-      "access_today": "createSupabaseService + resolveActor"
+      "access_today": "createSupabaseService + resolveActor",
+      "purpose": "AI business-intelligence dashboard summary",
+      "desktop_today": "500s (Missing SUPABASE_SERVICE_ROLE_KEY)",
+      "notes": "AI surface; service-backed."
     },
     "/api/ai/business-intelligence/query": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "no",
-      "access_today": "createSupabaseService + resolveActor"
+      "access_today": "createSupabaseService + resolveActor",
+      "purpose": "AI business-intelligence ad-hoc query",
+      "desktop_today": "500s",
+      "notes": "AI surface; service-backed."
     },
     "/api/ai/customers/create": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService + resolveActor"
+      "access_today": "createSupabaseService + resolveActor",
+      "purpose": "AI chat action: create a customer",
+      "desktop_today": "500s",
+      "notes": "AI chat action; service-backed."
     },
     "/api/ai/customers/delete": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService + resolveActor"
+      "access_today": "createSupabaseService + resolveActor",
+      "purpose": "AI chat action: delete a customer",
+      "desktop_today": "500s",
+      "notes": "AI chat action; service-backed."
     },
     "/api/ai/customers/update": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService + resolveActor"
+      "access_today": "createSupabaseService + resolveActor",
+      "purpose": "AI chat action: update a customer",
+      "desktop_today": "500s",
+      "notes": "AI chat action; service-backed."
     },
     "/api/ai/executive": {
       "methods": "GET, POST",
       "classification": "CLOUD",
       "called_from_desktop": "no",
-      "access_today": "createSupabaseService"
+      "access_today": "createSupabaseService",
+      "purpose": "AI executive summary / conversation",
+      "desktop_today": "500s",
+      "notes": "AI surface; service-backed."
     },
     "/api/ai/financial/query": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "no",
-      "access_today": "createSupabaseService"
+      "access_today": "createSupabaseService",
+      "purpose": "AI financial query",
+      "desktop_today": "500s",
+      "notes": "AI surface; service-backed."
     },
     "/api/ai/financial/summary": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "no",
-      "access_today": "createSupabaseService"
+      "access_today": "createSupabaseService",
+      "purpose": "AI financial summary",
+      "desktop_today": "500s",
+      "notes": "AI surface; service-backed."
     },
     "/api/ai/purchases/create": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "PurchaseService default -> PurchaseRepository (service default ctor); create_purchase_atomic is service_role-only"
+      "access_today": "PurchaseService default -> PurchaseRepository (service default ctor); create_purchase_atomic is service_role-only",
+      "purpose": "AI chat action: create a purchase",
+      "desktop_today": "500s",
+      "notes": "Purchase RPC stays service-role-only (UMAIR decision 3, 2026-11-17); sync via cloud route."
     },
     "/api/ai/sales/create": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService + resolveActor"
+      "access_today": "createSupabaseService + resolveActor",
+      "purpose": "AI chat action: create a sale",
+      "desktop_today": "500s",
+      "notes": "AI chat action; service-backed."
     },
     "/api/ai/suppliers/create": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService + resolveActor"
+      "access_today": "createSupabaseService + resolveActor",
+      "purpose": "AI chat action: create a supplier",
+      "desktop_today": "500s",
+      "notes": "AI chat action; service-backed."
     },
     "/api/ai/suppliers/delete": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService + resolveActor"
+      "access_today": "createSupabaseService + resolveActor",
+      "purpose": "AI chat action: delete a supplier",
+      "desktop_today": "500s",
+      "notes": "AI chat action; service-backed."
     },
     "/api/ai/suppliers/update": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService + resolveActor"
+      "access_today": "createSupabaseService + resolveActor",
+      "purpose": "AI chat action: update a supplier",
+      "desktop_today": "500s",
+      "notes": "AI chat action; service-backed."
     },
     "/api/business-brain": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "provider-router (server AI key, process.env lookup)"
+      "access_today": "provider-router (server AI key, process.env lookup)",
+      "purpose": "Business Brain endpoint (LLM provider router)",
+      "desktop_today": "Fails \u2014 no server AI key in desktop env",
+      "notes": "Needs a server-side AI key; Vercel only."
     },
     "/api/conversation/chat": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "no (static grep; UI uses /api/ai-business-query)",
-      "access_today": "createSupabaseService (route.ts:44) + ensureServerBusinessBrain"
+      "access_today": "createSupabaseService (route.ts:44) + ensureServerBusinessBrain",
+      "purpose": "Conversational gateway (Business Query chat)",
+      "desktop_today": "500s at 33da412 (service call first); 503 BRAIN_NOT_INITIALIZED at 1343c1a",
+      "notes": "User rule: Business Query/AI -> Vercel endpoint."
     },
     "/api/conversation/chat/stream": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "no (static grep)",
-      "access_today": "getGateway() (in-memory brain + LLM); no direct service call in this file"
+      "access_today": "getGateway() (in-memory brain + LLM); no direct service call in this file",
+      "purpose": "SSE stream of the conversational gateway",
+      "desktop_today": "Broken on desktop \u2014 brain never initialises (chat route 500s) + no server AI key; stream emits error events",
+      "notes": "Failure is via the brain/LLM, not a direct 500 in this file. Same Vercel endpoint as /api/conversation/chat."
     },
     "/api/conversation/status": {
       "methods": "GET",
       "classification": "LOCAL",
       "called_from_desktop": "no",
-      "access_today": "getGateway().getStatus(); no DB, no service key"
+      "access_today": "getGateway().getStatus(); no DB, no service key",
+      "purpose": "Gateway status probe (in-memory)",
+      "desktop_today": "Works (reports brain state)",
+      "notes": "Status probe only; the chat/stream it reports on are CLOUD."
     },
     "/api/market-intelligence/analyze": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "provider-router (server AI key)"
+      "access_today": "provider-router (server AI key)",
+      "purpose": "Market-intelligence analysis (LLM)",
+      "desktop_today": "Fails \u2014 no server AI key in desktop env",
+      "notes": "Needs a server-side AI key; Vercel only."
     },
     "/api/maps/eta": {
       "methods": "GET",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "google-maps lib; GOOGLE_MAPS_API_KEY (server env, google-maps.ts:3)"
+      "access_today": "google-maps lib; GOOGLE_MAPS_API_KEY (server env, google-maps.ts:3)",
+      "purpose": "Driving distance + time from owner location to an employee (Google Maps)",
+      "desktop_today": "Fails \u2014 key not shipped in desktop env",
+      "notes": "desktop.yml ships only NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY."
     },
     "/api/maps/reverse-geocode": {
       "methods": "GET",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "google-maps lib; GOOGLE_MAPS_API_KEY (server env)"
+      "access_today": "google-maps lib; GOOGLE_MAPS_API_KEY (server env)",
+      "purpose": "Place name / street / address for a coordinate (Google Maps)",
+      "desktop_today": "Fails \u2014 key not shipped in desktop env",
+      "notes": "Same as /api/maps/eta."
     },
     "/api/auth/mobile-session": {
       "methods": "POST",
       "classification": "LOCAL",
       "called_from_desktop": "no (mobile only)",
-      "access_today": "createServerClient from @supabase/ssr (anon key); no service key"
+      "access_today": "createServerClient from @supabase/ssr (anon key); no service key",
+      "purpose": "Bridge a mobile (Android WebView) session into cookies",
+      "desktop_today": "Works",
+      "notes": "Not used by desktop; works as-is."
     },
     "/api/auth/provision": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes (4 files)",
-      "access_today": "createSupabaseService via module helper getSupabaseService (route.ts:9-10); auth.admin updateUserById (route.ts:62)"
+      "access_today": "createSupabaseService via module helper getSupabaseService (route.ts:9-10); auth.admin updateUserById (route.ts:62)",
+      "purpose": "Create org + profile + write the organization_id claim (auth.admin)",
+      "desktop_today": "500s",
+      "notes": "B1-B4 item 1 (onboarding + org claim). Only claim writer; must run on Vercel."
     },
     "/api/identity/employees": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (7 files)",
-      "access_today": "EmployeeService -> EmployeeRepository (service, default ctor)"
+      "access_today": "EmployeeService -> EmployeeRepository (service, default ctor)",
+      "purpose": "List / create employees (staff records)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped employee CRUD; needs RLS verification (read + insert policies on employees/profiles)."
     },
     "/api/identity/employees/[id]": {
       "methods": "DELETE, GET, PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "EmployeeService -> EmployeeRepository (service)"
+      "access_today": "EmployeeService -> EmployeeRepository (service)",
+      "purpose": "Read / update / delete one employee",
+      "desktop_today": "500s",
+      "notes": "Deferred: same as /api/identity/employees; delete needs an RLS delete-policy check."
     },
     "/api/identity/employees/[id]/assignment": {
       "methods": "PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Assign / unassign an employee (territory/route)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped write; RLS verification needed."
     },
     "/api/identity/employees/[id]/ledger": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Employee ledger (salary / advance entries)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/identity/employees/[id]/reset-password": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct; auth.admin)"
+      "access_today": "createSupabaseService (direct; auth.admin)",
+      "purpose": "Reset an employee's password (admin)",
+      "desktop_today": "500s",
+      "notes": "Admin power (auth.admin password reset); Vercel only."
     },
     "/api/identity/employees/summaries": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Employee summary list",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/identity/invitations/accept": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "no",
-      "access_today": "createSupabaseService (direct; updateUserById claim write)"
+      "access_today": "createSupabaseService (direct; updateUserById claim write)",
+      "purpose": "Accept an org invitation (writes the org claim)",
+      "desktop_today": "500s",
+      "notes": "Claim writer; admin power; Vercel only."
     },
     "/api/identity/invite": {
       "methods": "GET, POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "resolveActor + InvitationService + RoleRepository (service)"
+      "access_today": "resolveActor + InvitationService + RoleRepository (service)",
+      "purpose": "List / send org invitations",
+      "desktop_today": "500s",
+      "notes": "Invitations create users / send invites \u2014 admin power; Vercel only."
     },
     "/api/identity/organization/current": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "resolveActor + OrganizationService -> OrganizationRepository (service)"
+      "access_today": "resolveActor + OrganizationService -> OrganizationRepository (service)",
+      "purpose": "Current organization record",
+      "desktop_today": "500s",
+      "notes": "Deferred: read of the caller's own org; RLS read policy on organizations unverified."
     },
     "/api/identity/organization/regional": {
       "methods": "GET, PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "RegionalPreferencesRepository (service) + ProfileRepository (service, PATCH owner check)"
+      "access_today": "RegionalPreferencesRepository (service) + ProfileRepository (service, PATCH owner check)",
+      "purpose": "Regional preferences (books/display currency, locale)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/write; RLS verification needed. (The currency-switch rate endpoint itself is /api/fx/rates -> CLOUD.)"
     },
     "/api/identity/organization/settings": {
       "methods": "GET, PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "no",
-      "access_today": "GET: resolveActor only; PATCH: OrganizationService -> OrganizationRepository (service)"
+      "access_today": "GET: resolveActor only; PATCH: OrganizationService -> OrganizationRepository (service)",
+      "purpose": "Organization settings",
+      "desktop_today": "GET works; PATCH 500s",
+      "notes": "Deferred: PATCH is an org-scoped write; RLS verification needed. GET already works on desktop."
     },
     "/api/identity/organization/working-hours": {
       "methods": "PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct) + resolveActor"
+      "access_today": "createSupabaseService (direct) + resolveActor",
+      "purpose": "Organization working hours",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped write; RLS verification needed."
     },
     "/api/identity/profile/current": {
       "methods": "GET, PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "GET: resolveActor only; PATCH: ProfileService -> ProfileRepository (service)"
+      "access_today": "GET: resolveActor only; PATCH: ProfileService -> ProfileRepository (service)",
+      "purpose": "Own profile (read / update / link auth user)",
+      "desktop_today": "GET works; PATCH 500s",
+      "notes": "Deferred: PATCH is a self-profile write; RLS self-update policy unverified. Note: skip PATCH on desktop when profile.id already equals the auth user id (audit M4)."
     },
     "/api/identity/profiles": {
       "methods": "GET, PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "ProfileService -> ProfileRepository (service)"
+      "access_today": "ProfileService -> ProfileRepository (service)",
+      "purpose": "List / manage profiles (staff directory)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped profile reads; RLS read policy unverified."
     },
     "/api/identity/reset-password": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "no",
-      "access_today": "createSupabaseService (direct; both branches)"
+      "access_today": "createSupabaseService (direct; both branches)",
+      "purpose": "Password-reset redirect handler (admin)",
+      "desktop_today": "500s",
+      "notes": "Dead route on desktop \u2014 zero callers (forgot form calls Supabase directly; reset page calls updateUser). Leave on Vercel."
     },
     "/api/identity/roles": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (4 files)",
-      "access_today": "RoleRepository (service)"
+      "access_today": "RoleRepository (service)",
+      "purpose": "List / create roles",
+      "desktop_today": "500s",
+      "notes": "Deferred: owner-managed org data, no auth.admin; RLS write policy on roles unverified."
     },
     "/api/identity/roles/[id]": {
       "methods": "DELETE, PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "no",
-      "access_today": "RoleRepository (service)"
+      "access_today": "RoleRepository (service)",
+      "purpose": "Update / delete a role",
+      "desktop_today": "500s",
+      "notes": "Deferred: same as /api/identity/roles; delete needs an RLS delete check."
     },
     "/api/identity/sessions": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct) + resolveActor"
+      "access_today": "createSupabaseService (direct) + resolveActor",
+      "purpose": "Device-session register / list (single-device revocation, 8 h timeout)",
+      "desktop_today": "500s (swallowed by caller \u2014 sign-in still succeeds, revocation silently unenforced)",
+      "notes": "Deferred: register with the user client (RLS insert into identity_sessions) or skip + log on desktop. Low priority."
     },
     "/api/identity/staff/accept": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "StaffOnboardingService (service; claim write at staff-onboarding-service.ts:191)"
+      "access_today": "StaffOnboardingService (service; claim write at staff-onboarding-service.ts:191)",
+      "purpose": "Accept a staff invite (staff onboarding)",
+      "desktop_today": "500s",
+      "notes": "Staff onboarding = admin power (claim write); Vercel only."
     },
     "/api/identity/staff/invite": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "StaffOnboardingService (service)"
+      "access_today": "StaffOnboardingService (service)",
+      "purpose": "Invite staff (create staff invite)",
+      "desktop_today": "500s",
+      "notes": "Admin power; Vercel only."
     },
     "/api/identity/staff/invite-info": {
       "methods": "GET",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "StaffOnboardingService (service)"
+      "access_today": "StaffOnboardingService (service)",
+      "purpose": "Staff invite details (for the invite-link page)",
+      "desktop_today": "500s",
+      "notes": "Admin power; Vercel only."
     },
     "/api/identity/staff/login": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "StaffOnboardingService.staffLogin (service, staff-onboarding-service.ts:416-422)"
+      "access_today": "StaffOnboardingService.staffLogin (service, staff-onboarding-service.ts:416-422)",
+      "purpose": "Staff Profile-ID login (password check + server-side brute-force lockout)",
+      "desktop_today": "500s; caller then throws a raw JSON-parse error on the non-JSON 500 body",
+      "notes": "B1-B4 item 2. Server-side lockout is part of this flow; Vercel only."
     },
     "/api/identity/staff/me": {
       "methods": "GET",
       "classification": "CLOUD",
       "called_from_desktop": "yes (11 files \u2014 most-called route)",
-      "access_today": "createSupabaseService (direct: profiles, employees, organizations, staff_permissions) + resolveActor"
+      "access_today": "createSupabaseService (direct: profiles, employees, organizations, staff_permissions) + resolveActor",
+      "purpose": "Current staff member + permissions (called on almost every load)",
+      "desktop_today": "500s",
+      "notes": "B1-B4 item 2. Permission-merge path; Vercel only."
     },
     "/api/identity/staff/overview": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "resolveActor + salesman-workspace-service (service)"
+      "access_today": "resolveActor + salesman-workspace-service (service)",
+      "purpose": "Staff overview (salesman workspace)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped staff read; RLS verification needed."
     },
     "/api/identity/staff/performance": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct) + resolveActor"
+      "access_today": "createSupabaseService (direct) + resolveActor",
+      "purpose": "Staff performance stats",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/identity/staff/sales-options": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct) + resolveActor + salesman-workspace-service"
+      "access_today": "createSupabaseService (direct) + resolveActor + salesman-workspace-service",
+      "purpose": "Staff sales options (what a salesman may sell)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/identity/staff/unlock": {
       "methods": "GET, POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Owner-only brute-force lockout management",
+      "desktop_today": "500s",
+      "notes": "Admin power over lockout state; Vercel only."
     },
     "/api/purchases": {
       "methods": "GET, POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService -> PurchaseService.withSupabase(service); create_purchase_atomic is service_role-only"
+      "access_today": "createSupabaseService -> PurchaseService.withSupabase(service); create_purchase_atomic is service_role-only",
+      "purpose": "Purchase list / create purchase (atomic RPC)",
+      "desktop_today": "500s (GET and POST); online save loses the purchase \u2014 page.tsx parks locally only on network errors",
+      "notes": "B1-B4 item 4. Local-first: save to SQLite first, then sync to the Vercel endpoint with idempotency_key = local row id. Supplier balance only via ledger triggers, never ad-hoc +/-."
     },
     "/api/purchases/[id]": {
       "methods": "DELETE, GET",
       "classification": "CLOUD",
       "called_from_desktop": "no",
-      "access_today": "PurchaseService default -> PurchaseRepository (service default ctor, purchase-repository.ts:50)"
+      "access_today": "PurchaseService default -> PurchaseRepository (service default ctor, purchase-repository.ts:50)",
+      "purpose": "Read / delete one purchase",
+      "desktop_today": "500s",
+      "notes": "Same service_role-only RPC constraint as /api/purchases."
     },
     "/api/purchases/returns": {
       "methods": "POST",
       "classification": "LOCAL",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "createSupabaseUserClient (caller JWT) + generateInvoiceNumberWithClient(user client, route.ts:73,227)"
+      "access_today": "createSupabaseUserClient (caller JWT) + generateInvoiceNumberWithClient(user client, route.ts:73,227)",
+      "purpose": "Purchase return (with request_key dedup)",
+      "desktop_today": "Works",
+      "notes": "User-client only. Dedup depends on the S7 SQL (returns_expenses_idempotency.sql) being run on production; until then the 42703 fallback inserts without the request key."
     },
     "/api/suppliers": {
       "methods": "GET, POST",
       "classification": "LOCAL",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "createSupabaseUserClient (caller JWT)"
+      "access_today": "createSupabaseUserClient (caller JWT)",
+      "purpose": "Supplier list / create",
+      "desktop_today": "Works",
+      "notes": "User-client only."
     },
     "/api/suppliers/[id]": {
       "methods": "DELETE, GET, PATCH",
       "classification": "LOCAL",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseUserClient via module-level getService helper"
+      "access_today": "createSupabaseUserClient via module-level getService helper",
+      "purpose": "Read / update / delete one supplier",
+      "desktop_today": "Works",
+      "notes": "User-client only; PATCH has the last-write-wins guard (S6)."
     },
     "/api/suppliers/[id]/recycle-bin": {
       "methods": "POST",
       "classification": "LOCAL",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseUserClient"
+      "access_today": "createSupabaseUserClient",
+      "purpose": "Move supplier to recycle bin",
+      "desktop_today": "Works",
+      "notes": "User-client only."
     },
     "/api/suppliers/[id]/restore": {
       "methods": "POST",
       "classification": "LOCAL",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseUserClient"
+      "access_today": "createSupabaseUserClient",
+      "purpose": "Restore supplier from recycle bin",
+      "desktop_today": "Works",
+      "notes": "User-client only."
     },
     "/api/customers": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (11 files)",
-      "access_today": "GET: createSupabaseService; POST: createSupabaseUserClient"
+      "access_today": "GET: createSupabaseService; POST: createSupabaseUserClient",
+      "purpose": "Customer list / create (Quick-Add)",
+      "desktop_today": "GET 500s; POST works",
+      "notes": "Deferred: GET is a plain org list read \u2014 RLS read policy on customers unverified. POST already works on desktop (user client); the Quick-Add path is safe today.",
+      "group_note": " (GET; POST already LOCAL)"
     },
     "/api/customers/[id]": {
       "methods": "DELETE, PUT",
       "classification": "LOCAL",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "createSupabaseUserClient"
+      "access_today": "createSupabaseUserClient",
+      "purpose": "Update / delete one customer",
+      "desktop_today": "Works",
+      "notes": "User-client only."
     },
     "/api/customers/[id]/assignment": {
       "methods": "PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Assign a customer (salesman / territory)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped write."
     },
     "/api/customers/[id]/pricing": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "createSupabaseService (direct) + resolveActor"
+      "access_today": "createSupabaseService (direct) + resolveActor",
+      "purpose": "Customer pricing (price list for this customer)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/customers/assignment-options": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Options for customer assignment",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/customers/history": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Customer history (sales / payments)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/sales/drafts": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (5 files)",
-      "access_today": "resolveActor + draft-sale-service (service)"
+      "access_today": "resolveActor + draft-sale-service (service)",
+      "purpose": "Sale drafts (list / create)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped draft CRUD; RLS on the drafts table unverified."
     },
     "/api/sales/drafts/mine": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "resolveActor + draft-sale-service (service)"
+      "access_today": "resolveActor + draft-sale-service (service)",
+      "purpose": "My sale drafts",
+      "desktop_today": "500s",
+      "notes": "Deferred: same as /api/sales/drafts."
     },
     "/api/sales/drafts/[id]": {
       "methods": "POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "draft-sale-service (service)"
+      "access_today": "draft-sale-service (service)",
+      "purpose": "Update / submit one draft",
+      "desktop_today": "500s",
+      "notes": "Deferred: same as /api/sales/drafts."
     },
     "/api/sales/invoices/options": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Filter options for the sales-invoice generator",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/sales/invoices/query": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Sales-invoice documents matching filters",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/sales/load-form": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Distributor load form (sales grouped by salesman then brand)",
+      "desktop_today": "500s",
+      "notes": "Deferred: aggregation over org sales; RLS verification needed."
     },
     "/api/sales/load-form/options": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Filter options for the load form",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/sales/returns": {
       "methods": "POST",
       "classification": "LOCAL",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "createSupabaseUserClient (caller JWT) + generateInvoiceNumberWithClient(user client, route.ts:72,218)"
+      "access_today": "createSupabaseUserClient (caller JWT) + generateInvoiceNumberWithClient(user client, route.ts:72,218)",
+      "purpose": "Sale return (with request_key dedup)",
+      "desktop_today": "Works",
+      "notes": "User-client only. Same S7 SQL note as purchase returns."
     },
     "/api/sales/walk-in": {
       "methods": "POST",
       "classification": "LOCAL",
       "called_from_desktop": "yes",
       "access_today": "createSupabaseService (direct, in try/catch -> JSON 500)",
-      "pending": "slice-5-seed"
+      "pending": "slice-5-seed",
+      "purpose": "Prepare / select the Walk-in customer for POS quick sale",
+      "desktop_today": "500s ('Could not prepare the Walk-in customer'); quick sale cannot start without a manual customer pick",
+      "notes": "User rule: LOCAL seed record \u2014 desktop must stop calling this route and upsert the deterministic Walk-in row locally instead. Route stays service-backed on web. Gate: entry carries `\"pending\": \"slice-5-seed\"` \u2014 the gate reports it as pending, not failed, until Slice 5 replaces it with the local seed."
     },
     "/api/inventory/adjust": {
       "methods": "POST",
       "classification": "LOCAL",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseUserClient (caller JWT)"
+      "access_today": "createSupabaseUserClient (caller JWT)",
+      "purpose": "Inventory adjustment",
+      "desktop_today": "Works",
+      "notes": "User-client only."
     },
     "/api/products/list": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Product list (for selectors)",
+      "desktop_today": "500s",
+      "notes": "Deferred: plain org product read; RLS read policy unverified."
     },
     "/api/products/validate": {
       "methods": "POST",
       "classification": "LOCAL",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseUserClient + resolveActor"
+      "access_today": "createSupabaseUserClient + resolveActor",
+      "purpose": "Validate products (barcodes / prices)",
+      "desktop_today": "Works",
+      "notes": "User-client only."
     },
     "/api/fx/rates": {
       "methods": "GET, POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "createSupabaseService (direct, unguarded)"
+      "access_today": "createSupabaseService (direct, unguarded)",
+      "purpose": "FX rates (owner-entered; display-currency conversion)",
+      "desktop_today": "500s; CurrencySwitcher shows the rate error and stops; RegionalProvider snaps display currency back to books",
+      "notes": "User rule: currency switch -> Vercel endpoint; offline must show a clear 'Internet chahiye' message, never a 500."
     },
     "/api/books/convert": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct, caught -> books.conversionFailed)"
+      "access_today": "createSupabaseService (direct, caught -> books.conversionFailed)",
+      "purpose": "Books-currency switch (convert every stored amount)",
+      "desktop_today": "500s (caught; returns conversionFailed)",
+      "notes": "User rule: same as /api/fx/rates. Owner-only."
     },
     "/api/eur/invoices": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "EUR invoices (list / create draft)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped EUR invoice CRUD; RLS verification needed."
     },
     "/api/eur/quotes": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "FX quotes for the organization",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/write."
     },
     "/api/reports/business-records": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Business Records Export (Area B)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/export; RLS verification needed."
     },
     "/api/invoices/sales": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "no",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Sales ledger (invoice search + filters)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/invoices/purchases": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "no",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Purchase ledger (invoice search + filters)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/import-export/export": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "Dead service import in the route file; real access is entity fetchData -> createSupabaseService (13 entity files, dynamic import)"
+      "access_today": "Dead service import in the route file; real access is entity fetchData -> createSupabaseService (13 entity files, dynamic import)",
+      "purpose": "Export entity data as CSV / XLSX",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped export reads; RLS verification needed. (Service use is inside the entity configs, not the route file.)"
     },
     "/api/import-export/guidance": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "Gemini API direct (GEMINI_API_KEY, server env; ai-guidance.ts:14-19)"
+      "access_today": "Gemini API direct (GEMINI_API_KEY, server env; ai-guidance.ts:14-19)",
+      "purpose": "AI column-mapping suggestions for import",
+      "desktop_today": "503 when the key is absent (caught -> 'AI guidance is unavailable'); desktop env has no key",
+      "notes": "Needs a server-side Gemini key; Vercel only. Degrades gracefully (manual mapping still works)."
     },
     "/api/import-export/history": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Import history",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/import-export/history/archive": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Import-history archive",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/write."
     },
     "/api/import-export/import": {
       "methods": "POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Import records (preview + apply)",
+      "desktop_today": "500s",
+      "notes": "Deferred: bulk org writes; RLS insert policies unverified."
     },
     "/api/import-export/templates": {
       "methods": "DELETE, GET, PATCH, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Saved import templates",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped template CRUD."
     },
     "/api/org/branding": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Organization branding (logo / name for receipts)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/print-templates": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (4 files)",
-      "access_today": "PrintTemplateRepository (service)"
+      "access_today": "PrintTemplateRepository (service)",
+      "purpose": "Receipt / print templates (list / create)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped template CRUD; RLS verification needed."
     },
     "/api/print-templates/[id]": {
       "methods": "DELETE",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "PrintTemplateRepository (service)"
+      "access_today": "PrintTemplateRepository (service)",
+      "purpose": "Delete a print template",
+      "desktop_today": "500s",
+      "notes": "Deferred: same as /api/print-templates."
     },
     "/api/print-templates/reference": {
       "methods": "POST",
       "classification": "LOCAL",
       "called_from_desktop": "yes",
-      "access_today": "Pure local parsing (xlsx + template review); no DB, no AI"
+      "access_today": "Pure local parsing (xlsx + template review); no DB, no AI",
+      "purpose": "Recognise a reference document / spreadsheet (template builder)",
+      "desktop_today": "Works",
+      "notes": "No service key, no server env key."
     },
     "/api/visits/today": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "customer-visit-service (service)"
+      "access_today": "customer-visit-service (service)",
+      "purpose": "Today's visits for the signed-in salesman",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped visit reads."
     },
     "/api/visits/start": {
       "methods": "POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "customer-visit-service (service)"
+      "access_today": "customer-visit-service (service)",
+      "purpose": "Start a customer visit",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped visit write."
     },
     "/api/visits/owner": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "customer-visit-service (service)"
+      "access_today": "customer-visit-service (service)",
+      "purpose": "Visits for the owner view",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped visit read."
     },
     "/api/visits/notes": {
       "methods": "POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "customer-visit-service (service)"
+      "access_today": "customer-visit-service (service)",
+      "purpose": "Add a visit note",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped visit write."
     },
     "/api/visits/missed": {
       "methods": "POST",
       "classification": "USER-JWT",
       "called_from_desktop": "no",
-      "access_today": "customer-visit-service (service)"
+      "access_today": "customer-visit-service (service)",
+      "purpose": "Mark visits missed",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped visit write."
     },
     "/api/visits/finish": {
       "methods": "POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "customer-visit-service (service)"
+      "access_today": "customer-visit-service (service)",
+      "purpose": "Finish a visit",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped visit write."
     },
     "/api/visits/[id]": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "One visit",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped visit read."
     },
     "/api/visits/photos": {
       "methods": "POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Upload visit photos",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped write; storage bucket policy unverified (low confidence \u2014 see section 7)."
     },
     "/api/territories": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "TerritoryRepository (service) + salesman-workspace-service (service)"
+      "access_today": "TerritoryRepository (service) + salesman-workspace-service (service)",
+      "purpose": "Territories (list / create)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped CRUD."
     },
     "/api/territories/[id]/customers": {
       "methods": "GET, PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Customers in a territory",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/write."
     },
     "/api/routes": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "resolveActor + SalesRouteRepository (service) + salesman-workspace-service (service)"
+      "access_today": "resolveActor + SalesRouteRepository (service) + salesman-workspace-service (service)",
+      "purpose": "Sales routes (list / create)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped CRUD."
     },
     "/api/routes/[id]": {
       "methods": "DELETE, GET, PATCH, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "resolveActor + SalesRouteRepository (service); POST direct service"
+      "access_today": "resolveActor + SalesRouteRepository (service); POST direct service",
+      "purpose": "One route (read / update / delete / action)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped CRUD."
     },
     "/api/routes/dashboard": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Routes dashboard (coverage stats)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/routes/[id]/optimize": {
       "methods": "POST",
       "classification": "CLOUD",
       "called_from_desktop": "no",
-      "access_today": "RouteOptimizerService -> SalesRouteRepository (service) + direct service read + Google Maps key"
+      "access_today": "RouteOptimizerService -> SalesRouteRepository (service) + direct service read + Google Maps key",
+      "purpose": "Optimise a route (Google Maps TSP solver)",
+      "desktop_today": "500s",
+      "notes": "Needs the service key AND the Google Maps server key; Vercel only."
     },
     "/api/attendance": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Attendance records",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/write."
     },
     "/api/leave": {
       "methods": "GET, PATCH, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Leave requests",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/write."
     },
     "/api/targets": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Sales targets",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/write."
     },
     "/api/collections": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Field collections (cash collection records)",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/write."
     },
     "/api/collections/[id]": {
       "methods": "PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Update one collection",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped write."
     },
     "/api/feedback": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Feedback submissions",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/write."
     },
     "/api/data-quality": {
       "methods": "GET, PATCH",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Data-quality flags / fixes",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read/write."
     },
     "/api/audit": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Audit log",
+      "desktop_today": "500s",
+      "notes": "Deferred: audit-table RLS unverified."
     },
     "/api/location/current": {
       "methods": "GET",
-      "classification": "USER-JWT",
+      "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY (NOT via createSupabaseService); RPC close_expired_duty_sessions + reads staff_location_points, employees, staff_duty_sessions"
+      "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY (NOT via createSupabaseService); RPC close_expired_duty_sessions + reads staff_location_points, employees, staff_duty_sessions",
+      "purpose": "Live locations of on-duty staff",
+      "desktop_today": "Fails on desktop (empty key -> client auth error)",
+      "notes": "Confirmed CLOUD 2026-11-19 (UMAIR, repo evidence): the duty RPCs (close_expired_duty_sessions, start_employee_duty, stop_employee_duty) are revoked from authenticated and granted only to service_role (production_phase8_duty_tracking.sql:485-492); a user-JWT rewrite cannot call them (42501) without a future re-grant migration."
     },
     "/api/location/device-session": {
       "methods": "POST",
-      "classification": "USER-JWT",
+      "classification": "CLOUD",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY; RPC start_employee_duty"
+      "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY; RPC start_employee_duty",
+      "purpose": "Duty session start / register / signout / status / health",
+      "desktop_today": "Fails on desktop (empty key)",
+      "notes": "Confirmed CLOUD 2026-11-19 (UMAIR, repo evidence): same RPC-grant evidence as /api/location/current \u2014 start/stop_employee_duty and close_expired_duty_sessions are service_role-only (production_phase8_duty_tracking.sql:485-492)."
     },
     "/api/location/upload": {
       "methods": "POST",
-      "classification": "USER-JWT",
+      "classification": "CLOUD",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY (createClient, not createSupabaseService)"
+      "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY (createClient, not createSupabaseService)",
+      "purpose": "Upload a location point",
+      "desktop_today": "Fails on desktop (empty key)",
+      "notes": "Confirmed CLOUD 2026-11-19 (UMAIR, repo evidence): builds its client with SUPABASE_SERVICE_ROLE_KEY directly and calls close_expired_duty_sessions, which is service_role-only (production_phase8_duty_tracking.sql:485-492)."
     },
     "/api/location/history": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Location history (movement trail) for one employee",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/location/live": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Live location feed",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/supervisor/team": {
       "methods": "GET",
       "classification": "USER-JWT",
       "called_from_desktop": "yes (3 files)",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Supervisor's team",
+      "desktop_today": "500s",
+      "notes": "Deferred: org-scoped read."
     },
     "/api/staff/delete-inactive": {
       "methods": "POST",
-      "classification": "USER-JWT",
+      "classification": "CLOUD",
       "called_from_desktop": "yes",
-      "access_today": "createSupabaseService (direct)"
+      "access_today": "createSupabaseService (direct)",
+      "purpose": "Delete inactive staff profiles",
+      "desktop_today": "500s",
+      "notes": "Confirmed CLOUD 2026-11-19 (UMAIR, repo evidence): no DELETE policy on profiles in the 20261011 snapshot (only profiles_update_same_org_owner_admin_or_self, UPDATE) \u2014 an authenticated delete is denied; staff_permissions has an ALL policy (owner/admin could delete that half). Owner-only check derives from the verified Bearer token server-side: requireOwner(request) -> resolveActor reads the Authorization header, verifies it with auth.getUser(token), and takes organizationId from the verified profile row \u2014 nothing from the body."
     },
     "/api/notifications": {
       "methods": "DELETE, GET, PATCH",
       "classification": "LOCAL",
       "called_from_desktop": "yes (5 files)",
-      "access_today": "createSupabaseUserClient (caller JWT)"
+      "access_today": "createSupabaseUserClient (caller JWT)",
+      "purpose": "Notifications (list / mark / delete)",
+      "desktop_today": "Works",
+      "notes": "User-client only."
     },
     "/api/monitoring/client-error": {
       "methods": "POST",
       "classification": "LOCAL",
       "called_from_desktop": "yes",
-      "access_today": "resolveActor only; reportProductionError (no DB write in the route)"
+      "access_today": "resolveActor only; reportProductionError (no DB write in the route)",
+      "purpose": "Client error reports (rate-limited)",
+      "desktop_today": "Works",
+      "notes": "No service key; actor lookup only."
     },
     "/api/performance": {
       "methods": "GET, POST",
       "classification": "USER-JWT",
       "called_from_desktop": "yes",
-      "access_today": "GET: createSupabaseService; POST: returns 501 Not implemented (no DB)"
+      "access_today": "GET: createSupabaseService; POST: returns 501 Not implemented (no DB)",
+      "purpose": "Performance metrics (GET); POST is a 501 stub",
+      "desktop_today": "GET 500s; POST 501 (identical on desktop)",
+      "notes": "Deferred: GET is an org metrics read; POST is an unimplemented stub."
     },
     "/api/pos-release-environment": {
       "methods": "GET",
       "classification": "LOCAL",
       "called_from_desktop": "no",
-      "access_today": "No DB; reads process.env only; 404 unless NODE_ENV != production and POS_RELEASE_TEST_TARGET=disposable-pos-atomic-sales"
+      "access_today": "No DB; reads process.env only; 404 unless NODE_ENV != production and POS_RELEASE_TEST_TARGET=disposable-pos-atomic-sales",
+      "purpose": "Test-only: Supabase URL origins for the POS release test target",
+      "desktop_today": "404 in production (by design)",
+      "notes": "Test-only route; no service key, no DB. Works as designed."
     }
+  },
+  "tip_subject": "Slice 0: desktop route classification CI gate",
+  "stats": {
+    "direct_service": 69,
+    "service_backed": 39,
+    "false_positives": 13,
+    "direct_key_routes": [
+      "/api/location/current",
+      "/api/location/device-session",
+      "/api/location/upload"
+    ]
   }
 }
