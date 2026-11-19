@@ -3,16 +3,18 @@
 # The desktop (Electron) build has no SUPABASE_SERVICE_ROLE_KEY, so every
 # /api route that needs it must be classified CLOUD (Vercel endpoint) and
 # every new route must enter the manifest before it can ship. This workflow
-# runs the Slice 0 gate (scripts/check-desktop-routes.mjs) on every push
-# and pull request to main that touches the API surface, the gate script, or
-# the manifest — so a new route cannot merge unclassified. Main Chat adds
-# routes daily; the manifest rule applies to them too.
+# runs the Slice 0 gate (scripts/check-desktop-routes.mjs) on EVERY push and
+# pull request to main — no paths filter. The gate is Node-stdlib-only and
+# runs in seconds, so the cost is negligible, and a filter would miss the
+# case that matters most: a service key introduced in a LOCAL route's lib
+# file (src/lib/**, electron/**, package.json) with no route file touched.
+# Main Chat adds routes daily; the manifest rule applies to them too.
 #
 # The gate itself is wired into .github/workflows/desktop.yml as well (it
 # runs there before packaging); this workflow is the early signal on PRs.
 #
-# Triggers: push / pull_request to main (paths-filtered, see below), plus
-# manual runs (workflow_dispatch) — e.g. `gh workflow run
+# Triggers: push / pull_request to main (unfiltered), plus manual runs
+# (workflow_dispatch) — e.g. `gh workflow run
 # desktop-route-gate.yml --ref main`.
 #
 # Fork PRs: repo variables (vars.NEXT_PUBLIC_*) are not available to forks,
@@ -27,20 +29,8 @@ name: Desktop route classification gate
 on:
   push:
     branches: [main]
-    paths:
-      - "src/app/api/**"
-      - "scripts/check-desktop-routes.mjs"
-      - "DESKTOP_ROUTE_CLASSIFICATION.json"
-      - ".github/workflows/desktop-route-gate.yml"
-      - ".github/workflows/desktop.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "src/app/api/**"
-      - "scripts/check-desktop-routes.mjs"
-      - "DESKTOP_ROUTE_CLASSIFICATION.json"
-      - ".github/workflows/desktop-route-gate.yml"
-      - ".github/workflows/desktop.yml"
   workflow_dispatch:
 
 permissions:

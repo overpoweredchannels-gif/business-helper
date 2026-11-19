@@ -58,6 +58,15 @@
  *      entry is migrated yet; it bites from Slice 1 on.
  *  (9) Wildcard CORS (hardening rule 1) — no Access-Control-Allow-Origin: *
  *      in any TypeScript file under src/.
+ * (10) Pending direct CLOUD fetch ratchet (UMAIR item 4) — the count of
+ *      direct renderer fetches of unmigrated CLOUD routes (check 5's
+ *      `pending`) must never exceed the baseline stored in the manifest
+ *      (`ratchet.pending_direct_cloud_fetches`, 47 at Slice 0). It was 39,
+ *      then 47 — it may only go down. The same commit that migrates routes
+ *      (sets `migrated: true`) MUST lower the baseline to the new count;
+ *      never raise it. The ratchet uses check 5's exact matching logic
+ *      (exact/segment matching, not substring), so the counted number is
+ *      the same number check 5 reports.
  *
  * Smoke mode (--smoke): boots the built standalone server and proves the
  * packaged build has no service key:
@@ -544,6 +553,23 @@ function checkDirectCloudFetches(manifest) {
   }
   if (pending) info(`${pending} direct fetch(es) of unmigrated CLOUD routes (${pendingRoutes.size} routes) — pending migration, not a failure`);
   else info("no direct renderer fetches of CLOUD routes");
+  return { pending, routeCount: pendingRoutes.size };
+}
+
+// ------------------------------------------------------------ check (10)
+
+function checkPendingFetchRatchet(manifest, pendingCount) {
+  console.log("\n[10] Pending direct CLOUD fetch ratchet (UMAIR item 4)");
+  const baseline = manifest.ratchet?.pending_direct_cloud_fetches;
+  if (typeof baseline !== "number" || !Number.isInteger(baseline) || baseline < 0) {
+    fail("manifest has no ratchet.pending_direct_cloud_fetches baseline (integer >= 0) — the pending-fetch ratchet cannot be enforced without it");
+    return;
+  }
+  if (pendingCount > baseline) {
+    fail(`pending direct CLOUD fetches: ${pendingCount} exceeds the ratchet baseline ${baseline} — the count may only go down (migrate routes, then lower the baseline in the same commit)`);
+  } else {
+    info(`pending direct CLOUD fetches: ${pendingCount} (ratchet baseline ${baseline} — may only go down)`);
+  }
 }
 
 // ------------------------------------------------------------ check (6)
@@ -790,7 +816,8 @@ async function main() {
   checkServiceUse(manifest, onDisk);
   checkKeyNameInPackaging();
   checkDesktopEnv();
-  checkDirectCloudFetches(manifest);
+  const { pending: pendingCloudFetches } = checkDirectCloudFetches(manifest);
+  checkPendingFetchRatchet(manifest, pendingCloudFetches);
   checkVersionTag(args.tag);
   checkMigratedHardening(manifest, onDisk);
   checkWildcardCors();

@@ -220,6 +220,8 @@ Deviations from the §8 design above, found while implementing (safer variant ke
 - Rule 5 as literally written ("any direct fetch of a CLOUD route fails until the helper lands") fails on the real manifest: 48 direct CLOUD fetches exist in renderer code today, because the desktop currently points them at the local server — the bug Slices 1–6 fix. The gate enforces rule 5 per-route via `migrated: true` and reports unmigrated fetches as pending migration.
 - Rule 7's example CLOUD probe (GET `/api/products/list`, unauthenticated) does not 500: that route is USER-JWT and checks auth first (403 before any service call). The smoke probe instead POSTs `/api/auth/provision` with a fake Bearer token, which reaches service-client creation before any user lookup and must 500 with "Service client creation failed".
 
+Ratchet on pending direct CLOUD fetches (UMAIR item 4, 2026-11-19): the count of direct renderer fetches of unmigrated CLOUD routes was 39, then 47 — it must never grow again. The manifest stores the baseline as top-level `ratchet.pending_direct_cloud_fetches` (47); the gate fails when the computed count exceeds it and passes at or below it. The same commit that migrates routes (sets `migrated: true`) must lower the baseline to the new count; never raise it. The count uses check 5's exact/segment matching, not substring.
+
 ## 9. Limitations of this classification
 
 - Static analysis only, at tip `33da412`. No route was executed; "Desktop today" is derived from the access pattern (service key absent in the desktop env), not from a runtime probe.

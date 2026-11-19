@@ -7,6 +7,10 @@
     "LOCAL": 16,
     "USER-JWT": 68
   },
+  "ratchet": {
+    "pending_direct_cloud_fetches": 47,
+    "note": "Ratchet (UMAIR item 4, 2026-11-19): the gate FAILS when the count of direct renderer fetches of unmigrated CLOUD routes exceeds this baseline (it was 39, then 47 — it must never grow again). The count may only go down. The same commit that migrates routes (sets migrated: true) MUST lower this baseline to the new count; never raise it."
+  },
   "routes": {
     "/api/ai-business-query": {
       "methods": "POST",
