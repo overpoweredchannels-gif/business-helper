@@ -222,6 +222,8 @@ Deviations from the §8 design above, found while implementing (safer variant ke
 
 Ratchet on pending direct CLOUD fetches (UMAIR item 4, 2026-11-19): the count of direct renderer fetches of unmigrated CLOUD routes was 39, then 47 — it must never grow again. The manifest stores the baseline as top-level `ratchet.pending_direct_cloud_fetches` (47); the gate fails when the computed count exceeds it and passes at or below it. The same commit that migrates routes (sets `migrated: true`) must lower the baseline to the new count; never raise it. The count uses check 5's exact/segment matching, not substring.
 
+Pre-push enforcement (UMAIR item 2, 2026-11-19): direct pushes to main are blocked locally before they leave the machine. `npm install` / `npm ci` runs the `prepare` script in package.json, which installs `.git/hooks/pre-push` (`scripts/install-pre-push-hook.mjs`, Node stdlib only, zero new dependencies — no husky, no committed hook directory, no per-machine setup). The hook runs the gate (`node scripts/check-desktop-routes.mjs`) and a failing gate blocks the push — e.g. a new route with no manifest entry. The gate takes ~1s, so the hook stays fast. CI ("Desktop route classification gate" workflow) is only the last safety net, for machines that pulled without running `npm install`. If a different pre-push hook already exists, the installer leaves it untouched and warns instead of overwriting it.
+
 ## 9. Limitations of this classification
 
 - Static analysis only, at tip `33da412`. No route was executed; "Desktop today" is derived from the access pattern (service key absent in the desktop env), not from a runtime probe.

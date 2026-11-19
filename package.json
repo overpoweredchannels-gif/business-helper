@@ -10,6 +10,7 @@
     "desktop:dev": "tsc -p electron/tsconfig.json && concurrently \"next dev\" \"electron .\"",
     "desktop:build": "cross-env NEXT_PUBLIC_DESKTOP=1 AANKH_DESKTOP_BUILD=1 next build && node electron/prepare-standalone.mjs && tsc -p electron/tsconfig.json && electron-builder",
     "lint": "eslint",
+    "prepare": "node scripts/install-pre-push-hook.mjs",
     "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "test:regional": "tsx scripts/test-regional-settings.ts && tsx scripts/test-regional-service.ts && tsx scripts/test-regional-schema.ts && tsx scripts/test-regional-ui.tsx && tsx scripts/test-regional-errors.ts && tsx scripts/test-regional-bootstrap.ts",
     "test:brain": "tsx scripts/run-brain-validation.ts",
