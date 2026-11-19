@@ -502,6 +502,13 @@ export class ConversationRuntime {
     const response = result.ok && result.text ? result.text : "Sorry, I couldn't process that. Can you please rephrase?";
     context = addConversationMessage(context, "assistant", "text", response);
     context = updateConversationState(context, "idle");
+    // Belt-and-braces: a direct answer leaves no pending action behind,
+    // mirroring the inventory/staff/location branches — even if the
+    // state transition above were ever refused again, the next message
+    // must not resume a stale business_query field walk.
+    context.actionType = null;
+    context.pendingField = null;
+    context.collectedData = {};
     this.sessions.set(sessionId, context);
 
     const store = this.store;

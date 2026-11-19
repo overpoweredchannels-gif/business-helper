@@ -131,6 +131,13 @@ export const VALID_TRANSITIONS: Record<ConversationState, ConversationState[]> =
     "waiting_for_confirmation",
     "cancelled",
     "error",
+    // Direct-answer branches (business_query / inventory_query /
+    // staff_query / location_query) return to idle from here: without
+    // this, updateConversationState silently no-ops and the stored
+    // session stays waiting_for_intent, so the next message is
+    // swallowed by handleFieldUpdate (live re-QA 2026-11-19: #2-#5
+    // got the business_query field walk, one field per message).
+    "idle",
   ],
   waiting_for_customer: [
     "waiting_for_supplier",
